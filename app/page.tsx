@@ -42,7 +42,7 @@ export default function Dashboard() {
           Dashboard
         </h1>
         <p className="text-sm text-muted-foreground">
-          Dayong Temporary System
+          Dayong Monitoring System
         </p>
       </div>
 

@@ -157,7 +157,7 @@ export function Sidebar() {
           <div>
             <div className="text-lg font-bold tracking-tight">DAYONG</div>
             <div className="text-xs text-muted-foreground">
-              Temporary System
+              Monitoring System
             </div>
           </div>
 
