@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  ChevronDown,
-  ChevronUp,
   Pencil,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -27,148 +26,494 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-import { programs as initialPrograms } from "@/lib/programs";
-import type { Program } from "@/lib/types";
+type IncentiveType =
+  | "percentage"
+  | "fixed";
 
-type CommissionRole = "MAS" | "Collector";
+type IncentiveRole =
+  | "MAS"
+  | "Collector";
 
-type CommissionType = "fixed" | "percentage";
+type PeriodUnit =
+  | "month"
+  | "year";
 
-type CommissionTier = {
-  id: string;
-  role: CommissionRole;
+type IncentiveTier = {
+  id?: string;
+  programId?: string;
+  role: IncentiveRole;
   fromMonth: number;
   toMonth: number;
-  amount: number;
-  commissionType: CommissionType;
+  incentiveType: IncentiveType;
+  incentiveAmount: number;
 };
 
-type ManagedProgram = Program & {
-  commissionTiers: CommissionTier[];
+type IncentiveTierForm = {
+  role: IncentiveRole;
+
+  fromValue: string;
+  fromUnit: PeriodUnit;
+
+  toValue: string;
+  toUnit: PeriodUnit;
+
+  incentiveType: IncentiveType;
+  incentiveAmount: string;
 };
 
-function createEmptyCommissionTier(
-  role: CommissionRole = "MAS",
-): CommissionTier {
+type Program = {
+  id: string;
+  code: string;
+  name: string;
+  basePay: number;
+  status: "active" | "inactive";
+  description: string;
+  incentiveTiers: IncentiveTier[];
+};
+
+type ProgramForm = {
+  code: string;
+  name: string;
+  basePay: string;
+  description: string;
+  status: "active" | "inactive";
+  incentiveTiers: IncentiveTierForm[];
+};
+
+function createEmptyTier(
+  role: IncentiveRole,
+): IncentiveTierForm {
   return {
-    id: crypto.randomUUID(),
     role,
-    fromMonth: 1,
-    toMonth: 6,
-    amount: 0,
-    commissionType: "percentage",
+
+    fromValue: "1",
+    fromUnit: "month",
+
+    toValue: "6",
+    toUnit: "month",
+
+    incentiveType: "percentage",
+    incentiveAmount: "0",
   };
 }
 
-function createEmptyProgram(): ManagedProgram {
+function createEmptyForm(): ProgramForm {
   return {
-    id: crypto.randomUUID(),
     code: "",
     name: "",
-    basePay: 0,
-
-    /*
-     * These old fields remain here because we are
-     * intentionally not changing lib/types.ts yet.
-     *
-     * The actual commission setup is now handled
-     * by commissionTiers below.
-     */
-    masCommission: 0,
-    collectorCommission: 0,
-
-    commissionType: "percentage",
-
+    basePay: "",
     description: "",
-
-    dateStarted: "",
-    dateEnded: null,
-
     status: "active",
 
-    commissionTiers: [
-      createEmptyCommissionTier("MAS"),
-      createEmptyCommissionTier("Collector"),
+    incentiveTiers: [
+      createEmptyTier("MAS"),
+      createEmptyTier("Collector"),
     ],
   };
 }
 
-function convertInitialPrograms(): ManagedProgram[] {
-  return initialPrograms.map((program) => ({
-    ...program,
-    commissionTiers: [],
-  }));
-}
+function periodToMonths(
+  value: string,
+  unit: PeriodUnit,
+) {
+  const numericValue = Number(value);
 
-function formatCommission(tier: CommissionTier) {
-  if (tier.commissionType === "percentage") {
-    return `${tier.amount}%`;
+  if (
+    !Number.isFinite(numericValue) ||
+    numericValue < 1
+  ) {
+    return NaN;
   }
 
-  return `₱${tier.amount.toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-  })}`;
+  return unit === "year"
+    ? numericValue * 12
+    : numericValue;
 }
 
-/**
- * Finds the first overlapping pair for one role.
- *
- * Gaps are allowed.
- *
- * Example:
- * 1–6 and 7–12 = valid
- * 1–6 and 8–12 = valid
- * 1–6 and 6–12 = invalid
- * 1–6 and 5–10 = invalid
- */
-function findOverlappingTier(
-  tiers: CommissionTier[],
-): [CommissionTier, CommissionTier] | null {
-  const sortedTiers = [...tiers].sort(
-    (a, b) => a.fromMonth - b.fromMonth,
-  );
+function formatIncentive(
+  amount: number | string | undefined,
+  type: IncentiveType | undefined,
+) {
+  const numericAmount =
+    typeof amount === "number"
+      ? amount
+      : Number(amount ?? 0);
 
-  for (let index = 0; index < sortedTiers.length - 1; index++) {
-    const current = sortedTiers[index];
-    const next = sortedTiers[index + 1];
-
-    if (current.toMonth >= next.fromMonth) {
-      return [current, next];
-    }
+  if (!Number.isFinite(numericAmount)) {
+    return type === "fixed"
+      ? "₱0.00"
+      : "0%";
   }
 
-  return null;
+  if (type === "fixed") {
+    return `₱${numericAmount.toLocaleString(
+      "en-PH",
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      },
+    )}`;
+  }
+
+  return `${numericAmount}%`;
+}
+
+function formatMonthRange(
+  fromMonth: number,
+  toMonth: number,
+) {
+  if (fromMonth === toMonth) {
+    return `Month ${fromMonth}`;
+  }
+
+  if (toMonth >= 999999) {
+    return `Month ${fromMonth}+`;
+  }
+
+  return `Months ${fromMonth}–${toMonth}`;
+}
+
+function formatPeriodInput(
+  value: string,
+  unit: PeriodUnit,
+) {
+  const numericValue = Number(value);
+
+  if (
+    !Number.isFinite(numericValue) ||
+    numericValue < 1
+  ) {
+    return "";
+  }
+
+  return `${numericValue} ${
+    unit === "year"
+      ? numericValue === 1
+        ? "Year"
+        : "Years"
+      : numericValue === 1
+        ? "Month"
+        : "Months"
+  }`;
 }
 
 export default function ProgramsPage() {
   const [programs, setPrograms] = useState<
-    ManagedProgram[]
-  >(convertInitialPrograms());
+    Program[]
+  >([]);
+
+  const [form, setForm] =
+    useState<ProgramForm>(
+      createEmptyForm(),
+    );
 
   const [editingId, setEditingId] =
     useState<string | null>(null);
 
-  const [form, setForm] =
-    useState<ManagedProgram>(
-      createEmptyProgram(),
-    );
-
-  const [showMasCommission, setShowMasCommission] =
+  const [loading, setLoading] =
     useState(true);
 
-  const [
-    showCollectorCommission,
-    setShowCollectorCommission,
-  ] = useState(true);
+  const [saving, setSaving] =
+    useState(false);
 
-  function resetForm() {
-    setForm(createEmptyProgram());
-    setEditingId(null);
-    setShowMasCommission(true);
-    setShowCollectorCommission(true);
+  async function loadPrograms() {
+    try {
+      setLoading(true);
+
+      const response = await fetch(
+        "/api/programs",
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "Failed to load programs.",
+        );
+      }
+
+      const loadedPrograms =
+        Array.isArray(data.programs)
+          ? data.programs
+          : [];
+
+      setPrograms(
+        loadedPrograms.map(
+          (program: Program) => ({
+            ...program,
+
+            incentiveTiers:
+              Array.isArray(
+                program.incentiveTiers,
+              )
+                ? program.incentiveTiers
+                : [],
+          }),
+        ),
+      );
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to load programs.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function saveProgram() {
+  useEffect(() => {
+    loadPrograms();
+  }, []);
+
+  function resetForm() {
+    setForm(createEmptyForm());
+    setEditingId(null);
+  }
+
+  function updateForm(
+    field: keyof ProgramForm,
+    value:
+      | string
+      | IncentiveTierForm[],
+  ) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateTier(
+    index: number,
+    field: keyof IncentiveTierForm,
+    value: string,
+  ) {
+    setForm((current) => {
+      const tiers = [
+        ...current.incentiveTiers,
+      ];
+
+      tiers[index] = {
+        ...tiers[index],
+        [field]: value,
+      };
+
+      return {
+        ...current,
+        incentiveTiers: tiers,
+      };
+    });
+  }
+
+  function addTier(
+    role: IncentiveRole,
+  ) {
+    setForm((current) => ({
+      ...current,
+
+      incentiveTiers: [
+        ...current.incentiveTiers,
+        createEmptyTier(role),
+      ],
+    }));
+  }
+
+  function removeTier(index: number) {
+    setForm((current) => ({
+      ...current,
+
+      incentiveTiers:
+        current.incentiveTiers.filter(
+          (_, tierIndex) =>
+            tierIndex !== index,
+        ),
+    }));
+  }
+
+  function getRoleTiers(
+    role: IncentiveRole,
+  ) {
+    return form.incentiveTiers
+      .map((tier, index) => ({
+        tier,
+        index,
+      }))
+      .filter(
+        ({ tier }) =>
+          tier.role === role,
+      );
+  }
+
+  function validateTiers() {
+    if (
+      form.incentiveTiers.length === 0
+    ) {
+      alert(
+        "Please add at least one incentive tier.",
+      );
+
+      return false;
+    }
+
+    for (
+      let index = 0;
+      index <
+      form.incentiveTiers.length;
+      index++
+    ) {
+      const tier =
+        form.incentiveTiers[index];
+
+      const fromMonth =
+        periodToMonths(
+          tier.fromValue,
+          tier.fromUnit,
+        );
+
+      const toMonth =
+        periodToMonths(
+          tier.toValue,
+          tier.toUnit,
+        );
+
+      const amount =
+        Number(tier.incentiveAmount);
+
+      if (
+        !tier.fromValue.trim() ||
+        !Number.isFinite(fromMonth) ||
+        fromMonth < 1
+      ) {
+        alert(
+          `${tier.role} Tier ${
+            index + 1
+          }: From period must be 1 or greater.`,
+        );
+
+        return false;
+      }
+
+      if (
+        !tier.toValue.trim() ||
+        !Number.isFinite(toMonth) ||
+        toMonth < fromMonth
+      ) {
+        alert(
+          `${tier.role} Tier ${
+            index + 1
+          }: To period must be greater than or equal to From period.`,
+        );
+
+        return false;
+      }
+
+      if (
+        !Number.isInteger(fromMonth) ||
+        !Number.isInteger(toMonth)
+      ) {
+        alert(
+          `${tier.role} Tier ${
+            index + 1
+          }: Month values must be whole numbers.`,
+        );
+
+        return false;
+      }
+
+      if (
+        !tier.incentiveAmount.trim() ||
+        !Number.isFinite(amount) ||
+        amount < 0
+      ) {
+        alert(
+          `${tier.role} Tier ${
+            index + 1
+          }: Incentive must be 0 or greater.`,
+        );
+
+        return false;
+      }
+
+      if (
+        tier.incentiveType ===
+          "percentage" &&
+        amount > 100
+      ) {
+        alert(
+          `${tier.role} Tier ${
+            index + 1
+          }: Percentage incentive cannot be greater than 100%.`,
+        );
+
+        return false;
+      }
+    }
+
+    /*
+     * Check overlapping month ranges
+     * within the same role.
+     */
+    const roles: IncentiveRole[] = [
+      "MAS",
+      "Collector",
+    ];
+
+    for (const role of roles) {
+      const tiers = form.incentiveTiers
+        .filter(
+          (tier) =>
+            tier.role === role,
+        )
+        .map((tier) => ({
+          from: periodToMonths(
+            tier.fromValue,
+            tier.fromUnit,
+          ),
+          to: periodToMonths(
+            tier.toValue,
+            tier.toUnit,
+          ),
+        }))
+        .sort(
+          (a, b) =>
+            a.from - b.from,
+        );
+
+      for (
+        let index = 1;
+        index < tiers.length;
+        index++
+      ) {
+        const previous =
+          tiers[index - 1];
+
+        const current =
+          tiers[index];
+
+        if (
+          current.from <=
+          previous.to
+        ) {
+          alert(
+            `${role} incentive tiers have overlapping periods. Please adjust the ranges.`,
+          );
+
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  async function saveProgram() {
     if (!form.code.trim()) {
       alert("Please enter a program code.");
       return;
@@ -179,118 +524,207 @@ export default function ProgramsPage() {
       return;
     }
 
-    if (form.basePay <= 0) {
-      alert("Base pay must be greater than 0.");
+    const basePay =
+      Number(form.basePay);
+
+    if (
+      !form.basePay.trim() ||
+      !Number.isFinite(basePay) ||
+      basePay <= 0
+    ) {
+      alert(
+        "Base Pay must be greater than 0.",
+      );
       return;
     }
 
-    for (const tier of form.commissionTiers) {
-      if (tier.fromMonth <= 0) {
-        alert(
-          `${tier.role} Commission: From Month must be greater than 0.`,
-        );
-        return;
-      }
-
-      if (tier.toMonth < tier.fromMonth) {
-        alert(
-          `${tier.role} Commission: To Month cannot be less than From Month.`,
-        );
-        return;
-      }
-
-      if (tier.amount < 0) {
-        alert(
-          `${tier.role} Commission: Commission amount cannot be negative.`,
-        );
-        return;
-      }
-
-      if (
-        tier.commissionType === "percentage" &&
-        tier.amount > 100
-      ) {
-        alert(
-          `${tier.role} Commission: Percentage commission cannot be greater than 100%.`,
-        );
-        return;
-      }
+    if (!validateTiers()) {
+      return;
     }
 
-    const masTiers = form.commissionTiers.filter(
-      (tier) => tier.role === "MAS",
-    );
+    try {
+      setSaving(true);
 
-    const collectorTiers = form.commissionTiers.filter(
-      (tier) => tier.role === "Collector",
-    );
+      /*
+       * Convert all Month/Year inputs
+       * into months before sending them
+       * to the API.
+       *
+       * Example:
+       * 1 Year = 12 months
+       * 2 Years = 24 months
+       */
+      const incentiveTiers =
+        form.incentiveTiers.map(
+          (tier) => ({
+            role: tier.role,
 
-    const masOverlap =
-      findOverlappingTier(masTiers);
+            fromMonth:
+              periodToMonths(
+                tier.fromValue,
+                tier.fromUnit,
+              ),
 
-    if (masOverlap) {
-      const [first, second] = masOverlap;
+            toMonth:
+              periodToMonths(
+                tier.toValue,
+                tier.toUnit,
+              ),
+
+            incentiveType:
+              tier.incentiveType,
+
+            incentiveAmount:
+              Number(
+                tier.incentiveAmount,
+              ),
+          }),
+        );
+
+      const payload = {
+        code: form.code.trim(),
+        name: form.name.trim(),
+        basePay,
+
+        incentiveTiers,
+
+        description:
+          form.description.trim(),
+
+        status: form.status,
+      };
+
+      const response = await fetch(
+        editingId
+          ? `/api/programs?id=${encodeURIComponent(
+              editingId,
+            )}`
+          : "/api/programs",
+        {
+          method: editingId
+            ? "PUT"
+            : "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "Failed to save program.",
+        );
+      }
+
+      const savedEditingId =
+        editingId;
+
+      resetForm();
+
+      await loadPrograms();
 
       alert(
-        `MAS Commission tiers overlap: Month ${first.fromMonth}–${first.toMonth} overlaps with Month ${second.fromMonth}–${second.toMonth}. Please adjust the month ranges.`,
+        savedEditingId
+          ? "Program updated successfully."
+          : `Program saved successfully. ID: ${
+              data.program?.id ?? ""
+            }`,
       );
-
-      setShowMasCommission(true);
-      return;
-    }
-
-    const collectorOverlap =
-      findOverlappingTier(
-        collectorTiers,
+    } catch (error) {
+      console.error(
+        "Failed to save program:",
+        error,
       );
-
-    if (collectorOverlap) {
-      const [first, second] =
-        collectorOverlap;
 
       alert(
-        `Collector Commission tiers overlap: Month ${first.fromMonth}–${first.toMonth} overlaps with Month ${second.fromMonth}–${second.toMonth}. Please adjust the month ranges.`,
+        error instanceof Error
+          ? error.message
+          : "Failed to save program.",
       );
-
-      setShowCollectorCommission(true);
-      return;
+    } finally {
+      setSaving(false);
     }
-
-    if (editingId) {
-      setPrograms((current) =>
-        current.map((program) =>
-          program.id === editingId
-            ? form
-            : program,
-        ),
-      );
-    } else {
-      setPrograms((current) => [
-        ...current,
-        form,
-      ]);
-    }
-
-    resetForm();
   }
 
   function editProgram(
-    program: ManagedProgram,
+    program: Program,
   ) {
-    setForm({
-      ...program,
-
-      commissionTiers: program.commissionTiers.map(
-        (tier) => ({
-          ...tier,
-        }),
-      ),
-    });
-
     setEditingId(program.id);
 
-    setShowMasCommission(true);
-    setShowCollectorCommission(true);
+    const existingTiers =
+      Array.isArray(
+        program.incentiveTiers,
+      )
+        ? program.incentiveTiers
+        : [];
+
+    /*
+     * Existing data is stored in months,
+     * so when editing we initially show
+     * the values as months.
+     *
+     * The encoder can switch them to
+     * years if preferred.
+     */
+    setForm({
+      code: program.code ?? "",
+      name: program.name ?? "",
+
+      basePay: String(
+        program.basePay ?? 0,
+      ),
+
+      description:
+        program.description ?? "",
+
+      status:
+        program.status === "inactive"
+          ? "inactive"
+          : "active",
+
+      incentiveTiers:
+        existingTiers.length > 0
+          ? existingTiers.map(
+              (tier) => ({
+                role: tier.role,
+
+                fromValue: String(
+                  tier.fromMonth ?? 1,
+                ),
+                fromUnit: "month",
+
+                toValue: String(
+                  tier.toMonth ??
+                    999999,
+                ),
+                toUnit: "month",
+
+                incentiveType:
+                  tier.incentiveType ??
+                  "percentage",
+
+                incentiveAmount:
+                  String(
+                    tier.incentiveAmount ??
+                      0,
+                  ),
+              }),
+            )
+          : [
+              createEmptyTier("MAS"),
+              createEmptyTier(
+                "Collector",
+              ),
+            ],
+    });
 
     window.scrollTo({
       top: 0,
@@ -298,84 +732,330 @@ export default function ProgramsPage() {
     });
   }
 
-  function deleteProgram(id: string) {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this program?",
-    );
+  async function deleteProgram(
+    program: Program,
+  ) {
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to delete ${program.id} - ${program.name}?`,
+      );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
-    setPrograms((current) =>
-      current.filter(
-        (program) => program.id !== id,
-      ),
-    );
+    try {
+      const response = await fetch(
+        `/api/programs?id=${encodeURIComponent(
+          program.id,
+        )}`,
+        {
+          method: "DELETE",
+        },
+      );
 
-    if (editingId === id) {
-      resetForm();
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "Failed to delete program.",
+        );
+      }
+
+      if (editingId === program.id) {
+        resetForm();
+      }
+
+      await loadPrograms();
+
+      alert(
+        "Program deleted successfully.",
+      );
+    } catch (error) {
+      console.error(
+        "Failed to delete program:",
+        error,
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete program.",
+      );
     }
   }
 
-  function addCommissionTier(
-    role: CommissionRole,
+  function renderIncentiveTier(
+    tier: IncentiveTierForm,
+    index: number,
   ) {
-    setForm((current) => ({
-      ...current,
+    return (
+      <div
+        key={index}
+        className="rounded-lg border p-4"
+      >
+        {/* TIER HEADER */}
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold">
+              {tier.role} Tier
+            </p>
 
-      commissionTiers: [
-        ...current.commissionTiers,
-        createEmptyCommissionTier(role),
-      ],
-    }));
-  }
+            <p className="text-xs text-muted-foreground">
+              Configure the incentive and
+              payment period.
+            </p>
+          </div>
 
-  function updateCommissionTier(
-    id: string,
-    updates: Partial<CommissionTier>,
-  ) {
-    setForm((current) => ({
-      ...current,
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() =>
+              removeTier(index)
+            }
+            aria-label={`Remove ${tier.role} tier`}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
 
-      commissionTiers:
-        current.commissionTiers.map(
-          (tier) =>
-            tier.id === id
-              ? {
-                  ...tier,
-                  ...updates,
+        <div className="grid gap-4 lg:grid-cols-4">
+          {/* TYPE FIRST */}
+          <div className="space-y-2">
+            <Label>
+              Type
+            </Label>
+
+            <Select
+              value={
+                tier.incentiveType
+              }
+              onValueChange={(
+                value,
+              ) =>
+                updateTier(
+                  index,
+                  "incentiveType",
+                  value === "fixed"
+                    ? "fixed"
+                    : "percentage",
+                )
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+
+              <SelectContent>
+                <SelectItem value="percentage">
+                  Percentage
+                </SelectItem>
+
+                <SelectItem value="fixed">
+                  Fixed Amount
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* AMOUNT SECOND */}
+          <div className="space-y-2">
+            <Label>
+              Incentive
+            </Label>
+
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={
+                tier.incentiveAmount
+              }
+              onChange={(event) =>
+                updateTier(
+                  index,
+                  "incentiveAmount",
+                  event.target.value,
+                )
+              }
+              onWheel={(event) => {
+                event.currentTarget.blur();
+              }}
+              placeholder={
+                tier.incentiveType ===
+                "percentage"
+                  ? "50"
+                  : "500"
+              }
+            />
+
+            <p className="text-xs text-muted-foreground">
+              {tier.incentiveType ===
+              "percentage"
+                ? "Enter percentage."
+                : "Enter peso amount."}
+            </p>
+          </div>
+
+          {/* FROM */}
+          <div className="space-y-2">
+            <Label>
+              From
+            </Label>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                value={
+                  tier.fromValue
                 }
-              : tier,
-        ),
-    }));
-  }
+                onChange={(event) =>
+                  updateTier(
+                    index,
+                    "fromValue",
+                    event.target.value,
+                  )
+                }
+                onWheel={(event) => {
+                  event.currentTarget.blur();
+                }}
+                placeholder="1"
+              />
 
-  function deleteCommissionTier(
-    id: string,
-  ) {
-    setForm((current) => ({
-      ...current,
+              <Select
+                value={
+                  tier.fromUnit
+                }
+                onValueChange={(
+                  value,
+                ) =>
+                  updateTier(
+                    index,
+                    "fromUnit",
+                    value === "year"
+                      ? "year"
+                      : "month",
+                  )
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
 
-      commissionTiers:
-        current.commissionTiers.filter(
-          (tier) => tier.id !== id,
-        ),
-    }));
-  }
+                <SelectContent>
+                  <SelectItem value="month">
+                    Month
+                  </SelectItem>
 
-  function getTiersByRole(
-    role: CommissionRole,
-  ) {
-    return form.commissionTiers.filter(
-      (tier) => tier.role === role,
-    );
-  }
+                  <SelectItem value="year">
+                    Year
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-  function getProgramTiersByRole(
-    program: ManagedProgram,
-    role: CommissionRole,
-  ) {
-    return program.commissionTiers.filter(
-      (tier) => tier.role === role,
+            <p className="text-xs text-muted-foreground">
+              {formatPeriodInput(
+                tier.fromValue,
+                tier.fromUnit,
+              )}
+            </p>
+          </div>
+
+          {/* TO */}
+          <div className="space-y-2">
+            <Label>
+              To
+            </Label>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                value={
+                  tier.toValue
+                }
+                onChange={(event) =>
+                  updateTier(
+                    index,
+                    "toValue",
+                    event.target.value,
+                  )
+                }
+                onWheel={(event) => {
+                  event.currentTarget.blur();
+                }}
+                placeholder="6"
+              />
+
+              <Select
+                value={
+                  tier.toUnit
+                }
+                onValueChange={(
+                  value,
+                ) =>
+                  updateTier(
+                    index,
+                    "toUnit",
+                    value === "year"
+                      ? "year"
+                      : "month",
+                  )
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+
+                <SelectContent>
+                  <SelectItem value="month">
+                    Month
+                  </SelectItem>
+
+                  <SelectItem value="year">
+                    Year
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              {formatPeriodInput(
+                tier.toValue,
+                tier.toUnit,
+              )}
+            </p>
+          </div>
+        </div>
+
+        {/* SUMMARY */}
+        <div className="mt-4 rounded-md bg-muted/40 px-3 py-2">
+          <p className="text-xs text-muted-foreground">
+            {formatMonthRange(
+              periodToMonths(
+                tier.fromValue,
+                tier.fromUnit,
+              ) || 1,
+              periodToMonths(
+                tier.toValue,
+                tier.toUnit,
+              ) || 1,
+            )}{" "}
+            •{" "}
+            {formatIncentive(
+              tier.incentiveAmount,
+              tier.incentiveType,
+            )}
+          </p>
+        </div>
+      </div>
     );
   }
 
@@ -388,8 +1068,8 @@ export default function ProgramsPage() {
         </h1>
 
         <p className="text-sm text-muted-foreground">
-          Manage Dayong programs, base pay, and
-          flexible commission schedules.
+          Manage Dayong programs, base pay,
+          and role-based incentive tiers.
         </p>
       </div>
 
@@ -404,7 +1084,7 @@ export default function ProgramsPage() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* BASIC PROGRAM INFORMATION */}
+          {/* PROGRAM INFORMATION */}
           <div>
             <h3 className="mb-4 text-sm font-semibold">
               Program Information
@@ -419,10 +1099,10 @@ export default function ProgramsPage() {
                 <Input
                   value={form.code}
                   onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      code: event.target.value,
-                    }))
+                    updateForm(
+                      "code",
+                      event.target.value,
+                    )
                   }
                   placeholder="Example: 290"
                 />
@@ -436,10 +1116,10 @@ export default function ProgramsPage() {
                 <Input
                   value={form.name}
                   onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
+                    updateForm(
+                      "name",
+                      event.target.value,
+                    )
                   }
                   placeholder="Example: Program 290"
                 />
@@ -447,13 +1127,14 @@ export default function ProgramsPage() {
             </div>
           </div>
 
-          {/* BASE PAY / STATUS */}
+          {/* PROGRAM SETTINGS */}
           <div>
             <h3 className="mb-4 text-sm font-semibold">
               Program Settings
             </h3>
 
             <div className="grid gap-4 md:grid-cols-2">
+              {/* BASE PAY */}
               <div className="space-y-2">
                 <Label>
                   Base Pay *
@@ -463,17 +1144,12 @@ export default function ProgramsPage() {
                   type="number"
                   min="0"
                   step="0.01"
-                  value={
-                    form.basePay || ""
-                  }
+                  value={form.basePay}
                   onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      basePay:
-                        Number(
-                          event.target.value,
-                        ) || 0,
-                    }))
+                    updateForm(
+                      "basePay",
+                      event.target.value,
+                    )
                   }
                   onWheel={(event) => {
                     event.currentTarget.blur();
@@ -487,6 +1163,7 @@ export default function ProgramsPage() {
                 </p>
               </div>
 
+              {/* STATUS */}
               <div className="space-y-2">
                 <Label>
                   Status
@@ -495,14 +1172,13 @@ export default function ProgramsPage() {
                 <Select
                   value={form.status}
                   onValueChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      status:
-                        (value as
-                          | "active"
-                          | "inactive") ??
-                        "active",
-                    }))
+                    updateForm(
+                      "status",
+                      value ===
+                        "inactive"
+                        ? "inactive"
+                        : "active",
+                    )
                   }
                 >
                   <SelectTrigger className="w-full">
@@ -523,577 +1199,124 @@ export default function ProgramsPage() {
             </div>
           </div>
 
-          {/* COMMISSION INFORMATION */}
-          <div className="rounded-xl border bg-muted/20 p-4">
-            <div className="mb-1">
-              <h3 className="font-semibold">
-                Commission Schedule
+          {/* INCENTIVE TIERS */}
+          <div>
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold">
+                Incentive Tiers
               </h3>
 
-              <p className="text-sm text-muted-foreground">
-                Commission is configured separately
-                for MAS and Collector. Each role can
-                have as many payment-duration tiers as
-                needed. Gaps between tiers are allowed,
-                but overlapping month ranges are not.
+              <p className="mt-1 text-xs text-muted-foreground">
+                Configure incentives according
+                to how long the member has been
+                paying the program.
               </p>
             </div>
-          </div>
 
-          {/* MAS COMMISSION */}
-          <div className="rounded-xl border">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left hover:bg-muted/40"
-              onClick={() =>
-                setShowMasCommission(
-                  (current) => !current,
-                )
-              }
-            >
-              <div>
-                <p className="font-semibold">
-                  MAS Commission
-                </p>
+            {/* SIDE-BY-SIDE MAS / COLLECTOR */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* MAS */}
+              <div className="rounded-xl border p-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold">
+                      MAS Incentive
+                    </h4>
 
-                <p className="text-xs text-muted-foreground">
-                  Commission paid to Marketing
-                  Account Staff.
-                </p>
-              </div>
-
-              {showMasCommission ? (
-                <ChevronUp className="size-5" />
-              ) : (
-                <ChevronDown className="size-5" />
-              )}
-            </button>
-
-            {showMasCommission && (
-              <div className="space-y-4 border-t p-4">
-                {getTiersByRole("MAS").length ===
-                0 ? (
-                  <div className="rounded-lg border border-dashed p-6 text-center">
-                    <p className="text-sm font-medium">
-                      No MAS commission tiers
-                    </p>
-
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Add a tier to configure MAS
-                      commission.
+                    <p className="text-xs text-muted-foreground">
+                      Marketing Account Staff
                     </p>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {getTiersByRole("MAS").map(
-                      (tier, index) => (
-                        <div
-                          key={tier.id}
-                          className="rounded-lg border p-4"
-                        >
-                          <div className="mb-4 flex items-center justify-between">
-                            <p className="text-sm font-semibold">
-                              MAS Tier{" "}
-                              {index + 1}
-                            </p>
 
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() =>
-                                deleteCommissionTier(
-                                  tier.id,
-                                )
-                              }
-                            >
-                              <Trash2 className="size-4 text-destructive" />
-                            </Button>
-                          </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      addTier("MAS")
+                    }
+                  >
+                    <Plus className="mr-2 size-4" />
+                    Add Tier
+                  </Button>
+                </div>
 
-                          <div className="grid gap-4 md:grid-cols-3">
-                            <div className="space-y-2">
-                              <Label>
-                                From Month *
-                              </Label>
-
-                              <Input
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={
-                                  tier.fromMonth
-                                }
-                                onChange={(
-                                  event,
-                                ) =>
-                                  updateCommissionTier(
-                                    tier.id,
-                                    {
-                                      fromMonth:
-                                        Number(
-                                          event
-                                            .target
-                                            .value,
-                                        ) || 1,
-                                    },
-                                  )
-                                }
-                                onWheel={(event) => {
-                                  event.currentTarget.blur();
-                                }}
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label>
-                                To Month *
-                              </Label>
-
-                              <Input
-                                type="number"
-                                min={
-                                  tier.fromMonth
-                                }
-                                step="1"
-                                value={
-                                  tier.toMonth
-                                }
-                                onChange={(
-                                  event,
-                                ) =>
-                                  updateCommissionTier(
-                                    tier.id,
-                                    {
-                                      toMonth:
-                                        Number(
-                                          event
-                                            .target
-                                            .value,
-                                        ) ||
-                                        tier.fromMonth,
-                                    },
-                                  )
-                                }
-                                onWheel={(event) => {
-                                  event.currentTarget.blur();
-                                }}
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label>
-                                Commission Type
-                              </Label>
-
-                              <Select
-                                value={
-                                  tier.commissionType
-                                }
-                                onValueChange={(
-                                  value,
-                                ) =>
-                                  updateCommissionTier(
-                                    tier.id,
-                                    {
-                                      commissionType:
-                                        (value as CommissionType) ??
-                                        "percentage",
-                                    },
-                                  )
-                                }
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue />
-                                </SelectTrigger>
-
-                                <SelectContent>
-                                  <SelectItem value="percentage">
-                                    Percentage
-                                  </SelectItem>
-
-                                  <SelectItem value="fixed">
-                                    Fixed Amount
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 space-y-2">
-                            <Label>
-                              Commission *
-                            </Label>
-
-                            <Input
-                              type="number"
-                              min="0"
-                              max={
-                                tier.commissionType ===
-                                "percentage"
-                                  ? 100
-                                  : undefined
-                              }
-                              step="0.01"
-                              value={
-                                tier.amount || ""
-                              }
-                              onChange={(
-                                event,
-                              ) =>
-                                updateCommissionTier(
-                                  tier.id,
-                                  {
-                                    amount:
-                                      Number(
-                                        event
-                                          .target
-                                          .value,
-                                      ) || 0,
-                                  },
-                                )
-                              }
-                              onWheel={(event) => {
-                                event.currentTarget.blur();
-                              }}
-                              placeholder={
-                                tier.commissionType ===
-                                "percentage"
-                                  ? "50"
-                                  : "100"
-                              }
-                            />
-
-                            <p className="text-xs text-muted-foreground">
-                              {tier.commissionType ===
-                              "percentage"
-                                ? "Enter the commission percentage."
-                                : "Enter the fixed commission amount in pesos."}
-                            </p>
-                          </div>
-                        </div>
-                      ),
-                    )}
-                  </div>
-                )}
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() =>
-                    addCommissionTier(
-                      "MAS",
+                <div className="space-y-3">
+                  {getRoleTiers("MAS")
+                    .length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-5 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        No MAS incentive tiers.
+                      </p>
+                    </div>
+                  ) : (
+                    getRoleTiers("MAS").map(
+                      ({
+                        tier,
+                        index,
+                      }) =>
+                        renderIncentiveTier(
+                          tier,
+                          index,
+                        ),
                     )
-                  }
-                >
-                  <Plus className="mr-2 size-4" />
-                  Add MAS Commission Tier
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* COLLECTOR COMMISSION */}
-          <div className="rounded-xl border">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left hover:bg-muted/40"
-              onClick={() =>
-                setShowCollectorCommission(
-                  (current) => !current,
-                )
-              }
-            >
-              <div>
-                <p className="font-semibold">
-                  Collector Commission
-                </p>
-
-                <p className="text-xs text-muted-foreground">
-                  Commission paid to Collectors.
-                </p>
+                  )}
+                </div>
               </div>
 
-              {showCollectorCommission ? (
-                <ChevronUp className="size-5" />
-              ) : (
-                <ChevronDown className="size-5" />
-              )}
-            </button>
+              {/* COLLECTOR */}
+              <div className="rounded-xl border p-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold">
+                      Collector Incentive
+                    </h4>
 
-            {showCollectorCommission && (
-              <div className="space-y-4 border-t p-4">
-                {getTiersByRole(
-                  "Collector",
-                ).length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-6 text-center">
-                    <p className="text-sm font-medium">
-                      No Collector commission
-                      tiers
-                    </p>
-
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Add a tier to configure
-                      Collector commission.
+                    <p className="text-xs text-muted-foreground">
+                      Collector
                     </p>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {getTiersByRole(
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      addTier(
+                        "Collector",
+                      )
+                    }
+                  >
+                    <Plus className="mr-2 size-4" />
+                    Add Tier
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  {getRoleTiers(
+                    "Collector",
+                  ).length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-5 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        No Collector incentive
+                        tiers.
+                      </p>
+                    </div>
+                  ) : (
+                    getRoleTiers(
                       "Collector",
-                    ).map((tier, index) => (
-                      <div
-                        key={tier.id}
-                        className="rounded-lg border p-4"
-                      >
-                        <div className="mb-4 flex items-center justify-between">
-                          <p className="text-sm font-semibold">
-                            Collector Tier{" "}
-                            {index + 1}
-                          </p>
-
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              deleteCommissionTier(
-                                tier.id,
-                              )
-                            }
-                          >
-                            <Trash2 className="size-4 text-destructive" />
-                          </Button>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-3">
-                          <div className="space-y-2">
-                            <Label>
-                              From Month *
-                            </Label>
-
-                            <Input
-                              type="number"
-                              min="1"
-                              step="1"
-                              value={
-                                tier.fromMonth
-                              }
-                              onChange={(
-                                event,
-                              ) =>
-                                updateCommissionTier(
-                                  tier.id,
-                                  {
-                                    fromMonth:
-                                      Number(
-                                        event
-                                          .target
-                                          .value,
-                                      ) || 1,
-                                  },
-                                )
-                              }
-                              onWheel={(event) => {
-                                event.currentTarget.blur();
-                              }}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label>
-                              To Month *
-                            </Label>
-
-                            <Input
-                              type="number"
-                              min={
-                                tier.fromMonth
-                              }
-                              step="1"
-                              value={
-                                tier.toMonth
-                              }
-                              onChange={(
-                                event,
-                              ) =>
-                                updateCommissionTier(
-                                  tier.id,
-                                  {
-                                    toMonth:
-                                      Number(
-                                        event
-                                          .target
-                                          .value,
-                                      ) ||
-                                      tier.fromMonth,
-                                  },
-                                )
-                              }
-                              onWheel={(event) => {
-                                event.currentTarget.blur();
-                              }}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label>
-                              Commission Type
-                            </Label>
-
-                            <Select
-                              value={
-                                tier.commissionType
-                              }
-                              onValueChange={(
-                                value,
-                              ) =>
-                                updateCommissionTier(
-                                  tier.id,
-                                  {
-                                    commissionType:
-                                      (value as CommissionType) ??
-                                      "percentage",
-                                  },
-                                )
-                              }
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-
-                              <SelectContent>
-                                <SelectItem value="percentage">
-                                  Percentage
-                                </SelectItem>
-
-                                <SelectItem value="fixed">
-                                  Fixed Amount
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 space-y-2">
-                          <Label>
-                            Commission *
-                          </Label>
-
-                          <Input
-                            type="number"
-                            min="0"
-                            max={
-                              tier.commissionType ===
-                              "percentage"
-                                ? 100
-                                : undefined
-                            }
-                            step="0.01"
-                            value={
-                              tier.amount || ""
-                            }
-                            onChange={(
-                              event,
-                            ) =>
-                              updateCommissionTier(
-                                tier.id,
-                                {
-                                  amount:
-                                    Number(
-                                      event
-                                        .target
-                                        .value,
-                                    ) || 0,
-                                },
-                              )
-                            }
-                            onWheel={(event) => {
-                              event.currentTarget.blur();
-                            }}
-                            placeholder={
-                              tier.commissionType ===
-                              "percentage"
-                                ? "50"
-                                : "100"
-                            }
-                          />
-
-                          <p className="text-xs text-muted-foreground">
-                            {tier.commissionType ===
-                            "percentage"
-                              ? "Enter the commission percentage."
-                              : "Enter the fixed commission amount in pesos."}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() =>
-                    addCommissionTier(
-                      "Collector",
+                    ).map(
+                      ({
+                        tier,
+                        index,
+                      }) =>
+                        renderIncentiveTier(
+                          tier,
+                          index,
+                        ),
                     )
-                  }
-                >
-                  <Plus className="mr-2 size-4" />
-                  Add Collector Commission
-                  Tier
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* DATE SETTINGS */}
-          <div>
-            <h3 className="mb-4 text-sm font-semibold">
-              Program Dates
-            </h3>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>
-                  Date Started
-                </Label>
-
-                <Input
-                  type="date"
-                  value={form.dateStarted}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      dateStarted:
-                        event.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>
-                  Date Ended
-                </Label>
-
-                <Input
-                  type="date"
-                  value={
-                    form.dateEnded ?? ""
-                  }
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      dateEnded:
-                        event.target.value ||
-                        null,
-                    }))
-                  }
-                />
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1107,23 +1330,23 @@ export default function ProgramsPage() {
             <Textarea
               value={form.description}
               onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  description:
-                    event.target.value,
-                }))
+                updateForm(
+                  "description",
+                  event.target.value,
+                )
               }
-              placeholder="Program description, terms, notes, etc."
+              placeholder="Program description, rules, notes, etc."
             />
           </div>
 
-          {/* FORM BUTTONS */}
+          {/* BUTTONS */}
           <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
             {editingId && (
               <Button
                 type="button"
                 variant="outline"
                 onClick={resetForm}
+                disabled={saving}
               >
                 Cancel
               </Button>
@@ -1132,12 +1355,15 @@ export default function ProgramsPage() {
             <Button
               type="button"
               onClick={saveProgram}
+              disabled={saving}
             >
               <Plus className="mr-2 size-4" />
 
-              {editingId
-                ? "Update Program"
-                : "Add Program"}
+              {saving
+                ? "Saving..."
+                : editingId
+                  ? "Update Program"
+                  : "Add Program"}
             </Button>
           </div>
         </CardContent>
@@ -1152,7 +1378,13 @@ export default function ProgramsPage() {
         </CardHeader>
 
         <CardContent>
-          {programs.length === 0 ? (
+          {loading ? (
+            <div className="rounded-lg border border-dashed p-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                Loading programs...
+              </p>
+            </div>
+          ) : programs.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center">
               <p className="font-medium">
                 No programs yet.
@@ -1164,225 +1396,250 @@ export default function ProgramsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {programs.map((program) => {
-                const masTiers =
-                  getProgramTiersByRole(
-                    program,
-                    "MAS",
-                  );
+              {programs.map(
+                (program) => {
+                  const masTiers =
+                    program.incentiveTiers.filter(
+                      (tier) =>
+                        tier.role === "MAS",
+                    );
 
-                const collectorTiers =
-                  getProgramTiersByRole(
-                    program,
-                    "Collector",
-                  );
+                  const collectorTiers =
+                    program.incentiveTiers.filter(
+                      (tier) =>
+                        tier.role ===
+                        "Collector",
+                    );
 
-                return (
-                  <div
-                    key={program.id}
-                    className="rounded-xl border p-5"
-                  >
-                    <div className="flex flex-col gap-5">
-                      {/* PROGRAM HEADER */}
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold">
-                              {program.name}
+                  return (
+                    <div
+                      key={program.id}
+                      className="rounded-xl border p-5"
+                    >
+                      <div className="flex flex-col gap-5">
+                        {/* HEADER */}
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold">
+                                {program.name}
+                              </p>
+
+                              <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium">
+                                {program.id}
+                              </span>
+
+                              <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium">
+                                Code:{" "}
+                                {program.code}
+                              </span>
+
+                              <span className="rounded-md bg-muted px-2 py-1 text-xs capitalize">
+                                {
+                                  program.status
+                                }
+                              </span>
+                            </div>
+
+                            <p className="text-sm text-muted-foreground">
+                              Base Pay: ₱
+                              {Number(
+                                program.basePay ??
+                                  0,
+                              ).toLocaleString(
+                                "en-PH",
+                                {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                },
+                              )}
                             </p>
 
-                            <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium">
-                              {program.code}
-                            </span>
-
-                            <span className="rounded-md bg-muted px-2 py-1 text-xs capitalize">
-                              {program.status}
-                            </span>
-                          </div>
-
-                          <p className="text-sm text-muted-foreground">
-                            Base Pay: ₱
-                            {program.basePay.toLocaleString(
-                              "en-PH",
-                              {
-                                minimumFractionDigits: 2,
-                              },
+                            {program.description && (
+                              <p className="text-sm">
+                                {
+                                  program.description
+                                }
+                              </p>
                             )}
-                          </p>
+                          </div>
 
-                          {program.description && (
-                            <p className="text-sm">
-                              {
-                                program.description
+                          <div className="flex shrink-0 gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() =>
+                                editProgram(
+                                  program,
+                                )
                               }
-                            </p>
-                          )}
+                            >
+                              <Pencil className="mr-2 size-4" />
+                              Edit
+                            </Button>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() =>
+                                deleteProgram(
+                                  program,
+                                )
+                              }
+                            >
+                              <Trash2 className="mr-2 size-4" />
+                              Delete
+                            </Button>
+                          </div>
                         </div>
 
-                        <div className="flex shrink-0 gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() =>
-                              editProgram(
-                                program,
-                              )
-                            }
-                          >
-                            <Pencil className="mr-2 size-4" />
-                            Edit
-                          </Button>
+                        {/* INCENTIVE SUMMARY */}
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {/* MAS */}
+                          <div className="rounded-lg border bg-muted/20 p-4">
+                            <div className="mb-3 flex items-center justify-between">
+                              <p className="font-semibold">
+                                MAS Incentive
+                              </p>
 
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() =>
-                              deleteProgram(
-                                program.id,
-                              )
-                            }
-                          >
-                            <Trash2 className="mr-2 size-4" />
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
+                              <span className="text-xs text-muted-foreground">
+                                {
+                                  masTiers.length
+                                }{" "}
+                                tier
+                                {masTiers.length !==
+                                1
+                                  ? "s"
+                                  : ""}
+                              </span>
+                            </div>
 
-                      {/* COMMISSION SUMMARY */}
-                      <div className="grid gap-4 md:grid-cols-2">
-                        {/* MAS */}
-                        <div className="rounded-lg border bg-muted/20 p-4">
-                          <div className="mb-3 flex items-center justify-between">
-                            <p className="font-semibold">
-                              MAS Commission
-                            </p>
+                            {masTiers.length ===
+                            0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                No incentive
+                                configured.
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {masTiers.map(
+                                  (
+                                    tier,
+                                    index,
+                                  ) => (
+                                    <div
+                                      key={
+                                        tier.id ??
+                                        `${program.id}-mas-${index}`
+                                      }
+                                      className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2"
+                                    >
+                                      <div>
+                                        <p className="text-sm font-medium">
+                                          {formatMonthRange(
+                                            tier.fromMonth,
+                                            tier.toMonth,
+                                          )}
+                                        </p>
 
-                            <span className="text-xs text-muted-foreground">
-                              {
-                                masTiers.length
-                              }{" "}
-                              {masTiers.length ===
-                              1
-                                ? "tier"
-                                : "tiers"}
-                            </span>
+                                        <p className="text-xs text-muted-foreground">
+                                          {
+                                            tier.incentiveType ===
+                                            "percentage"
+                                              ? "Percentage"
+                                              : "Fixed Amount"
+                                          }
+                                        </p>
+                                      </div>
+
+                                      <p className="font-semibold">
+                                        {formatIncentive(
+                                          tier.incentiveAmount,
+                                          tier.incentiveType,
+                                        )}
+                                      </p>
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            )}
                           </div>
 
-                          {masTiers.length ===
-                          0 ? (
-                            <p className="text-sm text-muted-foreground">
-                              No commission tiers
-                              configured.
-                            </p>
-                          ) : (
-                            <div className="space-y-2">
-                              {masTiers.map(
-                                (tier) => (
-                                  <div
-                                    key={
-                                      tier.id
-                                    }
-                                    className="flex items-center justify-between rounded-md border bg-background px-3 py-2"
-                                  >
-                                    <span className="text-sm">
-                                      Month{" "}
-                                      {
-                                        tier.fromMonth
-                                      }{" "}
-                                      –{" "}
-                                      {
-                                        tier.toMonth
-                                      }
-                                    </span>
+                          {/* COLLECTOR */}
+                          <div className="rounded-lg border bg-muted/20 p-4">
+                            <div className="mb-3 flex items-center justify-between">
+                              <p className="font-semibold">
+                                Collector Incentive
+                              </p>
 
-                                    <span className="text-sm font-semibold">
-                                      {formatCommission(
-                                        tier,
-                                      )}
-                                    </span>
-                                  </div>
-                                ),
-                              )}
+                              <span className="text-xs text-muted-foreground">
+                                {
+                                  collectorTiers.length
+                                }{" "}
+                                tier
+                                {collectorTiers.length !==
+                                1
+                                  ? "s"
+                                  : ""}
+                              </span>
                             </div>
-                          )}
-                        </div>
 
-                        {/* COLLECTOR */}
-                        <div className="rounded-lg border bg-muted/20 p-4">
-                          <div className="mb-3 flex items-center justify-between">
-                            <p className="font-semibold">
-                              Collector Commission
-                            </p>
+                            {collectorTiers.length ===
+                            0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                No incentive
+                                configured.
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {collectorTiers.map(
+                                  (
+                                    tier,
+                                    index,
+                                  ) => (
+                                    <div
+                                      key={
+                                        tier.id ??
+                                        `${program.id}-collector-${index}`
+                                      }
+                                      className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2"
+                                    >
+                                      <div>
+                                        <p className="text-sm font-medium">
+                                          {formatMonthRange(
+                                            tier.fromMonth,
+                                            tier.toMonth,
+                                          )}
+                                        </p>
 
-                            <span className="text-xs text-muted-foreground">
-                              {
-                                collectorTiers.length
-                              }{" "}
-                              {collectorTiers.length ===
-                              1
-                                ? "tier"
-                                : "tiers"}
-                            </span>
+                                        <p className="text-xs text-muted-foreground">
+                                          {
+                                            tier.incentiveType ===
+                                            "percentage"
+                                              ? "Percentage"
+                                              : "Fixed Amount"
+                                          }
+                                        </p>
+                                      </div>
+
+                                      <p className="font-semibold">
+                                        {formatIncentive(
+                                          tier.incentiveAmount,
+                                          tier.incentiveType,
+                                        )}
+                                      </p>
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            )}
                           </div>
-
-                          {collectorTiers.length ===
-                          0 ? (
-                            <p className="text-sm text-muted-foreground">
-                              No commission tiers
-                              configured.
-                            </p>
-                          ) : (
-                            <div className="space-y-2">
-                              {collectorTiers.map(
-                                (tier) => (
-                                  <div
-                                    key={
-                                      tier.id
-                                    }
-                                    className="flex items-center justify-between rounded-md border bg-background px-3 py-2"
-                                  >
-                                    <span className="text-sm">
-                                      Month{" "}
-                                      {
-                                        tier.fromMonth
-                                      }{" "}
-                                      –{" "}
-                                      {
-                                        tier.toMonth
-                                      }
-                                    </span>
-
-                                    <span className="text-sm font-semibold">
-                                      {formatCommission(
-                                        tier,
-                                      )}
-                                    </span>
-                                  </div>
-                                ),
-                              )}
-                            </div>
-                          )}
                         </div>
-                      </div>
-
-                      {/* DATES */}
-                      <div className="flex flex-wrap gap-x-6 gap-y-2 border-t pt-4 text-xs text-muted-foreground">
-                        <span>
-                          Started:{" "}
-                          {program.dateStarted ||
-                            "Not set"}
-                        </span>
-
-                        <span>
-                          Ended:{" "}
-                          {program.dateEnded ||
-                            "Not set"}
-                        </span>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                },
+              )}
             </div>
           )}
         </CardContent>
