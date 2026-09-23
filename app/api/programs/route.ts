@@ -13,6 +13,7 @@ type IncentiveTier = {
   fromMonth: number;
   toMonth: number;
   incentiveType: IncentiveType;
+  markUp: number;
   incentiveAmount: number;
 };
 
@@ -25,7 +26,10 @@ export async function GET() {
       programs,
     });
   } catch (error) {
-    console.error("Get programs error:", error);
+    console.error(
+      "Get programs error:",
+      error,
+    );
 
     return NextResponse.json(
       {
@@ -42,7 +46,9 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request,
+) {
   try {
     const body = await request.json();
 
@@ -62,7 +68,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Program code is required.",
+          error:
+            "Program code is required.",
         },
         {
           status: 400,
@@ -77,7 +84,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Program name is required.",
+          error:
+            "Program name is required.",
         },
         {
           status: 400,
@@ -93,7 +101,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Base pay must be greater than 0.",
+          error:
+            "Base pay must be greater than 0.",
         },
         {
           status: 400,
@@ -134,6 +143,9 @@ export async function POST(request: Request) {
             tier.incentiveType === "fixed"
               ? "fixed"
               : "percentage",
+
+          markUp:
+            Number(tier.markUp) || 0,
 
           incentiveAmount: Number(
             tier.incentiveAmount,
@@ -194,6 +206,39 @@ export async function POST(request: Request) {
 
       if (
         !Number.isFinite(
+          tier.markUp,
+        ) ||
+        tier.markUp < 0
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Mark Up cannot be negative.",
+          },
+          {
+            status: 400,
+          },
+        );
+      }
+
+      if (
+        tier.markUp > basePay
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Mark Up cannot be greater than Base Pay.",
+          },
+          {
+            status: 400,
+          },
+        );
+      }
+
+      if (
+        !Number.isFinite(
           tier.incentiveAmount,
         ) ||
         tier.incentiveAmount < 0
@@ -228,8 +273,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // Check for overlapping tiers
-    // belonging to the same role.
+    /*
+     * Check for overlapping tiers
+     * belonging to the same role.
+     */
     for (
       let i = 0;
       i < normalizedTiers.length;
@@ -247,7 +294,8 @@ export async function POST(request: Request) {
           normalizedTiers[j];
 
         if (
-          first.role === second.role &&
+          first.role ===
+            second.role &&
           first.fromMonth <=
             second.toMonth &&
           second.fromMonth <=
@@ -282,10 +330,13 @@ export async function POST(request: Request) {
         code: code.trim(),
         name: name.trim(),
         basePay,
+
         incentiveTiers:
           normalizedTiers,
+
         description:
           normalizedDescription,
+
         status: normalizedStatus,
       });
 

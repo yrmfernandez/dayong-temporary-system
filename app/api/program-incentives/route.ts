@@ -55,6 +55,7 @@ export async function POST(
       fromMonth,
       toMonth,
       incentiveType,
+      markUp,
       incentiveAmount,
     } = body;
 
@@ -149,6 +150,22 @@ export async function POST(
     }
 
     if (
+      typeof markUp !== "number" ||
+      markUp < 0
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Mark Up cannot be negative.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (
       typeof incentiveAmount !== "number" ||
       incentiveAmount < 0
     ) {
@@ -179,6 +196,16 @@ export async function POST(
         },
       );
     }
+
+    /*
+     * Prevent a Mark Up that is greater
+     * than the program base pay.
+     *
+     * The actual base pay is stored
+     * in the Programs sheet, so this
+     * route only validates that Mark Up
+     * itself is a valid non-negative value.
+     */
 
     const existingIncentives =
       await getProgramIncentives(
@@ -213,12 +240,20 @@ export async function POST(
       fromMonth,
       toMonth,
       incentiveType,
+      markUp,
       incentiveAmount,
     };
 
-    await addProgramIncentive(
-      incentive,
-    );
+    await addProgramIncentive({
+      id: String(id),
+      programId: String(programId),
+      role,
+      fromMonth,
+      toMonth,
+      incentiveType,
+      markUp,
+      incentiveAmount,
+    });
 
     return NextResponse.json({
       success: true,

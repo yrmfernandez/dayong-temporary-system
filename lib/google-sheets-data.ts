@@ -517,6 +517,10 @@ export type ProgramSheetData = {
   description: string;
 };
 
+/* =========================================================
+   PROGRAM INCENTIVES
+========================================================= */
+
 export type ProgramIncentiveSheetData = {
   id: string;
   programId: string;
@@ -526,6 +530,7 @@ export type ProgramIncentiveSheetData = {
   incentiveType:
     | "fixed"
     | "percentage";
+  markUp: number;
   incentiveAmount: number;
 };
 
@@ -541,6 +546,7 @@ export type CreateProgramData = {
     incentiveType:
       | "fixed"
       | "percentage";
+    markUp: number;
     incentiveAmount: number;
   }>;
 
@@ -761,7 +767,8 @@ export async function createProgram(
    * or
    * Collector
    *
-   * 0 is a valid incentive amount.
+   * Mark Up is stored separately
+   * from the incentive amount.
    */
   for (const tier of data.incentiveTiers) {
     await addProgramIncentive({
@@ -779,6 +786,9 @@ export async function createProgram(
 
       incentiveType:
         tier.incentiveType,
+
+      markUp:
+        Number(tier.markUp) || 0,
 
       incentiveAmount:
         Number(tier.incentiveAmount),
@@ -809,6 +819,9 @@ export async function createProgram(
           incentiveType:
             tier.incentiveType,
 
+          markUp:
+            Number(tier.markUp) || 0,
+
           incentiveAmount:
             Number(
               tier.incentiveAmount,
@@ -825,10 +838,23 @@ export async function createProgram(
 export async function getProgramIncentives(
   programId?: string,
 ) {
+  /*
+   * Program Incentives now uses
+   * columns A:H:
+   *
+   * A Incentive ID
+   * B Program ID
+   * C Role
+   * D From Month
+   * E To Month
+   * F Incentive Type
+   * G Mark Up
+   * H Incentive Amount
+   */
   const response =
     await sheets.spreadsheets.values.get({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${PROGRAM_INCENTIVES_SHEET}!A:G`,
+      range: `${PROGRAM_INCENTIVES_SHEET}!A:H`,
     });
 
   const rows =
@@ -854,8 +880,11 @@ export async function getProgramIncentives(
         const toMonth =
           Number(row[4] ?? 1);
 
-        const incentiveAmount =
+        const markUp =
           Number(row[6] ?? 0);
+
+        const incentiveAmount =
+          Number(row[7] ?? 0);
 
         return {
           id: String(
@@ -895,7 +924,18 @@ export async function getProgramIncentives(
               : ("percentage" as const),
 
           /*
-           * IMPORTANT:
+           * Mark Up is stored in column G.
+           *
+           * 0 is a valid Mark Up.
+           */
+          markUp:
+            Number.isFinite(markUp)
+              ? markUp
+              : 0,
+
+          /*
+           * Incentive Amount is stored
+           * in column H.
            *
            * 0 is a valid incentive.
            */
@@ -986,6 +1026,9 @@ export async function addProgramIncentive(
   const toMonth =
     Number(incentive.toMonth);
 
+  const markUp =
+    Number(incentive.markUp);
+
   const incentiveAmount =
     Number(
       incentive.incentiveAmount,
@@ -1011,9 +1054,19 @@ export async function addProgramIncentive(
     incentive.incentiveType,
 
     /*
-     * IMPORTANT:
+     * Mark Up is stored in column G.
      *
-     * 0 must be saved.
+     * 0 is a valid Mark Up.
+     */
+    Number.isFinite(markUp)
+      ? markUp
+      : 0,
+
+    /*
+     * Incentive Amount is stored
+     * in column H.
+     *
+     * 0 is a valid incentive.
      */
     Number.isFinite(
       incentiveAmount,
@@ -1025,7 +1078,7 @@ export async function addProgramIncentive(
   const response =
     await sheets.spreadsheets.values.append({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${PROGRAM_INCENTIVES_SHEET}!A:G`,
+      range: `${PROGRAM_INCENTIVES_SHEET}!A:H`,
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
@@ -1052,7 +1105,11 @@ export async function addProgramWithIncentives(
   /*
    * Then save every incentive tier.
    *
-   * 0 is intentionally allowed.
+   * Mark Up and Incentive Amount
+   * are saved separately.
+   *
+   * 0 is intentionally allowed
+   * for both values.
    */
   for (const incentive of incentives) {
     await addProgramIncentive(
