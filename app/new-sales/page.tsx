@@ -1,6 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   CheckCircle2,
   ChevronDown,
@@ -29,7 +33,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 
-import { mockMembers } from "@/lib/mock-members";
 import { programs } from "@/lib/programs";
 
 type CheckboxProps = {
@@ -64,6 +67,46 @@ type Beneficiary = {
   relationship: string;
 };
 
+type MemberSearchResult = {
+  id: string;
+  phMemberNumber: string;
+  name: {
+    surname: string;
+    firstName: string;
+    middleName: string;
+    nameExtension: string;
+  };
+  birthdate: string;
+  birthplace: string;
+  gender: string;
+  age: number | null;
+  civilStatus: string;
+  contactNumber: string;
+  address: {
+    houseBlockLot: string;
+    street: string;
+    subdivisionVillage: string;
+    barangay: string;
+    municipalityCity: string;
+    province: string;
+    zipCode: string;
+  };
+  claimant: {
+    completeName: string;
+    contactNumber: string;
+    sameAsMemberAddress: boolean;
+    address: {
+      houseBlockLot: string;
+      street: string;
+      subdivisionVillage: string;
+      barangay: string;
+      municipalityCity: string;
+      province: string;
+      zipCode: string;
+    };
+  };
+};
+
 type Sale = {
   id: number;
   expanded: boolean;
@@ -72,6 +115,15 @@ type Sale = {
   memberNumber: string;
   beneficiaries: Beneficiary[];
   programId: string;
+
+  programCheck:
+  "idle" | 
+  "checking" | 
+  "available" | 
+  "duplicate" | 
+  "error";
+
+  programCheckMessage: string;
 
   surname: string;
   firstName: string;
@@ -110,7 +162,7 @@ type Sale = {
   registrationFee: string;
   registrationAmount: string;
   amountPaid: string;
-  dateEnrolled: string;
+  doi: string;
   programTerms: string;
 };
 
@@ -122,6 +174,9 @@ const createEmptySale = (id: number): Sale => ({
   memberNumber: "",
   beneficiaries: [],
   programId: "",
+
+  programCheck: "idle",
+  programCheckMessage: "",
 
   surname: "",
   firstName: "",
@@ -160,7 +215,7 @@ const createEmptySale = (id: number): Sale => ({
   registrationFee: "",
   registrationAmount: "",
   amountPaid: "",
-  dateEnrolled: "",
+  doi: "",
   programTerms: "",
 });
 
@@ -177,8 +232,12 @@ const createEmptyBeneficiary = (
 });
 
 export default function NewSalesPage() {
+  const topRef = useRef<HTMLDivElement>(null);
+
   const [branch, setBranch] = useState("");
   const [mas, setMas] = useState("");
+  const [dateRemitted, setDateRemitted] =
+    useState("");
 
   const [sales, setSales] = useState<Sale[]>([
     createEmptySale(1),
@@ -191,9 +250,161 @@ export default function NewSalesPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [showReview, setShowReview] =
+    useState(false);
+
+  const [confirming, setConfirming] =
+    useState(false);
+
+  const [memberResults, setMemberResults] =
+    useState<
+      Record<number, MemberSearchResult[]>
+    >({});
+
   const activePrograms = programs.filter(
     (program) => program.status === "active",
   );
+
+  useEffect(() => {
+    const timers = sales.map((sale) => {
+      const search = sale.memberSearch.trim();
+
+      if (
+        sale.existingMember ||
+        search.length < 2
+      ) {
+        setMemberResults((current) => {
+          if (!current[sale.id]) {
+            return current;
+          }
+
+          const next = { ...current };
+          delete next[sale.id];
+          return next;
+        });
+
+        return undefined;
+      }
+
+      return window.setTimeout(async () => {
+        try {
+          const response = await fetch(
+            `/api/members?search=${encodeURIComponent(
+              search,
+            )}`,
+          );
+
+          if (!response.ok) {
+            throw new Error(
+              "Unable to search members.",
+            );
+          }
+
+          const result = await response.json();
+
+          if (!result.success) {
+            throw new Error(
+              result.message ||
+                "Unable to search members.",
+            );
+          }
+
+          setMemberResults((current) => ({
+            ...current,
+            [sale.id]: result.members ?? [],
+          }));
+        } catch (error) {
+          console.error(
+            "Member search error:",
+            error,
+          );
+
+          setMemberResults((current) => ({
+            ...current,
+            [sale.id]: [],
+          }));
+        }
+      }, 300);
+    });
+
+    return () => {
+      timers.forEach((timer) => {
+        if (timer !== undefined) {
+          window.clearTimeout(timer);
+        }
+      });
+    };
+  }, [sales]);
+
+  const checkMemberProgram = async (
+    saleId: number,
+    memberNumber: string,
+    programId: string,
+    ) => {
+      if (!memberNumber || !programId) {
+        updateSale(saleId, {
+          programCheck: "idle",
+          programCheckMessage: "",
+        });
+
+      return;
+  }
+
+  updateSale(saleId, {
+    programCheck: "checking",
+    programCheckMessage:
+      "Checking existing program enrollment...",
+  });
+
+  try {
+    const response = await fetch(
+      `/api/member-programs/check?memberNumber=${encodeURIComponent(
+        memberNumber,
+      )}&programId=${encodeURIComponent(programId)}`,
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      updateSale(saleId, {
+        programCheck: "error",
+        programCheckMessage:
+          result.message ||
+          "Unable to check program enrollment.",
+      });
+
+      return;
+    }
+
+    if (result.enrolled) {
+      updateSale(saleId, {
+        programCheck: "duplicate",
+        programCheckMessage:
+          result.message ||
+          "This member is already enrolled in this program.",
+      });
+
+      return;
+    }
+
+    updateSale(saleId, {
+      programCheck: "available",
+      programCheckMessage:
+        "This program is available for this member.",
+    });
+  } catch (error) {
+    console.error(
+      "Program enrollment check error:",
+      error,
+    );
+
+    updateSale(saleId, {
+      programCheck: "error",
+      programCheckMessage:
+        "Unable to check program enrollment.",
+    });
+  }
+  };
 
   const updateSale = (
     saleId: number,
@@ -258,12 +469,52 @@ export default function NewSalesPage() {
   };
 
   const addSale = () => {
+    const currentSale = sales[sales.length - 1];
+
+    if (currentSale) {
+      const missing = validateSale(currentSale);
+
+      if (missing.length > 0) {
+        setErrors((current) => ({
+          ...current,
+          [currentSale.id]: missing,
+        }));
+
+        setSales((current) =>
+          current.map((sale) =>
+            sale.id === currentSale.id
+              ? {
+                  ...sale,
+                  expanded: true,
+                }
+              : sale,
+          ),
+        );
+
+        setSaveMessage(
+          "Please complete the current sale before adding another sale.",
+        );
+
+        return;
+      }
+    }
+
     setSales((current) => [
-      ...current,
+      ...current.map((sale) => ({
+        ...sale,
+        expanded: false,
+      })),
       createEmptySale(Date.now()),
     ]);
 
     setSaveMessage("");
+
+    setTimeout(() => {
+      topRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
   };
 
   const removeSale = (id: number) => {
@@ -275,11 +526,19 @@ export default function NewSalesPage() {
       current.filter((sale) => sale.id !== id),
     );
 
+    setMemberResults((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+
     setErrors((current) => {
       const next = { ...current };
       delete next[id];
       return next;
     });
+
+    setSaveMessage("");
   };
 
   const toggleSale = (id: number) => {
@@ -361,7 +620,7 @@ export default function NewSalesPage() {
     saleId: number,
     memberId: string,
   ) => {
-    const member = mockMembers.find(
+    const member = memberResults[saleId]?.find(
       (item) => item.id === memberId,
     );
 
@@ -379,6 +638,9 @@ export default function NewSalesPage() {
         .trim(),
 
       memberNumber: member.phMemberNumber,
+
+      programCheck: "idle",
+      programCheckMessage: "",
 
       surname: member.name.surname,
       firstName: member.name.firstName,
@@ -434,6 +696,12 @@ export default function NewSalesPage() {
       claimantAddressZip:
         member.claimant.address.zipCode,
     });
+
+    setMemberResults((current) => {
+      const next = { ...current };
+      delete next[saleId];
+      return next;
+    });
   };
 
   const toggleClaimantSameAsMember = (
@@ -486,6 +754,10 @@ export default function NewSalesPage() {
 
     if (!mas) {
       missing.push("Marketing Account Staff");
+    }
+
+    if (!dateRemitted) {
+      missing.push("Date Remitted");
     }
 
     if (!sale.existingMember) {
@@ -548,10 +820,14 @@ export default function NewSalesPage() {
 
     if (!sale.programId) {
       missing.push("Program");
+    } else if (sale.programCheck === "duplicate") {
+      missing.push("Selected program is already enrolled");
+    } else if (sale.existingMember && sale.programCheck !== "available") {
+      missing.push("Program enrollment check");
     }
 
-    if (!sale.dateEnrolled) {
-      missing.push("Date Enrolled");
+    if (!sale.doi) {
+      missing.push("DOI");
     }
 
     if (!sale.paymentMethod) {
@@ -619,33 +895,92 @@ export default function NewSalesPage() {
       );
 
       setSaveMessage(
-        "Please complete all required fields before saving.",
+        "Please complete all required fields before reviewing.",
       );
 
       return;
     }
 
-    setSaving(true);
+    setSaveMessage("");
+    setShowReview(true);
+  };
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, 700),
-    );
+  const confirmSaveAllNewSales =
+    async () => {
+      setConfirming(true);
+      setSaveMessage("");
 
-    setSaving(false);
+      try {
+        const response = await fetch(
+          "/api/sales",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              branch,
+              mas,
+              dateRemitted,
+              sales,
+            }),
+          },
+        );
 
-    setSaveMessage(
-      `${sales.length} ${
-        sales.length === 1
-          ? "new sale"
-          : "new sales"
-      } saved successfully.`,
-    );
+        const result =
+          await response.json();
 
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.message ||
+              "Unable to save new sales.",
+          );
+        }
+
+        setShowReview(false);
+
+        resetForm();
+
+        setSaveMessage(
+          `${sales.length} ${
+            sales.length === 1
+              ? "new sale"
+              : "new sales"
+          } saved successfully.`,
+        );
+      } catch (error: unknown) {
+        console.error(
+          "New Sales confirmation error:",
+          error,
+        );
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to save new sales.";
+
+        setShowReview(false);
+        setSaveMessage(message);
+      } finally {
+        setConfirming(false);
+      }
+    };
+
+  const resetForm = () => {
+    setBranch("");
+    setMas("");
+    setDateRemitted("");
+    setSales([createEmptySale(1)]);
+    setMemberResults({});
     setErrors({});
+    setSaving(false);
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div
+      ref={topRef}
+      className="mx-auto max-w-6xl space-y-6"
+    >
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
           New Sales
@@ -653,7 +988,7 @@ export default function NewSalesPage() {
 
         <p className="text-sm text-muted-foreground">
           Encode multiple new sales from the same MAS
-          in one batch.
+          in one remittance batch.
         </p>
       </div>
 
@@ -719,20 +1054,21 @@ export default function NewSalesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Date Remitted</Label>
+              <Label>Date Remitted *</Label>
 
               <Input
                 type="date"
-                value={
-                  new Date()
-                    .toISOString()
-                    .split("T")[0]
+                value={dateRemitted}
+                onChange={(event) =>
+                  setDateRemitted(
+                    event.target.value,
+                  )
                 }
-                readOnly
               />
 
               <p className="text-xs text-muted-foreground">
-                Automatically recorded by the system.
+                Enter the actual remittance date for
+                this batch.
               </p>
             </div>
           </div>
@@ -741,28 +1077,17 @@ export default function NewSalesPage() {
 
       <div className="space-y-4">
         {sales.map((sale, index) => {
-          const memberSearch = sale.memberSearch
-            .trim()
-            .toLowerCase();
-
-          const matchingMembers = memberSearch
-            ? mockMembers
-                .filter((member) => {
-                  const fullName =
-                    `${member.name.firstName} ${member.name.middleName} ${member.name.surname}`
-                      .replace(/\s+/g, " ")
-                      .trim()
-                      .toLowerCase();
-
-                  return fullName.includes(
-                    memberSearch,
-                  );
-                })
-                .slice(0, 5)
-            : [];
+          const matchingMembers =
+            memberResults[sale.id] ?? [];
 
           const saleErrors =
             errors[sale.id] ?? [];
+
+          const selectedProgram =
+            programs.find(
+              (program) =>
+                program.id === sale.programId,
+            );
 
           return (
             <Card key={sale.id}>
@@ -1140,6 +1465,9 @@ export default function NewSalesPage() {
                           readOnly={
                             sale.existingMember
                           }
+                          onWheel={(event) => {
+                            event.currentTarget.blur();
+                          }}
                           onChange={(event) =>
                             updateSale(
                               sale.id,
@@ -1544,6 +1872,9 @@ export default function NewSalesPage() {
                                   value={
                                     beneficiary.age
                                   }
+                                  onWheel={(event) => {
+                                    event.currentTarget.blur();
+                                  }}
                                   onChange={(
                                     event,
                                   ) =>
@@ -1841,6 +2172,12 @@ export default function NewSalesPage() {
                       <h2 className="font-semibold">
                         D. Program Details
                       </h2>
+
+                      <p className="text-sm text-muted-foreground">
+                        Select the program being
+                        enrolled in. An existing member
+                        may enroll in another program.
+                      </p>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
@@ -1849,61 +2186,100 @@ export default function NewSalesPage() {
                           Program Type *
                         </Label>
 
-                        <Select
-                          value={
-                            sale.programId
-                          }
-                          onValueChange={(
-                            value,
-                          ) =>
-                            updateSale(
-                              sale.id,
-                              {
-                                programId:
-                                  value ?? "",
-                              },
-                            )
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select program" />
-                          </SelectTrigger>
+                          <Select
+                            value={sale.programId}
+                            onValueChange={async (value) => {
+                              const selectedProgramId = value ?? "";
 
-                          <SelectContent>
-                            {activePrograms.map(
-                              (program) => (
+                              updateSale(sale.id, {
+                                programId: selectedProgramId,
+                                programCheck: "idle",
+                                programCheckMessage: "",
+                              });
+
+                              if (
+                                sale.existingMember &&
+                                sale.memberNumber &&
+                                selectedProgramId
+                              ) {
+                                await checkMemberProgram(
+                                  sale.id,
+                                  sale.memberNumber,
+                                  selectedProgramId,
+                                );
+                              } else if (
+                                !sale.existingMember &&
+                                selectedProgramId
+                              ) {
+                                updateSale(sale.id, {
+                                  programCheck: "available",
+                                  programCheckMessage:
+                                    "Program selected. This is a new member.",
+                                });
+                              }
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select program" />
+                            </SelectTrigger>
+
+                            <SelectContent>
+                              {activePrograms.map((program) => (
                                 <SelectItem
-                                  key={
-                                    program.id
-                                  }
-                                  value={
-                                    program.id
-                                  }
+                                  key={program.id}
+                                  value={program.id}
                                 >
-                                  {program.code} —{" "}
-                                  {program.name}
+                                  {program.code} — {program.name}
                                 </SelectItem>
-                              ),
-                            )}
-                          </SelectContent>
-                        </Select>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          {sale.programCheck === "checking" && (
+                            <p className="text-sm text-muted-foreground">
+                              Checking existing program enrollment...
+                            </p>
+                          )}
+
+                          {sale.programCheck === "available" && (
+                            <p className="text-sm text-green-600">
+                              {sale.programCheckMessage}
+                            </p>
+                          )}
+
+                          {sale.programCheck === "duplicate" && (
+                            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                              <p className="text-sm font-medium text-destructive">
+                                Program already enrolled
+                              </p>
+                              <p className="mt-1 text-xs text-destructive/90">
+                                {sale.programCheckMessage}
+                              </p>
+                            </div>
+                          )}
+
+                          {sale.programCheck === "error" && (
+                            <p className="text-sm text-destructive">
+                              {sale.programCheckMessage}
+                            </p>
+                          )}
                       </div>
 
                       <div className="space-y-2">
                         <Label>
-                          Date Enrolled *
+                          DOI *
                         </Label>
 
                         <Input
                           type="date"
                           value={
-                            sale.dateEnrolled
+                            sale.doi
                           }
                           onChange={(event) =>
                             updateSale(
                               sale.id,
                               {
-                                dateEnrolled:
+                                doi:
                                   event.target
                                     .value,
                               },
@@ -1913,70 +2289,53 @@ export default function NewSalesPage() {
                       </div>
                     </div>
 
-                    {sale.programId && (
+                    {selectedProgram && (
                       <div className="rounded-lg border bg-muted/40 p-4">
-                        {(() => {
-                          const selectedProgram =
-                            programs.find(
-                              (program) =>
-                                program.id ===
-                                sale.programId,
-                            );
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">
+                              Program
+                            </p>
 
-                          if (
-                            !selectedProgram
-                          ) {
-                            return null;
-                          }
+                            <p className="font-medium">
+                              {
+                                selectedProgram.code
+                              }{" "}
+                              —{" "}
+                              {
+                                selectedProgram.name
+                              }
+                            </p>
+                          </div>
 
-                          return (
-                            <div className="grid gap-3 sm:grid-cols-3">
-                              <div>
-                                <p className="text-xs text-muted-foreground">
-                                  Program
-                                </p>
+                          <div>
+                            <p className="text-xs text-muted-foreground">
+                              Base Pay
+                            </p>
 
-                                <p className="font-medium">
-                                  {
-                                    selectedProgram.code
-                                  }{" "}
-                                  —{" "}
-                                  {
-                                    selectedProgram.name
-                                  }
-                                </p>
-                              </div>
+                            <p className="font-medium">
+                              ₱
+                              {selectedProgram.basePay.toLocaleString(
+                                "en-PH",
+                                {
+                                  minimumFractionDigits: 2,
+                                },
+                              )}
+                            </p>
+                          </div>
 
-                              <div>
-                                <p className="text-xs text-muted-foreground">
-                                  Base Pay
-                                </p>
+                          <div>
+                            <p className="text-xs text-muted-foreground">
+                              Status
+                            </p>
 
-                                <p className="font-medium">
-                                  ₱
-                                  {selectedProgram.basePay.toLocaleString(
-                                    "en-PH",
-                                    {
-                                      minimumFractionDigits: 2,
-                                    },
-                                  )}
-                                </p>
-                              </div>
-
-                              <div>
-                                <p className="text-xs text-muted-foreground">
-                                  Status
-                                </p>
-
-                                <Badge>
-                                  {
-                                    selectedProgram.status
-                                  }
-                                </Badge>
-                              </div>
-                            </div>
-                          );
-                        })()}
+                            <Badge>
+                              {
+                                selectedProgram.status
+                              }
+                            </Badge>
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -2047,6 +2406,13 @@ export default function NewSalesPage() {
                               {
                                 registrationFee:
                                   value ?? "",
+                                ...(value !==
+                                "yes"
+                                  ? {
+                                      registrationAmount:
+                                        "",
+                                    }
+                                  : {}),
                               },
                             )
                           }
@@ -2078,6 +2444,13 @@ export default function NewSalesPage() {
                           value={
                             sale.registrationAmount
                           }
+                          disabled={
+                            sale.registrationFee !==
+                            "yes"
+                          }
+                          onWheel={(event) => {
+                            event.currentTarget.blur();
+                          }}
                           onChange={(event) =>
                             updateSale(
                               sale.id,
@@ -2103,6 +2476,9 @@ export default function NewSalesPage() {
                         value={
                           sale.amountPaid
                         }
+                        onWheel={(event) => {
+                          event.currentTarget.blur();
+                        }}
                         onChange={(event) =>
                           updateSale(
                             sale.id,
@@ -2231,7 +2607,7 @@ export default function NewSalesPage() {
         onClick={addSale}
       >
         <Plus className="mr-2 size-4" />
-        Add New Sale
+        Add Another Sale
       </Button>
 
       <Card>
@@ -2252,7 +2628,11 @@ export default function NewSalesPage() {
                 ·{" "}
                 {mas
                   ? `MAS: ${mas}`
-                  : "MAS not selected"}
+                  : "MAS not selected"}{" "}
+                ·{" "}
+                {dateRemitted
+                  ? `Date Remitted: ${dateRemitted}`
+                  : "Date Remitted not selected"}
               </p>
 
               <div className="mt-3 rounded-lg border bg-muted/40 p-3">
@@ -2262,8 +2642,8 @@ export default function NewSalesPage() {
 
                 <p className="mt-1 text-xs text-muted-foreground">
                   Verify all member, program,
-                  payment, and OR information before
-                  saving.
+                  payment, OR, and remittance
+                  information before saving.
                 </p>
               </div>
             </div>
@@ -2289,7 +2669,11 @@ export default function NewSalesPage() {
                 </div>
               )}
 
-              <Button variant="outline">
+              <Button
+                variant="outline"
+                onClick={resetForm}
+                disabled={saving}
+              >
                 Cancel
               </Button>
 
@@ -2306,6 +2690,578 @@ export default function NewSalesPage() {
           </div>
         </CardContent>
       </Card>
+
+      {showReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-background shadow-xl">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <div>
+                <h2 className="text-xl font-semibold">
+                  Review New Sales
+                </h2>
+
+                <p className="text-sm text-muted-foreground">
+                  Please verify all information before saving.
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() =>
+                  setShowReview(false)
+                }
+                disabled={confirming}
+              >
+                Close
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <Card className="mb-6 p-5">
+                <div className="mb-4">
+                  <h3 className="font-semibold">
+                    Batch Information
+                  </h3>
+
+                  <p className="text-sm text-muted-foreground">
+                    Information shared by all sales in this batch.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <Label>Branch</Label>
+                    <p className="mt-1 text-sm font-medium">
+                      {branch || "—"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label>Marketing Account Staff</Label>
+                    <p className="mt-1 text-sm font-medium">
+                      {mas || "—"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label>Date Remitted</Label>
+                    <p className="mt-1 text-sm font-medium">
+                      {dateRemitted || "—"}
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              <div className="space-y-6">
+                {sales.map((sale, index) => {
+                  const selectedProgram =
+                    programs.find(
+                      (program) =>
+                        program.id ===
+                        sale.programId,
+                    );
+
+                  return (
+                    <Card
+                      key={sale.id}
+                      className="overflow-hidden"
+                    >
+                      <div className="border-b bg-muted/30 px-5 py-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h3 className="font-semibold">
+                              Sale #{index + 1}
+                            </h3>
+
+                            <p className="text-sm text-muted-foreground">
+                              {sale.existingMember
+                                ? "Existing Member"
+                                : "New Member"}
+                            </p>
+                          </div>
+
+                          <Badge variant="secondary">
+                            {selectedProgram?.code ||
+                              sale.programId ||
+                              "No program"}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6 p-5">
+                        <section>
+                          <h4 className="mb-3 font-medium">
+                            Member Information
+                          </h4>
+
+                          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            <div>
+                              <Label>Member Number</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.memberNumber || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Surname</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.surname || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>First Name</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.firstName || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Middle Name</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.middleName || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Name Extension</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.nameExtension || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Birthdate</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.birthdate || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Birthplace</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.birthplace || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Gender</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.gender || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Age</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.age || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Civil Status</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.civilStatus || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Contact Number</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.contactNumber || "—"}
+                              </p>
+                            </div>
+                          </div>
+                        </section>
+
+                        <Separator />
+
+                        <section>
+                          <h4 className="mb-3 font-medium">
+                            Member Address
+                          </h4>
+
+                          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            <div>
+                              <Label>House / Block / Lot</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.addressHouse || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Street</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.addressStreet || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Subdivision / Village</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.addressSubdivision || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Barangay</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.addressBarangay || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Municipality / City</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.addressCity || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Province</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.addressProvince || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>ZIP Code</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.addressZip || "—"}
+                              </p>
+                            </div>
+                          </div>
+                        </section>
+
+                        <Separator />
+
+                        <section>
+                          <div className="mb-3 flex items-center justify-between">
+                            <div>
+                              <h4 className="font-medium">
+                                Beneficiaries
+                              </h4>
+
+                              <p className="text-sm text-muted-foreground">
+                                {sale.beneficiaries.length} beneficiary
+                                {sale.beneficiaries.length ===
+                                1
+                                  ? ""
+                                  : "ies"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {sale.beneficiaries.length ===
+                          0 ? (
+                            <p className="text-sm text-muted-foreground">
+                              No beneficiaries added.
+                            </p>
+                          ) : (
+                            <div className="overflow-x-auto rounded-md border">
+                              <table className="w-full text-sm">
+                                <thead className="bg-muted/50">
+                                  <tr>
+                                    <th className="px-4 py-3 text-left font-medium">
+                                      #
+                                    </th>
+
+                                    <th className="px-4 py-3 text-left font-medium">
+                                      Name
+                                    </th>
+
+                                    <th className="px-4 py-3 text-left font-medium">
+                                      Age
+                                    </th>
+
+                                    <th className="px-4 py-3 text-left font-medium">
+                                      Birthdate
+                                    </th>
+
+                                    <th className="px-4 py-3 text-left font-medium">
+                                      Relationship
+                                    </th>
+                                  </tr>
+                                </thead>
+
+                                <tbody>
+                                  {sale.beneficiaries.map(
+                                    (
+                                      beneficiary,
+                                      beneficiaryIndex,
+                                    ) => (
+                                      <tr
+                                        key={
+                                          beneficiary.id
+                                        }
+                                        className="border-t"
+                                      >
+                                        <td className="px-4 py-3">
+                                          {beneficiaryIndex +
+                                            1}
+                                        </td>
+
+                                        <td className="px-4 py-3">
+                                          {[
+                                            beneficiary.firstName,
+                                            beneficiary.middleName,
+                                            beneficiary.surname,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" ") ||
+                                            "—"}
+                                        </td>
+
+                                        <td className="px-4 py-3">
+                                          {beneficiary.age ||
+                                            "—"}
+                                        </td>
+
+                                        <td className="px-4 py-3">
+                                          {beneficiary.birthdate ||
+                                            "—"}
+                                        </td>
+
+                                        <td className="px-4 py-3">
+                                          {beneficiary.relationship ||
+                                            "—"}
+                                        </td>
+                                      </tr>
+                                    ),
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </section>
+
+                        <Separator />
+
+                        <section>
+                          <h4 className="mb-3 font-medium">
+                            Claimant
+                          </h4>
+
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <Label>Complete Name</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.claimantName || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Contact Number</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.claimantContact || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Same as Member Address</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.claimantSameAsMember
+                                  ? "Yes"
+                                  : "No"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            <Label>Claimant Address</Label>
+
+                            <div className="mt-2 grid gap-4 rounded-md border p-4 sm:grid-cols-2 lg:grid-cols-4">
+                              <div>
+                                <Label>House / Block / Lot</Label>
+                                <p className="mt-1 text-sm">
+                                  {sale.claimantAddressHouse ||
+                                    "—"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <Label>Street</Label>
+                                <p className="mt-1 text-sm">
+                                  {sale.claimantAddressStreet ||
+                                    "—"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <Label>Subdivision / Village</Label>
+                                <p className="mt-1 text-sm">
+                                  {sale.claimantAddressSubdivision ||
+                                    "—"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <Label>Barangay</Label>
+                                <p className="mt-1 text-sm">
+                                  {sale.claimantAddressBarangay ||
+                                    "—"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <Label>Municipality / City</Label>
+                                <p className="mt-1 text-sm">
+                                  {sale.claimantAddressCity ||
+                                    "—"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <Label>Province</Label>
+                                <p className="mt-1 text-sm">
+                                  {sale.claimantAddressProvince ||
+                                    "—"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <Label>ZIP Code</Label>
+                                <p className="mt-1 text-sm">
+                                  {sale.claimantAddressZip ||
+                                    "—"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </section>
+
+                        <Separator />
+
+                        <section>
+                          <h4 className="mb-3 font-medium">
+                            Program & Payment
+                          </h4>
+
+                          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            <div>
+                              <Label>Program</Label>
+                              <p className="mt-1 text-sm">
+                                {selectedProgram
+                                  ? `${selectedProgram.code} — ${selectedProgram.name}`
+                                  : sale.programId || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>DOI</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.doi || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Payment Method</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.paymentMethod || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Registration Fee</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.registrationFee || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Registration Amount</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.registrationAmount || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>Amount Paid</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.amountPaid || "—"}
+                              </p>
+                            </div>
+
+                            <div className="sm:col-span-2">
+                              <Label>Program Terms</Label>
+                              <p className="mt-1 whitespace-pre-wrap text-sm">
+                                {sale.programTerms || "—"}
+                              </p>
+                            </div>
+                          </div>
+                        </section>
+
+                        <Separator />
+
+                        <section>
+                          <h4 className="mb-3 font-medium">
+                            Application & OR Information
+                          </h4>
+
+                          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <div>
+                              <Label>Application No.</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.applicationNo || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>OR Number</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.orNumber || "—"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label>OR Date</Label>
+                              <p className="mt-1 text-sm">
+                                {sale.orDate || "—"}
+                              </p>
+                            </div>
+                          </div>
+                        </section>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Verify the information carefully before confirming.
+              </p>
+
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setShowReview(false)
+                  }
+                  disabled={confirming}
+                >
+                  Go Back & Edit
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={
+                    confirmSaveAllNewSales
+                  }
+                  disabled={confirming}
+                >
+                  {confirming
+                    ? "Saving..."
+                    : "Confirm & Save"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
