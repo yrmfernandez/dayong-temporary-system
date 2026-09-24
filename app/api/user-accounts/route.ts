@@ -56,10 +56,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const employeeId =
-      typeof body.employeeId === "string"
-        ? body.employeeId
-        : "";
+    const employeeId = "";
 
     const username =
       typeof body.username === "string"

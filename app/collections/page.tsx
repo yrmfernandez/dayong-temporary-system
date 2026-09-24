@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Plus,
@@ -27,7 +27,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { mockMembers } from "@/lib/mock-members";
 import type { Member } from "@/lib/types";
 
 type ProgramOption = {
@@ -77,51 +76,6 @@ type CollectionEntry = {
   isExpanded: boolean;
 };
 
-const mockPrograms: ProgramOption[] = [
-  {
-    id: "program-001",
-    code: "D-290",
-    name: "Dayong 290 Program",
-    basePay: 290,
-  },
-  {
-    id: "program-002",
-    code: "D-150",
-    name: "Dayong 150 Program",
-    basePay: 150,
-  },
-  {
-    id: "program-003",
-    code: "D-300",
-    name: "Dayong 300 Program",
-    basePay: 300,
-  },
-];
-
-const mockCollectionHistory: CollectionHistory[] = [
-  {
-    id: "collection-history-001",
-    memberId: "member-001",
-    programId: "program-001",
-    orNumber: "OR-10001",
-    orDate: "2026-08-10",
-    amountCollected: 290,
-    monthOf: "2026-08",
-    nop: 1,
-    dateRemitted: "2026-08-11",
-  },
-  {
-    id: "collection-history-002",
-    memberId: "member-001",
-    programId: "program-001",
-    orNumber: "OR-10045",
-    orDate: "2026-09-10",
-    amountCollected: 290,
-    monthOf: "2026-09",
-    nop: 2,
-    dateRemitted: "2026-09-11",
-  },
-];
 
 function createEmptyCollection(id: string): CollectionEntry {
   return {
@@ -249,12 +203,83 @@ export default function CollectionsPage() {
     useState("collection-1");
 
   const [nextCollectionId, setNextCollectionId] = useState(2);
+  const collectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [scrollTargetId, setScrollTargetId] = useState("");
+  const [members, setMembers] = useState<Member[]>([]);
+  const [programs, setPrograms] = useState<ProgramOption[]>([]);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; status: string }>>([]);
+  const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string }>>([]);
+  const [collectionHistory, setCollectionHistory] = useState<CollectionHistory[]>([]);
 
   const [showMoreDetails, setShowMoreDetails] = useState(false);
 
   const [saveMessage, setSaveMessage] = useState("");
 
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const loadOptions = async () => {
+      const [programResponse, branchResponse, masResponse] = await Promise.all([
+        fetch("/api/programs", { cache: "no-store" }),
+        fetch("/api/branches", { cache: "no-store" }),
+        fetch("/api/mas", { cache: "no-store" }),
+      ]);
+      const [programResult, branchResult, masResult] = await Promise.all([
+        programResponse.json(),
+        branchResponse.json(),
+        masResponse.json(),
+      ]);
+
+      if (programResponse.ok && programResult.success) {
+        setPrograms(programResult.programs ?? []);
+      }
+
+      if (branchResponse.ok && branchResult.success) {
+        setBranches(
+          (branchResult.branches ?? []).filter(
+            (item: { status: string }) => item.status === "active",
+          ),
+        );
+      }
+      if (masResponse.ok && masResult.success) setMasStaff(masResult.staff ?? []);
+    };
+
+    void loadOptions();
+  }, []);
+
+  useEffect(() => {
+    if (!scrollTargetId) return;
+
+    collectionRefs.current[scrollTargetId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    setScrollTargetId("");
+  }, [collections, scrollTargetId]);
+
+  const searchMembers = async (search: string) => {
+    if (!search.trim()) return;
+
+    const response = await fetch(
+      `/api/members?search=${encodeURIComponent(search)}`,
+      { cache: "no-store" },
+    );
+    const result = await response.json();
+
+    if (response.ok && result.success) {
+      setMembers((current) => {
+        const next = [...current];
+
+        for (const member of result.members ?? []) {
+          if (!next.some((item) => item.id === member.id)) {
+            next.push(member);
+          }
+        }
+
+        return next;
+      });
+    }
+  };
 
   const activeCollection = useMemo(
     () =>
@@ -268,18 +293,18 @@ export default function CollectionsPage() {
     if (!activeCollection?.memberId) return null;
 
     return (
-      mockMembers.find(
+        members.find(
         (member) =>
           member.id === activeCollection.memberId,
       ) ?? null
     );
-  }, [activeCollection]);
+  }, [activeCollection, members]);
 
   const activeProgram = useMemo(() => {
     if (!activeCollection?.programId) return null;
 
     return (
-      mockPrograms.find(
+      programs.find(
         (program) =>
           program.id === activeCollection.programId,
       ) ?? null
@@ -289,8 +314,8 @@ export default function CollectionsPage() {
   const activePrograms = useMemo(() => {
     if (!activeMember) return [];
 
-    return mockPrograms;
-  }, [activeMember]);
+    return programs;
+  }, [activeMember, programs]);
 
   const matchingMembers = useMemo(() => {
     if (!activeCollection) return [];
@@ -302,7 +327,7 @@ export default function CollectionsPage() {
       return [];
     }
 
-    return mockMembers.filter((member) => {
+    return members.filter((member) => {
       const fullName = getMemberFullName(member).toLowerCase();
       const displayName =
         getMemberDisplayName(member).toLowerCase();
@@ -322,12 +347,12 @@ export default function CollectionsPage() {
       return [];
     }
 
-    return mockCollectionHistory.filter(
+    return collectionHistory.filter(
       (item) =>
         item.memberId === activeMember.id &&
         item.programId === activeProgram.id,
     );
-  }, [activeMember, activeProgram]);
+  }, [activeMember, activeProgram, collectionHistory]);
 
   const lastHistory =
     history.length > 0
@@ -361,7 +386,7 @@ export default function CollectionsPage() {
     entryId: string,
     memberId: string,
   ) {
-    const member = mockMembers.find(
+    const member = members.find(
       (item) => item.id === memberId,
     );
 
@@ -378,7 +403,7 @@ export default function CollectionsPage() {
     });
   }
 
-  function selectProgram(
+  async function selectProgram(
     entryId: string,
     programId: string,
   ) {
@@ -388,12 +413,14 @@ export default function CollectionsPage() {
 
     if (!entry || !entry.memberId) return;
 
-    const memberHistory =
-      mockCollectionHistory.filter(
-        (item) =>
-          item.memberId === entry.memberId &&
-          item.programId === programId,
-      );
+    const response = await fetch(
+      `/api/collections?memberId=${encodeURIComponent(entry.memberId)}&programId=${encodeURIComponent(programId)}`,
+      { cache: "no-store" },
+    );
+    const result = await response.json();
+    const memberHistory: CollectionHistory[] =
+      response.ok && result.success ? result.history ?? [] : [];
+    setCollectionHistory(memberHistory);
 
     const latestHistory =
       memberHistory.length > 0
@@ -428,12 +455,7 @@ export default function CollectionsPage() {
       entry.memberId &&
       nopFrom === null
     ) {
-      const memberHistory =
-        mockCollectionHistory.filter(
-          (item) =>
-            item.memberId === entry.memberId &&
-            item.programId === entry.programId,
-        );
+      const memberHistory: CollectionHistory[] = [];
 
       const latestHistory =
         memberHistory.length > 0
@@ -568,12 +590,14 @@ export default function CollectionsPage() {
     ]);
 
     setActiveCollectionId(newId);
+    setScrollTargetId(newId);
     setNextCollectionId(
       (current) => current + 1,
     );
 
     setSaveMessage("");
     setShowMoreDetails(false);
+
   }
 
   function removeCollection(id: string) {
@@ -660,17 +684,37 @@ export default function CollectionsPage() {
 
     setSaving(true);
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, 700),
-    );
+    try {
+      const response = await fetch("/api/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          branch,
+          mas,
+          dateRemitted,
+          collections: collections.map((entry) => ({
+            ...entry,
+            memberNumber: members.find(
+              (member) => member.id === entry.memberId,
+            )?.phMemberNumber,
+          })),
+        }),
+      });
+      const result = await response.json();
 
-    setSaving(false);
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Unable to save collections.");
+      }
 
-    setSaveMessage(
-      `Remittance saved successfully. ${collections.length} collection${
-        collections.length > 1 ? "s" : ""
-      } included.`,
-    );
+      resetForm();
+      setSaveMessage(result.message);
+    } catch (error) {
+      setSaveMessage(
+        error instanceof Error ? error.message : "Unable to save collections.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   function resetForm() {
@@ -725,21 +769,14 @@ export default function CollectionsPage() {
                 </SelectTrigger>
 
                 <SelectContent>
-                  <SelectItem value="Mintal">
-                    Mintal
-                  </SelectItem>
-
-                  <SelectItem value="Davao">
-                    Davao
-                  </SelectItem>
-
-                  <SelectItem value="Toril">
-                    Toril
-                  </SelectItem>
-
-                  <SelectItem value="Calinan">
-                    Calinan
-                  </SelectItem>
+                  {branches.map((item) => (
+                    <SelectItem
+                      key={item.id}
+                      value={item.name}
+                    >
+                      {item.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -749,26 +786,17 @@ export default function CollectionsPage() {
 
               <Select
                 value={mas}
-                onValueChange={(value) =>
-                  setMas(value ?? "")
-                }
+                onValueChange={(value) => setMas(value ?? "")}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select MAS" />
                 </SelectTrigger>
-
                 <SelectContent>
-                  <SelectItem value="MACALOS, E.">
-                    MACALOS, E.
-                  </SelectItem>
-
-                  <SelectItem value="SANTOS, J.">
-                    SANTOS, J.
-                  </SelectItem>
-
-                  <SelectItem value="DELA CRUZ, M.">
-                    DELA CRUZ, M.
-                  </SelectItem>
+                  {masStaff.map((staff) => (
+                    <SelectItem key={staff.employeeId} value={staff.fullName}>
+                      {staff.fullName} ({staff.employeeId})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -828,7 +856,7 @@ export default function CollectionsPage() {
                 (entry, index) => {
                   const entryMember =
                     entry.memberId
-                      ? mockMembers.find(
+                      ? members.find(
                           (member) =>
                             member.id ===
                             entry.memberId,
@@ -837,7 +865,7 @@ export default function CollectionsPage() {
 
                   const entryProgram =
                     entry.programId
-                      ? mockPrograms.find(
+                      ? programs.find(
                           (program) =>
                             program.id ===
                             entry.programId,
@@ -851,6 +879,9 @@ export default function CollectionsPage() {
                   return (
                     <div
                       key={entry.id}
+                      ref={(element) => {
+                        collectionRefs.current[entry.id] = element;
+                      }}
                       className="overflow-hidden rounded-xl border"
                     >
                       {/* COLLAPSED HEADER */}
@@ -1025,7 +1056,10 @@ export default function CollectionsPage() {
                                       monthTo: "",
                                       nopFrom: null,
                                       nopTo: null,
-                                    },
+                                   },
+                                 );
+                                  void searchMembers(
+                                    event.target.value,
                                   );
                                 }}
                               />
@@ -1177,9 +1211,7 @@ export default function CollectionsPage() {
                               </SelectTrigger>
 
                               <SelectContent>
-                                {activeCollectionId ===
-                                  entry.id &&
-                                  activePrograms.map(
+                                {programs.map(
                                     (
                                       program,
                                     ) => (
@@ -1304,10 +1336,26 @@ export default function CollectionsPage() {
                                     entry.nopFrom ??
                                     ""
                                   }
-                                  readOnly
-                                  tabIndex={-1}
-                                  className="bg-muted/50"
-                                  placeholder="Auto"
+                                  readOnly={history.length > 0}
+                                  tabIndex={
+                                    history.length > 0 ? -1 : undefined
+                                  }
+                                  className={
+                                    history.length > 0
+                                      ? "bg-muted/50"
+                                      : undefined
+                                  }
+                                  placeholder={
+                                    history.length > 0 ? "Auto" : "Enter NOP"
+                                  }
+                                  onChange={(event) =>
+                                    updateCollection(entry.id, {
+                                      nopFrom:
+                                        event.target.value === ""
+                                          ? null
+                                          : Number(event.target.value),
+                                    })
+                                  }
                                 />
                               </div>
 
@@ -1322,10 +1370,26 @@ export default function CollectionsPage() {
                                     entry.nopTo ??
                                     ""
                                   }
-                                  readOnly
-                                  tabIndex={-1}
-                                  className="bg-muted/50"
-                                  placeholder="Auto"
+                                  readOnly={history.length > 0}
+                                  tabIndex={
+                                    history.length > 0 ? -1 : undefined
+                                  }
+                                  className={
+                                    history.length > 0
+                                      ? "bg-muted/50"
+                                      : undefined
+                                  }
+                                  placeholder={
+                                    history.length > 0 ? "Auto" : "Enter NOP"
+                                  }
+                                  onChange={(event) =>
+                                    updateCollection(entry.id, {
+                                      nopTo:
+                                        event.target.value === ""
+                                          ? null
+                                          : Number(event.target.value),
+                                    })
+                                  }
                                 />
                               </div>
                             </div>

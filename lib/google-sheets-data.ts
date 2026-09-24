@@ -10,6 +10,8 @@ const PROGRAMS_SHEET = "Programs";
 const BRANCHES_SHEET = "Branches";
 const PROGRAM_INCENTIVES_SHEET =
   "Program Incentives";
+const REMITTANCES_SHEET = "Remittances";
+const COLLECTIONS_SHEET = "Collections";
 
 /* =========================================================
    MEMBER
@@ -329,6 +331,8 @@ export async function findMemberProgramEnrollment(
         memberId: row[1] ?? "",
         memberNumber: row[2] ?? "",
         programId: row[3] ?? "",
+        branch: row[5] ?? "",
+        mas: row[6] ?? "",
       };
     }
   }
@@ -1330,6 +1334,11 @@ export type AttendanceEmployee = {
   fullName: string;
 };
 
+export type MasStaff = {
+  employeeId: string;
+  fullName: string;
+};
+
 function isEnabled(value: unknown) {
   return ["true", "yes", "1"].includes(
     String(value ?? "")
@@ -1440,7 +1449,7 @@ export type AccountRole = {
 };
 
 export type CreateEmployeeAccountData = {
-  employeeId: string;
+  employeeId?: string;
   username: string;
   fullName: string;
   passwordHash: string;
@@ -1481,17 +1490,12 @@ export async function createEmployeeAccount(
     .trim()
     .toLowerCase();
 
-  const employeeId = data.employeeId
+  let employeeId = (data.employeeId ?? "")
     .trim()
     .toUpperCase();
 
   const fullName = data.fullName.trim();
 
-  if (!/^DPE-\d{4}$/.test(employeeId)) {
-    throw new Error(
-      "Employee ID must use the format DPE-0001.",
-    );
-  }
 
   if (!username) {
     throw new Error("Username is required.");
@@ -1513,13 +1517,23 @@ export async function createEmployeeAccount(
     await Promise.all([
       sheets.spreadsheets.values.get({
         spreadsheetId: GOOGLE_SHEET_ID,
-        range: "Users!A:G",
+        range: "Users!A:H",
       }),
 
       getActiveAccountRoles(),
     ]);
 
   const users = usersResponse.data.values ?? [];
+
+  if (!employeeId) {
+    const highest = users.slice(1).reduce((max, row) => {
+      const match = /^DPE-(\d{4})$/.exec(String(row[1] ?? "").trim());
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0);
+    employeeId = `DPE-${String(highest + 1).padStart(4, "0")}`;
+  }
+
+  if (!/^DPE-\d{4}$/.test(employeeId)) throw new Error("Employee ID must use the format DPE-0001.");
 
   const duplicateUsername = users
     .slice(1)
@@ -1591,7 +1605,7 @@ export async function createEmployeeAccount(
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: "Users!A:G",
+    range: "Users!A:H",
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
@@ -1603,6 +1617,7 @@ export async function createEmployeeAccount(
         data.passwordHash,
         "active",
         createdAt,
+        "",
       ]],
     },
   });
@@ -1627,6 +1642,147 @@ export async function createEmployeeAccount(
     fullName,
     roleIds,
   };
+}
+
+export async function getActiveMasStaff(): Promise<MasStaff[]> {
+  const [usersResponse, rolesResponse, userRolesResponse] =
+    await Promise.all([
+      sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:G" }),
+      sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Roles!A:G" }),
+      sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'User Roles'!A:B" }),
+    ]);
+  const masRoleIds = new Set(
+    (rolesResponse.data.values ?? []).slice(1).filter((row) => {
+      const name = String(row[1] ?? "").trim().toLowerCase();
+      return String(row[6] ?? "").trim().toLowerCase() === "active" &&
+        (name === "mas" || name === "marketing account staff");
+    }).map((row) => String(row[0] ?? "").trim()),
+  );
+  const masUserIds = new Set(
+    (userRolesResponse.data.values ?? []).slice(1).filter((row) =>
+      masRoleIds.has(String(row[1] ?? "").trim()),
+    ).map((row) => String(row[0] ?? "").trim()),
+  );
+  return (usersResponse.data.values ?? []).slice(1).filter((row) =>
+    masUserIds.has(String(row[0] ?? "").trim()) &&
+    String(row[5] ?? "").trim().toLowerCase() === "active",
+  ).map((row) => ({ employeeId: String(row[1] ?? "").trim(), fullName: String(row[3] ?? "").trim() }))
+    .filter((staff) => staff.employeeId !== "")
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+
+export type CollectionSheetData = {
+  collectionId: string;
+  remittanceId: string;
+  enrollmentId: string;
+  memberId: string;
+  memberNumber: string;
+  programId: string;
+  branch: string;
+  mas: string;
+  orNumber: string;
+  orDate: string;
+  amountCollected: number;
+  monthFrom: string;
+  monthTo: string;
+  nopFrom: number;
+  nopTo: number;
+  reactivation: string;
+  transferred: string;
+  suspended: string;
+  originalMas: string;
+  status: string;
+  createdAt: string;
+};
+
+export async function addRemittance({
+  id,
+  branch,
+  mas,
+  dateRemitted,
+  createdAt,
+}: {
+  id: string;
+  branch: string;
+  mas: string;
+  dateRemitted: string;
+  createdAt: string;
+}) {
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${REMITTANCES_SHEET}!A:F`,
+    valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: {
+      values: [[id, branch, mas, dateRemitted, "Posted", createdAt]],
+    },
+  });
+}
+
+export async function addCollections(
+  collections: CollectionSheetData[],
+) {
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${COLLECTIONS_SHEET}!A:U`,
+    valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: {
+      values: collections.map((collection) => [
+        collection.collectionId,
+        collection.remittanceId,
+        collection.enrollmentId,
+        collection.memberId,
+        collection.memberNumber,
+        collection.programId,
+        collection.branch,
+        collection.mas,
+        collection.orNumber,
+        collection.orDate,
+        collection.amountCollected,
+        collection.monthFrom,
+        collection.monthTo,
+        collection.nopFrom,
+        collection.nopTo,
+        collection.reactivation,
+        collection.transferred,
+        collection.suspended,
+        collection.originalMas,
+        collection.status,
+        collection.createdAt,
+      ]),
+    },
+  });
+}
+
+export async function getCollectionHistory(
+  memberId: string,
+  programId: string,
+) {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${COLLECTIONS_SHEET}!A:U`,
+  });
+
+  return (response.data.values ?? [])
+    .slice(1)
+    .filter(
+      (row) =>
+        String(row[3] ?? "").trim() === memberId &&
+        String(row[5] ?? "").trim() === programId,
+    )
+    .map((row) => ({
+      id: String(row[0] ?? "").trim(),
+      memberId: String(row[3] ?? "").trim(),
+      programId: String(row[5] ?? "").trim(),
+      orNumber: String(row[8] ?? "").trim(),
+      orDate: String(row[9] ?? "").trim(),
+      amountCollected: Number(row[10] ?? 0) || 0,
+      monthOf: String(row[12] ?? "").trim(),
+      nop: Number(row[14] ?? 0) || 0,
+      dateRemitted: "",
+    }))
+    .sort((first, second) => first.nop - second.nop);
 }
 
 export async function getActiveAttendanceEmployees(): Promise<

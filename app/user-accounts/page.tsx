@@ -84,13 +84,12 @@ export default function UserAccountsPage() {
     setMessage("");
 
     if (
-      !employeeId.trim() ||
       !fullName.trim() ||
       !username.trim() ||
       !password
     ) {
       setMessage(
-        "Complete Employee ID, full name, username, and password.",
+        "Complete full name, username, and password.",
       );
       return;
     }
@@ -129,7 +128,7 @@ export default function UserAccountsPage() {
         );
       }
 
-      setEmployeeId("");
+      setEmployeeId(result.user?.employeeId ?? "");
       setFullName("");
       setUsername("");
       setPassword("");
@@ -187,13 +186,9 @@ export default function UserAccountsPage() {
                   <Input
                     id="employee-id"
                     value={employeeId}
-                    onChange={(event) =>
-                      setEmployeeId(
-                        event.target.value.toUpperCase(),
-                      )
-                    }
-                    placeholder="DPE-0002"
-                    disabled={saving}
+                    placeholder="Generated automatically"
+                    readOnly
+                    disabled
                   />
                 </div>
 

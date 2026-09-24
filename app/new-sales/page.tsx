@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -201,6 +202,8 @@ function updateAddress(
 export default function NewSalesPage() {
   const [branch, setBranch] = useState("");
   const [mas, setMas] = useState("");
+  const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string }>>([]);
+  const [dateRemitted, setDateRemitted] = useState("");
 
   const [sales, setSales] = useState<NewSale[]>([
     emptyNewSale(),
@@ -208,6 +211,9 @@ export default function NewSalesPage() {
 
   const [expandedSales, setExpandedSales] =
     useState<Record<string, boolean>>({});
+  const saleRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [scrollTargetSaleId, setScrollTargetSaleId] =
+    useState("");
 
   const [memberSearchResults, setMemberSearchResults] =
     useState<Record<string, Member[]>>({});
@@ -242,6 +248,25 @@ export default function NewSalesPage() {
       }));
     }
   }, []);
+
+  useEffect(() => {
+    const loadMasStaff = async () => {
+      const response = await fetch("/api/mas", { cache: "no-store" });
+      const result = await response.json();
+      if (response.ok && result.success) setMasStaff(result.staff ?? []);
+    };
+    void loadMasStaff();
+  }, []);
+
+  useEffect(() => {
+    if (!scrollTargetSaleId) return;
+
+    saleRefs.current[scrollTargetSaleId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    setScrollTargetSaleId("");
+  }, [sales, scrollTargetSaleId]);
 
   useEffect(() => {
     const loadBranches = async () => {
@@ -522,10 +547,13 @@ export default function NewSalesPage() {
       newSale,
     ]);
 
-    setExpandedSales((current) => ({
-      ...current,
+    setExpandedSales(() => ({
+      ...Object.fromEntries(
+        sales.map((sale) => [sale.id, false]),
+      ),
       [newSale.id]: true,
     }));
+    setScrollTargetSaleId(newSale.id);
   };
 
   const removeSale = (
@@ -553,10 +581,29 @@ export default function NewSalesPage() {
   const toggleSale = (
     saleId: string,
   ) => {
-    setExpandedSales((current) => ({
-      ...current,
-      [saleId]: !current[saleId],
-    }));
+    const isOpen = expandedSales[saleId] ?? true;
+
+    if (!isOpen) {
+      setScrollTargetSaleId(saleId);
+    }
+
+    setExpandedSales((current) => {
+      const currentlyOpen = current[saleId] ?? true;
+
+      if (currentlyOpen) {
+        return {
+          ...current,
+          [saleId]: false,
+        };
+      }
+
+      return Object.fromEntries(
+        sales.map((sale) => [
+          sale.id,
+          sale.id === saleId,
+        ]),
+      );
+    });
   };
 
   /*
@@ -733,6 +780,11 @@ export default function NewSalesPage() {
       return;
     }
 
+    if (!dateRemitted) {
+      setSaveMessage("Date Remitted is required.");
+      return;
+    }
+
     for (const sale of sales) {
       if (
         !sale.member.name.surname.trim()
@@ -748,6 +800,17 @@ export default function NewSalesPage() {
       ) {
         setSaveMessage(
           "Please select a program.",
+        );
+        return;
+      }
+
+      if (
+        !sale.member.address.barangay.trim() ||
+        !sale.member.address.municipalityCity.trim() ||
+        !sale.member.address.province.trim()
+      ) {
+        setSaveMessage(
+          "Barangay, Municipality / City, and Province are required.",
         );
         return;
       }
@@ -779,29 +842,54 @@ export default function NewSalesPage() {
     setSaving(true);
 
     try {
-      const dateRemitted =
-        new Date()
-          .toISOString()
-          .split("T")[0];
-
       const preparedSales =
-        sales.map((sale) => ({
-          ...sale,
+        sales.map((sale) => {
+          const selectedProgram = programs.find(
+            (program) => program.code === sale.program.programCode,
+          );
 
-          program: {
-            ...sale.program,
-
-            branch,
-
-            mas,
-
-            memberId:
-              sale.program.memberId ||
-              sale.member.id,
-          },
-
-          dateRemitted,
-        }));
+          return {
+            memberNumber: sale.member.phMemberNumber,
+            existingMember: Boolean(sale.member.id),
+            surname: sale.member.name.surname,
+            firstName: sale.member.name.firstName,
+            middleName: sale.member.name.middleName,
+            nameExtension: sale.member.name.nameExtension,
+            birthdate: sale.member.birthdate,
+            birthplace: sale.member.birthplace,
+            gender: sale.member.gender,
+            age: String(calculateAge(sale.member.birthdate) ?? ""),
+            civilStatus: sale.member.civilStatus,
+            contactNumber: sale.member.contactNumber,
+            addressHouse: sale.member.address.houseBlockLot,
+            addressStreet: sale.member.address.street,
+            addressSubdivision: sale.member.address.subdivisionVillage,
+            addressBarangay: sale.member.address.barangay,
+            addressCity: sale.member.address.municipalityCity,
+            addressProvince: sale.member.address.province,
+            addressZip: sale.member.address.zipCode,
+            claimantName: sale.member.claimant.completeName,
+            claimantContact: sale.member.claimant.contactNumber,
+            claimantSameAsMember: sale.member.claimant.sameAsMemberAddress,
+            claimantAddressHouse: sale.member.claimant.address.houseBlockLot,
+            claimantAddressStreet: sale.member.claimant.address.street,
+            claimantAddressSubdivision: sale.member.claimant.address.subdivisionVillage,
+            claimantAddressBarangay: sale.member.claimant.address.barangay,
+            claimantAddressCity: sale.member.claimant.address.municipalityCity,
+            claimantAddressProvince: sale.member.claimant.address.province,
+            claimantAddressZip: sale.member.claimant.address.zipCode,
+            applicationNo: sale.applicationNumber,
+            orNumber: sale.orNumber,
+            orDate: sale.orDate,
+            paymentMethod: sale.program.modeOfPayment,
+            registrationFee: sale.program.withRegistrationFee ? "Yes" : "No",
+            registrationAmount: String(sale.program.registrationAmount),
+            amountPaid: String(sale.program.amountPaid),
+            doi: sale.program.dateEnrolled,
+            programId: selectedProgram?.id ?? "",
+            programTerms: sale.program.programTerms,
+          };
+        });
 
       const response = await fetch(
         "/api/sales",
@@ -946,11 +1034,10 @@ export default function NewSalesPage() {
                 Marketing Account Staff *
               </Label>
 
-              <Input
+              <Select
                 value={mas}
-                onChange={(event) => {
-                  const selected =
-                    event.target.value;
+                onValueChange={(value) => {
+                  const selected = value ?? "";
 
                   setMas(selected);
 
@@ -968,28 +1055,36 @@ export default function NewSalesPage() {
                     ),
                   );
                 }}
-                placeholder="Marketing Account Staff"
-              />
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select MAS" />
+                </SelectTrigger>
+                <SelectContent>
+                  {masStaff.map((staff) => (
+                    <SelectItem key={staff.employeeId} value={staff.fullName}>
+                      {staff.fullName} ({staff.employeeId})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Date Encoded */}
+            {/* Date Remitted */}
             <div className="space-y-2">
               <Label>
-                Date Encoded
+                Date Remitted *
               </Label>
 
               <Input
                 type="date"
-                value={
-                  new Date()
-                    .toISOString()
-                    .split("T")[0]
+                value={dateRemitted}
+                onChange={(event) =>
+                  setDateRemitted(event.target.value)
                 }
-                readOnly
               />
 
               <p className="text-xs text-muted-foreground">
-                Recorded automatically.
+                Select the actual remittance date.
               </p>
             </div>
           </div>
@@ -1032,7 +1127,13 @@ export default function NewSalesPage() {
               matchingMembers.length > 0;
 
             return (
-              <Card key={sale.id}>
+              <div
+                key={sale.id}
+                ref={(element) => {
+                  saleRefs.current[sale.id] = element;
+                }}
+              >
+              <Card>
                 <CardHeader className="border-b">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1566,15 +1667,15 @@ export default function NewSalesPage() {
                               ],
                               [
                                 "barangay",
-                                "Barangay",
+                                "Barangay *",
                               ],
                               [
                                 "municipalityCity",
-                                "Municipality / City",
+                                "Municipality / City *",
                               ],
                               [
                                 "province",
-                                "Province",
+                                "Province *",
                               ],
                               [
                                 "zipCode",
@@ -2585,7 +2686,7 @@ export default function NewSalesPage() {
 
                       <div className="rounded-lg bg-muted/50 p-4">
                         <p className="text-sm font-medium">
-                          Date Remitted
+                          Date Encoded
                         </p>
 
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -2598,6 +2699,7 @@ export default function NewSalesPage() {
                   </CardContent>
                 )}
               </Card>
+              </div>
             );
           },
         )}

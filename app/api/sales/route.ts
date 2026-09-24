@@ -183,6 +183,21 @@ export async function POST(request: Request) {
         );
       }
 
+      if (
+        !sale.addressBarangay?.trim() ||
+        !sale.addressCity?.trim() ||
+        !sale.addressProvince?.trim()
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              `Sale #${saleNumber}: Barangay, Municipality / City, and Province are required.`,
+          },
+          { status: 400 },
+        );
+      }
+
       /*
        * Existing member
        */
