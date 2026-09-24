@@ -7,6 +7,7 @@ const SALES_SHEET = "Sales";
 const MEMBERS_SHEET = "Members";
 const MEMBER_PROGRAMS_SHEET = "Member Programs";
 const PROGRAMS_SHEET = "Programs";
+const BRANCHES_SHEET = "Branches";
 const PROGRAM_INCENTIVES_SHEET =
   "Program Incentives";
 
@@ -516,6 +517,190 @@ export type ProgramSheetData = {
   status: "active" | "inactive";
   description: string;
 };
+
+export type BranchSheetData = {
+  id: string;
+  name: string;
+  barangay: string;
+  cityMunicipality: string;
+  province: string;
+  country: string;
+  postalCode: string;
+  contactNumber: string;
+  email: string;
+  dateOpened: string;
+  dateClosed: string;
+  status: "active" | "inactive";
+};
+
+async function ensureBranchesSheet() {
+  try {
+    await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      range: `${BRANCHES_SHEET}!A:L`,
+    });
+  } catch (error: unknown) {
+    const status =
+      typeof error === "object" && error !== null && "code" in error
+        ? Number(error.code)
+        : 0;
+
+    if (status !== 400) {
+      throw error;
+    }
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      requestBody: {
+        requests: [
+          {
+            addSheet: {
+              properties: { title: BRANCHES_SHEET },
+            },
+          },
+        ],
+      },
+    });
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      range: `${BRANCHES_SHEET}!A:L`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[
+          "Branch ID",
+          "Branch Name / Code",
+          "Barangay",
+          "City / Municipality",
+          "Province",
+          "Country",
+          "Postal Code",
+          "Contact Number",
+          "Email",
+          "Date Opened",
+          "Date Closed",
+          "Status",
+        ]],
+      },
+    });
+  }
+}
+
+export async function getBranches(): Promise<BranchSheetData[]> {
+  await ensureBranchesSheet();
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${BRANCHES_SHEET}!A:L`,
+  });
+
+  return (response.data.values ?? [])
+    .slice(1)
+    .filter((row) => String(row[0] ?? "").trim() !== "")
+    .map((row) => {
+      const hasFullBranchColumns = row.length >= 12;
+
+      return {
+        id: String(row[0] ?? "").trim(),
+        name: String(row[1] ?? "").trim(),
+        barangay: hasFullBranchColumns
+          ? String(row[2] ?? "").trim()
+          : "",
+        cityMunicipality: hasFullBranchColumns
+          ? String(row[3] ?? "").trim()
+          : "",
+        province: hasFullBranchColumns
+          ? String(row[4] ?? "").trim()
+          : "",
+        country: hasFullBranchColumns
+          ? String(row[5] ?? "").trim()
+          : "",
+        postalCode: hasFullBranchColumns
+          ? String(row[6] ?? "").trim()
+          : "",
+        contactNumber: hasFullBranchColumns
+          ? String(row[7] ?? "").trim()
+          : "",
+        email: hasFullBranchColumns
+          ? String(row[8] ?? "").trim()
+          : "",
+        dateOpened: hasFullBranchColumns
+          ? String(row[9] ?? "").trim()
+          : "",
+        dateClosed: hasFullBranchColumns
+          ? String(row[10] ?? "").trim()
+          : "",
+        status:
+          String(
+            row[hasFullBranchColumns ? 11 : 2] ?? "",
+          )
+            .trim()
+            .toLowerCase() === "inactive"
+            ? ("inactive" as const)
+            : ("active" as const),
+      };
+    });
+}
+
+export async function createBranch(data: {
+  name: string;
+  barangay: string;
+  cityMunicipality: string;
+  province: string;
+  country: string;
+  postalCode: string;
+  contactNumber: string;
+  email: string;
+  dateOpened: string;
+  dateClosed: string;
+  status: "active" | "inactive";
+}): Promise<BranchSheetData> {
+  const branches = await getBranches();
+  const highestId = branches.reduce((highest, branch) => {
+    const match = /^BR-(\d+)$/.exec(branch.id);
+    return match ? Math.max(highest, Number(match[1])) : highest;
+  }, 0);
+
+  const branch: BranchSheetData = {
+    id: `BR-${String(highestId + 1).padStart(4, "0")}`,
+    name: data.name.trim(),
+    barangay: data.barangay.trim(),
+    cityMunicipality: data.cityMunicipality.trim(),
+    province: data.province.trim(),
+    country: data.country.trim(),
+    postalCode: data.postalCode.trim(),
+    contactNumber: data.contactNumber.trim(),
+    email: data.email.trim(),
+    dateOpened: data.dateOpened.trim(),
+    dateClosed: data.dateClosed.trim(),
+    status: data.status === "inactive" ? "inactive" : "active",
+  };
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${BRANCHES_SHEET}!A:L`,
+    valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: {
+      values: [[
+        branch.id,
+        branch.name,
+        branch.barangay,
+        branch.cityMunicipality,
+        branch.province,
+        branch.country,
+        branch.postalCode,
+        branch.contactNumber,
+        branch.email,
+        branch.dateOpened,
+        branch.dateClosed,
+        branch.status,
+      ]],
+    },
+  });
+
+  return branch;
+}
 
 /* =========================================================
    PROGRAM INCENTIVES
@@ -1121,4 +1306,351 @@ export async function addProgramWithIncentives(
     program,
     incentives,
   };
+}
+
+export type LoginRole = {
+  id: string;
+  name: string;
+  manageUsers: boolean;
+  manageAttendance: boolean;
+  viewAttendanceReports: boolean;
+};
+
+export type LoginUserData = {
+  id: string;
+  employeeId: string;
+  username: string;
+  fullName: string;
+  passwordHash: string;
+  roles: LoginRole[];
+};
+
+export type AttendanceEmployee = {
+  employeeId: string;
+  fullName: string;
+};
+
+function isEnabled(value: unknown) {
+  return ["true", "yes", "1"].includes(
+    String(value ?? "")
+      .trim()
+      .toLowerCase(),
+  );
+}
+
+export async function getLoginUserByUsername(
+  username: string,
+): Promise<LoginUserData | null> {
+  const normalizedUsername = username
+    .trim()
+    .toLowerCase();
+
+  if (!normalizedUsername) {
+    return null;
+  }
+
+  const [usersResponse, rolesResponse, userRolesResponse] =
+    await Promise.all([
+      sheets.spreadsheets.values.get({
+        spreadsheetId: GOOGLE_SHEET_ID,
+        range: "Users!A:G",
+      }),
+
+      sheets.spreadsheets.values.get({
+        spreadsheetId: GOOGLE_SHEET_ID,
+        range: "Roles!A:G",
+      }),
+
+      sheets.spreadsheets.values.get({
+        spreadsheetId: GOOGLE_SHEET_ID,
+        range: "'User Roles'!A:B",
+      }),
+    ]);
+
+  const users = usersResponse.data.values ?? [];
+  const roles = rolesResponse.data.values ?? [];
+  const userRoles = userRolesResponse.data.values ?? [];
+
+  const userRow = users.slice(1).find((row) => {
+    const rowUsername = String(row[2] ?? "")
+      .trim()
+      .toLowerCase();
+
+    const status = String(row[5] ?? "")
+      .trim()
+      .toLowerCase();
+
+    return (
+      rowUsername === normalizedUsername &&
+      status === "active"
+    );
+  });
+
+  if (!userRow) {
+    return null;
+  }
+
+  const userId = String(userRow[0] ?? "").trim();
+
+  const assignedRoleIds = new Set(
+    userRoles
+      .slice(1)
+      .filter(
+        (row) =>
+          String(row[0] ?? "").trim() === userId,
+      )
+      .map((row) => String(row[1] ?? "").trim())
+      .filter(Boolean),
+  );
+
+  const assignedRoles = roles
+    .slice(1)
+    .filter((row) => {
+      const roleId = String(row[0] ?? "").trim();
+      const status = String(row[6] ?? "")
+        .trim()
+        .toLowerCase();
+
+      return (
+        assignedRoleIds.has(roleId) &&
+        status === "active"
+      );
+    })
+    .map((row): LoginRole => ({
+      id: String(row[0] ?? "").trim(),
+      name: String(row[1] ?? "").trim(),
+      manageUsers: isEnabled(row[3]),
+      manageAttendance: isEnabled(row[4]),
+      viewAttendanceReports: isEnabled(row[5]),
+    }));
+
+  return {
+    id: userId,
+    employeeId: String(userRow[1] ?? "").trim(),
+    username: String(userRow[2] ?? "").trim(),
+    fullName: String(userRow[3] ?? "").trim(),
+    passwordHash: String(userRow[4] ?? "").trim(),
+    roles: assignedRoles,
+  };
+}
+
+export type AccountRole = {
+  id: string;
+  name: string;
+};
+
+export type CreateEmployeeAccountData = {
+  employeeId: string;
+  username: string;
+  fullName: string;
+  passwordHash: string;
+  roleIds: string[];
+};
+
+export async function getActiveAccountRoles(): Promise<
+  AccountRole[]
+> {
+  const response =
+    await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      range: "Roles!A:G",
+    });
+
+  return (response.data.values ?? [])
+    .slice(1)
+    .filter((row) => {
+      const status = String(row[6] ?? "")
+        .trim()
+        .toLowerCase();
+
+      return (
+        String(row[0] ?? "").trim() !== "" &&
+        status === "active"
+      );
+    })
+    .map((row) => ({
+      id: String(row[0] ?? "").trim(),
+      name: String(row[1] ?? "").trim(),
+    }));
+}
+
+export async function createEmployeeAccount(
+  data: CreateEmployeeAccountData,
+) {
+  const username = data.username
+    .trim()
+    .toLowerCase();
+
+  const employeeId = data.employeeId
+    .trim()
+    .toUpperCase();
+
+  const fullName = data.fullName.trim();
+
+  if (!/^DPE-\d{4}$/.test(employeeId)) {
+    throw new Error(
+      "Employee ID must use the format DPE-0001.",
+    );
+  }
+
+  if (!username) {
+    throw new Error("Username is required.");
+  }
+
+  if (!fullName) {
+    throw new Error("Full name is required.");
+  }
+
+  if (!data.passwordHash) {
+    throw new Error("Password hash is required.");
+  }
+
+  if (data.roleIds.length === 0) {
+    throw new Error("Select at least one role.");
+  }
+
+  const [usersResponse, activeRoles] =
+    await Promise.all([
+      sheets.spreadsheets.values.get({
+        spreadsheetId: GOOGLE_SHEET_ID,
+        range: "Users!A:G",
+      }),
+
+      getActiveAccountRoles(),
+    ]);
+
+  const users = usersResponse.data.values ?? [];
+
+  const duplicateUsername = users
+    .slice(1)
+    .some(
+      (row) =>
+        String(row[2] ?? "")
+          .trim()
+          .toLowerCase() === username,
+    );
+
+  if (duplicateUsername) {
+    throw new Error("This username already exists.");
+  }
+
+  const duplicateEmployeeId = users
+    .slice(1)
+    .some(
+      (row) =>
+        String(row[1] ?? "")
+          .trim()
+          .toUpperCase() === employeeId,
+    );
+
+  if (duplicateEmployeeId) {
+    throw new Error("This Employee ID already exists.");
+  }
+
+  const activeRoleIds = new Set(
+    activeRoles.map((role) => role.id),
+  );
+
+  const roleIds = [
+    ...new Set(
+      data.roleIds
+        .map((roleId) => roleId.trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  if (
+    roleIds.some(
+      (roleId) => !activeRoleIds.has(roleId),
+    )
+  ) {
+    throw new Error(
+      "One or more selected roles are invalid or inactive.",
+    );
+  }
+
+  const highestUserNumber = users
+    .slice(1)
+    .reduce((highest, row) => {
+      const match = /^USR-(\d+)$/.exec(
+        String(row[0] ?? "").trim(),
+      );
+
+      return match
+        ? Math.max(highest, Number(match[1]))
+        : highest;
+    }, 0);
+
+  const userId = `USR-${String(
+    highestUserNumber + 1,
+  ).padStart(4, "0")}`;
+
+  const createdAt = new Date()
+    .toISOString()
+    .split("T")[0];
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: "Users!A:G",
+    valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: {
+      values: [[
+        userId,
+        employeeId,
+        username,
+        fullName,
+        data.passwordHash,
+        "active",
+        createdAt,
+      ]],
+    },
+  });
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: "User Roles!A:B",
+    valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: {
+      values: roleIds.map((roleId) => [
+        userId,
+        roleId,
+      ]),
+    },
+  });
+
+  return {
+    id: userId,
+    employeeId,
+    username,
+    fullName,
+    roleIds,
+  };
+}
+
+export async function getActiveAttendanceEmployees(): Promise<
+  AttendanceEmployee[]
+> {
+  const response =
+    await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      range: "Users!A:G",
+    });
+
+  return (response.data.values ?? [])
+    .slice(1)
+    .filter((row) =>
+      String(row[5] ?? "")
+        .trim()
+        .toLowerCase() === "active",
+    )
+    .map((row) => ({
+      employeeId: String(row[1] ?? "").trim(),
+      fullName: String(row[3] ?? "").trim(),
+    }))
+    .filter((employee) => employee.employeeId !== "")
+    .sort((first, second) =>
+      first.fullName.localeCompare(second.fullName),
+    );
 }

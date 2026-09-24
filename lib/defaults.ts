@@ -67,7 +67,7 @@ export function emptyProgram(
   return {
     id: createId(),
     memberId: "",
-    programType: "",
+    programCode: "",
     dateEnrolled: "",
     modeOfPayment: "",
     withRegistrationFee: false,

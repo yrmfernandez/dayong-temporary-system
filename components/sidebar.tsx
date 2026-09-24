@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import {
+  usePathname,
+  useRouter,
+} from "next/navigation";
 import {
   BarChart3,
+  Building2,
   CalendarCheck,
   ClipboardList,
   CreditCard,
@@ -19,7 +23,10 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { 
+  useEffect, 
+  useState 
+} from "react";
 
 const navigation = [
   {
@@ -60,6 +67,21 @@ const navigation = [
         href: "/attendance",
         icon: CalendarCheck,
       },
+      {
+        name: "Attendance Review",
+        href: "/attendance-reviews",
+        icon: ClipboardList,
+      },
+      {
+        name: "Leave Requests",
+        href: "/leave-requests",
+        icon: FileText,
+      },
+      {
+        name: "Leave Approvals",
+        href: "/leave-approvals",
+        icon: CalendarCheck,
+      },
     ],
   },
   {
@@ -91,14 +113,19 @@ const navigation = [
         icon: Users,
       },
       {
+        name: "User Accounts",
+        href: "/user-accounts",
+        icon: Users,
+      },
+      {
         name: "Programs",
         href: "/programs",
         icon: Database,
       },
       {
-        name: "Promos",
-        href: "/promos",
-        icon: FileText,
+        name: "Branches",
+        href: "/branches",
+        icon: Building2,
       },
     ],
   },
@@ -126,7 +153,57 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const [canManageUsers, setCanManageUsers] =
+    useState(false);
+  const [canManageAttendance, setCanManageAttendance] =
+    useState(false);
+
+  useEffect(() => {
+    const loadSession = async () => {
+      try {
+        const response = await fetch(
+          "/api/auth/session",
+          {
+            cache: "no-store",
+          },
+        );
+
+        const result = await response.json();
+
+        setCanManageUsers(
+          Boolean(
+            result.success &&
+              result.user?.permissions?.manageUsers,
+          ),
+        );
+
+        setCanManageAttendance(
+          Boolean(
+            result.success &&
+              result.user?.permissions?.manageAttendance,
+          ),
+        );
+      } catch {
+        setCanManageUsers(false);
+        setCanManageAttendance(false);
+      }
+    };
+
+    void loadSession();
+  }, [pathname]);
+
+  const handleSignOut = async () => {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+    });
+
+    setMobileOpen(false);
+    router.replace("/login");
+    router.refresh();
+  };
 
   return (
     <>
@@ -181,6 +258,23 @@ export function Sidebar() {
 
                 <div className="space-y-1">
                   {section.items.map((item) => {
+                    if (
+                      item.href === "/user-accounts" &&
+                      !canManageUsers
+                    ) {
+                      return null;
+                    }
+
+                    if (
+                      [
+                        "/attendance-reviews",
+                        "/leave-approvals",
+                      ].includes(item.href) &&
+                      !canManageAttendance
+                    ) {
+                      return null;
+                    }
+
                     const Icon = item.icon;
 
                     const isActive =
@@ -212,7 +306,11 @@ export function Sidebar() {
 
         {/* Bottom */}
         <div className="border-t p-3">
-          <button className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
             <LogOut className="size-4" />
             Sign Out
           </button>

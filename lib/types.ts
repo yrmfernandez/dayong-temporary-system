@@ -35,64 +35,54 @@ export type Beneficiary = {
 export type Member = {
   id: string;
   phMemberNumber: string;
-
   name: PersonName;
-
   birthdate: string;
   birthplace: string;
   gender: string;
   age: number | null;
   civilStatus: string;
   contactNumber: string;
-
   address: Address;
-
   claimant: Claimant;
 };
 
+/**
+ * Program master data
+ *
+ * This represents the programs stored in Google Sheets.
+ * Program Type in New Sales should come from these records.
+ */
+export type Program = {
+  id: string;
+  code: string;
+  name: string;
+  basePay: number;
+  status: "active" | "inactive";
+  description: string;
+};
+/**
+ * Program enrollment for a member.
+ *
+ * These are the values entered when registering a member
+ * into a program in New Sales.
+ */
 export type ProgramEnrollment = {
   id: string;
-
-  // The member who owns this program
   memberId: string;
-
-  programType: string;
+  programCode: string;
   dateEnrolled: string;
-
   modeOfPayment: string;
-
   withRegistrationFee: boolean;
   registrationAmount: number;
-
   amountPaid: number;
-
   programTerms: string;
-
   branch: string;
   mas: string;
 };
 
-export type Program = {
-  id: string;
-
-  code: string;
-  name: string;
-
-  basePay: number;
-
-  masCommission: number;
-  collectorCommission: number;
-
-  commissionType: "fixed" | "percentage";
-
-  description: string;
-
-  dateStarted: string;
-  dateEnded: string | null;
-
-  status: "active" | "inactive";
-};
-
+/**
+ * New Sales record
+ */
 export type NewSale = {
   id: string;
 
@@ -110,6 +100,9 @@ export type NewSale = {
   dateRemitted: string;
 };
 
+/**
+ * Collection record
+ */
 export type Collection = {
   id: string;
 
@@ -127,7 +120,6 @@ export type Collection = {
   amountCollected: number;
 
   monthOf: string;
-
   nop: number;
 
   dateRemitted: string;

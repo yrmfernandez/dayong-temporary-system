@@ -1,23 +1,82 @@
-import type { Program } from "./types";
+import { getPrograms } from "./google-sheets-data";
 
-export const programs: Program[] = [
-  {
-    id: "program-290",
-    code: "290",
-    name: "Program 290",
+/**
+ * Program type used by the application.
+ *
+ * Program data comes from Google Sheets.
+ */
+export type Program = {
+  id: string;
+  code: string;
+  name: string;
+  basePay: number;
+  status: "active" | "inactive";
+  description: string;
 
-    basePay: 290,
+  incentiveTiers?: {
+    id: string;
+    programId: string;
+    role: "MAS" | "Collector";
+    fromMonth: number;
+    toMonth: number;
+    incentiveType: "fixed" | "percentage";
+    markUp: number;
+    incentiveAmount: number;
+  }[];
+};
 
-    masCommission: 0,
-    collectorCommission: 0,
+/**
+ * Get all active programs from Google Sheets.
+ *
+ * This replaces the old hardcoded:
+ *
+ * export const programs = [...]
+ *
+ * The actual data now comes from:
+ *
+ * Google Sheets → Programs
+ */
+export async function getActivePrograms(): Promise<
+  Program[]
+> {
+  const programs = await getPrograms();
 
-    commissionType: "fixed",
+  return programs
+    .filter(
+      (program) =>
+        program.status === "active",
+    )
+    .map((program) => ({
+      id: program.id,
+      code: program.code,
+      name: program.name,
+      basePay: program.basePay,
+      status: program.status,
+      description: program.description,
+      incentiveTiers:
+        program.incentiveTiers ?? [],
+    }));
+}
 
-    description: "",
+/**
+ * Get all programs from Google Sheets.
+ *
+ * Use this when the page needs both
+ * active and inactive programs.
+ */
+export async function getAllPrograms(): Promise<
+  Program[]
+> {
+  const programs = await getPrograms();
 
-    dateStarted: "",
-    dateEnded: null,
-
-    status: "active",
-  },
-];
+  return programs.map((program) => ({
+    id: program.id,
+    code: program.code,
+    name: program.name,
+    basePay: program.basePay,
+    status: program.status,
+    description: program.description,
+    incentiveTiers:
+      program.incentiveTiers ?? [],
+  }));
+}
