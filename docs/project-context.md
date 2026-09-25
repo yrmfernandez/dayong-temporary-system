@@ -88,6 +88,10 @@ The application-managed tabs now have a canonical database schema in `config/she
 
 Collections and Remittances are now separate transactions. Saving Collections immediately records member payments as `Outstanding`; it no longer creates a Remittances row. A physical turnover is created from selected outstanding Collection IDs, stores expected and actual cash separately, and uses the `Remittance Collections` mapping sheet. Submitted turnovers are `Pending Approval` or `Discrepancy`. Only approval changes linked Collections to `Remitted` and clears cash accountability; rejection requires a reason and returns the Collections to `Outstanding`. The submitter cannot decide the same Remittance. Historical Collections and automatic Remittances from the previous design are marked for review rather than assumed to represent verified turnover. See `docs/collections-remittance-workflow.md`.
 
+Collections member search is scoped by the selected Branch and MAS through active Member Program enrollments. Search results include only the programs matching that same Branch/MAS relationship. A member with one eligible program has it selected automatically; a member with several eligible programs requires the encoder to choose. Changing Branch or MAS clears previously selected members and programs. Collection history is ordered from the latest NOP to the oldest.
+
+New Sales uses Application Number as its required transaction reference. It does not ask for or require an OR Number; the legacy Sales `or_number` column remains blank for new rows so existing column positions and historical data remain intact.
+
 ## Rules still requiring business decisions
 
 Further business decisions remain for complete transfer/history workflows, special incentive cases, detailed role permissions, attendance policy changes, dashboard KPIs, and future report layouts. The current defaults and remittance formula are described in the implementation document. Use the confirmed whole-installment payment rule and MAM meanings above rather than treating them as unresolved. Existing code describes current behavior but does not establish an unconfirmed business policy.

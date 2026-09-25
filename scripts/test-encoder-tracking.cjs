@@ -133,7 +133,7 @@ for (const existingMember of [false, true]) {
     const response = await h.load('app/api/sales/route.ts').POST(request({
       branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25',
       encodedBy: 'attacker', userId: 'attacker',
-      sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', addressBarangay: 'B', addressCity: 'C', addressProvince: 'P', encodedBy: 'attacker' }],
+      sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', applicationNo: 'APP-1', addressBarangay: 'B', addressCity: 'C', addressProvince: 'P', encodedBy: 'attacker' }],
     }));
     assert.equal(response.status, 200, JSON.stringify(await response.json()));
     assert.equal(h.writes.length, existingMember ? 2 : 3);
@@ -185,6 +185,21 @@ test('collection batch is encoded atomically without creating a remittance', asy
   assert.equal(requests[1].updateCells.rows[0].values[0].userEnteredValue.stringValue, 'ADV');
   assert.equal(result.remittanceId, undefined);
   assert.equal(result.grossCollection, 700);
+});
+
+test('collection member search matches branch and MAS and returns eligible programs', async () => {
+  const h = harness();
+  h.rows.Members = [[], ['M1', 'PH-001', 'Santos', 'Ana'], ['M2', 'PH-002', 'Santos', 'Ana Two']];
+  h.rows['Member programs'] = [[],
+    ['E1', 'M1', 'PH-001', 'P1', '', 'North', 'MAS One', '', '', '', '', '', 'Active'],
+    ['E2', 'M1', 'PH-001', 'P2', '', 'North', 'MAS One', '', '', '', '', '', 'Active'],
+    ['E3', 'M2', 'PH-002', 'P3', '', 'South', 'MAS One', '', '', '', '', '', 'Active'],
+    ['E4', 'M2', 'PH-002', 'P4', '', 'North', 'MAS Two', '', '', '', '', '', 'Active'],
+  ];
+  const results = await h.load('lib/google-sheets-data.ts').searchMembersByName('ana', 'North', 'MAS One');
+  assert.equal(results.length, 1);
+  assert.equal(results[0].id, 'M1');
+  assert.deepEqual(results[0].programIds, ['P1', 'P2']);
 });
 
 test('physical remittance links exact outstanding collections and records a discrepancy', async () => {

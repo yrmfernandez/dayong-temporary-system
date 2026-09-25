@@ -38,6 +38,10 @@ type ProgramOption = {
   incentiveTiers?: IncentiveTier[];
 };
 
+type CollectionMember = Member & {
+  programIds: string[];
+};
+
 type CollectionHistory = {
   id: string;
   memberId: string;
@@ -212,7 +216,7 @@ export default function CollectionsPage() {
   const [nextCollectionId, setNextCollectionId] = useState(2);
   const collectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [scrollTargetId, setScrollTargetId] = useState("");
-  const [members, setMembers] = useState<Member[]>([]);
+  const [members, setMembers] = useState<CollectionMember[]>([]);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [branches, setBranches] = useState<Array<{ id: string; name: string; status: string }>>([]);
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string }>>([]);
@@ -267,10 +271,10 @@ export default function CollectionsPage() {
   }, [collections, scrollTargetId]);
 
   const searchMembers = async (search: string) => {
-    if (!search.trim()) return;
+    if (!search.trim() || !branch || !mas) return;
 
     const response = await fetch(
-      `/api/members?search=${encodeURIComponent(search)}`,
+      `/api/members?search=${encodeURIComponent(search)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(mas)}`,
       { cache: "no-store" },
     );
     const result = await response.json();
@@ -359,7 +363,7 @@ export default function CollectionsPage() {
 
   const lastHistory =
     history.length > 0
-      ? history[history.length - 1]
+      ? history[0]
       : null;
 
   function quoteEntry(entry: CollectionEntry) {
@@ -392,6 +396,15 @@ export default function CollectionsPage() {
     );
   }
 
+  function clearScopedMemberSelections() {
+    setMembers([]);
+    setHistories({});
+    setCollections((current) => current.map((entry) => {
+      selectionVersions.current[entry.id] = (selectionVersions.current[entry.id] ?? 0) + 1;
+      return { ...entry, memberSearch: "", memberId: "", programId: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" };
+    }));
+  }
+
   function selectMember(
     entryId: string,
     memberId: string,
@@ -413,24 +426,29 @@ export default function CollectionsPage() {
       nopFrom: null,
       nopTo: null,
     });
+    if (member.programIds.length === 1) {
+      void selectProgram(entryId, member.programIds[0], member.id);
+    }
   }
 
   async function selectProgram(
     entryId: string,
     programId: string,
+    selectedMemberId?: string,
   ) {
     const entry = collections.find(
       (item) => item.id === entryId,
     );
 
-    if (!entry || !entry.memberId) return;
+    const memberId = selectedMemberId || entry?.memberId;
+    if (!entry || !memberId) return;
 
     const version = (selectionVersions.current[entryId] ?? 0) + 1;
     selectionVersions.current[entryId] = version;
     updateCollection(entryId, { programId, accountStatus: "", accountLoading: true, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
     setHistories((current) => ({ ...current, [entryId]: [] }));
     try {
-      const response = await fetch(`/api/collections?memberId=${encodeURIComponent(entry.memberId)}&programId=${encodeURIComponent(programId)}`, { cache: "no-store" });
+      const response = await fetch(`/api/collections?memberId=${encodeURIComponent(memberId)}&programId=${encodeURIComponent(programId)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(mas)}`, { cache: "no-store" });
       const result = await response.json();
       if (selectionVersions.current[entryId] !== version) return;
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load account.");
@@ -760,9 +778,10 @@ export default function CollectionsPage() {
 
               <Select
                 value={branch}
-                onValueChange={(value) =>
-                  setBranch(value ?? "")
-                }
+                onValueChange={(value) => {
+                  setBranch(value ?? "");
+                  clearScopedMemberSelections();
+                }}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select branch" />
@@ -782,14 +801,17 @@ export default function CollectionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Accountable Collector / MAS *</Label>
+              <Label>MAS *</Label>
 
               <Select
                 value={mas}
-                onValueChange={(value) => setMas(value ?? "")}
+                onValueChange={(value) => {
+                  setMas(value ?? "");
+                  clearScopedMemberSelections();
+                }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select accountable person" />
+                  <SelectValue placeholder="Select MAS" />
                 </SelectTrigger>
                 <SelectContent>
                   {masStaff.map((staff) => (
@@ -871,6 +893,10 @@ export default function CollectionsPage() {
                             entry.programId,
                         ) ?? null
                       : null;
+
+                  const entryPrograms = entryMember
+                    ? programs.filter((program) => entryMember.programIds.includes(program.id))
+                    : [];
 
                   const isActive =
                     activeCollectionId ===
@@ -1036,7 +1062,8 @@ export default function CollectionsPage() {
 
                               <Input
                                 className="pl-9"
-                                placeholder="Type member full name..."
+                                placeholder={branch && mas ? "Type member name or number..." : "Select Branch and MAS first"}
+                                disabled={!branch || !mas}
                                 value={
                                   entry.memberSearch
                                 }
@@ -1128,7 +1155,9 @@ export default function CollectionsPage() {
                                 )}
                             </div>
 
-                            {entry.memberSearch.trim() &&
+                            {!branch || !mas ? (
+                              <p className="text-xs text-muted-foreground">Member results are limited to enrollments matching both the selected Branch and MAS.</p>
+                            ) : entry.memberSearch.trim() &&
                               matchingMembers.length ===
                                 0 &&
                               !entry.memberId && (
@@ -1211,7 +1240,7 @@ export default function CollectionsPage() {
                               </SelectTrigger>
 
                               <SelectContent>
-                                {programs.map(
+                                {entryPrograms.map(
                                     (
                                       program,
                                     ) => (

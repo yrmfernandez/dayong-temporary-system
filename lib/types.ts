@@ -93,8 +93,6 @@ export type NewSale = {
   program: ProgramEnrollment;
 
   applicationNumber: string;
-
-  orNumber: string;
   orDate: string;
 
   dateRemitted: string;

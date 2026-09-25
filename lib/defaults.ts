@@ -106,7 +106,6 @@ export function emptyNewSale(
     program,
     beneficiaries: [],
     applicationNumber: "",
-    orNumber: "",
     orDate: "",
     dateRemitted: "",
   };

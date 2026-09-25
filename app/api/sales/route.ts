@@ -55,7 +55,6 @@ type SalePayloadItem = {
   claimantAddressZip: string;
 
   applicationNo: string;
-  orNumber: string;
   orDate: string;
 
   paymentMethod: string;
@@ -180,6 +179,13 @@ export const POST = withEncoder(async function POST(request: Request) {
             message:
               `Sale #${saleNumber}: Program is required.`,
           },
+          { status: 400 },
+        );
+      }
+
+      if (!sale.applicationNo?.trim()) {
+        return NextResponse.json(
+          { success: false, message: `Sale #${saleNumber}: Application Number is required.` },
           { status: 400 },
         );
       }
@@ -626,8 +632,7 @@ export const POST = withEncoder(async function POST(request: Request) {
 
         applicationNo:
           sale.applicationNo,
-        orNumber:
-          sale.orNumber,
+        orNumber: "",
         orDate:
           sale.orDate,
       };

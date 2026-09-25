@@ -1,50 +1,51 @@
 import { google, type sheets_v4 } from "googleapis";
 import { SheetsReadCache } from "@/lib/sheets-read-cache";
 import { isEncodingRequest } from "@/lib/encoder-context";
+import {
+  getGooglePrivateKey,
+  getGoogleSheetId,
+  readServerVariable,
+  ServerConfigurationError,
+} from "@/lib/server-environment";
 
-const serviceAccountEmail =
-  process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+export const GOOGLE_SHEET_ID = (() => {
+  const value = readServerVariable("GOOGLE_SHEET_ID");
+  return value.match(/\/spreadsheets\/d\/([\w-]+)/)?.[1] ?? value;
+})();
 
-const privateKey =
-  process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+let client: sheets_v4.Sheets | undefined;
 
-const spreadsheetId =
-  process.env.GOOGLE_SHEET_ID;
+function getClient() {
+  if (client) return client;
 
-if (!serviceAccountEmail) {
-  throw new Error(
-    "Missing GOOGLE_SERVICE_ACCOUNT_EMAIL in .env.local",
+  const serviceAccountEmail = readServerVariable(
+    "GOOGLE_SERVICE_ACCOUNT_EMAIL",
   );
+  if (!serviceAccountEmail) {
+    throw new ServerConfigurationError([
+      "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+    ]);
+  }
+
+  // Prevent an empty spreadsheet ID from reaching the Google API.
+  getGoogleSheetId();
+
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: serviceAccountEmail,
+      private_key: getGooglePrivateKey(),
+    },
+    scopes: [
+      "https://www.googleapis.com/auth/spreadsheets",
+    ],
+  });
+
+  client = google.sheets({
+    version: "v4",
+    auth,
+  });
+  return client;
 }
-
-if (!privateKey) {
-  throw new Error(
-    "Missing GOOGLE_PRIVATE_KEY in .env.local",
-  );
-}
-
-if (!spreadsheetId) {
-  throw new Error(
-    "Missing GOOGLE_SHEET_ID in .env.local",
-  );
-}
-
-const auth = new google.auth.GoogleAuth({
-  credentials: {
-    client_email: serviceAccountEmail,
-    private_key: privateKey,
-  },
-  scopes: [
-    "https://www.googleapis.com/auth/spreadsheets",
-  ],
-});
-
-const client = google.sheets({
-  version: "v4",
-  auth,
-});
-
-export const GOOGLE_SHEET_ID = spreadsheetId;
 
 const shared = globalThis as typeof globalThis & { dayongSheetsCache?: SheetsReadCache };
 const cache = shared.dayongSheetsCache ??= new SheetsReadCache();
@@ -58,14 +59,14 @@ async function write<T>(operation: () => Promise<T>) {
 }
 export const sheets = {
   spreadsheets: {
-    get: async (params: sheets_v4.Params$Resource$Spreadsheets$Get) => ({ data: await cache.read(JSON.stringify(["metadata", params]), async () => (await client.spreadsheets.get(params, { retry: false })).data, isEncodingRequest()) }),
-    batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Batchupdate) => write(() => client.spreadsheets.batchUpdate(params)),
+    get: async (params: sheets_v4.Params$Resource$Spreadsheets$Get) => ({ data: await cache.read(JSON.stringify(["metadata", params]), async () => (await getClient().spreadsheets.get(params, { retry: false })).data, isEncodingRequest()) }),
+    batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Batchupdate) => write(() => getClient().spreadsheets.batchUpdate(params)),
     values: {
-      get: async (params: sheets_v4.Params$Resource$Spreadsheets$Values$Get) => ({ data: await cache.read(JSON.stringify(["get", params]), async () => (await client.spreadsheets.values.get(params, { retry: false })).data, fresh([params.range ?? ""])) }),
-      batchGet: async (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchget) => ({ data: await cache.read(JSON.stringify(["batchGet", params]), async () => (await client.spreadsheets.values.batchGet(params, { retry: false })).data, fresh(params.ranges ?? [])) }),
-      append: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Append) => write(() => client.spreadsheets.values.append(params)),
-      update: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Update) => write(() => client.spreadsheets.values.update(params)),
-      batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchupdate) => write(() => client.spreadsheets.values.batchUpdate(params)),
+      get: async (params: sheets_v4.Params$Resource$Spreadsheets$Values$Get) => ({ data: await cache.read(JSON.stringify(["get", params]), async () => (await getClient().spreadsheets.values.get(params, { retry: false })).data, fresh([params.range ?? ""])) }),
+      batchGet: async (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchget) => ({ data: await cache.read(JSON.stringify(["batchGet", params]), async () => (await getClient().spreadsheets.values.batchGet(params, { retry: false })).data, fresh(params.ranges ?? [])) }),
+      append: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Append) => write(() => getClient().spreadsheets.values.append(params)),
+      update: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Update) => write(() => getClient().spreadsheets.values.update(params)),
+      batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchupdate) => write(() => getClient().spreadsheets.values.batchUpdate(params)),
     },
   },
 };

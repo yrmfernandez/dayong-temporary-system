@@ -46,7 +46,18 @@ export default function LoginPage() {
         }),
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result: { success?: boolean; message?: string } = {};
+
+      try {
+        result = JSON.parse(responseText) as typeof result;
+      } catch {
+        throw new Error(
+          response.ok
+            ? "The sign-in server returned an invalid response."
+            : "The sign-in server is unavailable. Check the Vercel Function logs and environment variables.",
+        );
+      }
 
       if (!response.ok || !result.success) {
         throw new Error(

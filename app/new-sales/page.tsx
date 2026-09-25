@@ -155,7 +155,6 @@ function emptyNewSale(
       mas,
     },
     applicationNumber: "",
-    orNumber: "",
     orDate: "",
     dateRemitted: "",
   };
@@ -824,9 +823,9 @@ export default function NewSalesPage() {
         return;
       }
 
-      if (!sale.orNumber.trim()) {
+      if (!sale.applicationNumber.trim()) {
         setSaveMessage(
-          "OR Number is required.",
+          "Application Number is required.",
         );
         return;
       }
@@ -879,7 +878,7 @@ export default function NewSalesPage() {
             claimantAddressProvince: sale.member.claimant.address.province,
             claimantAddressZip: sale.member.claimant.address.zipCode,
             applicationNo: sale.applicationNumber,
-            orNumber: sale.orNumber,
+            orNumber: "",
             orDate: sale.orDate,
             paymentMethod: sale.program.modeOfPayment,
             registrationFee: sale.program.withRegistrationFee ? "Yes" : "No",
@@ -2596,18 +2595,18 @@ export default function NewSalesPage() {
 
                     <Separator />
 
-                    {/* PAYMENT / OR */}
+                    {/* PAYMENT / APPLICATION */}
                     <section className="space-y-4">
                       <div>
                         <h2 className="font-semibold">
-                          E. Payment / OR Details
+                          E. Payment / Application Details
                         </h2>
                       </div>
 
                       <div className="grid gap-4 md:grid-cols-3">
                         <div className="space-y-2">
                           <Label>
-                            Application No.
+                            Application No. *
                           </Label>
 
                           <Input
@@ -2633,33 +2632,7 @@ export default function NewSalesPage() {
 
                         <div className="space-y-2">
                           <Label>
-                            OR Number *
-                          </Label>
-
-                          <Input
-                            value={
-                              sale.orNumber
-                            }
-                            onChange={(event) =>
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  orNumber:
-                                    event
-                                      .target
-                                      .value,
-                                }),
-                              )
-                            }
-                            placeholder="Official receipt number"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>
-                            OR Date *
+                            Application Date *
                           </Label>
 
                           <Input

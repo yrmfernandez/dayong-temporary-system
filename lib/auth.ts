@@ -2,6 +2,7 @@ import {
   jwtVerify,
   SignJWT,
 } from "jose";
+import { getAuthSecret } from "@/lib/server-environment";
 
 export type SessionUser = {
   userId: string;
@@ -15,15 +16,12 @@ export type SessionUser = {
   };
 };
 
-const authSecret = process.env.AUTH_SECRET;
+let secretKey: Uint8Array | undefined;
 
-if (!authSecret) {
-  throw new Error(
-    "AUTH_SECRET is missing from .env.local.",
-  );
+function getSecretKey() {
+  secretKey ??= new TextEncoder().encode(getAuthSecret());
+  return secretKey;
 }
-
-const secretKey = new TextEncoder().encode(authSecret);
 
 export async function createSessionToken(
   user: SessionUser,
@@ -34,7 +32,7 @@ export async function createSessionToken(
     })
     .setIssuedAt()
     .setExpirationTime("8h")
-    .sign(secretKey);
+    .sign(getSecretKey());
 }
 
 export async function verifySessionToken(
@@ -43,7 +41,7 @@ export async function verifySessionToken(
   try {
     const { payload } = await jwtVerify(
       token,
-      secretKey,
+      getSecretKey(),
     );
 
     return {

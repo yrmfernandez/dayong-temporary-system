@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const data = await loadAccountData();
-    const matches = data.accounts.filter((a) => a.memberId === searchParams.get("memberId") && a.programId === searchParams.get("programId"));
+    const matches = data.accounts.filter((a) => a.memberId === searchParams.get("memberId") && a.programId === searchParams.get("programId") && a.branch === searchParams.get("branch") && a.mas === searchParams.get("mas"));
     if (matches.length !== 1) return Response.json({ success: false, message: "A unique program enrollment was not found." }, { status: 404 });
     const account = matches[0];
     const history = data.payments.filter((p) => p.enrollmentId === account.id).sort((a, b) => b.nopTo - a.nopTo);
@@ -29,7 +29,7 @@ export const POST = withEncoder(async (request: Request) => {
     const dateRemitted = String(body.dateRemitted ?? "");
     if (!branch || !mas || !accountableEmployeeId || !validDate(dateRemitted) || !Array.isArray(body.collections) || !body.collections.length) throw new Error("Branch, accountable Collector/MAS, Date Remitted, and collections are required.");
     const employees = await getEmployees();
-    const accountable = employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active");
+    const accountable = employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active" && employee.roles.includes("MAS"));
     const selectableLegacyMas = accountable ? false : (await getActiveMasStaff()).some((employee) => employee.employeeId === accountableEmployeeId && employee.fullName === mas);
     if (!accountable && !selectableLegacyMas) throw new Error("Select an active accountable Collector/MAS from the list.");
     const data = await loadAccountData();
@@ -42,15 +42,12 @@ export const POST = withEncoder(async (request: Request) => {
       const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
       if (matches.length !== 1) throw new Error("A unique program enrollment was not found.");
       const account = matches[0];
-      if (account.branch !== branch) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch.`);
+      if (account.branch !== branch || account.mas !== mas) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch and MAS.`);
       const input = {
         monthFrom: String(entry.monthFrom ?? ""), monthTo: String(entry.monthTo ?? ""), nopFrom: Number(entry.nopFrom), nopTo: Number(entry.nopTo), amount: Number(entry.amountCollected),
         orDate: String(entry.orDate ?? ""), orNumber: String(entry.orNumber ?? "").trim(), waiver: String(entry.ifSuspended ?? ""),
         collectedByRole: String(entry.collectedByRole ?? ""), originalMas: String(entry.originalMasOfficerName ?? "").trim(),
       };
-      if (accountable && !accountable.roles.includes(input.collectedByRole)) throw new Error(`${mas} is not registered with the ${input.collectedByRole} operational role.`);
-      if (!accountable && input.collectedByRole !== "MAS") throw new Error("Legacy staff records can only be used as MAS until their Employees record is reviewed.");
-      if (input.collectedByRole === "MAS" && account.mas !== mas) throw new Error(`Collection for ${account.memberNumber} must use its assigned MAS.`);
       validatePayment(account, payments, input);
       const quote = calculateRemittance(account.basePay, data.incentives.filter((tier) => tier.programId === account.programId), input.collectedByRole, input.nopFrom, input.nopTo);
       // Client totals are only a preview. Persist the authoritative server calculation.
@@ -62,7 +59,7 @@ export const POST = withEncoder(async (request: Request) => {
       rows.push([id, "", account.id, account.memberId, account.memberNumber, account.programId, branch, mas,
         input.orNumber, input.orDate, input.amount, input.monthFrom, input.monthTo, input.nopFrom, input.nopTo,
         entry.reactivation === "Yes" ? "Yes" : "No", entry.transferred === "Yes" ? "Yes" : "No", input.waiver, input.originalMas, "Posted", timestamp,
-        input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, input.collectedByRole]);
+        input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS"]);
     }
     writing = true;
     await commitCollections(rows, [...touched.values()], payments);

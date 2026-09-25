@@ -162,14 +162,15 @@ export async function findMemberByNumber(
 
 export async function searchMembersByName(
   search: string,
+  branch: string,
+  mas: string,
 ) {
-  const response =
-    await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${MEMBERS_SHEET}!A:AD`,
-    });
-
-  const rows = response.data.values ?? [];
+  const response = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    ranges: [`${MEMBERS_SHEET}!A:AD`, `'${MEMBER_PROGRAMS_SHEET}'!A:N`],
+  });
+  const rows = response.data.valueRanges?.[0]?.values ?? [];
+  const enrollments = response.data.valueRanges?.[1]?.values ?? [];
 
   if (rows.length <= 1) {
     return [];
@@ -178,8 +179,23 @@ export async function searchMembersByName(
   const searchTerm =
     search.trim().toLowerCase();
 
-  if (!searchTerm) {
+  const normalizedBranch = branch.trim().toLowerCase();
+  const normalizedMas = mas.trim().toLowerCase();
+  if (!searchTerm || !normalizedBranch || !normalizedMas) {
     return [];
+  }
+
+  const eligiblePrograms = new Map<string, Set<string>>();
+  for (const row of enrollments.slice(1)) {
+    const memberId = String(row[1] ?? "").trim();
+    const programId = String(row[3] ?? "").trim();
+    const enrollmentBranch = String(row[5] ?? "").trim().toLowerCase();
+    const enrollmentMas = String(row[6] ?? "").trim().toLowerCase();
+    const status = String(row[12] ?? "").trim().toLowerCase();
+    if (!memberId || !programId || enrollmentBranch !== normalizedBranch || enrollmentMas !== normalizedMas || (status && status !== "active")) continue;
+    const programs = eligiblePrograms.get(memberId) ?? new Set<string>();
+    programs.add(programId);
+    eligiblePrograms.set(memberId, programs);
   }
 
   return rows
@@ -200,14 +216,15 @@ export async function searchMembersByName(
           .trim()
           .toLowerCase();
 
-      return fullName.includes(
-        searchTerm,
-      );
+      const memberId = String(row[0] ?? "").trim();
+      const memberNumber = String(row[1] ?? "").trim().toLowerCase();
+      return eligiblePrograms.has(memberId) && (fullName.includes(searchTerm) || memberNumber.includes(searchTerm));
     })
     .slice(0, 5)
     .map((row) => ({
       id: row[0] ?? "",
       phMemberNumber: row[1] ?? "",
+      programIds: [...(eligiblePrograms.get(String(row[0] ?? "").trim()) ?? [])],
 
       name: {
         surname: row[2] ?? "",
@@ -1656,7 +1673,7 @@ export async function getActiveMasStaff(): Promise<MasStaff[]> {
     .filter((staff) => staff.employeeId !== "")
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
   const employees = await getEmployees();
-  const registered = employees.filter((e) => e.status.toLowerCase() === "active" && e.roles.some((role) => ["MAS", "Collector"].includes(role))).map((e) => ({ employeeId: e.id, fullName: e.name }));
+  const registered = employees.filter((e) => e.status.toLowerCase() === "active" && e.roles.includes("MAS")).map((e) => ({ employeeId: e.id, fullName: e.name }));
   const reviewed = new Set(employees.filter((e) => e.status || e.roles.length).map((e) => e.id));
   return [...new Map([...legacy.filter((e) => !reviewed.has(e.employeeId)), ...registered].map((e) => [e.employeeId, e])).values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
 

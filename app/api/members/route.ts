@@ -6,15 +6,17 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search")?.trim() ?? "";
+    const branch = searchParams.get("branch")?.trim() ?? "";
+    const mas = searchParams.get("mas")?.trim() ?? "";
 
-    if (!search) {
+    if (!search || !branch || !mas) {
       return NextResponse.json({
         success: true,
         members: [],
       });
     }
 
-    const members = await searchMembersByName(search);
+    const members = await searchMembersByName(search, branch, mas);
 
     return NextResponse.json({
       success: true,
