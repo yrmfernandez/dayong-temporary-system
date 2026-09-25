@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -83,6 +84,11 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-2 text-center">
+          <BrandLogo
+            className="mx-auto mb-2 size-24 rounded-full object-contain drop-shadow-md"
+            priority
+          />
+
           <CardTitle className="text-2xl">
             DAYONG Monitoring System
           </CardTitle>

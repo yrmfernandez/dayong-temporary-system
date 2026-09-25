@@ -3,8 +3,8 @@ import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 
 export const metadata: Metadata = {
-  title: "Dayong Temporary System",
-  description: "Dayong Providers temporary operations system",
+  title: "Dayong Monitoring System",
+  description: "Dayong Providers operations monitoring system",
 };
 
 export default function RootLayout({

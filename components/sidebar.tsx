@@ -27,6 +27,7 @@ import {
   useEffect, 
   useState 
 } from "react";
+import { BrandLogo } from "@/components/brand-logo";
 
 const navigation = [
   {
@@ -230,13 +231,25 @@ export function Sidebar() {
         }`}
       >
         {/* Logo */}
-        <div className="flex h-16 items-center justify-between border-b px-5">
-          <div>
-            <div className="text-lg font-bold tracking-tight">DAYONG</div>
-            <div className="text-xs text-muted-foreground">
-              Monitoring System
+        <div className="flex h-16 items-center justify-between border-b px-4">
+          <Link
+            href="/"
+            className="flex min-w-0 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Dayong Monitoring System home"
+          >
+            <BrandLogo
+              className="size-11 shrink-0 rounded-full object-contain drop-shadow-sm"
+              priority
+            />
+
+            <div className="min-w-0 leading-tight">
+              <div className="text-lg font-bold tracking-tight">DAYONG</div>
+              <div className="truncate text-xs text-muted-foreground">
+                Monitoring System
+              </div>
             </div>
-          </div>
+          </Link>
 
           <button
             onClick={() => setMobileOpen(false)}
