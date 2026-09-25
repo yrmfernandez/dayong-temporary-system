@@ -28,12 +28,14 @@ import {
 } from "@/components/ui/select";
 
 import type { Member } from "@/lib/types";
+import { calculateRemittance, type IncentiveTier } from "@/lib/remittance";
 
 type ProgramOption = {
   id: string;
   code: string;
   name: string;
   basePay: number;
+  incentiveTiers?: IncentiveTier[];
 };
 
 type CollectionHistory = {
@@ -72,6 +74,10 @@ type CollectionEntry = {
   originalMasOfficerName: string;
 
   status: string;
+  accountStatus: string;
+  temporarilySuspended: boolean;
+  collectedByRole: string;
+  accountLoading: boolean;
 
   isExpanded: boolean;
 };
@@ -102,6 +108,7 @@ function createEmptyCollection(id: string): CollectionEntry {
     originalMasOfficerName: "",
 
     status: "Active",
+    accountStatus: "", temporarilySuspended: false, collectedByRole: "MAS", accountLoading: false,
 
     isExpanded: true,
   };
@@ -209,7 +216,8 @@ export default function CollectionsPage() {
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [branches, setBranches] = useState<Array<{ id: string; name: string; status: string }>>([]);
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string }>>([]);
-  const [collectionHistory, setCollectionHistory] = useState<CollectionHistory[]>([]);
+  const [histories, setHistories] = useState<Record<string, CollectionHistory[]>>({});
+  const selectionVersions = useRef<Record<string, number>>({});
 
   const [showMoreDetails, setShowMoreDetails] = useState(false);
 
@@ -254,7 +262,8 @@ export default function CollectionsPage() {
       behavior: "smooth",
       block: "start",
     });
-    setScrollTargetId("");
+    const frame = requestAnimationFrame(() => setScrollTargetId(""));
+    return () => cancelAnimationFrame(frame);
   }, [collections, scrollTargetId]);
 
   const searchMembers = async (search: string) => {
@@ -309,13 +318,7 @@ export default function CollectionsPage() {
           program.id === activeCollection.programId,
       ) ?? null
     );
-  }, [activeCollection]);
-
-  const activePrograms = useMemo(() => {
-    if (!activeMember) return [];
-
-    return programs;
-  }, [activeMember, programs]);
+  }, [activeCollection, programs]);
 
   const matchingMembers = useMemo(() => {
     if (!activeCollection) return [];
@@ -340,31 +343,36 @@ export default function CollectionsPage() {
         phNumber.includes(search)
       );
     });
-  }, [activeCollection]);
+  }, [activeCollection, members]);
 
   const history = useMemo(() => {
     if (!activeMember || !activeProgram) {
       return [];
     }
 
-    return collectionHistory.filter(
+    return (histories[activeCollectionId] ?? []).filter(
       (item) =>
         item.memberId === activeMember.id &&
         item.programId === activeProgram.id,
     );
-  }, [activeMember, activeProgram, collectionHistory]);
+  }, [activeMember, activeProgram, histories, activeCollectionId]);
 
   const lastHistory =
     history.length > 0
       ? history[history.length - 1]
       : null;
 
-  const totalCollected = collections.reduce(
-    (total, entry) =>
-      total +
-      (Number(entry.amountCollected) || 0),
-    0,
-  );
+  function quoteEntry(entry: CollectionEntry) {
+    try {
+      const selected = programs.find((p) => p.id === entry.programId);
+      const count = getMonthDifference(entry.monthFrom, entry.monthTo);
+      if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
+      return { ...calculateRemittance(selected.basePay, selected.incentiveTiers ?? [], entry.collectedByRole, entry.nopFrom, entry.nopTo), error: "" };
+    } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
+  }
+  const quotes = collections.map(quoteEntry);
+  const totalCollected = collections.reduce((sum, entry) => sum + Math.round(Number(entry.amountCollected || 0) * 100), 0) / 100;
+  const totalRemittance = quotes.every((q) => "remittance" in q) ? quotes.reduce((sum, q) => sum + Math.round(("remittance" in q ? q.remittance : 0) * 100), 0) / 100 : null;
 
   function updateCollection(
     id: string,
@@ -373,10 +381,12 @@ export default function CollectionsPage() {
     setCollections((current) =>
       current.map((entry) =>
         entry.id === id
-          ? {
-              ...entry,
-              ...updates,
-            }
+          ? (() => {
+              const next = { ...entry, ...updates };
+              const count = getMonthDifference(next.monthFrom, next.monthTo);
+              const rate = programs.find((p) => p.id === next.programId)?.basePay;
+              return { ...next, amountCollected: rate && count > 0 ? (Math.round(rate * 100) * count / 100).toFixed(2) : "" };
+            })()
           : entry,
       ),
     );
@@ -392,7 +402,9 @@ export default function CollectionsPage() {
 
     if (!member) return;
 
+    selectionVersions.current[entryId] = (selectionVersions.current[entryId] ?? 0) + 1;
     updateCollection(entryId, {
+      accountStatus: "", temporarilySuspended: false, accountLoading: false,
       memberId: member.id,
       memberSearch: getMemberFullName(member),
       programId: "",
@@ -413,29 +425,24 @@ export default function CollectionsPage() {
 
     if (!entry || !entry.memberId) return;
 
-    const response = await fetch(
-      `/api/collections?memberId=${encodeURIComponent(entry.memberId)}&programId=${encodeURIComponent(programId)}`,
-      { cache: "no-store" },
-    );
-    const result = await response.json();
-    const memberHistory: CollectionHistory[] =
-      response.ok && result.success ? result.history ?? [] : [];
-    setCollectionHistory(memberHistory);
-
-    const latestHistory =
-      memberHistory.length > 0
-        ? memberHistory[memberHistory.length - 1]
-        : null;
-
-    const nextNop = latestHistory
-      ? latestHistory.nop + 1
-      : 1;
-
-    updateCollection(entryId, {
-      programId,
-      nopFrom: nextNop,
-      nopTo: nextNop,
-    });
+    const version = (selectionVersions.current[entryId] ?? 0) + 1;
+    selectionVersions.current[entryId] = version;
+    updateCollection(entryId, { programId, accountStatus: "", accountLoading: true, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
+    setHistories((current) => ({ ...current, [entryId]: [] }));
+    try {
+      const response = await fetch(`/api/collections?memberId=${encodeURIComponent(entry.memberId)}&programId=${encodeURIComponent(programId)}`, { cache: "no-store" });
+      const result = await response.json();
+      if (selectionVersions.current[entryId] !== version) return;
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to load account.");
+      const account = result.account;
+      setHistories((current) => ({ ...current, [entryId]: result.history ?? [] }));
+      updateCollection(entryId, { accountStatus: account.status, temporarilySuspended: account.temporarilySuspended, accountLoading: false,
+        amountCollected: String(account.monthlyAmount), monthFrom: account.nextMonth, monthTo: account.nextMonth, nopFrom: account.nextNop, nopTo: account.nextNop });
+    } catch (error) {
+      if (selectionVersions.current[entryId] !== version) return;
+      updateCollection(entryId, { accountLoading: false, accountStatus: "" });
+      setSaveMessage(error instanceof Error ? error.message : "Unable to load account.");
+    }
   }
 
   function updateMonthFrom(
@@ -448,24 +455,7 @@ export default function CollectionsPage() {
 
     if (!entry) return;
 
-    let nopFrom = entry.nopFrom;
-
-    if (
-      entry.programId &&
-      entry.memberId &&
-      nopFrom === null
-    ) {
-      const memberHistory: CollectionHistory[] = [];
-
-      const latestHistory =
-        memberHistory.length > 0
-          ? memberHistory[memberHistory.length - 1]
-          : null;
-
-      nopFrom = latestHistory
-        ? latestHistory.nop + 1
-        : 1;
-    }
+    const nopFrom = entry.nopFrom;
 
     const monthCount = getMonthDifference(
       value,
@@ -474,6 +464,7 @@ export default function CollectionsPage() {
 
     updateCollection(entryId, {
       monthFrom: value,
+      amountCollected: monthCount > 0 ? String(monthCount * (programs.find((p) => p.id === entry.programId)?.basePay ?? 0)) : "",
       nopFrom,
       nopTo:
         nopFrom !== null && monthCount > 0
@@ -499,6 +490,7 @@ export default function CollectionsPage() {
 
     updateCollection(entryId, {
       monthTo: value,
+      amountCollected: monthCount > 0 ? String(monthCount * (programs.find((p) => p.id === entry.programId)?.basePay ?? 0)) : "",
       nopTo:
         entry.nopFrom !== null && monthCount > 0
           ? entry.nopFrom + monthCount - 1
@@ -509,12 +501,20 @@ export default function CollectionsPage() {
   function validateEntry(
     entry: CollectionEntry,
   ) {
+    const quote = quoteEntry(entry);
+    if (quote.error) return quote.error;
+    if (entry.accountLoading || !entry.accountStatus) return "Load the program account before saving.";
+    if (entry.accountStatus === "Forfeited") return "This program account is forfeited. Payments are blocked.";
+    if (entry.temporarilySuspended && entry.ifSuspended !== "Waiver") return "Select Waiver under If Suspended.";
+    const rate = programs.find((p) => p.id === entry.programId)?.basePay ?? 0;
+    const months = getMonthDifference(entry.monthFrom, entry.monthTo);
+    if (months < 1 || Math.abs(Number(entry.amountCollected) * 100 - Math.round(rate * 100) * months) > 0.0001) return "Amount must match full monthly installments for the covered months.";
     if (!branch) return "Branch is required.";
 
     if (!mas) return "MAS is required.";
 
     if (!dateRemitted) {
-      return "Date Remitted is required.";
+      return "Collection Date is required.";
     }
 
     if (!entry.memberId) {
@@ -556,10 +556,10 @@ export default function CollectionsPage() {
     }
 
     if (
-      entry.reactivation === "Yes" &&
+      entry.collectedByRole === "Collector" &&
       !entry.originalMasOfficerName.trim()
     ) {
-      return "Original MAS / Officer Name is required for reactivation.";
+      return "Original MAS / Officer Name is required for Collector transactions.";
     }
 
     return null;
@@ -636,7 +636,7 @@ export default function CollectionsPage() {
     setSaveMessage("");
   }
 
-  async function saveRemittance() {
+  async function saveCollections() {
     setSaveMessage("");
 
     if (!branch) {
@@ -651,7 +651,7 @@ export default function CollectionsPage() {
 
     if (!dateRemitted) {
       setSaveMessage(
-        "Please enter the actual Date Remitted.",
+        "Please enter the Collection Date.",
       );
       return;
     }
@@ -691,6 +691,7 @@ export default function CollectionsPage() {
         body: JSON.stringify({
           branch,
           mas,
+          accountableEmployeeId: masStaff.find((staff) => staff.fullName === mas)?.employeeId ?? "",
           dateRemitted,
           collections: collections.map((entry) => ({
             ...entry,
@@ -740,16 +741,15 @@ export default function CollectionsPage() {
         </h1>
 
         <p className="text-sm text-muted-foreground">
-          Encode existing member collections and
-          remittances.
+          Record member payments and assign cash accountability.
         </p>
       </div>
 
-      {/* REMITTANCE HEADER */}
+      {/* COLLECTION BATCH HEADER */}
       <Card>
         <CardHeader>
           <CardTitle>
-            Remittance Information
+            Collection Batch
           </CardTitle>
         </CardHeader>
 
@@ -782,14 +782,14 @@ export default function CollectionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>MAS *</Label>
+              <Label>Accountable Collector / MAS *</Label>
 
               <Select
                 value={mas}
                 onValueChange={(value) => setMas(value ?? "")}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select MAS" />
+                  <SelectValue placeholder="Select accountable person" />
                 </SelectTrigger>
                 <SelectContent>
                   {masStaff.map((staff) => (
@@ -802,7 +802,7 @@ export default function CollectionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Date Remitted *</Label>
+              <Label>Collection Date *</Label>
 
               <Input
                 type="date"
@@ -815,8 +815,8 @@ export default function CollectionsPage() {
               />
 
               <p className="text-xs text-muted-foreground">
-                Manually enter the actual remittance
-                date. This date is shared by all
+                Enter the date these payments were collected.
+                This date is shared by all
                 collections in this batch.
               </p>
             </div>
@@ -837,7 +837,7 @@ export default function CollectionsPage() {
 
                 <p className="mt-1 text-sm text-muted-foreground">
                   Add multiple collections under the
-                  same MAS and remittance date.
+                  same accountable person and collection date.
                 </p>
               </div>
 
@@ -1308,6 +1308,18 @@ export default function CollectionsPage() {
                             </div>
                           </div>
 
+                          <div className="rounded border p-3 text-sm">
+                            Account status: <strong>{entry.accountLoading ? "Loading..." : entry.accountStatus || "Select a program"}</strong>
+                            {entry.temporarilySuspended && <p className="text-amber-700">Temporarily suspended. Select Waiver under If Suspended.</p>}
+                            {entry.accountStatus === "Forfeited" && <p className="text-red-600">Payments are blocked for this program.</p>}
+                            <label className="mt-2 block">Collected by
+                              <select className="ml-2 rounded border p-2" value={entry.collectedByRole} onChange={(e) => updateCollection(entry.id, { collectedByRole: e.target.value })}>
+                                <option value="MAS">MAS</option><option value="Collector">Collector</option>
+                              </select>
+                            </label>
+                            {entry.collectedByRole === "Collector" && <label className="mt-2 block">Original MAS / Officer Name *<Input value={entry.originalMasOfficerName} onChange={(e) => updateCollection(entry.id, { originalMasOfficerName: e.target.value })}/></label>}
+                            {entry.temporarilySuspended && <label className="mt-2 block">If Suspended *<select className="ml-2 rounded border p-2" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
+                          </div>
                           {/* NOP */}
                           <div className="space-y-3">
                             <div>
@@ -1316,11 +1328,7 @@ export default function CollectionsPage() {
                               </Label>
 
                               <p className="text-xs text-muted-foreground">
-                                NOP is automatically
-                                calculated from the
-                                member's previous
-                                collection history and
-                                payment period.
+                                NS accounts may edit the NOP range. Other accounts use the next NOP from their payment history.
                               </p>
                             </div>
 
@@ -1336,17 +1344,17 @@ export default function CollectionsPage() {
                                     entry.nopFrom ??
                                     ""
                                   }
-                                  readOnly={history.length > 0}
+                                  readOnly={entry.accountStatus !== "NS"}
                                   tabIndex={
-                                    history.length > 0 ? -1 : undefined
+                                    entry.accountStatus !== "NS" ? -1 : undefined
                                   }
                                   className={
-                                    history.length > 0
+                                    entry.accountStatus !== "NS"
                                       ? "bg-muted/50"
                                       : undefined
                                   }
                                   placeholder={
-                                    history.length > 0 ? "Auto" : "Enter NOP"
+                                    entry.accountStatus !== "NS" ? "Auto" : "Enter NOP"
                                   }
                                   onChange={(event) =>
                                     updateCollection(entry.id, {
@@ -1370,17 +1378,17 @@ export default function CollectionsPage() {
                                     entry.nopTo ??
                                     ""
                                   }
-                                  readOnly={history.length > 0}
+                                  readOnly={entry.accountStatus !== "NS"}
                                   tabIndex={
-                                    history.length > 0 ? -1 : undefined
+                                    entry.accountStatus !== "NS" ? -1 : undefined
                                   }
                                   className={
-                                    history.length > 0
+                                    entry.accountStatus !== "NS"
                                       ? "bg-muted/50"
                                       : undefined
                                   }
                                   placeholder={
-                                    history.length > 0 ? "Auto" : "Enter NOP"
+                                    entry.accountStatus !== "NS" ? "Auto" : "Enter NOP"
                                   }
                                   onChange={(event) =>
                                     updateCollection(entry.id, {
@@ -1397,40 +1405,14 @@ export default function CollectionsPage() {
 
                           {/* AMOUNT */}
                           <div className="space-y-2">
-                            <Label>
-                              Amount Collected *
-                            </Label>
-
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              inputMode="decimal"
-                              value={
-                                entry.amountCollected
-                              }
-                              onChange={(event) =>
-                                updateCollection(
-                                  entry.id,
-                                  {
-                                    amountCollected:
-                                      event.target
-                                        .value,
-                                  },
-                                )
-                              }
-                              onWheel={(event) => {
-                                event.currentTarget.blur();
-                              }}
-                              placeholder="0.00"
-                            />
-
-                            <p className="text-xs text-muted-foreground">
-                              Mouse-wheel scrolling is
-                              disabled for this field
-                              to prevent accidental
-                              amount changes.
-                            </p>
+                            <Label>Amount Collected</Label>
+                            <Input type="number" value={entry.amountCollected} readOnly className="bg-muted/50" placeholder="0.00" />
+                            <p className="text-xs text-muted-foreground">Automatically calculated: covered months multiplied by the program monthly amount.</p>
+                            <div className="rounded border p-3 text-sm">
+                              <strong>Incentive reference: {(() => { const quote = quoteEntry(entry); return "remittance" in quote ? formatCurrency(quote.remittance) : "Pending"; })()}</strong>
+                              {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
+                              <p className="text-xs text-muted-foreground">Calculated per NOP using the selected MAS or Collector incentive tier and mark up.</p>
+                            </div>
                           </div>
 
                           {/* OR DETAILS */}
@@ -1494,17 +1476,16 @@ export default function CollectionsPage() {
                             </div>
                           </div>
 
-                          {/* DATE REMITTED DISPLAY */}
+                          {/* COLLECTION DATE DISPLAY */}
                           <div className="rounded-lg border bg-muted/30 p-4">
                             <div className="flex items-center justify-between gap-3">
                               <div>
                                 <p className="text-sm font-medium">
-                                  Date Remitted
+                                  Collection Date
                                 </p>
 
                                 <p className="text-xs text-muted-foreground">
-                                  Controlled by the
-                                  remittance header.
+                                  Shared by this collection batch.
                                 </p>
                               </div>
 
@@ -1666,7 +1647,7 @@ export default function CollectionsPage() {
                                 <div className="space-y-2">
                                   <Label>
                                     Original MAS /
-                                    Officer's Name
+                                    Officer&apos;s Name
                                   </Label>
 
                                   <Input
@@ -1690,51 +1671,7 @@ export default function CollectionsPage() {
                                   />
                                 </div>
 
-                                <div className="space-y-2">
-                                  <Label>
-                                    Status
-                                  </Label>
 
-                                  <Select
-                                    value={
-                                      entry.status
-                                    }
-                                    onValueChange={(
-                                      value,
-                                    ) =>
-                                      updateCollection(
-                                        entry.id,
-                                        {
-                                          status:
-                                            value ??
-                                            "Active",
-                                        },
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger className="w-full">
-                                      <SelectValue />
-                                    </SelectTrigger>
-
-                                    <SelectContent>
-                                      <SelectItem value="Active">
-                                        Active
-                                      </SelectItem>
-
-                                      <SelectItem value="Inactive">
-                                        Inactive
-                                      </SelectItem>
-
-                                      <SelectItem value="DTO">
-                                        DTO
-                                      </SelectItem>
-
-                                      <SelectItem value="Collector">
-                                        Collector
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
                               </div>
                             )}
                           </div>
@@ -1771,6 +1708,11 @@ export default function CollectionsPage() {
                 </div>
               </div>
 
+              <div className="flex items-center justify-between rounded-xl border bg-primary/5 p-4">
+                <span className="text-sm font-medium">Incentive calculation reference</span>
+                <strong>{totalRemittance === null ? "Complete payment and incentive details" : formatCurrency(totalRemittance)}</strong>
+              </div>
+
               {/* SAVE / RESET */}
               <div className="space-y-3 border-t pt-4">
                 {saveMessage && (
@@ -1783,14 +1725,14 @@ export default function CollectionsPage() {
                   <Button
                     type="button"
                     className="flex-1"
-                    onClick={saveRemittance}
+                    onClick={saveCollections}
                     disabled={saving}
                   >
                     <Save className="mr-2 size-4" />
 
                     {saving
                       ? "Saving..."
-                      : "Save Remittance"}
+                      : "Save Collections"}
                   </Button>
 
                   <Button
@@ -2028,7 +1970,7 @@ export default function CollectionsPage() {
 
                                 <div>
                                   <p className="text-xs text-muted-foreground">
-                                    Date Remitted
+                                    Collection Date
                                   </p>
 
                                   <p className="text-sm font-medium">

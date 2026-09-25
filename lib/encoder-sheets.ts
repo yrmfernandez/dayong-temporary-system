@@ -14,6 +14,10 @@ async function verifyTrackingHeaders(range: string) {
   if (expected.some((header, index) => actual[index] !== header)) {
     throw new Error(`Encoder headers are missing or changed in ${schema.title}. Run the encoder tracking migration before saving.`);
   }
+  if (schema.title === "Member programs") {
+    const statusHeader = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Member programs'!S1" });
+    if (statusHeader.data.values?.[0]?.[0] !== "Account Status") throw new Error("Member programs Account Status header is missing.");
+  }
   return schema;
 }
 
@@ -24,12 +28,12 @@ export async function appendEncodedRows(params: sheets_v4.Params$Resource$Spread
     if (row.length !== schema.columns) {
       throw new Error(`Unexpected business column count for ${schema.title}.`);
     }
-    return [...row, ...identity];
+    return [...row, ...identity, ...(schema.title === "Member programs" ? ["NS"] : [])];
   });
   return sheets.spreadsheets.values.append({
     ...params,
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${quotedSheet(schema.title)}!A:${columnName(schema.columns + 4)}`,
+    range: `${quotedSheet(schema.title)}!A:${columnName(schema.columns + 4 + (schema.title === "Member programs" ? 1 : 0))}`,
     valueInputOption: "USER_ENTERED",
     requestBody: { ...params.requestBody, values },
   });

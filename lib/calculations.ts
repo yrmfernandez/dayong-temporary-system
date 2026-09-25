@@ -1,4 +1,4 @@
-import type { Collection, ProgramEnrollment } from "./types";
+import type { Collection, Program } from "./types";
 
 export type CollectionStatus =
   | "U"
@@ -73,13 +73,13 @@ export function getNextNOP(
 }
 
 export function getProgramBasePay(
-  program: ProgramEnrollment,
+  program: Pick<Program, "basePay">,
 ): number {
-  return program.amountPaid;
+  return program.basePay;
 }
 
 export function calculateCollectionTMD(
-  program: ProgramEnrollment,
+  program: Pick<Program, "basePay">,
   nop: number,
 ): number {
   const basePay = getProgramBasePay(program);

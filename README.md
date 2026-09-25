@@ -1,3 +1,7 @@
+# Dayong System
+
+See [project context](docs/project-context.md) for the core business rules, evolving requirements, and implementation notes, and the [full supplied specification](docs/dayong-system-specification.md) for the detailed reference.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

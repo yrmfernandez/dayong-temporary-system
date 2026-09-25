@@ -1,3 +1,4 @@
+import { getEmployees } from "@/lib/employees";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
 import { encoderHeaders } from "@/lib/encoder-schema";
@@ -753,14 +754,11 @@ export type CreateProgramData = {
 ========================================================= */
 
 export async function getPrograms() {
-  const response =
-    await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${PROGRAMS_SHEET}!A:F`,
-    });
-
-  const rows = response.data.values ?? [];
-
+  const response = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    ranges: [`${PROGRAMS_SHEET}!A:F`, `${PROGRAM_INCENTIVES_SHEET}!A:H`],
+  });
+  const rows = response.data.valueRanges?.[0]?.values ?? [];
   if (rows.length <= 1) {
     return [];
   }
@@ -794,7 +792,7 @@ export async function getPrograms() {
     }));
 
   const incentives =
-    await getProgramIncentives();
+    await getProgramIncentives(undefined, response.data.valueRanges?.[1]?.values ?? []);
 
   return programs.map((program) => ({
     ...program,
@@ -1031,6 +1029,7 @@ export async function createProgram(
 
 export async function getProgramIncentives(
   programId?: string,
+  preloadedRows?: unknown[][],
 ) {
   /*
    * Program Incentives now uses
@@ -1045,14 +1044,10 @@ export async function getProgramIncentives(
    * G Mark Up
    * H Incentive Amount
    */
-  const response =
-    await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${PROGRAM_INCENTIVES_SHEET}!A:H`,
-    });
-
-  const rows =
-    response.data.values ?? [];
+  const rows = preloadedRows ?? (await sheets.spreadsheets.values.get({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${PROGRAM_INCENTIVES_SHEET}!A:H`,
+  })).data.values ?? [];
 
   if (rows.length <= 1) {
     return [];
@@ -1668,12 +1663,17 @@ export async function getActiveMasStaff(): Promise<MasStaff[]> {
       masRoleIds.has(String(row[1] ?? "").trim()),
     ).map((row) => String(row[0] ?? "").trim()),
   );
-  return (usersResponse.data.values ?? []).slice(1).filter((row) =>
+  const legacy = (usersResponse.data.values ?? []).slice(1).filter((row) =>
     masUserIds.has(String(row[0] ?? "").trim()) &&
     String(row[5] ?? "").trim().toLowerCase() === "active",
   ).map((row) => ({ employeeId: String(row[1] ?? "").trim(), fullName: String(row[3] ?? "").trim() }))
     .filter((staff) => staff.employeeId !== "")
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
+  const employees = await getEmployees();
+  const registered = employees.filter((e) => e.status.toLowerCase() === "active" && e.roles.some((role) => ["MAS", "Collector"].includes(role))).map((e) => ({ employeeId: e.id, fullName: e.name }));
+  const reviewed = new Set(employees.filter((e) => e.status || e.roles.length).map((e) => e.id));
+  return [...new Map([...legacy.filter((e) => !reviewed.has(e.employeeId)), ...registered].map((e) => [e.employeeId, e])).values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
+
 }
 
 export type CollectionSheetData = {
@@ -1799,7 +1799,7 @@ export async function getActiveAttendanceEmployees(): Promise<
       range: "Users!A:G",
     });
 
-  return (response.data.values ?? [])
+  const legacy = (response.data.values ?? [])
     .slice(1)
     .filter((row) =>
       String(row[5] ?? "")
@@ -1814,4 +1814,9 @@ export async function getActiveAttendanceEmployees(): Promise<
     .sort((first, second) =>
       first.fullName.localeCompare(second.fullName),
     );
+  const employees = await getEmployees();
+  const reviewed = new Set(employees.filter((e) => e.status).map((e) => e.id));
+  const registered = employees.filter((e) => e.status.toLowerCase() === "active").map((e) => ({ employeeId: e.id, fullName: e.name }));
+  return [...new Map([...legacy.filter((e) => !reviewed.has(e.employeeId)), ...registered].map((e) => [e.employeeId, e])).values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
+
 }

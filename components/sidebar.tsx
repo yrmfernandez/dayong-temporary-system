@@ -225,7 +225,7 @@ export function Sidebar() {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-background transition-transform duration-200 md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-white/85 shadow-[4px_0_24px_-12px_rgb(45_28_89_/_0.18)] backdrop-blur-xl transition-transform duration-200 md:static md:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -280,7 +280,8 @@ export function Sidebar() {
                     const isActive =
                       item.href === "/"
                         ? pathname === "/"
-                        : pathname.startsWith(item.href);
+                        : pathname === item.href ||
+                          pathname.startsWith(`${item.href}/`);
 
                     return (
                       <Link

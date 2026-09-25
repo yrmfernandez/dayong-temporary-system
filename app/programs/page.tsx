@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import {
+ChevronDown,
+ChevronUp,
 Pencil,
 Plus,
 Trash2,
@@ -289,13 +291,21 @@ createEmptyForm(),
 const [editingId, setEditingId] =
 useState<string | null>(null);
 
+const [loadError, setLoadError] = useState("");
 const [loading, setLoading] =
 useState(true);
 
 const [saving, setSaving] =
 useState(false);
 
+const [showForm, setShowForm] =
+useState(false);
+
+const [expandedPrograms, setExpandedPrograms] =
+useState<Record<string, boolean>>({});
+
 async function loadPrograms() {
+setLoadError("");
 try {
 setLoading(true);
 
@@ -349,14 +359,8 @@ setLoading(true);
       }),
     ),
   );
-} catch (error) {
-  console.error(error);
-
-  alert(
-    error instanceof Error
-      ? error.message
-      : "Failed to load programs.",
-  );
+ } catch (error) {
+  setLoadError(error instanceof Error ? error.message : "Failed to load programs.");
 } finally {
   setLoading(false);
 }
@@ -364,12 +368,27 @@ setLoading(true);
 }
 
 useEffect(() => {
+// Loading begins after the component is mounted and synchronizes with the API.
+// eslint-disable-next-line react-hooks/set-state-in-effect
 loadPrograms();
 }, []);
 
 function resetForm() {
 setForm(createEmptyForm());
 setEditingId(null);
+setShowForm(false);
+}
+
+function startAddingProgram() {
+resetForm();
+setShowForm(true);
+}
+
+function toggleProgram(programId: string) {
+setExpandedPrograms((current) => ({
+  ...current,
+  [programId]: !current[programId],
+}));
 }
 
 function updateForm(
@@ -847,6 +866,7 @@ function editProgram(
 program: Program,
 ) {
 setEditingId(program.id);
+setShowForm(true);
 
 const existingTiers =
   Array.isArray(
@@ -1425,7 +1445,7 @@ return (
 
         <p className="text-xs text-muted-foreground">
           Enter once. Applied to the
-          tier's remittance.
+          tier&apos;s remittance.
         </p>
       </div>
     </div>
@@ -1732,8 +1752,12 @@ return (
 }
 
 return ( <div className="mx-auto max-w-7xl space-y-6">
-{/* PAGE HEADER */} <div> <h1 className="text-2xl font-bold tracking-tight">
-Programs </h1>
+{loadError && <div role="alert" className="rounded-md border border-destructive p-3 text-sm">{loadError}<Button variant="outline" disabled={loading} onClick={() => void loadPrograms()} className="ml-3">Retry</Button></div>}
+{/* PAGE HEADER */} <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <div>
+    <h1 className="text-2xl font-bold tracking-tight">
+      Programs
+    </h1>
 
     <p className="text-sm text-muted-foreground">
       Manage Dayong programs, base
@@ -1743,7 +1767,14 @@ Programs </h1>
     </p>
   </div>
 
+  <Button type="button" onClick={startAddingProgram}>
+    <Plus className="mr-2 size-4" />
+    Add Program
+  </Button>
+</div>
+
   {/* PROGRAM FORM */}
+  {showForm && (
   <Card>
     <CardHeader>
       <CardTitle>
@@ -1963,6 +1994,7 @@ Programs </h1>
       </div>
     </CardContent>
   </Card>
+  )}
 
   {/* PROGRAM LIST */}
   <Card>
@@ -2054,16 +2086,29 @@ Programs </h1>
                           )}
                         </p>
 
-                        {program.description && (
-                          <p className="text-sm">
-                            {
-                              program.description
-                            }
-                          </p>
-                        )}
                       </div>
 
                       <div className="flex shrink-0 gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          aria-expanded={
+                            expandedPrograms[program.id] ?? false
+                          }
+                          onClick={() =>
+                            toggleProgram(program.id)
+                          }
+                        >
+                          {expandedPrograms[program.id] ? (
+                            <ChevronUp className="mr-2 size-4" />
+                          ) : (
+                            <ChevronDown className="mr-2 size-4" />
+                          )}
+                          {expandedPrograms[program.id]
+                            ? "Collapse"
+                            : "Expand"}
+                        </Button>
+
                         <Button
                           type="button"
                           variant="outline"
@@ -2092,10 +2137,18 @@ Programs </h1>
                       </div>
                     </div>
 
-                    {/* INCENTIVE SUMMARY */}
-                    {periods.length >
-                    0 ? (
-                      <div className="space-y-3">
+                    {expandedPrograms[program.id] && (
+                      <>
+                        {program.description && (
+                          <p className="text-sm">
+                            {program.description}
+                          </p>
+                        )}
+
+                        {/* INCENTIVE SUMMARY */}
+                        {periods.length >
+                        0 ? (
+                          <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <p className="text-sm font-semibold">
                             Incentive Schedule
@@ -2280,11 +2333,13 @@ Programs </h1>
                             );
                           },
                         )}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        No incentive configured.
-                      </p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            No incentive configured.
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

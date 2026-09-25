@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "test:encoder": "node --test scripts/test-encoder-tracking.cjs",
-    "sheets:encoder": "node scripts/migrate-encoder-tracking.mjs"
+    "sheets:encoder": "node scripts/migrate-encoder-tracking.mjs",
+    "test:accounts": "node --test scripts/test-account-rules.mjs scripts/test-encoder-tracking.cjs scripts/test-remittance.mjs",
+    "sheets:accounts": "node scripts/migrate-account-status.mjs",
+    "sheets:remittances": "node scripts/migrate-remittance-workflow.mjs",
+    "sheets:audit": "node scripts/audit-sheet-database.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

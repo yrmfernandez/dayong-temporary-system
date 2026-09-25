@@ -12,8 +12,17 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', username: '=e
   const writes = [];
   const rows = {};
   let missingHeaders = false;
-  const sheets = { spreadsheets: { values: {
+  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales'];
+  const sheets = { spreadsheets: {
+    get: async () => ({ data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId } })) } }),
+    batchUpdate: async (params) => { writes.push(params); return { data: {} }; },
+    values: {
+    batchGet: async ({ ranges }) => ({ data: { valueRanges: ranges.map((range) => {
+      const title = range.split('!')[0].replace(/^'|'$/g, '');
+      return { values: rows[range] ?? rows[title] ?? [[]] };
+    }) } }),
     get: async ({ range }) => {
+      if (range === "'Member programs'!S1") return { data: { values: [['Account Status']] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
       return { data: { values: /1:.*1$/.test(range)
         ? [missingHeaders ? [] : load('lib/encoder-schema.ts').trackingHeaders(schema.title)]
@@ -38,6 +47,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', username: '=e
       if (name === '@/lib/google-sheets') return { sheets, GOOGLE_SHEET_ID: 'test' };
       if (name === 'next/server') return { NextResponse: Response };
       if (name.startsWith('@/')) return load(name.slice(2) + '.ts');
+      if (name.startsWith('./')) return load(path.posix.join(path.posix.dirname(file), name) + '.ts');
       return require(name);
     };
     new Function('require', 'module', 'exports', source)(localRequire, loadedModule, loadedModule.exports);
@@ -50,9 +60,67 @@ function request(body = {}) {
   return new Request('http://localhost/api/test', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
 }
 
+test('employee registration is independent of login and records its encoder', async () => {
+  const h = harness(null);
+  const route = h.load('app/api/employees/route.ts');
+  assert.equal((await route.GET()).status, 401);
+  assert.equal((await route.POST(request({}))).status, 401);
+  h.setUser({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: {} });
+  assert.equal((await route.POST(request({}))).status, 403);
+  h.setUser({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
+  h.rows.Employees = [[], ['DPE-0002', 'Ana', 'North', 'MAS', 'active']];
+  h.rows.Users = [[], ['U1', 'DPE-0005']];
+  const response = await route.POST(request({ name: '=Staff', branch: 'South', role: 'Collector', dateHired: '2026-09-25', encodedBy: 'spoof' }));
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).employee.id, 'DPE-0006');
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.writes[0].range, "'Employees'!A:M");
+  const row = h.writes[0].requestBody.values[0];
+  assert.equal(row[1], "'=Staff");
+  assert.equal(row[9], "'U1");
+  assert.equal((await route.POST(request({ name: 'Bad', branch: 'N', role: 'Invented' }))).status, 400);
+  const data = await (await route.GET()).json();
+  assert.equal(data.employees[0].name, 'Ana');
+  assert.equal('passwordHash' in data.employees[0], false);
+});
+
+test('member directory requires login, joins accounts once, and filters the same enrollment', async () => {
+  const h = harness(null);
+  const route = h.load('app/api/members/directory/route.ts');
+  assert.equal((await route.GET()).status, 401);
+  h.setUser({ userId: 'U1' });
+  const member = ['M1', 'PH-001', 'Santos', 'Ana'];
+  member[12] = '12'; member[16] = 'City'; member[17] = 'Province'; member[21] = 'TRUE'; member[29] = 'Active';
+  h.rows.Members = [[], member, ['M2', 'PH-002', 'Cruz', 'Ben']];
+  h.rows['Member programs'] = [[], ['E1', 'M1', 'PH-001', 'P1', '2026-01-01', 'North', 'MAS1'], ['E2', 'M1', 'PH-001', 'P2', '2026-02-01', 'South', 'MAS2']];
+  h.rows.Programs = [[], ['P1', 'A', 'Program A'], ['P2', 'B', 'Program B']];
+  const response = await route.GET();
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+  const { members } = await response.json();
+  assert.equal(members.length, 2);
+  const ana = members.find((m) => m.id === 'M1');
+  assert.equal(ana.enrollments.length, 2);
+  assert.equal(ana.claimantAddress, ana.address);
+  const { filterMemberDirectory, emptyDirectoryFilters, buildMemberDirectory } = h.load('lib/member-directory.ts');
+  const filter = (values) => filterMemberDirectory(members, { ...emptyDirectoryFilters, ...values });
+  assert.equal(filter({ branch: 'North', program: 'P2' }).length, 0);
+  assert.equal(filter({ branch: 'South', mas: 'MAS2', program: 'P2' }).length, 1);
+  ana.enrollments[0].accountStatus = 'U';
+  ana.enrollments[1].accountStatus = '60D';
+  ana.enrollments[1].temporarilySuspended = true;
+  assert.equal(filter({ program: 'P1', accountStatus: '60D' }).length, 0);
+  assert.equal(filter({ program: 'P2', accountStatus: '60D' }).length, 1);
+  assert.equal(filter({ accountStatus: 'Suspended' }).length, 1);
+  assert.equal(filter({ search: 'ana santos' }).length, 1);
+  assert.equal(filter({ search: 'PH-002' })[0].enrollments.length, 0);
+  assert.equal(filter({ status: 'Active', city: 'City', province: 'Province' }).length, 1);
+  assert.throws(() => buildMemberDirectory([member, member], [], []), /Duplicate member ID/);
+  assert.equal(h.writes.length, 0);
+});
+
 test('all mutation routes reject unauthenticated requests before writing', async () => {
   const h = harness(null);
-  for (const route of ['sales', 'collections', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals']) {
+  for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals']) {
     assert.equal((await h.load(`app/api/${route}/route.ts`).POST(request())).status, 401, route);
   }
   assert.equal(h.writes.length, 0);
@@ -69,7 +137,7 @@ for (const existingMember of [false, true]) {
     }));
     assert.equal(response.status, 200, JSON.stringify(await response.json()));
     assert.equal(h.writes.length, existingMember ? 2 : 3);
-    const audit = h.writes.map((write) => write.requestBody.values[0].slice(-4));
+    const audit = h.writes.map((write) => write.requestBody.values[0].slice(write.range.startsWith("\'Member programs\'") ? -5 : -4, write.range.startsWith("\'Member programs\'") ? -1 : undefined));
     for (const values of audit) {
       assert.deepEqual(values.slice(0, 3), ["'USR-1", "'DPE-0001", "'=encoder"]);
       assert.equal(values[3], audit[0][3]);
@@ -79,17 +147,86 @@ for (const existingMember of [false, true]) {
   });
 }
 
-test('collection batch and remittance share the verified encoder and timestamp', async () => {
+test('collection batch is encoded atomically without creating a remittance', async () => {
   const h = harness();
+  const today = h.load('lib/account-rules.ts').todayInManila();
+  const month = today.slice(0, 7);
+  const next = h.load('lib/account-rules.ts').monthName(h.load('lib/account-rules.ts').monthIndex(month) + 1);
   h.rows.Members = [[], ['MEM-1', 'PH-1']];
-  h.rows['Member programs'] = [[], ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', '', 'BR-1', 'MAS-2']];
-  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: '2026-09', monthTo: '2026-09', amountCollected: 100, nopFrom: 1, nopTo: 1, orNumber: 'OR-1', orDate: '2026-09-25' };
-  const response = await h.load('app/api/collections/route.ts').POST(request({ branch: 'BR-1', mas: 'MAS-2', dateRemitted: '2026-09-25', collections: [entry, { ...entry, orNumber: 'OR-2' }] }));
-  assert.equal(response.status, 201, JSON.stringify(await response.json()));
-  assert.equal(h.writes.length, 2);
-  const rows = h.writes.flatMap((write) => write.requestBody.values);
-  assert.equal(rows.length, 3);
-  rows.forEach((row) => assert.deepEqual(row.slice(-4), rows[0].slice(-4)));
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  const header = Array(19).fill(''); header[18] = 'Account Status';
+  h.rows['Member programs'] = [header, ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', month + '-01', 'BR-1', 'MAS-2']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350]];
+  const colHeader = Array(26).fill(''); colHeader[25] = 'Collected By Role'; colHeader[26] = 'Remittance Amount'; colHeader[27] = 'Remittance Breakdown';
+  h.rows.Collections = [colHeader];
+  const auditHeaders = h.load('lib/encoder-schema.ts').encoderHeaders;
+  auditHeaders.forEach((v, i) => { header[14 + i] = v; colHeader[21 + i] = v; });
+  const remHeader = Array(10).fill(''); auditHeaders.forEach((v, i) => { remHeader[6 + i] = v; });
+  remHeader[10] = 'Gross Collection'; remHeader[11] = 'Total Remittance';
+  h.rows.Remittances = [remHeader];
+  h.rows['Program Incentives'] = [[], ['I1', 'DP-1', 'MAS', 1, 999, 'percentage', 50, 50]];
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: month, monthTo: month, amountCollected: 350, nopFrom: 1, nopTo: 1, orNumber: 'OR-1', orDate: today, collectedByRole: 'MAS' };
+  const response = await h.load('app/api/collections/route.ts').POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collections: [entry, { ...entry, monthFrom: next, monthTo: next, nopFrom: 2, nopTo: 2, orNumber: 'OR-2' }] }));
+  const result = await response.json();
+  assert.equal(response.status, 201, JSON.stringify(result));
+  assert.equal(h.writes.length, 1);
+  const requests = h.writes[0].requestBody.requests;
+  assert.equal(requests.length, 2);
+  for (const row of requests[0].appendCells.rows) {
+    const values = row.values.map((v) => v.userEnteredValue.stringValue ?? v.userEnteredValue.numberValue);
+    assert.deepEqual(values.slice(21, 24), ['USR-1', 'DPE-0001', '=encoder']);
+    assert.equal(values[23], '=encoder');
+    assert.equal(values[1], '');
+    assert.equal(values[28], 'Outstanding');
+    assert.equal(values[29], '');
+    assert.equal(values[30], 'DPE-0002');
+    assert.equal(values[26], 200);
+  }
+  assert.equal(requests[1].updateCells.rows[0].values[0].userEnteredValue.stringValue, 'ADV');
+  assert.equal(result.remittanceId, undefined);
+  assert.equal(result.grossCollection, 700);
+});
+
+test('physical remittance links exact outstanding collections and records a discrepancy', async () => {
+  const h = harness();
+  const collectionsHeader = Array(33).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[28] = 'Outstanding'; collection[30] = 'DPE-0002'; collection[31] = 'Maria'; collection[32] = 'MAS';
+  const remittancesHeader = Array(24).fill(''); remittancesHeader[12] = 'Difference';
+  h.rows.Collections = [collectionsHeader, collection];
+  h.rows.Remittances = [remittancesHeader];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 340, remittanceDate: '2026-09-26', receivedByName: 'Cashier' }));
+  const result = await response.json();
+  assert.equal(response.status, 201, JSON.stringify(result));
+  assert.equal(result.remittance.status, 'Discrepancy');
+  assert.equal(result.remittance.expectedAmount, 350);
+  assert.equal(result.remittance.difference, -10);
+  const requests = h.writes[0].requestBody.requests;
+  const remittance = requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.equal(remittance[4], 'Discrepancy');
+  assert.deepEqual(remittance.slice(10, 13), [350, 340, -10]);
+  const mapping = requests[1].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.equal(mapping[1], result.remittance.id);
+  assert.equal(mapping[2], 'COL-1');
+  assert.equal(mapping[3], 350);
+  const status = requests[2].updateCells.rows[0].values.map((value) => value.userEnteredValue.stringValue);
+  assert.deepEqual(status, ['Pending Remittance Approval', result.remittance.id]);
+});
+
+test('pending approval does not clear cash accountability', async () => {
+  const h = harness();
+  const collectionsHeader = Array(33).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[6] = 'BR-1'; collection[10] = 350; collection[19] = 'Posted'; collection[28] = 'Pending Remittance Approval'; collection[29] = 'REM-1'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS';
+  const remittancesHeader = Array(24).fill(''); remittancesHeader[12] = 'Difference';
+  const remittance = Array(24).fill(''); remittance[0] = 'REM-1'; remittance[1] = 'BR-1'; remittance[2] = 'Maria'; remittance[4] = 'Pending Approval'; remittance[10] = 350; remittance[11] = 350; remittance[13] = 'DPE-2'; remittance[14] = 'MAS'; remittance[15] = 1;
+  h.rows.Collections = [collectionsHeader, collection];
+  h.rows.Remittances = [remittancesHeader, remittance];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At'], ['RCL-1', 'REM-1', 'COL-1', 350]];
+  const dashboard = await h.load('lib/remittance-workflow.ts').getRemittanceDashboard();
+  assert.equal(dashboard.summary.outstandingAmount, 350);
+  assert.equal(dashboard.summary.pendingAmount, 350);
+  assert.equal(dashboard.outstanding.length, 0);
+  assert.equal(dashboard.accountability[0].outstandingAmount, 350);
 });
 
 test('attendance updates never touch original encoder cells, even for historical rows', async () => {
@@ -146,8 +283,8 @@ test('all configured sheets append tracking after business columns', async () =>
         requestBody: { values: [Array(schema.columns).fill('business')] },
       });
       const write = h.writes.at(-1);
-      assert.equal(write.range, `'${schema.title}'!A:${columnName(schema.columns + 4)}`);
-      assert.equal(write.requestBody.values[0].length, schema.columns + 4);
+      assert.equal(write.range, `'${schema.title}'!A:${columnName(schema.columns + 4 + (schema.title === "Member programs" ? 1 : 0))}`);
+      assert.equal(write.requestBody.values[0].length, schema.columns + 4 + (schema.title === "Member programs" ? 1 : 0));
       assert.deepEqual(write.requestBody.values[0].slice(0, schema.columns), Array(schema.columns).fill('business'));
     }
     return Response.json({});
@@ -167,4 +304,30 @@ test('leave review keeps encoder columns and existing permission checks reject u
     return Response.json({});
   })(request());
   assert.deepEqual(h.writes[0].requestBody.data.map((item) => item.range), ["'Leave Requests'!A2:K2"]);
+});
+
+
+test('MAM month range counts actual receipts once and preserves later advance coverage', () => {
+  const h = harness();
+  const a = { id: 'E1', memberId: 'M1', memberNumber: 'PH1', programId: 'P1', doi: '2026-09-15', branch: 'B', mas: 'MAS', basePay: 350, storedStatus: 'Forfeited', rowNumber: 2, memberName: 'Member', programName: 'Program' };
+  const p = { id: 'C1', enrollmentId: 'E1', orDate: '2026-09-20', orNumber: 'OR1', monthFrom: '2026-09', monthTo: '2026-11', nopFrom: 1, nopTo: 3, amount: 1050, dateRemitted: '2026-09-21', mas: 'MAS' };
+  const { buildMamReport, monitoringMonths } = h.load('lib/mam-report.ts');
+  const report = buildMamReport({ accounts: [a], payments: [p], sales: [] }, '2026-09', '2026-11', '2027-06-01');
+  assert.deepEqual(report.rows[0].periods.map((period) => period.collected), [1050, 0, 0]);
+  assert.deepEqual(report.rows[0].periods.map((period) => period.coveredAmount), [350, 350, 350]);
+  assert.deepEqual(report.rows[0].periods.map((period) => period.state.status), ['ADV', 'ADV', 'U']);
+  assert.throws(() => monitoringMonths('2026-11', '2026-09'), /valid month range/);
+  assert.throws(() => monitoringMonths('2000-01', '2026-09'), /120 months/);
+  const before = buildMamReport({ accounts: [a], payments: [p], sales: [] }, '2026-08', '2026-08', '2026-09-25');
+  assert.equal(before.rows.length, 0);
+});
+
+test('MAM future columns are projections and do not include future receipt data', () => {
+  const h = harness();
+  const a = { id: 'E1', memberId: 'M1', memberNumber: 'PH1', programId: 'P1', doi: '2026-09-15', branch: 'B', mas: 'MAS', basePay: 350, storedStatus: '', rowNumber: 2, memberName: 'Member', programName: 'Program' };
+  const p = { id: 'C1', enrollmentId: 'E1', orDate: '2026-10-20', orNumber: 'OR1', monthFrom: '2026-09', monthTo: '2026-10', nopFrom: 1, nopTo: 2, amount: 700, dateRemitted: '', mas: 'MAS' };
+  const report = h.load('lib/mam-report.ts').buildMamReport({ accounts: [a], payments: [p], sales: [] }, '2026-09', '2026-10', '2026-09-25');
+  assert.equal(report.rows[0].periods[1].projected, true);
+  assert.equal(report.rows[0].periods[1].collected, 0);
+  assert.equal(report.rows[0].periods[1].state.nop, 0);
 });

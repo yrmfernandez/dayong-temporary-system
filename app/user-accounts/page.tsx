@@ -20,10 +20,12 @@ type Role = {
 type RolesResponse = {
   success: boolean;
   roles?: Role[];
+  employees?: { id: string; name: string; status: string }[];
   message?: string;
 };
 
 export default function UserAccountsPage() {
+  const [employees, setEmployees] = useState<{ id: string; name: string; status: string }[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [employeeId, setEmployeeId] = useState("");
   const [fullName, setFullName] = useState("");
@@ -55,6 +57,7 @@ export default function UserAccountsPage() {
         }
 
         setRoles(result.roles ?? []);
+        setEmployees((result.employees ?? []).filter((e) => e.status.toLowerCase() === "active"));
       } catch (error) {
         setMessage(
           error instanceof Error
@@ -128,7 +131,7 @@ export default function UserAccountsPage() {
         );
       }
 
-      setEmployeeId(result.user?.employeeId ?? "");
+      setEmployeeId("");
       setFullName("");
       setUsername("");
       setPassword("");
@@ -183,13 +186,7 @@ export default function UserAccountsPage() {
                     Employee ID *
                   </Label>
 
-                  <Input
-                    id="employee-id"
-                    value={employeeId}
-                    placeholder="Generated automatically"
-                    readOnly
-                    disabled
-                  />
+                  <select id="employee-id" required className="w-full rounded-md border bg-background p-2" value={employeeId} disabled={saving} onChange={(e) => { setEmployeeId(e.target.value); setFullName(employees.find((employee) => employee.id === e.target.value)?.name ?? ""); }}><option value="">Select registered employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.id} - {employee.name}</option>)}</select>
                 </div>
 
                 <div className="space-y-2">
@@ -199,6 +196,7 @@ export default function UserAccountsPage() {
 
                   <Input
                     id="full-name"
+                    readOnly
                     value={fullName}
                     onChange={(event) =>
                       setFullName(event.target.value)

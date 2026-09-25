@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth-server";
 
 type Encoder = { userId: string; employeeId: string; username: string; encodedAt: string };
 const storage = new AsyncLocalStorage<Encoder>();
+export function isEncodingRequest() { return Boolean(storage.getStore()); }
 
 // One trusted actor and timestamp per request, including nested/batched saves.
 export function withEncoder(handler: (request: Request) => Promise<Response>) {

@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "conventions": {
+    "headerPattern": "^[a-z][a-z0-9_]*$",
+    "dateFormat": "YYYY-MM-DD",
+    "timestampFormat": "ISO-8601",
+    "emptyValue": "blank",
+    "mergedCellsAllowed": false,
+    "multipleTablesPerSheetAllowed": false
+  },
+  "tables": [
+    { "sheet": "Employees", "table": "employees", "primaryKey": "employee_id", "firstHeader": "Employee ID" },
+    { "sheet": "Members", "table": "members", "primaryKey": "member_id", "firstHeader": "Member ID" },
+    { "sheet": "Member programs", "table": "member_programs", "primaryKey": "enrollment_id", "firstHeader": "Enrollment ID" },
+    { "sheet": "Sales", "table": "sales", "primaryKey": "sale_id", "firstHeader": "Sale ID" },
+    { "sheet": "Remittances", "table": "remittances", "primaryKey": "remittance_id", "firstHeader": "Remittance ID" },
+    { "sheet": "Remittance Collections", "table": "remittance_collections", "primaryKey": "remittance_collection_id", "firstHeader": "Remittance Collection ID", "compositeKey": ["remittance_id", "collection_id"] },
+    { "sheet": "Collections", "table": "collections", "primaryKey": "collection_id", "firstHeader": "Collection ID" },
+    { "sheet": "Programs", "table": "programs", "primaryKey": "program_id", "firstHeader": "Program ID" },
+    { "sheet": "Program Incentives", "table": "program_incentives", "primaryKey": "incentive_id", "firstHeader": "Incentive ID" },
+    { "sheet": "Branches", "table": "branches", "primaryKey": "branch_id", "firstHeader": "Branch ID" },
+    { "sheet": "Users", "table": "users", "primaryKey": "user_id", "firstHeader": "User ID" },
+    { "sheet": "Roles", "table": "roles", "primaryKey": "role_id", "firstHeader": "Role ID" },
+    { "sheet": "User Roles", "table": "user_roles", "primaryKey": "user_id", "firstHeader": "User ID", "compositeKey": ["user_id", "role_id"] },
+    { "sheet": "Attendance", "table": "attendance", "primaryKey": "attendance_id", "firstHeader": "Attendance ID" },
+    { "sheet": "Leave Requests", "table": "leave_requests", "primaryKey": "leave_request_id", "firstHeader": "Leave Request ID" }
+  ],
+  "columnTypes": {
+    "*_id": "text",
+    "*_number": "text",
+    "contact_number": "text",
+    "phone_number": "text",
+    "email": "text",
+    "*_amount": "number",
+    "amount_*": "number",
+    "base_pay": "number",
+    "mark_up": "number",
+    "nop": "integer",
+    "nop_from": "integer",
+    "nop_to": "integer",
+    "*_date": "date",
+    "date_*": "date",
+    "doi": "date",
+    "*_at": "timestamp",
+    "remittance_breakdown": "json"
+  }
+}

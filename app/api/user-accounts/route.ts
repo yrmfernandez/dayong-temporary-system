@@ -1,5 +1,6 @@
 import { withEncoder } from "@/lib/encoder-context";
 import bcrypt from "bcryptjs";
+import { getEmployees } from "@/lib/employees";
 import { NextResponse } from "next/server";
 
 import { canManageUsers } from "@/lib/auth-server";
@@ -27,6 +28,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       roles,
+      employees: await getEmployees(),
     });
   } catch (error) {
     console.error("Load user-account roles error:", error);
@@ -57,16 +59,13 @@ export const POST = withEncoder(async function POST(request: Request) {
 
     const body = await request.json();
 
-    const employeeId = "";
+    const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
+    const employee = (await getEmployees()).find((e) => e.id === employeeId && e.status.toLowerCase() === "active");
+    if (!employee) return NextResponse.json({ success: false, message: "Select an active registered employee." }, { status: 400 });
 
     const username =
       typeof body.username === "string"
         ? body.username
-        : "";
-
-    const fullName =
-      typeof body.fullName === "string"
-        ? body.fullName
         : "";
 
     const password =
@@ -100,7 +99,7 @@ export const POST = withEncoder(async function POST(request: Request) {
     const user = await createEmployeeAccount({
       employeeId,
       username,
-      fullName,
+      fullName: employee.name,
       passwordHash,
       roleIds,
     });

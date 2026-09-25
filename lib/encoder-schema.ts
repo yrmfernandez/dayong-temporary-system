@@ -7,10 +7,12 @@ export const editorHeaders = [
 
 // Business columns retain their existing positions. Migration only appends headers.
 export const encoderSheets = [
+  { title: "Employees", columns: 9 },
   { title: "Members", columns: 30 },
   { title: "Member programs", columns: 14 },
   { title: "Sales", columns: 43 },
   { title: "Remittances", columns: 6 },
+  { title: "Remittance Collections", columns: 5 },
   { title: "Collections", columns: 21 },
   { title: "Programs", columns: 6 },
   { title: "Program Incentives", columns: 8 },

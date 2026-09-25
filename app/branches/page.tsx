@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from "react";
 
+import {
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +68,10 @@ export default function BranchesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [expandedBranches, setExpandedBranches] = useState<
+    Record<string, boolean>
+  >({});
 
   const loadBranches = async () => {
     setLoading(true);
@@ -119,6 +128,7 @@ export default function BranchesPage() {
 
       setForm(emptyBranchForm);
       setMessage("Branch saved successfully.");
+      setShowForm(false);
       await loadBranches();
     } catch (error) {
       setMessage(
@@ -129,16 +139,30 @@ export default function BranchesPage() {
     }
   };
 
+  const toggleBranch = (branchId: string) => {
+    setExpandedBranches((current) => ({
+      ...current,
+      [branchId]: !current[branchId],
+    }));
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Branches</h1>
-        <p className="text-sm text-muted-foreground">
-          Add and manage the branches available for sales and operations.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Branches</h1>
+          <p className="text-sm text-muted-foreground">
+            Add and manage the branches available for sales and operations.
+          </p>
+        </div>
+
+        <Button type="button" onClick={() => setShowForm(true)}>
+          Add Branch
+        </Button>
       </div>
 
-      <Card>
+      {showForm && (
+        <Card>
         <CardHeader>
           <CardTitle>Add Branch</CardTitle>
         </CardHeader>
@@ -206,7 +230,8 @@ export default function BranchesPage() {
             <p className="mt-4 text-sm text-muted-foreground">{message}</p>
           )}
         </CardContent>
-      </Card>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -222,32 +247,83 @@ export default function BranchesPage() {
             </div>
           ) : (
             <div className="divide-y rounded-lg border">
-              {branches.map((branch) => (
-                <div key={branch.id} className="flex items-center justify-between gap-4 p-4">
-                  <div>
-                    <p className="font-medium">{branch.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {branch.id}
-                      {[branch.barangay, branch.cityMunicipality, branch.province]
-                        .filter(Boolean)
-                        .length > 0 &&
-                        ` · ${[branch.barangay, branch.cityMunicipality, branch.province]
-                          .filter(Boolean)
-                          .join(", ")}`}
-                    </p>
-                    {(branch.contactNumber || branch.email) && (
-                      <p className="text-sm text-muted-foreground">
-                        {[branch.contactNumber, branch.email]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
+              {branches.map((branch) => {
+                const isExpanded = expandedBranches[branch.id] ?? false;
+
+                return (
+                  <div key={branch.id} className="space-y-4 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium">{branch.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {branch.id}
+                        </p>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant={branch.status === "active" ? "default" : "secondary"}>
+                          {branch.status === "active" ? "Active" : "Inactive"}
+                        </Badge>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          aria-expanded={isExpanded}
+                          onClick={() => toggleBranch(branch.id)}
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="mr-2 size-4" />
+                          ) : (
+                            <ChevronDown className="mr-2 size-4" />
+                          )}
+                          {isExpanded ? "Collapse" : "Expand"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="grid gap-3 border-t pt-4 text-sm sm:grid-cols-2">
+                        <div>
+                          <p className="text-muted-foreground">Address</p>
+                          <p>
+                            {[branch.barangay, branch.cityMunicipality, branch.province]
+                              .filter(Boolean)
+                              .join(", ") || "Not provided"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-muted-foreground">Contact</p>
+                          <p>
+                            {[branch.contactNumber, branch.email]
+                              .filter(Boolean)
+                              .join(" · ") || "Not provided"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-muted-foreground">Country</p>
+                          <p>{branch.country || "Not provided"}</p>
+                        </div>
+
+                        <div>
+                          <p className="text-muted-foreground">Postal Code</p>
+                          <p>{branch.postalCode || "Not provided"}</p>
+                        </div>
+
+                        <div>
+                          <p className="text-muted-foreground">Date Opened</p>
+                          <p>{branch.dateOpened || "Not provided"}</p>
+                        </div>
+
+                        <div>
+                          <p className="text-muted-foreground">Date Closed</p>
+                          <p>{branch.dateClosed || "Not provided"}</p>
+                        </div>
+                      </div>
                     )}
                   </div>
-                  <Badge variant={branch.status === "active" ? "default" : "secondary"}>
-                    {branch.status === "active" ? "Active" : "Inactive"}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
