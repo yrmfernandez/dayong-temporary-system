@@ -6,7 +6,7 @@ const auth = new google.auth.GoogleAuth({ credentials: { client_email: process.e
 const sheets = google.sheets({ version: "v4", auth });
 const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 const options = { timeout: 20000, retry: false };
-const headers = ["Employee ID", "Full Name", "Branch", "Operational Roles", "Employment Status", "Contact Number", "Email", "Date Hired", "Created At", "Encoded By User ID", "Encoded By Employee ID", "Encoded By Username", "Encoded At"];
+const headers = ["employee_id", "full_name", "branch", "operational_roles", "employment_status", "contact_number", "email", "date_hired", "created_at", "encoded_by_user_id", "encoded_by_employee_id", "encoded_by_username", "encoded_at"];
 const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties" }, options);
 const existing = metadata.data.sheets.find((s) => s.properties.title === "Employees")?.properties;
 let current = [];

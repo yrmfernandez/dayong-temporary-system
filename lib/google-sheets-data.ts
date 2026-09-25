@@ -1358,27 +1358,13 @@ export async function getLoginUserByUsername(
     return null;
   }
 
-  const [usersResponse, rolesResponse, userRolesResponse] =
-    await Promise.all([
-      sheets.spreadsheets.values.get({
-        spreadsheetId: GOOGLE_SHEET_ID,
-        range: "Users!A:G",
-      }),
-
-      sheets.spreadsheets.values.get({
-        spreadsheetId: GOOGLE_SHEET_ID,
-        range: "Roles!A:G",
-      }),
-
-      sheets.spreadsheets.values.get({
-        spreadsheetId: GOOGLE_SHEET_ID,
-        range: "'User Roles'!A:B",
-      }),
-    ]);
-
-  const users = usersResponse.data.values ?? [];
-  const roles = rolesResponse.data.values ?? [];
-  const userRoles = userRolesResponse.data.values ?? [];
+  const response = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    ranges: ["Users!A:G", "Roles!A:G", "'User Roles'!A:B"],
+  });
+  const users = response.data.valueRanges?.[0]?.values ?? [];
+  const roles = response.data.valueRanges?.[1]?.values ?? [];
+  const userRoles = response.data.valueRanges?.[2]?.values ?? [];
 
   const userRow = users.slice(1).find((row) => {
     const rowUsername = String(row[2] ?? "")
@@ -1787,7 +1773,7 @@ export async function getCollectionHistory(
       nop: Number(row[14] ?? 0) || 0,
       dateRemitted: "",
     }))
-    .sort((first, second) => first.nop - second.nop);
+    .sort((first, second) => second.nop - first.nop);
 }
 
 export async function getActiveAttendanceEmployees(): Promise<

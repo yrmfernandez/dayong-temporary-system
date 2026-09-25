@@ -14,6 +14,7 @@ const auth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: "v4", auth });
 const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 const options = { timeout: 20000, retry: false };
+const canonical = (value) => String(value).trim().replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
 
 try {
   const metadata = await sheets.spreadsheets.get({
@@ -23,7 +24,7 @@ try {
   for (const schema of encoderSheets) {
     const properties = metadata.data.sheets.find((sheet) => sheet.properties.title === schema.title)?.properties;
     if (!properties) throw new Error(`Missing sheet ${schema.title}.`);
-    const headers = trackingHeaders(schema.title);
+    const headers = trackingHeaders(schema.title).map(canonical);
     const width = properties.gridProperties.columnCount;
     const requiredWidth = schema.columns + headers.length;
     const response = await sheets.spreadsheets.values.get({

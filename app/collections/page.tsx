@@ -514,7 +514,7 @@ export default function CollectionsPage() {
     if (!mas) return "MAS is required.";
 
     if (!dateRemitted) {
-      return "Collection Date is required.";
+      return "Date Remitted is required.";
     }
 
     if (!entry.memberId) {
@@ -651,7 +651,7 @@ export default function CollectionsPage() {
 
     if (!dateRemitted) {
       setSaveMessage(
-        "Please enter the Collection Date.",
+        "Please enter the Date Remitted.",
       );
       return;
     }
@@ -802,7 +802,7 @@ export default function CollectionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Collection Date *</Label>
+              <Label>Date Remitted *</Label>
 
               <Input
                 type="date"
@@ -815,7 +815,7 @@ export default function CollectionsPage() {
               />
 
               <p className="text-xs text-muted-foreground">
-                Enter the date these payments were collected.
+                Enter the date the collection was remitted for encoding.
                 This date is shared by all
                 collections in this batch.
               </p>
@@ -837,7 +837,7 @@ export default function CollectionsPage() {
 
                 <p className="mt-1 text-sm text-muted-foreground">
                   Add multiple collections under the
-                  same accountable person and collection date.
+                  same accountable person and Date Remitted.
                 </p>
               </div>
 
@@ -1481,7 +1481,7 @@ export default function CollectionsPage() {
                             <div className="flex items-center justify-between gap-3">
                               <div>
                                 <p className="text-sm font-medium">
-                                  Collection Date
+                                  Date Remitted
                                 </p>
 
                                 <p className="text-xs text-muted-foreground">
@@ -1970,7 +1970,7 @@ export default function CollectionsPage() {
 
                                 <div>
                                   <p className="text-xs text-muted-foreground">
-                                    Collection Date
+                                    Date Remitted
                                   </p>
 
                                   <p className="text-sm font-medium">

@@ -82,7 +82,7 @@ Members supports ascending/descending sorting by name, PH number, city, province
 
 ## Migration-ready Google Sheets
 
-The application-managed tabs now have a canonical database schema in `config/sheet-database-schema.json` and a read-only audit available through `npm run sheets:audit`. The audit checks stable primary keys, duplicate IDs, merged cells, blank rows inside tables, canonical lowercase header mappings, and known column types. Live display headers remain in place until the application accepts both header formats; the staged header migration is documented in `docs/database-migration-readiness.md` so Collections, MAM, encoder tracking, and existing positional readers are not broken by an immediate manual rename.
+The application-managed tabs now have a canonical database schema in `config/sheet-database-schema.json` and a read-only audit available through `npm run sheets:audit`. The audit checks stable primary keys, duplicate IDs, merged cells, blank rows inside tables, canonical lowercase headers, and known column types. All 15 live application-managed sheets were migrated to lowercase `snake_case` headers with `npm run sheets:headers -- --apply`. Runtime header checks accept canonicalized names while continuing to guard numeric column positions.
 
 ## Collections and physical Remittance
 

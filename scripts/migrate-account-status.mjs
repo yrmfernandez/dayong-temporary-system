@@ -5,7 +5,7 @@ nextEnv.loadEnvConfig(process.cwd());
 const apply = process.argv.includes("--apply");
 const title = "Member programs";
 const range = "'Member programs'!S:S";
-const header = "Account Status";
+const header = "account_status";
 const statuses = ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Forfeited"];
 const auth = new google.auth.GoogleAuth({
   credentials: {
@@ -24,8 +24,8 @@ try {
   if (!properties) throw new Error(`Missing sheet ${title}.`);
   const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: "'Member programs'!1:1" }, options);
   const headers = response.data.values?.[0] ?? [];
-  const expected = ["Status", "Date Created", "Encoded By User ID", "Encoded By Employee ID", "Encoded By Username", "Encoded At"];
-  if (headers[0] !== "Enrollment ID" || expected.some((value, i) => headers[12 + i] !== value)) {
+  const expected = ["status", "date_created", "encoded_by_user_id", "encoded_by_employee_id", "encoded_by_username", "encoded_at"];
+  if (headers[0] !== "enrollment_id" || expected.some((value, i) => headers[12 + i] !== value)) {
     throw new Error("Member programs layout changed. Review columns before migrating.");
   }
   if (headers[18] && headers[18] !== header) throw new Error("Column S already has a different header.");
@@ -52,17 +52,17 @@ try {
   if (!collections) throw new Error("Missing Collections sheet.");
   const collectionHeaders = await sheets.spreadsheets.values.get({ spreadsheetId, range: "Collections!1:1" }, options);
   const ch = collectionHeaders.data.values?.[0] ?? [];
-  if (ch[24] !== "Encoded At" || (ch[25] && ch[25] !== "Collected By Role")) throw new Error("Collections layout changed; review column Z.");
+  if (ch[24] !== "encoded_at" || (ch[25] && ch[25] !== "collected_by_role")) throw new Error("Collections layout changed; review column Z.");
   if (collections.gridProperties.columnCount >= 26) {
     const data = await sheets.spreadsheets.values.get({ spreadsheetId, range: "Collections!Z2:Z", valueRenderOption: "FORMULA" }, options);
     const occupied = (data.data.values ?? []).flat().filter((v) => v !== "");
     if ((!ch[25] && occupied.length) || occupied.some((v) => !["MAS", "Collector"].includes(v))) throw new Error("Collections column Z contains conflicting data.");
   } else requests.push({ appendDimension: { sheetId: collections.sheetId, dimension: "COLUMNS", length: 26 - collections.gridProperties.columnCount } });
-  requests.push({ updateCells: { range: { sheetId: collections.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 25, endColumnIndex: 26 }, rows: [{ values: [{ userEnteredValue: { stringValue: "Collected By Role" } }] }], fields: "userEnteredValue" } });
+  requests.push({ updateCells: { range: { sheetId: collections.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 25, endColumnIndex: 26 }, rows: [{ values: [{ userEnteredValue: { stringValue: "collected_by_role" } }] }], fields: "userEnteredValue" } });
   requests.push({ setDataValidation: { range: { sheetId: collections.sheetId, startRowIndex: 1, startColumnIndex: 25, endColumnIndex: 26 }, rule: { condition: { type: "ONE_OF_LIST", values: ["MAS", "Collector"].map((v) => ({ userEnteredValue: v })) }, strict: true, showCustomUi: true } } });
   for (const extension of [
-    { title: "Collections", offset: 26, headers: ["Remittance Amount", "Remittance Breakdown"] },
-    { title: "Remittances", offset: 10, headers: ["Gross Collection", "Total Remittance"] },
+    { title: "Collections", offset: 26, headers: ["remittance_amount", "remittance_breakdown"] },
+    { title: "Remittances", offset: 10, headers: ["gross_collection", "total_remittance"] },
   ]) {
     const prop = metadata.data.sheets.find((sheet) => sheet.properties.title === extension.title)?.properties;
     if (!prop) throw new Error(`Missing ${extension.title}.`);

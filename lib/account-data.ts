@@ -4,6 +4,7 @@ import { getEncoder } from "@/lib/encoder-context";
 import { encoderHeaders } from "@/lib/encoder-schema";
 import type { IncentiveTier } from "@/lib/remittance";
 import { buildMamReport } from "@/lib/mam-report";
+import { headerMatches } from "@/lib/sheet-headers";
 
 const titles = ["Member programs", "Members", "Programs", "Collections", "Remittances", "Sales", "Program Incentives"];
 export function sheetDate(value: unknown): string {
@@ -16,10 +17,10 @@ export async function loadAccountData() {
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID,
     ranges: titles.map((title) => `'${title}'`), valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "SERIAL_NUMBER" });
   const tables = Object.fromEntries(titles.map((title, i) => [title, response.data.valueRanges?.[i]?.values ?? []]));
-  if (tables["Member programs"][0]?.[18] !== "Account Status" || tables.Collections[0]?.[25] !== "Collected By Role") throw new Error("Run the account-status migration before using Collections or MAM.");
-  if (tables.Collections[0]?.[26] !== "Remittance Amount" || tables.Collections[0]?.[27] !== "Remittance Breakdown" || tables.Remittances[0]?.[10] !== "Gross Collection" || tables.Remittances[0]?.[11] !== "Total Remittance") throw new Error("Run the account-status migration to add remittance totals before using Collections or MAM.");
+  if (!headerMatches(tables["Member programs"][0]?.[18], "Account Status") || !headerMatches(tables.Collections[0]?.[25], "Collected By Role")) throw new Error("Run the account-status migration before using Collections or MAM.");
+  if (!headerMatches(tables.Collections[0]?.[26], "Remittance Amount") || !headerMatches(tables.Collections[0]?.[27], "Remittance Breakdown") || !headerMatches(tables.Remittances[0]?.[10], "Gross Collection") || !headerMatches(tables.Remittances[0]?.[11], "Total Remittance")) throw new Error("Run the account-status migration to add remittance totals before using Collections or MAM.");
   for (const [title, offset] of [["Member programs", 14], ["Collections", 21], ["Remittances", 6]] as const) {
-    if (encoderHeaders.some((header, index) => tables[title][0]?.[offset + index] !== header)) throw new Error(`${title} encoder headers changed. Review the sheet before saving.`);
+    if (encoderHeaders.some((header, index) => !headerMatches(tables[title][0]?.[offset + index], header))) throw new Error(`${title} encoder headers changed. Review the sheet before saving.`);
   }
   const programs = new Map(tables.Programs.slice(1).map((r) => [str(r[0]), { name: str(r[2]), basePay: Number(r[3]) }]));
   const members = new Map(tables.Members.slice(1).map((r) => [str(r[0]), `${str(r[2])}, ${str(r[3])} ${str(r[4])}`.trim()]));

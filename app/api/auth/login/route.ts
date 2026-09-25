@@ -99,10 +99,16 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Login error:", error);
 
+    const message =
+      error instanceof Error &&
+      error.message.includes("Google Sheets is temporarily busy")
+        ? error.message
+        : "Unable to sign in. Please try again.";
+
     return NextResponse.json(
       {
         success: false,
-        message: "Unable to sign in. Please try again.",
+        message,
       },
       { status: 500 },
     );

@@ -2,6 +2,7 @@ import type { sheets_v4 } from "googleapis";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { encoderValues, getEncoder } from "@/lib/encoder-context";
 import { columnName, getEncoderSheet, quotedSheet, trackingHeaders } from "@/lib/encoder-schema";
+import { headerMatches } from "@/lib/sheet-headers";
 
 async function verifyTrackingHeaders(range: string) {
   const schema = getEncoderSheet(range);
@@ -11,12 +12,12 @@ async function verifyTrackingHeaders(range: string) {
     range: `${quotedSheet(schema.title)}!${columnName(schema.columns + 1)}1:${columnName(schema.columns + expected.length)}1`,
   });
   const actual = response.data.values?.[0] ?? [];
-  if (expected.some((header, index) => actual[index] !== header)) {
+  if (expected.some((header, index) => !headerMatches(actual[index], header))) {
     throw new Error(`Encoder headers are missing or changed in ${schema.title}. Run the encoder tracking migration before saving.`);
   }
   if (schema.title === "Member programs") {
     const statusHeader = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Member programs'!S1" });
-    if (statusHeader.data.values?.[0]?.[0] !== "Account Status") throw new Error("Member programs Account Status header is missing.");
+    if (!headerMatches(statusHeader.data.values?.[0]?.[0], "Account Status")) throw new Error("Member programs Account Status header is missing.");
   }
   return schema;
 }

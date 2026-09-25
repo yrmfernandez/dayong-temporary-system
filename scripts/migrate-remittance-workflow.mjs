@@ -15,18 +15,18 @@ const sheets = google.sheets({ version: "v4", auth });
 const options = { timeout: 30000, retry: false };
 
 const collectionHeaders = [
-  "Remittance Status", "Linked Remittance ID", "Accountable Employee ID",
-  "Accountable Name", "Accountable Role",
+  "remittance_status", "linked_remittance_id", "accountable_employee_id",
+  "accountable_name", "accountable_role",
 ];
 const remittanceHeaders = [
-  "Difference", "Accountable Employee ID", "Accountable Role", "Collection Count",
-  "Received By Employee ID", "Received By Name", "Decision By User ID",
-  "Decision By Employee ID", "Decision By Username", "Decision At", "Remarks",
-  "Rejection Reason",
+  "difference", "accountable_employee_id", "accountable_role", "collection_count",
+  "received_by_employee_id", "received_by_name", "decision_by_user_id",
+  "decision_by_employee_id", "decision_by_username", "decision_at", "remarks",
+  "rejection_reason",
 ];
 const mappingHeaders = [
-  "Remittance Collection ID", "Remittance ID", "Collection ID", "Amount", "Linked At",
-  "Encoded By User ID", "Encoded By Employee ID", "Encoded By Username", "Encoded At",
+  "remittance_collection_id", "remittance_id", "collection_id", "amount", "linked_at",
+  "encoded_by_user_id", "encoded_by_employee_id", "encoded_by_username", "encoded_at",
 ];
 
 try {
@@ -43,7 +43,7 @@ try {
   }, options);
   const collectionsRow = current.data.valueRanges?.[0]?.values?.[0] ?? [];
   const remittancesRow = current.data.valueRanges?.[1]?.values?.[0] ?? [];
-  if (collectionsRow[27] !== "Remittance Breakdown" || remittancesRow[11] !== "Total Remittance") {
+  if (collectionsRow[27] !== "remittance_breakdown" || remittancesRow[11] !== "total_remittance") {
     throw new Error("Run the account-status migration before the remittance workflow migration.");
   }
 

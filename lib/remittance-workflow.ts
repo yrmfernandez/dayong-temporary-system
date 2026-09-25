@@ -1,5 +1,6 @@
 import { getEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { headerMatches } from "@/lib/sheet-headers";
 
 const titles = ["Collections", "Remittances", "Remittance Collections"] as const;
 const text = (value: unknown) => String(value ?? "").trim();
@@ -55,7 +56,7 @@ async function loadLedger() {
     dateTimeRenderOption: "FORMATTED_STRING",
   });
   const rows = Object.fromEntries(titles.map((title, index) => [title, response.data.valueRanges?.[index]?.values ?? []]));
-  if (rows.Collections[0]?.[28] !== "Remittance Status" || rows.Remittances[0]?.[12] !== "Difference" || rows["Remittance Collections"][0]?.[0] !== "Remittance Collection ID") {
+  if (!headerMatches(rows.Collections[0]?.[28], "Remittance Status") || !headerMatches(rows.Remittances[0]?.[12], "Difference") || !headerMatches(rows["Remittance Collections"][0]?.[0], "Remittance Collection ID")) {
     throw new Error("Run the remittance workflow sheet migration before using Remittances.");
   }
   const mappings = rows["Remittance Collections"].slice(1).filter((row) => text(row[0])).map((row) => ({

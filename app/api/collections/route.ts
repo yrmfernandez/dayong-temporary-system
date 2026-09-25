@@ -4,6 +4,7 @@ import { loadAccountData, commitCollections } from "@/lib/account-data";
 import { accountState, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
 import { calculateRemittance } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
+import { getActiveMasStaff } from "@/lib/google-sheets-data";
 
 export async function GET(request: Request) {
   if (!(await getSessionUser())) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
     const matches = data.accounts.filter((a) => a.memberId === searchParams.get("memberId") && a.programId === searchParams.get("programId"));
     if (matches.length !== 1) return Response.json({ success: false, message: "A unique program enrollment was not found." }, { status: 404 });
     const account = matches[0];
-    const history = data.payments.filter((p) => p.enrollmentId === account.id).sort((a, b) => a.nopTo - b.nopTo);
+    const history = data.payments.filter((p) => p.enrollmentId === account.id).sort((a, b) => b.nopTo - a.nopTo);
     return Response.json({ success: true, account: { ...account, ...accountState(account, history) }, history: history.map((p) => ({ ...p, memberId: account.memberId, programId: account.programId, monthOf: p.monthTo, nop: p.nopTo, amountCollected: p.amount })) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load account." }, { status: 500 }); }
 }
@@ -26,9 +27,11 @@ export const POST = withEncoder(async (request: Request) => {
     const mas = String(body.mas ?? "").trim();
     const accountableEmployeeId = String(body.accountableEmployeeId ?? "").trim();
     const dateRemitted = String(body.dateRemitted ?? "");
-    if (!branch || !mas || !accountableEmployeeId || !validDate(dateRemitted) || !Array.isArray(body.collections) || !body.collections.length) throw new Error("Branch, accountable Collector/MAS, Collection Date, and collections are required.");
-    const accountable = (await getEmployees()).find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active");
-    if (!accountable) throw new Error("Select an active registered accountable Collector/MAS.");
+    if (!branch || !mas || !accountableEmployeeId || !validDate(dateRemitted) || !Array.isArray(body.collections) || !body.collections.length) throw new Error("Branch, accountable Collector/MAS, Date Remitted, and collections are required.");
+    const employees = await getEmployees();
+    const accountable = employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active");
+    const selectableLegacyMas = accountable ? false : (await getActiveMasStaff()).some((employee) => employee.employeeId === accountableEmployeeId && employee.fullName === mas);
+    if (!accountable && !selectableLegacyMas) throw new Error("Select an active accountable Collector/MAS from the list.");
     const data = await loadAccountData();
     const payments = [...data.payments];
     const touched = new Map<string, typeof data.accounts[number]>();
@@ -45,7 +48,8 @@ export const POST = withEncoder(async (request: Request) => {
         orDate: String(entry.orDate ?? ""), orNumber: String(entry.orNumber ?? "").trim(), waiver: String(entry.ifSuspended ?? ""),
         collectedByRole: String(entry.collectedByRole ?? ""), originalMas: String(entry.originalMasOfficerName ?? "").trim(),
       };
-      if (!accountable.roles.includes(input.collectedByRole)) throw new Error(`${mas} is not registered with the ${input.collectedByRole} operational role.`);
+      if (accountable && !accountable.roles.includes(input.collectedByRole)) throw new Error(`${mas} is not registered with the ${input.collectedByRole} operational role.`);
+      if (!accountable && input.collectedByRole !== "MAS") throw new Error("Legacy staff records can only be used as MAS until their Employees record is reviewed.");
       if (input.collectedByRole === "MAS" && account.mas !== mas) throw new Error(`Collection for ${account.memberNumber} must use its assigned MAS.`);
       validatePayment(account, payments, input);
       const quote = calculateRemittance(account.basePay, data.incentives.filter((tier) => tier.programId === account.programId), input.collectedByRole, input.nopFrom, input.nopTo);

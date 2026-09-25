@@ -1,6 +1,6 @@
 # Encoder tracking review
 
-Reviewed the application save paths and the connected Google spreadsheet's live header rows on 2026-09-25. Encoder tracking has now been implemented, and the headers below have been added to the live spreadsheet. Historical data rows were not changed.
+Reviewed the application save paths and the connected Google spreadsheet's live header rows on 2026-09-25. Encoder tracking has now been implemented, and the fields below have been added to the live spreadsheet. The live row-1 labels were subsequently migrated to lowercase `snake_case` database names; descriptive names in this document identify the same columns. Historical data rows were not changed.
 
 ## Findings before implementation
 
