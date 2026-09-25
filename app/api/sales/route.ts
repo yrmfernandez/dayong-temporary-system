@@ -1,3 +1,4 @@
+import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
 import {
@@ -74,7 +75,7 @@ function createId(prefix: string) {
     .toUpperCase()}`;
 }
 
-export async function POST(request: Request) {
+export const POST = withEncoder(async function POST(request: Request) {
   try {
     const body =
       (await request.json()) as SalePayload;
@@ -668,4 +669,4 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-}
+});

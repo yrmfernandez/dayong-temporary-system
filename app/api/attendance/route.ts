@@ -1,3 +1,4 @@
+import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
 import {
@@ -67,7 +68,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export const POST = withEncoder(async function POST(request: Request) {
   try {
     const user = await getSessionUser();
 
@@ -249,4 +250,4 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-}
+});

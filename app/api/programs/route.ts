@@ -1,3 +1,4 @@
+import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
 import {
@@ -46,7 +47,7 @@ export async function GET() {
   }
 }
 
-export async function POST(
+export const POST = withEncoder(async function POST(
   request: Request,
 ) {
   try {
@@ -368,4 +369,4 @@ export async function POST(
       },
     );
   }
-}
+});

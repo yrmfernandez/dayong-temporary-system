@@ -1,3 +1,4 @@
+import { withEncoder } from "@/lib/encoder-context";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
@@ -40,7 +41,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export const POST = withEncoder(async function POST(request: Request) {
   try {
     const allowed = await canManageUsers();
 
@@ -125,4 +126,4 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-}
+});

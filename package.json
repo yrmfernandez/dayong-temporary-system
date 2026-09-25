@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:encoder": "node --test scripts/test-encoder-tracking.cjs",
+    "sheets:encoder": "node scripts/migrate-encoder-tracking.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

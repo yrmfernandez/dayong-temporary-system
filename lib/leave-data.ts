@@ -1,3 +1,4 @@
+import { appendEncodedRows, updateEncodedRow } from "@/lib/encoder-sheets";
 import {
   GOOGLE_SHEET_ID,
   sheets,
@@ -76,7 +77,7 @@ export async function getLeaveRequestsForEmployee(
 export async function addLeaveRequest(
   request: LeaveRequest,
 ) {
-  await sheets.spreadsheets.values.append({
+  await appendEncodedRows({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: `'${LEAVE_REQUESTS_SHEET}'!A:K`,
     valueInputOption: "USER_ENTERED",
@@ -150,7 +151,7 @@ export async function updateLeaveRequestReview(
   rowNumber: number,
   request: LeaveRequest,
 ) {
-  await sheets.spreadsheets.values.update({
+  await updateEncodedRow({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: `'${LEAVE_REQUESTS_SHEET}'!A${rowNumber}:K${rowNumber}`,
     valueInputOption: "USER_ENTERED",

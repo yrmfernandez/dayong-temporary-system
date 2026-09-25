@@ -1,3 +1,4 @@
+import { appendEncodedRows, updateEncodedRow } from "@/lib/encoder-sheets";
 import {
   GOOGLE_SHEET_ID,
   sheets,
@@ -98,7 +99,7 @@ export async function getAttendanceForEmployeeDate(
 export async function addAttendanceRecord(
   record: AttendanceRecord,
 ) {
-  await sheets.spreadsheets.values.append({
+  await appendEncodedRows({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: `${ATTENDANCE_SHEET}!A:R`,
     valueInputOption: "USER_ENTERED",
@@ -132,7 +133,7 @@ export async function updateAttendanceRecord(
   rowNumber: number,
   record: AttendanceRecord,
 ) {
-  await sheets.spreadsheets.values.update({
+  await updateEncodedRow({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: `${ATTENDANCE_SHEET}!A${rowNumber}:R${rowNumber}`,
     valueInputOption: "USER_ENTERED",

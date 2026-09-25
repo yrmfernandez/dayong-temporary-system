@@ -1,3 +1,4 @@
+import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
 import {
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export const POST = withEncoder(async function POST(request: Request) {
   try {
     const body = await request.json();
     const branch = typeof body.branch === "string" ? body.branch.trim() : "";
@@ -105,4 +106,4 @@ export async function POST(request: Request) {
     console.error("Save collections error:", error);
     return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to save collections." }, { status: 500 });
   }
-}
+});

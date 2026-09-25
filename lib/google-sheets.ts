@@ -43,22 +43,3 @@ export const sheets = google.sheets({
 });
 
 export const GOOGLE_SHEET_ID = spreadsheetId;
-
-/**
- * Add one row to the Sales sheet.
- */
-export async function addSaleRow(
-  values: (string | number | boolean | null)[],
-) {
-  const response = await sheets.spreadsheets.values.append({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: "Sales!A:Z",
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: [values],
-    },
-  });
-
-  return response.data;
-}

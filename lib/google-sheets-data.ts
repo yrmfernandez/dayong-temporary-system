@@ -1,3 +1,6 @@
+import { appendEncodedRows } from "@/lib/encoder-sheets";
+import { getEncoder } from "@/lib/encoder-context";
+import { encoderHeaders } from "@/lib/encoder-schema";
 import {
   GOOGLE_SHEET_ID,
   sheets,
@@ -5,7 +8,7 @@ import {
 
 const SALES_SHEET = "Sales";
 const MEMBERS_SHEET = "Members";
-const MEMBER_PROGRAMS_SHEET = "Member Programs";
+const MEMBER_PROGRAMS_SHEET = "Member programs";
 const PROGRAMS_SHEET = "Programs";
 const BRANCHES_SHEET = "Branches";
 const PROGRAM_INCENTIVES_SHEET =
@@ -99,7 +102,7 @@ export async function addMember(
   ];
 
   const response =
-    await sheets.spreadsheets.values.append({
+    await appendEncodedRows({
       spreadsheetId: GOOGLE_SHEET_ID,
       range: `${MEMBERS_SHEET}!A:AD`,
       valueInputOption: "USER_ENTERED",
@@ -361,7 +364,7 @@ export async function addMemberProgram(
   ];
 
   const response =
-    await sheets.spreadsheets.values.append({
+    await appendEncodedRows({
       spreadsheetId: GOOGLE_SHEET_ID,
       range: `${MEMBER_PROGRAMS_SHEET}!A:N`,
       valueInputOption: "USER_ENTERED",
@@ -496,7 +499,7 @@ export async function addSale(
   ];
 
   const response =
-    await sheets.spreadsheets.values.append({
+    await appendEncodedRows({
       spreadsheetId: GOOGLE_SHEET_ID,
       range: `${SALES_SHEET}!A:AQ`,
       valueInputOption: "USER_ENTERED",
@@ -553,6 +556,7 @@ async function ensureBranchesSheet() {
       throw error;
     }
 
+    getEncoder();
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: GOOGLE_SHEET_ID,
       requestBody: {
@@ -568,7 +572,7 @@ async function ensureBranchesSheet() {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${BRANCHES_SHEET}!A:L`,
+      range: `${BRANCHES_SHEET}!A:P`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [[
@@ -584,6 +588,7 @@ async function ensureBranchesSheet() {
           "Date Opened",
           "Date Closed",
           "Status",
+          ...encoderHeaders,
         ]],
       },
     });
@@ -680,7 +685,7 @@ export async function createBranch(data: {
     status: data.status === "inactive" ? "inactive" : "active",
   };
 
-  await sheets.spreadsheets.values.append({
+  await appendEncodedRows({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: `${BRANCHES_SHEET}!A:L`,
     valueInputOption: "USER_ENTERED",
@@ -901,7 +906,7 @@ export async function addProgram(
   ];
 
   const response =
-    await sheets.spreadsheets.values.append({
+    await appendEncodedRows({
       spreadsheetId: GOOGLE_SHEET_ID,
       range: `${PROGRAMS_SHEET}!A:F`,
       valueInputOption: "USER_ENTERED",
@@ -1265,7 +1270,7 @@ export async function addProgramIncentive(
   ];
 
   const response =
-    await sheets.spreadsheets.values.append({
+    await appendEncodedRows({
       spreadsheetId: GOOGLE_SHEET_ID,
       range: `${PROGRAM_INCENTIVES_SHEET}!A:H`,
       valueInputOption: "USER_ENTERED",
@@ -1603,7 +1608,7 @@ export async function createEmployeeAccount(
     .toISOString()
     .split("T")[0];
 
-  await sheets.spreadsheets.values.append({
+  await appendEncodedRows({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: "Users!A:H",
     valueInputOption: "USER_ENTERED",
@@ -1622,7 +1627,7 @@ export async function createEmployeeAccount(
     },
   });
 
-  await sheets.spreadsheets.values.append({
+  await appendEncodedRows({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: "User Roles!A:B",
     valueInputOption: "USER_ENTERED",
@@ -1708,7 +1713,7 @@ export async function addRemittance({
   dateRemitted: string;
   createdAt: string;
 }) {
-  await sheets.spreadsheets.values.append({
+  await appendEncodedRows({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: `${REMITTANCES_SHEET}!A:F`,
     valueInputOption: "USER_ENTERED",
@@ -1722,7 +1727,7 @@ export async function addRemittance({
 export async function addCollections(
   collections: CollectionSheetData[],
 ) {
-  await sheets.spreadsheets.values.append({
+  await appendEncodedRows({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: `${COLLECTIONS_SHEET}!A:U`,
     valueInputOption: "USER_ENTERED",
