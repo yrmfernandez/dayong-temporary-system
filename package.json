@@ -9,12 +9,13 @@
     "lint": "eslint",
     "test:encoder": "node --test scripts/test-encoder-tracking.cjs",
     "sheets:encoder": "node scripts/migrate-encoder-tracking.mjs",
-    "test:accounts": "node --test scripts/test-account-rules.mjs scripts/test-encoder-tracking.cjs scripts/test-remittance.mjs",
+    "test:accounts": "node --test scripts/test-access-control.mjs scripts/test-account-rules.mjs scripts/test-encoder-tracking.cjs scripts/test-remittance.mjs",
     "sheets:accounts": "node scripts/migrate-account-status.mjs",
     "sheets:remittances": "node scripts/migrate-remittance-workflow.mjs",
     "sheets:headers": "node scripts/migrate-database-headers.mjs",
     "sheets:audit": "node scripts/audit-sheet-database.mjs",
-    "sheets:finance": "node scripts/migrate-finance.mjs"
+    "sheets:finance": "node scripts/migrate-finance.mjs",
+    "sheets:branches": "node scripts/migrate-branch-assignments.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

@@ -546,6 +546,7 @@ export type ProgramSheetData = {
 export type BranchSheetData = {
   id: string;
   name: string;
+  territory: string;
   barangay: string;
   cityMunicipality: string;
   province: string;
@@ -562,7 +563,7 @@ async function ensureBranchesSheet() {
   try {
     await sheets.spreadsheets.values.get({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${BRANCHES_SHEET}!A:L`,
+      range: `${BRANCHES_SHEET}!A:M`,
     });
   } catch (error: unknown) {
     const status =
@@ -596,6 +597,7 @@ async function ensureBranchesSheet() {
         values: [[
           "Branch ID",
           "Branch Name / Code",
+          "Territory",
           "Barangay",
           "City / Municipality",
           "Province",
@@ -618,48 +620,49 @@ export async function getBranches(): Promise<BranchSheetData[]> {
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${BRANCHES_SHEET}!A:L`,
+    range: `${BRANCHES_SHEET}!A:M`,
   });
 
   return (response.data.values ?? [])
     .slice(1)
     .filter((row) => String(row[0] ?? "").trim() !== "")
     .map((row) => {
-      const hasFullBranchColumns = row.length >= 12;
+      const hasFullBranchColumns = row.length >= 13;
 
       return {
         id: String(row[0] ?? "").trim(),
         name: String(row[1] ?? "").trim(),
+        territory: String(row[2] ?? "").trim(),
         barangay: hasFullBranchColumns
-          ? String(row[2] ?? "").trim()
-          : "",
-        cityMunicipality: hasFullBranchColumns
           ? String(row[3] ?? "").trim()
           : "",
-        province: hasFullBranchColumns
+        cityMunicipality: hasFullBranchColumns
           ? String(row[4] ?? "").trim()
           : "",
-        country: hasFullBranchColumns
+        province: hasFullBranchColumns
           ? String(row[5] ?? "").trim()
           : "",
-        postalCode: hasFullBranchColumns
+        country: hasFullBranchColumns
           ? String(row[6] ?? "").trim()
           : "",
-        contactNumber: hasFullBranchColumns
+        postalCode: hasFullBranchColumns
           ? String(row[7] ?? "").trim()
           : "",
-        email: hasFullBranchColumns
+        contactNumber: hasFullBranchColumns
           ? String(row[8] ?? "").trim()
           : "",
-        dateOpened: hasFullBranchColumns
+        email: hasFullBranchColumns
           ? String(row[9] ?? "").trim()
           : "",
-        dateClosed: hasFullBranchColumns
+        dateOpened: hasFullBranchColumns
           ? String(row[10] ?? "").trim()
+          : "",
+        dateClosed: hasFullBranchColumns
+          ? String(row[11] ?? "").trim()
           : "",
         status:
           String(
-            row[hasFullBranchColumns ? 11 : 2] ?? "",
+            row[hasFullBranchColumns ? 12 : 2] ?? "",
           )
             .trim()
             .toLowerCase() === "inactive"
@@ -671,6 +674,7 @@ export async function getBranches(): Promise<BranchSheetData[]> {
 
 export async function createBranch(data: {
   name: string;
+  territory: string;
   barangay: string;
   cityMunicipality: string;
   province: string;
@@ -691,6 +695,7 @@ export async function createBranch(data: {
   const branch: BranchSheetData = {
     id: `BR-${String(highestId + 1).padStart(4, "0")}`,
     name: data.name.trim(),
+    territory: data.territory.trim(),
     barangay: data.barangay.trim(),
     cityMunicipality: data.cityMunicipality.trim(),
     province: data.province.trim(),
@@ -705,13 +710,14 @@ export async function createBranch(data: {
 
   await appendEncodedRows({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${BRANCHES_SHEET}!A:L`,
+    range: `${BRANCHES_SHEET}!A:M`,
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
       values: [[
         branch.id,
         branch.name,
+        branch.territory,
         branch.barangay,
         branch.cityMunicipality,
         branch.province,

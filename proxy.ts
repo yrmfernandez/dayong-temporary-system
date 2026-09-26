@@ -4,6 +4,7 @@ import {
 } from "next/server";
 
 import { verifySessionToken } from "@/lib/auth";
+import { canAccessPath } from "@/lib/access-control";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -38,6 +39,19 @@ export async function proxy(request: NextRequest) {
     );
 
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (
+    pathname !== "/" &&
+    !canAccessPath(
+      {
+        roleNames: session.roleNames,
+        permissions: session.permissions,
+      },
+      pathname,
+    )
+  ) {
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return NextResponse.next();

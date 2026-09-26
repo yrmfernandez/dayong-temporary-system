@@ -28,6 +28,7 @@ import {
 type Branch = {
   id: string;
   name: string;
+  territory: string;
   barangay: string;
   cityMunicipality: string;
   province: string;
@@ -44,6 +45,7 @@ type BranchForm = Omit<Branch, "id">;
 
 const emptyBranchForm: BranchForm = {
   name: "",
+  territory: "",
   barangay: "",
   cityMunicipality: "",
   province: "",
@@ -97,6 +99,8 @@ export default function BranchesPage() {
   };
 
   useEffect(() => {
+    // Initial remote-data load intentionally owns the loading state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadBranches();
   }, []);
 
@@ -173,6 +177,7 @@ export default function BranchesPage() {
                 <Label htmlFor="branch-name">Branch Name / Code *</Label>
                 <Input id="branch-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Example: Main Branch" />
               </div>
+              <div className="space-y-2"><Label htmlFor="branch-territory">Territory *</Label><Input id="branch-territory" required value={form.territory} onChange={(event) => setForm((current) => ({ ...current, territory: event.target.value }))} placeholder="Example: METRO DAVAO 1" /></div>
               <div className="space-y-2">
                 <Label htmlFor="branch-barangay">Barangay</Label>
                 <Input id="branch-barangay" value={form.barangay} onChange={(event) => setForm((current) => ({ ...current, barangay: event.target.value }))} />
@@ -256,7 +261,7 @@ export default function BranchesPage() {
                       <div>
                         <p className="font-medium">{branch.name}</p>
                         <p className="text-sm text-muted-foreground">
-                          {branch.id}
+                          {branch.territory} · {branch.id}
                         </p>
                       </div>
 

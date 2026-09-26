@@ -10,6 +10,7 @@
   },
   "tables": [
     { "sheet": "Employees", "table": "employees", "primaryKey": "employee_id", "firstHeader": "employee_id" },
+    { "sheet": "Employee Branches", "table": "employee_branches", "primaryKey": "assignment_id", "firstHeader": "assignment_id" },
     { "sheet": "Members", "table": "members", "primaryKey": "member_id", "firstHeader": "member_id" },
     { "sheet": "Member programs", "table": "member_programs", "primaryKey": "enrollment_id", "firstHeader": "enrollment_id" },
     { "sheet": "Sales", "table": "sales", "primaryKey": "sale_id", "firstHeader": "sale_id" },

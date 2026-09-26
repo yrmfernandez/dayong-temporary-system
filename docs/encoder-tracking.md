@@ -30,7 +30,8 @@ These four columns follow each sheet's existing business columns:
 | Collections | A:U | V:Y |
 | Programs | A:F | G:J |
 | Program Incentives | A:H | I:L |
-| Branches | A:L | M:P |
+| Branches | A:M | N:Q |
+| Employee Branches | A:C | D:G |
 | Users | A:H | I:L |
 | User Roles | A:B | C:F |
 | Attendance | A:R | S:V |

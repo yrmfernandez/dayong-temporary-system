@@ -25,10 +25,15 @@ export async function GET() {
 
     const roles = await getActiveAccountRoles();
 
+    const employees = await getEmployees();
+    const normalizeRole = (value: string) => value.trim().toLowerCase().replace(/^admin$/, "administrator").replace(/^hr$/, "hr officer");
     return NextResponse.json({
       success: true,
       roles,
-      employees: await getEmployees(),
+      employees: employees.map((employee) => ({
+        ...employee,
+        roleIds: roles.filter((role) => employee.roles.some((employeeRole) => normalizeRole(employeeRole) === normalizeRole(role.name))).map((role) => role.id),
+      })),
     });
   } catch (error) {
     console.error("Load user-account roles error:", error);
@@ -73,12 +78,18 @@ export const POST = withEncoder(async function POST(request: Request) {
         ? body.password
         : "";
 
-    const roleIds = Array.isArray(body.roleIds)
+    let roleIds = Array.isArray(body.roleIds)
         ? body.roleIds.filter(
       (roleId: unknown): roleId is string =>
         typeof roleId === "string",
     )
     : [];
+
+    if (roleIds.length === 0) {
+      const roles = await getActiveAccountRoles();
+      const normalizeRole = (value: string) => value.trim().toLowerCase().replace(/^admin$/, "administrator").replace(/^hr$/, "hr officer");
+      roleIds = roles.filter((role) => employee.roles.some((employeeRole) => normalizeRole(employeeRole) === normalizeRole(role.name))).map((role) => role.id);
+    }
 
     if (password.length < 8) {
       return NextResponse.json(

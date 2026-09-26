@@ -9,6 +9,7 @@ export type SessionUser = {
   employeeId: string;
   username: string;
   roles: string[];
+  roleNames: string[];
   permissions: {
     manageUsers: boolean;
     manageAttendance: boolean;
@@ -50,6 +51,9 @@ export async function verifySessionToken(
       username: String(payload.username ?? ""),
       roles: Array.isArray(payload.roles)
         ? payload.roles.map(String)
+        : [],
+      roleNames: Array.isArray(payload.roleNames)
+        ? payload.roleNames.map(String)
         : [],
       permissions: {
         manageUsers:

@@ -30,6 +30,8 @@ export async function GET() {
 export const POST = withEncoder(async function POST(request: Request) {
   try {
     const body = await request.json();
+    const readField = (field: string) =>
+      typeof body[field] === "string" ? body[field] : "";
     const name =
       typeof body.name === "string" ? body.name.trim() : "";
 
@@ -45,7 +47,7 @@ export const POST = withEncoder(async function POST(request: Request) {
 
     const branches = await getBranches();
     const duplicate = branches.some(
-      (branch) => branch.name.toLowerCase() === name.toLowerCase(),
+      (branch) => branch.name.toLowerCase() === name.toLowerCase() && branch.territory.toLowerCase() === readField("territory").trim().toLowerCase(),
     );
 
     if (duplicate) {
@@ -58,11 +60,9 @@ export const POST = withEncoder(async function POST(request: Request) {
       );
     }
 
-    const readField = (field: string) =>
-      typeof body[field] === "string" ? body[field] : "";
-
     const branch = await createBranch({
       name,
+      territory: readField("territory"),
       barangay: readField("barangay"),
       cityMunicipality: readField("cityMunicipality"),
       province: readField("province"),

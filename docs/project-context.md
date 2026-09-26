@@ -74,15 +74,19 @@ Migration: `node scripts/migrate-account-status.mjs --apply` (omit `--apply` for
 
 ## Employees implementation
 
-`/employees` now lists and registers employees independently of login accounts. The live Employees sheet uses A:I for Employee ID, Full Name, Branch, Operational Roles, Employment Status, Contact Number, Email, Date Hired, and Created At; J:M holds verified encoder metadata. Registration requires the existing manage-users permission and creates an active employee with an automatically allocated DPE ID. User Accounts selects an active registered employee and takes their name from the master record. MAS and attendance choices include independent employees.
+`/employees` lists and registers employees independently of login accounts. The live Employees sheet uses A:I for Employee ID, Full Name, legacy primary Branch, Operational Roles, Employment Status, Contact Number, Email, Date Hired, and Created At; J:M holds verified encoder metadata. Multiple branch assignments use the normalized `Employee Branches` junction sheet (`assignment_id`, `employee_id`, `branch_id`, then encoder metadata), so employees can be assigned to several stable branch IDs. Registration requires manage-users permission, creates an active employee with an automatically allocated DPE ID, restricts assignments to active registered branches, and supports multiple operational roles. Clicking an employee shows all assignments and details; administrators can edit the employee, roles, branches, contact information, date hired, and active/inactive/resigned status. They can delete an employee only when no User account is linked to that employee ID. User Accounts automatically checks account roles matching an active employee's operational roles while allowing the administrator to adjust the final role set.
 
-`node scripts/migrate-employees.mjs --apply` creates the sheet and imports missing staff IDs, names, and branches from Users. Five existing IDs were imported. Employment status, operational roles, dates, and historical encoder identity are left blank when unknown; review these fields in Sheets. Existing operational choices retain legacy Users fallback for unreviewed staff. The page currently supports registration and viewing, not editing. Sequential DPE allocation, like existing user-ID allocation, is not protected by a distributed lock; concurrent registrations across server instances need a transactional allocator before scaling.
+Branches now include a `territory` column. The supplied 25 territory/branch records were migrated with stable IDs; duplicate branch names such as BUTUAN remain distinct through their IDs and territory. `npm run sheets:branches -- --apply` performs the schema and seed migration and imports unambiguous legacy employee branch names into `Employee Branches`.
+
+Each signed-in user can change their own username and password in Settings after verifying the current password. Password changes require at least 12 characters and reject a small local list of commonly used credentials. Role assignments and account status remain administrator-controlled, following least privilege; password recovery by email is not available until a verified email-delivery and reset-token service is configured.
+
+`node scripts/migrate-employees.mjs --apply` creates the sheet and imports missing staff IDs, names, and branches from Users. Five existing IDs were imported. Employment status, operational roles, dates, and historical encoder identity are left blank when unknown; review these fields in Sheets. Existing operational choices retain legacy Users fallback for unreviewed staff. Sequential DPE allocation, like existing user-ID allocation, is not protected by a distributed lock; concurrent registrations across server instances need a transactional allocator before scaling.
 
 Members supports ascending/descending sorting by name, PH number, city, province, and member status before pagination. Employees supports search, branch/role/status filters, sorting, and pagination.
 
 ## Migration-ready Google Sheets
 
-The application-managed tabs now have a canonical database schema in `config/sheet-database-schema.json` and a read-only audit available through `npm run sheets:audit`. The audit checks stable primary keys, duplicate IDs, merged cells, blank rows inside tables, canonical lowercase headers, and known column types. All 15 live application-managed sheets were migrated to lowercase `snake_case` headers with `npm run sheets:headers -- --apply`. Runtime header checks accept canonicalized names while continuing to guard numeric column positions.
+The application-managed tabs now have a canonical database schema in `config/sheet-database-schema.json` and a read-only audit available through `npm run sheets:audit`. The audit checks stable primary keys, duplicate IDs, merged cells, blank rows inside tables, canonical lowercase headers, and known column types. The original 15 application-managed sheets were migrated to lowercase `snake_case` headers, and the two Finance sheets were created with canonical headers. Runtime header checks accept canonicalized names while continuing to guard numeric column positions.
 
 ## Collections and physical Remittance
 
@@ -103,5 +107,17 @@ Finance now uses persistent `Expenses` and `Cash Transactions` sheets rather tha
 The consolidated cash ledger combines approved physical Remittances as inflows, posted Expenses as outflows, and separately encoded manual cash adjustments. Manual entries include direction, category, cash account, branch, references, status, encoder identity, and void history. Users should not duplicate approved Remittances or Expenses as manual entries. Financial entries are voided with a reason rather than deleted; void permission currently follows the existing manage-users permission until a dedicated finance permission is defined.
 
 Migration: `npm run sheets:finance -- --apply`. The live workbook was migrated on 2026-09-26.
+
+## Branding, login, and interface updates
+
+The official `icons/dayong_logo.png` artwork is used in the sidebar, login screen, and browser-tab icon. The login page has a dedicated full-screen shell and never renders the application navigation. It presents the supplied Vision, Mission, formatted workplace Prayer, and official Facebook link while keeping the working username/password authentication flow. Google login and password reset were not added because no corresponding authentication backend exists.
+
+Attendance now uses the violet/lime visual system with Philippine Standard Time, live session duration, progress and attendance metrics, and actual clock-in/out activity. MAM uses the same visual language while preserving month-range controls, status synchronization, filtering, horizontal comparison, print/CSV actions, grouped MAS totals, projections, and account details.
+
+Production authentication now validates required server environment variables lazily, normalizes quoted or escaped Google private keys, and returns actionable configuration errors instead of an HTML failure. Vercel must define `AUTH_SECRET`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, and `GOOGLE_SHEET_ID` in the Production environment and redeploy after changes.
+
+## Role-based navigation
+
+Login sessions now contain stable role IDs and role names. The sidebar is generated from role access, and the proxy rejects direct navigation to pages outside the current role workspace. The live roles are Administrator, HR Officer, CEO, President, Entry Clerk, IT Clerk, and MAS; the future Finance role is supported but not present in the live sheet. Existing server action permissions remain in force. See [role-based access](access-control.md) for the matrix and explicit data-scope limitations.
 
 The specification's statements about previously completed features or builds must be checked when relevant; they are not evidence that every described operation is currently supported.

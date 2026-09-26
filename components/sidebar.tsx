@@ -12,7 +12,6 @@ import {
   ClipboardList,
   CreditCard,
   Database,
-  FileBarChart,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -28,6 +27,7 @@ import {
   useState 
 } from "react";
 import { BrandLogo } from "@/components/brand-logo";
+import { canAccessPath, type AccessContext } from "@/lib/access-control";
 
 const navigation = [
   {
@@ -131,16 +131,6 @@ const navigation = [
     ],
   },
   {
-    title: "REPORTS",
-    items: [
-      {
-        name: "Reports",
-        href: "/reports",
-        icon: FileBarChart,
-      },
-    ],
-  },
-  {
     title: "SYSTEM",
     items: [
       {
@@ -157,10 +147,14 @@ export function Sidebar() {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const [canManageUsers, setCanManageUsers] =
-    useState(false);
-  const [canManageAttendance, setCanManageAttendance] =
-    useState(false);
+  const [access, setAccess] = useState<AccessContext>({
+    roleNames: [],
+    permissions: {
+      manageUsers: false,
+      manageAttendance: false,
+      viewAttendanceReports: false,
+    },
+  });
 
   useEffect(() => {
     const loadSession = async () => {
@@ -174,22 +168,20 @@ export function Sidebar() {
 
         const result = await response.json();
 
-        setCanManageUsers(
-          Boolean(
-            result.success &&
-              result.user?.permissions?.manageUsers,
-          ),
-        );
-
-        setCanManageAttendance(
-          Boolean(
-            result.success &&
-              result.user?.permissions?.manageAttendance,
-          ),
-        );
+        if (result.success) {
+          setAccess({
+            roleNames: Array.isArray(result.user?.roleNames)
+              ? result.user.roleNames.map(String)
+              : [],
+            permissions: {
+              manageUsers: Boolean(result.user?.permissions?.manageUsers),
+              manageAttendance: Boolean(result.user?.permissions?.manageAttendance),
+              viewAttendanceReports: Boolean(result.user?.permissions?.viewAttendanceReports),
+            },
+          });
+        }
       } catch {
-        setCanManageUsers(false);
-        setCanManageAttendance(false);
+        setAccess({ roleNames: [], permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false } });
       }
     };
 
@@ -263,31 +255,17 @@ export function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <div className="space-y-6">
-            {navigation.map((section) => (
+            {navigation.map((section) => {
+              const items = section.items.filter((item) => canAccessPath(access, item.href));
+              if (!items.length) return null;
+              return (
               <div key={section.title}>
                 <p className="mb-2 px-3 text-[11px] font-semibold tracking-wider text-muted-foreground">
                   {section.title}
                 </p>
 
                 <div className="space-y-1">
-                  {section.items.map((item) => {
-                    if (
-                      item.href === "/user-accounts" &&
-                      !canManageUsers
-                    ) {
-                      return null;
-                    }
-
-                    if (
-                      [
-                        "/attendance-reviews",
-                        "/leave-approvals",
-                      ].includes(item.href) &&
-                      !canManageAttendance
-                    ) {
-                      return null;
-                    }
-
+                  {items.map((item) => {
                     const Icon = item.icon;
 
                     const isActive =
@@ -314,7 +292,7 @@ export function Sidebar() {
                   })}
                 </div>
               </div>
-            ))}
+            );})}
           </div>
         </nav>
 

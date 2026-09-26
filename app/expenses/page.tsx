@@ -14,6 +14,7 @@ const categories=["Office Supplies","Utilities","Transportation","Rent","Repairs
 export default function ExpensesPage(){
  const [expenses,setExpenses]=useState<Expense[]>([]),[canVoid,setCanVoid]=useState(false),[form,setForm]=useState<Form>(empty),[showForm,setShowForm]=useState(false),[busy,setBusy]=useState(true),[message,setMessage]=useState(""),[error,setError]=useState(""),[search,setSearch]=useState(""),[branch,setBranch]=useState(""),[status,setStatus]=useState("");
  const load=useCallback(async()=>{setBusy(true);setError("");try{const r=await fetch("/api/expenses",{cache:"no-store"});const j=await r.json();if(!r.ok)throw new Error(j.message);setExpenses(j.expenses??[]);setCanVoid(Boolean(j.canVoid));}catch(e){setError(e instanceof Error?e.message:"Unable to load expenses.");}finally{setBusy(false);}},[]);
+ // eslint-disable-next-line react-hooks/set-state-in-effect
  useEffect(()=>{void load();},[load]);
  const rows=useMemo(()=>expenses.filter(x=>(!branch||x.branch===branch)&&(!status||x.status===status)&&`${x.description} ${x.category} ${x.payee} ${x.referenceNumber}`.toLowerCase().includes(search.toLowerCase())),[expenses,branch,status,search]);
  const posted=rows.filter(x=>x.status==="Posted"),total=posted.reduce((s,x)=>s+x.amount,0),set=(k:keyof Form,v:string)=>setForm(c=>({...c,[k]:v}));

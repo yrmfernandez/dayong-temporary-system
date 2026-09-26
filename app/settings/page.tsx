@@ -13,6 +13,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
  type SessionUser = {
   employeeId: string;
@@ -36,6 +38,11 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
   const [compactTables, setCompactTables] = useState(false);
+  const [username, setUsername] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [accountMessage, setAccountMessage] = useState("");
 
   useEffect(() => {
     const loadSession = async () => {
@@ -49,7 +56,7 @@ export default function SettingsPage() {
           throw new Error(result.message || "Unable to load account settings.");
         }
 
-        setUser(result.user);
+        setUser(result.user); setUsername(result.user.username);
       } catch (failure) {
         setError(
           failure instanceof Error
@@ -206,6 +213,8 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Card><CardHeader><CardTitle>Security and sign-in</CardTitle><CardDescription>Change your username or password. Your current password is required.</CardDescription></CardHeader><CardContent><form className="grid gap-4 sm:grid-cols-2" onSubmit={async (event) => { event.preventDefault(); setSaving(true); setAccountMessage(""); try { const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, currentPassword, newPassword }) }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to update account."); setUser((current) => current ? { ...current, username: result.username } : current); setCurrentPassword(""); setNewPassword(""); setAccountMessage("Account settings updated."); } catch (failure) { setAccountMessage(failure instanceof Error ? failure.message : "Unable to update account."); } finally { setSaving(false); } }}><div className="space-y-2"><Label htmlFor="settings-username">Username</Label><Input id="settings-username" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username"/></div><div className="space-y-2"><Label htmlFor="current-password">Current password *</Label><Input id="current-password" type="password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password"/></div><div className="space-y-2"><Label htmlFor="new-password">New password</Label><Input id="new-password" type="password" minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password"/><p className="text-xs text-muted-foreground">Leave blank to keep the current password. New passwords require at least 12 characters.</p></div><div className="flex items-end"><Button disabled={saving}>{saving ? "Saving..." : "Save sign-in settings"}</Button></div>{accountMessage && <p className="text-sm sm:col-span-2" role="status">{accountMessage}</p>}</form></CardContent></Card>
 
       <Card>
         <CardHeader>

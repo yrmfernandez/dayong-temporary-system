@@ -20,12 +20,12 @@ type Role = {
 type RolesResponse = {
   success: boolean;
   roles?: Role[];
-  employees?: { id: string; name: string; status: string }[];
+  employees?: { id: string; name: string; status: string; roleIds: string[] }[];
   message?: string;
 };
 
 export default function UserAccountsPage() {
-  const [employees, setEmployees] = useState<{ id: string; name: string; status: string }[]>([]);
+  const [employees, setEmployees] = useState<{ id: string; name: string; status: string; roleIds: string[] }[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [employeeId, setEmployeeId] = useState("");
   const [fullName, setFullName] = useState("");
@@ -186,7 +186,7 @@ export default function UserAccountsPage() {
                     Employee ID *
                   </Label>
 
-                  <select id="employee-id" required className="w-full rounded-md border bg-background p-2" value={employeeId} disabled={saving} onChange={(e) => { setEmployeeId(e.target.value); setFullName(employees.find((employee) => employee.id === e.target.value)?.name ?? ""); }}><option value="">Select registered employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.id} - {employee.name}</option>)}</select>
+                  <select id="employee-id" required className="w-full rounded-md border bg-background p-2" value={employeeId} disabled={saving} onChange={(e) => { const employee = employees.find((item) => item.id === e.target.value); setEmployeeId(e.target.value); setFullName(employee?.name ?? ""); setRoleIds(employee?.roleIds ?? []); }}><option value="">Select registered employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.id} - {employee.name}</option>)}</select>
                 </div>
 
                 <div className="space-y-2">
@@ -241,6 +241,8 @@ export default function UserAccountsPage() {
 
               <div className="space-y-2">
                 <Label>Roles *</Label>
+
+                <p className="text-xs text-muted-foreground">The employee&apos;s operational roles are selected automatically. An administrator may add or remove account roles before creating the login.</p>
 
                 <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
                   {roles.map((role) => (

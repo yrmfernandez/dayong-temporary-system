@@ -20,7 +20,9 @@ export async function GET() {
     user: {
       employeeId: user.employeeId,
       username: user.username,
-      roles: user.roles,
+      roles: user.roleNames.length ? user.roleNames : user.roles,
+      roleIds: user.roles,
+      roleNames: user.roleNames,
       permissions: user.permissions,
     },
   });

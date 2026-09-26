@@ -23,12 +23,16 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', username: '=e
     }) } }),
     get: async ({ range }) => {
       if (range === "'Member programs'!S1") return { data: { values: [['Account Status']] } };
+      if (/^'?Branches'?!A:M$/.test(range)) return { data: { values: rows.Branches ?? [[]] } };
+      if (/^'?Roles'?!A:G$/.test(range)) return { data: { values: rows.Roles ?? [[]] } };
+      if (/^'?Users'?!A:(?:B|G|H)$/.test(range)) return { data: { values: rows.Users ?? [[]] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
       return { data: { values: /1:.*1$/.test(range)
         ? [missingHeaders ? [] : load('lib/encoder-schema.ts').trackingHeaders(schema.title)]
         : (rows[schema.title] ?? [[]]) } };
     },
     append: async (params) => { writes.push(params); return { data: {} }; },
+    update: async (params) => { writes.push(params); return { data: {} }; },
     batchUpdate: async (params) => { writes.push(params); return { data: {} }; },
   } } };
   function load(file) {
@@ -70,18 +74,36 @@ test('employee registration is independent of login and records its encoder', as
   h.setUser({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
   h.rows.Employees = [[], ['DPE-0002', 'Ana', 'North', 'MAS', 'active']];
   h.rows.Users = [[], ['U1', 'DPE-0005']];
-  const response = await route.POST(request({ name: '=Staff', branch: 'South', role: 'Collector', dateHired: '2026-09-25', encodedBy: 'spoof' }));
+  h.rows.Branches = [[], ['BR-1', 'South', 'DDO 1', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Roles = [[], ['R1', 'MAS', '', '', '', '', 'active']];
+  const response = await route.POST(request({ name: '=Staff', branchIds: ['BR-1'], roles: ['Collector', 'MAS'], dateHired: '2026-09-25', encodedBy: 'spoof' }));
   assert.equal(response.status, 201);
   assert.equal((await response.json()).employee.id, 'DPE-0006');
-  assert.equal(h.writes.length, 1);
+  assert.equal(h.writes.length, 2);
   assert.equal(h.writes[0].range, "'Employees'!A:M");
   const row = h.writes[0].requestBody.values[0];
   assert.equal(row[1], "'=Staff");
   assert.equal(row[9], "'U1");
-  assert.equal((await route.POST(request({ name: 'Bad', branch: 'N', role: 'Invented' }))).status, 400);
+  assert.equal((await route.POST(request({ name: 'Bad', branchIds: ['BR-X'], roles: ['Invented'] }))).status, 400);
   const data = await (await route.GET()).json();
   assert.equal(data.employees[0].name, 'Ana');
   assert.equal('passwordHash' in data.employees[0], false);
+});
+
+test('employee status updates and deletion protect linked login accounts', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
+  const route = h.load('app/api/employees/route.ts');
+  h.rows.Employees = [[], ['DPE-0002', 'Ana', 'North', 'MAS, Collector', 'active']];
+  h.rows.Users = [[]];
+  let response = await route.PATCH(request({ employeeId: 'DPE-0002', status: 'resigned' }));
+  assert.equal(response.status, 200);
+  assert.equal(h.writes.at(-1).range, "'Employees'!E2");
+  response = await route.DELETE(request({ employeeId: 'DPE-0002' }));
+  assert.equal(response.status, 200);
+  assert.equal(h.writes.at(-1).range, "'Employees'!A2:M2");
+  h.rows.Users = [[], ['USR-2', 'DPE-0002']];
+  response = await route.DELETE(request({ employeeId: 'DPE-0002' }));
+  assert.equal(response.status, 400);
 });
 
 test('member directory requires login, joins accounts once, and filters the same enrollment', async () => {

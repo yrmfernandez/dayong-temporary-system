@@ -108,6 +108,7 @@ export async function POST(request: Request) {
       employeeId: user.employeeId,
       username: user.username,
       roles: user.roles.map((role) => role.id),
+      roleNames: user.roles.map((role) => role.name),
       permissions,
     });
 
