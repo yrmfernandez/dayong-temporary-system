@@ -392,3 +392,25 @@ test('MAM future columns are projections and do not include future receipt data'
   assert.equal(report.rows[0].periods[1].collected, 0);
   assert.equal(report.rows[0].periods[1].state.nop, 0);
 });
+
+test('operational reports reconcile source transactions without duplicating data', async () => {
+  const h = harness();
+  const sale = Array(43).fill(''); sale[0] = 'SAL-1'; sale[1] = '2026-09-10'; sale[2] = 'MATINA'; sale[3] = 'Maria'; sale[33] = 'DP-1'; sale[38] = 350;
+  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[5] = 'DP-1'; collection[6] = 'MATINA'; collection[7] = 'Maria'; collection[9] = '2026-09-10'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 200; collection[31] = 'Maria'; collection[32] = 'MAS';
+  const expense = Array(17).fill(''); expense[0] = 'EXP-1'; expense[1] = '2026-09-10'; expense[4] = 50; expense[7] = 'MATINA'; expense[11] = 'Posted';
+  const remittance = Array(24).fill(''); remittance[0] = 'REM-1'; remittance[1] = 'MATINA'; remittance[3] = '2026-09-10'; remittance[4] = 'Approved'; remittance[11] = 200;
+  const deposit = Array(16).fill(''); deposit[0] = 'CSH-1'; deposit[1] = '2026-09-10'; deposit[2] = 'inflow'; deposit[3] = 'Bank Deposit'; deposit[5] = 100; deposit[6] = 'MATINA'; deposit[10] = 'Posted';
+  h.rows.Sales = [[], sale]; h.rows.Collections = [[], collection]; h.rows.Programs = [[], ['DP-1', 'P1', 'Program One']]; h.rows.Remittances = [[], remittance]; h.rows.Expenses = [[], expense]; h.rows['Cash Transactions'] = [[], deposit];
+  const report = await h.load('lib/reports.ts').buildOperationalReport('2026-09-01', '2026-09-30');
+  assert.equal(report.summary.accounts, 2);
+  assert.equal(report.summary.gross, 700);
+  assert.equal(report.summary.incentives, 150);
+  assert.equal(report.summary.net, 550);
+  assert.equal(report.summary.expenses, 50);
+  assert.equal(report.summary.expectedRemittance, 500);
+  assert.equal(report.summary.actualRemittance, 200);
+  assert.equal(report.summary.deposits, 100);
+  assert.equal(report.summary.difference, 300);
+  assert.equal(report.collections[0].masCommission, 150);
+  assert.equal(report.sales.length, 1);
+});

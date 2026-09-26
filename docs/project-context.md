@@ -124,4 +124,12 @@ Login sessions now contain stable role IDs and role names. The sidebar is genera
 
 Master-data CRUD is available for Branches, Programs, Members, Employees, and User Accounts. Deletes are relationship-aware: referenced branches, programs, members, and employees must be made inactive or have their dependent account resolved rather than being removed. Members are created through New Sales because registration also creates the required sale and enrollment records. Financial, collection, remittance, attendance, and leave records retain their void, approval, rejection, review, or status workflows instead of destructive deletion. See [CRUD and record lifecycle](crud-policy.md).
 
+## Operational reports
+
+Daily, weekly, monthly, and yearly reports are generated from the source Sales, Collections, Remittances, Expenses, and Cash Transactions sheets. They can be filtered by branch, program, and accountable MAS/Collector, printed, or exported as an Excel-compatible CSV. Reports do not duplicate operational records into separate report sheets. See [operational reports](reports.md) for the calculation rules and current data-source limitations.
+
+## Role-based dashboard
+
+The main dashboard is separate from formal Reports and renders a workspace based on the signed-in user's role. Administrators see system configuration and attention items; CEO/President see company performance; Finance sees cash and remittance control; HR sees personnel and branch staffing; Entry Clerks see their daily encoding and quick actions; IT sees accounts and configuration activity; and MAS users see only report totals associated with their accountable name plus their assigned member programs. Dashboard financial figures reuse the same calculation service as Reports so summary and drill-down totals stay consistent.
+
 The specification's statements about previously completed features or builds must be checked when relevant; they are not evidence that every described operation is currently supported.

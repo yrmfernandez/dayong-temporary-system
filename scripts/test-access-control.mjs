@@ -8,11 +8,14 @@ const access = (roleNames, pathname, overrides = {}) => canAccessPath({ roleName
 test("Administrator can open every implemented workspace", () => {
   assert.equal(access(["Administrator"], "/expenses"), true);
   assert.equal(access(["Administrator"], "/user-accounts"), true);
+  assert.equal(access(["Administrator"], "/reports/yearly"), true);
 });
 
 test("Entry Clerk sees encoding pages but not finance or system administration", () => {
   assert.equal(access(["Entry Clerk"], "/new-sales"), true);
   assert.equal(access(["Entry Clerk"], "/collections"), true);
+  assert.equal(access(["Entry Clerk"], "/reports"), true);
+  assert.equal(access(["Entry Clerk"], "/reports/daily"), true);
   assert.equal(access(["Entry Clerk"], "/settings"), true);
   assert.equal(access(["Entry Clerk"], "/expenses"), false);
   assert.equal(access(["Entry Clerk"], "/user-accounts"), false);

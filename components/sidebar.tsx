@@ -13,6 +13,7 @@ import {
   CreditCard,
   Database,
   FileText,
+  ChartNoAxesColumnIncreasing,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -98,6 +99,16 @@ const navigation = [
         href: "/cash-transactions",
         icon: Wallet,
       },
+    ],
+  },
+  {
+    title: "REPORTS",
+    items: [
+      { name: "Reports Dashboard", href: "/reports", icon: ChartNoAxesColumnIncreasing },
+      { name: "Daily Report", href: "/reports/daily", icon: FileText },
+      { name: "Weekly Report", href: "/reports/weekly", icon: FileText },
+      { name: "Monthly Report", href: "/reports/monthly", icon: BarChart3 },
+      { name: "Yearly Report", href: "/reports/yearly", icon: BarChart3 },
     ],
   },
   {

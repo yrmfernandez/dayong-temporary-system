@@ -1,108 +1,52 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { AlertTriangle, Building2, ClipboardList, Database, PhilippinePeso, Receipt, UserCheck, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  ClipboardList,
-  PhilippinePeso,
-  Receipt,
-  Users,
-} from "lucide-react";
+import { getSessionUser } from "@/lib/auth-server";
+import { getDashboardData } from "@/lib/dashboard-data";
 
-const kpis = [
-  {
-    title: "Today's Collections",
-    value: "₱0.00",
-    description: "Gross collections today",
-    icon: PhilippinePeso,
-  },
-  {
-    title: "New Sales",
-    value: "0",
-    description: "New registrations today",
-    icon: Users,
-  },
-  {
-    title: "Collections Encoded",
-    value: "0",
-    description: "Transactions encoded today",
-    icon: Receipt,
-  },
-  {
-    title: "Pending Remittances",
-    value: "0",
-    description: "Transactions awaiting processing",
-    icon: ClipboardList,
-  },
-];
+const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+const icons = [Receipt, PhilippinePeso, ClipboardList, AlertTriangle, Users, UserCheck, Building2, Database];
+type Data = Awaited<ReturnType<typeof getDashboardData>>;
+type Metric = { label: string; value: string | number; detail: string; href?: string };
 
-export default function Dashboard() {
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          Dashboard
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Dayong Monitoring System
-        </p>
-      </div>
-
-      {/* KPI cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((kpi) => {
-          const Icon = kpi.icon;
-
-          return (
-            <Card key={kpi.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-sm font-medium">
-                  {kpi.title}
-                </CardTitle>
-
-                <Icon className="size-4 text-muted-foreground" />
-              </CardHeader>
-
-              <CardContent>
-                <div className="text-2xl font-bold">{kpi.value}</div>
-
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {kpi.description}
-                </p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Temporary dashboard sections */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Today's Activity</CardTitle>
-          </CardHeader>
-
-          <CardContent>
-            <div className="flex min-h-40 items-center justify-center rounded-md border border-dashed">
-              <p className="text-sm text-muted-foreground">
-                Activity data will appear here.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Collections</CardTitle>
-          </CardHeader>
-
-          <CardContent>
-            <div className="flex min-h-40 items-center justify-center rounded-md border border-dashed">
-              <p className="text-sm text-muted-foreground">
-                Collection data will appear here.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+export default async function Dashboard() {
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+  let data: Data;
+  try {
+    data = await getDashboardData(user);
+  } catch (error) { return DashboardError(error instanceof Error ? error.message : "Unable to load dashboard."); }
+  const view = config(data);
+  return <section className="space-y-6"><div><p className="text-sm font-medium text-primary">{view.eyebrow}</p><h1 className="text-2xl font-bold">{view.title}</h1><p className="text-sm text-muted-foreground">Welcome, {data.employeeName}. {view.description}</p></div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{view.metrics.map((item, index) => <MetricCard key={item.label} item={item} Icon={icons[index]}/>)}</div>
+    {data.kind === "entry" && <div className="flex flex-wrap gap-3"><Action href="/new-sales">+ New Sale</Action><Action href="/collections">+ Encode Collection</Action><Action href="/reports/daily">View Daily Report</Action></div>}
+    <div className="grid gap-6 xl:grid-cols-2">{view.sections}</div>
+  </section>;
 }
+
+function DashboardError(message: string) { return <section><h1 className="text-2xl font-bold">Dashboard</h1><p className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">{message}</p></section>; }
+
+function config(data: Data) {
+  const m = data.monthReport.summary, t = data.todayActivity, r = data.remittance.summary;
+  const finance = <><Financial data={data}/><Pending data={data}/></>;
+  if (data.kind === "executive") return { eyebrow: "Executive overview", title: "Company Performance", description: "Current performance with drill-down access to official reports.", metrics: [{ label: "Today's New Accounts", value: t.salesAccounts, detail: "New sales today", href: "/reports/daily" }, { label: "Today's Gross Sales", value: money(t.salesGross), detail: "Recorded today" }, { label: "Today's Collections", value: money(t.collectionGross), detail: "Posted today" }, { label: "Actual Remittance", value: money(m.actualRemittance), detail: "Approved this month" }], sections: finance };
+  if (data.kind === "finance") return { eyebrow: "Finance workspace", title: "Cash & Remittance", description: "Review accountability, approvals, and discrepancies.", metrics: [{ label: "Gross Collections", value: money(data.monthReport.collections.reduce((sum, row) => sum + row.gross, 0)), detail: "This month" }, { label: "Incentives / Commissions", value: money(m.incentives), detail: "This month" }, { label: "Expected Remittance", value: money(m.expectedRemittance), detail: "After expenses" }, { label: "Difference", value: money(m.difference), detail: m.difference > 0 ? "Shortage" : m.difference < 0 ? "Overage" : "Balanced" }], sections: finance };
+  if (data.kind === "hr") return { eyebrow: "HR workspace", title: "Personnel Overview", description: "Staff status, roles, and branch assignments.", metrics: [{ label: "Total Employees", value: data.counts.employees, detail: "Registered staff" }, { label: "Active Employees", value: data.counts.activeEmployees, detail: "Current staff" }, { label: "MAS", value: data.counts.mas, detail: "Active staff" }, { label: "Collectors", value: data.counts.collectors, detail: "Active staff" }], sections: <><BranchStaff data={data}/><Links items={[["Manage Employees", "/employees"], ["Attendance Review", "/attendance-reviews"], ["Leave Approvals", "/leave-approvals"]]}/></> };
+  if (data.kind === "entry") return { eyebrow: "Encoding workspace", title: "Today's Encoding", description: "Keep daily sales and collection entries complete and accurate.", metrics: [{ label: "Today's New Sales", value: t.salesAccounts, detail: money(t.salesGross) }, { label: "Today's Collections", value: t.collectionAccounts, detail: money(t.collectionGross) }, { label: "Transactions Encoded", value: data.encodedToday, detail: "Your entries today" }, { label: "Needs Attention", value: r.historicalReviewCount, detail: "Historical review entries" }], sections: <><Recent data={data}/><Links items={[["New Sale", "/new-sales"], ["Encode Collection", "/collections"], ["Daily Report", "/reports/daily"]]}/></> };
+  if (data.kind === "it") return { eyebrow: "IT workspace", title: "System Operations", description: "Accounts, configuration, and data activity.", metrics: [{ label: "Active Users", value: data.counts.users, detail: "Enabled accounts" }, { label: "Branches", value: data.counts.branches, detail: "Active configuration" }, { label: "Programs", value: data.counts.programs, detail: "Active configuration" }, { label: "Transactions Today", value: t.salesAccounts + t.collectionAccounts, detail: "Sales and Collections" }], sections: <><Recent data={data}/><Links items={[["User Accounts", "/user-accounts"], ["Employees", "/employees"], ["Branches", "/branches"]]}/></> };
+  if (data.kind === "mas") return { eyebrow: "My portfolio", title: "MAS Dashboard", description: "Your assigned programs and collection performance.", metrics: [{ label: "My Active Programs", value: data.portfolio.length, detail: "Recent assigned enrollments" }, { label: "Collections This Month", value: money(data.monthReport.collections.reduce((sum, row) => sum + row.gross, 0)), detail: "My portfolio" }, { label: "Commission This Month", value: money(m.incentives), detail: "Calculated collections" }, { label: "Expected Remittance", value: money(m.expectedRemittance), detail: "Current month" }], sections: <><Portfolio data={data}/><Recent data={data}/></> };
+  return { eyebrow: "Administration workspace", title: "System Overview", description: "Master data, activity, and items requiring attention.", metrics: [{ label: "Branches", value: data.counts.branches, detail: "Active branches" }, { label: "Active Users", value: data.counts.users, detail: "Enabled accounts" }, { label: "Members", value: data.counts.members, detail: "Master records" }, { label: "Programs", value: data.counts.programs, detail: "Active programs" }], sections: <><Recent data={data}/><Panel title="Items Requiring Attention"><Attention label="Pending Remittances" value={r.pendingCount} href="/remittances"/><Attention label="Remittance Discrepancies" value={r.discrepancyAmount} href="/remittances" moneyValue/></Panel></> };
+}
+
+function MetricCard({ item, Icon }: { item: Metric; Icon: typeof Receipt }) { const card = <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">{item.label}</CardTitle><Icon className="size-4 text-muted-foreground"/></CardHeader><CardContent><p className="text-2xl font-bold">{item.value}</p><p className="text-xs text-muted-foreground">{item.detail}</p></CardContent></Card>; return item.href ? <Link href={item.href}>{card}</Link> : card; }
+function Recent({ data }: { data: Data }) { return <Panel title="Recent Entries"><Table headers={["Date / Time", "Member", "Program", "Type", "Amount", "Status"]} rows={data.recent.map((row) => [row.stamp.replace("T", " ").slice(0, 16), row.name, row.program, row.type, money(row.amount), row.status])}/></Panel>; }
+function Financial({ data }: { data: Data }) { const s = data.monthReport.summary; return <Panel title="This Month"><Table headers={["Metric", "Amount"]} rows={[["Gross", money(s.gross)], ["Incentives", money(s.incentives)], ["Expenses", money(s.expenses)], ["Expected Remittance", money(s.expectedRemittance)], ["Actual Remittance", money(s.actualRemittance)], ["Difference", money(s.difference)]]}/></Panel>; }
+function Pending({ data }: { data: Data }) { return <Panel title="Remittances Requiring Action"><Table headers={["Person", "Branch", "Expected", "Actual", "Difference", "Status"]} rows={data.remittance.remittances.filter((row) => ["Pending Approval", "Discrepancy"].includes(row.status)).slice(0, 8).map((row) => [row.accountableName, row.branch, money(row.expectedAmount), money(row.actualAmount), money(row.difference), row.status])}/></Panel>; }
+function BranchStaff({ data }: { data: Data }) { return <Panel title="Staff by Branch"><Table headers={["Branch", "Employees", "MAS", "Collectors"]} rows={data.branchStats.map((row) => [row.branch, String(row.employees), String(row.mas), String(row.collectors)])}/></Panel>; }
+function Portfolio({ data }: { data: Data }) { return <Panel title="My Members"><Table headers={["Member", "Program", "Branch", "Status", "DOI"]} rows={data.portfolio.map((row) => [row.member, row.program, row.branch, row.status, row.doi])}/></Panel>; }
+function Links({ items }: { items: string[][] }) { return <Panel title="Quick Actions"><div className="grid gap-3 sm:grid-cols-2">{items.map(([label, href]) => <Action key={href} href={href}>{label}</Action>)}</div></Panel>; }
+function Action({ href, children }: { href: string; children: React.ReactNode }) { return <Link href={href} className="rounded-md border bg-background px-4 py-3 text-sm font-medium hover:border-primary">{children}</Link>; }
+function Attention({ label, value, href, moneyValue = false }: { label: string; value: number; href: string; moneyValue?: boolean }) { return <Link href={href} className="mb-3 flex justify-between rounded-lg border p-3 text-sm"><span>{label}</span><strong>{moneyValue ? money(value) : value}</strong></Link>; }
+function Panel({ title, children }: { title: string; children: React.ReactNode }) { return <Card><CardHeader><CardTitle>{title}</CardTitle></CardHeader><CardContent>{children}</CardContent></Card>; }
+function Table({ headers, rows }: { headers: string[]; rows: string[][] }) { return <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><thead><tr className="border-b">{headers.map((header) => <th key={header} className="pb-3 pr-4 text-muted-foreground">{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${row[0]}-${index}`} className="border-b last:border-0">{row.map((cell, i) => <td key={i} className="py-3 pr-4">{cell || "â€”"}</td>)}</tr>)}{!rows.length && <tr><td colSpan={headers.length} className="py-8 text-center text-muted-foreground">No current records.</td></tr>}</tbody></table></div>; }

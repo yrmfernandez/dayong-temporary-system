@@ -14,10 +14,10 @@ Role names are read from the live `Roles` and `User Roles` sheets during login a
 | Role | Current pages |
 | --- | --- |
 | Administrator | All implemented pages |
-| CEO / President | Dashboard, Members, MAM, Remittances, Programs, Branches, Cash Ledger, Settings |
+| CEO / President | Dashboard, Members, MAM, Remittances, Programs, Branches, Cash Ledger, Reports, Settings |
 | HR Officer | Dashboard, Employees, Branches, Attendance, Attendance Review, Leave Requests, Leave Approvals, Settings |
-| Finance | Dashboard, Members, Collections, Remittances, MAM, Programs, Expenses, Cash Ledger, Settings |
-| Entry Clerk | Dashboard, New Sales, Members, Collections, Attendance, Leave Requests, Settings |
+| Finance | Dashboard, Members, Collections, Remittances, MAM, Programs, Expenses, Cash Ledger, Reports, Settings |
+| Entry Clerk | Dashboard, New Sales, Members, Collections, Attendance, Leave Requests, Reports, Settings |
 | IT Clerk | Dashboard, Employees, User Accounts, Branches, Settings |
 | MAS | Dashboard, Members, Collections, Remittances, MAM, Attendance, Leave Requests, Settings |
 
