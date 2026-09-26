@@ -206,12 +206,13 @@ export default function MamPage() {
   }
 
   return (
-    <section className="mam-report space-y-6 p-4 md:p-6 max-w-[1600px] mx-auto text-foreground">
+    <section className="mam-report mx-auto max-w-[1600px] space-y-6 text-foreground">
       {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-5">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-violet-90 pb-5">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Member Account Monitoring</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <span className="rounded-md bg-purple-95 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-purple-60">Account Monitoring</span>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-violet-10">Member Account Monitoring</h1>
+          <p className="mt-1 text-sm text-violet-40">
             Track account coverage, payment histories, and overall balances across branches.
           </p>
         </div>
@@ -232,7 +233,7 @@ export default function MamPage() {
       </div>
 
       {/* Filter Panel */}
-      <Card className="print:hidden border-border/60 shadow-xs">
+      <Card className="rounded-3xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)] print:hidden">
         <CardHeader className="pb-3 pt-4">
           <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
             <Filter className="h-4 w-4" /> Filter Monitoring Scope
@@ -353,7 +354,7 @@ export default function MamPage() {
 
       {/* Overview Stat Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="shadow-xs">
+        <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-xs font-medium text-muted-foreground">Active Accounts</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -364,7 +365,7 @@ export default function MamPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-xs">
+        <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-xs font-medium text-muted-foreground">Collections Received</CardTitle>
             <Wallet className="h-4 w-4 text-muted-foreground" />
@@ -375,7 +376,7 @@ export default function MamPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-xs">
+        <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-xs font-medium text-muted-foreground">Quota Remaining</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -386,7 +387,7 @@ export default function MamPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-xs">
+        <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-xs font-medium text-muted-foreground">Final Month Collection Rate</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -414,7 +415,7 @@ export default function MamPage() {
 
       {/* Main Monitoring Section */}
       {[...groups].map(([key, group]) => (
-        <Card key={key} className="overflow-hidden border-border/80 shadow-xs">
+        <Card key={key} className="overflow-hidden rounded-3xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-5 py-3">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <Building2 className="h-4 w-4 text-muted-foreground" />

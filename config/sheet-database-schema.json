@@ -23,7 +23,9 @@
     { "sheet": "Roles", "table": "roles", "primaryKey": "role_id", "firstHeader": "role_id" },
     { "sheet": "User Roles", "table": "user_roles", "primaryKey": "user_id", "firstHeader": "user_id", "compositeKey": ["user_id", "role_id"] },
     { "sheet": "Attendance", "table": "attendance", "primaryKey": "attendance_id", "firstHeader": "attendance_id" },
-    { "sheet": "Leave Requests", "table": "leave_requests", "primaryKey": "leave_request_id", "firstHeader": "leave_request_id" }
+    { "sheet": "Leave Requests", "table": "leave_requests", "primaryKey": "leave_request_id", "firstHeader": "leave_request_id" },
+    { "sheet": "Expenses", "table": "expenses", "primaryKey": "expense_id", "firstHeader": "expense_id" },
+    { "sheet": "Cash Transactions", "table": "cash_transactions", "primaryKey": "transaction_id", "firstHeader": "transaction_id" }
   ],
   "columnTypes": {
     "*_id": "text",

@@ -1,72 +1,21 @@
 "use client";
-
-import { FormEvent, useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronUp, Plus, Trash2, Wallet } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-
- type CashTransaction = {
-  id: string;
-  date: string;
-  type: "inflow" | "outflow";
-  category: string;
-  description: string;
-  amount: number;
-  reference: string;
-};
-
-type CashForm = Omit<CashTransaction, "id" | "amount"> & { amount: string };
-
-const emptyForm: CashForm = { date: "", type: "inflow", category: "", description: "", amount: "", reference: "" };
-const money = (value: number) => `PHP ${value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-export default function CashTransactionsPage() {
-  const [transactions, setTransactions] = useState<CashTransaction[]>([]);
-  const [form, setForm] = useState<CashForm>(emptyForm);
-  const [showForm, setShowForm] = useState(false);
-  const [expandedTransactions, setExpandedTransactions] = useState<Record<string, boolean>>({});
-  const [message, setMessage] = useState("");
-
-  const inflow = transactions.filter((item) => item.type === "inflow").reduce((sum, item) => sum + item.amount, 0);
-  const outflow = transactions.filter((item) => item.type === "outflow").reduce((sum, item) => sum + item.amount, 0);
-
-  const addTransaction = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const amount = Number(form.amount);
-
-    if (!form.date || !form.category || !form.description.trim() || !Number.isFinite(amount) || amount <= 0) {
-      setMessage("Complete the required fields with an amount greater than zero.");
-      return;
-    }
-
-    setTransactions((current) => [{ ...form, id: `CASH-${Date.now()}`, amount, description: form.description.trim(), reference: form.reference.trim() }, ...current]);
-    setForm(emptyForm);
-    setShowForm(false);
-    setMessage("Cash transaction added to this session.");
-  };
-
-  return (
-    <section className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Cash Transactions</h1>
-          <p className="text-sm text-muted-foreground">Track cash coming in and going out of the business.</p>
-        </div>
-        <Button type="button" onClick={() => setShowForm(true)}><Plus className="mr-2 size-4" />Add Transaction</Button>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card><CardContent className="pt-5"><p className="text-sm text-muted-foreground">Cash inflow</p><p className="mt-1 text-2xl font-semibold text-emerald-700">{money(inflow)}</p></CardContent></Card>
-        <Card><CardContent className="pt-5"><p className="text-sm text-muted-foreground">Cash outflow</p><p className="mt-1 text-2xl font-semibold text-red-700">{money(outflow)}</p></CardContent></Card>
-        <Card><CardContent className="pt-5"><p className="text-sm text-muted-foreground">Net movement</p><p className="mt-1 text-2xl font-semibold">{money(inflow - outflow)}</p></CardContent></Card>
-      </div>
-
-      {showForm && <Card><CardHeader><CardTitle>New cash transaction</CardTitle></CardHeader><CardContent><form className="space-y-4" onSubmit={addTransaction}><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"><div className="space-y-2"><Label htmlFor="cash-date">Date *</Label><Input id="cash-date" type="date" value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="cash-type">Direction *</Label><select id="cash-type" className="block h-9 w-full rounded-lg border bg-background px-3 text-sm" value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as CashForm["type"] }))}><option value="inflow">Cash inflow</option><option value="outflow">Cash outflow</option></select></div><div className="space-y-2"><Label htmlFor="cash-amount">Amount *</Label><Input id="cash-amount" type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} placeholder="0.00" /></div><div className="space-y-2"><Label htmlFor="cash-category">Category *</Label><Input id="cash-category" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} placeholder="Collection, deposit, withdrawal" /></div><div className="space-y-2"><Label htmlFor="cash-reference">Reference</Label><Input id="cash-reference" value={form.reference} onChange={(event) => setForm((current) => ({ ...current, reference: event.target.value }))} placeholder="OR number or reference" /></div><div className="space-y-2 md:col-span-2 lg:col-span-1"><Label htmlFor="cash-description">Description *</Label><Input id="cash-description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Transaction details" /></div></div>{message && <p className="text-sm text-muted-foreground">{message}</p>}<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => { setShowForm(false); setMessage(""); }}>Cancel</Button><Button type="submit">Save Transaction</Button></div></form></CardContent></Card>}
-
-      <Card><CardHeader><CardTitle>Cash ledger</CardTitle></CardHeader><CardContent>{transactions.length === 0 ? <div className="rounded-lg border border-dashed p-10 text-center"><Wallet className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">No cash transactions recorded yet.</p><p className="text-sm text-muted-foreground">Add a transaction to start the ledger.</p></div> : <div className="divide-y rounded-lg border">{transactions.map((transaction) => { const expanded = expandedTransactions[transaction.id] ?? false; const isInflow = transaction.type === "inflow"; return <div key={transaction.id} className="p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3">{isInflow ? <ArrowDownLeft className="mt-0.5 size-5 text-emerald-600" /> : <ArrowUpRight className="mt-0.5 size-5 text-red-600" />}<div><p className="font-medium">{transaction.description}</p><p className="text-sm text-muted-foreground">{transaction.category} · {transaction.date}</p></div></div><div className="flex items-center gap-2"><span className={`font-semibold ${isInflow ? "text-emerald-700" : "text-red-700"}`}>{isInflow ? "+" : "-"}{money(transaction.amount)}</span><Button type="button" variant="outline" size="icon" aria-expanded={expanded} aria-label={expanded ? "Collapse transaction details" : "Expand transaction details"} onClick={() => setExpandedTransactions((current) => ({ ...current, [transaction.id]: !expanded }))}>{expanded ? <ChevronUp /> : <ChevronDown />}</Button><Button type="button" variant="ghost" size="icon" aria-label="Delete transaction" onClick={() => setTransactions((current) => current.filter((item) => item.id !== transaction.id))}><Trash2 /></Button></div></div>{expanded && <div className="mt-4 grid gap-3 border-t pt-4 text-sm sm:grid-cols-2"><div><p className="text-muted-foreground">Transaction ID</p><p>{transaction.id}</p></div><div><p className="text-muted-foreground">Reference</p><p>{transaction.reference || "Not recorded"}</p></div></div>}</div>; })}</div>}</CardContent></Card>
-    </section>
-  );
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowDownLeft, ArrowUpRight, Landmark, Plus, RefreshCw, Scale, Wallet, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button"; import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; import { Input } from "@/components/ui/input"; import { Label } from "@/components/ui/label";
+type Entry={id:string;date:string;direction:"inflow"|"outflow";category:string;description:string;amount:number;branch:string;account:string;referenceType:string;referenceId:string;status:string;remarks:string;source:"remittance"|"expense"|"manual"};
+type Form={date:string;direction:"inflow"|"outflow";category:string;description:string;amount:string;branch:string;account:string;referenceType:string;referenceId:string;remarks:string};
+const today=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila"}).format(new Date()),empty=():Form=>({date:today(),direction:"inflow",category:"",description:"",amount:"",branch:"",account:"Cash on Hand",referenceType:"Manual",referenceId:"",remarks:""}),money=(v:number)=>new Intl.NumberFormat("en-PH",{style:"currency",currency:"PHP"}).format(v);
+export default function CashTransactionsPage(){
+ const [ledger,setLedger]=useState<Entry[]>([]),[canVoid,setCanVoid]=useState(false),[form,setForm]=useState<Form>(empty),[show,setShow]=useState(false),[busy,setBusy]=useState(true),[error,setError]=useState(""),[message,setMessage]=useState(""),[search,setSearch]=useState(""),[branch,setBranch]=useState(""),[source,setSource]=useState("");
+ const load=useCallback(async()=>{setBusy(true);setError("");try{const r=await fetch("/api/cash-transactions",{cache:"no-store"}),j=await r.json();if(!r.ok)throw new Error(j.message);setLedger(j.ledger??[]);setCanVoid(Boolean(j.canVoid));}catch(e){setError(e instanceof Error?e.message:"Unable to load cash ledger.");}finally{setBusy(false);}},[]); useEffect(()=>{void load();},[load]);
+ const rows=useMemo(()=>ledger.filter(x=>(!branch||x.branch===branch)&&(!source||x.source===source)&&`${x.description} ${x.category} ${x.referenceId} ${x.account}`.toLowerCase().includes(search.toLowerCase())),[ledger,branch,source,search]); const posted=rows.filter(x=>x.status==="Posted"),inflow=posted.filter(x=>x.direction==="inflow").reduce((s,x)=>s+x.amount,0),outflow=posted.filter(x=>x.direction==="outflow").reduce((s,x)=>s+x.amount,0),set=(k:keyof Form,v:string)=>setForm(c=>({...c,[k]:v}));
+ async function save(e:FormEvent){e.preventDefault();setBusy(true);setError("");try{const r=await fetch("/api/cash-transactions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,amount:Number(form.amount)})}),j=await r.json();if(!r.ok)throw new Error(j.message);setForm(empty());setShow(false);setMessage(`Cash transaction ${j.id} posted.`);await load();}catch(x){setError(x instanceof Error?x.message:"Unable to save cash transaction.");}finally{setBusy(false);}}
+ async function voidRecord(id:string){const reason=window.prompt("Reason for voiding this manual cash transaction:");if(!reason?.trim())return;setBusy(true);try{const r=await fetch("/api/cash-transactions",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,reason})}),j=await r.json();if(!r.ok)throw new Error(j.message);setMessage(`${id} voided.`);await load();}catch(x){setError(x instanceof Error?x.message:"Unable to void transaction.");}finally{setBusy(false);}}
+ return <section className="mx-auto max-w-7xl space-y-6"><header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><span className="rounded-md bg-purple-95 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-purple-60">Finance</span><h1 className="mt-2 text-3xl font-black tracking-tight text-violet-10">Cash Ledger</h1><p className="text-sm text-violet-40">Approved remittances and posted expenses appear automatically. Add only other cash movements here.</p></div><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={()=>void load()}><RefreshCw className={`size-4 ${busy?"animate-spin":""}`}/>Refresh</Button><Button onClick={()=>setShow(v=>!v)}><Plus className="size-4"/>Manual Entry</Button></div></header>
+ {error&&<p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}{message&&<p className="rounded-xl border border-accent-lime/50 bg-accent-lime/15 p-3 text-sm text-accent-moss">{message}</p>}
+ <div className="grid gap-4 sm:grid-cols-3"><Metric icon={<ArrowDownLeft/>} label="Cash inflow" value={money(inflow)} tone="lime"/><Metric icon={<ArrowUpRight/>} label="Cash outflow" value={money(outflow)} tone="purple"/><Metric icon={<Scale/>} label="Net cash movement" value={money(inflow-outflow)} tone="violet"/></div>
+ {show&&<Card className="rounded-3xl"><CardHeader><CardTitle>Manual Cash Entry</CardTitle><p className="text-sm text-muted-foreground">Do not re-enter approved remittances or expenses; they are linked automatically.</p></CardHeader><CardContent><form onSubmit={save} className="space-y-5"><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"><Field label="Transaction date *"><Input type="date" value={form.date} onChange={e=>set("date",e.target.value)}/></Field><Field label="Direction *"><select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={form.direction} onChange={e=>set("direction",e.target.value)}><option value="inflow">Cash inflow</option><option value="outflow">Cash outflow</option></select></Field><Field label="Amount *"><Input type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>set("amount",e.target.value)}/></Field><Field label="Category *"><Input value={form.category} onChange={e=>set("category",e.target.value)} placeholder="Capital, bank deposit, adjustment"/></Field><Field label="Branch *"><Input value={form.branch} onChange={e=>set("branch",e.target.value)}/></Field><Field label="Cash account *"><Input value={form.account} onChange={e=>set("account",e.target.value)}/></Field><Field label="Reference type"><Input value={form.referenceType} onChange={e=>set("referenceType",e.target.value)}/></Field><Field label="Reference ID"><Input value={form.referenceId} onChange={e=>set("referenceId",e.target.value)}/></Field><div className="md:col-span-2"><Field label="Description *"><Input value={form.description} onChange={e=>set("description",e.target.value)}/></Field></div><div className="md:col-span-2"><Field label="Remarks"><Input value={form.remarks} onChange={e=>set("remarks",e.target.value)}/></Field></div></div><div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={()=>setShow(false)}>Cancel</Button><Button disabled={busy}>Post Entry</Button></div></form></CardContent></Card>}
+ <Card className="rounded-3xl"><CardHeader><CardTitle className="flex items-center gap-2"><Wallet className="size-5 text-violet-60"/>Consolidated Cash Ledger</CardTitle></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-3"><Input placeholder="Search category, description, reference..." value={search} onChange={e=>setSearch(e.target.value)}/><select className="h-9 rounded-md border bg-background px-3 text-sm" value={branch} onChange={e=>setBranch(e.target.value)}><option value="">All branches</option>{[...new Set(ledger.map(x=>x.branch))].filter(Boolean).sort().map(x=><option key={x}>{x}</option>)}</select><select className="h-9 rounded-md border bg-background px-3 text-sm" value={source} onChange={e=>setSource(e.target.value)}><option value="">All sources</option><option value="remittance">Approved remittances</option><option value="expense">Expenses</option><option value="manual">Manual entries</option></select></div><div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[1000px] text-sm"><thead className="bg-violet-95/60 text-left text-xs uppercase text-violet-40"><tr>{["Date","Direction","Description","Branch","Cash account","Source / reference","Amount","Status","Action"].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{rows.map(x=><tr key={x.id} className="border-t"><td className="p-3">{x.date}</td><td className="p-3">{x.direction==="inflow"?<span className="inline-flex gap-1 text-accent-moss"><ArrowDownLeft className="size-4"/>Inflow</span>:<span className="inline-flex gap-1 text-purple-60"><ArrowUpRight className="size-4"/>Outflow</span>}</td><td className="p-3"><p className="font-semibold">{x.description}</p><p className="text-xs text-muted-foreground">{x.category}</p></td><td className="p-3">{x.branch}</td><td className="p-3">{x.account}</td><td className="p-3"><span className="capitalize">{x.source}</span><br/><span className="font-mono text-xs text-muted-foreground">{x.referenceId||x.id}</span></td><td className={`p-3 font-bold ${x.direction==="inflow"?"text-accent-moss":"text-purple-60"}`}>{x.direction==="inflow"?"+":"−"}{money(x.amount)}</td><td className="p-3">{x.status}</td><td className="p-3">{canVoid&&x.source==="manual"&&x.status==="Posted"&&<Button size="sm" variant="ghost" onClick={()=>void voidRecord(x.id)}><XCircle className="size-4"/>Void</Button>}</td></tr>)}{!rows.length&&<tr><td colSpan={9} className="p-10 text-center text-muted-foreground">No cash transactions match the filters.</td></tr>}</tbody></table></div></CardContent></Card></section>;
 }
+function Metric({icon,label,value,tone}:{icon:React.ReactNode;label:string;value:string;tone:"lime"|"purple"|"violet"}){const c={lime:"bg-accent-lime/20 text-accent-moss",purple:"bg-purple-95 text-purple-60",violet:"bg-violet-95 text-violet-60"}[tone];return <Card className="rounded-2xl"><CardContent className="pt-5"><div className={`mb-3 flex size-9 items-center justify-center rounded-xl [&>svg]:size-4 ${c}`}>{icon}</div><p className="text-xs text-violet-40">{label}</p><p className="mt-1 text-2xl font-black text-violet-10">{value}</p></CardContent></Card>}
+function Field({label,children}:{label:string;children:React.ReactNode}){return <div className="space-y-2"><Label>{label}</Label>{children}</div>}

@@ -1,131 +1,29 @@
 "use client";
-
-import { FormEvent, useState } from "react";
-import { ChevronDown, ChevronUp, Plus, Receipt, Trash2 } from "lucide-react";
-
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Banknote, CalendarDays, Filter, Plus, Receipt, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
- type Expense = {
-  id: string;
-  date: string;
-  category: string;
-  description: string;
-  amount: number;
-  paidBy: string;
-  branch: string;
-};
-
-type ExpenseForm = Omit<Expense, "id" | "amount"> & { amount: string };
-
-const emptyForm: ExpenseForm = {
-  date: "",
-  category: "",
-  description: "",
-  amount: "",
-  paidBy: "",
-  branch: "",
-};
-
-const money = (value: number) =>
-  `PHP ${value.toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-
-export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [form, setForm] = useState<ExpenseForm>(emptyForm);
-  const [showForm, setShowForm] = useState(false);
-  const [expandedExpenses, setExpandedExpenses] = useState<Record<string, boolean>>({});
-  const [message, setMessage] = useState("");
-
-  const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-
-  const addExpense = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const amount = Number(form.amount);
-
-    if (!form.date || !form.category || !form.description.trim() || !Number.isFinite(amount) || amount <= 0) {
-      setMessage("Complete the required fields with an amount greater than zero.");
-      return;
-    }
-
-    const expense: Expense = {
-      ...form,
-      id: `EXP-${Date.now()}`,
-      amount,
-      description: form.description.trim(),
-      paidBy: form.paidBy.trim(),
-      branch: form.branch.trim(),
-    };
-
-    setExpenses((current) => [expense, ...current]);
-    setForm(emptyForm);
-    setShowForm(false);
-    setMessage("Expense added to this session.");
-  };
-
-  const removeExpense = (id: string) => {
-    setExpenses((current) => current.filter((expense) => expense.id !== id));
-  };
-
-  return (
-    <section className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Expenses</h1>
-          <p className="text-sm text-muted-foreground">Record and review operating expenses.</p>
-        </div>
-        <Button type="button" onClick={() => setShowForm(true)}>
-          <Plus className="mr-2 size-4" />
-          Add Expense
-        </Button>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card><CardContent className="pt-5"><p className="text-sm text-muted-foreground">Total expenses</p><p className="mt-1 text-2xl font-semibold">{money(total)}</p></CardContent></Card>
-        <Card><CardContent className="pt-5"><p className="text-sm text-muted-foreground">Entries</p><p className="mt-1 text-2xl font-semibold">{expenses.length}</p></CardContent></Card>
-        <Card><CardContent className="pt-5"><p className="text-sm text-muted-foreground">Average expense</p><p className="mt-1 text-2xl font-semibold">{money(expenses.length ? total / expenses.length : 0)}</p></CardContent></Card>
-      </div>
-
-      {showForm && (
-        <Card>
-          <CardHeader><CardTitle>New expense</CardTitle></CardHeader>
-          <CardContent>
-            <form className="space-y-4" onSubmit={addExpense}>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <div className="space-y-2"><Label htmlFor="expense-date">Date *</Label><Input id="expense-date" type="date" value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} /></div>
-                <div className="space-y-2"><Label htmlFor="expense-category">Category *</Label><Input id="expense-category" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} placeholder="Utilities, supplies, transport" /></div>
-                <div className="space-y-2"><Label htmlFor="expense-amount">Amount *</Label><Input id="expense-amount" type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} placeholder="0.00" /></div>
-                <div className="space-y-2"><Label htmlFor="expense-paid-by">Paid by</Label><Input id="expense-paid-by" value={form.paidBy} onChange={(event) => setForm((current) => ({ ...current, paidBy: event.target.value }))} placeholder="Person or account" /></div>
-                <div className="space-y-2"><Label htmlFor="expense-branch">Branch</Label><Input id="expense-branch" value={form.branch} onChange={(event) => setForm((current) => ({ ...current, branch: event.target.value }))} placeholder="Branch name" /></div>
-                <div className="space-y-2 md:col-span-2 lg:col-span-1"><Label htmlFor="expense-description">Description *</Label><Input id="expense-description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="What was purchased?" /></div>
-              </div>
-              {message && <p className="text-sm text-muted-foreground">{message}</p>}
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => { setShowForm(false); setMessage(""); }}>Cancel</Button><Button type="submit">Save Expense</Button></div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader><CardTitle>Expense register</CardTitle></CardHeader>
-        <CardContent>
-          {expenses.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-10 text-center"><Receipt className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">No expenses recorded yet.</p><p className="text-sm text-muted-foreground">Add an expense to start the register.</p></div>
-          ) : (
-            <div className="divide-y rounded-lg border">
-              {expenses.map((expense) => {
-                const expanded = expandedExpenses[expense.id] ?? false;
-                return <div key={expense.id} className="p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{expense.description}</p><p className="text-sm text-muted-foreground">{expense.category} · {expense.date}</p></div><div className="flex items-center gap-2"><span className="font-semibold">{money(expense.amount)}</span><Button type="button" variant="outline" size="icon" aria-expanded={expanded} aria-label={expanded ? "Collapse expense details" : "Expand expense details"} onClick={() => setExpandedExpenses((current) => ({ ...current, [expense.id]: !expanded }))}>{expanded ? <ChevronUp /> : <ChevronDown />}</Button><Button type="button" variant="ghost" size="icon" aria-label="Delete expense" onClick={() => removeExpense(expense.id)}><Trash2 /></Button></div></div>{expanded && <div className="mt-4 grid gap-3 border-t pt-4 text-sm sm:grid-cols-3"><div><p className="text-muted-foreground">Expense ID</p><p>{expense.id}</p></div><div><p className="text-muted-foreground">Paid by</p><p>{expense.paidBy || "Not recorded"}</p></div><div><p className="text-muted-foreground">Branch</p><p>{expense.branch || "Not recorded"}</p></div></div>}</div>;
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </section>
-  );
+type Expense = { id:string; date:string; category:string; description:string; amount:number; payee:string; paidBy:string; branch:string; paymentMethod:string; referenceNumber:string; receiptNumber:string; status:string; remarks:string; voidReason:string };
+type Form = { date:string; category:string; description:string; amount:string; payee:string; paidBy:string; branch:string; paymentMethod:string; referenceNumber:string; receiptNumber:string; remarks:string };
+const today=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila"}).format(new Date());
+const empty=():Form=>({date:today(),category:"",description:"",amount:"",payee:"",paidBy:"Cash on Hand",branch:"",paymentMethod:"Cash",referenceNumber:"",receiptNumber:"",remarks:""});
+const money=(v:number)=>new Intl.NumberFormat("en-PH",{style:"currency",currency:"PHP"}).format(v);
+const categories=["Office Supplies","Utilities","Transportation","Rent","Repairs and Maintenance","Meals","Professional Fees","Taxes and Fees","Other"];
+export default function ExpensesPage(){
+ const [expenses,setExpenses]=useState<Expense[]>([]),[canVoid,setCanVoid]=useState(false),[form,setForm]=useState<Form>(empty),[showForm,setShowForm]=useState(false),[busy,setBusy]=useState(true),[message,setMessage]=useState(""),[error,setError]=useState(""),[search,setSearch]=useState(""),[branch,setBranch]=useState(""),[status,setStatus]=useState("");
+ const load=useCallback(async()=>{setBusy(true);setError("");try{const r=await fetch("/api/expenses",{cache:"no-store"});const j=await r.json();if(!r.ok)throw new Error(j.message);setExpenses(j.expenses??[]);setCanVoid(Boolean(j.canVoid));}catch(e){setError(e instanceof Error?e.message:"Unable to load expenses.");}finally{setBusy(false);}},[]);
+ useEffect(()=>{void load();},[load]);
+ const rows=useMemo(()=>expenses.filter(x=>(!branch||x.branch===branch)&&(!status||x.status===status)&&`${x.description} ${x.category} ${x.payee} ${x.referenceNumber}`.toLowerCase().includes(search.toLowerCase())),[expenses,branch,status,search]);
+ const posted=rows.filter(x=>x.status==="Posted"),total=posted.reduce((s,x)=>s+x.amount,0),set=(k:keyof Form,v:string)=>setForm(c=>({...c,[k]:v}));
+ async function save(e:FormEvent){e.preventDefault();setBusy(true);setError("");try{const r=await fetch("/api/expenses",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,amount:Number(form.amount)})});const j=await r.json();if(!r.ok)throw new Error(j.message);setForm(empty());setShowForm(false);setMessage(`Expense ${j.id} posted.`);await load();}catch(x){setError(x instanceof Error?x.message:"Unable to save expense.");}finally{setBusy(false);}}
+ async function voidRecord(id:string){const reason=window.prompt("Reason for voiding this expense:");if(!reason?.trim())return;setBusy(true);try{const r=await fetch("/api/expenses",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,reason})});const j=await r.json();if(!r.ok)throw new Error(j.message);setMessage(`${id} voided.`);await load();}catch(x){setError(x instanceof Error?x.message:"Unable to void expense.");}finally{setBusy(false);}}
+ return <section className="mx-auto max-w-7xl space-y-6"><header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><span className="rounded-md bg-purple-95 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-purple-60">Finance</span><h1 className="mt-2 text-3xl font-black tracking-tight text-violet-10">Expense Register</h1><p className="text-sm text-violet-40">Post operating expenses with references, receipts, payment source, and encoder audit trail.</p></div><div className="flex gap-2"><Button variant="outline" onClick={()=>void load()} disabled={busy}><RefreshCw className={`size-4 ${busy?"animate-spin":""}`}/>Refresh</Button><Button onClick={()=>setShowForm(v=>!v)}><Plus className="size-4"/>Add Expense</Button></div></header>
+ {error&&<p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}{message&&<p className="rounded-xl border border-accent-lime/50 bg-accent-lime/15 p-3 text-sm text-accent-moss">{message}</p>}
+ <div className="grid gap-4 sm:grid-cols-3"><Metric icon={<Banknote/>} label="Posted expenses" value={money(total)}/><Metric icon={<Receipt/>} label="Posted entries" value={String(posted.length)}/><Metric icon={<CalendarDays/>} label="Average expense" value={money(posted.length?total/posted.length:0)}/></div>
+ {showForm&&<Card className="rounded-3xl"><CardHeader><CardTitle>New Expense</CardTitle></CardHeader><CardContent><form onSubmit={save} className="space-y-5"><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"><Field label="Expense date *"><Input type="date" value={form.date} onChange={e=>set("date",e.target.value)}/></Field><Field label="Category *"><select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={form.category} onChange={e=>set("category",e.target.value)}><option value="">Select category</option>{categories.map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Amount *"><Input type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>set("amount",e.target.value)}/></Field><Field label="Payee *"><Input value={form.payee} onChange={e=>set("payee",e.target.value)}/></Field><Field label="Branch *"><Input value={form.branch} onChange={e=>set("branch",e.target.value)}/></Field><Field label="Payment method *"><select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={form.paymentMethod} onChange={e=>set("paymentMethod",e.target.value)}>{["Cash","Bank Transfer","Check","E-wallet"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Paid from"><Input value={form.paidBy} onChange={e=>set("paidBy",e.target.value)}/></Field><Field label="Reference number"><Input value={form.referenceNumber} onChange={e=>set("referenceNumber",e.target.value)}/></Field><Field label="Receipt number"><Input value={form.receiptNumber} onChange={e=>set("receiptNumber",e.target.value)}/></Field><div className="md:col-span-2"><Field label="Description *"><Input value={form.description} onChange={e=>set("description",e.target.value)}/></Field></div><div className="md:col-span-2"><Field label="Remarks"><Input value={form.remarks} onChange={e=>set("remarks",e.target.value)}/></Field></div></div><div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={()=>setShowForm(false)}>Cancel</Button><Button disabled={busy}>Post Expense</Button></div></form></CardContent></Card>}
+ <Card className="rounded-3xl"><CardHeader><CardTitle className="flex items-center gap-2"><Filter className="size-4 text-violet-60"/>Expense Register</CardTitle></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-3"><Input placeholder="Search description, payee, reference..." value={search} onChange={e=>setSearch(e.target.value)}/><select className="h-9 rounded-md border bg-background px-3 text-sm" value={branch} onChange={e=>setBranch(e.target.value)}><option value="">All branches</option>{[...new Set(expenses.map(x=>x.branch))].filter(Boolean).sort().map(x=><option key={x}>{x}</option>)}</select><select className="h-9 rounded-md border bg-background px-3 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option><option>Posted</option><option>Voided</option></select></div><div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[980px] text-sm"><thead className="bg-violet-95/60 text-left text-xs uppercase text-violet-40"><tr>{["Date","Expense","Payee","Branch","Payment","Reference","Amount","Status","Action"].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{rows.map(x=><tr key={x.id} className="border-t"><td className="p-3">{x.date}</td><td className="p-3"><p className="font-semibold">{x.description}</p><p className="text-xs text-muted-foreground">{x.category} · {x.id}</p></td><td className="p-3">{x.payee}</td><td className="p-3">{x.branch}</td><td className="p-3">{x.paymentMethod}<br/><span className="text-xs text-muted-foreground">{x.paidBy}</span></td><td className="p-3">{x.referenceNumber||x.receiptNumber||"—"}</td><td className="p-3 font-bold">{money(x.amount)}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${x.status==="Voided"?"bg-rose-100 text-rose-700":"bg-accent-lime/20 text-accent-moss"}`}>{x.status}</span>{x.voidReason&&<p className="mt-1 text-xs text-muted-foreground">{x.voidReason}</p>}</td><td className="p-3">{canVoid&&x.status==="Posted"&&<Button size="sm" variant="ghost" onClick={()=>void voidRecord(x.id)}><XCircle className="size-4"/>Void</Button>}</td></tr>)}{!rows.length&&<tr><td colSpan={9} className="p-10 text-center text-muted-foreground">No expenses match the filters.</td></tr>}</tbody></table></div></CardContent></Card></section>;
 }
+function Metric({icon,label,value}:{icon:React.ReactNode;label:string;value:string}){return <Card className="rounded-2xl"><CardContent className="pt-5"><div className="mb-3 flex size-9 items-center justify-center rounded-xl bg-violet-95 text-violet-60 [&>svg]:size-4">{icon}</div><p className="text-xs text-violet-40">{label}</p><p className="mt-1 text-2xl font-black text-violet-10">{value}</p></CardContent></Card>}
+function Field({label,children}:{label:string;children:React.ReactNode}){return <div className="space-y-2"><Label>{label}</Label>{children}</div>}

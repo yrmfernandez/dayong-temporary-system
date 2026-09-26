@@ -13,7 +13,8 @@
     "sheets:accounts": "node scripts/migrate-account-status.mjs",
     "sheets:remittances": "node scripts/migrate-remittance-workflow.mjs",
     "sheets:headers": "node scripts/migrate-database-headers.mjs",
-    "sheets:audit": "node scripts/audit-sheet-database.mjs"
+    "sheets:audit": "node scripts/audit-sheet-database.mjs",
+    "sheets:finance": "node scripts/migrate-finance.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

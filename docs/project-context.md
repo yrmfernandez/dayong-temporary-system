@@ -96,4 +96,12 @@ New Sales uses Application Number as its required transaction reference. It does
 
 Further business decisions remain for complete transfer/history workflows, special incentive cases, detailed role permissions, attendance policy changes, dashboard KPIs, and future report layouts. The current defaults and remittance formula are described in the implementation document. Use the confirmed whole-installment payment rule and MAM meanings above rather than treating them as unresolved. Existing code describes current behavior but does not establish an unconfirmed business policy.
 
+## Finance implementation
+
+Finance now uses persistent `Expenses` and `Cash Transactions` sheets rather than browser-only page state. Expenses record a stable ID, date, category, description, amount, payee, payment source, branch, payment method, references, receipt number, status, remarks, timestamps, verified encoder identity, and void history. Posted expenses automatically appear as cash-ledger outflows.
+
+The consolidated cash ledger combines approved physical Remittances as inflows, posted Expenses as outflows, and separately encoded manual cash adjustments. Manual entries include direction, category, cash account, branch, references, status, encoder identity, and void history. Users should not duplicate approved Remittances or Expenses as manual entries. Financial entries are voided with a reason rather than deleted; void permission currently follows the existing manage-users permission until a dedicated finance permission is defined.
+
+Migration: `npm run sheets:finance -- --apply`. The live workbook was migrated on 2026-09-26.
+
 The specification's statements about previously completed features or builds must be checked when relevant; they are not evidence that every described operation is currently supported.

@@ -21,6 +21,8 @@ export const encoderSheets = [
   { title: "User Roles", columns: 2 },
   { title: "Attendance", columns: 18 },
   { title: "Leave Requests", columns: 11 },
+  { title: "Expenses", columns: 17 },
+  { title: "Cash Transactions", columns: 16 },
 ];
 
 export function columnName(index: number): string {
