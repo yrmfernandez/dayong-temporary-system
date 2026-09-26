@@ -45,8 +45,8 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', username: '=e
     const localRequire = (name) => {
       if (name === '@/lib/auth-server') return {
         getSessionUser: async () => user,
-        canManageUsers: async () => Boolean(user?.permissions.manageUsers),
-        canManageAttendance: async () => Boolean(user?.permissions.manageAttendance),
+        canManageUsers: async () => Boolean(user?.permissions?.manageUsers),
+        canManageAttendance: async () => Boolean(user?.permissions?.manageAttendance),
       };
       if (name === '@/lib/google-sheets') return { sheets, GOOGLE_SHEET_ID: 'test' };
       if (name === 'next/server') return { NextResponse: Response };
@@ -104,6 +104,30 @@ test('employee status updates and deletion protect linked login accounts', async
   h.rows.Users = [[], ['USR-2', 'DPE-0002']];
   response = await route.DELETE(request({ employeeId: 'DPE-0002' }));
   assert.equal(response.status, 400);
+});
+
+test('master-data CRUD updates programs and blocks deleting referenced records', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
+  const route = h.load('app/api/programs/route.ts');
+  h.rows.Programs = [[], ['DP-0001', 'P1', 'Plan One', 350, 'active', '']];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-0001', 'MAS', 1, 12, 'percentage', 50, 30]];
+  h.rows['Member programs'] = [[], ['MP-1', 'MEM-1', 'PH-1', 'DP-0001']];
+  const input = { code: 'P1', name: 'Plan Updated', basePay: 400, status: 'active', description: '', incentiveTiers: [{ role: 'MAS', fromMonth: 1, toMonth: 12, incentiveType: 'percentage', markUp: 50, incentiveAmount: 30 }] };
+  const updated = await route.PUT(new Request('http://localhost/api/programs?id=DP-0001', { method: 'PUT', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' } }));
+  assert.equal(updated.status, 200);
+  assert.equal(h.writes[0].range, 'Programs!A2:F2');
+  const deleted = await route.DELETE(new Request('http://localhost/api/programs?id=DP-0001', { method: 'DELETE' }));
+  assert.equal(deleted.status, 400);
+  assert.match((await deleted.json()).error, /member enrollments/i);
+});
+
+test('master-data CRUD blocks deleting assigned branches', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
+  const crud = h.load('lib/master-data-crud.ts');
+  h.rows.Branches = [[], ['BR-0001', 'MATINA', 'METRO DAVAO 1']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-0001']];
+  h.rows['Member programs'] = [[]];
+  await assert.rejects(() => crud.deleteBranchRecord('BR-0001'), /assigned/i);
 });
 
 test('member directory requires login, joins accounts once, and filters the same enrollment', async () => {

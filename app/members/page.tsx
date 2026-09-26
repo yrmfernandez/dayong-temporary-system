@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { readApiResponse } from "@/lib/api-response";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { emptyDirectoryFilters, filterMemberDirectory, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
 
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
@@ -21,12 +21,15 @@ export default function MembersPage() {
   const [statusWarning, setStatusWarning] = useState("");
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const [canManage, setCanManage] = useState(false);
+  const [editing, setEditing] = useState<DirectoryMember | null>(null);
+  const [message, setMessage] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/members/directory", { cache: "no-store", signal: controller.signal }).then(async (response) => {
       const result = await readApiResponse(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load members.");
-      setMembers(result.members); setStatusWarning(result.statusWarning || "");
+      setMembers(result.members); setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage));
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -52,7 +55,7 @@ export default function MembersPage() {
   return <section className="space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-bold">Members</h1><p className="text-sm text-muted-foreground">Member master data. Each person appears once, with all their program enrollments.</p></div>
-      <Button variant="outline" disabled={busy} onClick={() => { setBusy(true); setError(""); setMembers([]); setSelected(null); setRevision((v) => v + 1); }}>Refresh</Button>
+      <div className="flex gap-2"><Link className={buttonVariants()} href="/new-sales">Add Member</Link><Button variant="outline" disabled={busy} onClick={() => { setBusy(true); setError(""); setMembers([]); setSelected(null); setRevision((v) => v + 1); }}>Refresh</Button></div>
     </div>
     <div className="grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-4">
       <label className="text-sm">Search<input className={fieldClass} value={filters.search} onChange={(e) => update("search", e.target.value)} placeholder="Name, PH number, contact number" /></label>
@@ -64,6 +67,7 @@ export default function MembersPage() {
     <p className="text-sm text-muted-foreground">Branch, officer, program, and payment status filters match the same enrollment. Payment statuses use today&apos;s MAM calculations. View payment history in <Link className="underline" href="/mam">MAM</Link>.</p>
     {statusWarning && <p role="alert" className="text-amber-700">{statusWarning}</p>}
     {error && <p role="alert" className="text-red-600">{error}</p>}
+    {message && <p role="status" className="text-sm">{message}</p>}
     {busy ? <p role="status">Loading members...</p> : !error && <>
       <p className="text-sm" aria-live="polite">{filtered.length} of {members.length} members</p>
       <div className="overflow-x-auto rounded-xl border bg-background">
@@ -79,7 +83,7 @@ export default function MembersPage() {
       <div className="flex items-center justify-end gap-3"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-sm">Page {currentPage} of {pages}</span><Button variant="outline" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
     </>}
     {selected && <section aria-label="Member details" className="space-y-4 rounded-xl border bg-background p-5">
-      <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selected.name}</h2><Button variant="ghost" onClick={() => setSelected(null)}>Close details</Button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selected.name}</h2><div className="flex gap-2">{canManage && <Button variant="outline" onClick={() => setEditing(selected)}>Edit</Button>}{canManage && <Button variant="outline" className="text-destructive" onClick={async () => { if (!window.confirm(`Delete ${selected.name}?`)) return; const response = await fetch("/api/members/directory", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selected.id }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member deleted." : result.message || "Unable to delete member."); if (response.ok) { setSelected(null); setRevision((value) => value + 1); } }}>Delete</Button>}<Button variant="ghost" onClick={() => setSelected(null)}>Close details</Button></div></div>
       <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">{[
         ["PH number", selected.number], ["Member status", selected.status], ["Birthdate", selected.birthdate], ["Birthplace", selected.birthplace],
         ["Gender", selected.gender], ["Civil status", selected.civilStatus], ["Contact", selected.contact], ["Address", selected.address],
@@ -89,5 +93,6 @@ export default function MembersPage() {
       <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{["Program", "DOI", "Branch", "MAS / Officer", "Payment method", "Enrollment status", "Payment status"].map((label) => <th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead><tbody>{selected.enrollments.map((e) => <tr key={e.id} className="border-t">{[e.programName, e.doi, e.branch, e.mas, e.paymentMethod, e.status, e.accountError || `${e.accountStatus || "Needs review"}${e.temporarilySuspended ? " (temporarily suspended)" : ""}`].map((v, i) => <td key={i} className="p-2">{v || "-"}</td>)}</tr>)}</tbody></table>{!selected.enrollments.length && <p className="p-2 text-sm">No program enrollments.</p>}</div>
       <Link className="text-sm underline" href="/mam">Open Member Account Monitoring</Link>
     </section>}
+    {editing && <form className="space-y-4 rounded-xl border bg-background p-5" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch("/api/members/directory", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, contact: form.get("contact"), status: form.get("status") }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member updated." : result.message || "Unable to update member."); if (response.ok) { setEditing(null); setSelected(null); setRevision((value) => value + 1); } }}><div className="flex justify-between"><h2 className="font-semibold">Edit {editing.name}</h2><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Contact number<input name="contact" className={fieldClass} defaultValue={editing.contact}/></label><label className="text-sm">Member status<input name="status" required className={fieldClass} defaultValue={editing.status}/></label></div><Button>Save member</Button></form>}
   </section>;
 }

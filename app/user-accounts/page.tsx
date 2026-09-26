@@ -16,17 +16,23 @@ type Role = {
   id: string;
   name: string;
 };
+type Account = { id: string; employeeId: string; username: string; fullName: string; status: string; createdAt: string; roleIds: string[]; roles: string[] };
 
 type RolesResponse = {
   success: boolean;
   roles?: Role[];
   employees?: { id: string; name: string; status: string; roleIds: string[] }[];
+  accounts?: Account[];
   message?: string;
 };
 
 export default function UserAccountsPage() {
   const [employees, setEmployees] = useState<{ id: string; name: string; status: string; roleIds: string[] }[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [editing, setEditing] = useState<Account | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [revision, setRevision] = useState(0);
   const [employeeId, setEmployeeId] = useState("");
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
@@ -57,6 +63,7 @@ export default function UserAccountsPage() {
         }
 
         setRoles(result.roles ?? []);
+        setAccounts(result.accounts ?? []);
         setEmployees((result.employees ?? []).filter((e) => e.status.toLowerCase() === "active"));
       } catch (error) {
         setMessage(
@@ -70,7 +77,7 @@ export default function UserAccountsPage() {
     };
 
     void loadRoles();
-  }, []);
+  }, [revision]);
 
   const toggleRole = (roleId: string) => {
     setRoleIds((current) =>
@@ -137,6 +144,7 @@ export default function UserAccountsPage() {
       setPassword("");
       setRoleIds([]);
       setMessage("Employee account created successfully.");
+      setRevision((value) => value + 1);
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -229,6 +237,7 @@ export default function UserAccountsPage() {
                   <Input
                     id="account-password"
                     type="password"
+                    minLength={12}
                     value={password}
                     onChange={(event) =>
                       setPassword(event.target.value)
@@ -283,6 +292,8 @@ export default function UserAccountsPage() {
           )}
         </CardContent>
       </Card>
+      <Card><CardHeader><CardTitle>Existing Accounts</CardTitle></CardHeader><CardContent className="space-y-3">{accounts.map((account) => <div key={account.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"><div><p className="font-medium">{account.fullName}</p><p className="text-sm text-muted-foreground">{account.username} · {account.employeeId} · {account.status}</p><p className="text-xs text-muted-foreground">{account.roles.join(", ") || "No roles"}</p></div><div className="flex gap-2"><Button variant="outline" onClick={() => { setEditing(account); setResetPassword(""); }}>Edit</Button><Button variant="outline" className="text-destructive" onClick={async () => { if (!window.confirm(`Delete account ${account.username}?`)) return; const response = await fetch("/api/user-accounts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: account.id }) }); const result = await response.json(); setMessage(response.ok && result.success ? "Account deleted." : result.message || "Unable to delete account."); if (response.ok) setRevision((value) => value + 1); }}>Delete</Button></div></div>)}{!accounts.length && <p className="text-sm text-muted-foreground">No user accounts found.</p>}</CardContent></Card>
+      {editing && <Card><CardHeader><CardTitle>Edit {editing.fullName}</CardTitle></CardHeader><CardContent><form className="space-y-4" onSubmit={async (event) => { event.preventDefault(); setSaving(true); try { const response = await fetch("/api/user-accounts", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, username: editing.username, status: editing.status, roleIds: editing.roleIds, password: resetPassword }) }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to update account."); setEditing(null); setResetPassword(""); setMessage("Account updated."); setRevision((value) => value + 1); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to update account."); } finally { setSaving(false); } }}><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Username</Label><Input value={editing.username} onChange={(event) => setEditing({ ...editing, username: event.target.value })}/></div><div className="space-y-2"><Label>Status</Label><select className="w-full rounded-md border bg-background p-2" value={editing.status} onChange={(event) => setEditing({ ...editing, status: event.target.value })}><option value="active">Active</option><option value="inactive">Inactive</option></select></div><div className="space-y-2"><Label>New temporary password</Label><Input type="password" minLength={12} value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="Leave blank to keep password"/></div></div><div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">{roles.map((role) => <label key={role.id} className="flex gap-2 text-sm"><input type="checkbox" checked={editing.roleIds.includes(role.id)} onChange={() => setEditing({ ...editing, roleIds: editing.roleIds.includes(role.id) ? editing.roleIds.filter((id) => id !== role.id) : [...editing.roleIds, role.id] })}/>{role.name}</label>)}</div><div className="flex gap-2"><Button disabled={saving}>{saving ? "Saving..." : "Save Account"}</Button><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div></form></CardContent></Card>}
     </div>
   );
 }

@@ -3,7 +3,8 @@ import bcrypt from "bcryptjs";
 import { getEmployees } from "@/lib/employees";
 import { NextResponse } from "next/server";
 
-import { canManageUsers } from "@/lib/auth-server";
+import { canManageUsers, getSessionUser } from "@/lib/auth-server";
+import { deleteUserAccount, getUserAccounts, updateUserAccount } from "@/lib/master-data-crud";
 import {
   createEmployeeAccount,
   getActiveAccountRoles,
@@ -30,6 +31,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       roles,
+      accounts: await getUserAccounts(),
       employees: employees.map((employee) => ({
         ...employee,
         roleIds: roles.filter((role) => employee.roles.some((employeeRole) => normalizeRole(employeeRole) === normalizeRole(role.name))).map((role) => role.id),
@@ -91,12 +93,12 @@ export const POST = withEncoder(async function POST(request: Request) {
       roleIds = roles.filter((role) => employee.roles.some((employeeRole) => normalizeRole(employeeRole) === normalizeRole(role.name))).map((role) => role.id);
     }
 
-    if (password.length < 8) {
+    if (password.length < 12) {
       return NextResponse.json(
         {
           success: false,
           message:
-            "Password must be at least 8 characters.",
+            "Password must be at least 12 characters.",
         },
         { status: 400 },
       );
@@ -136,4 +138,25 @@ export const POST = withEncoder(async function POST(request: Request) {
       { status: 500 },
     );
   }
+});
+
+export const PATCH = withEncoder(async (request: Request) => {
+  if (!(await canManageUsers())) return NextResponse.json({ success: false, message: "You are not allowed to update user accounts." }, { status: 403 });
+  try {
+    const body = await request.json();
+    const id = typeof body.id === "string" ? body.id.trim() : "";
+    const roleIds = Array.isArray(body.roleIds) ? body.roleIds.filter((value: unknown): value is string => typeof value === "string") : [];
+    return NextResponse.json({ success: true, account: await updateUserAccount(id, { username: typeof body.username === "string" ? body.username : "", status: body.status === "inactive" ? "inactive" : "active", roleIds, password: typeof body.password === "string" ? body.password : "" }) });
+  } catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to update account." }, { status: 400 }); }
+});
+
+export const DELETE = withEncoder(async (request: Request) => {
+  if (!(await canManageUsers())) return NextResponse.json({ success: false, message: "You are not allowed to delete user accounts." }, { status: 403 });
+  try {
+    const user = await getSessionUser();
+    const body = await request.json();
+    const id = typeof body.id === "string" ? body.id.trim() : "";
+    await deleteUserAccount(id, user?.userId ?? "");
+    return NextResponse.json({ success: true });
+  } catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to delete account." }, { status: 400 }); }
 });

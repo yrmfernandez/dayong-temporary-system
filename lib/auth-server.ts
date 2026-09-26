@@ -23,8 +23,8 @@ export async function getSessionUser(): Promise<
 
 export async function canManageUsers() {
   const user = await getSessionUser();
-
-  return Boolean(user?.permissions.manageUsers);
+  const roles = user?.roleNames.map((role) => role.trim().toLowerCase()) ?? [];
+  return Boolean(user?.permissions.manageUsers || roles.includes("administrator") || roles.includes("admin"));
 }
 
 export async function canManageAttendance() {

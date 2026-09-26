@@ -1,6 +1,6 @@
 # Dayong System
 
-See [project context](docs/project-context.md) for the core business rules and implementation status, [role-based access](docs/access-control.md) for the current navigation matrix, [finance](docs/finance.md) for ledger behavior, and the [full supplied specification](docs/dayong-system-specification.md) for the historical reference.
+See [project context](docs/project-context.md) for the core business rules and implementation status, [role-based access](docs/access-control.md) for the current navigation matrix, [CRUD policy](docs/crud-policy.md) for record lifecycle rules, [finance](docs/finance.md) for ledger behavior, and the [full supplied specification](docs/dayong-system-specification.md) for the historical reference.
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 

@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +64,7 @@ type BranchResponse = {
   success: boolean;
   branches?: Branch[];
   message?: string;
+  canManage?: boolean;
 };
 
 export default function BranchesPage() {
@@ -71,6 +74,8 @@ export default function BranchesPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [canManage, setCanManage] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState<
     Record<string, boolean>
   >({});
@@ -89,6 +94,7 @@ export default function BranchesPage() {
       }
 
       setBranches(result.branches ?? []);
+      setCanManage(Boolean(result.canManage));
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to load branches.",
@@ -116,8 +122,8 @@ export default function BranchesPage() {
     setSaving(true);
 
     try {
-      const response = await fetch("/api/branches", {
-        method: "POST",
+      const response = await fetch(editingId ? `/api/branches?id=${encodeURIComponent(editingId)}` : "/api/branches", {
+        method: editingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
@@ -131,7 +137,8 @@ export default function BranchesPage() {
       }
 
       setForm(emptyBranchForm);
-      setMessage("Branch saved successfully.");
+      setMessage(editingId ? "Branch updated successfully." : "Branch saved successfully.");
+      setEditingId(null);
       setShowForm(false);
       await loadBranches();
     } catch (error) {
@@ -150,6 +157,9 @@ export default function BranchesPage() {
     }));
   };
 
+  const editBranch = (branch: Branch) => { const { id: _id, ...values } = branch; void _id; setForm(values); setEditingId(branch.id); setShowForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const deleteBranch = async (branch: Branch) => { if (!window.confirm(`Delete ${branch.name} from ${branch.territory}?`)) return; setMessage(""); try { const response = await fetch(`/api/branches?id=${encodeURIComponent(branch.id)}`, { method: "DELETE" }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to delete branch."); setMessage("Branch deleted successfully."); await loadBranches(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to delete branch."); } };
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -160,15 +170,17 @@ export default function BranchesPage() {
           </p>
         </div>
 
-        <Button type="button" onClick={() => setShowForm(true)}>
+        {canManage && <Button type="button" onClick={() => setShowForm(true)}>
           Add Branch
-        </Button>
+        </Button>}
       </div>
+
+      {message && !showForm && <p role="status" className="rounded-md border bg-background p-3 text-sm">{message}</p>}
 
       {showForm && (
         <Card>
         <CardHeader>
-          <CardTitle>Add Branch</CardTitle>
+          <CardTitle>{editingId ? "Edit Branch" : "Add Branch"}</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={saveBranch}>
@@ -227,8 +239,9 @@ export default function BranchesPage() {
             </div>
 
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Add Branch"}
+              {saving ? "Saving..." : editingId ? "Save Changes" : "Add Branch"}
             </Button>
+            {editingId && <Button type="button" variant="ghost" onClick={() => { setEditingId(null); setForm(emptyBranchForm); setShowForm(false); }}>Cancel</Button>}
           </form>
 
           {message && (
@@ -256,7 +269,7 @@ export default function BranchesPage() {
                 const isExpanded = expandedBranches[branch.id] ?? false;
 
                 return (
-                  <div key={branch.id} className="space-y-4 p-4">
+                  <div key={`${branch.id}-${branch.territory}-${branch.name}`} className="space-y-4 p-4">
                     <div className="flex items-center justify-between gap-4">
                       <div>
                         <p className="font-medium">{branch.name}</p>
@@ -282,6 +295,8 @@ export default function BranchesPage() {
                           )}
                           {isExpanded ? "Collapse" : "Expand"}
                         </Button>
+                        {canManage && <Button type="button" variant="outline" onClick={() => editBranch(branch)}><Pencil className="mr-2 size-4"/>Edit</Button>}
+                        {canManage && <Button type="button" variant="outline" className="text-destructive" onClick={() => void deleteBranch(branch)}><Trash2 className="mr-2 size-4"/>Delete</Button>}
                       </div>
                     </div>
 

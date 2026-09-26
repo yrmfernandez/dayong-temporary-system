@@ -120,4 +120,8 @@ Production authentication now validates required server environment variables la
 
 Login sessions now contain stable role IDs and role names. The sidebar is generated from role access, and the proxy rejects direct navigation to pages outside the current role workspace. The live roles are Administrator, HR Officer, CEO, President, Entry Clerk, IT Clerk, and MAS; the future Finance role is supported but not present in the live sheet. Existing server action permissions remain in force. See [role-based access](access-control.md) for the matrix and explicit data-scope limitations.
 
+## CRUD and record lifecycle
+
+Master-data CRUD is available for Branches, Programs, Members, Employees, and User Accounts. Deletes are relationship-aware: referenced branches, programs, members, and employees must be made inactive or have their dependent account resolved rather than being removed. Members are created through New Sales because registration also creates the required sale and enrollment records. Financial, collection, remittance, attendance, and leave records retain their void, approval, rejection, review, or status workflows instead of destructive deletion. See [CRUD and record lifecycle](crud-policy.md).
+
 The specification's statements about previously completed features or builds must be checked when relevant; they are not evidence that every described operation is currently supported.

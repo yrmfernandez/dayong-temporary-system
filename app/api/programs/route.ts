@@ -1,5 +1,7 @@
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
+import { canManageUsers } from "@/lib/auth-server";
+import { deleteProgramRecord, updateProgramRecord, type ProgramInput } from "@/lib/master-data-crud";
 
 import {
   createProgram,
@@ -25,6 +27,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       programs,
+      canManage: await canManageUsers(),
     });
   } catch (error) {
     console.error(
@@ -50,6 +53,7 @@ export async function GET() {
 export const POST = withEncoder(async function POST(
   request: Request,
 ) {
+  if (!(await canManageUsers())) return NextResponse.json({ success: false, error: "You are not allowed to create programs." }, { status: 403 });
   try {
     const body = await request.json();
 
@@ -369,4 +373,34 @@ export const POST = withEncoder(async function POST(
       },
     );
   }
+});
+
+function programInput(body: Record<string, unknown>): ProgramInput {
+  const tiers = Array.isArray(body.incentiveTiers) ? body.incentiveTiers : [];
+  return {
+    code: typeof body.code === "string" ? body.code.trim() : "",
+    name: typeof body.name === "string" ? body.name.trim() : "",
+    basePay: Number(body.basePay),
+    status: body.status === "inactive" ? "inactive" : "active",
+    description: typeof body.description === "string" ? body.description.trim() : "",
+    incentiveTiers: tiers.map((value) => { const tier = value as Record<string, unknown>; return { role: tier.role === "Collector" ? "Collector" : "MAS", fromMonth: Number(tier.fromMonth), toMonth: Number(tier.toMonth), incentiveType: tier.incentiveType === "fixed" ? "fixed" : "percentage", markUp: Number(tier.markUp), incentiveAmount: Number(tier.incentiveAmount) }; }),
+  };
+}
+
+export const PUT = withEncoder(async (request: Request) => {
+  if (!(await canManageUsers())) return NextResponse.json({ success: false, error: "You are not allowed to update programs." }, { status: 403 });
+  try {
+    const id = new URL(request.url).searchParams.get("id")?.trim() ?? "";
+    const body = await request.json();
+    return NextResponse.json({ success: true, program: await updateProgramRecord(id, programInput(body)) });
+  } catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unable to update program." }, { status: 400 }); }
+});
+
+export const DELETE = withEncoder(async (request: Request) => {
+  if (!(await canManageUsers())) return NextResponse.json({ success: false, error: "You are not allowed to delete programs." }, { status: 403 });
+  try {
+    const id = new URL(request.url).searchParams.get("id")?.trim() ?? "";
+    await deleteProgramRecord(id);
+    return NextResponse.json({ success: true });
+  } catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unable to delete program." }, { status: 400 }); }
 });

@@ -300,6 +300,7 @@ useState(false);
 
 const [showForm, setShowForm] =
 useState(false);
+const [canManage, setCanManage] = useState(false);
 
 const [expandedPrograms, setExpandedPrograms] =
 useState<Record<string, boolean>>({});
@@ -331,6 +332,7 @@ setLoading(true);
     Array.isArray(data.programs)
       ? data.programs
       : [];
+  setCanManage(Boolean(data.canManage));
 
   setPrograms(
     loadedPrograms.map(
@@ -1767,10 +1769,10 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
     </p>
   </div>
 
-  <Button type="button" onClick={startAddingProgram}>
+  {canManage && <Button type="button" onClick={startAddingProgram}>
     <Plus className="mr-2 size-4" />
     Add Program
-  </Button>
+  </Button>}
 </div>
 
   {/* PROGRAM FORM */}
@@ -2089,7 +2091,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                       </div>
 
                       <div className="flex shrink-0 gap-2">
-                        <Button
+                        {canManage && <Button
                           type="button"
                           variant="outline"
                           aria-expanded={
@@ -2107,9 +2109,9 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           {expandedPrograms[program.id]
                             ? "Collapse"
                             : "Expand"}
-                        </Button>
+                        </Button>}
 
-                        <Button
+                        {canManage && <Button
                           type="button"
                           variant="outline"
                           onClick={() =>
@@ -2120,7 +2122,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                         >
                           <Pencil className="mr-2 size-4" />
                           Edit
-                        </Button>
+                        </Button>}
 
                         <Button
                           type="button"
