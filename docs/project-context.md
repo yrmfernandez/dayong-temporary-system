@@ -114,6 +114,8 @@ The official `icons/dayong_logo.png` artwork is used in the sidebar, login scree
 
 Attendance now uses the violet/lime visual system with Philippine Standard Time, live session duration, progress and attendance metrics, and actual clock-in/out activity. MAM uses the same visual language while preserving month-range controls, status synchronization, filtering, horizontal comparison, print/CSV actions, grouped MAS totals, projections, and account details.
 
+The shared application shell is mobile-first: the navigation drawer remains mounted on compact screens, uses a labeled touch target and safe-area spacing, and becomes persistent on wider screens. Page headers, cards, forms, tables, action groups, and the login page use the documented violet, purple, and lime palette with flexible wrapping and horizontal scrolling only for data tables that require it. Interactive targets use larger shared button sizes for touch use.
+
 Production authentication now validates required server environment variables lazily, normalizes quoted or escaped Google private keys, and returns actionable configuration errors instead of an HTML failure. Vercel must define `AUTH_SECRET`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, and `GOOGLE_SHEET_ID` in the Production environment and redeploy after changes.
 
 ## Role-based navigation

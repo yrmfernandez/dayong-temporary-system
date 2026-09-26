@@ -225,10 +225,11 @@ export function Sidebar() {
       {/* Mobile menu button */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed left-[max(0.75rem,env(safe-area-inset-left))] top-[max(0.75rem,env(safe-area-inset-top))] z-40 min-h-11 min-w-11 rounded-md border bg-background p-2 shadow-sm md:hidden"
+        className="fixed left-[max(0.75rem,env(safe-area-inset-left))] top-[max(0.75rem,env(safe-area-inset-top))] z-40 flex min-h-11 items-center gap-2 rounded-xl border border-violet-90 bg-white/95 px-3 py-2 font-semibold text-violet-20 shadow-lg backdrop-blur md:hidden"
         aria-label="Open navigation"
       >
         <Menu className="size-5" />
+        <span className="text-sm">Menu</span>
       </button>
 
       {/* Mobile overlay */}
@@ -240,12 +241,12 @@ export function Sidebar() {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[min(18rem,88vw)] flex-col border-r bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[4px_0_24px_-12px_rgb(45_28_89_/_0.18)] backdrop-blur-xl transition-transform duration-200 md:static md:w-64 md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(18rem,88vw)] shrink-0 flex-col border-r border-violet-90 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[8px_0_36px_-18px_rgb(45_28_89_/_0.35)] backdrop-blur-xl transition-transform duration-200 md:static md:h-dvh md:w-64 md:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Logo */}
-        <div className="flex h-16 items-center justify-between border-b px-4">
+        <div className="flex h-20 items-center justify-between border-b border-white/10 bg-gradient-to-br from-violet-20 via-violet-30 to-purple-40 px-4 text-white">
           <Link
             href="/"
             className="flex min-w-0 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -258,8 +259,8 @@ export function Sidebar() {
             />
 
             <div className="min-w-0 leading-tight">
-              <div className="text-lg font-bold tracking-tight">DAYONG</div>
-              <div className="truncate text-xs text-muted-foreground">
+              <div className="text-lg font-black tracking-tight">DAYONG</div>
+              <div className="truncate text-xs text-violet-90">
                 Monitoring System
               </div>
             </div>
@@ -267,7 +268,7 @@ export function Sidebar() {
 
           <button
             onClick={() => setMobileOpen(false)}
-            className="rounded-md p-2 hover:bg-muted md:hidden"
+            className="rounded-lg p-2 hover:bg-white/10 md:hidden"
             aria-label="Close navigation"
           >
             <X className="size-5" />
@@ -275,7 +276,7 @@ export function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 overflow-y-auto bg-gradient-to-b from-white to-violet-95/40 px-3 py-4">
           <div className="space-y-6">
             {navigation.map((section) => {
               const items = section.items.filter((item) => canAccessPath(access, item.href));
@@ -303,8 +304,8 @@ export function Sidebar() {
                         onClick={() => setMobileOpen(false)}
                         className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                           isActive
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            ? "bg-gradient-to-r from-violet-60 to-purple-50 text-white shadow-md shadow-violet-60/20"
+                            : "text-violet-30 hover:bg-violet-95 hover:text-violet-10"
                         }`}
                       >
                         <Icon className="size-4 shrink-0" />

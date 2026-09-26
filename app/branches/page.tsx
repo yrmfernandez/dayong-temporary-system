@@ -273,7 +273,7 @@ export default function BranchesPage() {
                         </p>
                       </div>
 
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
                         <Badge variant={branch.status === "active" ? "default" : "secondary"}>
                           {branch.status === "active" ? "Active" : "Inactive"}
                         </Badge>

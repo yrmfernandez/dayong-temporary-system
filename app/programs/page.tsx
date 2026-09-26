@@ -2086,8 +2086,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
 
                       </div>
 
-                      <div className="flex shrink-0 gap-2">
-                        {canManage && <Button
+                      <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
+                        <Button
                           type="button"
                           variant="outline"
                           aria-expanded={
@@ -2105,7 +2105,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           {expandedProgramId === program.id
                             ? "Collapse"
                             : "Expand"}
-                        </Button>}
+                        </Button>
 
                         {canManage && <Button
                           type="button"
@@ -2120,7 +2120,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           Edit
                         </Button>}
 
-                        <Button
+                        {canManage && <Button
                           type="button"
                           variant="outline"
                           onClick={() =>
@@ -2131,7 +2131,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                         >
                           <Trash2 className="mr-2 size-4" />
                           Delete
-                        </Button>
+                        </Button>}
                       </div>
                     </div>
 
