@@ -1,4 +1,4 @@
-import { getSessionUser } from "@/lib/auth-server";
+import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { createCashRemittance, decideCashRemittance, getRemittanceDashboard } from "@/lib/remittance-workflow";
 
@@ -27,11 +27,13 @@ export const POST = withEncoder(async (request: Request) => {
 
 export const PATCH = withEncoder(async (request: Request) => {
   const user = await getSessionUser();
-  if (!user?.permissions.manageUsers) return Response.json({ error: "You are not allowed to approve Remittances." }, { status: 403 });
+  if (!user || !(await canManageUsers())) return Response.json({ error: "You are not allowed to approve Remittances." }, { status: 403 });
   try {
     const body = await request.json();
     if (!['approve', 'reject'].includes(body.decision)) throw new Error("Choose approve or reject.");
-    const result = await decideCashRemittance(String(body.remittanceId ?? ""), body.decision, String(body.reason ?? ""));
+    const normalizedRoles = user.roleNames.map((role) => role.trim().toLowerCase());
+    const allowOwnDecision = normalizedRoles.some((role) => role === "administrator" || role === "admin") && normalizedRoles.includes("entry clerk");
+    const result = await decideCashRemittance(String(body.remittanceId ?? ""), body.decision, String(body.reason ?? ""), allowOwnDecision);
     return Response.json({ success: true, remittance: result });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to decide Remittance." }, { status: 400 });

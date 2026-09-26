@@ -15,7 +15,8 @@
     "sheets:headers": "node scripts/migrate-database-headers.mjs",
     "sheets:audit": "node scripts/audit-sheet-database.mjs",
     "sheets:finance": "node scripts/migrate-finance.mjs",
-    "sheets:branches": "node scripts/migrate-branch-assignments.mjs"
+    "sheets:branches": "node scripts/migrate-branch-assignments.mjs",
+    "sheets:roles": "node scripts/migrate-roles.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

@@ -15,11 +15,11 @@ Role names are read from the live `Roles` and `User Roles` sheets during login a
 | --- | --- |
 | Administrator | All implemented pages |
 | CEO / President | Dashboard, Members, MAM, Remittances, Programs, Branches, Cash Ledger, Reports, Settings |
-| HR Officer | Dashboard, Employees, Branches, Attendance, Attendance Review, Leave Requests, Leave Approvals, Settings |
+| HR Officer | Dashboard, Employees, Programs, Branches, Attendance, Attendance Review, Leave Requests, Leave Approvals, Settings |
 | Finance | Dashboard, Members, Collections, Remittances, MAM, Programs, Expenses, Cash Ledger, Reports, Settings |
-| Entry Clerk | Dashboard, New Sales, Members, Collections, Attendance, Leave Requests, Reports, Settings |
-| IT Clerk | Dashboard, Employees, User Accounts, Branches, Settings |
-| MAS | Dashboard, Members, Collections, Remittances, MAM, Attendance, Leave Requests, Settings |
+| Entry Clerk | Dashboard, New Sales, Members, Collections, Programs, Branches, Attendance, Leave Requests, Reports, Settings |
+| IT Clerk | Dashboard, Employees, User Accounts, Programs, Branches, Settings |
+| MAS | Dashboard, Members, Collections, Remittances, MAM, Programs, Branches, Attendance, Leave Requests, Settings |
 
 `Finance` is supported by the code but is not currently present in the live Roles sheet. Add and assign it through an authorized role-management process before expecting a Finance-only workspace.
 
@@ -30,5 +30,7 @@ The Administrator/Admin role always receives master-data management actions even
 ## Remaining scope work
 
 Role access answers which modules a user may open. Record scope still needs a dedicated model for `ALL`, `BRANCH`, `ASSIGNED`, and `OWN`. Until that is implemented, MAS pages are not filtered to assigned Member Programs and Entry Clerk pages are not filtered to their own entries. Do not describe those scopes as enforced.
+
+Programs and Branches are reference directories available to every signed-in role. Their API returns `canManage: false` unless the session has the manage-users permission or an Administrator role, so read access does not grant create, edit, or delete access. Administrators also receive Role Management and Entry History workspaces.
 
 Future permission work should replace broad boolean flags with stable permission keys such as `collections.create`, `remittances.approve`, `finance.void`, and `users.assign_role`, plus a separate scope assignment.

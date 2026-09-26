@@ -34,6 +34,7 @@ export default function UserAccountsPage() {
   const [resetPassword, setResetPassword] = useState("");
   const [revision, setRevision] = useState(0);
   const [employeeId, setEmployeeId] = useState("");
+  const [employeeSearch, setEmployeeSearch] = useState("");
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -193,8 +194,8 @@ export default function UserAccountsPage() {
                   <Label htmlFor="employee-id">
                     Employee ID *
                   </Label>
-
-                  <select id="employee-id" required className="w-full rounded-md border bg-background p-2" value={employeeId} disabled={saving} onChange={(e) => { const employee = employees.find((item) => item.id === e.target.value); setEmployeeId(e.target.value); setFullName(employee?.name ?? ""); setRoleIds(employee?.roleIds ?? []); }}><option value="">Select registered employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.id} - {employee.name}</option>)}</select>
+                  <Input aria-label="Search employees" placeholder="Search ID or employee name" value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} disabled={saving}/>
+                  <select id="employee-id" required className="w-full rounded-md border bg-background p-2" value={employeeId} disabled={saving} onChange={(e) => { const employee = employees.find((item) => item.id === e.target.value); setEmployeeId(e.target.value); setFullName(employee?.name ?? ""); setRoleIds(employee?.roleIds ?? []); }}><option value="">Select registered employee</option>{employees.filter((employee) => `${employee.id} ${employee.name}`.toLowerCase().includes(employeeSearch.trim().toLowerCase())).map((employee) => <option key={employee.id} value={employee.id}>{employee.id} - {employee.name}</option>)}</select>
                 </div>
 
                 <div className="space-y-2">

@@ -149,13 +149,13 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   return { id, status, expectedAmount: expected, actualAmount: actual, difference };
 }
 
-export async function decideCashRemittance(remittanceId: string, decision: "approve" | "reject", reason = "") {
+export async function decideCashRemittance(remittanceId: string, decision: "approve" | "reject", reason = "", allowOwnDecision = false) {
   const actor = getEncoder();
   const ledger = await loadLedger();
   const remittance = ledger.remittances.find((item) => item.id === remittanceId);
   if (!remittance) throw new Error("Remittance not found.");
   if (!["Pending Approval", "Discrepancy"].includes(remittance.status)) throw new Error("Only pending or discrepancy Remittances can be decided.");
-  if (remittance.submittedByUserId === actor.userId) throw new Error("The submitting user cannot approve or reject the same Remittance.");
+  if (!allowOwnDecision && remittance.submittedByUserId === actor.userId) throw new Error("The submitting user cannot approve or reject the same Remittance.");
   if (decision === "reject" && !text(reason)) throw new Error("A rejection reason is required.");
   const linked = remittance.collectionIds.map((id) => ledger.collections.find((collection) => collection.id === id));
   if (!linked.length || linked.some((collection) => !collection)) throw new Error("The Remittance collection links are incomplete.");

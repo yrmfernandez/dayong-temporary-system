@@ -141,10 +141,10 @@ typeof amount === "number"
 : Number(amount ?? 0);
 
 if (!Number.isFinite(numericAmount)) {
-return "₱0.00";
+return "â‚±0.00";
 }
 
-return `₱${numericAmount.toLocaleString(
+return `â‚±${numericAmount.toLocaleString(
     "en-PH",
     {
       minimumFractionDigits: 2,
@@ -164,7 +164,7 @@ typeof amount === "number"
 
 if (!Number.isFinite(numericAmount)) {
 return type === "fixed"
-? "₱0.00"
+? "â‚±0.00"
 : "0%";
 }
 
@@ -187,7 +187,7 @@ if (toMonth >= 999999) {
 return `Month ${fromMonth}+`;
 }
 
-return `Months ${fromMonth}–${toMonth}`;
+return `Months ${fromMonth}â€“${toMonth}`;
 }
 
 function formatPeriodInput(
@@ -302,8 +302,7 @@ const [showForm, setShowForm] =
 useState(false);
 const [canManage, setCanManage] = useState(false);
 
-const [expandedPrograms, setExpandedPrograms] =
-useState<Record<string, boolean>>({});
+const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
 
 async function loadPrograms() {
 setLoadError("");
@@ -387,10 +386,7 @@ setShowForm(true);
 }
 
 function toggleProgram(programId: string) {
-setExpandedPrograms((current) => ({
-  ...current,
-  [programId]: !current[programId],
-}));
+setExpandedProgramId((current) => current === programId ? null : programId);
 }
 
 function updateForm(
@@ -715,8 +711,8 @@ try {
    * The UI uses one combined tier:
    *
    * Total Incentive
-   * ├── MAS
-   * └── Collector
+   * â”œâ”€â”€ MAS
+   * â””â”€â”€ Collector
    *
    * The API/database still receives
    * separate role records.
@@ -1402,7 +1398,7 @@ return (
           {tier.incentiveType ===
             "fixed" && (
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-              ₱
+              â‚±
             </span>
           )}
         </div>
@@ -1422,7 +1418,7 @@ return (
 
         <div className="relative">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-            ₱
+            â‚±
           </span>
 
           <Input
@@ -1542,7 +1538,7 @@ return (
             {tier.incentiveType ===
               "fixed" && (
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                ₱
+                â‚±
               </span>
             )}
           </div>
@@ -1602,7 +1598,7 @@ return (
             {tier.incentiveType ===
               "fixed" && (
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                ₱
+                â‚±
               </span>
             )}
           </div>
@@ -1628,7 +1624,7 @@ return (
                 splitTotal,
                 tier.incentiveType,
               )}{" "}
-              ✓
+              âœ“
             </span>
           </div>
         ) : (
@@ -1844,7 +1840,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
 
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                ₱
+                â‚±
               </span>
 
               <Input
@@ -2095,18 +2091,18 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           type="button"
                           variant="outline"
                           aria-expanded={
-                            expandedPrograms[program.id] ?? false
+                            expandedProgramId === program.id
                           }
                           onClick={() =>
                             toggleProgram(program.id)
                           }
                         >
-                          {expandedPrograms[program.id] ? (
+                          {expandedProgramId === program.id ? (
                             <ChevronUp className="mr-2 size-4" />
                           ) : (
                             <ChevronDown className="mr-2 size-4" />
                           )}
-                          {expandedPrograms[program.id]
+                          {expandedProgramId === program.id
                             ? "Collapse"
                             : "Expand"}
                         </Button>}
@@ -2139,7 +2135,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                       </div>
                     </div>
 
-                    {expandedPrograms[program.id] && (
+                    {expandedProgramId === program.id && (
                       <>
                         {program.description && (
                           <p className="text-sm">
@@ -2256,7 +2252,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                                           ? "Percentage incentive"
                                           : "Fixed incentive"
                                       }{" "}
-                                      • Mark Up{" "}
+                                      â€¢ Mark Up{" "}
                                       {formatPeso(
                                         baseTier.markUp,
                                       )}

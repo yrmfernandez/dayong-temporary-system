@@ -290,6 +290,19 @@ test('pending approval does not clear cash accountability', async () => {
   assert.equal(dashboard.accountability[0].outstandingAmount, 350);
 });
 
+test('administrator who is also an Entry Clerk may approve own remittance', async () => {
+  const h = harness({ userId: 'USR-1', employeeId: 'DPE-1', username: 'admin', roleNames: ['Administrator', 'Entry Clerk'], permissions: { manageUsers: true } });
+  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[10] = 350; collection[19] = 'Posted'; collection[28] = 'Pending Remittance Approval'; collection[29] = 'REM-1';
+  const remittance = Array(24).fill(''); remittance[0] = 'REM-1'; remittance[4] = 'Pending Approval'; remittance[6] = 'USR-1'; remittance[10] = 350; remittance[11] = 350;
+  const collectionHeader = Array(33).fill(''); collectionHeader[28] = 'Remittance Status';
+  const remittanceHeader = Array(24).fill(''); remittanceHeader[12] = 'Difference';
+  h.rows.Collections = [collectionHeader, collection];
+  h.rows.Remittances = [remittanceHeader, remittance];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID'], ['RCL-1', 'REM-1', 'COL-1', 350]];
+  const response = await h.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: 'REM-1', decision: 'approve' }));
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+});
+
 test('attendance updates never touch original encoder cells, even for historical rows', async () => {
   const h = harness();
   const { withEncoder } = h.load('lib/encoder-context.ts');
@@ -413,4 +426,10 @@ test('operational reports reconcile source transactions without duplicating data
   assert.equal(report.summary.difference, 300);
   assert.equal(report.collections[0].masCommission, 150);
   assert.equal(report.sales.length, 1);
+});
+
+test('account role loading rejects duplicate primary keys', async () => {
+  const h = harness();
+  h.rows.Roles = [[], ['ROLE-1', 'Administrator', '', true, false, false, 'active'], ['ROLE-1', 'Finance', '', false, false, false, 'active']];
+  await assert.rejects(h.load('lib/google-sheets-data.ts').getActiveAccountRoles(), /Duplicate role ID ROLE-1/);
 });

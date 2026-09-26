@@ -30,6 +30,10 @@ export function accessibleRoutes(context: AccessContext) {
   if (names.some((role) => roleRoutes[role]?.includes("*"))) return ["*"];
   const routes = new Set(names.flatMap((role) => roleRoutes[role] ?? []));
   routes.add("/");
+  if (names.length) {
+    routes.add("/programs");
+    routes.add("/branches");
+  }
   if (context.permissions.manageUsers) ["/employees", "/user-accounts", "/programs", "/branches", "/settings"].forEach((route) => routes.add(route));
   if (context.permissions.manageAttendance) ["/attendance", "/attendance-reviews", "/leave-requests", "/leave-approvals"].forEach((route) => routes.add(route));
   if (context.permissions.viewAttendanceReports) routes.add("/attendance-reviews");

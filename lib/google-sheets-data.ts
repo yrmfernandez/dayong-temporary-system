@@ -1421,6 +1421,7 @@ export async function getLoginUserByUsername(
       .filter(Boolean),
   );
 
+  const uniqueRoleIds = new Set<string>();
   const assignedRoles = roles
     .slice(1)
     .filter((row) => {
@@ -1429,10 +1430,13 @@ export async function getLoginUserByUsername(
         .trim()
         .toLowerCase();
 
-      return (
+      const allowed = (
         assignedRoleIds.has(roleId) &&
-        status === "active"
+        status === "active" &&
+        !uniqueRoleIds.has(roleId)
       );
+      if (allowed) uniqueRoleIds.add(roleId);
+      return allowed;
     })
     .map((row): LoginRole => ({
       id: String(row[0] ?? "").trim(),
@@ -1474,7 +1478,7 @@ export async function getActiveAccountRoles(): Promise<
       range: "Roles!A:G",
     });
 
-  return (response.data.values ?? [])
+  const roles = (response.data.values ?? [])
     .slice(1)
     .filter((row) => {
       const status = String(row[6] ?? "")
@@ -1490,6 +1494,12 @@ export async function getActiveAccountRoles(): Promise<
       id: String(row[0] ?? "").trim(),
       name: String(row[1] ?? "").trim(),
     }));
+  const ids = new Set<string>();
+  for (const role of roles) {
+    if (ids.has(role.id)) throw new Error(`Duplicate role ID ${role.id}. Run the roles migration before assigning accounts.`);
+    ids.add(role.id);
+  }
+  return roles;
 }
 
 export async function createEmployeeAccount(

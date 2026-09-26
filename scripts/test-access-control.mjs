@@ -16,6 +16,8 @@ test("Entry Clerk sees encoding pages but not finance or system administration",
   assert.equal(access(["Entry Clerk"], "/collections"), true);
   assert.equal(access(["Entry Clerk"], "/reports"), true);
   assert.equal(access(["Entry Clerk"], "/reports/daily"), true);
+  assert.equal(access(["Entry Clerk"], "/programs"), true);
+  assert.equal(access(["Entry Clerk"], "/branches"), true);
   assert.equal(access(["Entry Clerk"], "/settings"), true);
   assert.equal(access(["Entry Clerk"], "/expenses"), false);
   assert.equal(access(["Entry Clerk"], "/user-accounts"), false);
@@ -35,5 +37,7 @@ test("specific action flags supplement role navigation", () => {
 
 test("sessions without role names receive only the safe dashboard fallback", () => {
   assert.equal(access([], "/"), true);
+  assert.equal(access([], "/programs"), false);
+  assert.equal(access([], "/branches"), false);
   assert.equal(access([], "/collections"), false);
 });

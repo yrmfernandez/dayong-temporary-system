@@ -76,9 +76,7 @@ export default function BranchesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
-  const [expandedBranches, setExpandedBranches] = useState<
-    Record<string, boolean>
-  >({});
+  const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
 
   const loadBranches = async () => {
     setLoading(true);
@@ -151,10 +149,7 @@ export default function BranchesPage() {
   };
 
   const toggleBranch = (branchId: string) => {
-    setExpandedBranches((current) => ({
-      ...current,
-      [branchId]: !current[branchId],
-    }));
+    setExpandedBranchId((current) => current === branchId ? null : branchId);
   };
 
   const editBranch = (branch: Branch) => { const { id: _id, ...values } = branch; void _id; setForm(values); setEditingId(branch.id); setShowForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); };
@@ -266,7 +261,7 @@ export default function BranchesPage() {
           ) : (
             <div className="divide-y rounded-lg border">
               {branches.map((branch) => {
-                const isExpanded = expandedBranches[branch.id] ?? false;
+                const isExpanded = expandedBranchId === branch.id;
 
                 return (
                   <div key={`${branch.id}-${branch.territory}-${branch.name}`} className="space-y-4 p-4">

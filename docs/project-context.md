@@ -132,4 +132,12 @@ Daily, weekly, monthly, and yearly reports are generated from the source Sales, 
 
 The main dashboard is separate from formal Reports and renders a workspace based on the signed-in user's role. Administrators see system configuration and attention items; CEO/President see company performance; Finance sees cash and remittance control; HR sees personnel and branch staffing; Entry Clerks see their daily encoding and quick actions; IT sees accounts and configuration activity; and MAS users see only report totals associated with their accountable name plus their assigned member programs. Dashboard financial figures reuse the same calculation service as Reports so summary and drill-down totals stay consistent.
 
+## Administration and audit history
+
+Administrators can manage the Roles sheet through Role Management. Role IDs are generated stable primary keys, role names must be unique, assigned roles cannot be deleted, and the live workbook includes the Finance role. The roles migration repairs later duplicate IDs while keeping existing User Roles assignments attached to the first occurrence, avoiding accidental multi-role access from a reused key.
+
+Entry History gives administrators a cross-module view of New Sales, Collections, Remittances, Expenses, Cash Transactions, Members, enrollments, Employees, Branches, and Programs with record ID, information, encoder username, and encoded timestamp. Historical rows without verified encoder metadata remain identified as historical rather than being attributed by guesswork.
+
+All signed-in roles can view Programs and Branches as reference data. Only Administrators or accounts with manage-users permission can create, edit, or delete those records. Employee branch assignment supports selecting every branch or all branches within a territory. Expandable directory lists keep only one record open at a time.
+
 The specification's statements about previously completed features or builds must be checked when relevant; they are not evidence that every described operation is currently supported.
