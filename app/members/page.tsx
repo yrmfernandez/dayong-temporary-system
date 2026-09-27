@@ -71,12 +71,12 @@ export default function MembersPage() {
     {busy ? <p role="status">Loading members...</p> : !error && <>
       <p className="text-sm" aria-live="polite">{filtered.length} of {members.length} members</p>
       <div className="overflow-x-auto rounded-xl border bg-background">
-        <table className="w-full text-left text-sm"><thead className="bg-muted"><tr>{["PH number", "Member", "Contact", "Location", "Member status", "Programs / Payment status", "Details"].map((label) => <th key={label} scope="col" className="whitespace-nowrap p-3">{label}</th>)}</tr></thead>
+        <table className="w-full text-left text-sm"><thead className="bg-muted"><tr>{["PH number", "Member", "Contact", "Branch", "Member status", "Programs / Payment status", "Details"].map((label) => <th key={label} scope="col" className="whitespace-nowrap p-3">{label}</th>)}</tr></thead>
           <tbody>{visible.map((member) => <tr key={member.id} className="border-t">
             <td className="p-3">{member.number || "-"}</td><td className="p-3 font-medium">{member.name || "Unnamed member"}</td><td className="p-3">{member.contact || "-"}</td>
-            <td className="p-3">{[member.city, member.province].filter(Boolean).join(", ") || "-"}</td><td className="p-3">{member.status || "Not recorded"}</td>
+            <td className="p-3">{unique(member.enrollments.map((enrollment) => enrollment.branch)).join(", ") || "-"}</td><td className="p-3">{member.status || "Not recorded"}</td>
             <td className="p-3">{member.enrollments.map((e) => `${e.programName}: ${e.accountStatus || "Needs review"}${e.temporarilySuspended ? " (temporarily suspended)" : ""}`).join(", ") || "No enrollments"}</td>
-            <td className="p-3"><Button variant="outline" aria-label={`View ${member.name}`} onClick={() => setSelected(member)}>View</Button></td>
+            <td className="p-3"><Button variant="outline" aria-expanded={selected?.id === member.id} aria-label={`View ${member.name}`} onClick={() => setSelected((current) => current?.id === member.id ? null : member)}>{selected?.id === member.id ? "Collapse" : "View"}</Button></td>
           </tr>)}{!visible.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">{members.length ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
         </table>
       </div>

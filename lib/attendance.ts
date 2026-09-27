@@ -17,7 +17,8 @@ export type AttendanceStatus =
   | "Present"
   | "Absent"
   | "Leave"
-  | "AWOL";
+  | "AWOL"
+  | "Non-working Day";
 
 export function getPhilippineDate(
   date = new Date(),

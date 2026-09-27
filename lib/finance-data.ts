@@ -1,3 +1,4 @@
+﻿import { createReadableId } from "@/lib/readable-id";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
@@ -75,7 +76,7 @@ export async function createExpense(input: Record<string, unknown>) {
   const value = round(Number(input.amount));
   if (!datePattern.test(text(input.date))) throw new Error("Enter a valid expense date.");
   if (!Number.isFinite(value) || value <= 0) throw new Error("Expense amount must be greater than zero.");
-  const id = `EXP-${crypto.randomUUID()}`;
+  const id = createReadableId("EXP");
   await appendEncodedRows({ range: "Expenses!A:Q", requestBody: { values: [[id, text(input.date), required(input.category, "Category"),
     required(input.description, "Description"), value, required(input.payee, "Payee"), text(input.paidBy), required(input.branch, "Branch"),
     required(input.paymentMethod, "Payment method"), text(input.referenceNumber), text(input.receiptNumber), "Posted", text(input.remarks),
@@ -88,7 +89,7 @@ export async function createCashTransaction(input: Record<string, unknown>) {
   if (!datePattern.test(text(input.date))) throw new Error("Enter a valid transaction date.");
   if (!['inflow', 'outflow'].includes(direction)) throw new Error("Choose cash inflow or outflow.");
   if (!Number.isFinite(value) || value <= 0) throw new Error("Transaction amount must be greater than zero.");
-  const id = `CASH-${crypto.randomUUID()}`;
+  const id = createReadableId("CASH");
   await appendEncodedRows({ range: "'Cash Transactions'!A:P", requestBody: { values: [[id, text(input.date), direction,
     required(input.category, "Category"), required(input.description, "Description"), value, required(input.branch, "Branch"),
     required(input.account, "Cash account"), text(input.referenceType) || "Manual", text(input.referenceId), "Posted", text(input.remarks),

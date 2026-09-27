@@ -33,3 +33,5 @@ The command checks for blanks, invalid names, and collisions before changing row
 ## Future SQL migration
 
 Export one CSV per registered tab. Create PostgreSQL tables from the canonical table names and column mappings, import parent tables before child tables, then add foreign keys and indexes after the data passes the audit. Application code should continue to call a data-access layer so the Google Sheets implementation can later be replaced without rewriting page components.
+
+The 2026 readable-ID migration rewrites IDs and known foreign keys as one operation. Run `npm run sheets:ids` first for a count-only audit and add `-- --apply` only after reviewing the output. Program commercial rules are prepared with `npm run sheets:program-rules`; Role IDs and User Role references are handled by `npm run sheets:roles`.

@@ -16,7 +16,10 @@
     "sheets:audit": "node scripts/audit-sheet-database.mjs",
     "sheets:finance": "node scripts/migrate-finance.mjs",
     "sheets:branches": "node scripts/migrate-branch-assignments.mjs",
-    "sheets:roles": "node scripts/migrate-roles.mjs"
+    "sheets:roles": "node scripts/migrate-roles.mjs",
+    "sheets:program-rules": "node scripts/migrate-program-rules.mjs",
+    "sheets:ids": "node scripts/migrate-readable-ids.mjs",
+    "sheets:repair": "node scripts/repair-sheet-rows.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

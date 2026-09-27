@@ -26,7 +26,9 @@
     { "sheet": "Attendance", "table": "attendance", "primaryKey": "attendance_id", "firstHeader": "attendance_id" },
     { "sheet": "Leave Requests", "table": "leave_requests", "primaryKey": "leave_request_id", "firstHeader": "leave_request_id" },
     { "sheet": "Expenses", "table": "expenses", "primaryKey": "expense_id", "firstHeader": "expense_id" },
-    { "sheet": "Cash Transactions", "table": "cash_transactions", "primaryKey": "transaction_id", "firstHeader": "transaction_id" }
+    { "sheet": "Cash Transactions", "table": "cash_transactions", "primaryKey": "transaction_id", "firstHeader": "transaction_id" },
+    { "sheet": "Record Corrections", "table": "record_corrections", "primaryKey": "correction_id", "firstHeader": "correction_id" },
+    { "sheet": "Report Remarks", "table": "report_remarks", "primaryKey": "remark_id", "firstHeader": "remark_id" }
   ],
   "columnTypes": {
     "*_id": "text",

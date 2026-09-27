@@ -1,3 +1,4 @@
+﻿import { createReadableId } from "@/lib/readable-id";
 import { getEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
@@ -8,6 +9,7 @@ const number = (value: unknown) => Number(value ?? 0) || 0;
 
 export type CashCollection = {
   id: string;
+  batchId: string;
   rowNumber: number;
   memberNumber: string;
   programId: string;
@@ -63,7 +65,7 @@ async function loadLedger() {
     id: text(row[0]), remittanceId: text(row[1]), collectionId: text(row[2]), amount: number(row[3]), linkedAt: text(row[4]),
   }));
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
-    id: text(row[0]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
+    id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
   })).filter((collection) => collection.id && text(rows.Collections[collection.rowNumber - 1]?.[19]).toLowerCase() === "posted");
@@ -123,6 +125,10 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const selected = ids.map((id) => ledger.collections.find((collection) => collection.id === id));
   if (selected.some((collection) => !collection)) throw new Error("One or more selected Collections no longer exist.");
   const collections = selected as CashCollection[];
+  if (collections[0].batchId) {
+    const completeBatch = ledger.collections.filter((collection) => collection.batchId === collections[0].batchId && collection.remittanceStatus === "Outstanding");
+    if (collections.some((collection) => collection.batchId !== collections[0].batchId) || completeBatch.length !== collections.length || completeBatch.some((collection) => !ids.includes(collection.id))) throw new Error("One Collection save is one Remittance. Select every Collection card from the same saved batch.");
+  }
   if (collections.some((collection) => collection.remittanceStatus !== "Outstanding" || collection.linkedRemittanceId)) throw new Error("One or more selected Collections are no longer outstanding. Refresh and try again.");
   const owner = collections[0];
   if (collections.some((collection) => collection.accountableName !== owner.accountableName || collection.accountableEmployeeId !== owner.accountableEmployeeId || collection.branch !== owner.branch)) {
@@ -134,7 +140,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const actual = Math.round(input.actualAmount * 100) / 100;
   const difference = Math.round((actual - expected) * 100) / 100;
   const status = difference === 0 ? "Pending Approval" : "Discrepancy";
-  const id = `REM-${crypto.randomUUID()}`;
+  const id = createReadableId("REM");
   const timestamp = actor.encodedAt;
   const identity = [actor.userId, actor.employeeId, actor.username, timestamp];
   const row = [id, owner.branch, owner.accountableName, input.remittanceDate, status, timestamp, ...identity, expected, actual, difference,
@@ -142,7 +148,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const sheet = await sheetIds();
   const requests = [
     { appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } },
-    ...collections.map((collection) => ({ appendCells: { sheetId: sheet.mappings, rows: [{ values: [`RCL-${crypto.randomUUID()}`, id, collection.id, collection.amount, timestamp, ...identity].map(cell) }], fields: "userEnteredValue" } })),
+    ...collections.map((collection) => ({ appendCells: { sheetId: sheet.mappings, rows: [{ values: [createReadableId("RCL"), id, collection.id, collection.amount, timestamp, ...identity].map(cell) }], fields: "userEnteredValue" } })),
     ...collections.map((collection) => ({ updateCells: { range: { sheetId: sheet.collections, startRowIndex: collection.rowNumber - 1, endRowIndex: collection.rowNumber, startColumnIndex: 28, endColumnIndex: 30 }, rows: [{ values: [cell("Pending Remittance Approval"), cell(id)] }], fields: "userEnteredValue" } })),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });

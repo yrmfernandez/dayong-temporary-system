@@ -1,3 +1,4 @@
+﻿import { createReadableId } from "@/lib/readable-id";
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
@@ -136,7 +137,7 @@ export const POST = withEncoder(async function POST(request: Request) {
     const timestamp = new Date().toISOString();
 
     const leaveRequest = {
-      id: `LR-${crypto.randomUUID()}`,
+      id: createReadableId("LR"),
       employeeId: user.employeeId,
       leaveType,
       startDate,

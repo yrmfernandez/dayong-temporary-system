@@ -59,6 +59,9 @@ export type Program = {
   basePay: number;
   status: "active" | "inactive";
   description: string;
+  registrationFeeRequired: boolean;
+  registrationAmount: number;
+  payBalanceTotal: number;
 };
 /**
  * Program enrollment for a member.

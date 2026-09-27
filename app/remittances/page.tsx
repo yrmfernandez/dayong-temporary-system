@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { BarChart3, CheckCircle2, FileCheck2, LayoutDashboard, Plus, RefreshCw } from "lucide-react";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseJsonResponse } from "@/lib/api-response";
 
-type Collection = { id: string; memberNumber: string; programId: string; branch: string; accountableEmployeeId: string; accountableName: string; accountableRole: string; orNumber: string; orDate: string; amount: number; remittanceStatus: string };
+type Collection = { id: string; batchId: string; memberNumber: string; programId: string; branch: string; accountableEmployeeId: string; accountableName: string; accountableRole: string; orNumber: string; orDate: string; amount: number; remittanceStatus: string };
 type Remittance = { id: string; branch: string; accountableName: string; remittanceDate: string; status: string; submittedByUsername: string; expectedAmount: number; actualAmount: number; difference: number; collectionCount: number; receivedByName: string; decisionByUsername: string; decisionAt: string; remarks: string; rejectionReason: string; collectionIds: string[] };
 type Dashboard = {
   summary: { outstandingAmount: number; outstandingCount: number; pendingAmount: number; pendingCount: number; approvedTodayAmount: number; approvedTodayCount: number; discrepancyAmount: number; historicalReviewCount: number };
@@ -41,6 +41,7 @@ export default function RemittancesPage() {
   const [remittanceDate, setRemittanceDate] = useState(today());
   const [receivedByName, setReceivedByName] = useState("");
   const [remarks, setRemarks] = useState("");
+  const [cashConfirmed, setCashConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -59,6 +60,14 @@ export default function RemittancesPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/auth/session", { cache: "no-store", signal: controller.signal })
+      .then((response) => response.json())
+      .then((result) => { if (result.success && result.user?.username) setReceivedByName(result.user.username); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
   const ownerCollections = useMemo(() => data?.outstanding.filter((collection) => `${collection.accountableEmployeeId}|${collection.accountableName}|${collection.branch}` === ownerKey) ?? [], [data, ownerKey]);
   const selectedCollections = ownerCollections.filter((collection) => selected.includes(collection.id));
   const expectedAmount = selectedCollections.reduce((sum, collection) => sum + collection.amount, 0);
@@ -71,8 +80,15 @@ export default function RemittancesPage() {
       const response = await fetch("/api/remittances", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ collectionIds: selected, actualAmount: Number(actualAmount), remittanceDate, receivedByName, remarks }) });
       const result = await parseJsonResponse<{ error?: string; remittance?: { id: string; status: string } }>(response);
       if (!response.ok) throw new Error(result.error || "Unable to create Remittance.");
-      setMessage(`${result.remittance?.id} submitted as ${result.remittance?.status}.`);
-      setSelected([]); setActualAmount(""); setRemarks(""); setView("approval"); await load();
+      let finalStatus = result.remittance?.status || "submitted";
+      if (cashConfirmed && expectedAmount === Number(actualAmount) && result.remittance?.id) {
+        const approvalResponse = await fetch("/api/remittances", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remittanceId: result.remittance.id, decision: "approve", reason: "Cash received in full and confirmed during encoding." }) });
+        const approval = await parseJsonResponse<{ error?: string }>(approvalResponse);
+        if (!approvalResponse.ok) throw new Error(approval.error || "Remittance was saved but automatic approval failed.");
+        finalStatus = "Approved";
+      }
+      setMessage(`${result.remittance?.id} saved as ${finalStatus}.`);
+      setSelected([]); setActualAmount(""); setRemarks(""); setCashConfirmed(false); setView("approval"); await load();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to create Remittance."); }
     finally { setSaving(false); }
   };
@@ -115,9 +131,10 @@ export default function RemittancesPage() {
 
       {view === "new" && <Card><CardHeader><CardTitle>New Remittance</CardTitle><p className="text-sm text-muted-foreground">Choose one accountable person, then select the exact Collections included in the cash turnover.</p></CardHeader><CardContent className="space-y-5">
         <div className="grid gap-4 md:grid-cols-3"><div className="space-y-2"><Label htmlFor="owner">Collector / MAS</Label><select id="owner" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={ownerKey} onChange={(event) => { setOwnerKey(event.target.value); setSelected([]); setActualAmount(""); }}><option value="">Select accountable person</option>{(data?.accountability ?? []).filter((owner) => data?.outstanding.some((collection) => collection.accountableEmployeeId === owner.employeeId && collection.accountableName === owner.name && collection.branch === owner.branch)).map((owner) => <option key={`${owner.employeeId}|${owner.name}|${owner.branch}`} value={`${owner.employeeId}|${owner.name}|${owner.branch}`}>{owner.name || owner.employeeId} · {owner.branch} · {money(owner.outstandingAmount)}</option>)}</select></div><Field label="Turnover date"><Input type="date" value={remittanceDate} onChange={(event) => setRemittanceDate(event.target.value)} /></Field><Field label="Received by"><Input value={receivedByName} onChange={(event) => setReceivedByName(event.target.value)} placeholder="Cashier / receiving person" /></Field></div>
-        <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[760px] text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-3">Select</th><th className="p-3">Collection</th><th className="p-3">Member</th><th className="p-3">Program</th><th className="p-3">OR Date</th><th className="p-3 text-right">Amount</th></tr></thead><tbody>{ownerCollections.map((collection) => <tr key={collection.id} className="border-t"><td className="p-3"><input type="checkbox" checked={selected.includes(collection.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, collection.id] : current.filter((id) => id !== collection.id))} /></td><td className="p-3 font-mono text-xs">{collection.id}</td><td className="p-3">{collection.memberNumber}</td><td className="p-3">{collection.programId}</td><td className="p-3">{collection.orDate}</td><td className="p-3 text-right">{money(collection.amount)}</td></tr>)}{!ownerCollections.length && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Select an accountable person with outstanding Collections.</td></tr>}</tbody></table></div>
-        <div className="grid gap-4 md:grid-cols-3"><Metric label="Selected Collections" value={String(selected.length)} detail={`Expected ${money(expectedAmount)}`} /><Field label="Actual amount received"><Input type="number" min="0" step="0.01" value={actualAmount} onChange={(event) => setActualAmount(event.target.value)} /></Field><Metric label="Difference" value={money((Number(actualAmount) || 0) - expectedAmount)} detail="Actual minus expected" /></div>
+        <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[760px] text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-3">Select</th><th className="p-3">Collection</th><th className="p-3">Member</th><th className="p-3">Program</th><th className="p-3">OR Date</th><th className="p-3 text-right">Amount</th></tr></thead><tbody>{ownerCollections.map((collection) => <tr key={collection.id} className="border-t"><td className="p-3"><input type="checkbox" checked={selected.includes(collection.id)} onChange={(event) => { const batchIds = collection.batchId ? ownerCollections.filter((item) => item.batchId === collection.batchId).map((item) => item.id) : [collection.id]; setSelected((current) => event.target.checked ? [...new Set([...current, ...batchIds])] : current.filter((id) => !batchIds.includes(id))); }} /></td><td className="p-3 font-mono text-xs">{collection.id}</td><td className="p-3">{collection.memberNumber}</td><td className="p-3">{collection.programId}</td><td className="p-3">{collection.orDate}</td><td className="p-3 text-right">{money(collection.amount)}</td></tr>)}{!ownerCollections.length && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Select an accountable person with outstanding Collections.</td></tr>}</tbody></table></div>
+        <div className="grid gap-4 md:grid-cols-3"><Metric label="Selected Collections" value={String(selected.length)} detail={`Expected ${money(expectedAmount)}`} /><Field label="Actual amount received"><Input type="number" min="0" step="0.01" value={actualAmount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setActualAmount(event.target.value)} /></Field><Metric label="Difference" value={money((Number(actualAmount) || 0) - expectedAmount)} detail="Actual minus expected" /></div>
         <Field label="Remarks"><Input value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Optional turnover notes" /></Field>
+        <label className="flex items-start gap-2 rounded-lg border bg-muted/20 p-3 text-sm"><input type="checkbox" className="mt-1" checked={cashConfirmed} disabled={expectedAmount !== Number(actualAmount)} onChange={(event) => setCashConfirmed(event.target.checked)} /><span><strong>Cash received in full</strong><span className="block text-xs text-muted-foreground">When actual and expected amounts match, an administrator who also has Entry Clerk authority can approve this remittance immediately.</span></span></label>
         <Button type="button" disabled={saving || !selected.length || actualAmount === "" || !remittanceDate} onClick={() => void createRemittance()}>{saving ? "Submitting..." : "Submit for Approval"}</Button>
       </CardContent></Card>}
 

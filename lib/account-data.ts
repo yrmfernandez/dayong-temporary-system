@@ -22,11 +22,11 @@ export async function loadAccountData() {
   for (const [title, offset] of [["Member programs", 14], ["Collections", 21], ["Remittances", 6]] as const) {
     if (encoderHeaders.some((header, index) => !headerMatches(tables[title][0]?.[offset + index], header))) throw new Error(`${title} encoder headers changed. Review the sheet before saving.`);
   }
-  const programs = new Map(tables.Programs.slice(1).map((r) => [str(r[0]), { name: str(r[2]), basePay: Number(r[3]) }]));
+  const programs = new Map(tables.Programs.slice(1).map((r) => [str(r[0]), { name: str(r[2]), basePay: Number(r[3]), payBalanceTotal: Number(r[12]) || 0 }]));
   const members = new Map(tables.Members.slice(1).map((r) => [str(r[0]), `${str(r[2])}, ${str(r[3])} ${str(r[4])}`.trim()]));
   const accounts = tables["Member programs"].slice(1).map((r, i) => ({
     id: str(r[0]), memberId: str(r[1]), memberNumber: str(r[2]), programId: str(r[3]), doi: sheetDate(r[4]),
-    branch: str(r[5]), mas: str(r[6]), basePay: programs.get(str(r[3]))?.basePay ?? 0, storedStatus: str(r[18]), rowNumber: i + 2,
+    branch: str(r[5]), mas: str(r[6]), basePay: programs.get(str(r[3]))?.basePay ?? 0, payBalanceTotal: programs.get(str(r[3]))?.payBalanceTotal ?? 0, storedStatus: str(r[18]), rowNumber: i + 2,
     memberName: members.get(str(r[1])) ?? str(r[2]), programName: programs.get(str(r[3]))?.name ?? str(r[3]),
   })).filter((a) => a.id);
   if (new Set(accounts.map((a) => a.id)).size !== accounts.length) throw new Error("Duplicate enrollment IDs need review.");

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import {
@@ -68,6 +68,9 @@ name: string;
 basePay: number;
 status: "active" | "inactive";
 description: string;
+registrationFeeRequired: boolean;
+registrationAmount: number;
+payBalanceTotal: number;
 incentiveTiers: IncentiveTier[];
 };
 
@@ -76,6 +79,9 @@ code: string;
 name: string;
 basePay: string;
 description: string;
+registrationFeeRequired: boolean;
+registrationAmount: string;
+payBalanceTotal: string;
 status: "active" | "inactive";
 incentiveTiers: IncentiveTierForm[];
 };
@@ -105,6 +111,9 @@ code: "",
 name: "",
 basePay: "",
 description: "",
+registrationFeeRequired: false,
+registrationAmount: "0",
+payBalanceTotal: "0",
 status: "active",
 
 incentiveTiers: [
@@ -135,44 +144,17 @@ return unit === "year"
 function formatPeso(
 amount: number | string | undefined,
 ) {
-const numericAmount =
-typeof amount === "number"
-? amount
-: Number(amount ?? 0);
-
-if (!Number.isFinite(numericAmount)) {
-return "â‚±0.00";
-}
-
-return `â‚±${numericAmount.toLocaleString(
-    "en-PH",
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    },
-  )}`;
+const numericAmount = typeof amount === "number" ? amount : Number(amount ?? 0);
+return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(Number.isFinite(numericAmount) ? numericAmount : 0);
 }
 
 function formatIncentive(
 amount: number | string | undefined,
 type: IncentiveType | undefined,
 ) {
-const numericAmount =
-typeof amount === "number"
-? amount
-: Number(amount ?? 0);
-
-if (!Number.isFinite(numericAmount)) {
-return type === "fixed"
-? "â‚±0.00"
-: "0%";
-}
-
-if (type === "fixed") {
-return formatPeso(numericAmount);
-}
-
-return `${numericAmount}%`;
+const numericAmount = typeof amount === "number" ? amount : Number(amount ?? 0);
+if (!Number.isFinite(numericAmount)) return type === "fixed" ? formatPeso(0) : "0%";
+return type === "fixed" ? formatPeso(numericAmount) : `${numericAmount}%`;
 }
 
 function formatMonthRange(
@@ -187,7 +169,7 @@ if (toMonth >= 999999) {
 return `Month ${fromMonth}+`;
 }
 
-return `Months ${fromMonth}â€“${toMonth}`;
+return `Months ${fromMonth}-${toMonth}`;
 }
 
 function formatPeriodInput(
@@ -711,8 +693,8 @@ try {
    * The UI uses one combined tier:
    *
    * Total Incentive
-   * â”œâ”€â”€ MAS
-   * â””â”€â”€ Collector
+   * Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ MAS
+   * Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬ Collector
    *
    * The API/database still receives
    * separate role records.
@@ -793,6 +775,10 @@ try {
 
     description:
       form.description.trim(),
+
+    registrationFeeRequired: form.registrationFeeRequired,
+    registrationAmount: Number(form.registrationAmount) || 0,
+    payBalanceTotal: Number(form.payBalanceTotal) || 0,
 
     status: form.status,
   };
@@ -991,6 +977,10 @@ setForm({
 
   description:
     program.description ?? "",
+
+  registrationFeeRequired: Boolean(program.registrationFeeRequired),
+  registrationAmount: String(program.registrationAmount ?? 0),
+  payBalanceTotal: String(program.payBalanceTotal ?? 0),
 
   status:
     program.status === "inactive"
@@ -1398,7 +1388,7 @@ return (
           {tier.incentiveType ===
             "fixed" && (
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-              â‚±
+              PHP
             </span>
           )}
         </div>
@@ -1418,7 +1408,7 @@ return (
 
         <div className="relative">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-            â‚±
+            PHP
           </span>
 
           <Input
@@ -1538,7 +1528,7 @@ return (
             {tier.incentiveType ===
               "fixed" && (
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                â‚±
+                PHP
               </span>
             )}
           </div>
@@ -1598,7 +1588,7 @@ return (
             {tier.incentiveType ===
               "fixed" && (
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                â‚±
+                PHP
               </span>
             )}
           </div>
@@ -1624,7 +1614,7 @@ return (
                 splitTotal,
                 tier.incentiveType,
               )}{" "}
-              âœ“
+              ✓
             </span>
           </div>
         ) : (
@@ -1840,7 +1830,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
 
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                â‚±
+                PHP
               </span>
 
               <Input
@@ -1904,6 +1894,18 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
               </SelectContent>
             </Select>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-muted/20 p-4">
+        <h3 className="text-sm font-semibold">Enrollment and payoff rules</h3>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.registrationFeeRequired} onChange={(event) => setForm((current) => ({ ...current, registrationFeeRequired: event.target.checked, registrationAmount: event.target.checked ? current.registrationAmount : "0" }))} />
+            Registration fee required
+          </label>
+          <div className="space-y-2"><Label>Registration amount</Label><Input type="number" min="0" step="0.01" disabled={!form.registrationFeeRequired} value={form.registrationAmount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("registrationAmount", event.target.value)} /></div>
+          <div className="space-y-2"><Label>Pay-the-balance total</Label><Input type="number" min="0" step="0.01" value={form.payBalanceTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("payBalanceTotal", event.target.value)} /><p className="text-xs text-muted-foreground">Set to 0 when the program has no fixed payoff total.</p></div>
         </div>
       </div>
 
@@ -2252,7 +2254,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                                           ? "Percentage incentive"
                                           : "Fixed incentive"
                                       }{" "}
-                                      â€¢ Mark Up{" "}
+                                      • Mark Up{" "}
                                       {formatPeso(
                                         baseTier.markUp,
                                       )}

@@ -35,6 +35,7 @@ type ProgramOption = {
   code: string;
   name: string;
   basePay: number;
+  payBalanceTotal?: number;
   incentiveTiers?: IncentiveTier[];
 };
 
@@ -218,7 +219,7 @@ export default function CollectionsPage() {
   const [scrollTargetId, setScrollTargetId] = useState("");
   const [members, setMembers] = useState<CollectionMember[]>([]);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
-  const [branches, setBranches] = useState<Array<{ id: string; name: string; status: string }>>([]);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; territory?: string; status: string }>>([]);
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string }>>([]);
   const [histories, setHistories] = useState<Record<string, CollectionHistory[]>>({});
   const selectionVersions = useRef<Record<string, number>>({});
@@ -228,6 +229,7 @@ export default function CollectionsPage() {
   const [saveMessage, setSaveMessage] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     const loadOptions = async () => {
@@ -389,7 +391,8 @@ export default function CollectionsPage() {
               const next = { ...entry, ...updates };
               const count = getMonthDifference(next.monthFrom, next.monthTo);
               const rate = programs.find((p) => p.id === next.programId)?.basePay;
-              return { ...next, amountCollected: rate && count > 0 ? (Math.round(rate * 100) * count / 100).toFixed(2) : "" };
+              const shouldRecalculate = "programId" in updates || "monthFrom" in updates || "monthTo" in updates;
+              return { ...next, amountCollected: shouldRecalculate ? (rate && count > 0 ? (Math.round(rate * 100) * count / 100).toFixed(2) : "") : next.amountCollected };
             })()
           : entry,
       ),
@@ -526,7 +529,7 @@ export default function CollectionsPage() {
     if (entry.temporarilySuspended && entry.ifSuspended !== "Waiver") return "Select Waiver under If Suspended.";
     const rate = programs.find((p) => p.id === entry.programId)?.basePay ?? 0;
     const months = getMonthDifference(entry.monthFrom, entry.monthTo);
-    if (months < 1 || Math.abs(Number(entry.amountCollected) * 100 - Math.round(rate * 100) * months) > 0.0001) return "Amount must match full monthly installments for the covered months.";
+    if (months < 1 || Number(entry.amountCollected) * 100 < Math.round(rate * 100) * months) return "Amount must cover every selected full monthly installment.";
     if (!branch) return "Branch is required.";
 
     if (!mas) return "MAS is required.";
@@ -748,6 +751,7 @@ export default function CollectionsPage() {
     setNextCollectionId(2);
     setShowMoreDetails(false);
     setSaveMessage("");
+    setShowPreview(false);
   }
 
   return (
@@ -793,7 +797,7 @@ export default function CollectionsPage() {
                       key={item.id}
                       value={item.name}
                     >
-                      {item.name}
+                      {item.name} · {item.territory || "Unassigned territory"}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1393,6 +1397,7 @@ export default function CollectionsPage() {
                                           : Number(event.target.value),
                                     })
                                   }
+                                  onWheel={(event) => event.currentTarget.blur()}
                                 />
                               </div>
 
@@ -1427,6 +1432,7 @@ export default function CollectionsPage() {
                                           : Number(event.target.value),
                                     })
                                   }
+                                  onWheel={(event) => event.currentTarget.blur()}
                                 />
                               </div>
                             </div>
@@ -1435,8 +1441,8 @@ export default function CollectionsPage() {
                           {/* AMOUNT */}
                           <div className="space-y-2">
                             <Label>Amount Collected</Label>
-                            <Input type="number" value={entry.amountCollected} readOnly className="bg-muted/50" placeholder="0.00" />
-                            <p className="text-xs text-muted-foreground">Automatically calculated: covered months multiplied by the program monthly amount.</p>
+                            <Input type="number" min="0" step="0.01" value={entry.amountCollected} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateCollection(entry.id, { amountCollected: event.target.value })} placeholder="0.00" />
+                            <p className="text-xs text-muted-foreground">Starts with covered months × monthly amount. Edit only when the receipt pays the program&apos;s exact remaining payoff balance.</p>
                             <div className="rounded border p-3 text-sm">
                               <strong>Incentive reference: {(() => { const quote = quoteEntry(entry); return "remittance" in quote ? formatCurrency(quote.remittance) : "Pending"; })()}</strong>
                               {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
@@ -1744,6 +1750,7 @@ export default function CollectionsPage() {
 
               {/* SAVE / RESET */}
               <div className="space-y-3 border-t pt-4">
+                {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Batch total: {formatCurrency(totalCollected)} · Remittance: {totalRemittance === null ? "Pending" : formatCurrency(totalRemittance)}</p></div>}
                 {saveMessage && (
                   <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
                     {saveMessage}
@@ -1754,14 +1761,14 @@ export default function CollectionsPage() {
                   <Button
                     type="button"
                     className="flex-1"
-                    onClick={saveCollections}
+                    onClick={() => showPreview ? void saveCollections() : setShowPreview(true)}
                     disabled={saving}
                   >
                     <Save className="mr-2 size-4" />
 
                     {saving
                       ? "Saving..."
-                      : "Save Collections"}
+                      : showPreview ? "Confirm and Save" : "Preview Collections"}
                   </Button>
 
                   <Button

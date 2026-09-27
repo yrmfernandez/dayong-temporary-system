@@ -64,6 +64,9 @@ export const POST = withEncoder(async function POST(
       incentiveTiers,
       description,
       status,
+      registrationFeeRequired,
+      registrationAmount,
+      payBalanceTotal,
     } = body;
 
     if (
@@ -113,6 +116,12 @@ export const POST = withEncoder(async function POST(
           status: 400,
         },
       );
+    }
+
+    const normalizedRegistrationAmount = Number(registrationAmount) || 0;
+    const normalizedPayBalanceTotal = Number(payBalanceTotal) || 0;
+    if (normalizedRegistrationAmount < 0 || normalizedPayBalanceTotal < 0 || (registrationFeeRequired && normalizedRegistrationAmount <= 0)) {
+      return NextResponse.json({ success: false, error: "Enter valid registration and pay-the-balance amounts." }, { status: 400 });
     }
 
     if (!Array.isArray(incentiveTiers)) {
@@ -343,6 +352,9 @@ export const POST = withEncoder(async function POST(
           normalizedDescription,
 
         status: normalizedStatus,
+        registrationFeeRequired: Boolean(registrationFeeRequired),
+        registrationAmount: normalizedRegistrationAmount,
+        payBalanceTotal: normalizedPayBalanceTotal,
       });
 
     return NextResponse.json(
@@ -383,6 +395,9 @@ function programInput(body: Record<string, unknown>): ProgramInput {
     basePay: Number(body.basePay),
     status: body.status === "inactive" ? "inactive" : "active",
     description: typeof body.description === "string" ? body.description.trim() : "",
+    registrationFeeRequired: Boolean(body.registrationFeeRequired),
+    registrationAmount: Number(body.registrationAmount) || 0,
+    payBalanceTotal: Number(body.payBalanceTotal) || 0,
     incentiveTiers: tiers.map((value) => { const tier = value as Record<string, unknown>; return { role: tier.role === "Collector" ? "Collector" : "MAS", fromMonth: Number(tier.fromMonth), toMonth: Number(tier.toMonth), incentiveType: tier.incentiveType === "fixed" ? "fixed" : "percentage", markUp: Number(tier.markUp), incentiveAmount: Number(tier.incentiveAmount) }; }),
   };
 }

@@ -1,3 +1,4 @@
+﻿import { createReadableId } from "@/lib/readable-id";
 import { withEncoder } from "@/lib/encoder-context";
 import { getSessionUser } from "@/lib/auth-server";
 import { loadAccountData, commitCollections } from "@/lib/account-data";
@@ -37,6 +38,7 @@ export const POST = withEncoder(async (request: Request) => {
     const touched = new Map<string, typeof data.accounts[number]>();
     const rows: (string | number)[][] = [];
     const timestamp = new Date().toISOString();
+    const batchId = createReadableId("CBT");
     let grossCents = 0;
     for (const entry of body.collections) {
       const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
@@ -52,11 +54,11 @@ export const POST = withEncoder(async (request: Request) => {
       const quote = calculateRemittance(account.basePay, data.incentives.filter((tier) => tier.programId === account.programId), input.collectedByRole, input.nopFrom, input.nopTo);
       // Client totals are only a preview. Persist the authoritative server calculation.
       grossCents += Math.round(quote.gross * 100);
-      const id = `COL-${crypto.randomUUID()}`;
+      const id = createReadableId("COL");
       const payment: AccountPayment = { ...input, id, enrollmentId: account.id, dateRemitted, mas };
       payments.push(payment);
       touched.set(account.id, account);
-      rows.push([id, "", account.id, account.memberId, account.memberNumber, account.programId, branch, mas,
+      rows.push([id, batchId, account.id, account.memberId, account.memberNumber, account.programId, branch, mas,
         input.orNumber, input.orDate, input.amount, input.monthFrom, input.monthTo, input.nopFrom, input.nopTo,
         entry.reactivation === "Yes" ? "Yes" : "No", entry.transferred === "Yes" ? "Yes" : "No", input.waiver, input.originalMas, "Posted", timestamp,
         input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS"]);

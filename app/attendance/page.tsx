@@ -27,6 +27,7 @@ import {
 type Branch = {
   id: string;
   name: string;
+  territory?: string;
   status: "active" | "inactive";
 };
 
@@ -309,7 +310,7 @@ export default function AttendancePage() {
                     <SelectContent>
                       {branches.map((item) => (
                         <SelectItem key={item.id} value={item.name}>
-                          {item.name}
+                          {item.name} · {item.territory || "Unassigned territory"}
                         </SelectItem>
                       ))}
                     </SelectContent>

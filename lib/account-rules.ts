@@ -1,7 +1,7 @@
-export type AccountStatus = "NS" | "U" | "ADV" | "60D" | "90D" | "120D" | "150D" | "Forfeited";
+export type AccountStatus = "NS" | "U" | "ADV" | "60D" | "90D" | "120D" | "150D" | "Paid" | "Forfeited";
 export type Account = {
   id: string; memberId: string; memberNumber: string; programId: string;
-  doi: string; branch: string; mas: string; basePay: number; storedStatus: string;
+  doi: string; branch: string; mas: string; basePay: number; payBalanceTotal: number; storedStatus: string;
 };
 export type AccountPayment = {
   id: string; enrollmentId: string; orDate: string; orNumber: string;
@@ -29,7 +29,7 @@ export function addMonths(date: string, months: number) {
 export function addDay(date: string) { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); }
 
 // Allocations are derived from actual stored ranges, never synthetic collections.
-export function allocations(payments: AccountPayment[]) {
+export function allocations(payments: AccountPayment[], basePay?: number) {
   const result = new Map<string, { nop: number; amount: number; paymentId: string }>();
   const nops = new Set<number>();
   for (const payment of payments) {
@@ -38,12 +38,13 @@ export function allocations(payments: AccountPayment[]) {
       throw new Error(`Payment ${payment.id} has invalid dates, amount, or NOP coverage. Review its history.`);
     }
     const cents = Math.round(payment.amount * 100);
-    if (Math.abs(payment.amount * 100 - cents) > 0.0001 || cents % count !== 0) throw new Error(`Payment ${payment.id} cannot be allocated equally to full monthly installments.`);
+    const monthlyCents = basePay ? Math.round(basePay * 100) : cents / count;
+    if (Math.abs(payment.amount * 100 - cents) > 0.0001 || !Number.isInteger(monthlyCents) || cents < monthlyCents * count) throw new Error(`Payment ${payment.id} cannot cover its selected full monthly installments.`);
     for (let i = 0; i < count; i++) {
       const month = monthName(monthIndex(payment.monthFrom) + i);
       const nop = payment.nopFrom + i;
       if (result.has(month) || nops.has(nop)) throw new Error(`Payment ${payment.id} overlaps existing month or NOP coverage.`);
-      result.set(month, { nop, amount: cents / count / 100, paymentId: payment.id });
+      result.set(month, { nop, amount: monthlyCents / 100, paymentId: payment.id });
       nops.add(nop);
     }
   }
@@ -53,10 +54,7 @@ export function allocations(payments: AccountPayment[]) {
 export function accountState(account: Account, allPayments: AccountPayment[], today = todayInManila()) {
   if (!validDate(account.doi) || !validDate(today) || !Number.isFinite(account.basePay) || account.basePay <= 0) throw new Error(`Account ${account.id} needs a valid DOI and monthly program rate.`);
   const payments = allPayments.filter((p) => p.enrollmentId === account.id && p.orDate <= today);
-  const coverage = allocations(payments);
-  if ([...coverage.values()].some((allocation) => Math.round(allocation.amount * 100) !== Math.round(account.basePay * 100))) {
-    throw new Error(`Account ${account.id} has payments that do not match its monthly rate. Review historical amounts/rate changes before calculating status.`);
-  }
+  const coverage = allocations(payments, account.basePay);
   const months = [...coverage.keys()].sort();
   const lastCoveredMonth = months.at(-1) ?? "";
   const latest = [...payments].sort((a, b) => a.orDate.localeCompare(b.orDate)).at(-1);
@@ -70,7 +68,8 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   }
   const suspendedAt = addMonths(anchor, 2);
   const forfeitedAt = addDay(addMonths(anchor, 6));
-  const forfeited = account.storedStatus === "Forfeited" || today >= forfeitedAt;
+  const paid = account.payBalanceTotal > 0 && payments.reduce((sum, payment) => sum + payment.amount, 0) >= account.payBalanceTotal;
+  const forfeited = !paid && (account.storedStatus === "Forfeited" || today >= forfeitedAt);
   const temporarilySuspended = !forfeited && today >= suspendedAt;
   const currentMonth = today.slice(0, 7);
   const firstMonth = months[0] ?? account.doi.slice(0, 7);
@@ -80,13 +79,14 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
     if (!coverage.has(monthName(index))) unpaidMonths++;
   }
   let status: AccountStatus = "NS";
-  if (forfeited) status = "Forfeited";
+  if (paid) status = "Paid";
+  else if (forfeited) status = "Forfeited";
   else if (payments.length) {
     status = unpaidMonths === 0 ? (lastCoveredMonth > currentMonth ? "ADV" : "U")
       : (["60D", "90D", "120D", "150D"] as const)[Math.min(unpaidMonths, 4) - 1];
   }
   const nop = Math.max(0, ...[...coverage.values()].map((value) => value.nop));
-  const multipliers: Record<AccountStatus, number> = { NS: 1, U: 1, ADV: 0, "60D": 2, "90D": 3, "120D": 4, "150D": 5, Forfeited: 0 };
+  const multipliers: Record<AccountStatus, number> = { NS: 1, U: 1, ADV: 0, "60D": 2, "90D": 3, "120D": 4, "150D": 5, Paid: 0, Forfeited: 0 };
   return {
     status, temporarilySuspended, anchor, suspendedAt, forfeitedAt, nop, nextNop: nop + 1,
     lastCoveredMonth, nextMonth: lastCoveredMonth ? monthName(monthIndex(lastCoveredMonth) + 1) : account.doi.slice(0, 7),
@@ -116,6 +116,10 @@ export function validatePayment(account: Account, history: AccountPayment[], inp
   if (state.status !== "NS" && input.nopFrom !== state.nextNop) throw new Error(`NOP must start at ${state.nextNop}. Refresh the account history.`);
   if (input.monthFrom !== state.nextMonth) throw new Error(`Payment must begin with ${state.nextMonth}; do not skip unpaid months or repay covered months.`);
   const expected = Math.round(account.basePay * 100) * count;
-  if (!Number.isFinite(input.amount) || Math.abs(input.amount * 100 - expected) > 0.0001) throw new Error(`Pay full monthly installments: ${count} month(s) requires ${(expected / 100).toFixed(2)}.`);
+  const amountCents = Math.round(input.amount * 100);
+  const paidBefore = history.filter((payment) => payment.enrollmentId === account.id).reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0);
+  const payoffCents = Math.round(account.payBalanceTotal * 100);
+  if (!Number.isFinite(input.amount) || amountCents < expected) throw new Error(`Pay full monthly installments: ${count} month(s) requires at least ${(expected / 100).toFixed(2)}.`);
+  if (amountCents > expected && (!payoffCents || paidBefore + amountCents !== payoffCents)) throw new Error(`An amount above the monthly total must exactly pay the remaining program balance of ${Math.max(0, payoffCents - paidBefore) / 100}.`);
   return state;
 }

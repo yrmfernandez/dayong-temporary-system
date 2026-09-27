@@ -38,6 +38,13 @@ test("whole installments only, allow paying one month of arrears, forbid skipped
   validatePayment(account, [payment()], input({ monthFrom: "2026-02", monthTo: "2026-02", nopFrom: 2, nopTo: 2, orDate: "2026-03-20", waiver: "Waiver" }), "2026-03-20");
   assert.throws(() => validatePayment(account, [payment()], input({ monthFrom: "2026-04", monthTo: "2026-04", nopFrom: 2, nopTo: 2, orDate: "2026-03-20", waiver: "Waiver" }), "2026-03-20"), /do not skip/);
 });
+test("an edited amount may exceed monthly dues only when it exactly pays the configured balance", () => {
+  const payoffAccount = { ...account, payBalanceTotal: 1000 };
+  validatePayment(payoffAccount, [], input({ amount: 1000 }), "2026-01-20");
+  assert.equal(accountState(payoffAccount, [payment({ amount: 1000 })], "2026-01-20").status, "Paid");
+  assert.throws(() => validatePayment(payoffAccount, [], input({ amount: 900 }), "2026-01-20"), /exactly pay/);
+  assert.throws(() => validatePayment({ ...account, payBalanceTotal: 0 }, [], input({ amount: 700 }), "2026-01-20"), /exactly pay/);
+});
 test("non-NS NOP cannot be spoofed; duplicate receipt and overlapping history fail", () => {
   assert.throws(() => validatePayment(account, [payment()], input({ nopFrom: 9, nopTo: 9 }), "2026-01-20"), /NOP must start/);
   assert.throws(() => validatePayment(account, [payment()], input({ orNumber: "OR1" }), "2026-01-20"), /already recorded/);

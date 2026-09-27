@@ -67,6 +67,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       attendanceDate,
+      nonWorkingDay: records.find((record) => record.employeeId === "SYSTEM" && record.status === "Non-working Day") ?? null,
       employees: employees.map((employee) => ({
         ...employee,
         record: recordsByEmployee.get(employee.employeeId) ?? null,
@@ -98,6 +99,7 @@ export const POST = withEncoder(async function POST(request: Request) {
     }
 
     const body = await request.json();
+    const nonWorkingDay = body.action === "non-working-day";
     const employeeId =
       typeof body.employeeId === "string"
         ? body.employeeId.trim()
@@ -115,7 +117,7 @@ export const POST = withEncoder(async function POST(request: Request) {
     const notes =
       typeof body.notes === "string" ? body.notes.trim() : "";
 
-    if (!employeeId || !isWorkingDate(attendanceDate) || !status) {
+    if (!isWorkingDate(attendanceDate) || (!nonWorkingDay && (!employeeId || !status))) {
       return NextResponse.json(
         {
           success: false,
@@ -124,6 +126,15 @@ export const POST = withEncoder(async function POST(request: Request) {
         },
         { status: 400 },
       );
+    }
+
+    if (nonWorkingDay) {
+      if (!notes) return NextResponse.json({ success: false, message: "Enter the reason for the non-working day." }, { status: 400 });
+      const existing = await getAttendanceForEmployeeDate("SYSTEM", attendanceDate);
+      const timestamp = new Date().toISOString();
+      const record: AttendanceRecord = { id: existing.record?.id || `NWD-${attendanceDate.replaceAll("-", "")}`, employeeId: "SYSTEM", attendanceDate, branch: "All branches", scheduledTimeIn: "", scheduledTimeOut: "", timeIn: "", timeOut: "", workedHours: 0, overtimeHours: 0, status: "Non-working Day", lateMinutes: 0, undertimeMinutes: 0, leaveType: "", leaveApprovalStatus: "", notes, createdAt: existing.record?.createdAt || timestamp, updatedAt: timestamp };
+      if (existing.rowNumber) await updateAttendanceRecord(existing.rowNumber, record); else await addAttendanceRecord(record);
+      return NextResponse.json({ success: true, message: "Non-working day saved.", record });
     }
 
     const employees = await getActiveAttendanceEmployees();
@@ -166,7 +177,7 @@ export const POST = withEncoder(async function POST(request: Request) {
       timeOut: "",
       workedHours: 0,
       overtimeHours: 0,
-      status,
+      status: status as "Absent" | "AWOL",
       lateMinutes: 0,
       undertimeMinutes: 0,
       leaveType: "",

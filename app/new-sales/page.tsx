@@ -59,6 +59,7 @@ type BranchApiResponse = {
   branches?: Array<{
     id: string;
     name: string;
+    territory?: string;
     status: "active" | "inactive";
   }>;
   message?: string;
@@ -69,6 +70,17 @@ function createId(prefix: string) {
     .toString(36)
     .slice(2, 8)
     .toUpperCase()}`;
+}
+
+function formatContactNumber(value: string) {
+  let digits = value.replace(/\D/g, "");
+  if (digits.startsWith("63")) digits = `0${digits.slice(2)}`;
+  digits = digits.slice(0, 11);
+  return [digits.slice(0, 4), digits.slice(4, 7), digits.slice(7, 11)].filter(Boolean).join(" ");
+}
+
+function validContactNumber(value: string) {
+  return /^09\d{9}$/.test(value.replace(/\D/g, ""));
 }
 
 function emptyAddress(): Address {
@@ -238,6 +250,7 @@ export default function NewSalesPage() {
     useState("");
 
   const [saving, setSaving] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (sales.length > 0) {
@@ -754,6 +767,7 @@ export default function NewSalesPage() {
     setExpandedSales({
       [firstSale.id]: true,
     });
+    setShowPreview(false);
 
   };
 
@@ -769,6 +783,7 @@ export default function NewSalesPage() {
       setSaveMessage(
         "Please select a branch.",
       );
+      setShowPreview(false);
       return;
     }
 
@@ -791,6 +806,11 @@ export default function NewSalesPage() {
         setSaveMessage(
           "Member surname is required.",
         );
+        return;
+      }
+
+      if (!validContactNumber(sale.member.contactNumber) || !validContactNumber(sale.member.claimant.contactNumber)) {
+        setSaveMessage("Member and claimant contact numbers must use the Philippine mobile format 09XX XXX XXXX.");
         return;
       }
 
@@ -1020,7 +1040,7 @@ export default function NewSalesPage() {
                         key={item.id}
                         value={item.name}
                       >
-                        {item.name}
+                        {item.name} · {item.territory || "Unassigned territory"}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -1210,6 +1230,8 @@ export default function NewSalesPage() {
                           </Label>
 
                           <Input
+                            inputMode="numeric"
+                            maxLength={13}
                             value={
                               sale.member
                                 .name
@@ -1624,10 +1646,7 @@ export default function NewSalesPage() {
                                   member: {
                                     ...current.member,
 
-                                    contactNumber:
-                                      event
-                                        .target
-                                        .value,
+                                    contactNumber: formatContactNumber(event.target.value),
                                   },
                                 }),
                               )
@@ -1930,6 +1949,8 @@ export default function NewSalesPage() {
                           </Label>
 
                           <Input
+                            inputMode="numeric"
+                            maxLength={13}
                             value={
                               sale.member
                                 .claimant
@@ -1987,10 +2008,7 @@ export default function NewSalesPage() {
                                         .member
                                         .claimant,
 
-                                      contactNumber:
-                                        event
-                                          .target
-                                          .value,
+                                      contactNumber: formatContactNumber(event.target.value),
                                     },
                                   },
                                 }),
@@ -2166,6 +2184,7 @@ export default function NewSalesPage() {
                             onValueChange={(
                               value,
                             ) => {
+                              const chosen = programs.find((program) => program.code === value);
                               updateSale(
                                 sale.id,
                                 (current) => ({
@@ -2176,6 +2195,8 @@ export default function NewSalesPage() {
 
                                     programCode:
                                       value ?? "",
+                                    withRegistrationFee: Boolean(chosen?.registrationFeeRequired),
+                                    registrationAmount: chosen?.registrationAmount ?? 0,
                                   },
                                 }),
                               );
@@ -2499,6 +2520,7 @@ export default function NewSalesPage() {
                               !sale.program
                                 .withRegistrationFee
                             }
+                            onWheel={(event) => event.currentTarget.blur()}
                             onChange={(event) =>
                               updateSale(
                                 sale.id,
@@ -2537,6 +2559,7 @@ export default function NewSalesPage() {
                               .amountPaid ||
                             ""
                           }
+                          onWheel={(event) => event.currentTarget.blur()}
                           onChange={(event) =>
                             updateSale(
                               sale.id,
@@ -2560,10 +2583,10 @@ export default function NewSalesPage() {
                         />
                       </div>
 
-                      {/* PROGRAM TERMS */}
+                      {/* NOTES */}
                       <div className="space-y-2">
                         <Label>
-                          Program Terms
+                          Notes
                         </Label>
 
                         <Textarea
@@ -2588,7 +2611,7 @@ export default function NewSalesPage() {
                               }),
                             )
                           }
-                          placeholder="Program terms and conditions"
+                          placeholder="Optional notes about this enrollment"
                         />
                       </div>
                     </section>
@@ -2717,6 +2740,8 @@ export default function NewSalesPage() {
             )}
           </div>
 
+          {showPreview && <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.amountPaid)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}</div>; })}</div></div>}
+
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button
               type="button"
@@ -2730,14 +2755,12 @@ export default function NewSalesPage() {
             <Button
               type="button"
               size="lg"
-              onClick={() =>
-                void saveSales()
-              }
+              onClick={() => showPreview ? void saveSales() : setShowPreview(true)}
               disabled={saving}
             >
               {saving
                 ? "Saving..."
-                : "Save All New Sales"}
+                : showPreview ? "Confirm and Save" : "Preview Sales"}
             </Button>
           </div>
         </CardContent>

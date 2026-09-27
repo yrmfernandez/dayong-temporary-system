@@ -44,6 +44,8 @@ export async function GET() {
 
     const attendanceDate = getPhilippineDate();
 
+    const nonWorkingDay = await getAttendanceForEmployeeDate("SYSTEM", attendanceDate);
+
     const { record } =
       await getAttendanceForEmployeeDate(
         user.employeeId,
@@ -54,6 +56,7 @@ export async function GET() {
       success: true,
       attendanceDate,
       record,
+      nonWorkingDay: nonWorkingDay.record?.status === "Non-working Day" ? nonWorkingDay.record : null,
     });
   } catch (error) {
     console.error("Load attendance error:", error);
@@ -106,6 +109,8 @@ export const POST = withEncoder(async function POST(request: Request) {
         : "";
 
     const attendanceDate = getPhilippineDate();
+    const nonWorkingDay = await getAttendanceForEmployeeDate("SYSTEM", attendanceDate);
+    if (nonWorkingDay.record?.status === "Non-working Day") return NextResponse.json({ success: false, message: `Attendance is closed today: ${nonWorkingDay.record.notes}` }, { status: 400 });
     const currentTime = getPhilippineTime();
     const timestamp = new Date().toISOString();
 

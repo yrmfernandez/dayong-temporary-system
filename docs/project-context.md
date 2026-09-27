@@ -134,6 +134,14 @@ Daily, weekly, monthly, and yearly reports are generated from the source Sales, 
 
 The main dashboard is separate from formal Reports and renders a workspace based on the signed-in user's role. Administrators see system configuration and attention items; CEO/President see company performance; Finance sees cash and remittance control; HR sees personnel and branch staffing; Entry Clerks see their daily encoding and quick actions; IT sees accounts and configuration activity; and MAS users see only report totals associated with their accountable name plus their assigned member programs. Dashboard financial figures reuse the same calculation service as Reports so summary and drill-down totals stay consistent.
 
+Program master data now stores whether a registration fee is required, its amount, and an optional pay-the-balance total. The fields are stored in `Programs!K:M` so the established encoder identity columns in G:J retain their positions. New Sales reads registration defaults from the selected Program, labels the enrollment free-text field as Notes, and presents a per-sale review before writing. Collections starts from the full monthly amount but permits an edited amount only when the server can verify that it exactly settles the configured remaining program balance; a paid-off account receives the `Paid` status.
+
+Branch selectors display both branch and territory because branch names are not globally unique. Member directory rows summarize the member's assigned branches, and the View action toggles the detail panel. User account creation uses one searchable employee control. Remittance receiver identity defaults to the signed-in username, and mouse-wheel changes are disabled on financial and NOP number inputs.
+
+HR and administrators can mark a Monday-to-Saturday date as a non-working day from Attendance Review and must record a reason. The closure is stored as an encoded Attendance control record and blocks attendance clocking for that date.
+
+Google Sheets role IDs use readable stable keys such as `ROLE-ADMINISTRATOR` and `ROLE-FINANCE`; User Roles references were migrated in the same batch. Transaction and relationship sheets use uniform readable prefixes (`EBA`, `ENR`, `SAL`, `REM`, `RCL`, `COL`, `INC`, `ATT`, `LR`, `EXP`, and `CASH`), with their foreign-key references migrated together. New records use timestamp-based readable IDs to avoid returning to UUID-only values.
+
 ## Administration and audit history
 
 Administrators can manage the Roles sheet through Role Management. Role IDs are generated stable primary keys, role names must be unique, assigned roles cannot be deleted, and the live workbook includes the Finance role. The roles migration repairs later duplicate IDs while keeping existing User Roles assignments attached to the first occurrence, avoiding accidental multi-role access from a reused key.

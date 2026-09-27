@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type AttendanceRecord = {
-  status: "Present" | "Leave" | "Absent" | "AWOL";
+  status: "Present" | "Leave" | "Absent" | "AWOL" | "Non-working Day";
   timeIn: string;
   timeOut: string;
 };
@@ -39,6 +39,8 @@ export default function AttendanceReviewsPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState("");
   const [message, setMessage] = useState("");
+  const [nonWorkingReason, setNonWorkingReason] = useState("");
+  const [isNonWorkingDay, setIsNonWorkingDay] = useState(false);
 
   const loadReview = async () => {
     setLoading(true);
@@ -56,6 +58,8 @@ export default function AttendanceReviewsPage() {
       }
 
       setEmployees(result.employees ?? []);
+      setIsNonWorkingDay(Boolean(result.nonWorkingDay));
+      setNonWorkingReason(result.nonWorkingDay?.notes ?? "");
     } catch (error) {
       setEmployees([]);
       setMessage(
@@ -66,6 +70,17 @@ export default function AttendanceReviewsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const markNonWorkingDay = async () => {
+    setUpdatingId("SYSTEM"); setMessage("");
+    try {
+      const response = await fetch("/api/attendance-reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "non-working-day", attendanceDate, notes: nonWorkingReason }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to save non-working day.");
+      setMessage(result.message); setIsNonWorkingDay(true);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save non-working day."); }
+    finally { setUpdatingId(""); }
   };
 
   useEffect(() => {
@@ -135,6 +150,8 @@ export default function AttendanceReviewsPage() {
             </Button>
           </div>
 
+          <div className="rounded-xl border bg-muted/30 p-4"><div className="flex flex-col gap-3 md:flex-row md:items-end"><div className="flex-1 space-y-2"><Label htmlFor="non-working-reason">Non-working day reason</Label><Input id="non-working-reason" value={nonWorkingReason} onChange={(event) => setNonWorkingReason(event.target.value)} placeholder="Holiday, emergency closure, company event..." /></div><Button type="button" variant="outline" disabled={updatingId === "SYSTEM" || !nonWorkingReason.trim()} onClick={() => void markNonWorkingDay()}>{isNonWorkingDay ? "Update Closure" : "Mark Non-working Day"}</Button></div>{isNonWorkingDay && <p className="mt-2 text-sm text-amber-700">Attendance clocking is closed for this date.</p>}</div>
+
           {message && (
             <p className="text-sm text-muted-foreground">{message}</p>
           )}
@@ -143,7 +160,7 @@ export default function AttendanceReviewsPage() {
             <p className="text-sm text-muted-foreground">No active employee accounts found.</p>
           )}
 
-          {!loading && employees.length > 0 && (
+          {!loading && !isNonWorkingDay && employees.length > 0 && (
             <div className="divide-y rounded-lg border">
               {employees.map((employee) => {
                 const locked = Boolean(

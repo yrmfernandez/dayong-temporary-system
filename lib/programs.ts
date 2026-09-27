@@ -12,6 +12,9 @@ export type Program = {
   basePay: number;
   status: "active" | "inactive";
   description: string;
+  registrationFeeRequired: boolean;
+  registrationAmount: number;
+  payBalanceTotal: number;
 
   incentiveTiers?: {
     id: string;
@@ -53,6 +56,9 @@ export async function getActivePrograms(): Promise<
       basePay: program.basePay,
       status: program.status,
       description: program.description,
+      registrationFeeRequired: program.registrationFeeRequired,
+      registrationAmount: program.registrationAmount,
+      payBalanceTotal: program.payBalanceTotal,
       incentiveTiers:
         program.incentiveTiers ?? [],
     }));
@@ -76,6 +82,9 @@ export async function getAllPrograms(): Promise<
     basePay: program.basePay,
     status: program.status,
     description: program.description,
+    registrationFeeRequired: program.registrationFeeRequired,
+    registrationAmount: program.registrationAmount,
+    payBalanceTotal: program.payBalanceTotal,
     incentiveTiers:
       program.incentiveTiers ?? [],
   }));

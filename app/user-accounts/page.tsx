@@ -194,8 +194,9 @@ export default function UserAccountsPage() {
                   <Label htmlFor="employee-id">
                     Employee ID *
                   </Label>
-                  <Input aria-label="Search employees" placeholder="Search ID or employee name" value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} disabled={saving}/>
-                  <select id="employee-id" required className="w-full rounded-md border bg-background p-2" value={employeeId} disabled={saving} onChange={(e) => { const employee = employees.find((item) => item.id === e.target.value); setEmployeeId(e.target.value); setFullName(employee?.name ?? ""); setRoleIds(employee?.roleIds ?? []); }}><option value="">Select registered employee</option>{employees.filter((employee) => `${employee.id} ${employee.name}`.toLowerCase().includes(employeeSearch.trim().toLowerCase())).map((employee) => <option key={employee.id} value={employee.id}>{employee.id} - {employee.name}</option>)}</select>
+                  <Input id="employee-id" list="employee-options" required aria-label="Search and select employee" placeholder="Type an ID or employee name" value={employeeSearch} onChange={(event) => { const value = event.target.value; setEmployeeSearch(value); const employee = employees.find((item) => `${item.id} - ${item.name}` === value); setEmployeeId(employee?.id ?? ""); setFullName(employee?.name ?? ""); setRoleIds(employee?.roleIds ?? []); }} disabled={saving}/>
+                  <datalist id="employee-options">{employees.map((employee) => <option key={employee.id} value={`${employee.id} - ${employee.name}`} />)}</datalist>
+                  <input type="hidden" name="employeeId" value={employeeId}/>
                 </div>
 
                 <div className="space-y-2">

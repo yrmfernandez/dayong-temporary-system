@@ -1,3 +1,4 @@
+﻿import { createReadableId } from "@/lib/readable-id";
 import { getEmployees } from "@/lib/employees";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
@@ -541,6 +542,9 @@ export type ProgramSheetData = {
   basePay: number;
   status: "active" | "inactive";
   description: string;
+  registrationFeeRequired: boolean;
+  registrationAmount: number;
+  payBalanceTotal: number;
 };
 
 export type BranchSheetData = {
@@ -770,6 +774,9 @@ export type CreateProgramData = {
 
   description: string;
   status: "active" | "inactive";
+  registrationFeeRequired: boolean;
+  registrationAmount: number;
+  payBalanceTotal: number;
 };
 
 /* =========================================================
@@ -779,7 +786,7 @@ export type CreateProgramData = {
 export async function getPrograms() {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [`${PROGRAMS_SHEET}!A:F`, `${PROGRAM_INCENTIVES_SHEET}!A:H`],
+    ranges: [`${PROGRAMS_SHEET}!A:M`, `${PROGRAM_INCENTIVES_SHEET}!A:H`],
   });
   const rows = response.data.valueRanges?.[0]?.values ?? [];
   if (rows.length <= 1) {
@@ -812,6 +819,9 @@ export async function getPrograms() {
 
       description:
         String(row[5] ?? ""),
+      registrationFeeRequired: String(row[10] ?? "").trim().toLowerCase() === "yes" || row[10] === true,
+      registrationAmount: Number(row[11] ?? 0) || 0,
+      payBalanceTotal: Number(row[12] ?? 0) || 0,
     }));
 
   const incentives =
@@ -967,12 +977,25 @@ export async function createProgram(
 
     description:
       data.description.trim(),
+
+    registrationFeeRequired: Boolean(data.registrationFeeRequired),
+    registrationAmount: Number(data.registrationAmount) || 0,
+    payBalanceTotal: Number(data.payBalanceTotal) || 0,
   };
 
   /*
    * Save the main program.
    */
   await addProgram(program);
+
+  const programRows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${PROGRAMS_SHEET}!A:A` })).data.values ?? [];
+  const rowNumber = programRows.findIndex((row) => String(row[0] ?? "").trim() === programId) + 1;
+  if (rowNumber > 1) await sheets.spreadsheets.values.update({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${PROGRAMS_SHEET}!K${rowNumber}:M${rowNumber}`,
+    valueInputOption: "RAW",
+    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal]] },
+  });
 
   /*
    * Save all incentive tiers.
@@ -987,7 +1010,7 @@ export async function createProgram(
    */
   for (const tier of data.incentiveTiers) {
     await addProgramIncentive({
-      id: crypto.randomUUID(),
+      id: createReadableId("INC"),
 
       programId: program.id,
 
@@ -1020,7 +1043,7 @@ export async function createProgram(
     incentiveTiers:
       data.incentiveTiers.map(
         (tier) => ({
-          id: crypto.randomUUID(),
+          id: createReadableId("INC"),
           programId: program.id,
 
           role: tier.role,
