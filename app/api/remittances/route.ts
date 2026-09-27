@@ -1,9 +1,12 @@
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { createCashRemittance, decideCashRemittance, getRemittanceDashboard } from "@/lib/remittance-workflow";
+import { canAccessPath } from "@/lib/access-control";
 
 export async function GET() {
-  if (!(await getSessionUser())) return Response.json({ error: "Please sign in." }, { status: 401 });
+  const user=await getSessionUser();
+  if (!user) return Response.json({ error: "Please sign in." }, { status: 401 });
+  if(!canAccessPath(user,"/remittances"))return Response.json({error:"You do not have access to Remittances."},{status:403});
   try {
     return Response.json(await getRemittanceDashboard());
   } catch (error) {
@@ -13,10 +16,12 @@ export async function GET() {
 
 export const POST = withEncoder(async (request: Request) => {
   try {
+    const user=await getSessionUser();
+    if(!user||!canAccessPath(user,"/remittances"))return Response.json({error:"You do not have access to Remittances."},{status:403});
     const body = await request.json();
     const result = await createCashRemittance({
       collectionIds: Array.isArray(body.collectionIds) ? body.collectionIds : [],
-      actualAmount: Number(body.actualAmount), remittanceDate: String(body.remittanceDate ?? ""),
+      actualAmount: Number(body.actualAmount), fidelityAmount: Number(body.fidelityAmount ?? 0), remittanceDate: String(body.remittanceDate ?? ""),
       receivedByName: String(body.receivedByName ?? ""), remarks: String(body.remarks ?? ""),
     });
     return Response.json({ success: true, remittance: result }, { status: 201 });

@@ -72,7 +72,7 @@ export async function deleteBranchRecord(id: string) {
 export async function getUserAccounts() {
   const [users, roles, links] = await Promise.all([rows("Users!A:H"), rows("Roles!A:G"), rows("'User Roles'!A:B")]);
   const roleNames = new Map(roles.slice(1).map((row) => [text(row[0]), text(row[1])]));
-  return users.slice(1).filter((row) => text(row[0])).map((row) => ({ id: text(row[0]), employeeId: text(row[1]), username: text(row[2]), fullName: text(row[3]), status: text(row[5]), createdAt: text(row[6]), roleIds: links.slice(1).filter((link) => text(link[0]) === text(row[0])).map((link) => text(link[1])), roles: links.slice(1).filter((link) => text(link[0]) === text(row[0])).map((link) => roleNames.get(text(link[1])) || text(link[1])) }));
+  return users.slice(1).filter((row) => text(row[0])).map((row) => {const roleIds=[...new Set(links.slice(1).filter((link) => text(link[0]) === text(row[0])).map((link) => text(link[1])).filter(Boolean))];return { id: text(row[0]), employeeId: text(row[1]), username: text(row[2]), fullName: text(row[3]), status: text(row[5]), createdAt: text(row[6]), roleIds, roles: roleIds.map((roleId) => roleNames.get(roleId) || roleId) }});
 }
 
 export async function updateUserAccount(id: string, input: { username: string; status: string; roleIds: string[]; password?: string }) {

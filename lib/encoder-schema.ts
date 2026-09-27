@@ -26,6 +26,7 @@ export const encoderSheets = [
   { title: "Cash Transactions", columns: 16 },
   { title: "Record Corrections", columns: 7 },
   { title: "Report Remarks", columns: 7 },
+  { title: "Fidelity", columns: 11 },
 ];
 
 export function columnName(index: number): string {

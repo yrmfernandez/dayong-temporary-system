@@ -10,15 +10,15 @@ export type AccessContext = {
 const roleRoutes: Record<string, string[]> = {
   administrator: ["*"],
   admin: ["*"],
-  ceo: ["/", "/members", "/mam", "/remittances", "/programs", "/branches", "/cash-transactions", "/reports", "/settings"],
-  president: ["/", "/members", "/mam", "/remittances", "/programs", "/branches", "/cash-transactions", "/reports", "/settings"],
+  ceo: ["/", "/members", "/mam", "/remittances", "/programs", "/branches", "/cash-transactions", "/fidelity", "/reports", "/settings"],
+  president: ["/", "/members", "/mam", "/remittances", "/programs", "/branches", "/cash-transactions", "/fidelity", "/reports", "/settings"],
   "hr officer": ["/", "/employees", "/branches", "/attendance", "/attendance-reviews", "/leave-requests", "/leave-approvals", "/settings"],
   hr: ["/", "/employees", "/branches", "/attendance", "/attendance-reviews", "/leave-requests", "/leave-approvals", "/settings"],
-  finance: ["/", "/members", "/collections", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/reports", "/settings"],
-  "entry clerk": ["/", "/new-sales", "/members", "/collections", "/attendance", "/leave-requests", "/reports", "/settings"],
+  finance: ["/", "/members", "/collections", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/fidelity", "/reports", "/settings"],
+  "entry clerk": ["/", "/new-sales", "/members", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/settings"],
   "it clerk": ["/", "/employees", "/user-accounts", "/branches", "/settings"],
   it: ["/", "/employees", "/user-accounts", "/branches", "/settings"],
-  mas: ["/", "/members", "/collections", "/remittances", "/mam", "/attendance", "/leave-requests", "/settings"],
+  mas: ["/", "/members", "/collections", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
 };
 
 function routeMatches(pathname: string, route: string) {

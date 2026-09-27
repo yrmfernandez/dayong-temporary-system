@@ -16,6 +16,11 @@ test("Entry Clerk sees encoding pages but not finance or system administration",
   assert.equal(access(["Entry Clerk"], "/collections"), true);
   assert.equal(access(["Entry Clerk"], "/reports"), true);
   assert.equal(access(["Entry Clerk"], "/reports/daily"), true);
+  assert.equal(access(["Entry Clerk"], "/remittances"), true);
+  assert.equal(access(["MAS"], "/fidelity"), true);
+  assert.equal(access(["MAS"], "/master-data"), true);
+  assert.equal(access(["Finance"], "/fidelity"), true);
+  assert.equal(access(["Entry Clerk"], "/fidelity"), false);
   assert.equal(access(["Entry Clerk"], "/programs"), true);
   assert.equal(access(["Entry Clerk"], "/branches"), true);
   assert.equal(access(["Entry Clerk"], "/settings"), true);

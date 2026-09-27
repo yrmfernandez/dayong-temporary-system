@@ -14,14 +14,16 @@ Role names are read from the live `Roles` and `User Roles` sheets during login a
 | Role | Current pages |
 | --- | --- |
 | Administrator | All implemented pages |
-| CEO / President | Dashboard, Members, MAM, Remittances, Programs, Branches, Cash Ledger, Reports, Settings |
+| CEO / President | Dashboard, Members, MAM, Remittances, Fidelity, Programs, Branches, Cash Ledger, Reports, Settings |
 | HR Officer | Dashboard, Employees, Programs, Branches, Attendance, Attendance Review, Leave Requests, Leave Approvals, Settings |
-| Finance | Dashboard, Members, Collections, Remittances, MAM, Programs, Expenses, Cash Ledger, Reports, Settings |
-| Entry Clerk | Dashboard, New Sales, Members, Collections, Programs, Branches, Attendance, Leave Requests, Reports, Settings |
+| Finance | Dashboard, Members, Collections, Remittances, Fidelity, MAM, Programs, Expenses, Cash Ledger, Reports, Settings |
+| Entry Clerk | Dashboard, New Sales, Members, Collections, Remittances, Programs, Branches, Attendance, Leave Requests, Reports, Settings |
 | IT Clerk | Dashboard, Employees, User Accounts, Programs, Branches, Settings |
-| MAS | Dashboard, Members, Collections, Remittances, MAM, Programs, Branches, Attendance, Leave Requests, Settings |
+| MAS | Dashboard, Members, Collections, Remittances, Fidelity, MAM, Programs, Branches, Attendance, Leave Requests, Settings |
 
-`Finance` is supported by the code but is not currently present in the live Roles sheet. Add and assign it through an authorized role-management process before expecting a Finance-only workspace.
+When MAS is the user&apos;s only assigned role, the sidebar is intentionally limited to Dashboard, My Members, My Fidelity, MAM, Attendance, Leave Requests, Master Data, and Settings. Master Data opens the read-only Programs and Branches directories.
+
+Administrators also have a separate User Report Review page for filtering operational reports by encoder and period.
 
 Existing action permissions remain authoritative. `manage_users` protects account management and finance voids; `manage_attendance` protects attendance and leave review; remittance approval requires the existing management permission and prevents self-approval.
 

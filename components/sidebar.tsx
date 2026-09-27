@@ -22,6 +22,7 @@ import {
   UserCheck,
   Users,
   Wallet,
+  PiggyBank,
   X,
 } from "lucide-react";
 import { 
@@ -100,6 +101,11 @@ const navigation = [
         href: "/cash-transactions",
         icon: Wallet,
       },
+      {
+        name: "Fidelity Savings",
+        href: "/fidelity",
+        icon: PiggyBank,
+      },
     ],
   },
   {
@@ -152,8 +158,15 @@ const navigation = [
       },
       { name: "Roles", href: "/roles", icon: UserCheck },
       { name: "Entry History", href: "/history", icon: ClipboardList },
+      { name: "User Report Review", href: "/admin-reports", icon: ChartNoAxesColumnIncreasing },
     ],
   },
+];
+const masNavigation=[
+ {title:"MAIN",items:[{name:"Dashboard",href:"/",icon:LayoutDashboard}]},
+ {title:"MY WORK",items:[{name:"My Members",href:"/members",icon:Users},{name:"My Fidelity",href:"/fidelity",icon:PiggyBank},{name:"MAM",href:"/mam",icon:BarChart3},{name:"Attendance",href:"/attendance",icon:CalendarCheck},{name:"Leave Requests",href:"/leave-requests",icon:FileText}]},
+ {title:"REFERENCE",items:[{name:"Master Data",href:"/master-data",icon:Database}]},
+ {title:"SYSTEM",items:[{name:"Settings",href:"/settings",icon:Settings}]},
 ];
 
 export function Sidebar() {
@@ -219,6 +232,8 @@ export function Sidebar() {
     router.replace("/login");
     router.refresh();
   };
+  const normalizedRoles=access.roleNames.map(role=>role.trim().toLowerCase());
+  const visibleNavigation=normalizedRoles.length===1&&normalizedRoles[0]==="mas"?masNavigation:navigation;
 
   return (
     <>
@@ -278,7 +293,7 @@ export function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto bg-gradient-to-b from-white to-violet-95/40 px-3 py-4">
           <div className="space-y-6">
-            {navigation.map((section) => {
+            {visibleNavigation.map((section) => {
               const items = section.items.filter((item) => canAccessPath(access, item.href));
               if (!items.length) return null;
               return (

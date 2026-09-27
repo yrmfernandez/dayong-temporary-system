@@ -755,27 +755,21 @@ export default function CollectionsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* PAGE HEADER */}
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+      <div className="flex flex-wrap items-end justify-between gap-2 rounded-xl bg-gradient-to-r from-violet-20 to-purple-40 px-5 py-3 text-white">
+        <div><h1 className="text-xl font-semibold tracking-tight">
           Collections
         </h1>
 
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-violet-90">
           Record member payments and assign cash accountability.
-        </p>
+        </p></div><Badge variant="secondary">{collections.length} {collections.length===1?"entry":"entries"}</Badge>
       </div>
 
       {/* COLLECTION BATCH HEADER */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Collection Batch
-          </CardTitle>
-        </CardHeader>
-
-        <CardContent>
+      <Card><CardContent className="p-4">
+          <p className="mb-3 text-sm font-semibold">Collection Batch</p>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label>Branch *</Label>
@@ -840,28 +834,24 @@ export default function CollectionsPage() {
                 }
               />
 
-              <p className="text-xs text-muted-foreground">
-                Enter the date the collection was remitted for encoding.
-                This date is shared by all
-                collections in this batch.
-              </p>
+              <p className="text-xs text-muted-foreground">Shared by every entry in this batch.</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* MAIN TWO COLUMN AREA */}
-      <div className="grid min-h-0 gap-6 lg:grid-cols-2">
+      <div className="grid min-h-0 gap-4 lg:grid-cols-2">
         {/* LEFT COLLECTION PANEL */}
-        <Card className="flex h-[calc(100vh-220px)] min-h-0 flex-col overflow-hidden">
-          <CardHeader className="shrink-0 border-b">
+        <Card className="flex h-[calc(100vh-180px)] min-h-[34rem] flex-col overflow-hidden">
+          <CardHeader className="shrink-0 border-b px-4 py-3">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <CardTitle>
                   Collection Entries
                 </CardTitle>
 
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   Add multiple collections under the
                   same accountable person and Date Remitted.
                 </p>
@@ -1787,8 +1777,8 @@ export default function CollectionsPage() {
         </Card>
 
         {/* RIGHT HISTORY PANEL */}
-        <Card className="flex h-[calc(100vh-220px)] min-h-0 flex-col overflow-hidden">
-          <CardHeader className="shrink-0 border-b">
+        <Card className="flex h-[calc(100vh-180px)] min-h-[34rem] flex-col overflow-hidden">
+          <CardHeader className="shrink-0 border-b px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
                 <History className="size-5" />

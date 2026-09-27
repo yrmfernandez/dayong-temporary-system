@@ -1518,9 +1518,13 @@ export async function getActiveAccountRoles(): Promise<
       name: String(row[1] ?? "").trim(),
     }));
   const ids = new Set<string>();
+  const names = new Set<string>();
   for (const role of roles) {
     if (ids.has(role.id)) throw new Error(`Duplicate role ID ${role.id}. Run the roles migration before assigning accounts.`);
+    const name=role.name.trim().toLowerCase();
+    if(names.has(name))throw new Error(`Duplicate role name ${role.name}. Keep one canonical role before assigning accounts.`);
     ids.add(role.id);
+    names.add(name);
   }
   return roles;
 }

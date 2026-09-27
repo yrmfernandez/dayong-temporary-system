@@ -87,11 +87,8 @@ export const POST = withEncoder(async function POST(request: Request) {
     )
     : [];
 
-    if (roleIds.length === 0) {
-      const roles = await getActiveAccountRoles();
-      const normalizeRole = (value: string) => value.trim().toLowerCase().replace(/^admin$/, "administrator").replace(/^hr$/, "hr officer");
-      roleIds = roles.filter((role) => employee.roles.some((employeeRole) => normalizeRole(employeeRole) === normalizeRole(role.name))).map((role) => role.id);
-    }
+    roleIds = [...new Set(roleIds.map((roleId: string) => roleId.trim()).filter(Boolean))];
+    if (roleIds.length === 0) return NextResponse.json({ success: false, message: "Select at least one account role." }, { status: 400 });
 
     if (password.length < 12) {
       return NextResponse.json(

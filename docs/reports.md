@@ -13,7 +13,7 @@ The Reports workspace provides daily, weekly, monthly, and yearly views. Each vi
 | Expenses | Posted `Expenses` | `expense_date` |
 | Deposits | Posted deposit inflows in `Cash Transactions` | `transaction_date` |
 
-Collection incentive is the gross amount received less the saved remittance amount. The report assigns that incentive to the stored accountable role, either MAS or Collector. Net is gross less incentives and fidelity. Expected remittance is net less posted expenses. Difference is expected remittance less actual approved remittance, so a positive value indicates a shortage and a negative value indicates an overage.
+Collection incentive is the gross amount received less the saved remittance amount. The report assigns that incentive to the stored accountable role, either MAS or Collector. The manually recorded Fidelity amount from an approved MAS Remittance is shown separately and added back to accountable remittance because it is retained as savings. Expected remittance is net less posted expenses. Difference is expected remittance less actual approved remittance, so a positive value indicates a shortage and a negative value indicates an overage.
 
 Filters for branch, program, and MAS/Collector apply to Sales and Collections. Branch also filters Expenses, Remittances, and Deposits. Program and person filters cannot be applied to those finance records because their current schemas do not contain those dimensions.
 
@@ -28,6 +28,6 @@ Every report records the signed-in username and generation timestamp in the rend
 
 ## Current schema limits
 
-Fidelity Bond is zero until a confirmed Fidelity Bond field or transaction source is added. New Sales incentives are also zero because no approved Sales incentive rule is stored. Collection incentives continue to use each Collection row's saved remittance calculation.
+Fidelity is manually entered by the Entry Clerk on each MAS Remittance and may be zero. Approved amounts accumulate toward the ₱10,000 cap. New Sales incentives remain zero because no approved Sales incentive rule is stored.
 
 Reports do not currently persist an Open, Ready for Review, or Verified state. A verified report requires a defined reviewer, approval workflow, and immutable snapshot policy; displaying that state without stored approval evidence would be misleading.

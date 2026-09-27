@@ -7,7 +7,7 @@ const ts = require('typescript');
 
 // Execute the actual TS routes/data helpers with an in-memory Sheets transport.
 // No credentials, network calls, or production rows are used by these tests.
-function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', username: '=encoder', permissions: {} }) {
+function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', username: '=encoder', roleNames: ['Entry Clerk'], permissions: {} }) {
   const cache = new Map();
   const writes = [];
   const rows = {};
@@ -218,11 +218,14 @@ test('collection batch is encoded atomically without creating a remittance', asy
   assert.equal(h.writes.length, 1);
   const requests = h.writes[0].requestBody.requests;
   assert.equal(requests.length, 2);
+  let batchId;
   for (const row of requests[0].appendCells.rows) {
     const values = row.values.map((v) => v.userEnteredValue.stringValue ?? v.userEnteredValue.numberValue);
     assert.deepEqual(values.slice(21, 24), ['USR-1', 'DPE-0001', '=encoder']);
     assert.equal(values[23], '=encoder');
-    assert.equal(values[1], '');
+    batchId ??= values[1];
+    assert.match(batchId, /^CBT-/);
+    assert.equal(values[1], batchId);
     assert.equal(values[28], 'Outstanding');
     assert.equal(values[29], '');
     assert.equal(values[30], 'DPE-0002');

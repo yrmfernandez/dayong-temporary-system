@@ -28,19 +28,22 @@ function aggregate(lines: ReportLine[], key: (line: ReportLine) => string) {
 
 export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; encoder?: string } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error("Choose a valid report date range.");
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AQ", "'Collections'!A:AG", "'Programs'!A:F", "'Remittances'!A:X", "'Expenses'!A:Q", "'Cash Transactions'!A:P"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
-  const [sales, collections, programs, remittances, expenses, cash] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AQ", "'Collections'!A:AG", "'Programs'!A:F", "'Remittances'!A:Y", "'Expenses'!A:Q", "'Cash Transactions'!A:P", "'Remittance Collections'!A:I"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
+  const [sales, collections, programs, remittances, expenses, cash, remittanceCollections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const inRange = (date: string) => date >= from && date <= to;
   const matches = (branch: string, programId: string, person: string, encoder: string) => (!filters.branch || branch === filters.branch) && (!filters.programId || programId === filters.programId) && (!filters.person || person === filters.person) && (!filters.encoder || encoder === filters.encoder);
+  const approvedFidelity=new Map(remittances.slice(1).filter(row=>text(row[4])==="Approved"&&number(row[24])>0).map(row=>[text(row[0]),number(row[24])]));
+  const fidelityByCollection=new Map<string,number>(),assigned=new Set<string>();
+  for(const row of remittanceCollections.slice(1)){const remittanceId=text(row[1]);if(!assigned.has(remittanceId)&&approvedFidelity.has(remittanceId)){fidelityByCollection.set(text(row[2]),approvedFidelity.get(remittanceId)??0);assigned.add(remittanceId)}}
   const salesLines: ReportLine[] = sales.slice(1).filter((row) => text(row[0])).map((row) => {
     const date = text(row[1]).slice(0, 10), branch = text(row[2]), person = text(row[3]), programId = text(row[33]), gross = number(row[38]);
     return { date, branch, programId, programName: programNames.get(programId) || programId, person, role: "MAS", encodedBy: text(row[45]), accounts: 1, gross, masCommission: 0, collectorCommission: 0, incentives: 0, fidelity: 0, net: gross, expectedRemittance: gross };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const collectionLines: ReportLine[] = collections.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted").map((row) => {
     const date = text(row[9]).slice(0, 10), branch = text(row[6]), programId = text(row[5]), person = text(row[31]) || text(row[7]), role = text(row[32]) || text(row[25]) || "MAS", gross = number(row[10]), expected = number(row[26]) || gross;
-    const incentives = Math.max(0, round(gross - expected));
-    return { date, branch, programId, programName: programNames.get(programId) || programId, person, role, encodedBy: text(row[23]), accounts: 1, gross, masCommission: role.toLowerCase() === "collector" ? 0 : incentives, collectorCommission: role.toLowerCase() === "collector" ? incentives : 0, incentives, fidelity: 0, net: expected, expectedRemittance: expected };
+    const incentives = Math.max(0, round(gross - expected)), fidelityAmount=role.toLowerCase()==="collector"?0:(fidelityByCollection.get(text(row[0]))??0), net=round(expected+fidelityAmount);
+    return { date, branch, programId, programName: programNames.get(programId) || programId, person, role, encodedBy: text(row[23]), accounts: 1, gross, masCommission: role.toLowerCase() === "collector" ? 0 : incentives, collectorCommission: role.toLowerCase() === "collector" ? incentives : 0, incentives, fidelity: fidelityAmount, net, expectedRemittance: net };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const postedExpenses = expenses.slice(1).filter((row) => text(row[0]) && text(row[11]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[7]) === filters.branch)).reduce((sum, row) => sum + number(row[4]), 0);
   const approvedRemittances = remittances.slice(1).filter((row) => text(row[0]) && text(row[4]) === "Approved" && inRange(text(row[3]).slice(0, 10)) && (!filters.branch || text(row[1]) === filters.branch)).reduce((sum, row) => sum + number(row[11]), 0);
@@ -55,6 +58,6 @@ export async function buildOperationalReport(from: string, to: string, filters: 
     byBranch: aggregate(allLines, (line) => line.branch || "Unassigned").sort((a, b) => a.branch.localeCompare(b.branch)),
     byProgram: aggregate(allLines, (line) => line.programId || "Unassigned").sort((a, b) => a.programName.localeCompare(b.programName)),
     summary: summarize(allLines, postedExpenses, approvedRemittances, deposits),
-    notes: ["Fidelity Bond is shown as zero because no Fidelity Bond source field or transaction sheet is configured.", "New Sales incentives are shown as zero because no approved sales-incentive rule is stored; Collection incentives use gross less the saved remittance amount."]
+    notes: ["Fidelity is the manual amount recorded by the Entry Clerk on an approved MAS Remittance. It may be zero and accumulates toward the ₱10,000 lifetime cap.", "New Sales incentives are shown as zero because no approved sales-incentive rule is stored; Collection incentives use gross less the saved remittance amount."]
   };
 }

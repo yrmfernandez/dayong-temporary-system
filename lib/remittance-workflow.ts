@@ -2,6 +2,7 @@
 import { getEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
+import { FIDELITY_CAP, getFidelityData } from "@/lib/fidelity";
 
 const titles = ["Collections", "Remittances", "Remittance Collections"] as const;
 const text = (value: unknown) => String(value ?? "").trim();
@@ -20,6 +21,7 @@ export type CashCollection = {
   orNumber: string;
   orDate: string;
   amount: number;
+  remittanceAmount:number;
   remittanceStatus: string;
   linkedRemittanceId: string;
 };
@@ -47,6 +49,7 @@ export type CashRemittance = {
   decisionAt: string;
   remarks: string;
   rejectionReason: string;
+  fidelityAmount: number;
   collectionIds: string[];
 };
 
@@ -67,14 +70,14 @@ async function loadLedger() {
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
     id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
-    orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
+    orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
   })).filter((collection) => collection.id && text(rows.Collections[collection.rowNumber - 1]?.[19]).toLowerCase() === "posted");
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
     id: text(row[0]), rowNumber: index + 2, branch: text(row[1]), accountableName: text(row[2]), remittanceDate: text(row[3]), status: text(row[4]) || "Legacy",
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByUsername: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByUsername: text(row[20]), decisionAt: text(row[21]),
-    remarks: text(row[22]), rejectionReason: text(row[23]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId),
+    remarks: text(row[22]), rejectionReason: text(row[23]), fidelityAmount: number(row[24]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId),
   })).filter((remittance) => remittance.id);
   return { collections, remittances, mappings };
 }
@@ -117,7 +120,7 @@ async function sheetIds() {
   return { collections: id("Collections"), remittances: id("Remittances"), mappings: id("Remittance Collections") };
 }
 
-export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; remittanceDate: string; receivedByName?: string; remarks?: string }) {
+export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; fidelityAmount: number; remittanceDate: string; receivedByName?: string; remarks?: string }) {
   const actor = getEncoder();
   const ledger = await loadLedger();
   const ids = [...new Set(input.collectionIds.map(text).filter(Boolean))];
@@ -136,6 +139,13 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.remittanceDate)) throw new Error("Enter a valid remittance date.");
   if (!Number.isFinite(input.actualAmount) || input.actualAmount < 0) throw new Error("Enter the actual amount received.");
+  if (!Number.isFinite(input.fidelityAmount) || input.fidelityAmount < 0) throw new Error("Fidelity must be zero or a positive amount.");
+  if (owner.accountableRole.toLowerCase() !== "mas" && input.fidelityAmount !== 0) throw new Error("Fidelity is only available for MAS remittances.");
+  const availableIncentive=Math.round(collections.reduce((sum,item)=>sum+Math.max(0,item.amount-item.remittanceAmount),0)*100)/100;
+  if(input.fidelityAmount>availableIncentive)throw new Error(`Fidelity cannot exceed the MAS incentive of ${availableIncentive.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} in this Remittance.`);
+  const fidelityAccount=(await getFidelityData(owner.accountableEmployeeId,true)).accounts.find(item=>item.masEmployeeId===owner.accountableEmployeeId);
+  const remainingFidelity = Math.max(0,Math.round((FIDELITY_CAP-(fidelityAccount?.approved??0)-(fidelityAccount?.pending??0))*100)/100);
+  if (input.fidelityAmount > remainingFidelity) throw new Error(`Fidelity can be at most ${remainingFidelity.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} for this MAS.`);
   const expected = Math.round(collections.reduce((sum, collection) => sum + collection.amount, 0) * 100) / 100;
   const actual = Math.round(input.actualAmount * 100) / 100;
   const difference = Math.round((actual - expected) * 100) / 100;
@@ -144,7 +154,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const timestamp = actor.encodedAt;
   const identity = [actor.userId, actor.employeeId, actor.username, timestamp];
   const row = [id, owner.branch, owner.accountableName, input.remittanceDate, status, timestamp, ...identity, expected, actual, difference,
-    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, text(input.receivedByName) || actor.username, "", "", "", "", text(input.remarks), ""];
+    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, text(input.receivedByName) || actor.username, "", "", "", "", text(input.remarks), "", Math.round(input.fidelityAmount*100)/100];
   const sheet = await sheetIds();
   const requests = [
     { appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } },
@@ -152,7 +162,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
     ...collections.map((collection) => ({ updateCells: { range: { sheetId: sheet.collections, startRowIndex: collection.rowNumber - 1, endRowIndex: collection.rowNumber, startColumnIndex: 28, endColumnIndex: 30 }, rows: [{ values: [cell("Pending Remittance Approval"), cell(id)] }], fields: "userEnteredValue" } })),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
-  return { id, status, expectedAmount: expected, actualAmount: actual, difference };
+  return { id, status, expectedAmount: expected, actualAmount: actual, difference, fidelityAmount: Math.round(input.fidelityAmount*100)/100 };
 }
 
 export async function decideCashRemittance(remittanceId: string, decision: "approve" | "reject", reason = "", allowOwnDecision = false) {
