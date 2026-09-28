@@ -41,7 +41,7 @@ export async function buildOperationalReport(from: string, to: string, filters: 
     return { date, branch, programId, programName: programNames.get(programId) || programId, person, role: "MAS", encodedBy: text(row[45]), accounts: 1, gross, masCommission: 0, collectorCommission: 0, incentives: 0, fidelity: 0, net: gross, expectedRemittance: gross };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const collectionLines: ReportLine[] = collections.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted").map((row) => {
-    const date = text(row[9]).slice(0, 10), branch = text(row[6]), programId = text(row[5]), person = text(row[31]) || text(row[7]), role = text(row[32]) || text(row[25]) || "MAS", gross = number(row[10]), expected = number(row[26]) || gross;
+    const date = text(row[9]).slice(0, 10), branch = text(row[6]), programId = text(row[5]), person = text(row[31]) || text(row[7]), role = text(row[25]) || text(row[32]) || "MAS", gross = number(row[10]), expected = number(row[26]) || gross;
     const incentives = Math.max(0, round(gross - expected)), fidelityAmount=role.toLowerCase()==="collector"?0:(fidelityByCollection.get(text(row[0]))??0), net=round(expected+fidelityAmount);
     return { date, branch, programId, programName: programNames.get(programId) || programId, person, role, encodedBy: text(row[23]), accounts: 1, gross, masCommission: role.toLowerCase() === "collector" ? 0 : incentives, collectorCommission: role.toLowerCase() === "collector" ? incentives : 0, incentives, fidelity: fidelityAmount, net, expectedRemittance: net };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));

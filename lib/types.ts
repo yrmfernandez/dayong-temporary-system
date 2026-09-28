@@ -62,6 +62,9 @@ export type Program = {
   registrationFeeRequired: boolean;
   registrationAmount: number;
   payBalanceTotal: number;
+  ageRestricted: boolean;
+  minAge: number | null;
+  maxAge: number | null;
 };
 /**
  * Program enrollment for a member.

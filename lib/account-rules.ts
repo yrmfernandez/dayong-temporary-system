@@ -97,6 +97,11 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   };
 }
 
+/** Who brought the payment in. DTO (Direct to Office) is paid at the office and keeps the current (MAS) incentive tier. */
+export const COLLECTION_CHANNELS = ["MAS", "Collector", "DTO"] as const;
+export type CollectionChannel = (typeof COLLECTION_CHANNELS)[number];
+export const incentiveRoleFor = (channel: string): "MAS" | "Collector" => channel === "Collector" ? "Collector" : "MAS";
+
 export type PaymentInput = { monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; amount: number; orDate: string; orNumber: string; waiver: string; collectedByRole: string; originalMas: string };
 export function validatePayment(account: Account, history: AccountPayment[], input: PaymentInput, today = todayInManila()) {
   const state = accountState(account, history, today);
@@ -106,7 +111,7 @@ export function validatePayment(account: Account, history: AccountPayment[], inp
   const atPayment = accountState(account, history, input.orDate);
   if (atPayment.status === "Forfeited") throw new Error("The account was forfeited on this OR Date.");
   if ((state.temporarilySuspended || atPayment.temporarilySuspended) && input.waiver !== "Waiver") throw new Error("Select Waiver under If Suspended before accepting payment.");
-  if (!["MAS", "Collector"].includes(input.collectedByRole)) throw new Error("Select whether the collection was made by MAS or Collector.");
+  if (!(COLLECTION_CHANNELS as readonly string[]).includes(input.collectedByRole)) throw new Error("Select whether the collection was made by MAS, Collector, or DTO (Direct to Office).");
   if (input.collectedByRole === "Collector" && !input.originalMas.trim()) throw new Error("Original MAS / Officer Name is required for Collector transactions.");
   if (!input.orNumber.trim()) throw new Error("OR Number is required.");
   if (history.some((p) => p.enrollmentId === account.id && p.orNumber === input.orNumber)) throw new Error("This receipt is already recorded for the account.");

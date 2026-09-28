@@ -1,12 +1,13 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
 import { withEncoder } from "@/lib/encoder-context";
-import { canManageUsers, getSessionUser } from "@/lib/auth-server";
+import { getSessionUser } from "@/lib/auth-server";
 import { loadAccountData, commitCollections } from "@/lib/account-data";
-import { accountState, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
+import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
+import { findActivePaymentMethod } from "@/lib/payment-methods";
 import { calculateRemittance } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
-import { createCashRemittance, decideCashRemittance } from "@/lib/remittance-workflow";
+import { createCashRemittance } from "@/lib/remittance-workflow";
 
 export async function GET(request: Request) {
   if (!(await getSessionUser())) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
@@ -36,11 +37,17 @@ export const POST = withEncoder(async (request: Request) => {
     const selectedBranch = branches.find((item) => item.name === branch && item.status === "active");
     const accountable = employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active" && selectedBranch && employee.branchIds.includes(selectedBranch.id));
     if (!selectedBranch || !accountable) throw new Error("Select an active accountable employee assigned to the selected branch.");
+    // Batch-level details: who brought the payments in and how the MAS remitted them.
+    const collectedBy = String(body.collectedBy ?? "").trim();
+    if (!(COLLECTION_CHANNELS as readonly string[]).includes(collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");
+    const originalMas = String(body.originalMasOfficerName ?? "").trim();
+    const paymentMethod = await findActivePaymentMethod(String(body.paymentMethod ?? ""));
+    const paymentReference = String(body.paymentReference ?? "").trim();
+    if (paymentMethod.requiresReference && !paymentReference) throw new Error(`Enter the ${paymentMethod.name} reference number.`);
+    if (paymentReference.length > 100) throw new Error("The payment reference must be 100 characters or fewer.");
     if (autoApproveRemittance) {
-      const user = await getSessionUser();
-      const roles = user?.roleNames.map((role) => role.trim().toLowerCase()) ?? [];
-      const allowed = Boolean(user && await canManageUsers() && roles.some((role) => role === "administrator" || role === "admin") && roles.includes("entry clerk"));
-      if (!allowed) throw new Error("Immediate remittance approval requires both Administrator and Entry Clerk roles.");
+      // Same rule as Remittances: anyone who can encode may confirm full physical cash; other methods are verified there.
+      if (!paymentMethod.isCash) throw new Error(`${paymentMethod.name} payments are verified in Remittances before approval.`);
       if (!Number.isFinite(cashReceived) || cashReceived < 0) throw new Error("Enter the complete cash amount received.");
     }
     const data = await loadAccountData();
@@ -58,10 +65,10 @@ export const POST = withEncoder(async (request: Request) => {
       const input = {
         monthFrom: String(entry.monthFrom ?? ""), monthTo: String(entry.monthTo ?? ""), nopFrom: Number(entry.nopFrom), nopTo: Number(entry.nopTo), amount: Number(entry.amountCollected),
         orDate: String(entry.orDate ?? ""), orNumber: String(entry.orNumber ?? "").trim(), waiver: String(entry.ifSuspended ?? ""),
-        collectedByRole: String(entry.collectedByRole ?? ""), originalMas: String(entry.originalMasOfficerName ?? "").trim(),
+        collectedByRole: collectedBy, originalMas,
       };
       validatePayment(account, payments, input);
-      const quote = calculateRemittance(account.basePay, data.incentives.filter((tier) => tier.programId === account.programId), input.collectedByRole, input.nopFrom, input.nopTo, input.amount);
+      const quote = calculateRemittance(account.basePay, data.incentives.filter((tier) => tier.programId === account.programId), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount);
       // Client totals are only a preview. Persist the authoritative server calculation.
       grossCents += Math.round(quote.gross * 100);
       const id = createReadableId("COL");
@@ -71,18 +78,17 @@ export const POST = withEncoder(async (request: Request) => {
       rows.push([id, batchId, account.id, account.memberId, account.memberNumber, account.programId, branch, mas,
         input.orNumber, input.orDate, input.amount, input.monthFrom, input.monthTo, input.nopFrom, input.nopTo,
         entry.reactivation === "Yes" ? "Yes" : "No", entry.transferred === "Yes" ? "Yes" : "No", input.waiver, input.originalMas, "Posted", timestamp,
-        input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS"]);
+        input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS", paymentMethod.name, paymentReference]);
     }
-    const expectedRemittance = rows.reduce((sum, row) => sum + Math.round(Number(row[26]) * 100), 0) / 100;
+    const expectedRemittance = rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) / 100;
     if (autoApproveRemittance && Math.round(cashReceived * 100) !== Math.round(expectedRemittance * 100)) {
       throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}.`);
     }
     writing = true;
     await commitCollections(rows, [...touched.values()], payments);
     if (autoApproveRemittance) {
-      const remittance = await createCashRemittance({ collectionIds: rows.map((row) => String(row[0])), actualAmount: cashReceived, fidelityAmount: 0, remittanceDate: dateRemitted, remarks: "Cash received in full during collection encoding." });
-      const approved = await decideCashRemittance(remittance.id, "approve", "Cash received in full during collection encoding.", true);
-      return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, remittanceId: remittance.id, message: `${rows.length} collection(s) saved and Remittance ${approved.id} approved.` }, { status: 201 });
+      const remittance = await createCashRemittance({ collectionIds: rows.map((row) => String(row[0])), actualAmount: cashReceived, fidelityAmount: 0, remittanceDate: dateRemitted, remarks: "Cash received in full during collection encoding.", cashConfirmed: true });
+      return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, remittanceId: remittance.id, message: `${rows.length} collection(s) saved and Remittance ${remittance.id} approved.` }, { status: 201 });
     }
     return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, message: `${rows.length} collection(s) saved. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save collections." }, { status: writing ? 500 : 400 }); }

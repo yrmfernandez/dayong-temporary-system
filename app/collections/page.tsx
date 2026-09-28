@@ -30,6 +30,16 @@ import {
 import type { Member } from "@/lib/types";
 import { calculateRemittance, type IncentiveTier } from "@/lib/remittance";
 
+type CollectionChannel = "MAS" | "Collector" | "DTO";
+type PaymentMethodOption = { id: string; name: string; isCash: boolean; requiresReference: boolean };
+const collectionChannels: Array<{ value: CollectionChannel; label: string; hint: string }> = [
+  { value: "MAS", label: "MAS", hint: "Collected by the assigned MAS" },
+  { value: "Collector", label: "Collector", hint: "Collected on the MAS's behalf" },
+  { value: "DTO", label: "DTO", hint: "Direct to Office" },
+];
+// DTO keeps the current (MAS) incentive tier; only Collector batches use the Collector tier.
+const incentiveRoleFor = (channel: CollectionChannel) => channel === "Collector" ? "Collector" : "MAS";
+
 type ProgramOption = {
   id: string;
   code: string;
@@ -233,6 +243,27 @@ export default function CollectionsPage() {
   const [saving, setSaving] = useState(false);
   const [autoApproveRemittance, setAutoApproveRemittance] = useState(false);
   const [cashReceived, setCashReceived] = useState("");
+  // Batch-level: who brought these payments in, and how the MAS remitted them to the office.
+  const [collectedBy, setCollectedBy] = useState<CollectionChannel>("MAS");
+  const [originalMasOfficerName, setOriginalMasOfficerName] = useState("");
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const selectedPaymentMethod = paymentMethods.find((method) => method.name === paymentMethod);
+  const isCashPayment = selectedPaymentMethod?.isCash ?? false;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/payment-methods", { cache: "no-store", signal: controller.signal })
+      .then((response) => response.json())
+      .then((result) => {
+        const active: PaymentMethodOption[] = (result.methods ?? []).filter((method: PaymentMethodOption & { status: string }) => method.status === "active");
+        setPaymentMethods(active);
+        setPaymentMethod((current) => current || active.find((method) => method.isCash)?.name || active[0]?.name || "");
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
   const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
@@ -377,7 +408,7 @@ export default function CollectionsPage() {
       const selected = programs.find((p) => p.id === entry.programId);
       const count = getMonthDifference(entry.monthFrom, entry.monthTo);
       if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
-      return { ...calculateRemittance(selected.basePay, selected.incentiveTiers ?? [], entry.collectedByRole, entry.nopFrom, entry.nopTo, Number(entry.amountCollected)), error: "" };
+      return { ...calculateRemittance(selected.basePay, selected.incentiveTiers ?? [], incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected)), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
   }
   const quotes = collections.map(quoteEntry);
@@ -582,13 +613,6 @@ export default function CollectionsPage() {
       return "OR Date is required.";
     }
 
-    if (
-      entry.collectedByRole === "Collector" &&
-      !entry.originalMasOfficerName.trim()
-    ) {
-      return "Original MAS / Officer Name is required for Collector transactions.";
-    }
-
     return null;
   }
 
@@ -683,6 +707,21 @@ export default function CollectionsPage() {
       return;
     }
 
+    if (collectedBy === "Collector" && !originalMasOfficerName.trim()) {
+      setSaveMessage("Original MAS / Officer Name is required for Collector batches.");
+      return;
+    }
+
+    if (!selectedPaymentMethod) {
+      setSaveMessage("Select the way of payment.");
+      return;
+    }
+
+    if (selectedPaymentMethod.requiresReference && !paymentReference.trim()) {
+      setSaveMessage(`Enter the ${selectedPaymentMethod.name} reference number.`);
+      return;
+    }
+
     for (let index = 0; index < collections.length; index++) {
       const error = validateEntry(
         collections[index],
@@ -720,7 +759,11 @@ export default function CollectionsPage() {
           mas,
           accountableEmployeeId: masStaff.find((staff) => staff.fullName === mas)?.employeeId ?? "",
           dateRemitted,
-          autoApproveRemittance,
+          collectedBy,
+          originalMasOfficerName: collectedBy === "Collector" ? originalMasOfficerName.trim() : "",
+          paymentMethod,
+          paymentReference: selectedPaymentMethod?.requiresReference ? paymentReference.trim() : "",
+          autoApproveRemittance: autoApproveRemittance && isCashPayment,
           cashReceived: Number(cashReceived),
           collections: collections.map((entry) => ({
             ...entry,
@@ -762,6 +805,10 @@ export default function CollectionsPage() {
     setShowPreview(false);
     setAutoApproveRemittance(false);
     setCashReceived("");
+    setCollectedBy("MAS");
+    setOriginalMasOfficerName("");
+    setPaymentMethod(paymentMethods.find((method) => method.isCash)?.name || paymentMethods[0]?.name || "");
+    setPaymentReference("");
   }
 
   return (
@@ -808,6 +855,44 @@ export default function CollectionsPage() {
 
               <p className="text-xs text-muted-foreground">Shared by every entry in this batch.</p>
             </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-3">
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-medium">Collected by *</legend>
+              <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/50 p-1">
+                {collectionChannels.map((channel) => (
+                  <button key={channel.value} type="button" role="radio" aria-checked={collectedBy === channel.value} title={channel.hint}
+                    onClick={() => setCollectedBy(channel.value)}
+                    className={`rounded-md px-2 py-1.5 text-sm font-semibold transition-colors ${collectedBy === channel.value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                    {channel.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{collectionChannels.find((channel) => channel.value === collectedBy)?.hint}. Applies to every entry; DTO uses the current MAS incentive.</p>
+              {collectedBy === "Collector" && <div className="space-y-1 pt-1"><Label htmlFor="original-mas">Original MAS / Officer Name *</Label><Input id="original-mas" value={originalMasOfficerName} onChange={(event) => setOriginalMasOfficerName(event.target.value)} /></div>}
+            </fieldset>
+
+            <div className="space-y-2">
+              <Label htmlFor="payment-method">Way of payment *</Label>
+              <select id="payment-method" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={paymentMethod} onChange={(event) => { setPaymentMethod(event.target.value); setPaymentReference(""); }}>
+                {!paymentMethods.length && <option value="">No payment methods configured</option>}
+                {paymentMethods.map((method) => <option key={method.id} value={method.name}>{method.name}</option>)}
+              </select>
+              <p className="text-xs text-muted-foreground">How the MAS remitted this batch to the office.</p>
+            </div>
+
+            {selectedPaymentMethod?.requiresReference ? (
+              <div className="space-y-2">
+                <Label htmlFor="payment-reference">{selectedPaymentMethod.name} reference no. *</Label>
+                <Input id="payment-reference" maxLength={100} value={paymentReference} placeholder="Transaction / deposit slip number" onChange={(event) => setPaymentReference(event.target.value)} />
+                <p className="text-xs text-muted-foreground">Finance verifies this before approving the remittance.</p>
+              </div>
+            ) : (
+              <div className="flex items-center rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                {isCashPayment ? "Physical cash: count it on turnover. You can approve immediately below when it matches." : "No reference needed for this method."}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1279,12 +1364,6 @@ export default function CollectionsPage() {
                             Account status: <strong>{entry.accountLoading ? "Loading..." : entry.accountStatus || "Select a program"}</strong>
                             {entry.temporarilySuspended && <p className="text-amber-700">Temporarily suspended. Select Waiver under If Suspended.</p>}
                             {entry.accountStatus === "Forfeited" && <p className="text-red-600">Payments are blocked for this program.</p>}
-                            <label className="mt-2 block">Collected by
-                              <select className="ml-2 rounded border p-2" value={entry.collectedByRole} onChange={(e) => updateCollection(entry.id, { collectedByRole: e.target.value })}>
-                                <option value="MAS">MAS</option><option value="Collector">Collector</option>
-                              </select>
-                            </label>
-                            {entry.collectedByRole === "Collector" && <label className="mt-2 block">Original MAS / Officer Name *<Input value={entry.originalMasOfficerName} onChange={(e) => updateCollection(entry.id, { originalMasOfficerName: e.target.value })}/></label>}
                             {entry.temporarilySuspended && <label className="mt-2 block">If Suspended *<select className="ml-2 rounded border p-2" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
                           </div>
                           {/* NOP */}
@@ -1687,18 +1766,18 @@ export default function CollectionsPage() {
                   <input
                     type="checkbox"
                     className="mt-1"
-                    checked={autoApproveRemittance}
-                    disabled={totalRemittance === null}
+                    checked={autoApproveRemittance && isCashPayment}
+                    disabled={totalRemittance === null || !isCashPayment}
                     onChange={(event) => {
                       setAutoApproveRemittance(event.target.checked);
                       if (event.target.checked && totalRemittance !== null) setCashReceived(totalRemittance.toFixed(2));
                     }}
                   />
-                  <span><strong>Cash received in full</strong><span className="block text-xs text-muted-foreground">Create and immediately approve the Remittance when cash equals the calculated amount. This requires an Administrator account that also has the Entry Clerk role.</span></span>
+                  <span><strong>Cash received in full</strong><span className="block text-xs text-muted-foreground">{isCashPayment ? "Create and immediately approve the Remittance when the cash handed over equals the calculated amount." : `${paymentMethod || "Non-cash"} payments go to Remittances so Finance can verify the reference before approval.`}</span></span>
                 </label>
                 <div className="space-y-1">
                   <Label>Cash received</Label>
-                  <Input type="number" min="0" step="0.01" value={cashReceived} disabled={!autoApproveRemittance} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setCashReceived(event.target.value)} placeholder="0.00" />
+                  <Input type="number" min="0" step="0.01" value={cashReceived} disabled={!autoApproveRemittance || !isCashPayment}onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setCashReceived(event.target.value)} placeholder="0.00" />
                 </div>
               </div>
 

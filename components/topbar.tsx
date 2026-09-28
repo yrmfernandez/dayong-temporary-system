@@ -17,8 +17,9 @@ export function Topbar({ sections, activeRole, user, onMenu }: TopbarProps) {
   const today = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(new Date());
 
   return (
-    <header className="app-topbar glass-bar sticky top-0 z-30 px-3 pt-[env(safe-area-inset-top)] sm:px-4 md:px-6">
-      <div className="mx-auto flex h-14 max-w-[1920px] items-center gap-3">
+    // The sticky wrapper is transparent; the rounded glass bar floats inside the page margins.
+    <header className="app-topbar sticky top-0 z-30 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 md:px-6 md:pt-3">
+      <div className="glass-bar mx-auto flex h-14 max-w-[1920px] items-center gap-3 px-3 sm:px-4">
         <button type="button" onClick={onMenu} className="-ml-1 flex size-10 items-center justify-center rounded-xl text-foreground hover:bg-muted md:hidden" aria-label="Open navigation">
           <Menu className="size-5" />
         </button>

@@ -27,6 +27,7 @@ SelectTrigger,
 SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { describeAgeRestriction } from "@/lib/program-age";
 
 type IncentiveType = "percentage" | "fixed";
 
@@ -71,6 +72,9 @@ description: string;
 registrationFeeRequired: boolean;
 registrationAmount: number;
 payBalanceTotal: number;
+ageRestricted: boolean;
+minAge: number | null;
+maxAge: number | null;
 incentiveTiers: IncentiveTier[];
 };
 
@@ -82,6 +86,9 @@ description: string;
 registrationFeeRequired: boolean;
 registrationAmount: string;
 payBalanceTotal: string;
+ageRestricted: boolean;
+minAge: string;
+maxAge: string;
 status: "active" | "inactive";
 incentiveTiers: IncentiveTierForm[];
 };
@@ -114,6 +121,9 @@ description: "",
 registrationFeeRequired: false,
 registrationAmount: "0",
 payBalanceTotal: "0",
+ageRestricted: false,
+minAge: "",
+maxAge: "",
 status: "active",
 
 incentiveTiers: [
@@ -779,6 +789,9 @@ try {
     registrationFeeRequired: form.registrationFeeRequired,
     registrationAmount: Number(form.registrationAmount) || 0,
     payBalanceTotal: Number(form.payBalanceTotal) || 0,
+    ageRestricted: form.ageRestricted,
+    minAge: form.ageRestricted ? form.minAge.trim() : "",
+    maxAge: form.ageRestricted ? form.maxAge.trim() : "",
 
     status: form.status,
   };
@@ -981,6 +994,9 @@ setForm({
   registrationFeeRequired: Boolean(program.registrationFeeRequired),
   registrationAmount: String(program.registrationAmount ?? 0),
   payBalanceTotal: String(program.payBalanceTotal ?? 0),
+  ageRestricted: Boolean(program.ageRestricted),
+  minAge: program.minAge === null || program.minAge === undefined ? "" : String(program.minAge),
+  maxAge: program.maxAge === null || program.maxAge === undefined ? "" : String(program.maxAge),
 
   status:
     program.status === "inactive"
@@ -1907,6 +1923,25 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
           <div className="space-y-2"><Label>Registration amount</Label><Input type="number" min="0" step="0.01" disabled={!form.registrationFeeRequired} value={form.registrationAmount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("registrationAmount", event.target.value)} /></div>
           <div className="space-y-2"><Label>Pay-the-balance total</Label><Input type="number" min="0" step="0.01" value={form.payBalanceTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("payBalanceTotal", event.target.value)} /><p className="text-xs text-muted-foreground">Set to 0 when the program has no fixed payoff total.</p></div>
         </div>
+        <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label>Age restriction</Label>
+            <div role="radiogroup" aria-label="Age restriction" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1">
+              {([false, true] as const).map((value) => (
+                <button key={String(value)} type="button" role="radio" aria-checked={form.ageRestricted === value}
+                  onClick={() => setForm((current) => ({ ...current, ageRestricted: value, minAge: value ? current.minAge : "", maxAge: value ? current.maxAge : "" }))}
+                  className={`rounded-md px-2 py-1.5 text-sm font-semibold transition-colors ${form.ageRestricted === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  {value ? "True" : "False"}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">When true, New Sales only enrolls members whose age is within the range.</p>
+          </div>
+          {form.ageRestricted && <>
+            <div className="space-y-2"><Label htmlFor="program-min-age">Minimum age *</Label><Input id="program-min-age" type="number" min="0" max="120" step="1" required value={form.minAge} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("minAge", event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="program-max-age">Maximum age</Label><Input id="program-max-age" type="number" min={form.minAge || "0"} max="120" step="1" placeholder="No maximum" value={form.maxAge} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("maxAge", event.target.value)} /><p className="text-xs text-muted-foreground">Leave blank if there is no maximum age.</p></div>
+          </>}
+        </div>
       </div>
 
       {/* INCENTIVE TIERS */}
@@ -2144,6 +2179,11 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                             {program.description}
                           </p>
                         )}
+
+                        <p className="text-sm">
+                          <span className="text-muted-foreground">Age restriction: </span>
+                          <strong>{describeAgeRestriction(program)}</strong>
+                        </p>
 
                         {/* INCENTIVE SUMMARY */}
                         {periods.length >

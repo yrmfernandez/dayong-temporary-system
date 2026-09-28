@@ -5,6 +5,7 @@ import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
 import { encoderHeaders } from "@/lib/encoder-schema";
 import { parsePageAccess } from "@/lib/roles";
+import { ageRestrictionCells, normalizeAgeRestriction, readAgeRestriction, type AgeRestriction } from "@/lib/program-age";
 import { assertUsernameColumnRemoved, loadUsers, readUserRows, USERS_RANGE } from "@/lib/users-sheet";
 import {
   GOOGLE_SHEET_ID,
@@ -171,6 +172,7 @@ export async function findMemberByNumber(
       return {
         memberId: row[0] ?? "",
         memberNumber: row[1] ?? "",
+        birthdate: String(row[6] ?? ""),
         surname: row[2] ?? "",
         firstName: row[3] ?? "",
         middleName: row[4] ?? "",
@@ -566,7 +568,7 @@ export type ProgramSheetData = {
   registrationFeeRequired: boolean;
   registrationAmount: number;
   payBalanceTotal: number;
-};
+} & AgeRestriction;
 
 export type BranchSheetData = {
   id: string;
@@ -798,6 +800,10 @@ export type CreateProgramData = {
   registrationFeeRequired: boolean;
   registrationAmount: number;
   payBalanceTotal: number;
+  // Raw form values; normalizeAgeRestriction validates them before saving.
+  ageRestricted?: unknown;
+  minAge?: unknown;
+  maxAge?: unknown;
 };
 
 /* =========================================================
@@ -807,7 +813,7 @@ export type CreateProgramData = {
 export async function getPrograms() {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [`${PROGRAMS_SHEET}!A:M`, `${PROGRAM_INCENTIVES_SHEET}!A:H`],
+    ranges: [`${PROGRAMS_SHEET}!A:P`, `${PROGRAM_INCENTIVES_SHEET}!A:H`],
   });
   const rows = response.data.valueRanges?.[0]?.values ?? [];
   if (rows.length <= 1) {
@@ -843,6 +849,7 @@ export async function getPrograms() {
       registrationFeeRequired: String(row[10] ?? "").trim().toLowerCase() === "yes" || row[10] === true,
       registrationAmount: Number(row[11] ?? 0) || 0,
       payBalanceTotal: Number(row[12] ?? 0) || 0,
+      ...readAgeRestriction(row),
     }));
 
   const incentives =
@@ -1002,6 +1009,7 @@ export async function createProgram(
     registrationFeeRequired: Boolean(data.registrationFeeRequired),
     registrationAmount: Number(data.registrationAmount) || 0,
     payBalanceTotal: Number(data.payBalanceTotal) || 0,
+    ...normalizeAgeRestriction(data),
   };
 
   /*
@@ -1013,9 +1021,9 @@ export async function createProgram(
   const rowNumber = programRows.findIndex((row) => String(row[0] ?? "").trim() === programId) + 1;
   if (rowNumber > 1) await sheets.spreadsheets.values.update({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${PROGRAMS_SHEET}!K${rowNumber}:M${rowNumber}`,
+    range: `${PROGRAMS_SHEET}!K${rowNumber}:P${rowNumber}`,
     valueInputOption: "RAW",
-    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal]] },
+    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal, ...ageRestrictionCells(program)]] },
   });
 
   /*

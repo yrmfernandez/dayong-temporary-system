@@ -254,8 +254,14 @@ test('collection batch is encoded atomically without creating a remittance', asy
   remHeader[10] = 'Gross Collection'; remHeader[11] = 'Total Remittance';
   h.rows.Remittances = [remHeader];
   h.rows['Program Incentives'] = [[], ['I1', 'DP-1', 'MAS', 1, 999, 'percentage', 50, 50]];
-  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: month, monthTo: month, amountCollected: 350, nopFrom: 1, nopTo: 1, orNumber: 'OR-1', orDate: today, collectedByRole: 'MAS' };
-  const response = await h.load('app/api/collections/route.ts').POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collections: [entry, { ...entry, monthFrom: next, monthTo: next, nopFrom: 2, nopTo: 2, orNumber: 'OR-2' }] }));
+  h.rows['Payment Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, true, 'active']];
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: month, monthTo: month, amountCollected: 350, nopFrom: 1, nopTo: 1, orNumber: 'OR-1', orDate: today };
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', collections: [entry, { ...entry, monthFrom: next, monthTo: next, nopFrom: 2, nopTo: 2, orNumber: 'OR-2' }] };
+  const route = h.load('app/api/collections/route.ts');
+  assert.match((await (await route.POST(request({ ...batch, paymentReference: '' }))).json()).message, /GCash reference number/);
+  assert.match((await (await route.POST(request({ ...batch, autoApproveRemittance: true, cashReceived: 400 }))).json()).message, /verified in Remittances/);
+  assert.equal(h.writes.length, 0);
+  const response = await route.POST(request(batch));
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
   assert.equal(h.writes.length, 1);
@@ -272,7 +278,10 @@ test('collection batch is encoded atomically without creating a remittance', asy
     assert.equal(values[28], 'Outstanding');
     assert.equal(values[29], '');
     assert.equal(values[30], 'DPE-0002');
+    // DTO keeps the current MAS incentive tier.
+    assert.equal(values[25], 'DTO');
     assert.equal(values[26], 200);
+    assert.deepEqual(values.slice(33, 35), ['GCash', 'GC-778899']);
   }
   assert.equal(requests[1].updateCells.rows[0].values[0].userEnteredValue.stringValue, 'ADV');
   assert.equal(result.remittanceId, undefined);

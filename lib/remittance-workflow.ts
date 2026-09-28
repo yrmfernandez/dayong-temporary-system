@@ -25,6 +25,9 @@ export type CashCollection = {
   remittanceStatus: string;
   linkedRemittanceId: string;
   daysOutstanding: number;
+  collectedBy: string;
+  paymentMethod: string;
+  paymentReference: string;
 };
 
 export type CashRemittance = {
@@ -52,6 +55,9 @@ export type CashRemittance = {
   decisionReason: string;
   fidelityAmount: number;
   collectionIds: string[];
+  /** How the MAS remitted the linked Collections; non-cash methods carry references for verification. */
+  paymentMethods: string[];
+  paymentReferences: string[];
 };
 
 async function loadLedger() {
@@ -72,6 +78,7 @@ async function loadLedger() {
     id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
+    collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${text(row[9])}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((collection) => collection.id && text(rows.Collections[collection.rowNumber - 1]?.[19]).toLowerCase() === "posted");
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
@@ -79,8 +86,14 @@ async function loadLedger() {
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByName: text(row[20]), decisionAt: text(row[21]),
-    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId),
+    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [],
   })).filter((remittance) => remittance.id);
+  const byId = new Map(collections.map((collection) => [collection.id, collection]));
+  for (const remittance of remittances) {
+    const linked = remittance.collectionIds.map((id) => byId.get(id)).filter((item): item is CashCollection => Boolean(item));
+    remittance.paymentMethods = [...new Set(linked.map((item) => item.paymentMethod))];
+    remittance.paymentReferences = [...new Set(linked.map((item) => item.paymentReference).filter(Boolean))];
+  }
   return { collections, remittances, mappings };
 }
 

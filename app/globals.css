@@ -149,28 +149,44 @@
   --chart-5: #d9731f;
   --radius: 0.625rem;
 
-  /* Deep aubergine sidebar gives the light theme a frame instead of white-on-white. */
-  --sidebar: rgb(29 20 40 / 92%);
-  --sidebar-foreground: #ece6f5;
-  --sidebar-muted: #a99dbc;
+  /* Frosted light sidebar: follows the theme like every other glass surface. */
+  --sidebar: linear-gradient(165deg, rgb(255 255 255 / 62%), rgb(255 255 255 / 38%));
+  --sidebar-foreground: #2b2138;
+  --sidebar-muted: #6b6379;
   --sidebar-primary: #a6d33c;
   --sidebar-primary-foreground: #1d1428;
-  --sidebar-accent: rgb(255 255 255 / 8%);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgb(255 255 255 / 9%);
-  --sidebar-ring: #a6d33c;
+  --sidebar-accent: rgb(123 51 199 / 9%);
+  --sidebar-accent-foreground: #1d1528;
+  --sidebar-border: rgb(29 21 40 / 8%);
+  --sidebar-ring: #7b33c7;
+  --sidebar-scrollbar: rgb(29 21 40 / 18%);
 
-  --surface-glass: rgb(255 255 255 / 72%);
+  /* Glass: translucent fill, heavy blur, a light edge that catches the top-left light, soft elevation. */
+  --glass-fill: linear-gradient(135deg, rgb(255 255 255 / 66%), rgb(255 255 255 / 40%));
+  --glass-fill-strong: linear-gradient(135deg, rgb(255 255 255 / 86%), rgb(255 255 255 / 72%));
+  --glass-edge: linear-gradient(135deg, rgb(255 255 255 / 95%), rgb(255 255 255 / 25%) 45%, rgb(123 51 199 / 18%));
+  --glass-border: rgb(255 255 255 / 55%);
+  --glass-blur: blur(28px) saturate(170%);
+  --glass-shadow: 0 1px 0 rgb(255 255 255 / 70%) inset, 0 18px 48px -18px rgb(29 21 40 / 22%);
+
+  --surface-glass: rgb(255 255 255 / 60%);
   --surface-card: rgb(255 255 255 / 94%);
   --surface-highlight: rgb(255 255 255 / 90%);
-  --surface-edge: rgb(255 255 255 / 85%);
-  --surface-thead: #f6f4f9;
-  --surface-row-hover: #faf8fc;
+  --surface-edge: rgb(255 255 255 / 70%);
+  --surface-thead: rgb(246 243 250 / 70%);
+  --surface-row-hover: rgb(255 255 255 / 45%);
   --shadow-tint: 29 21 40;
   --glow-purple: rgb(123 51 199 / 16%);
   --glow-lime: rgb(154 205 50 / 18%);
   --glow-gold: rgb(227 169 43 / 14%);
-  --page-base: linear-gradient(160deg, #f7f6fa 0%, #f3f1f6 55%, #f5f6ee 100%);
+  /* Pastel gradient mesh in the seal's colours: purple, gold, lime, teal. */
+  --page-mesh:
+    radial-gradient(at 0% 0%, rgb(167 118 240 / 48%) 0, transparent 46%),
+    radial-gradient(at 100% 0%, rgb(255 206 112 / 42%) 0, transparent 40%),
+    radial-gradient(at 100% 100%, rgb(154 205 50 / 40%) 0, transparent 46%),
+    radial-gradient(at 0% 100%, rgb(76 195 163 / 32%) 0, transparent 46%),
+    radial-gradient(at 55% 45%, rgb(196 150 245 / 22%) 0, transparent 55%),
+    linear-gradient(135deg, #f1ebfb 0%, #f7f3f9 50%, #eff6e6 100%);
 }
 
 .dark {
@@ -231,27 +247,43 @@
   --chart-4: #86a8ea;
   --chart-5: #f3a15a;
 
-  --sidebar: rgb(16 13 21 / 88%);
+  --sidebar: linear-gradient(165deg, rgb(34 30 42 / 55%), rgb(18 16 22 / 45%));
   --sidebar-foreground: #e6e0ee;
-  --sidebar-muted: #8f86a0;
+  --sidebar-muted: #9a91ab;
   --sidebar-primary: #a9d94a;
   --sidebar-primary-foreground: #14101a;
-  --sidebar-accent: rgb(255 255 255 / 6%);
+  --sidebar-accent: rgb(255 255 255 / 7%);
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgb(255 255 255 / 7%);
+  --sidebar-border: rgb(255 255 255 / 8%);
   --sidebar-ring: #a9d94a;
+  --sidebar-scrollbar: rgb(255 255 255 / 15%);
 
-  --surface-glass: rgb(27 24 34 / 70%);
+  /* Dark glass from the reference: rgba(30,30,30,.45), blur 45px, 15% white edge, deep shadow. */
+  --glass-fill: linear-gradient(135deg, rgb(44 40 54 / 52%), rgb(24 22 30 / 38%));
+  --glass-fill-strong: linear-gradient(135deg, rgb(40 36 50 / 82%), rgb(22 20 28 / 74%));
+  --glass-edge: linear-gradient(135deg, rgb(255 255 255 / 22%), rgb(255 255 255 / 5%) 45%, rgb(180 138 242 / 20%));
+  --glass-border: rgb(255 255 255 / 12%);
+  --glass-blur: blur(40px) saturate(150%);
+  --glass-shadow: 0 1px 0 rgb(255 255 255 / 6%) inset, 0 24px 64px -20px rgb(0 0 0 / 60%);
+
+  --surface-glass: rgb(30 27 38 / 50%);
   --surface-card: rgb(27 24 34 / 92%);
   --surface-highlight: rgb(255 255 255 / 5%);
-  --surface-edge: rgb(255 255 255 / 7%);
-  --surface-thead: #221e2a;
-  --surface-row-hover: #211d28;
+  --surface-edge: rgb(255 255 255 / 10%);
+  --surface-thead: rgb(255 255 255 / 4%);
+  --surface-row-hover: rgb(255 255 255 / 4%);
   --shadow-tint: 0 0 0;
   --glow-purple: rgb(180 138 242 / 10%);
   --glow-lime: rgb(169 217 74 / 7%);
   --glow-gold: rgb(240 192 82 / 6%);
-  --page-base: linear-gradient(160deg, #15121b 0%, #131118 55%, #121410 100%);
+  /* Glowing mesh on near-black, like the reference's dark backdrop. */
+  --page-mesh:
+    radial-gradient(at 0% 0%, rgb(123 51 199 / 48%) 0, transparent 46%),
+    radial-gradient(at 100% 0%, rgb(227 169 43 / 16%) 0, transparent 40%),
+    radial-gradient(at 100% 100%, rgb(154 205 50 / 20%) 0, transparent 46%),
+    radial-gradient(at 0% 100%, rgb(35 128 106 / 30%) 0, transparent 46%),
+    radial-gradient(at 55% 45%, rgb(94 17 144 / 22%) 0, transparent 55%),
+    linear-gradient(135deg, #100c16 0%, #0b0b0c 50%, #0b0f0a 100%);
 }
 
 @layer base {
@@ -260,12 +292,8 @@
   }
   body {
     @apply bg-background text-foreground;
-    /* Gentle brand glows (purple lettering, gold sun, lime ring) behind neutral surfaces. */
-    background-image:
-      radial-gradient(circle at 4% 6%, var(--glow-purple), transparent 30rem),
-      radial-gradient(circle at 88% 2%, var(--glow-gold), transparent 26rem),
-      radial-gradient(circle at 96% 96%, var(--glow-lime), transparent 28rem),
-      var(--page-base);
+    /* Brand gradient mesh behind the glass; switches with the theme. */
+    background-image: var(--page-mesh);
     background-attachment: fixed;
   }
   html {
@@ -278,30 +306,51 @@
 }
 
 /*
- * Glass surfaces.
- * Blur is reserved for chrome that overlaps scrolling content (sidebar drawer, sticky top bar).
- * Cards sit on the fixed background, which is already soft, so they use translucency without
- * backdrop-filter: same look, no per-card GPU cost, and tables stay crisp.
+ * Glass surfaces (sidebar, top bar, page header, cards) over the theme's gradient mesh.
+ * Only the unprefixed backdrop-filter is declared: the CSS optimizer collapses a
+ * var()-based prefixed/unprefixed pair into the -webkit- form, which Chromium ignores.
  */
 @layer components {
   .glass-sidebar {
-    background:
-      radial-gradient(circle at 0% 0%, rgb(154 205 50 / 10%), transparent 14rem),
-      radial-gradient(circle at 100% 100%, rgb(123 51 199 / 28%), transparent 18rem),
-      var(--sidebar);
+    background: var(--sidebar);
     color: var(--sidebar-foreground);
-    border: 1px solid var(--sidebar-border);
-    box-shadow: 0 24px 48px -24px rgb(var(--shadow-tint) / 55%);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--glass-blur);
   }
 
+  /* Floating, rounded top bar (not a full-width strip). */
   .glass-bar {
-    background: var(--surface-glass);
-    border-bottom: 1px solid var(--surface-edge);
-    box-shadow: 0 10px 30px -26px rgb(var(--shadow-tint) / 60%);
-    backdrop-filter: blur(16px) saturate(160%);
-    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    background: var(--glass-fill-strong);
+    border: 1px solid var(--glass-border);
+    border-radius: 1rem;
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--glass-blur);
+  }
+
+  /*
+   * Frosted glass card. The 1px gradient edge is drawn by a masked ::before so it can follow
+   * the rounded corners (border-image cannot), brightest at the top-left like the reference.
+   */
+  .glass-card {
+    position: relative;
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--glass-blur);
+  }
+
+  .glass-card::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: var(--glass-edge);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
   }
 
   /* Page header: shared by explicit .page-hero and any first block holding the page h1. */
@@ -310,17 +359,15 @@
   .app-content > div > :is(div, header):first-child:has(h1) {
     position: relative;
     overflow: hidden;
-    border: 1px solid var(--surface-edge);
+    border: 1px solid var(--glass-border);
     border-radius: 1.25rem;
     background:
       radial-gradient(circle at 94% -10%, var(--glow-gold), transparent 15rem),
       radial-gradient(circle at 70% 120%, var(--glow-lime), transparent 16rem),
-      radial-gradient(circle at 0% 100%, var(--glow-purple), transparent 18rem),
-      var(--surface-glass);
+      var(--glass-fill);
     padding: 1.25rem;
-    box-shadow:
-      inset 0 1px 0 var(--surface-highlight),
-      0 18px 40px -30px rgb(var(--shadow-tint) / 55%);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--glass-blur);
     color: var(--foreground);
   }
 
@@ -376,13 +423,14 @@
   .tone-bar { background: var(--tone); }
 }
 
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass-bar { background: var(--card); }
+/* Without blur support, or when the user asks for less transparency, glass becomes solid. */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-bar, .glass-sidebar, .glass-card, main [data-slot="card"], .page-hero { background: var(--card); }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .glass-sidebar, .glass-bar { backdrop-filter: none; -webkit-backdrop-filter: none; }
-  .glass-bar { background: var(--card); }
+  .glass-sidebar, .glass-bar, .glass-card, main [data-slot="card"], .page-hero,
+  .app-content section > :is(div, header):first-child:has(h1) { backdrop-filter: none; background: var(--card); }
 }
 
 .app-main {
@@ -452,9 +500,26 @@ main table tbody tr:hover {
   background-color: var(--surface-row-hover);
 }
 
+/* Every card is frosted glass (same recipe as .glass-card). */
 main [data-slot="card"] {
-  background: var(--surface-card);
+  position: relative;
+  background: var(--glass-fill);
   border-radius: 1.25rem;
+  backdrop-filter: var(--glass-blur);
+}
+
+main [data-slot="card"]::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--glass-edge);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 1;
 }
 
 main [data-slot="card-header"] {
@@ -576,11 +641,9 @@ main [data-slot="card-title"] {
 
 main [data-slot="card"] {
   animation: card-enter 450ms ease-out both;
-  border: 1px solid var(--surface-edge);
-  box-shadow:
-    inset 0 1px 0 var(--surface-highlight),
-    0 1px 2px rgb(var(--shadow-tint) / 6%),
-    0 10px 30px -18px rgb(var(--shadow-tint) / 22%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  --tw-ring-color: transparent;
 }
 
 /* Theme switch: no transition flash while the class flips. */
@@ -628,7 +691,8 @@ main [data-slot="card"]:nth-child(4) {
   html { color-scheme: light; }
   body, body > div, main { height: auto !important; overflow: visible !important; background: #fff !important; color: #000 !important; }
   body > div > aside, .app-topbar { display: none !important; }
-  .page-hero, main [data-slot="card"] { box-shadow: none !important; background: #fff !important; }
+  .page-hero, main [data-slot="card"] { box-shadow: none !important; background: #fff !important; backdrop-filter: none !important; }
+  main [data-slot="card"]::before { display: none; }
   .mam-scroll { overflow: visible !important; }
   .mam-report table { font-size: 9px; }
   .mam-report th, .mam-report td { position: static !important; min-width: 0 !important; padding: 4px !important; }

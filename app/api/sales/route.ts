@@ -15,6 +15,8 @@ import {
   type SaleSheetData,
 } from "@/lib/google-sheets-data";
 import { getEmployees } from "@/lib/employees";
+import { ageRestrictionError } from "@/lib/program-age";
+import { todayInManila } from "@/lib/account-rules";
 
 type SalePayload = {
   branch: string;
@@ -224,6 +226,17 @@ export const POST = withEncoder(async function POST(request: Request) {
       if (!selectedProgram) {
         return NextResponse.json(
           { success: false, message: `Sale #${saleNumber}: Select an active program.` },
+          { status: 400 },
+        );
+      }
+      // Age-restricted programs: check the member's age today, using the stored birthdate for existing members.
+      const memberBirthdate = sale.existingMember
+        ? (await findMemberByNumber(sale.memberNumber?.trim() ?? ""))?.birthdate ?? ""
+        : sale.birthdate;
+      const ageError = ageRestrictionError(selectedProgram, memberBirthdate, todayInManila());
+      if (ageError) {
+        return NextResponse.json(
+          { success: false, message: `Sale #${saleNumber}: ${ageError}` },
           { status: 400 },
         );
       }

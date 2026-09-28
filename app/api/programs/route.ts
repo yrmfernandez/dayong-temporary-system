@@ -355,6 +355,9 @@ export const POST = withEncoder(async function POST(
         registrationFeeRequired: Boolean(registrationFeeRequired),
         registrationAmount: normalizedRegistrationAmount,
         payBalanceTotal: normalizedPayBalanceTotal,
+        ageRestricted: body.ageRestricted,
+        minAge: body.minAge,
+        maxAge: body.maxAge,
       });
 
     return NextResponse.json(
@@ -398,6 +401,9 @@ function programInput(body: Record<string, unknown>): ProgramInput {
     registrationFeeRequired: Boolean(body.registrationFeeRequired),
     registrationAmount: Number(body.registrationAmount) || 0,
     payBalanceTotal: Number(body.payBalanceTotal) || 0,
+    ageRestricted: body.ageRestricted,
+    minAge: body.minAge,
+    maxAge: body.maxAge,
     incentiveTiers: tiers.map((value) => { const tier = value as Record<string, unknown>; return { role: tier.role === "Collector" ? "Collector" : "MAS", fromMonth: Number(tier.fromMonth), toMonth: Number(tier.toMonth), incentiveType: tier.incentiveType === "fixed" ? "fixed" : "percentage", markUp: Number(tier.markUp), incentiveAmount: Number(tier.incentiveAmount) }; }),
   };
 }

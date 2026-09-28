@@ -62,3 +62,19 @@ test("sessions without role names receive only the safe dashboard fallback", () 
   assert.equal(access([], "/branches"), false);
   assert.equal(access([], "/collections"), false);
 });
+
+test("program age restriction validates input and checks member age", async () => {
+  const { normalizeAgeRestriction, ageRestrictionError, ageOn, readAgeRestriction } = await import("../lib/program-age.ts");
+  assert.deepEqual(normalizeAgeRestriction({ ageRestricted: false, minAge: "18" }), { ageRestricted: false, minAge: null, maxAge: null });
+  assert.deepEqual(normalizeAgeRestriction({ ageRestricted: true, minAge: "18", maxAge: "" }), { ageRestricted: true, minAge: 18, maxAge: null });
+  assert.throws(() => normalizeAgeRestriction({ ageRestricted: true, minAge: "" }), /minimum age/);
+  assert.throws(() => normalizeAgeRestriction({ ageRestricted: true, minAge: "60", maxAge: "40" }), /maximum age/);
+  const range = { ageRestricted: true, minAge: 18, maxAge: 65 };
+  assert.equal(ageOn("2000-09-29", "2026-09-28"), 25);
+  assert.equal(ageOn("9/28/2000", "2026-09-28"), 26);
+  assert.equal(ageRestrictionError(range, "2010-01-01", "2026-09-28") !== null, true);
+  assert.equal(ageRestrictionError(range, "1990-01-01", "2026-09-28"), null);
+  assert.equal(ageRestrictionError({ ageRestricted: true, minAge: 60, maxAge: null }, "1940-01-01", "2026-09-28"), null);
+  assert.match(ageRestrictionError(range, "", "2026-09-28"), /birthdate/);
+  assert.deepEqual(readAgeRestriction(Array(13).fill("").concat(["Yes", 21, ""])), { ageRestricted: true, minAge: 21, maxAge: null });
+});

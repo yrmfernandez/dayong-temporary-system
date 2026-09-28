@@ -31,6 +31,7 @@ export const encoderSheets = [
   { title: "Cash Accounts", columns: 5 },
   { title: "Vendor Payables", columns: 15 },
   { title: "Commissions", columns: 12 },
+  { title: "Payment Methods", columns: 5 },
 ];
 
 export function columnName(index: number): string {

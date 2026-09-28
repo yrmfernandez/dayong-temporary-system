@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { loadUsers, userCell } from "@/lib/users-sheet";
+import { ageRestrictionCells, normalizeAgeRestriction } from "@/lib/program-age";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -25,7 +26,7 @@ function columnCount(name: string) {
   return [...name].reduce((value, character) => value * 26 + character.charCodeAt(0) - 64, 0);
 }
 
-export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; incentiveTiers: Array<{ role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number }> };
+export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: Array<{ role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number }> };
 
 export async function updateProgramRecord(id: string, input: ProgramInput) {
   const [programs, incentives] = await Promise.all([rows("Programs!A:F"), rows("'Program Incentives'!A:H")]);
@@ -33,13 +34,14 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
   if (!input.code || !input.name || !Number.isFinite(input.basePay) || input.basePay <= 0 || !input.incentiveTiers.length) throw new Error("Complete the program and incentive details.");
   if (!Number.isFinite(input.registrationAmount) || input.registrationAmount < 0 || !Number.isFinite(input.payBalanceTotal) || input.payBalanceTotal < 0) throw new Error("Registration and pay-the-balance amounts cannot be negative.");
   if (input.registrationFeeRequired && input.registrationAmount <= 0) throw new Error("Enter the required registration amount.");
+  const ageRestriction = normalizeAgeRestriction(input);
   for (const tier of input.incentiveTiers) {
     if (!Number.isInteger(tier.fromMonth) || !Number.isInteger(tier.toMonth) || tier.fromMonth < 1 || tier.toMonth < tier.fromMonth) throw new Error("Enter valid whole-month incentive ranges.");
     if (!Number.isFinite(tier.markUp) || tier.markUp < 0 || tier.markUp > input.basePay || !Number.isFinite(tier.incentiveAmount) || tier.incentiveAmount < 0 || (tier.incentiveType === "percentage" && tier.incentiveAmount > 100)) throw new Error("Enter valid mark-up and incentive amounts.");
   }
   if (input.incentiveTiers.some((tier, index) => input.incentiveTiers.some((other, otherIndex) => index !== otherIndex && tier.role === other.role && tier.fromMonth <= other.toMonth && other.fromMonth <= tier.toMonth))) throw new Error("Incentive tiers for the same role cannot overlap.");
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!A${rowNumber}:F${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[id, input.code, input.name, input.basePay, input.status, input.description]] } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:M${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal]] } });
+  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:P${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal, ...ageRestrictionCells(ageRestriction)]] } });
   await clearRows("Program Incentives", "L", incentives.slice(1).map((row, index) => text(row[1]) === id ? index + 2 : 0).filter(Boolean));
   await appendEncodedRows({ range: "'Program Incentives'!A:H", requestBody: { values: input.incentiveTiers.map((tier) => [createReadableId("INC"), id, tier.role, tier.fromMonth, tier.toMonth, tier.incentiveType, tier.markUp, tier.incentiveAmount]) } });
   return { id };
