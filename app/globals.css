@@ -4,29 +4,47 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Dayong palette (from the company seal):
+ *   purple lettering  -> brand / primary actions
+ *   lime ring + moss  -> brand accent, success
+ *   sun gold          -> warning / attention
+ *   the five figures  -> navy, teal, red, orange, cream: categorical accents
+ * Neutrals carry ~90% of the interface so the accents keep their meaning.
+ * Every color is a variable redefined under .dark, so the existing violet-* and
+ * purple-* utilities in pages adapt to the dark theme without per-page edits.
+ */
 @theme inline {
-  --color-violet-10: #2d1c59;
-  --color-violet-20: #351f72;
-  --color-violet-30: #4a24b3;
-  --color-violet-40: #5429cc;
-  --color-violet-50: #5f2ee6;
-  --color-violet-60: #6933ff;
-  --color-violet-70: #875cff;
-  --color-violet-80: #a585ff;
-  --color-violet-90: #e2d9fa;
-  --color-violet-95: #efebfd;
-  --color-purple-10: #331b4c;
-  --color-purple-20: #451e6b;
-  --color-purple-30: #601f99;
-  --color-purple-40: #8029cc;
-  --color-purple-50: #902ee6;
-  --color-purple-60: #a033ff;
-  --color-purple-70: #b35cff;
-  --color-purple-80: #bd70ff;
-  --color-purple-90: #ead2ff;
-  --color-purple-95: #f6ebff;
-  --color-accent-lime: #c0d725;
-  --color-accent-moss: #5b8210;
+  --color-violet-10: var(--violet-10);
+  --color-violet-20: var(--violet-20);
+  --color-violet-30: var(--violet-30);
+  --color-violet-40: var(--violet-40);
+  --color-violet-50: var(--violet-50);
+  --color-violet-60: var(--violet-60);
+  --color-violet-70: var(--violet-70);
+  --color-violet-80: var(--violet-80);
+  --color-violet-90: var(--violet-90);
+  --color-violet-95: var(--violet-95);
+  --color-purple-10: var(--purple-10);
+  --color-purple-20: var(--purple-20);
+  --color-purple-30: var(--purple-30);
+  --color-purple-40: var(--purple-40);
+  --color-purple-50: var(--purple-50);
+  --color-purple-60: var(--purple-60);
+  --color-purple-70: var(--purple-70);
+  --color-purple-80: var(--purple-80);
+  --color-purple-90: var(--purple-90);
+  --color-purple-95: var(--purple-95);
+  --color-accent-lime: var(--brand-lime);
+  --color-accent-moss: var(--brand-moss);
+  --color-brand-lime: var(--brand-lime);
+  --color-brand-moss: var(--brand-moss);
+  --color-brand-gold: var(--brand-gold);
+  --color-brand-teal: var(--brand-teal);
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-red: var(--brand-red);
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-purple: var(--brand-purple);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   /* No web font is loaded; these resolved to themselves before, so the app fell back to a serif face. */
@@ -40,6 +58,7 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
   --color-sidebar: var(--sidebar);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
@@ -72,72 +91,167 @@
 }
 
 :root {
-  --background: #efebfd;
-  --foreground: #2d1c59;
+  color-scheme: light;
+
+  /* Ink scale: 10-40 are text, 50-80 brand purple, 90-95 tinted surfaces and borders. */
+  --violet-10: #1d1528;
+  --violet-20: #2b2138;
+  --violet-30: #4b4159;
+  --violet-40: #5d5270;
+  --violet-50: #6a2bb0;
+  --violet-60: #7b33c7;
+  --violet-70: #9660d8;
+  --violet-80: #bb97ea;
+  --violet-90: #e6e2ee;
+  --violet-95: #f3f1f7;
+  --purple-10: #2a1640;
+  --purple-20: #3f1c63;
+  --purple-30: #5e1190;
+  --purple-40: #7a24b8;
+  --purple-50: #8f35d6;
+  --purple-60: #a24de6;
+  --purple-70: #b774ee;
+  --purple-80: #cc9cf4;
+  --purple-90: #efe3fb;
+  --purple-95: #f8f2fd;
+
+  --brand-purple: #5e1190;
+  --brand-lime: #9acd32;
+  --brand-moss: #4a7a0e;
+  --brand-gold: #e3a92b;
+  --brand-teal: #23806a;
+  --brand-navy: #2f4f8f;
+  --brand-red: #c4262e;
+  --brand-orange: #d9731f;
+
+  --background: #f4f3f7;
+  --foreground: #1d1528;
   --card: #ffffff;
-  --card-foreground: #2d1c59;
+  --card-foreground: #1d1528;
   --popover: #ffffff;
-  --popover-foreground: #2d1c59;
-  --primary: #6933ff;
+  --popover-foreground: #1d1528;
+  --primary: #7b33c7;
   --primary-foreground: #ffffff;
-  --secondary: #ead2ff;
-  --secondary-foreground: #601f99;
-  --muted: #e2d9fa;
-  --muted-foreground: #5429cc;
-  --accent: #c0d725;
-  --accent-foreground: #2d1c59;
-  --destructive: #b42318;
-  --border: #e2d9fa;
-  --input: #e2d9fa;
-  --ring: #5f2ee6;
-  --chart-1: #6933ff;
-  --chart-2: #a033ff;
-  --chart-3: #5b8210;
-  --chart-4: #c0d725;
-  --chart-5: #5429cc;
+  --secondary: #f1e8fb;
+  --secondary-foreground: #5e1190;
+  --muted: #efedf3;
+  --muted-foreground: #625a70;
+  --accent: #f1eef6;
+  --accent-foreground: #1d1528;
+  --destructive: #c4262e;
+  --border: #e5e1ec;
+  --input: #d9d3e3;
+  --ring: #7b33c7;
+  --chart-1: #7b33c7;
+  --chart-2: #23806a;
+  --chart-3: #e3a92b;
+  --chart-4: #2f4f8f;
+  --chart-5: #d9731f;
   --radius: 0.625rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #2d1c59;
-  --sidebar-primary: #6933ff;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #efebfd;
-  --sidebar-accent-foreground: #5429cc;
-  --sidebar-border: #e2d9fa;
-  --sidebar-ring: #5f2ee6;
+
+  /* Deep aubergine sidebar gives the light theme a frame instead of white-on-white. */
+  --sidebar: rgb(29 20 40 / 92%);
+  --sidebar-foreground: #ece6f5;
+  --sidebar-muted: #a99dbc;
+  --sidebar-primary: #a6d33c;
+  --sidebar-primary-foreground: #1d1428;
+  --sidebar-accent: rgb(255 255 255 / 8%);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 9%);
+  --sidebar-ring: #a6d33c;
+
+  --surface-glass: rgb(255 255 255 / 72%);
+  --surface-card: rgb(255 255 255 / 94%);
+  --surface-highlight: rgb(255 255 255 / 90%);
+  --surface-edge: rgb(255 255 255 / 85%);
+  --surface-thead: #f6f4f9;
+  --surface-row-hover: #faf8fc;
+  --shadow-tint: 29 21 40;
+  --glow-purple: rgb(123 51 199 / 16%);
+  --glow-lime: rgb(154 205 50 / 18%);
+  --glow-gold: rgb(227 169 43 / 14%);
+  --page-base: linear-gradient(160deg, #f7f6fa 0%, #f3f1f6 55%, #f5f6ee 100%);
 }
 
 .dark {
-  --background: #2d1c59;
-  --foreground: #efebfd;
-  --card: #351f72;
-  --card-foreground: #efebfd;
-  --popover: #351f72;
-  --popover-foreground: #efebfd;
-  --primary: #a585ff;
-  --primary-foreground: #2d1c59;
-  --secondary: #601f99;
-  --secondary-foreground: #f6ebff;
-  --muted: #451e6b;
-  --muted-foreground: #e2d9fa;
-  --accent: #c0d725;
-  --accent-foreground: #2d1c59;
-  --destructive: #f97066;
-  --border: #5429cc;
-  --input: #5429cc;
-  --ring: #a585ff;
-  --chart-1: #a585ff;
-  --chart-2: #c0d725;
-  --chart-3: #5b8210;
-  --chart-4: #a033ff;
-  --chart-5: #bd70ff;
-  --sidebar: #331b4c;
-  --sidebar-foreground: #efebfd;
-  --sidebar-primary: #a585ff;
-  --sidebar-primary-foreground: #2d1c59;
-  --sidebar-accent: #451e6b;
-  --sidebar-accent-foreground: #f6ebff;
-  --sidebar-border: #5429cc;
-  --sidebar-ring: #a585ff;
+  color-scheme: dark;
+
+  --violet-10: #f3f0f8;
+  --violet-20: #e6e0ef;
+  --violet-30: #c5bcd3;
+  --violet-40: #aca2bc;
+  --violet-50: #b98af0;
+  --violet-60: #b48af2;
+  --violet-70: #9a6fdc;
+  --violet-80: #6c4f96;
+  --violet-90: #302a3b;
+  --violet-95: #211d29;
+  --purple-10: #f6effd;
+  --purple-20: #ead9fb;
+  --purple-30: #d4b0f6;
+  --purple-40: #c28ff2;
+  --purple-50: #b67cef;
+  --purple-60: #c592f4;
+  --purple-70: #a773e0;
+  --purple-80: #6d4a98;
+  --purple-90: #35283f;
+  --purple-95: #251d2d;
+
+  --brand-purple: #c7a2f6;
+  --brand-lime: #a9d94a;
+  --brand-moss: #a6d65a;
+  --brand-gold: #f0c052;
+  --brand-teal: #4cc3a3;
+  --brand-navy: #86a8ea;
+  --brand-red: #f07a7f;
+  --brand-orange: #f3a15a;
+
+  /* Soft dark greys (not black), each elevation a few percent lighter. */
+  --background: #131118;
+  --foreground: #ece8f2;
+  --card: #1b1822;
+  --card-foreground: #ece8f2;
+  --popover: #221e2a;
+  --popover-foreground: #ece8f2;
+  --primary: #b48af2;
+  --primary-foreground: #1a1024;
+  --secondary: #2e2340;
+  --secondary-foreground: #e6d6fb;
+  --muted: #25212d;
+  --muted-foreground: #a9a1b6;
+  --accent: #2a2533;
+  --accent-foreground: #ece8f2;
+  --destructive: #f07a7f;
+  --border: #2f2a38;
+  --input: #3a3445;
+  --ring: #b48af2;
+  --chart-1: #b48af2;
+  --chart-2: #4cc3a3;
+  --chart-3: #f0c052;
+  --chart-4: #86a8ea;
+  --chart-5: #f3a15a;
+
+  --sidebar: rgb(16 13 21 / 88%);
+  --sidebar-foreground: #e6e0ee;
+  --sidebar-muted: #8f86a0;
+  --sidebar-primary: #a9d94a;
+  --sidebar-primary-foreground: #14101a;
+  --sidebar-accent: rgb(255 255 255 / 6%);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 7%);
+  --sidebar-ring: #a9d94a;
+
+  --surface-glass: rgb(27 24 34 / 70%);
+  --surface-card: rgb(27 24 34 / 92%);
+  --surface-highlight: rgb(255 255 255 / 5%);
+  --surface-edge: rgb(255 255 255 / 7%);
+  --surface-thead: #221e2a;
+  --surface-row-hover: #211d28;
+  --shadow-tint: 0 0 0;
+  --glow-purple: rgb(180 138 242 / 10%);
+  --glow-lime: rgb(169 217 74 / 7%);
+  --glow-gold: rgb(240 192 82 / 6%);
+  --page-base: linear-gradient(160deg, #15121b 0%, #131118 55%, #121410 100%);
 }
 
 @layer base {
@@ -146,13 +260,12 @@
   }
   body {
     @apply bg-background text-foreground;
-    /* Soft color fields give the frosted surfaces something to reveal. */
+    /* Gentle brand glows (purple lettering, gold sun, lime ring) behind neutral surfaces. */
     background-image:
-      radial-gradient(circle at 6% 8%, rgb(135 92 255 / 26%), transparent 28rem),
-      radial-gradient(circle at 78% 4%, rgb(179 92 255 / 16%), transparent 24rem),
-      radial-gradient(circle at 94% 92%, rgb(192 215 37 / 18%), transparent 26rem),
-      radial-gradient(circle at 30% 100%, rgb(105 51 255 / 12%), transparent 30rem),
-      linear-gradient(145deg, #f8f6ff 0%, #efebfd 48%, #f7f8eb 100%);
+      radial-gradient(circle at 4% 6%, var(--glow-purple), transparent 30rem),
+      radial-gradient(circle at 88% 2%, var(--glow-gold), transparent 26rem),
+      radial-gradient(circle at 96% 96%, var(--glow-lime), transparent 28rem),
+      var(--page-base);
     background-attachment: fixed;
   }
   html {
@@ -167,24 +280,26 @@
 /*
  * Glass surfaces.
  * Blur is reserved for chrome that overlaps scrolling content (sidebar drawer, sticky top bar).
- * Cards sit on the fixed gradient, which is already soft, so they use translucency without
+ * Cards sit on the fixed background, which is already soft, so they use translucency without
  * backdrop-filter: same look, no per-card GPU cost, and tables stay crisp.
  */
 @layer components {
-  .glass-panel {
-    background: linear-gradient(160deg, rgb(255 255 255 / 72%), rgb(246 243 255 / 58%));
-    border: 1px solid rgb(255 255 255 / 75%);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 85%),
-      0 24px 48px -28px rgb(45 28 89 / 45%);
-    backdrop-filter: blur(20px) saturate(170%);
-    -webkit-backdrop-filter: blur(20px) saturate(170%);
+  .glass-sidebar {
+    background:
+      radial-gradient(circle at 0% 0%, rgb(154 205 50 / 10%), transparent 14rem),
+      radial-gradient(circle at 100% 100%, rgb(123 51 199 / 28%), transparent 18rem),
+      var(--sidebar);
+    color: var(--sidebar-foreground);
+    border: 1px solid var(--sidebar-border);
+    box-shadow: 0 24px 48px -24px rgb(var(--shadow-tint) / 55%);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
   }
 
   .glass-bar {
-    background: rgb(248 246 255 / 68%);
-    border-bottom: 1px solid rgb(255 255 255 / 70%);
-    box-shadow: 0 10px 30px -26px rgb(45 28 89 / 60%);
+    background: var(--surface-glass);
+    border-bottom: 1px solid var(--surface-edge);
+    box-shadow: 0 10px 30px -26px rgb(var(--shadow-tint) / 60%);
     backdrop-filter: blur(16px) saturate(160%);
     -webkit-backdrop-filter: blur(16px) saturate(160%);
   }
@@ -195,27 +310,79 @@
   .app-content > div > :is(div, header):first-child:has(h1) {
     position: relative;
     overflow: hidden;
-    border: 1px solid rgb(255 255 255 / 80%);
+    border: 1px solid var(--surface-edge);
     border-radius: 1.25rem;
     background:
-      radial-gradient(circle at 92% 10%, rgb(192 215 37 / 24%), transparent 14rem),
-      radial-gradient(circle at 0% 100%, rgb(165 133 255 / 22%), transparent 16rem),
-      linear-gradient(120deg, rgb(255 255 255 / 78%), rgb(246 243 255 / 62%));
+      radial-gradient(circle at 94% -10%, var(--glow-gold), transparent 15rem),
+      radial-gradient(circle at 70% 120%, var(--glow-lime), transparent 16rem),
+      radial-gradient(circle at 0% 100%, var(--glow-purple), transparent 18rem),
+      var(--surface-glass);
     padding: 1.25rem;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 90%),
-      0 18px 40px -30px rgb(45 28 89 / 55%);
-    color: var(--color-violet-10);
+      inset 0 1px 0 var(--surface-highlight),
+      0 18px 40px -30px rgb(var(--shadow-tint) / 55%);
+    color: var(--foreground);
   }
+
+  /* Brand stripe along the header's left edge: purple into lime, like the seal. */
+  .page-hero::before,
+  .app-content section > :is(div, header):first-child:has(h1)::before,
+  .app-content > div > :is(div, header):first-child:has(h1)::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: linear-gradient(180deg, var(--brand-purple), var(--violet-60) 45%, var(--brand-lime));
+  }
+
+  /*
+   * Always-dark brand surface (login story panel). It keeps the light-theme ink scale so its
+   * white-on-aubergine design reads the same in both themes.
+   */
+  .brand-panel {
+    --violet-10: #1d1528;
+    --violet-40: #5d5270;
+    --violet-60: #7b33c7;
+    --violet-80: #c9b3ef;
+    --violet-95: #efeaf7;
+    background:
+      radial-gradient(circle at 100% 0%, rgb(227 169 43 / 16%), transparent 22rem),
+      linear-gradient(160deg, #2a1640 0%, #1d1428 55%, #16121c 100%);
+    color: #fff;
+  }
+
+  /* Semantic tones: badges, metric icons, alerts. Colour is always paired with text or an icon. */
+  .tone-brand { --tone: var(--violet-60); }
+  .tone-success { --tone: var(--brand-moss); }
+  .tone-warning { --tone: #b7791f; }
+  .tone-danger { --tone: var(--brand-red); }
+  .tone-info { --tone: var(--brand-navy); }
+  .tone-teal { --tone: var(--brand-teal); }
+  .tone-orange { --tone: var(--brand-orange); }
+  .tone-neutral { --tone: var(--muted-foreground); }
+  .dark .tone-warning { --tone: var(--brand-gold); }
+
+  .tone-chip {
+    color: var(--tone);
+    background: color-mix(in oklab, var(--tone) 12%, transparent);
+    border: 1px solid color-mix(in oklab, var(--tone) 28%, transparent);
+  }
+
+  .tone-soft {
+    color: var(--tone);
+    background: color-mix(in oklab, var(--tone) 14%, transparent);
+  }
+
+  .tone-bar { background: var(--tone); }
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass-panel { background: rgb(252 251 255 / 97%); }
-  .glass-bar { background: rgb(248 246 255 / 97%); }
+  .glass-bar { background: var(--card); }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .glass-panel, .glass-bar { background: rgb(252 251 255 / 98%); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .glass-sidebar, .glass-bar { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .glass-bar { background: var(--card); }
 }
 
 .app-main {
@@ -231,7 +398,7 @@
 }
 
 .app-content h1 {
-  color: var(--color-violet-10);
+  color: var(--foreground);
   letter-spacing: -0.025em;
 }
 
@@ -246,23 +413,35 @@ main textarea {
   max-width: 100%;
 }
 
-main input,
+main input:not([type="checkbox"]):not([type="radio"]),
 main select,
 main textarea {
-  border-color: rgb(165 133 255 / 55%);
-  background-color: rgb(255 255 255 / 85%);
+  border-color: var(--input);
+  background-color: color-mix(in oklab, var(--card) 92%, transparent);
+  color: var(--foreground);
 }
 
 main input:focus,
 main select:focus,
 main textarea:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgb(105 51 255 / 12%);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);
+}
+
+main input[type="checkbox"],
+main input[type="radio"] {
+  accent-color: var(--primary);
 }
 
 main table thead {
-  background: linear-gradient(90deg, rgb(239 235 253 / 95%), rgb(246 235 255 / 80%));
-  color: var(--color-violet-20);
+  background: var(--surface-thead);
+  color: var(--violet-30);
+}
+
+main table thead th {
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
 }
 
 main table tbody tr {
@@ -270,22 +449,42 @@ main table tbody tr {
 }
 
 main table tbody tr:hover {
-  background-color: rgb(239 235 253 / 45%);
+  background-color: var(--surface-row-hover);
 }
 
 main [data-slot="card"] {
-  background: linear-gradient(150deg, rgb(255 255 255 / 90%), rgb(255 255 255 / 78%));
+  background: var(--surface-card);
   border-radius: 1.25rem;
 }
 
 main [data-slot="card-header"] {
-  border-bottom-color: rgb(165 133 255 / 25%);
+  border-bottom-color: var(--border);
 }
 
 main [data-slot="card-title"] {
-  color: var(--color-violet-20);
-  font-weight: 750;
+  color: var(--foreground);
+  font-weight: 700;
 }
+
+/* Dark theme: fixed light-palette utilities used across pages. */
+.dark :is(.bg-white, .bg-white\/50, .bg-white\/55, .bg-white\/60, .bg-white\/70, .bg-white\/75, .bg-white\/80, .bg-white\/90, .bg-background) {
+  background-color: color-mix(in oklab, var(--card) 88%, transparent);
+}
+.dark :is(.border-white\/60, .border-white\/70, .border-white\/80) { border-color: var(--surface-edge); }
+.dark :is(.hover\:bg-white\/60, .hover\:bg-white\/70, .hover\:bg-white\/80):hover { background-color: var(--accent); }
+.dark .from-white { --tw-gradient-from: var(--card); }
+.dark :is(.bg-emerald-50, .bg-green-50) { background-color: rgb(76 195 163 / 10%); }
+.dark :is(.bg-amber-50, .bg-yellow-50, .bg-orange-50) { background-color: rgb(240 192 82 / 10%); }
+.dark :is(.bg-red-50, .bg-rose-50, .bg-rose-100) { background-color: rgb(240 122 127 / 10%); }
+.dark :is(.bg-blue-50, .bg-sky-50) { background-color: rgb(134 168 234 / 10%); }
+.dark :is(.border-emerald-200, .border-emerald-300, .border-green-200) { border-color: rgb(76 195 163 / 30%); }
+.dark :is(.border-amber-200, .border-amber-300, .border-orange-200, .border-yellow-200) { border-color: rgb(240 192 82 / 30%); }
+.dark :is(.border-red-200, .border-rose-200) { border-color: rgb(240 122 127 / 30%); }
+.dark .border-blue-200 { border-color: rgb(134 168 234 / 30%); }
+.dark :is(.text-emerald-600, .text-emerald-700, .text-emerald-800, .text-green-700) { color: #6fd6b4; }
+.dark :is(.text-amber-600, .text-amber-700, .text-amber-800, .text-amber-900, .text-orange-700) { color: #f3c969; }
+.dark :is(.text-red-600, .text-red-700, .text-rose-700) { color: #f59aa0; }
+.dark .text-blue-700 { color: #9dbbf0; }
 
 @layer components {
   @media (max-width: 639px) {
@@ -377,10 +576,18 @@ main [data-slot="card-title"] {
 
 main [data-slot="card"] {
   animation: card-enter 450ms ease-out both;
-  border: 1px solid rgb(255 255 255 / 85%);
+  border: 1px solid var(--surface-edge);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 90%),
-    0 10px 30px -18px rgb(45 28 89 / 28%);
+    inset 0 1px 0 var(--surface-highlight),
+    0 1px 2px rgb(var(--shadow-tint) / 6%),
+    0 10px 30px -18px rgb(var(--shadow-tint) / 22%);
+}
+
+/* Theme switch: no transition flash while the class flips. */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
 }
 
 /* Compact tables preference (Settings → Workspace preferences). */
@@ -418,7 +625,8 @@ main [data-slot="card"]:nth-child(4) {
 
 @media print {
   @page { size: landscape; margin: 10mm; }
-  body, body > div, main { height: auto !important; overflow: visible !important; }
+  html { color-scheme: light; }
+  body, body > div, main { height: auto !important; overflow: visible !important; background: #fff !important; color: #000 !important; }
   body > div > aside, .app-topbar { display: none !important; }
   .page-hero, main [data-slot="card"] { box-shadow: none !important; background: #fff !important; }
   .mam-scroll { overflow: visible !important; }

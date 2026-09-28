@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FinanceSettings } from "@/components/finance-settings";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { preferenceKeys, readDensity, readIndicator, writePreference, type IndicatorStyle } from "@/lib/ui-preferences";
 
  type SessionUser = {
@@ -205,11 +206,20 @@ export default function SettingsPage() {
             </div>
             <div>
               <CardTitle>Workspace preferences</CardTitle>
-              <CardDescription>Adjust tables and navigation on this device.</CardDescription>
+              <CardDescription>Adjust the theme, tables, and navigation on this device.</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4">
+            <div>
+              <p className="text-sm font-medium">Color theme</p>
+              <p className="text-sm text-muted-foreground">
+                Light, dark, or follow this device&apos;s setting. Printed reports always use light.
+              </p>
+            </div>
+            <ThemeToggle showLabels />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4">
             <div>
               <p className="text-sm font-medium">Sidebar active page style</p>

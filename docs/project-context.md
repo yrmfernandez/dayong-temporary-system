@@ -120,7 +120,7 @@ The official `icons/dayong_logo.png` artwork is used in the sidebar, login scree
 
 Attendance now uses the violet/lime visual system with Philippine Standard Time, live session duration, progress and attendance metrics, and actual clock-in/out activity. MAM uses the same visual language while preserving month-range controls, status synchronization, filtering, horizontal comparison, print/CSV actions, grouped MAS totals, projections, and account details.
 
-The shared application shell is mobile-first: the navigation drawer remains mounted on compact screens, uses a labeled touch target and safe-area spacing, and becomes persistent on wider screens. Page headers, cards, forms, tables, action groups, and the login page use the documented violet, purple, and lime palette with flexible wrapping and horizontal scrolling only for data tables that require it. Interactive targets use larger shared button sizes for touch use.
+The shared application shell is mobile-first: the navigation drawer remains mounted on compact screens, uses a labeled touch target and safe-area spacing, and becomes persistent on wider screens. Page headers, cards, forms, tables, action groups, and the login page use the Dayong palette with flexible wrapping and horizontal scrolling only for data tables that require it. Interactive targets use larger shared button sizes for touch use.
 
 Production authentication now validates required server environment variables lazily, normalizes quoted or escaped Google private keys, and returns actionable configuration errors instead of an HTML failure. Vercel must define `AUTH_SECRET`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, and `GOOGLE_SHEET_ID` in the Production environment and redeploy after changes.
 
@@ -169,3 +169,15 @@ The sidebar has an active-role selector for users with multiple assigned roles. 
 Every signed-in employee can switch to the MAS sidebar workspace without writing a redundant MAS assignment to `User Roles`. The minimize/maximize control sits beside the active-role selector. Administrator, HR, and Finance workspaces include Employee Attendance Tracking, with employee and date-range filters plus totals and daily detail for hours, overtime, lateness, undertime, attendance status, leave, and remarks.
 
 The specification's statements about previously completed features or builds must be checked when relevant; they are not evidence that every described operation is currently supported.
+
+## Color palette and themes
+
+The palette comes from the company seal and is defined once in `app/globals.css`:
+
+- **Brand purple** (seal lettering): primary actions, links, focus.
+- **Lime and moss** (seal ring): the active sidebar item, success.
+- **Sun gold**: warnings and items needing attention.
+- **Navy, teal, red, orange** (the five figures): categorical accents on metric tiles; red also means danger.
+- **Neutrals** carry most of the interface, so accents keep their meaning. Status is shown with `StatusBadge` chips and `MetricTile` accents; color always accompanies text or an icon.
+
+The sidebar is a deep aubergine frame in both themes. Users choose **Light, Dark, or System** in the sidebar, the phone top bar, or Settings → Workspace preferences; the choice is stored per browser and applied before first paint. Every color is a CSS variable redefined under `.dark` (soft dark greys, never pure black), so page-level `violet-*`/`purple-*` utilities adapt automatically. Printed reports always use the light theme. Use `.brand-panel` for a surface that must stay dark in both themes.

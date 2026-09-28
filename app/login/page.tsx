@@ -35,8 +35,8 @@ export default function LoginPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to sign in."); }
     finally { setSubmitting(false); }
   }
-  return <main className="grid min-h-dvh overflow-y-auto bg-white lg:h-dvh lg:grid-cols-[1.08fr_0.92fr] lg:overflow-hidden">
-    <section className="relative hidden overflow-y-auto bg-violet-10 px-10 py-9 text-white lg:flex lg:flex-col xl:px-16">
+  return <main className="grid min-h-dvh overflow-y-auto bg-background lg:h-dvh lg:grid-cols-[1.08fr_0.92fr] lg:overflow-hidden">
+    <section className="brand-panel relative hidden overflow-y-auto px-10 py-9 text-white lg:flex lg:flex-col xl:px-16">
       <div className="pointer-events-none absolute -left-32 -top-32 size-96 rounded-full bg-violet-60/35 blur-3xl"/><div className="pointer-events-none absolute -bottom-32 -right-24 size-96 rounded-full bg-accent-lime/20 blur-3xl"/>
       <div className="relative z-10 flex items-center gap-4"><BrandLogo className="size-20 rounded-full bg-white object-contain p-1 shadow-xl" priority/><div><p className="text-2xl font-black tracking-tight">DAYONG</p><p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-80">D&apos; San Roque Dayong Providers, Inc.</p></div></div>
       <div className="relative z-10 my-auto max-w-2xl py-10"><div className="mb-7 flex size-12 items-center justify-center rounded-2xl bg-accent-lime text-violet-10 shadow-lg"><HeartHandshake className="size-6"/></div><h1 className="max-w-xl text-4xl font-black leading-tight tracking-tight xl:text-5xl">Serving and protecting the needs of every member.</h1>

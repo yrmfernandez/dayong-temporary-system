@@ -1,12 +1,37 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, Building2, ClipboardList, Database, PhilippinePeso, Receipt, UserCheck, Users } from "lucide-react";
+import { AlertTriangle, Building2, ClipboardList, Clock3, FilePlus2, HandCoins, PhilippinePeso, PiggyBank, Receipt, ShieldCheck, UserCheck, Users, Wallet, type LucideIcon } from "lucide-react";
+import { MetricTile } from "@/components/metric-tile";
+import { StatusBadge, type Tone } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSessionUser } from "@/lib/auth-server";
 import { getDashboardData } from "@/lib/dashboard-data";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
-const icons = [Receipt, PhilippinePeso, ClipboardList, AlertTriangle, Users, UserCheck, Building2, Database];
+// Icon and tone follow what a metric measures, so the same idea looks the same on every dashboard.
+const metricStyles: Array<[RegExp, LucideIcon, Tone]> = [
+  [/difference|discrepanc/i, AlertTriangle, "danger"],
+  [/attention/i, AlertTriangle, "warning"],
+  [/pending/i, Clock3, "warning"],
+  [/expected/i, Wallet, "warning"],
+  [/actual remittance/i, Wallet, "success"],
+  [/fidelity/i, PiggyBank, "teal"],
+  [/incentive|commission/i, HandCoins, "orange"],
+  [/new sales|new accounts|sales today/i, FilePlus2, "brand"],
+  [/collection/i, Receipt, "teal"],
+  [/gross/i, PhilippinePeso, "brand"],
+  [/users/i, ShieldCheck, "info"],
+  [/employees|mas|collectors/i, UserCheck, "teal"],
+  [/members|portfolio|programs/i, Users, "brand"],
+  [/branches/i, Building2, "orange"],
+  [/transactions|encoded/i, ClipboardList, "info"],
+];
+const metricStyle = (item: Metric) => {
+  const [, icon, tone] = metricStyles.find(([pattern]) => pattern.test(item.label)) ?? [/./, ClipboardList, "brand" as Tone];
+  // A difference of zero is good news, not an alert.
+  const settled = tone === "danger" && Number(String(item.value).replace(/[^\d.-]/g, "")) === 0;
+  return { icon, tone: settled ? "success" as Tone : tone };
+};
 type Data = Awaited<ReturnType<typeof getDashboardData>>;
 type Metric = { label: string; value: string | number; detail: string; href?: string };
 
@@ -19,7 +44,7 @@ export default async function Dashboard() {
   } catch (error) { return DashboardError(error instanceof Error ? error.message : "Unable to load dashboard."); }
   const view = config(data);
   return <section className="space-y-6"><div><p className="text-sm font-medium text-primary">{view.eyebrow}</p><h1 className="text-2xl font-bold">{view.title}</h1><p className="text-sm text-muted-foreground">Welcome, {data.employeeName}. {view.description}</p></div>
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{view.metrics.map((item, index) => <MetricCard key={item.label} item={item} Icon={icons[index]}/>)}</div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{view.metrics.map((item: Metric) => <MetricTile key={item.label} {...item} {...metricStyle(item)}/>)}</div>
     {data.kind === "entry" && <div className="flex flex-wrap gap-3"><Action href="/new-sales">+ New Sale</Action><Action href="/collections">+ Encode Collection</Action><Action href="/reports/daily">View Daily Report</Action></div>}
     <div className="grid gap-6 xl:grid-cols-2">{view.sections}</div>
   </section>;
@@ -39,14 +64,13 @@ function config(data: Data) {
   return { eyebrow: "Administration workspace", title: "System Overview", description: "Master data, current activity, and items requiring attention.", metrics: [{ label: "Members", value: data.counts.members, detail: "Master records", href: "/members" }, { label: "Active Employees", value: data.counts.activeEmployees, detail: `${data.counts.employees} total employees`, href: "/employees" }, { label: "Active Users", value: data.counts.users, detail: "Enabled accounts", href: "/user-accounts" }, { label: "Branches / Programs", value: `${data.counts.branches} / ${data.counts.programs}`, detail: "Active master data" }, { label: "Sales Today", value: t.salesAccounts, detail: money(t.salesGross), href: "/reports/daily" }, { label: "Collections Today", value: t.collectionAccounts, detail: money(t.collectionGross), href: "/reports/daily" }, { label: "Pending Remittances", value: r.pendingCount, detail: money(r.pendingAmount), href: "/remittances" }, { label: "Remittance Difference", value: money(r.discrepancyAmount), detail: "Requires reconciliation", href: "/remittances" }], sections: <><Recent data={data}/><Panel title="Items Requiring Attention"><Attention label="Pending Remittances" value={r.pendingCount} href="/remittances"/><Attention label="Remittance Discrepancies" value={r.discrepancyAmount} href="/remittances" moneyValue/><div className="mt-4 grid gap-2 sm:grid-cols-2"><Action href="/history">Entry History</Action><Action href="/roles">Manage Roles</Action></div></Panel></> };
 }
 
-function MetricCard({ item, Icon }: { item: Metric; Icon: typeof Receipt }) { const card = <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">{item.label}</CardTitle><Icon className="size-4 text-muted-foreground"/></CardHeader><CardContent><p className="text-2xl font-bold">{item.value}</p><p className="text-xs text-muted-foreground">{item.detail}</p></CardContent></Card>; return item.href ? <Link href={item.href}>{card}</Link> : card; }
-function Recent({ data }: { data: Data }) { return <Panel title="Recent Entries"><Table headers={["Date / Time", "Member", "Program", "Type", "Amount", "Status"]} rows={data.recent.map((row) => [row.stamp.replace("T", " ").slice(0, 16), row.name, row.program, row.type, money(row.amount), row.status])}/></Panel>; }
+function Recent({ data }: { data: Data }) { return <Panel title="Recent Entries"><Table headers={["Date / Time", "Member", "Program", "Type", "Amount", "Status"]} rows={data.recent.map((row) => [row.stamp.replace("T", " ").slice(0, 16), row.name, row.program, row.type, money(row.amount), <StatusBadge key="status" status={row.status}/>])}/></Panel>; }
 function Financial({ data }: { data: Data }) { const s = data.monthReport.summary; return <Panel title="This Month"><Table headers={["Metric", "Amount"]} rows={[["Gross", money(s.gross)], ["Gross incentives", money(s.incentives)], ["Fidelity savings", money(s.fidelity)], ["Expenses", money(s.expenses)], ["Expected Remittance", money(s.expectedRemittance)], ["Actual Remittance", money(s.actualRemittance)], ["Difference", money(s.difference)]]}/></Panel>; }
-function Pending({ data }: { data: Data }) { return <Panel title="Remittances Requiring Action"><Table headers={["Person", "Branch", "Expected", "Actual", "Difference", "Status"]} rows={data.remittance.remittances.filter((row) => ["Pending Approval", "Discrepancy"].includes(row.status)).slice(0, 8).map((row) => [row.accountableName, row.branch, money(row.expectedAmount), money(row.actualAmount), money(row.difference), row.status])}/></Panel>; }
+function Pending({ data }: { data: Data }) { return <Panel title="Remittances Requiring Action"><Table headers={["Person", "Branch", "Expected", "Actual", "Difference", "Status"]} rows={data.remittance.remittances.filter((row) => ["Pending Approval", "Discrepancy"].includes(row.status)).slice(0, 8).map((row) => [row.accountableName, row.branch, money(row.expectedAmount), money(row.actualAmount), money(row.difference), <StatusBadge key="status" status={row.status}/>])}/></Panel>; }
 function BranchStaff({ data }: { data: Data }) { return <Panel title="Staff by Branch"><Table headers={["Branch", "Employees", "MAS", "Collectors"]} rows={data.branchStats.map((row) => [row.branch, String(row.employees), String(row.mas), String(row.collectors)])}/></Panel>; }
 function Portfolio({ data }: { data: Data }) { return <Panel title="My Members"><Table headers={["Member", "Program", "Branch", "Status", "DOI"]} rows={data.portfolio.map((row) => [row.member, row.program, row.branch, row.status, row.doi])}/></Panel>; }
 function Links({ items }: { items: string[][] }) { return <Panel title="Quick Actions"><div className="grid gap-3 sm:grid-cols-2">{items.map(([label, href]) => <Action key={href} href={href}>{label}</Action>)}</div></Panel>; }
-function Action({ href, children }: { href: string; children: React.ReactNode }) { return <Link href={href} className="rounded-md border bg-background px-4 py-3 text-sm font-medium hover:border-primary">{children}</Link>; }
-function Attention({ label, value, href, moneyValue = false }: { label: string; value: number; href: string; moneyValue?: boolean }) { return <Link href={href} className="mb-3 flex justify-between rounded-lg border p-3 text-sm"><span>{label}</span><strong>{moneyValue ? money(value) : value}</strong></Link>; }
+function Action({ href, children }: { href: string; children: React.ReactNode }) { return <Link href={href} className="rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary">{children}</Link>; }
+function Attention({ label, value, href, moneyValue = false }: { label: string; value: number; href: string; moneyValue?: boolean }) { return <Link href={href} className={`mb-3 flex items-center justify-between rounded-lg border p-3 text-sm transition-colors hover:bg-muted ${value ? "tone-warning" : "tone-success"}`}><span className="flex items-center gap-2"><span className="tone-bar size-2 rounded-full" aria-hidden/>{label}</span><strong className="tabular-nums">{moneyValue ? money(value) : value}</strong></Link>; }
 function Panel({ title, children }: { title: string; children: React.ReactNode }) { return <Card><CardHeader><CardTitle>{title}</CardTitle></CardHeader><CardContent>{children}</CardContent></Card>; }
-function Table({ headers, rows }: { headers: string[]; rows: string[][] }) { return <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><thead><tr className="border-b">{headers.map((header) => <th key={header} className="pb-3 pr-4 text-muted-foreground">{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${row[0]}-${index}`} className="border-b last:border-0">{row.map((cell, i) => <td key={i} className="py-3 pr-4">{cell || "—"}</td>)}</tr>)}{!rows.length && <tr><td colSpan={headers.length} className="py-8 text-center text-muted-foreground">No current records.</td></tr>}</tbody></table></div>; }
+function Table({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) { return <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><thead><tr className="border-b">{headers.map((header) => <th key={header} className="pb-3 pr-4 text-muted-foreground">{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${String(row[0])}-${index}`} className="border-b last:border-0">{row.map((cell, i) => <td key={i} className="py-3 pr-4">{cell || "—"}</td>)}</tr>)}{!rows.length && <tr><td colSpan={headers.length} className="py-8 text-center text-muted-foreground">No current records.</td></tr>}</tbody></table></div>; }
