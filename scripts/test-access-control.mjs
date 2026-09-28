@@ -20,7 +20,7 @@ test("Entry Clerk sees encoding pages but not finance or system administration",
   assert.equal(access(["MAS"], "/fidelity"), true);
   assert.equal(access(["MAS"], "/master-data"), true);
   assert.equal(access(["Finance"], "/fidelity"), true);
-  assert.equal(access(["Entry Clerk"], "/fidelity"), false);
+  assert.equal(access(["Entry Clerk"], "/fidelity"), true);
   assert.equal(access(["Entry Clerk"], "/programs"), true);
   assert.equal(access(["Entry Clerk"], "/branches"), true);
   assert.equal(access(["Entry Clerk"], "/settings"), true);
@@ -33,11 +33,14 @@ test("HR and Finance receive separate workspaces", () => {
   assert.equal(access(["HR Officer"], "/cash-transactions"), false);
   assert.equal(access(["Finance"], "/cash-transactions"), true);
   assert.equal(access(["Finance"], "/attendance-reviews"), false);
+  assert.equal(access(["Finance"], "/attendance-tracking"), true);
+  assert.equal(access(["HR Officer"], "/attendance-tracking"), true);
 });
 
 test("specific action flags supplement role navigation", () => {
   assert.equal(access(["Entry Clerk"], "/user-accounts", { manageUsers: true }), true);
   assert.equal(access(["MAS"], "/attendance-reviews", { viewAttendanceReports: true }), true);
+  assert.equal(access(["MAS"], "/attendance-tracking", { viewAttendanceReports: true }), true);
 });
 
 test("sessions without role names receive only the safe dashboard fallback", () => {

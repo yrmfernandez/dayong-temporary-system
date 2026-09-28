@@ -206,6 +206,45 @@ export async function getAttendanceRecordsForDate(
     }));
 }
 
+export async function getAttendanceRecordsForRange(
+  dateFrom: string,
+  dateTo: string,
+): Promise<AttendanceRecord[]> {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${ATTENDANCE_SHEET}!A:R`,
+  });
+
+  return (response.data.values ?? [])
+    .slice(1)
+    .filter((row) => {
+      const employeeId = String(row[1] ?? "").trim();
+      const date = String(row[2] ?? "").trim();
+      return employeeId && employeeId !== "SYSTEM" && date >= dateFrom && date <= dateTo;
+    })
+    .map((row) => ({
+      id: String(row[0] ?? "").trim(),
+      employeeId: String(row[1] ?? "").trim(),
+      attendanceDate: String(row[2] ?? "").trim(),
+      branch: String(row[3] ?? "").trim(),
+      scheduledTimeIn: String(row[4] ?? "").trim(),
+      scheduledTimeOut: String(row[5] ?? "").trim(),
+      timeIn: String(row[6] ?? "").trim(),
+      timeOut: String(row[7] ?? "").trim(),
+      workedHours: Number(row[8] ?? 0) || 0,
+      overtimeHours: Number(row[9] ?? 0) || 0,
+      status: (["Present", "Leave", "Absent", "AWOL"].includes(String(row[10] ?? "").trim()) ? String(row[10]).trim() : "Present") as AttendanceStatus,
+      lateMinutes: Number(row[11] ?? 0) || 0,
+      undertimeMinutes: Number(row[12] ?? 0) || 0,
+      leaveType: String(row[13] ?? "").trim(),
+      leaveApprovalStatus: String(row[14] ?? "").trim(),
+      notes: String(row[15] ?? "").trim(),
+      createdAt: String(row[16] ?? "").trim(),
+      updatedAt: String(row[17] ?? "").trim(),
+    }))
+    .sort((first, second) => second.attendanceDate.localeCompare(first.attendanceDate));
+}
+
 function getWorkingDatesInRange(
   startDate: string,
   endDate: string,

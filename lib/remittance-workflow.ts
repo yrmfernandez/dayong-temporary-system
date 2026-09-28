@@ -92,11 +92,11 @@ export async function getRemittanceDashboard() {
   const accountability = [...new Set(accountable.map((collection) => `${collection.accountableEmployeeId}\u0000${collection.accountableName}\u0000${collection.accountableRole}\u0000${collection.branch}`))].map((key) => {
     const [employeeId, name, role, branch] = key.split("\u0000");
     const owned = accountable.filter((collection) => collection.accountableEmployeeId === employeeId && collection.accountableName === name && collection.branch === branch);
-    return { employeeId, name, role, branch, collectionCount: owned.length, outstandingAmount: owned.reduce((sum, collection) => sum + collection.amount, 0) };
+    return { employeeId, name, role, branch, collectionCount: owned.length, outstandingAmount: owned.reduce((sum, collection) => sum + collection.remittanceAmount, 0) };
   });
   return {
     summary: {
-      outstandingAmount: accountable.reduce((sum, collection) => sum + collection.amount, 0), outstandingCount: accountable.length,
+      outstandingAmount: accountable.reduce((sum, collection) => sum + collection.remittanceAmount, 0), outstandingCount: accountable.length,
       pendingAmount: pending.reduce((sum, remittance) => sum + remittance.expectedAmount, 0), pendingCount: pending.length,
       approvedTodayAmount: approvedToday.reduce((sum, remittance) => sum + remittance.actualAmount, 0), approvedTodayCount: approvedToday.length,
       discrepancyAmount: pending.reduce((sum, remittance) => sum + Math.abs(remittance.difference), 0),
@@ -146,7 +146,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const fidelityAccount=(await getFidelityData(owner.accountableEmployeeId,true)).accounts.find(item=>item.masEmployeeId===owner.accountableEmployeeId);
   const remainingFidelity = Math.max(0,Math.round((FIDELITY_CAP-(fidelityAccount?.approved??0)-(fidelityAccount?.pending??0))*100)/100);
   if (input.fidelityAmount > remainingFidelity) throw new Error(`Fidelity can be at most ${remainingFidelity.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} for this MAS.`);
-  const expected = Math.round(collections.reduce((sum, collection) => sum + collection.amount, 0) * 100) / 100;
+  const expected = Math.round(collections.reduce((sum, collection) => sum + collection.remittanceAmount, 0) * 100) / 100;
   const actual = Math.round(input.actualAmount * 100) / 100;
   const difference = Math.round((actual - expected) * 100) / 100;
   const status = difference === 0 ? "Pending Approval" : "Discrepancy";
@@ -158,7 +158,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const sheet = await sheetIds();
   const requests = [
     { appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } },
-    ...collections.map((collection) => ({ appendCells: { sheetId: sheet.mappings, rows: [{ values: [createReadableId("RCL"), id, collection.id, collection.amount, timestamp, ...identity].map(cell) }], fields: "userEnteredValue" } })),
+    ...collections.map((collection) => ({ appendCells: { sheetId: sheet.mappings, rows: [{ values: [createReadableId("RCL"), id, collection.id, collection.remittanceAmount, timestamp, ...identity].map(cell) }], fields: "userEnteredValue" } })),
     ...collections.map((collection) => ({ updateCells: { range: { sheetId: sheet.collections, startRowIndex: collection.rowNumber - 1, endRowIndex: collection.rowNumber, startColumnIndex: 28, endColumnIndex: 30 }, rows: [{ values: [cell("Pending Remittance Approval"), cell(id)] }], fields: "userEnteredValue" } })),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });

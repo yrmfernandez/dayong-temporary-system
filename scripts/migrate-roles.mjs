@@ -23,6 +23,9 @@ if(!rows.slice(1).some(row=>text(row[1]).toLowerCase()==="finance")){
 const linkUpdates=[];
 for(let index=1;index<links.length;index++){const old=text(links[index][1]),next=mapping.get(old);if(next&&next!==old)linkUpdates.push({range:`'User Roles'!B${index+1}`,values:[[next]]});}
 const updates=[...roleUpdates,...linkUpdates];
+const usersResponse=await sheets.spreadsheets.values.get({spreadsheetId,range:"Users!A:H"}),users=usersResponse.data.values??[];
+updates.push({range:"Users!H1",values:[["role_id"]]});
+for(let index=1;index<users.length;index++){const userId=text(users[index][0]),primary=links.slice(1).find(row=>text(row[0])===userId);if(userId&&primary)updates.push({range:`Users!H${index+1}`,values:[[mapping.get(text(primary[1]))||text(primary[1])]]});}
 if(!updates.length)console.log("Role IDs are already uniform and unique.");
 else if(!apply)console.log(`${roleUpdates.length} role and ${linkUpdates.length} assignment update(s) ready. Run npm run sheets:roles -- --apply.`);
 else{await sheets.spreadsheets.values.batchUpdate({spreadsheetId,requestBody:{valueInputOption:"RAW",data:updates}});console.log(`Applied ${updates.length} linked update(s).`);}

@@ -13,13 +13,14 @@ const support=[
  {title:"Record Corrections",headers:["correction_id","module","record_id","reason","before_json","after_json","corrected_at","encoded_by_user_id","encoded_by_employee_id","encoded_by_username","encoded_at"]},
  {title:"Report Remarks",headers:["remark_id","date_from","date_to","report_type","scope","comment","created_at","encoded_by_user_id","encoded_by_employee_id","encoded_by_username","encoded_at"]},
  {title:"Fidelity",headers:["fidelity_id","mas_employee_id","mas_name","collection_id","remittance_id","transaction_type","incentive_amount","fidelity_amount","transaction_date","status","notes","encoded_by_user_id","encoded_by_employee_id","encoded_by_username","encoded_at"]},
+ {title:"Beneficiaries",headers:["beneficiary_id","member_id","sale_id","surname","first_name","middle_name","birthdate","age","relationship","encoded_by_user_id","encoded_by_employee_id","encoded_by_username","encoded_at"]},
 ];
 const missing=support.filter(item=>!existing.has(item.title));
 console.log(`Programs currently has ${headers.length} header cells. ${missing.length} audit/report support sheet(s) need creation.`);
 if(!apply)console.log("Dry run passed. Run npm run sheets:program-rules -- --apply.");
 else{
  if(missing.length)await sheets.spreadsheets.batchUpdate({spreadsheetId,requestBody:{requests:missing.map(item=>({addSheet:{properties:{title:item.title}}}))}});
- const changes=[{range:"Programs!K1:M1",values:[["registration_fee_required","registration_amount","pay_balance_total"]]},{range:"Sales!AN1",values:[["notes"]]},{range:"Collections!B1",values:[["collection_batch_id"]]},{range:"Remittances!Y1",values:[["fidelity_amount"]]},...support.map(item=>({range:`'${item.title}'!A1:${item.title==="Fidelity"?"O":"K"}1`,values:[item.headers]}))];
+ const changes=[{range:"Programs!K1:M1",values:[["registration_fee_required","registration_amount","pay_balance_total"]]},{range:"Sales!AN1",values:[["notes"]]},{range:"Collections!B1",values:[["collection_batch_id"]]},{range:"Remittances!Y1",values:[["fidelity_amount"]]},{range:"Members!M1",values:[["address"]]},{range:"Members!W1",values:[["claimant_address"]]},{range:"Sales!Q1",values:[["address"]]},{range:"Sales!AA1",values:[["claimant_address"]]},...support.map(item=>({range:`'${item.title}'!A1:${item.title==="Fidelity"?"O":item.title==="Beneficiaries"?"M":"K"}1`,values:[item.headers]}))];
  await sheets.spreadsheets.values.batchUpdate({spreadsheetId,requestBody:{valueInputOption:"RAW",data:changes}});console.log("Program rules, audit sheets, and report remark headers are ready.");
 }
 

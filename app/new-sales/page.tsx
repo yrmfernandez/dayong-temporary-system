@@ -213,7 +213,7 @@ function updateAddress(
 export default function NewSalesPage() {
   const [branch, setBranch] = useState("");
   const [mas, setMas] = useState("");
-  const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string }>>([]);
+  const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
   const [dateRemitted, setDateRemitted] = useState("");
 
   const [sales, setSales] = useState<NewSale[]>([
@@ -824,13 +824,20 @@ export default function NewSalesPage() {
       }
 
       if (
-        !sale.member.address.barangay.trim() ||
-        !sale.member.address.municipalityCity.trim() ||
-        !sale.member.address.province.trim()
+        !sale.member.address.houseBlockLot.trim()
       ) {
         setSaveMessage(
-          "Barangay, Municipality / City, and Province are required.",
+          "Complete Address is required.",
         );
+        return;
+      }
+
+      if (sale.beneficiaries.some((beneficiary) =>
+        !beneficiary.surname.trim() ||
+        !beneficiary.firstName.trim() ||
+        !beneficiary.relationship.trim()
+      )) {
+        setSaveMessage("Each beneficiary needs a surname, first name, and relationship.");
         return;
       }
 
@@ -907,6 +914,7 @@ export default function NewSalesPage() {
             doi: sale.program.dateEnrolled,
             programId: selectedProgram?.id ?? "",
             programTerms: sale.program.programTerms,
+            beneficiaries: sale.beneficiaries,
           };
         });
 
@@ -1002,49 +1010,7 @@ export default function NewSalesPage() {
                 Branch *
               </Label>
 
-              <Select
-                value={branch}
-                onValueChange={(value) => {
-                  const selected =
-                    value ?? "";
-
-                  setBranch(selected);
-
-                  setSales((current) =>
-                    current.map(
-                      (sale) => ({
-                        ...sale,
-
-                        program: {
-                          ...sale.program,
-
-                          branch:
-                            selected,
-                        },
-                      }),
-                    ),
-                  );
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-
-                <SelectContent>
-                  {branches
-                    .filter(
-                      (item) => item.status === "active",
-                    )
-                    .map((item) => (
-                      <SelectItem
-                        key={item.id}
-                        value={item.name}
-                      >
-                        {item.name} · {item.territory || "Unassigned territory"}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <Input list="new-sales-branches" value={branch} placeholder="Search branch" onChange={(event) => { const selected=event.target.value; setBranch(selected); setMas(""); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,branch:selected,mas:""}}))); }}/><datalist id="new-sales-branches">{branches.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.name}>{item.territory || "Unassigned territory"}</option>)}</datalist>
             </div>
 
             {/* MAS */}
@@ -1053,39 +1019,7 @@ export default function NewSalesPage() {
                 Marketing Account Staff *
               </Label>
 
-              <Select
-                value={mas}
-                onValueChange={(value) => {
-                  const selected = value ?? "";
-
-                  setMas(selected);
-
-                  setSales((current) =>
-                    current.map(
-                      (sale) => ({
-                        ...sale,
-
-                        program: {
-                          ...sale.program,
-
-                          mas: selected,
-                        },
-                      }),
-                    ),
-                  );
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select MAS" />
-                </SelectTrigger>
-                <SelectContent>
-                  {masStaff.map((staff) => (
-                    <SelectItem key={staff.employeeId} value={staff.fullName}>
-                      {staff.fullName} ({staff.employeeId})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input list="new-sales-staff" value={mas} placeholder={branch ? "Search employee / MAS" : "Select a branch first"} disabled={!branch} onChange={(event) => { const selected=event.target.value; setMas(selected); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,mas:selected}}))); }}/><datalist id="new-sales-staff">{masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => <option key={staff.employeeId} value={staff.fullName}>{staff.employeeId}</option>)}</datalist>
             </div>
 
             {/* Date Remitted */}
@@ -1448,7 +1382,11 @@ export default function NewSalesPage() {
                           </Label>
 
                           <Input
-                            type="date"
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="YYYY-MM-DD"
+                            pattern="\\d{4}-\\d{2}-\\d{2}"
+                            maxLength={10}
                             value={
                               sale.member
                                 .birthdate
@@ -1663,42 +1601,14 @@ export default function NewSalesPage() {
                           </Label>
 
                           <p className="text-sm text-muted-foreground">
-                            Enter the complete
-                            member address.
+                            Enter the complete address in one line.
                           </p>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-2">
+                        <div className="grid gap-4">
                           {(
                             [
-                              [
-                                "houseBlockLot",
-                                "House / Block / Lot No.",
-                              ],
-                              [
-                                "street",
-                                "Street",
-                              ],
-                              [
-                                "subdivisionVillage",
-                                "Subdivision / Village",
-                              ],
-                              [
-                                "barangay",
-                                "Barangay *",
-                              ],
-                              [
-                                "municipalityCity",
-                                "Municipality / City *",
-                              ],
-                              [
-                                "province",
-                                "Province *",
-                              ],
-                              [
-                                "zipCode",
-                                "ZIP Code",
-                              ],
+                              ["houseBlockLot","Complete Address *"],
                             ] as const
                           ).map(
                             ([field, label]) => (
@@ -1884,7 +1794,11 @@ export default function NewSalesPage() {
                               />
 
                               <Input
-                                type="date"
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="YYYY-MM-DD"
+                                pattern="\\d{4}-\\d{2}-\\d{2}"
+                                maxLength={10}
                                 value={
                                   beneficiary.birthdate
                                 }
@@ -2051,37 +1965,10 @@ export default function NewSalesPage() {
                           </label>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-2">
+                        <div className="grid gap-4">
                           {(
                             [
-                              [
-                                "houseBlockLot",
-                                "House / Block / Lot No.",
-                              ],
-                              [
-                                "street",
-                                "Street",
-                              ],
-                              [
-                                "subdivisionVillage",
-                                "Subdivision / Village",
-                              ],
-                              [
-                                "barangay",
-                                "Barangay",
-                              ],
-                              [
-                                "municipalityCity",
-                                "Municipality / City",
-                              ],
-                              [
-                                "province",
-                                "Province",
-                              ],
-                              [
-                                "zipCode",
-                                "ZIP Code",
-                              ],
+                              ["houseBlockLot","Complete Address"],
                             ] as const
                           ).map(
                             ([field, label]) => (
@@ -2176,98 +2063,35 @@ export default function NewSalesPage() {
                             Program Type *
                           </Label>
 
-                          <Select
-                            value={
-                              sale.program
-                                .programCode
-                            }
-                            onValueChange={(
-                              value,
-                            ) => {
-                              const chosen = programs.find((program) => program.code === value);
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  program: {
-                                    ...current.program,
-
-                                    programCode:
-                                      value ?? "",
-                                    withRegistrationFee: Boolean(chosen?.registrationFeeRequired),
-                                    registrationAmount: chosen?.registrationAmount ?? 0,
-                                  },
-                                }),
+                          <Input
+                            list={`new-sale-programs-${sale.id}`}
+                            value={sale.program.programCode}
+                            disabled={programLoading || availablePrograms.length === 0}
+                            placeholder={programLoading ? "Loading programs..." : "Search program code or name"}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              const normalized = value.trim().toLowerCase();
+                              const chosen = availablePrograms.find((program) =>
+                                program.code.toLowerCase() === normalized ||
+                                `${program.code} - ${program.name}`.toLowerCase() === normalized
                               );
-                            }}
-                            disabled={
-                              programLoading ||
-                              availablePrograms.length ===
-                                0
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue
-                                placeholder={
-                                  programLoading
-                                    ? "Loading programs..."
-                                    : "Select program"
-                                }
-                              />
-                            </SelectTrigger>
-
-                            <SelectContent>
-                              {availablePrograms.map(
-                                (program) => {
-                                  const status =
-                                    String(
-                                      program.status ??
-                                        "",
-                                    )
-                                      .trim()
-                                      .toLowerCase();
-
-                                  const isActive =
-                                    status ===
-                                      "active" ||
-                                    status === "1" ||
-                                    status ===
-                                      "true";
-
-                                  return (
-                                    <SelectItem
-                                      key={program.id}
-                                      value={
-                                        program.code
-                                      }
-                                    >
-                                      <div className="flex w-full items-center gap-2">
-                                        <span>
-                                          {program.code
-                                            ? `${program.code} - ${program.name}`
-                                            : program.name}
-                                        </span>
-
-                                        <Badge
-                                          variant={
-                                            isActive
-                                              ? "default"
-                                              : "secondary"
-                                          }
-                                          className="ml-auto text-xs"
-                                        >
-                                          {isActive
-                                            ? "Active"
-                                            : "Inactive"}
-                                        </Badge>
-                                      </div>
-                                    </SelectItem>
-                                  );
+                              updateSale(sale.id, (current) => ({
+                                ...current,
+                                program: {
+                                  ...current.program,
+                                  programCode: chosen?.code ?? value,
+                                  withRegistrationFee: Boolean(chosen?.registrationFeeRequired),
+                                  registrationAmount: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
+                                  amountPaid: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
                                 },
-                              )}
-                            </SelectContent>
-                          </Select>
+                              }));
+                            }}
+                          />
+                          <datalist id={`new-sale-programs-${sale.id}`}>
+                            {availablePrograms.map((program) => (
+                              <option key={program.id} value={program.code}>{program.name}</option>
+                            ))}
+                          </datalist>
 
                           {programLoading && (
                             <p className="text-xs text-muted-foreground">
@@ -2459,32 +2283,7 @@ export default function NewSalesPage() {
                                 ? "yes"
                                 : "no"
                             }
-                            onValueChange={(
-                              value,
-                            ) =>
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  program: {
-                                    ...current.program,
-
-                                    withRegistrationFee:
-                                      value ===
-                                      "yes",
-
-                                    registrationAmount:
-                                      value ===
-                                      "yes"
-                                        ? current
-                                            .program
-                                            .registrationAmount
-                                        : 0,
-                                  },
-                                }),
-                              )
-                            }
+                            disabled
                           >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Registration fee" />
@@ -2516,30 +2315,8 @@ export default function NewSalesPage() {
                                 .registrationAmount ||
                               ""
                             }
-                            disabled={
-                              !sale.program
-                                .withRegistrationFee
-                            }
+                            disabled
                             onWheel={(event) => event.currentTarget.blur()}
-                            onChange={(event) =>
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  program: {
-                                    ...current.program,
-
-                                    registrationAmount:
-                                      Number(
-                                        event
-                                          .target
-                                          .value,
-                                      ) || 0,
-                                  },
-                                }),
-                              )
-                            }
                             placeholder="0.00"
                           />
                         </div>

@@ -12,7 +12,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', username: '=e
   const writes = [];
   const rows = {};
   let missingHeaders = false;
-  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales'];
+  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales', 'Beneficiaries', 'Branches', 'Employees', 'Employee Branches'];
   const sheets = { spreadsheets: {
     get: async () => ({ data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId } })) } }),
     batchUpdate: async (params) => { writes.push(params); return { data: {} }; },
@@ -76,9 +76,9 @@ test('employee registration is independent of login and records its encoder', as
   h.rows.Users = [[], ['U1', 'DPE-0005']];
   h.rows.Branches = [[], ['BR-1', 'South', 'DDO 1', '', '', '', '', '', '', '', '', '', 'active']];
   h.rows.Roles = [[], ['R1', 'MAS', '', '', '', '', 'active']];
-  const response = await route.POST(request({ name: '=Staff', branchIds: ['BR-1'], roles: ['Collector', 'MAS'], dateHired: '2026-09-25', encodedBy: 'spoof' }));
+  const response = await route.POST(request({ employeeId: 'MD-2026-0082', name: '=Staff', branchIds: ['BR-1'], roles: ['Collector', 'MAS'], dateHired: '2026-09-25', encodedBy: 'spoof' }));
   assert.equal(response.status, 201);
-  assert.equal((await response.json()).employee.id, 'DPE-0006');
+  assert.equal((await response.json()).employee.id, 'MD-2026-0082');
   assert.equal(h.writes.length, 2);
   assert.equal(h.writes[0].range, "'Employees'!A:M");
   const row = h.writes[0].requestBody.values[0];
@@ -104,6 +104,20 @@ test('employee status updates and deletion protect linked login accounts', async
   h.rows.Users = [[], ['USR-2', 'DPE-0002']];
   response = await route.DELETE(request({ employeeId: 'DPE-0002' }));
   assert.equal(response.status, 400);
+});
+
+test('user account edits preserve the primary role and save updated roles', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
+  h.rows.Users = [[], ['USR-2', 'DPE-0002', 'old.name', 'Ana', 'hash', 'Active', '', 'ROLE-ENTRY-CLERK']];
+  h.rows.Roles = [[], ['ROLE-ENTRY-CLERK', 'Entry Clerk', '', '', '', '', 'active'], ['ROLE-MAS', 'MAS', '', '', '', '', 'active']];
+  h.rows['User Roles'] = [[]];
+  const route = h.load('app/api/user-accounts/route.ts');
+  const loaded = await (await route.GET()).json();
+  assert.deepEqual(loaded.accounts[0].roleIds, ['ROLE-ENTRY-CLERK']);
+  const response = await route.PATCH(request({ id: 'USR-2', username: 'ana.updated', status: 'active', roleIds: ['ROLE-ENTRY-CLERK', 'ROLE-MAS'], password: '' }));
+  assert.equal(response.status, 200, JSON.stringify(await response.json()));
+  assert.ok(h.writes.some((write) => write.requestBody?.data?.some?.((item) => item.range === 'Users!C2')));
+  assert.ok(h.writes.some((write) => write.range === "'User Roles'!A:F"));
 });
 
 test('master-data CRUD updates programs and blocks deleting referenced records', async () => {
@@ -164,6 +178,22 @@ test('member directory requires login, joins accounts once, and filters the same
   assert.equal(h.writes.length, 0);
 });
 
+test('attendance tracking lets Finance review one employee across a date range', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'finance', roleNames: ['Finance'], permissions: {} });
+  h.rows.Employees = [[], ['MD-2026-0082', 'Ana Santos', 'MATINA', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-2026-0082', 'BR-1']];
+  h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
+  const attendance = Array(18).fill(''); attendance[0] = 'ATT-1'; attendance[1] = 'MD-2026-0082'; attendance[2] = '2026-09-15'; attendance[3] = 'MATINA'; attendance[6] = '08:05:00'; attendance[7] = '17:00:00'; attendance[8] = 8.92; attendance[9] = 0; attendance[10] = 'Present'; attendance[11] = 5;
+  h.rows.Attendance = [[], attendance];
+  const route = h.load('app/api/attendance-tracking/route.ts');
+  const response = await route.GET(new Request('http://localhost/api/attendance-tracking?from=2026-09-01&to=2026-09-30&employeeId=MD-2026-0082'));
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(result.employees[0].branches[0], 'MATINA · METRO DAVAO 1');
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0].lateMinutes, 5);
+});
+
 test('all mutation routes reject unauthenticated requests before writing', async () => {
   const h = harness(null);
   for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals']) {
@@ -175,14 +205,18 @@ test('all mutation routes reject unauthenticated requests before writing', async
 for (const existingMember of [false, true]) {
   test(`sales track every related row (${existingMember ? 'existing' : 'new'} member), ignore spoofed identity`, async () => {
     const h = harness();
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
     if (existingMember) h.rows.Members = [[], ['MEM-1', 'PH-1']];
     const response = await h.load('app/api/sales/route.ts').POST(request({
       branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25',
       encodedBy: 'attacker', userId: 'attacker',
-      sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', applicationNo: 'APP-1', addressBarangay: 'B', addressCity: 'C', addressProvince: 'P', encodedBy: 'attacker' }],
+      sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', applicationNo: 'APP-1', addressHouse: 'Complete Address', encodedBy: 'attacker', beneficiaries: existingMember ? [] : [{ surname: 'Santos', firstName: 'Ben', middleName: '', birthdate: '2000-01-02', age: 26, relationship: 'Child' }] }],
     }));
     assert.equal(response.status, 200, JSON.stringify(await response.json()));
-    assert.equal(h.writes.length, existingMember ? 2 : 3);
+    assert.equal(h.writes.length, existingMember ? 2 : 4);
     const audit = h.writes.map((write) => write.requestBody.values[0].slice(write.range.startsWith("\'Member programs\'") ? -5 : -4, write.range.startsWith("\'Member programs\'") ? -1 : undefined));
     for (const values of audit) {
       assert.deepEqual(values.slice(0, 3), ["'USR-1", "'DPE-0001", "'=encoder"]);
@@ -190,6 +224,13 @@ for (const existingMember of [false, true]) {
       assert.ok(!Number.isNaN(Date.parse(values[3])));
     }
     assert.ok(!existingMember || h.writes.every((write) => !write.range.startsWith("'Members'!")));
+    if (!existingMember) {
+      const beneficiary = h.writes.find((write) => write.range === "'Beneficiaries'!A:M").requestBody.values[0];
+      assert.match(beneficiary[0], /^BEN-/);
+      assert.match(beneficiary[1], /^MEM-/);
+      assert.match(beneficiary[2], /^SALE-/);
+      assert.deepEqual(beneficiary.slice(3, 9), ['Santos', 'Ben', '', '2000-01-02', 26, 'Child']);
+    }
   });
 }
 
@@ -200,6 +241,8 @@ test('collection batch is encoded atomically without creating a remittance', asy
   const next = h.load('lib/account-rules.ts').monthName(h.load('lib/account-rules.ts').monthIndex(month) + 1);
   h.rows.Members = [[], ['MEM-1', 'PH-1']];
   h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
   const header = Array(19).fill(''); header[18] = 'Account Status';
   h.rows['Member programs'] = [header, ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', month + '-01', 'BR-1', 'MAS-2']];
   h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350]];
@@ -254,7 +297,7 @@ test('collection member search matches branch and MAS and returns eligible progr
 test('physical remittance links exact outstanding collections and records a discrepancy', async () => {
   const h = harness();
   const collectionsHeader = Array(33).fill(''); collectionsHeader[28] = 'Remittance Status';
-  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[28] = 'Outstanding'; collection[30] = 'DPE-0002'; collection[31] = 'Maria'; collection[32] = 'MAS';
+  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 200; collection[28] = 'Outstanding'; collection[30] = 'DPE-0002'; collection[31] = 'Maria'; collection[32] = 'MAS';
   const remittancesHeader = Array(24).fill(''); remittancesHeader[12] = 'Difference';
   h.rows.Collections = [collectionsHeader, collection];
   h.rows.Remittances = [remittancesHeader];
@@ -263,16 +306,16 @@ test('physical remittance links exact outstanding collections and records a disc
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
   assert.equal(result.remittance.status, 'Discrepancy');
-  assert.equal(result.remittance.expectedAmount, 350);
-  assert.equal(result.remittance.difference, -10);
+  assert.equal(result.remittance.expectedAmount, 200);
+  assert.equal(result.remittance.difference, 140);
   const requests = h.writes[0].requestBody.requests;
   const remittance = requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
   assert.equal(remittance[4], 'Discrepancy');
-  assert.deepEqual(remittance.slice(10, 13), [350, 340, -10]);
+  assert.deepEqual(remittance.slice(10, 13), [200, 340, 140]);
   const mapping = requests[1].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
   assert.equal(mapping[1], result.remittance.id);
   assert.equal(mapping[2], 'COL-1');
-  assert.equal(mapping[3], 350);
+  assert.equal(mapping[3], 200);
   const status = requests[2].updateCells.rows[0].values.map((value) => value.userEnteredValue.stringValue);
   assert.deepEqual(status, ['Pending Remittance Approval', result.remittance.id]);
 });
@@ -280,17 +323,17 @@ test('physical remittance links exact outstanding collections and records a disc
 test('pending approval does not clear cash accountability', async () => {
   const h = harness();
   const collectionsHeader = Array(33).fill(''); collectionsHeader[28] = 'Remittance Status';
-  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[6] = 'BR-1'; collection[10] = 350; collection[19] = 'Posted'; collection[28] = 'Pending Remittance Approval'; collection[29] = 'REM-1'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS';
+  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[6] = 'BR-1'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 200; collection[28] = 'Pending Remittance Approval'; collection[29] = 'REM-1'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS';
   const remittancesHeader = Array(24).fill(''); remittancesHeader[12] = 'Difference';
   const remittance = Array(24).fill(''); remittance[0] = 'REM-1'; remittance[1] = 'BR-1'; remittance[2] = 'Maria'; remittance[4] = 'Pending Approval'; remittance[10] = 350; remittance[11] = 350; remittance[13] = 'DPE-2'; remittance[14] = 'MAS'; remittance[15] = 1;
   h.rows.Collections = [collectionsHeader, collection];
   h.rows.Remittances = [remittancesHeader, remittance];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At'], ['RCL-1', 'REM-1', 'COL-1', 350]];
   const dashboard = await h.load('lib/remittance-workflow.ts').getRemittanceDashboard();
-  assert.equal(dashboard.summary.outstandingAmount, 350);
+  assert.equal(dashboard.summary.outstandingAmount, 200);
   assert.equal(dashboard.summary.pendingAmount, 350);
   assert.equal(dashboard.outstanding.length, 0);
-  assert.equal(dashboard.accountability[0].outstandingAmount, 350);
+  assert.equal(dashboard.accountability[0].outstandingAmount, 200);
 });
 
 test('administrator who is also an Entry Clerk may approve own remittance', async () => {

@@ -2,15 +2,19 @@ import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
 import {
+  addBeneficiaries,
   addMember,
   addMemberProgram,
   addSale,
   findMemberByNumber,
   findMemberProgramEnrollment,
+  getBranches,
+  getPrograms,
   type MemberSheetData,
   type MemberProgramSheetData,
   type SaleSheetData,
 } from "@/lib/google-sheets-data";
+import { getEmployees } from "@/lib/employees";
 
 type SalePayload = {
   branch: string;
@@ -65,6 +69,15 @@ type SalePayloadItem = {
   doi: string;
   programId: string;
   programTerms: string;
+  beneficiaries?: Array<{
+    id?: string;
+    surname: string;
+    firstName: string;
+    middleName: string;
+    birthdate: string;
+    age: number | null;
+    relationship: string;
+  }>;
 };
 
 function createId(prefix: string) {
@@ -106,6 +119,28 @@ export const POST = withEncoder(async function POST(request: Request) {
           success: false,
           message: "Date Remitted is required.",
         },
+        { status: 400 },
+      );
+    }
+
+    const [branches, employees, programs] = await Promise.all([
+      getBranches(),
+      getEmployees(),
+      getPrograms(),
+    ]);
+    const selectedBranch = branches.find(
+      (branch) => branch.name === body.branch.trim() && branch.status === "active",
+    );
+    const selectedStaff = employees.find(
+      (employee) =>
+        employee.name === body.mas.trim() &&
+        employee.status === "active" &&
+        selectedBranch &&
+        employee.branchIds.includes(selectedBranch.id),
+    );
+    if (!selectedBranch || !selectedStaff) {
+      return NextResponse.json(
+        { success: false, message: "Select an active employee assigned to the selected branch." },
         { status: 400 },
       );
     }
@@ -183,6 +218,29 @@ export const POST = withEncoder(async function POST(request: Request) {
         );
       }
 
+      const selectedProgram = programs.find(
+        (program) => program.id === programId && program.status === "active",
+      );
+      if (!selectedProgram) {
+        return NextResponse.json(
+          { success: false, message: `Sale #${saleNumber}: Select an active program.` },
+          { status: 400 },
+        );
+      }
+      sale.registrationFee = selectedProgram.registrationFeeRequired ? "Yes" : "No";
+      sale.registrationAmount = String(
+        selectedProgram.registrationFeeRequired ? selectedProgram.registrationAmount : 0,
+      );
+
+      for (const beneficiary of sale.beneficiaries ?? []) {
+        if (!beneficiary.surname?.trim() || !beneficiary.firstName?.trim() || !beneficiary.relationship?.trim()) {
+          return NextResponse.json(
+            { success: false, message: `Sale #${saleNumber}: Each beneficiary needs a surname, first name, and relationship.` },
+            { status: 400 },
+          );
+        }
+      }
+
       if (!sale.applicationNo?.trim()) {
         return NextResponse.json(
           { success: false, message: `Sale #${saleNumber}: Application Number is required.` },
@@ -191,15 +249,13 @@ export const POST = withEncoder(async function POST(request: Request) {
       }
 
       if (
-        !sale.addressBarangay?.trim() ||
-        !sale.addressCity?.trim() ||
-        !sale.addressProvince?.trim()
+        !sale.addressHouse?.trim()
       ) {
         return NextResponse.json(
           {
             success: false,
             message:
-              `Sale #${saleNumber}: Barangay, Municipality / City, and Province are required.`,
+              `Sale #${saleNumber}: Complete Address is required.`,
           },
           { status: 400 },
         );
@@ -640,6 +696,8 @@ export const POST = withEncoder(async function POST(request: Request) {
       await addSale(
         saleData,
       );
+
+      await addBeneficiaries(memberId, saleId, sale.beneficiaries ?? []);
 
       savedSales.push({
         memberId,

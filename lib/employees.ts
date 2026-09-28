@@ -49,7 +49,8 @@ function readBranchIds(body: Record<string, unknown>) {
 
 export async function registerEmployee(body: Record<string, unknown>, validRoles: string[], branches: Array<{ id: string; name: string }>) {
   const text = (key: string) => typeof body[key] === "string" ? (body[key] as string).trim() : "";
-  const name = text("name"), branchIds = readBranchIds(body), roles = readRoles(body), contact = text("contact"), email = text("email"), dateHired = text("dateHired");
+  const id=text("employeeId").toUpperCase(),name = text("name"), branchIds = readBranchIds(body), roles = readRoles(body), contact = text("contact"), email = text("email"), dateHired = text("dateHired");
+  if(!/^[A-Z]{2,5}-\d{4}-\d{4}$/.test(id))throw new Error("Employee ID must follow the company format, for example MD-2026-0082.");
   if (!name || name.length > 150) throw new Error("Enter a full name of up to 150 characters.");
   if (!branchIds.length || branchIds.some((id) => !branches.some((branch) => branch.id === id))) throw new Error("Select at least one active registered branch.");
   if (!roles.length) throw new Error("Select at least one operational role.");
@@ -57,10 +58,8 @@ export async function registerEmployee(body: Record<string, unknown>, validRoles
   if (contact.length > 50 || email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error("Check the contact number and email.");
   if (dateHired && (!/^\d{4}-\d{2}-\d{2}$/.test(dateHired) || !Number.isFinite(Date.parse(dateHired)) || new Date(dateHired).toISOString().slice(0, 10) !== dateHired)) throw new Error("Enter a valid date hired.");
   const [employees, users] = await Promise.all([getEmployees(), sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:B" })]);
-  const ids = [...employees.map((e) => e.id), ...(users.data.values ?? []).slice(1).map((r) => String(r[1] ?? ""))];
-  const next = ids.reduce((max, id) => /^DPE-\d{4}$/.test(id) ? Math.max(max, Number(id.slice(4))) : max, 0) + 1;
-  if (next > 9999) throw new Error("Employee ID capacity reached.");
-  const id = `DPE-${String(next).padStart(4, "0")}`;
+  const ids = [...employees.map((e) => e.id.toUpperCase()), ...(users.data.values ?? []).slice(1).map((r) => String(r[1] ?? "").trim().toUpperCase())];
+  if(ids.includes(id))throw new Error("This Employee ID already exists.");
   const primaryBranch = branches.find((branch) => branch.id === branchIds[0])?.name ?? "";
   await appendEncodedRows({ range: "Employees!A:I", requestBody: { values: [[id, name, primaryBranch, roles.join(", "), "active", contact, email, dateHired, new Date().toISOString()].map((v) => `'${v}`)] } });
   await appendEncodedRows({ range: "'Employee Branches'!A:C", requestBody: { values: branchIds.map((branchId, index) => [`EBA-${id}-${String(index + 1).padStart(2, "0")}`, id, branchId]) } });
@@ -80,6 +79,8 @@ export async function updateEmployee(employeeId: string, body: Record<string, un
   const old = assignments.filter((assignment) => assignment.employeeId === employeeId);
   const primaryBranch = branches.find((branch) => branch.id === branchIds[0])?.name ?? "";
   const contact = text("contact"), email = text("email"), dateHired = text("dateHired");
+  if (contact.length > 50 || email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error("Check the contact number and email.");
+  if (dateHired && (!/^\d{4}-\d{2}-\d{2}$/.test(dateHired) || !Number.isFinite(Date.parse(dateHired)))) throw new Error("Enter a valid date hired.");
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'Employees'!A${employee.rowNumber}:I${employee.rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[employee.id, name, primaryBranch, roles.join(", "), status, contact, email, dateHired, employee.createdAt]] } });
   if (old.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: old.map((assignment) => ({ range: `'Employee Branches'!A${assignment.rowNumber}:G${assignment.rowNumber}`, values: [Array(7).fill("")] })) } });
   await appendEncodedRows({ range: "'Employee Branches'!A:C", requestBody: { values: branchIds.map((branchId, index) => [`EBA-${employeeId}-${Date.now()}-${index + 1}`, employeeId, branchId]) } });

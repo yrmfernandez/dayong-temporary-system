@@ -2,13 +2,14 @@ import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { deleteEmployee, getEmployees, registerEmployee, updateEmployee, updateEmployeeStatus } from "@/lib/employees";
 import { getActiveAccountRoles, getBranches } from "@/lib/google-sheets-data";
+import { getUserAccounts } from "@/lib/master-data-crud";
 
 export async function GET() {
   if (!(await getSessionUser())) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
   try {
-    const [employees, branches, accountRoles, canManage] = await Promise.all([getEmployees(), getBranches(), getActiveAccountRoles(), canManageUsers()]);
+    const [employees, branches, accountRoles, accounts, canManage] = await Promise.all([getEmployees(), getBranches(), getActiveAccountRoles(),getUserAccounts(), canManageUsers()]);
     const operationalRoles = [...new Set([...accountRoles.map((role) => role.name), "Collector"])].sort();
-    return Response.json({ success: true, employees, branches: branches.filter((branch) => branch.status === "active"), operationalRoles, canRegister: canManage, canManage }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, employees:employees.map(employee=>({...employee,roleIds:accounts.find(account=>account.employeeId===employee.id)?.roleIds??[]})), branches: branches.filter((branch) => branch.status === "active"), operationalRoles, accountRoles, canRegister: canManage, canManage }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Employee directory error:", error);
     return Response.json({ success: false, message: "Unable to load employees. Check the Employees sheet setup." }, { status: 500 });

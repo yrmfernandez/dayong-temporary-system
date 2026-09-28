@@ -117,6 +117,24 @@ export async function addMember(
   return response.data;
 }
 
+export async function addBeneficiaries(
+  memberId: string,
+  saleId: string,
+  beneficiaries: Array<{ id?: string; surname: string; firstName: string; middleName: string; birthdate: string; age: number | null; relationship: string }>,
+) {
+  if (!beneficiaries.length) return;
+  await appendEncodedRows({
+    range: "'Beneficiaries'!A:I",
+    requestBody: {
+      values: beneficiaries.map((item) => [
+        createReadableId("BEN"), memberId, saleId, item.surname.trim(),
+        item.firstName.trim(), item.middleName.trim(), item.birthdate,
+        Number(item.age) || 0, item.relationship.trim(),
+      ]),
+    },
+  });
+}
+
 export async function findMemberByNumber(
   memberNumber: string,
 ) {
@@ -1579,7 +1597,7 @@ export async function createEmployeeAccount(
     employeeId = `DPE-${String(highest + 1).padStart(4, "0")}`;
   }
 
-  if (!/^DPE-\d{4}$/.test(employeeId)) throw new Error("Employee ID must use the format DPE-0001.");
+  if (!/^(?:DPE-\d{4}|[A-Z]{2,5}-\d{4}-\d{4})$/.test(employeeId)) throw new Error("Employee ID must use the company format, for example MD-2026-0082.");
 
   const duplicateUsername = users
     .slice(1)
@@ -1663,7 +1681,7 @@ export async function createEmployeeAccount(
         data.passwordHash,
         "active",
         createdAt,
-        "",
+        roleIds[0],
       ]],
     },
   });
@@ -1716,7 +1734,9 @@ export async function getActiveMasStaff(): Promise<MasStaff[]> {
     .filter((staff) => staff.employeeId !== "")
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
   const employees = await getEmployees();
-  const registered = employees.filter((e) => e.status.toLowerCase() === "active" && e.roles.includes("MAS")).map((e) => ({ employeeId: e.id, fullName: e.name }));
+  // Every active employee may own member accounts. "MAS" remains the UI label
+  // for the accountable employee for compatibility with existing sheets.
+  const registered = employees.filter((e) => e.status.toLowerCase() === "active").map((e) => ({ employeeId: e.id, fullName: e.name }));
   const reviewed = new Set(employees.filter((e) => e.status || e.roles.length).map((e) => e.id));
   return [...new Map([...legacy.filter((e) => !reviewed.has(e.employeeId)), ...registered].map((e) => [e.employeeId, e])).values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
 

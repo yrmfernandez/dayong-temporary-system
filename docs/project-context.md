@@ -90,6 +90,10 @@ The application-managed tabs now have a canonical database schema in `config/she
 
 Fidelity Savings is recorded by the Entry Clerk as a manual amount on each MAS Remittance, including zero. Approved amounts accumulate toward a ₱10,000 lifetime cap; the Fidelity page lists each MAS balance, pending amounts, remaining cap, and remittance history. See `docs/fidelity.md`.
 
+Every active employee may be assigned member accounts through the fields historically labelled MAS. New Sales and Collections therefore search the complete active employee directory. Every role receives the shared employee workspaces: My Members, My Fidelity, MAM, Attendance, Leave Requests, Master Data, and Settings; role-specific operational and administrative modules remain additional navigation.
+
+New employee records use the company ID format such as `MD-2026-0082`. Existing legacy IDs remain readable. `Users.role_id` mirrors the account's primary role for database interoperability, while the `User Roles` relationship remains authoritative for additional roles. New Sales stores the member and claimant complete addresses in the canonical single-line `address` and `claimant_address` fields; legacy component columns remain readable for historical records.
+
 ## Collections and physical Remittance
 
 Collections and Remittances are now separate transactions. Saving Collections immediately records member payments as `Outstanding`; it no longer creates a Remittances row. A physical turnover is created from selected outstanding Collection IDs, stores expected and actual cash separately, and uses the `Remittance Collections` mapping sheet. Submitted turnovers are `Pending Approval` or `Discrepancy`. Only approval changes linked Collections to `Remitted` and clears cash accountability; rejection requires a reason and returns the Collections to `Outstanding`. The submitter cannot decide the same Remittance. Historical Collections and automatic Remittances from the previous design are marked for review rather than assumed to represent verified turnover. See `docs/collections-remittance-workflow.md`.
@@ -151,5 +155,17 @@ Administrators can manage the Roles sheet through Role Management. Role IDs are 
 Entry History gives administrators a cross-module view of New Sales, Collections, Remittances, Expenses, Cash Transactions, Members, enrollments, Employees, Branches, and Programs with record ID, information, encoder username, and encoded timestamp. Historical rows without verified encoder metadata remain identified as historical rather than being attributed by guesswork.
 
 All signed-in roles can view Programs and Branches as reference data. Only Administrators or accounts with manage-users permission can create, edit, or delete those records. Employee branch assignment supports selecting every branch or all branches within a territory. Expandable directory lists keep only one record open at a time.
+
+New Sales and Collections use searchable Branch and accountable-employee controls. The employee choices are limited to active employees assigned to the selected Branch, and the same relationship is checked again by the save API. Birthdates accept direct `YYYY-MM-DD` entry so old years can be entered without scrolling through a calendar.
+
+New Sales persists beneficiaries in the dedicated `Beneficiaries` table. Every beneficiary has a readable primary key and foreign keys to both the Member and Sale, followed by encoder tracking fields. Registration-required and registration-amount values are controlled by Program master data: selecting a Program fills those fields and the initial Amount Paid, while Amount Paid remains editable.
+
+Program controls in New Sales and Collections are searchable by program code or name; Collections displays the program code while retaining the program ID as its relationship key. Remittance is calculated from the configured incentive and markup, plus any collection amount above the covered monthly dues. Cash accountability and physical Remittance approval use this calculated remittance amount. Collections offers immediate approval when the entered cash matches exactly, restricted to an Administrator who also has the Entry Clerk role.
+
+User Account editing supports accounts whose original role exists only in `Users.role_id`, synchronizes the selected roles into `User Roles`, and displays validation errors next to the edit form.
+
+The sidebar has an active-role selector for users with multiple assigned roles. Each role renders a finalized workspace while the server continues to authorize against all assigned roles. Desktop users can minimize the sidebar to icons or maximize it, and users can choose a Pill or Line active-page indicator. These preferences and the last active role persist in browser storage.
+
+Every signed-in employee can switch to the MAS sidebar workspace without writing a redundant MAS assignment to `User Roles`. The minimize/maximize control sits beside the active-role selector. Administrator, HR, and Finance workspaces include Employee Attendance Tracking, with employee and date-range filters plus totals and daily detail for hours, overtime, lateness, undertime, attendance status, leave, and remarks.
 
 The specification's statements about previously completed features or builds must be checked when relevant; they are not evidence that every described operation is currently supported.

@@ -11,6 +11,12 @@ test("user example gives 200 remittance on 350 gross", () => {
 test("30 percent follows total - total1 + markup, not the complement", () => {
   assert.equal(calculateRemittance(350, [{ ...tier, incentiveAmount: 30 }], "MAS", 1, 1).remittance, 140);
 });
+test("an amount above covered dues is added to remittance without adding incentive", () => {
+  const result = calculateRemittance(350, [tier], "MAS", 1, 1, 500);
+  assert.equal(result.gross, 350);
+  assert.equal(result.excess, 150);
+  assert.equal(result.remittance, 350);
+});
 test("multi-month tier crossing and Collector rules are independent", () => {
   const tiers = [tier, { ...tier, id: "T2", fromMonth: 7, toMonth: 12, incentiveAmount: 30 }, { ...tier, role: "Collector", incentiveAmount: 10 }];
   assert.equal(calculateRemittance(350, tiers, "MAS", 6, 7).remittance, 340);

@@ -61,6 +61,7 @@ type CollectionEntry = {
   memberSearch: string;
   memberId: string;
   programId: string;
+  programSearch: string;
 
   monthFrom: string;
   monthTo: string;
@@ -95,6 +96,7 @@ function createEmptyCollection(id: string): CollectionEntry {
     memberSearch: "",
     memberId: "",
     programId: "",
+    programSearch: "",
 
     monthFrom: "",
     monthTo: "",
@@ -220,7 +222,7 @@ export default function CollectionsPage() {
   const [members, setMembers] = useState<CollectionMember[]>([]);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [branches, setBranches] = useState<Array<{ id: string; name: string; territory?: string; status: string }>>([]);
-  const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string }>>([]);
+  const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
   const [histories, setHistories] = useState<Record<string, CollectionHistory[]>>({});
   const selectionVersions = useRef<Record<string, number>>({});
 
@@ -229,6 +231,8 @@ export default function CollectionsPage() {
   const [saveMessage, setSaveMessage] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const [autoApproveRemittance, setAutoApproveRemittance] = useState(false);
+  const [cashReceived, setCashReceived] = useState("");
   const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
@@ -373,7 +377,7 @@ export default function CollectionsPage() {
       const selected = programs.find((p) => p.id === entry.programId);
       const count = getMonthDifference(entry.monthFrom, entry.monthTo);
       if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
-      return { ...calculateRemittance(selected.basePay, selected.incentiveTiers ?? [], entry.collectedByRole, entry.nopFrom, entry.nopTo), error: "" };
+      return { ...calculateRemittance(selected.basePay, selected.incentiveTiers ?? [], entry.collectedByRole, entry.nopFrom, entry.nopTo, Number(entry.amountCollected)), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
   }
   const quotes = collections.map(quoteEntry);
@@ -404,7 +408,7 @@ export default function CollectionsPage() {
     setHistories({});
     setCollections((current) => current.map((entry) => {
       selectionVersions.current[entry.id] = (selectionVersions.current[entry.id] ?? 0) + 1;
-      return { ...entry, memberSearch: "", memberId: "", programId: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" };
+      return { ...entry, memberSearch: "", memberId: "", programId: "", programSearch: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" };
     }));
   }
 
@@ -424,6 +428,7 @@ export default function CollectionsPage() {
       memberId: member.id,
       memberSearch: getMemberFullName(member),
       programId: "",
+      programSearch: "",
       monthFrom: "",
       monthTo: "",
       nopFrom: null,
@@ -448,7 +453,8 @@ export default function CollectionsPage() {
 
     const version = (selectionVersions.current[entryId] ?? 0) + 1;
     selectionVersions.current[entryId] = version;
-    updateCollection(entryId, { programId, accountStatus: "", accountLoading: true, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
+    const program = programs.find((item) => item.id === programId);
+    updateCollection(entryId, { programId, programSearch: program?.code ?? "", accountStatus: "", accountLoading: true, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
     setHistories((current) => ({ ...current, [entryId]: [] }));
     try {
       const response = await fetch(`/api/collections?memberId=${encodeURIComponent(memberId)}&programId=${encodeURIComponent(programId)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(mas)}`, { cache: "no-store" });
@@ -714,6 +720,8 @@ export default function CollectionsPage() {
           mas,
           accountableEmployeeId: masStaff.find((staff) => staff.fullName === mas)?.employeeId ?? "",
           dateRemitted,
+          autoApproveRemittance,
+          cashReceived: Number(cashReceived),
           collections: collections.map((entry) => ({
             ...entry,
             memberNumber: members.find(
@@ -752,6 +760,8 @@ export default function CollectionsPage() {
     setShowMoreDetails(false);
     setSaveMessage("");
     setShowPreview(false);
+    setAutoApproveRemittance(false);
+    setCashReceived("");
   }
 
   return (
@@ -774,51 +784,13 @@ export default function CollectionsPage() {
             <div className="space-y-2">
               <Label>Branch *</Label>
 
-              <Select
-                value={branch}
-                onValueChange={(value) => {
-                  setBranch(value ?? "");
-                  clearScopedMemberSelections();
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-
-                <SelectContent>
-                  {branches.map((item) => (
-                    <SelectItem
-                      key={item.id}
-                      value={item.name}
-                    >
-                      {item.name} · {item.territory || "Unassigned territory"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input list="collection-branches" value={branch} placeholder="Search branch" onChange={(event) => { setBranch(event.target.value); setMas(""); clearScopedMemberSelections(); }}/><datalist id="collection-branches">{branches.map((item) => <option key={item.id} value={item.name}>{item.territory || "Unassigned territory"}</option>)}</datalist>
             </div>
 
             <div className="space-y-2">
               <Label>MAS *</Label>
 
-              <Select
-                value={mas}
-                onValueChange={(value) => {
-                  setMas(value ?? "");
-                  clearScopedMemberSelections();
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select MAS" />
-                </SelectTrigger>
-                <SelectContent>
-                  {masStaff.map((staff) => (
-                    <SelectItem key={staff.employeeId} value={staff.fullName}>
-                      {staff.fullName} ({staff.employeeId})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input list="collection-staff" value={mas} placeholder={branch ? "Search employee / MAS" : "Select a branch first"} disabled={!branch} onChange={(event) => { setMas(event.target.value); clearScopedMemberSelections(); }}/><datalist id="collection-staff">{masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => <option key={staff.employeeId} value={staff.fullName}>{staff.employeeId}</option>)}</datalist>
             </div>
 
             <div className="space-y-2">
@@ -1072,6 +1044,7 @@ export default function CollectionsPage() {
                                           .value,
                                       memberId: "",
                                       programId: "",
+                                      programSearch: "",
                                       monthFrom:
                                         "",
                                       monthTo: "",
@@ -1203,63 +1176,34 @@ export default function CollectionsPage() {
 
                           {/* PROGRAM */}
                           <div className="space-y-2">
-                            <Label>
-                              Dayong Program *
-                            </Label>
-
-                            <Select
-                              value={
-                                entry.programId
-                              }
-                              onValueChange={(
-                                value,
-                              ) =>
-                                selectProgram(
-                                  entry.id,
-                                  value ?? "",
-                                )
-                              }
-                              disabled={
-                                !entry.memberId
-                              }
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue
-                                  placeholder={
-                                    entry.memberId
-                                      ? "Select program"
-                                      : "Select a member first"
-                                  }
-                                />
-                              </SelectTrigger>
-
-                              <SelectContent>
-                                {entryPrograms.map(
-                                    (
-                                      program,
-                                    ) => (
-                                      <SelectItem
-                                        key={
-                                          program.id
-                                        }
-                                        value={
-                                          program.id
-                                        }
-                                      >
-                                        {
-                                          program.code
-                                        }{" "}
-                                        —{" "}
-                                        {
-                                          program.name
-                                        }
-                                      </SelectItem>
-                                    ),
-                                  )}
-                              </SelectContent>
-                            </Select>
+                            <Label>Dayong Program *</Label>
+                            <Input
+                              list={`collection-programs-${entry.id}`}
+                              value={entry.programSearch}
+                              disabled={!entry.memberId}
+                              placeholder={entry.memberId ? "Search program code or name" : "Select a member first"}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                const normalized = value.trim().toLowerCase();
+                                const selected = entryPrograms.find((program) =>
+                                  program.code.toLowerCase() === normalized ||
+                                  `${program.code} - ${program.name}`.toLowerCase() === normalized
+                                );
+                                if (selected) {
+                                  void selectProgram(entry.id, selected.id);
+                                } else {
+                                  updateCollection(entry.id, { programSearch: value, programId: "", accountStatus: "", temporarilySuspended: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" });
+                                  setHistories((current) => ({ ...current, [entry.id]: [] }));
+                                }
+                              }}
+                            />
+                            <datalist id={`collection-programs-${entry.id}`}>
+                              {entryPrograms.map((program) => (
+                                <option key={program.id} value={program.code}>{program.name}</option>
+                              ))}
+                            </datalist>
+                            {entry.programId && <p className="text-xs text-muted-foreground">Selected: {entryPrograms.find((program) => program.id === entry.programId)?.code} - {entryPrograms.find((program) => program.id === entry.programId)?.name}</p>}
                           </div>
-
                           {/* PAYMENT PERIOD */}
                           <div className="space-y-3">
                             <div>
@@ -1736,6 +1680,26 @@ export default function CollectionsPage() {
               <div className="flex items-center justify-between rounded-xl border bg-primary/5 p-4">
                 <span className="text-sm font-medium">Incentive calculation reference</span>
                 <strong>{totalRemittance === null ? "Complete payment and incentive details" : formatCurrency(totalRemittance)}</strong>
+              </div>
+
+              <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px]">
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={autoApproveRemittance}
+                    disabled={totalRemittance === null}
+                    onChange={(event) => {
+                      setAutoApproveRemittance(event.target.checked);
+                      if (event.target.checked && totalRemittance !== null) setCashReceived(totalRemittance.toFixed(2));
+                    }}
+                  />
+                  <span><strong>Cash received in full</strong><span className="block text-xs text-muted-foreground">Create and immediately approve the Remittance when cash equals the calculated amount. This requires an Administrator account that also has the Entry Clerk role.</span></span>
+                </label>
+                <div className="space-y-1">
+                  <Label>Cash received</Label>
+                  <Input type="number" min="0" step="0.01" value={cashReceived} disabled={!autoApproveRemittance} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setCashReceived(event.target.value)} placeholder="0.00" />
+                </div>
               </div>
 
               {/* SAVE / RESET */}

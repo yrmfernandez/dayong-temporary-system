@@ -8,7 +8,7 @@ export type IncentiveTier = {
   incentiveAmount: number;
 };
 
-export function calculateRemittance(basePay: number, tiers: IncentiveTier[], role: string, nopFrom: number, nopTo: number) {
+export function calculateRemittance(basePay: number, tiers: IncentiveTier[], role: string, nopFrom: number, nopTo: number, amountCollected?: number) {
   if (!Number.isFinite(basePay) || basePay <= 0 || !Number.isInteger(nopFrom) || !Number.isInteger(nopTo) || nopFrom < 1 || nopTo < nopFrom || nopTo - nopFrom > 1199) throw new Error("Select a valid program and NOP range to calculate remittance.");
   if (role !== "MAS" && role !== "Collector") throw new Error("Select the collection role.");
   const baseCents = Math.round(basePay * 100);
@@ -28,5 +28,10 @@ export function calculateRemittance(basePay: number, tiers: IncentiveTier[], rol
     breakdown.push({ nop, tierId: tier.id ?? "", role, basePay: baseCents / 100, markUp: markUpCents / 100,
       incentiveType: tier.incentiveType, incentiveAmount: tier.incentiveAmount, remittance: remittanceCents / 100 });
   }
-  return { gross: baseCents * breakdown.length / 100, remittance: breakdown.reduce((sum, item) => sum + Math.round(item.remittance * 100), 0) / 100, breakdown };
+  const grossCents = baseCents * breakdown.length;
+  const collectedCents = amountCollected === undefined ? grossCents : Math.round(amountCollected * 100);
+  if (!Number.isFinite(collectedCents) || collectedCents < 0) throw new Error("Enter a valid amount collected.");
+  const excessCents = Math.max(0, collectedCents - grossCents);
+  const standardRemittanceCents = breakdown.reduce((sum, item) => sum + Math.round(item.remittance * 100), 0);
+  return { gross: grossCents / 100, excess: excessCents / 100, remittance: (standardRemittanceCents + excessCents) / 100, breakdown };
 }

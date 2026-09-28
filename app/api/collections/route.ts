@@ -1,11 +1,12 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
 import { withEncoder } from "@/lib/encoder-context";
-import { getSessionUser } from "@/lib/auth-server";
+import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { loadAccountData, commitCollections } from "@/lib/account-data";
 import { accountState, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
 import { calculateRemittance } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
-import { getActiveMasStaff } from "@/lib/google-sheets-data";
+import { getBranches } from "@/lib/google-sheets-data";
+import { createCashRemittance, decideCashRemittance } from "@/lib/remittance-workflow";
 
 export async function GET(request: Request) {
   if (!(await getSessionUser())) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
@@ -28,11 +29,20 @@ export const POST = withEncoder(async (request: Request) => {
     const mas = String(body.mas ?? "").trim();
     const accountableEmployeeId = String(body.accountableEmployeeId ?? "").trim();
     const dateRemitted = String(body.dateRemitted ?? "");
+    const autoApproveRemittance = body.autoApproveRemittance === true;
+    const cashReceived = Number(body.cashReceived);
     if (!branch || !mas || !accountableEmployeeId || !validDate(dateRemitted) || !Array.isArray(body.collections) || !body.collections.length) throw new Error("Branch, accountable Collector/MAS, Date Remitted, and collections are required.");
-    const employees = await getEmployees();
-    const accountable = employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active" && employee.roles.includes("MAS"));
-    const selectableLegacyMas = accountable ? false : (await getActiveMasStaff()).some((employee) => employee.employeeId === accountableEmployeeId && employee.fullName === mas);
-    if (!accountable && !selectableLegacyMas) throw new Error("Select an active accountable Collector/MAS from the list.");
+    const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
+    const selectedBranch = branches.find((item) => item.name === branch && item.status === "active");
+    const accountable = employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active" && selectedBranch && employee.branchIds.includes(selectedBranch.id));
+    if (!selectedBranch || !accountable) throw new Error("Select an active accountable employee assigned to the selected branch.");
+    if (autoApproveRemittance) {
+      const user = await getSessionUser();
+      const roles = user?.roleNames.map((role) => role.trim().toLowerCase()) ?? [];
+      const allowed = Boolean(user && await canManageUsers() && roles.some((role) => role === "administrator" || role === "admin") && roles.includes("entry clerk"));
+      if (!allowed) throw new Error("Immediate remittance approval requires both Administrator and Entry Clerk roles.");
+      if (!Number.isFinite(cashReceived) || cashReceived < 0) throw new Error("Enter the complete cash amount received.");
+    }
     const data = await loadAccountData();
     const payments = [...data.payments];
     const touched = new Map<string, typeof data.accounts[number]>();
@@ -51,7 +61,7 @@ export const POST = withEncoder(async (request: Request) => {
         collectedByRole: String(entry.collectedByRole ?? ""), originalMas: String(entry.originalMasOfficerName ?? "").trim(),
       };
       validatePayment(account, payments, input);
-      const quote = calculateRemittance(account.basePay, data.incentives.filter((tier) => tier.programId === account.programId), input.collectedByRole, input.nopFrom, input.nopTo);
+      const quote = calculateRemittance(account.basePay, data.incentives.filter((tier) => tier.programId === account.programId), input.collectedByRole, input.nopFrom, input.nopTo, input.amount);
       // Client totals are only a preview. Persist the authoritative server calculation.
       grossCents += Math.round(quote.gross * 100);
       const id = createReadableId("COL");
@@ -63,8 +73,17 @@ export const POST = withEncoder(async (request: Request) => {
         entry.reactivation === "Yes" ? "Yes" : "No", entry.transferred === "Yes" ? "Yes" : "No", input.waiver, input.originalMas, "Posted", timestamp,
         input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS"]);
     }
+    const expectedRemittance = rows.reduce((sum, row) => sum + Math.round(Number(row[26]) * 100), 0) / 100;
+    if (autoApproveRemittance && Math.round(cashReceived * 100) !== Math.round(expectedRemittance * 100)) {
+      throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}.`);
+    }
     writing = true;
     await commitCollections(rows, [...touched.values()], payments);
-    return Response.json({ success: true, grossCollection: grossCents / 100, message: `${rows.length} collection(s) saved. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
+    if (autoApproveRemittance) {
+      const remittance = await createCashRemittance({ collectionIds: rows.map((row) => String(row[0])), actualAmount: cashReceived, fidelityAmount: 0, remittanceDate: dateRemitted, receivedByName: "", remarks: "Cash received in full during collection encoding." });
+      const approved = await decideCashRemittance(remittance.id, "approve", "Cash received in full during collection encoding.", true);
+      return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, remittanceId: remittance.id, message: `${rows.length} collection(s) saved and Remittance ${approved.id} approved.` }, { status: 201 });
+    }
+    return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, message: `${rows.length} collection(s) saved. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save collections." }, { status: writing ? 500 : 400 }); }
 });

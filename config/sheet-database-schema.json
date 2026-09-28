@@ -29,7 +29,8 @@
     { "sheet": "Cash Transactions", "table": "cash_transactions", "primaryKey": "transaction_id", "firstHeader": "transaction_id" },
     { "sheet": "Record Corrections", "table": "record_corrections", "primaryKey": "correction_id", "firstHeader": "correction_id" },
     { "sheet": "Report Remarks", "table": "report_remarks", "primaryKey": "remark_id", "firstHeader": "remark_id" },
-    { "sheet": "Fidelity", "table": "fidelity", "primaryKey": "fidelity_id", "firstHeader": "fidelity_id" }
+    { "sheet": "Fidelity", "table": "fidelity", "primaryKey": "fidelity_id", "firstHeader": "fidelity_id" },
+    { "sheet": "Beneficiaries", "table": "beneficiaries", "primaryKey": "beneficiary_id", "firstHeader": "beneficiary_id" }
   ],
   "columnTypes": {
     "*_id": "text",
