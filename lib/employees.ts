@@ -1,5 +1,6 @@
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
+import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
 
 export const employmentStatuses = ["active", "inactive", "resigned"] as const;
 export type EmploymentStatus = (typeof employmentStatuses)[number];
@@ -68,7 +69,7 @@ export async function getNextEmployeeId() {
 export async function registerEmployee(body: Record<string, unknown>, validRoles: string[], branches: Array<{ id: string; name: string }>) {
   const text = (key: string) => typeof body[key] === "string" ? (body[key] as string).trim() : "";
   const id=text("employeeId").toUpperCase(),name = text("name"), branchIds = readBranchIds(body), roles = readRoles(body), contact = text("contact"), email = text("email"), dateHired = text("dateHired");
-  if(!/^[A-Z]{2,5}-\d{4}-\d{4}$/.test(id))throw new Error("Employee ID must follow the company format, for example MD-2026-0082.");
+  if(!isEmployeeIdFormat(id))throw new Error(EMPLOYEE_ID_FORMAT_MESSAGE);
   if (!name || name.length > 150) throw new Error("Enter a full name of up to 150 characters.");
   if (!branchIds.length || branchIds.some((id) => !branches.some((branch) => branch.id === id))) throw new Error("Select at least one active registered branch.");
   if (!roles.length) throw new Error("Select at least one operational role.");

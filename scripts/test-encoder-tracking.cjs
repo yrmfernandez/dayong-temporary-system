@@ -76,9 +76,9 @@ test('employee registration is independent of login and records its encoder', as
   h.rows.Users = [[], ['U1', 'DPE-0005']];
   h.rows.Branches = [[], ['BR-1', 'South', 'DDO 1', '', '', '', '', '', '', '', '', '', 'active']];
   h.rows.Roles = [[], ['R1', 'MAS', '', '', '', '', 'active']];
-  const response = await route.POST(request({ employeeId: 'MD-2026-0082', name: '=Staff', branchIds: ['BR-1'], roles: ['Collector', 'MAS'], dateHired: '2026-09-25', encodedBy: 'spoof' }));
+  const response = await route.POST(request({ employeeId: 'MD-2099-0101', name: '=Staff', branchIds: ['BR-1'], roles: ['Collector', 'MAS'], dateHired: '2026-09-25', encodedBy: 'spoof' }));
   assert.equal(response.status, 201);
-  assert.equal((await response.json()).employee.id, 'MD-2026-0082');
+  assert.equal((await response.json()).employee.id, 'MD-2099-0101');
   assert.equal(h.writes.length, 2);
   assert.equal(h.writes[0].range, "'Employees'!A:M");
   const row = h.writes[0].requestBody.values[0];
@@ -180,13 +180,13 @@ test('member directory requires login, joins accounts once, and filters the same
 
 test('attendance tracking lets Finance review one employee across a date range', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'finance', roleNames: ['Finance'], permissions: {} });
-  h.rows.Employees = [[], ['MD-2026-0082', 'Ana Santos', 'MATINA', 'MAS', 'active']];
-  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-2026-0082', 'BR-1']];
+  h.rows.Employees = [[], ['MD-2099-0101', 'Ana Santos', 'MATINA', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-2099-0101', 'BR-1']];
   h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
-  const attendance = Array(18).fill(''); attendance[0] = 'ATT-1'; attendance[1] = 'MD-2026-0082'; attendance[2] = '2026-09-15'; attendance[3] = 'MATINA'; attendance[6] = '08:05:00'; attendance[7] = '17:00:00'; attendance[8] = 8.92; attendance[9] = 0; attendance[10] = 'Present'; attendance[11] = 5;
+  const attendance = Array(18).fill(''); attendance[0] = 'ATT-1'; attendance[1] = 'MD-2099-0101'; attendance[2] = '2026-09-15'; attendance[3] = 'MATINA'; attendance[6] = '08:05:00'; attendance[7] = '17:00:00'; attendance[8] = 8.92; attendance[9] = 0; attendance[10] = 'Present'; attendance[11] = 5;
   h.rows.Attendance = [[], attendance];
   const route = h.load('app/api/attendance-tracking/route.ts');
-  const response = await route.GET(new Request('http://localhost/api/attendance-tracking?from=2026-09-01&to=2026-09-30&employeeId=MD-2026-0082'));
+  const response = await route.GET(new Request('http://localhost/api/attendance-tracking?from=2026-09-01&to=2026-09-30&employeeId=MD-2099-0101'));
   const result = await response.json();
   assert.equal(response.status, 200, JSON.stringify(result));
   assert.equal(result.employees[0].branches[0], 'MATINA · METRO DAVAO 1');
@@ -350,7 +350,7 @@ test('administrator who is also an Entry Clerk may approve own remittance', asyn
 });
 
 test('any Remittances user can create an approved remittance when full cash is confirmed', async () => {
-  const h = harness({ userId: 'USR-7', employeeId: 'MD-2026-0007', name: 'April', roleNames: ['Entry Clerk'], permissions: {} });
+  const h = harness({ userId: 'USR-7', employeeId: 'MD-2099-0102', name: 'Test Clerk', roleNames: ['Entry Clerk'], permissions: {} });
   const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[6] = 'MINTAL'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 300; collection[28] = 'Outstanding'; collection[30] = 'EMP-1'; collection[31] = 'Ana'; collection[32] = 'Collector';
   const collectionHeader = Array(33).fill(''); collectionHeader[28] = 'Remittance Status';
   const remittanceHeader = Array(25).fill(''); remittanceHeader[12] = 'Difference';
@@ -367,28 +367,69 @@ test('any Remittances user can create an approved remittance when full cash is c
   const requests = h.writes.at(-1).requestBody.requests;
   const row = requests[0].appendCells.rows[0].values.map((cell) => cell.userEnteredValue.stringValue ?? cell.userEnteredValue.numberValue);
   assert.equal(row[4], 'Approved');
-  assert.deepEqual(row.slice(18, 21), ['USR-7', 'MD-2026-0007', 'April']);
+  assert.deepEqual(row.slice(18, 21), ['USR-7', 'MD-2099-0102', 'Test Clerk']);
   assert.match(row[23], /Cash received in full/);
   assert.equal(requests.at(-1).updateCells.rows[0].values[0].userEnteredValue.stringValue, 'Remitted');
 });
 
 test('sign-in looks up the active account by Employee ID and reads configured role pages', async () => {
   const h = harness();
-  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-3', 'MD-2026-0007', 'April', 'hash', 'active', '', 'ROLE-FINANCE']];
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-3', 'MD-2099-0102', 'Test Clerk', 'hash', 'active', '', 'ROLE-FINANCE']];
   h.rows.Roles = [[], ['ROLE-FINANCE', 'Finance', '', false, false, false, 'active', '', '', '', '', '/remittances, /expenses']];
   h.rows['User Roles'] = [[], ['USR-3', 'ROLE-FINANCE']];
   const { getLoginUserByEmployeeId } = h.load('lib/google-sheets-data.ts');
-  const user = await getLoginUserByEmployeeId('md-2026-0007');
-  assert.equal(user.fullName, 'April');
+  const user = await getLoginUserByEmployeeId('md-2099-0102');
+  assert.equal(user.fullName, 'Test Clerk');
   assert.deepEqual(user.roles[0].pages, ['/remittances', '/expenses']);
   assert.equal(await getLoginUserByEmployeeId('april'), null);
 });
 
+test('user accounts accept company-format Employee IDs and number new user IDs', async () => {
+  const h = harness({ userId: 'USR-1', employeeId: 'MD-2099-0001', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-0004', 'MD-2099-0001', 'Admin', 'x', 'active', '', 'ROLE-ADMINISTRATOR']];
+  h.rows.Roles = [[], ['ROLE-FINANCE', 'Finance', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['MD-2099-0103', 'New Staff', 'MATINA', 'Finance', 'active']];
+  const { createEmployeeAccount } = h.load('lib/google-sheets-data.ts');
+  await assert.rejects(h.load('lib/encoder-context.ts').withEncoder(async () => { await createEmployeeAccount({ employeeId: 'MD-99-1', fullName: 'Bad', passwordHash: 'x', roleIds: ['ROLE-FINANCE'] }); return Response.json({}); })(request()), /company format MD-20##-####/);
+  const created = await h.load('lib/encoder-context.ts').withEncoder(async () => Response.json(await createEmployeeAccount({ employeeId: 'md-2099-0103', fullName: 'New Staff', passwordHash: 'x', roleIds: ['ROLE-FINANCE'] })))(request());
+  const account = await created.json();
+  assert.equal(account.employeeId, 'MD-2099-0103');
+  assert.equal(account.id, 'USR-0005');
+});
+
+test('form buttons declare a type because the Base UI Button defaults to type="button"', () => {
+  const files = [];
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walk(full); else if (full.endsWith('.tsx')) files.push(full);
+  });
+  ['app', 'components'].forEach(walk);
+  const offenders = files.flatMap((file) => [...fs.readFileSync(file, 'utf8').matchAll(/<Button\b(?:[^>]|=>)*?>/g)]
+    .map((match) => match[0])
+    .filter((tag) => !/\btype=/.test(tag) && !/\bonClick=/.test(tag) && !/\brender=/.test(tag))
+    .map((tag) => `${file}: ${tag}`));
+  assert.deepEqual(offenders, [], 'A submit <Button> needs type="submit"; other buttons need type="button" or onClick.');
+});
+
+test('password change verifies the current password and writes only the hash cell', async () => {
+  const bcrypt = require('bcryptjs');
+  const h = harness({ userId: 'USR-3', employeeId: 'MD-2099-0102', name: 'Test Clerk', roleNames: ['Finance'], permissions: {} });
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-1', 'MD-2099-0001', 'Other', 'x', 'active', '', ''], ['USR-3', 'MD-2099-0102', 'Test Clerk', await bcrypt.hash('current-password-1', 4), 'active', '', 'ROLE-FINANCE']];
+  const route = h.load('app/api/settings/route.ts');
+  const patch = (body) => route.PATCH(new Request('http://localhost/api/settings', { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+  assert.equal((await patch({ currentPassword: 'wrong', newPassword: 'a-new-password-2' })).status, 400);
+  const response = await patch({ currentPassword: 'current-password-1', newPassword: 'a-new-password-2' });
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const write = h.writes.at(-1);
+  assert.equal(write.range, 'Users!D3');
+  assert.ok(await bcrypt.compare('a-new-password-2', write.requestBody.values[0][0]));
+});
+
 test('new Employee IDs follow the most used prefix and the current year, and stay unique', () => {
   const { suggestEmployeeId } = harness().load('lib/employees.ts');
-  assert.equal(suggestEmployeeId(['MD-2026-0001', 'MD-2026-0007', 'DPE-0001'], '2026'), 'MD-2026-0008');
-  assert.equal(suggestEmployeeId(['MD-2026-0007'], '2027'), 'MD-2027-0001');
-  assert.equal(suggestEmployeeId([], '2026'), 'MD-2026-0001');
+  assert.equal(suggestEmployeeId(['MD-2099-0001', 'MD-2099-0102', 'DPE-0001'], '2099'), 'MD-2099-0103');
+  assert.equal(suggestEmployeeId(['MD-2099-0102'], '2100'), 'MD-2100-0001');
+  assert.equal(suggestEmployeeId([], '2099'), 'MD-2099-0001');
 });
 
 test('attendance updates never touch original encoder cells, even for historical rows', async () => {

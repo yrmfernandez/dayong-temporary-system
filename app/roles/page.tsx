@@ -100,7 +100,7 @@ export default function RolesPage() {
             <p className="text-xs text-muted-foreground">Users receive the combined pages of all their roles. Changes apply the next time they sign in.</p>
           </fieldset>
 
-          <div className="flex gap-2"><Button disabled={busy}>{form.id ? "Save role" : "Add role"}</Button>{form.id && <Button type="button" variant="ghost" onClick={() => setForm(empty)}>Cancel</Button>}</div>
+          <div className="flex gap-2"><Button type="submit" disabled={busy}>{form.id ? "Save role" : "Add role"}</Button>{form.id && <Button type="button" variant="ghost" onClick={() => setForm(empty)}>Cancel</Button>}</div>
         </form>
       </CardContent>
     </Card>

@@ -1,5 +1,6 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
 import { getEmployees } from "@/lib/employees";
+import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
 import { encoderHeaders } from "@/lib/encoder-schema";
@@ -1518,7 +1519,7 @@ export async function getActiveAccountRoles(): Promise<
 export async function createEmployeeAccount(
   data: CreateEmployeeAccountData,
 ) {
-  let employeeId = (data.employeeId ?? "").trim().toUpperCase();
+  const employeeId = (data.employeeId ?? "").trim().toUpperCase();
   const fullName = data.fullName.trim();
 
   if (!fullName) throw new Error("Full name is required.");
@@ -1528,15 +1529,7 @@ export async function createEmployeeAccount(
   const [{ columns, users }, activeRoles] = await Promise.all([loadUsers(), getActiveAccountRoles()]);
   assertUsernameColumnRemoved(columns);
 
-  if (!employeeId) {
-    const highest = users.reduce((max, user) => {
-      const match = /^DPE-(d{4})$/.exec(user.employeeId);
-      return match ? Math.max(max, Number(match[1])) : max;
-    }, 0);
-    employeeId = `DPE-${String(highest + 1).padStart(4, "0")}`;
-  }
-
-  if (!/^(?:DPE-d{4}|[A-Z]{2,5}-d{4}-d{4})$/.test(employeeId)) throw new Error("Employee ID must use the company format, for example MD-2026-0082.");
+  if (!isEmployeeIdFormat(employeeId)) throw new Error(EMPLOYEE_ID_FORMAT_MESSAGE);
   // The Employee ID is the sign-in identifier, so each may hold only one account.
   if (users.some((user) => user.employeeId.toUpperCase() === employeeId)) throw new Error("This Employee ID already has a user account.");
 
@@ -1545,7 +1538,7 @@ export async function createEmployeeAccount(
   if (roleIds.some((roleId) => !activeRoleIds.has(roleId))) throw new Error("One or more selected roles are invalid or inactive.");
 
   const highestUserNumber = users.reduce((highest, user) => {
-    const match = /^USR-(d+)$/.exec(user.id);
+    const match = /^USR-(\d+)$/.exec(user.id);
     return match ? Math.max(highest, Number(match[1])) : highest;
   }, 0);
   const userId = `USR-${String(highestUserNumber + 1).padStart(4, "0")}`;

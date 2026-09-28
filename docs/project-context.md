@@ -92,7 +92,7 @@ Fidelity Savings is recorded by the Entry Clerk as a manual amount on each MAS R
 
 Every active employee may be assigned member accounts through the fields historically labelled MAS. New Sales and Collections therefore search the complete active employee directory. Every role receives the shared employee workspaces: My Members, My Fidelity, MAM, Attendance, Leave Requests, Master Data, and Settings; role-specific operational and administrative modules remain additional navigation.
 
-New employee records use the company ID format such as `MD-2026-0082`. Existing legacy IDs remain readable. `Users.role_id` mirrors the account's primary role for database interoperability, while the `User Roles` relationship remains authoritative for additional roles. New Sales stores the member and claimant complete addresses in the canonical single-line `address` and `claimant_address` fields; legacy component columns remain readable for historical records.
+New employee records use the company ID format `MD-20##-####` (prefix, year, number). Existing legacy IDs remain readable. `Users.role_id` mirrors the account's primary role for database interoperability, while the `User Roles` relationship remains authoritative for additional roles. New Sales stores the member and claimant complete addresses in the canonical single-line `address` and `claimant_address` fields; legacy component columns remain readable for historical records.
 
 ## Collections and physical Remittance
 
