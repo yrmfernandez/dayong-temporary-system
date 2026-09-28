@@ -22,7 +22,7 @@ export const POST = withEncoder(async (request: Request) => {
     const result = await createCashRemittance({
       collectionIds: Array.isArray(body.collectionIds) ? body.collectionIds : [],
       actualAmount: Number(body.actualAmount), fidelityAmount: Number(body.fidelityAmount ?? 0), remittanceDate: String(body.remittanceDate ?? ""),
-      receivedByName: String(body.receivedByName ?? ""), remarks: String(body.remarks ?? ""),
+      remarks: String(body.remarks ?? ""),
     });
     return Response.json({ success: true, remittance: result }, { status: 201 });
   } catch (error) {

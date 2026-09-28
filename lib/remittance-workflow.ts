@@ -24,6 +24,7 @@ export type CashCollection = {
   remittanceAmount:number;
   remittanceStatus: string;
   linkedRemittanceId: string;
+  daysOutstanding: number;
 };
 
 export type CashRemittance = {
@@ -71,6 +72,7 @@ async function loadLedger() {
     id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
+    daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${text(row[9])}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((collection) => collection.id && text(rows.Collections[collection.rowNumber - 1]?.[19]).toLowerCase() === "posted");
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
     id: text(row[0]), rowNumber: index + 2, branch: text(row[1]), accountableName: text(row[2]), remittanceDate: text(row[3]), status: text(row[4]) || "Legacy",
@@ -120,7 +122,7 @@ async function sheetIds() {
   return { collections: id("Collections"), remittances: id("Remittances"), mappings: id("Remittance Collections") };
 }
 
-export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; fidelityAmount: number; remittanceDate: string; receivedByName?: string; remarks?: string }) {
+export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; fidelityAmount: number; remittanceDate: string; remarks?: string }) {
   const actor = getEncoder();
   const ledger = await loadLedger();
   const ids = [...new Set(input.collectionIds.map(text).filter(Boolean))];
@@ -146,7 +148,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const fidelityAccount=(await getFidelityData(owner.accountableEmployeeId,true)).accounts.find(item=>item.masEmployeeId===owner.accountableEmployeeId);
   const remainingFidelity = Math.max(0,Math.round((FIDELITY_CAP-(fidelityAccount?.approved??0)-(fidelityAccount?.pending??0))*100)/100);
   if (input.fidelityAmount > remainingFidelity) throw new Error(`Fidelity can be at most ${remainingFidelity.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} for this MAS.`);
-  const expected = Math.round(collections.reduce((sum, collection) => sum + collection.remittanceAmount, 0) * 100) / 100;
+  const expected = Math.round((collections.reduce((sum, collection) => sum + collection.remittanceAmount, 0) + input.fidelityAmount) * 100) / 100;
   const actual = Math.round(input.actualAmount * 100) / 100;
   const difference = Math.round((actual - expected) * 100) / 100;
   const status = difference === 0 ? "Pending Approval" : "Discrepancy";
@@ -154,7 +156,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const timestamp = actor.encodedAt;
   const identity = [actor.userId, actor.employeeId, actor.username, timestamp];
   const row = [id, owner.branch, owner.accountableName, input.remittanceDate, status, timestamp, ...identity, expected, actual, difference,
-    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, text(input.receivedByName) || actor.username, "", "", "", "", text(input.remarks), "", Math.round(input.fidelityAmount*100)/100];
+    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, actor.username, "", "", "", "", text(input.remarks), "", Math.round(input.fidelityAmount*100)/100];
   const sheet = await sheetIds();
   const requests = [
     { appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } },
@@ -173,6 +175,7 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   if (!["Pending Approval", "Discrepancy"].includes(remittance.status)) throw new Error("Only pending or discrepancy Remittances can be decided.");
   if (!allowOwnDecision && remittance.submittedByUserId === actor.userId) throw new Error("The submitting user cannot approve or reject the same Remittance.");
   if (decision === "reject" && !text(reason)) throw new Error("A rejection reason is required.");
+  if (decision === "approve" && remittance.difference !== 0 && !text(reason)) throw new Error("Explain how the remittance discrepancy was resolved before approval.");
   const linked = remittance.collectionIds.map((id) => ledger.collections.find((collection) => collection.id === id));
   if (!linked.length || linked.some((collection) => !collection)) throw new Error("The Remittance collection links are incomplete.");
   if (decision === "approve" && linked.some((collection) => collection?.linkedRemittanceId !== remittance.id || collection.remittanceStatus !== "Pending Remittance Approval")) {

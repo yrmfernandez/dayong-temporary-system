@@ -20,19 +20,23 @@ const navigation: NavSection[] = [
   { title: "MAIN", items: [{ name: "Dashboard", href: "/", icon: LayoutDashboard }] },
   { title: "OPERATIONS", items: [
     { name: "New Sales", href: "/new-sales", icon: FileText },
-    { name: "Collections", href: "/collections", icon: Receipt },
+    { name: "Collections / Payments", href: "/collections", icon: Receipt },
     { name: "Remittances", href: "/remittances", icon: Wallet },
     { name: "MAM", href: "/mam", icon: BarChart3 },
+  ] },
+  { title: "FINANCE", items: [
+    { name: "Expenses", href: "/expenses", icon: CreditCard },
+    { name: "Cash Transactions", href: "/cash-transactions", icon: Wallet },
+    { name: "Vendor Payables", href: "/vendor-payables", icon: Receipt },
+    { name: "Commissions", href: "/commissions", icon: CreditCard },
+    { name: "My Fidelity", href: "/fidelity", icon: PiggyBank },
+  ] },
+  { title: "MY HR", items: [
     { name: "Attendance", href: "/attendance", icon: CalendarCheck },
     { name: "Attendance Review", href: "/attendance-reviews", icon: ClipboardList },
     { name: "Attendance Tracking", href: "/attendance-tracking", icon: BarChart3 },
     { name: "Leave Requests", href: "/leave-requests", icon: FileText },
     { name: "Leave Approvals", href: "/leave-approvals", icon: CalendarCheck },
-  ] },
-  { title: "FINANCE", items: [
-    { name: "Expenses", href: "/expenses", icon: CreditCard },
-    { name: "Cash Transactions", href: "/cash-transactions", icon: Wallet },
-    { name: "My Fidelity", href: "/fidelity", icon: PiggyBank },
   ] },
   { title: "REPORTS", items: [
     { name: "Reports Dashboard", href: "/reports", icon: ChartNoAxesColumnIncreasing },
@@ -52,7 +56,7 @@ const navigation: NavSection[] = [
   { title: "SYSTEM", items: [
     { name: "Settings", href: "/settings", icon: Settings },
     { name: "Roles", href: "/roles", icon: UserCheck },
-    { name: "Entry History", href: "/history", icon: ClipboardList },
+    { name: "Audit Log", href: "/history", icon: ClipboardList },
     { name: "User Report Review", href: "/admin-reports", icon: ChartNoAxesColumnIncreasing },
   ] },
 ];
@@ -63,7 +67,7 @@ const rolePaths: Record<string, string[] | "all"> = {
   administrator: "all",
   admin: "all",
   "entry clerk": [...baseEmployeePaths, "/new-sales", "/collections", "/remittances", ...reportPaths],
-  finance: [...baseEmployeePaths, "/collections", "/remittances", "/expenses", "/cash-transactions", "/attendance-tracking", ...reportPaths],
+  finance: ["/", "/mam", "/collections", "/remittances", "/cash-transactions", "/expenses", "/vendor-payables", "/commissions", "/reports", "/history", "/settings", "/attendance", "/attendance-tracking", "/leave-requests"],
   "hr officer": [...baseEmployeePaths, "/employees", "/attendance-reviews", "/attendance-tracking", "/leave-approvals"],
   hr: [...baseEmployeePaths, "/employees", "/attendance-reviews", "/attendance-tracking", "/leave-approvals"],
   ceo: [...baseEmployeePaths, "/remittances", "/cash-transactions", ...reportPaths],

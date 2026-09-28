@@ -196,7 +196,7 @@ test('attendance tracking lets Finance review one employee across a date range',
 
 test('all mutation routes reject unauthenticated requests before writing', async () => {
   const h = harness(null);
-  for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals']) {
+  for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals', 'finance-options', 'vendor-payables', 'commissions']) {
     assert.equal((await h.load(`app/api/${route}/route.ts`).POST(request())).status, 401, route);
   }
   assert.equal(h.writes.length, 0);

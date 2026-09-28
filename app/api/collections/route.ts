@@ -80,7 +80,7 @@ export const POST = withEncoder(async (request: Request) => {
     writing = true;
     await commitCollections(rows, [...touched.values()], payments);
     if (autoApproveRemittance) {
-      const remittance = await createCashRemittance({ collectionIds: rows.map((row) => String(row[0])), actualAmount: cashReceived, fidelityAmount: 0, remittanceDate: dateRemitted, receivedByName: "", remarks: "Cash received in full during collection encoding." });
+      const remittance = await createCashRemittance({ collectionIds: rows.map((row) => String(row[0])), actualAmount: cashReceived, fidelityAmount: 0, remittanceDate: dateRemitted, remarks: "Cash received in full during collection encoding." });
       const approved = await decideCashRemittance(remittance.id, "approve", "Cash received in full during collection encoding.", true);
       return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, remittanceId: remittance.id, message: `${rows.length} collection(s) saved and Remittance ${approved.id} approved.` }, { status: 201 });
     }
