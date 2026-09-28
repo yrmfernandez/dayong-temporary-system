@@ -767,12 +767,12 @@ export default function CollectionsPage() {
   return (
     <div className="space-y-4">
       {/* PAGE HEADER */}
-      <div className="flex flex-wrap items-end justify-between gap-2 rounded-xl bg-gradient-to-r from-violet-20 to-purple-40 px-5 py-3 text-white">
+      <div className="flex flex-wrap items-end justify-between gap-2 rounded-xl page-hero px-5 py-3">
         <div><h1 className="text-xl font-semibold tracking-tight">
           Collections
         </h1>
 
-        <p className="text-xs text-violet-90">
+        <p className="text-xs text-violet-30/80">
           Record member payments and assign cash accountability.
         </p></div><Badge variant="secondary">{collections.length} {collections.length===1?"entry":"entries"}</Badge>
       </div>

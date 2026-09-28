@@ -50,8 +50,8 @@ export default function AttendanceTrackingPage() {
   }), [records]);
 
   return <section className="mx-auto max-w-7xl space-y-6">
-    <header className="rounded-2xl bg-gradient-to-r from-violet-20 via-violet-30 to-purple-40 p-5 text-white shadow-lg">
-      <div className="flex items-center gap-3"><div className="rounded-xl bg-white/15 p-3"><BarChart3 className="size-6" /></div><div><h1 className="text-2xl font-bold">Employee Attendance Tracking</h1><p className="text-sm text-violet-90">Review attendance history, work hours, overtime, lateness, undertime, leave, and absences.</p></div></div>
+    <header className="rounded-2xl page-hero p-5">
+      <div className="flex items-center gap-3"><div className="rounded-xl bg-violet-95 p-3 text-violet-40"><BarChart3 className="size-6" /></div><div><h1 className="text-2xl font-bold">Employee Attendance Tracking</h1><p className="text-sm text-violet-30/80">Review attendance history, work hours, overtime, lateness, undertime, leave, and absences.</p></div></div>
     </header>
 
     <Card><CardContent className="grid gap-4 p-4 md:grid-cols-4">

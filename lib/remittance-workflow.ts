@@ -49,7 +49,7 @@ export type CashRemittance = {
   decisionByUsername: string;
   decisionAt: string;
   remarks: string;
-  rejectionReason: string;
+  decisionReason: string;
   fidelityAmount: number;
   collectionIds: string[];
 };
@@ -79,7 +79,7 @@ async function loadLedger() {
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByUsername: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByUsername: text(row[20]), decisionAt: text(row[21]),
-    remarks: text(row[22]), rejectionReason: text(row[23]), fidelityAmount: number(row[24]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId),
+    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId),
   })).filter((remittance) => remittance.id);
   return { collections, remittances, mappings };
 }
@@ -186,7 +186,7 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   const status = decision === "approve" ? "Approved" : "Rejected";
   const requests = [
     { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 4, endColumnIndex: 5 }, rows: [{ values: [cell(status)] }], fields: "userEnteredValue" } },
-    { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 18, endColumnIndex: 24 }, rows: [{ values: [actor.userId, actor.employeeId, actor.username, timestamp, remittance.remarks, decision === "reject" ? text(reason) : ""].map(cell) }], fields: "userEnteredValue" } },
+    { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 18, endColumnIndex: 24 }, rows: [{ values: [actor.userId, actor.employeeId, actor.username, timestamp, remittance.remarks, text(reason)].map(cell) }], fields: "userEnteredValue" } },
     ...linked.map((collection) => ({ updateCells: { range: { sheetId: sheet.collections, startRowIndex: collection!.rowNumber - 1, endRowIndex: collection!.rowNumber, startColumnIndex: 28, endColumnIndex: 30 }, rows: [{ values: [cell(decision === "approve" ? "Remitted" : "Outstanding"), cell(decision === "approve" ? remittance.id : "")] }], fields: "userEnteredValue" } })),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });

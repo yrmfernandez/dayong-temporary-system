@@ -41,7 +41,8 @@ export function accessibleRoutes(context: AccessContext) {
     routes.add("/leave-requests");
     routes.add("/settings");
   }
-  if (context.permissions.manageUsers) ["/employees", "/user-accounts", "/programs", "/branches", "/settings"].forEach((route) => routes.add(route));
+  // Matches the Roles and History APIs, which already accept manageUsers.
+  if (context.permissions.manageUsers) ["/employees", "/user-accounts", "/roles", "/history", "/programs", "/branches", "/settings"].forEach((route) => routes.add(route));
   if (context.permissions.manageAttendance) ["/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals"].forEach((route) => routes.add(route));
   if (context.permissions.viewAttendanceReports) ["/attendance-reviews", "/attendance-tracking"].forEach((route) => routes.add(route));
   return [...routes];

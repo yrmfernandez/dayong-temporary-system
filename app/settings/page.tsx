@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FinanceSettings } from "@/components/finance-settings";
+import { preferenceKeys, readDensity, readIndicator, writePreference, type IndicatorStyle } from "@/lib/ui-preferences";
 
  type SessionUser = {
   employeeId: string;
@@ -39,11 +40,28 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
   const [compactTables, setCompactTables] = useState(false);
+  const [indicator, setIndicator] = useState<IndicatorStyle>("pill");
   const [username, setUsername] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCompactTables(readDensity() === "compact"); setIndicator(readIndicator());
+  }, []);
+
+  const toggleCompactTables = () => {
+    const next = !compactTables;
+    setCompactTables(next);
+    writePreference(preferenceKeys.density, next ? "compact" : "comfortable");
+  };
+
+  const changeIndicator = (style: IndicatorStyle) => {
+    setIndicator(style);
+    writePreference(preferenceKeys.indicator, style);
+  };
 
   useEffect(() => {
     const loadSession = async () => {
@@ -187,11 +205,26 @@ export default function SettingsPage() {
             </div>
             <div>
               <CardTitle>Workspace preferences</CardTitle>
-              <CardDescription>Adjust how dense operational lists feel on this device.</CardDescription>
+              <CardDescription>Adjust tables and navigation on this device.</CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4">
+            <div>
+              <p className="text-sm font-medium">Sidebar active page style</p>
+              <p className="text-sm text-muted-foreground">
+                Highlight the current page with a filled pill or a side line.
+              </p>
+            </div>
+            <div className="grid shrink-0 grid-cols-2 rounded-lg bg-violet-95 p-1 text-xs" role="radiogroup" aria-label="Sidebar active page style">
+              {(["pill", "line"] as const).map((style) => (
+                <button key={style} type="button" role="radio" aria-checked={indicator === style} onClick={() => changeIndicator(style)} className={`rounded-md px-3 py-1.5 capitalize ${indicator === style ? "bg-white font-semibold text-violet-20 shadow-sm" : "text-muted-foreground"}`}>
+                  {style}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
             <div>
               <p className="text-sm font-medium">Compact tables</p>
@@ -203,7 +236,7 @@ export default function SettingsPage() {
               type="button"
               role="switch"
               aria-checked={compactTables}
-              onClick={() => setCompactTables((current) => !current)}
+              onClick={toggleCompactTables}
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${compactTables ? "bg-primary" : "bg-muted-foreground/30"}`}
             >
               <span
