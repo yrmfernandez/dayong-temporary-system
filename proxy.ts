@@ -47,6 +47,7 @@ export async function proxy(request: NextRequest) {
       {
         roleNames: session.roleNames,
         permissions: session.permissions,
+        rolePages: session.rolePages,
       },
       pathname,
     )

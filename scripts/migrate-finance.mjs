@@ -6,7 +6,7 @@ const apply = process.argv.includes("--apply");
 const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 const auth = new google.auth.GoogleAuth({ credentials: { client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL, private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n") }, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
 const sheets = google.sheets({ version: "v4", auth });
-const tracking = ["encoded_by_user_id", "encoded_by_employee_id", "encoded_by_username", "encoded_at"];
+const tracking = ["encoded_by_user_id", "encoded_by_employee_id", "encoded_by_name", "encoded_at"];
 const definitions = [
   { title: "Expenses", headers: ["expense_id", "expense_date", "category", "description", "amount", "payee", "paid_by", "branch", "payment_method", "reference_number", "receipt_number", "status", "remarks", "created_at", "voided_at", "voided_by_user_id", "void_reason", ...tracking] },
   { title: "Cash Transactions", headers: ["transaction_id", "transaction_date", "direction", "category", "description", "amount", "branch", "cash_account", "reference_type", "reference_id", "status", "remarks", "created_at", "voided_at", "voided_by_user_id", "void_reason", ...tracking] },

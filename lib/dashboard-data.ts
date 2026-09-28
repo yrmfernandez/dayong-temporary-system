@@ -1,6 +1,7 @@
 import type { SessionUser } from "@/lib/auth";
 import { todayInManila } from "@/lib/account-rules";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { readUserRows, USERS_RANGE } from "@/lib/users-sheet";
 import { buildOperationalReport } from "@/lib/reports";
 import { getRemittanceDashboard } from "@/lib/remittance-workflow";
 
@@ -13,10 +14,10 @@ export async function getDashboardData(user: SessionUser) {
   const from = `${today.slice(0, 7)}-01`;
   const roles = user.roleNames.map((role) => role.trim().toLowerCase());
   const kind: DashboardKind = roles.some((role) => ["administrator", "admin"].includes(role)) ? "admin" : roles.some((role) => ["ceo", "president"].includes(role)) ? "executive" : roles.includes("finance") ? "finance" : roles.some((role) => ["hr", "hr officer"].includes(role)) ? "hr" : roles.some((role) => ["it", "it clerk"].includes(role)) ? "it" : roles.includes("entry clerk") ? "entry" : "mas";
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Employees'!A:M", "'Users'!A:L", "'Branches'!A:Q", "'Members'!A:AH", "'Programs'!A:J", "'Member programs'!A:S", "'Sales'!A:AU", "'Collections'!A:AG"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
+  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Employees'!A:M", USERS_RANGE, "'Branches'!A:Q", "'Members'!A:AH", "'Programs'!A:J", "'Member programs'!A:S", "'Sales'!A:AU", "'Collections'!A:AG"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
   const [employees, users, branches, members, programs, enrollments, sales, collections] = response.data.valueRanges?.map((item) => item.values ?? []) ?? [];
   const employee = employees.slice(1).find((row) => text(row[0]) === user.employeeId);
-  const employeeName = text(employee?.[1]) || user.username;
+  const employeeName = text(employee?.[1]) || user.name;
   const own = kind === "mas" ? { person: employeeName } : {};
   const [monthReport, remittance] = await Promise.all([buildOperationalReport(from, today, own), getRemittanceDashboard()]);
   const todaySales = monthReport.sales.filter((row) => row.date === today), todayCollections = monthReport.collections.filter((row) => row.date === today);
@@ -28,5 +29,5 @@ export async function getDashboardData(user: SessionUser) {
   const portfolioRows = enrollments.slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active" && text(row[6]).toLowerCase() === employeeName.toLowerCase());
   const portfolio = portfolioRows.slice(0, 8).map((row) => ({ member: memberNames.get(text(row[1])) || text(row[2]), program: programNames.get(text(row[3])) || text(row[3]), branch: text(row[5]), status: text(row[18]) || text(row[12]), doi: date(row[4]) }));
   const recent = [...sales.slice(1).filter((row) => text(row[0])).map((row) => ({ id: text(row[0]), stamp: text(row[46]) || text(row[1]), name: `${text(row[7])} ${text(row[6])}`.trim(), program: programNames.get(text(row[33])) || text(row[33]), type: "New Sale", amount: Number(row[38]) || 0, status: "Saved", encoder: text(row[44]) })), ...collections.slice(1).filter((row) => text(row[0])).map((row) => ({ id: text(row[0]), stamp: text(row[24]) || text(row[9]), name: text(row[4]), program: programNames.get(text(row[5])) || text(row[5]), type: "Collection", amount: Number(row[10]) || 0, status: text(row[28]) || text(row[19]), encoder: text(row[22]) }))].filter((row) => kind !== "entry" || row.encoder === user.employeeId).sort((a, b) => b.stamp.localeCompare(a.stamp)).slice(0, 8);
-  return { kind, today, employeeName, monthReport, todayActivity, remittance, recent, portfolio, branchStats, counts: { portfolio: portfolioRows.length, employees: employees.slice(1).filter((row) => text(row[0])).length, activeEmployees: activeEmployees.length, mas: activeEmployees.filter((row) => text(row[3]).toLowerCase().includes("mas")).length, collectors: activeEmployees.filter((row) => text(row[3]).toLowerCase().includes("collector")).length, users: users.slice(1).filter((row) => text(row[0]) && text(row[5]).toLowerCase() === "active").length, branches: branches.slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active").length, members: members.slice(1).filter((row) => text(row[0])).length, programs: programs.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() === "active").length }, encodedToday: recent.filter((row) => date(row.stamp) === today).length };
+  return { kind, today, employeeName, monthReport, todayActivity, remittance, recent, portfolio, branchStats, counts: { portfolio: portfolioRows.length, employees: employees.slice(1).filter((row) => text(row[0])).length, activeEmployees: activeEmployees.length, mas: activeEmployees.filter((row) => text(row[3]).toLowerCase().includes("mas")).length, collectors: activeEmployees.filter((row) => text(row[3]).toLowerCase().includes("collector")).length, users: readUserRows(users).users.filter((row) => row.status === "active").length, branches: branches.slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active").length, members: members.slice(1).filter((row) => text(row[0])).length, programs: programs.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() === "active").length }, encodedToday: recent.filter((row) => date(row.stamp) === today).length };
 }

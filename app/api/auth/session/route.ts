@@ -19,7 +19,8 @@ export async function GET() {
     success: true,
     user: {
       employeeId: user.employeeId,
-      username: user.username,
+      name: user.name,
+      rolePages: user.rolePages,
       roles: user.roleNames.length ? user.roleNames : user.roles,
       roleIds: user.roles,
       roleNames: user.roleNames,

@@ -9,7 +9,7 @@ import type { AccessContext } from "@/lib/access-control";
 import { isInWorkspace, normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { onPreferencesChange, preferenceKeys, readDensity, readPreference, writePreference } from "@/lib/ui-preferences";
 
-export type ShellUser = { username: string; employeeId: string };
+export type ShellUser = { name: string; employeeId: string };
 
 const emptyAccess: AccessContext = { roleNames: [], permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false } };
 
@@ -30,7 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .then((result) => {
         if (!result.success) return;
         const roleNames: string[] = Array.isArray(result.user?.roleNames) ? result.user.roleNames.map(String) : [];
-        setUser({ username: String(result.user?.username ?? ""), employeeId: String(result.user?.employeeId ?? "") });
+        setUser({ name: String(result.user?.name ?? ""), employeeId: String(result.user?.employeeId ?? "") });
         setAccess({
           roleNames,
           permissions: {
@@ -38,6 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             manageAttendance: Boolean(result.user?.permissions?.manageAttendance),
             viewAttendanceReports: Boolean(result.user?.permissions?.viewAttendanceReports),
           },
+          rolePages: result.user?.rolePages && typeof result.user.rolePages === "object" ? result.user.rolePages : {},
         });
         const available = roleOptions(roleNames);
         const saved = readPreference(preferenceKeys.activeRole);
@@ -62,7 +63,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   function chooseRole(role: string) {
     setActiveRole(role);
     writePreference(preferenceKeys.activeRole, role);
-    if (!isInWorkspace(role, pathname)) router.push("/");
+    if (!isInWorkspace(role, pathname, access)) router.push("/");
   }
 
   if (isLogin) return <>{children}</>;

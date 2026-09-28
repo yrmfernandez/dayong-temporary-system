@@ -70,7 +70,7 @@ export async function syncAccountStatuses() {
 
 export async function commitCollections(collectionRows: (string | number)[][], accounts: (Account & { rowNumber: number })[], payments: AccountPayment[]) {
   const actor = getEncoder();
-  const identity = [actor.userId, actor.employeeId, actor.username, actor.encodedAt];
+  const identity = [actor.userId, actor.employeeId, actor.name, actor.encodedAt];
   const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties" });
   const id = (title: string) => {
     const found = metadata.data.sheets?.find((sheet) => sheet.properties?.title === title)?.properties?.sheetId;

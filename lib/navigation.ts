@@ -5,7 +5,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { canAccessPath, type AccessContext } from "@/lib/access-control";
+import { canAccessPath, isAdministratorRole, type AccessContext } from "@/lib/access-control";
 
 export type NavItem = { name: string; href: string; icon: LucideIcon; children?: NavItem[] };
 export type NavSection = { title: string; items: NavItem[] };
@@ -125,19 +125,34 @@ export function workspaceFor(role: string) {
 
 export const routeMatches = (pathname: string, href: string) => pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
 
-/** The active role's workspace, minus any page the server would refuse for this session. */
+// Reversed so the first (generic) label wins where two entries share a route, e.g. Members / My Members.
+const pagesByHref = new Map<string, NavItem>(Object.values(page).reverse().map((item) => [item.href, item]));
+
+/**
+ * The active role's workspace, minus any page the server would refuse for this session.
+ * When an administrator configured the role's page access, only those pages show, and granted
+ * pages outside the role's usual workspace are listed under "More".
+ */
 export function visibleNavigation(role: string, access: AccessContext): NavSection[] {
-  const allowed = (item: NavItem) => canAccessPath(access, item.href);
-  return workspaceFor(role)
+  const configured = isAdministratorRole(role) ? undefined : access.rolePages?.[normalizeRole(role)];
+  const inRole = (href: string) => !configured || href === "/" || configured.some((route) => routeMatches(href, route));
+  const allowed = (item: NavItem) => canAccessPath(access, item.href) && inRole(item.href);
+  const sections = workspaceFor(role)
     .map((section) => ({
       ...section,
       items: section.items.filter(allowed).map((item) => item.children ? { ...item, children: item.children.filter(allowed) } : item),
     }))
     .filter((section) => section.items.length);
+  if (!configured) return sections;
+  const shown = new Set(sections.flatMap((section) => section.items.map((item) => item.href)));
+  const extra = configured.filter((href) => !shown.has(href) && href !== "/settings").map((href) => pagesByHref.get(href)).filter((item): item is NavItem => Boolean(item) && allowed(item!));
+  return extra.length ? [...sections, { title: "More", items: extra }] : sections;
 }
 
-export function isInWorkspace(role: string, pathname: string) {
-  return pathname === "/settings" || workspaceFor(role).some((section) => section.items.some((item) => routeMatches(pathname, item.href)));
+export function isInWorkspace(role: string, pathname: string, access?: AccessContext) {
+  if (pathname === "/settings") return true;
+  const sections = access ? visibleNavigation(role, access) : workspaceFor(role);
+  return sections.some((section) => section.items.some((item) => routeMatches(pathname, item.href)));
 }
 
 /** Section and page labels for the top bar breadcrumb. */

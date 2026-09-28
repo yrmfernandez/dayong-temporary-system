@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
 import { createSessionToken } from "@/lib/auth";
-import { getLoginUserByUsername } from "@/lib/google-sheets-data";
+import { getLoginUserByEmployeeId } from "@/lib/google-sheets-data";
 import {
   assertServerConfiguration,
   ServerConfigurationError,
@@ -42,9 +42,9 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const username =
-      typeof body.username === "string"
-        ? body.username.trim()
+    const employeeId =
+      typeof body.employeeId === "string"
+        ? body.employeeId.trim()
         : "";
 
     const password =
@@ -52,23 +52,23 @@ export async function POST(request: Request) {
         ? body.password
         : "";
 
-    if (!username || !password) {
+    if (!employeeId || !password) {
       return NextResponse.json(
         {
           success: false,
-          message: "Username and password are required.",
+          message: "Employee ID and password are required.",
         },
         { status: 400 },
       );
     }
 
-    const user = await getLoginUserByUsername(username);
+    const user = await getLoginUserByEmployeeId(employeeId);
 
     if (!user) {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid username or password.",
+          message: "Invalid Employee ID or password.",
         },
         { status: 401 },
       );
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid username or password.",
+          message: "Invalid Employee ID or password.",
         },
         { status: 401 },
       );
@@ -103,20 +103,27 @@ export async function POST(request: Request) {
       ),
     };
 
+    // Only roles with configured page access are listed; the rest use their default pages.
+    const rolePages = Object.fromEntries(
+      user.roles
+        .filter((role) => role.pages)
+        .map((role) => [role.name.trim().toLowerCase(), role.pages as string[]]),
+    );
+
     const token = await createSessionToken({
       userId: user.id,
       employeeId: user.employeeId,
-      username: user.username,
+      name: user.fullName || user.employeeId,
       roles: user.roles.map((role) => role.id),
       roleNames: user.roles.map((role) => role.name),
       permissions,
+      rolePages,
     });
 
     const response = NextResponse.json({
       success: true,
       user: {
         employeeId: user.employeeId,
-        username: user.username,
         fullName: user.fullName,
         roles: user.roles.map((role) => role.name),
       },

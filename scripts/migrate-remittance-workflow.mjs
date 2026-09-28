@@ -21,12 +21,12 @@ const collectionHeaders = [
 const remittanceHeaders = [
   "difference", "accountable_employee_id", "accountable_role", "collection_count",
   "received_by_employee_id", "received_by_name", "decision_by_user_id",
-  "decision_by_employee_id", "decision_by_username", "decision_at", "remarks",
+  "decision_by_employee_id", "decision_by_name", "decision_at", "remarks",
   "rejection_reason",
 ];
 const mappingHeaders = [
   "remittance_collection_id", "remittance_id", "collection_id", "amount", "linked_at",
-  "encoded_by_user_id", "encoded_by_employee_id", "encoded_by_username", "encoded_at",
+  "encoded_by_user_id", "encoded_by_employee_id", "encoded_by_name", "encoded_at",
 ];
 
 try {

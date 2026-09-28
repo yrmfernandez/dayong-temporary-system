@@ -7,7 +7,9 @@ import { getAuthSecret } from "@/lib/server-environment";
 export type SessionUser = {
   userId: string;
   employeeId: string;
-  username: string;
+  name: string;
+  /** Configured page routes per assigned role, keyed by lowercase role name. */
+  rolePages: Record<string, string[]>;
   roles: string[];
   roleNames: string[];
   permissions: {
@@ -45,10 +47,14 @@ export async function verifySessionToken(
       getSecretKey(),
     );
 
+    // Sessions issued before Employee ID sign-in carry no name; require a fresh sign-in.
+    if (!payload.name) return null;
+
     return {
       userId: String(payload.userId ?? ""),
       employeeId: String(payload.employeeId ?? ""),
-      username: String(payload.username ?? ""),
+      name: String(payload.name ?? ""),
+      rolePages: readRolePages(payload.rolePages),
       roles: Array.isArray(payload.roles)
         ? payload.roles.map(String)
         : [],
@@ -86,4 +92,9 @@ export async function verifySessionToken(
   } catch {
     return null;
   }
+}
+
+function readRolePages(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(Object.entries(value).filter(([, pages]) => Array.isArray(pages)).map(([role, pages]) => [role, (pages as unknown[]).map(String)]));
 }

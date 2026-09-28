@@ -7,7 +7,7 @@ const ts = require('typescript');
 
 // Execute the actual TS routes/data helpers with an in-memory Sheets transport.
 // No credentials, network calls, or production rows are used by these tests.
-function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', username: '=encoder', roleNames: ['Entry Clerk'], permissions: {} }) {
+function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encoder', roleNames: ['Entry Clerk'], permissions: {} }) {
   const cache = new Map();
   const writes = [];
   const rows = {};
@@ -25,7 +25,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', username: '=e
       if (range === "'Member programs'!S1") return { data: { values: [['Account Status']] } };
       if (/^'?Branches'?!A:M$/.test(range)) return { data: { values: rows.Branches ?? [[]] } };
       if (/^'?Roles'?!A:G$/.test(range)) return { data: { values: rows.Roles ?? [[]] } };
-      if (/^'?Users'?!A:(?:B|G|H)$/.test(range)) return { data: { values: rows.Users ?? [[]] } };
+      if (/^'?Users'?!A:(?:B|G|H|Z)$/.test(range)) return { data: { values: rows.Users ?? [[]] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
       return { data: { values: /1:.*1$/.test(range)
         ? [missingHeaders ? [] : load('lib/encoder-schema.ts').trackingHeaders(schema.title)]
@@ -69,9 +69,9 @@ test('employee registration is independent of login and records its encoder', as
   const route = h.load('app/api/employees/route.ts');
   assert.equal((await route.GET()).status, 401);
   assert.equal((await route.POST(request({}))).status, 401);
-  h.setUser({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: {} });
+  h.setUser({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: {} });
   assert.equal((await route.POST(request({}))).status, 403);
-  h.setUser({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
+  h.setUser({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   h.rows.Employees = [[], ['DPE-0002', 'Ana', 'North', 'MAS', 'active']];
   h.rows.Users = [[], ['U1', 'DPE-0005']];
   h.rows.Branches = [[], ['BR-1', 'South', 'DDO 1', '', '', '', '', '', '', '', '', '', 'active']];
@@ -91,7 +91,7 @@ test('employee registration is independent of login and records its encoder', as
 });
 
 test('employee status updates and deletion protect linked login accounts', async () => {
-  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const route = h.load('app/api/employees/route.ts');
   h.rows.Employees = [[], ['DPE-0002', 'Ana', 'North', 'MAS, Collector', 'active']];
   h.rows.Users = [[]];
@@ -107,21 +107,21 @@ test('employee status updates and deletion protect linked login accounts', async
 });
 
 test('user account edits preserve the primary role and save updated roles', async () => {
-  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
-  h.rows.Users = [[], ['USR-2', 'DPE-0002', 'old.name', 'Ana', 'hash', 'Active', '', 'ROLE-ENTRY-CLERK']];
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-2', 'DPE-0002', 'Ana', 'hash', 'Active', '', 'ROLE-ENTRY-CLERK']];
   h.rows.Roles = [[], ['ROLE-ENTRY-CLERK', 'Entry Clerk', '', '', '', '', 'active'], ['ROLE-MAS', 'MAS', '', '', '', '', 'active']];
   h.rows['User Roles'] = [[]];
   const route = h.load('app/api/user-accounts/route.ts');
   const loaded = await (await route.GET()).json();
   assert.deepEqual(loaded.accounts[0].roleIds, ['ROLE-ENTRY-CLERK']);
-  const response = await route.PATCH(request({ id: 'USR-2', username: 'ana.updated', status: 'active', roleIds: ['ROLE-ENTRY-CLERK', 'ROLE-MAS'], password: '' }));
+  const response = await route.PATCH(request({ id: 'USR-2', status: 'active', roleIds: ['ROLE-ENTRY-CLERK', 'ROLE-MAS'], password: '' }));
   assert.equal(response.status, 200, JSON.stringify(await response.json()));
-  assert.ok(h.writes.some((write) => write.requestBody?.data?.some?.((item) => item.range === 'Users!C2')));
+  assert.ok(h.writes.some((write) => write.requestBody?.data?.some?.((item) => item.range === 'Users!E2')));
   assert.ok(h.writes.some((write) => write.range === "'User Roles'!A:F"));
 });
 
 test('master-data CRUD updates programs and blocks deleting referenced records', async () => {
-  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const route = h.load('app/api/programs/route.ts');
   h.rows.Programs = [[], ['DP-0001', 'P1', 'Plan One', 350, 'active', '']];
   h.rows['Program Incentives'] = [[], ['INC-1', 'DP-0001', 'MAS', 1, 12, 'percentage', 50, 30]];
@@ -136,7 +136,7 @@ test('master-data CRUD updates programs and blocks deleting referenced records',
 });
 
 test('master-data CRUD blocks deleting assigned branches', async () => {
-  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'admin', permissions: { manageUsers: true } });
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const crud = h.load('lib/master-data-crud.ts');
   h.rows.Branches = [[], ['BR-0001', 'MATINA', 'METRO DAVAO 1']];
   h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-0001']];
@@ -179,7 +179,7 @@ test('member directory requires login, joins accounts once, and filters the same
 });
 
 test('attendance tracking lets Finance review one employee across a date range', async () => {
-  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', username: 'finance', roleNames: ['Finance'], permissions: {} });
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'finance', roleNames: ['Finance'], permissions: {} });
   h.rows.Employees = [[], ['MD-2026-0082', 'Ana Santos', 'MATINA', 'MAS', 'active']];
   h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-2026-0082', 'BR-1']];
   h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
@@ -337,7 +337,7 @@ test('pending approval does not clear cash accountability', async () => {
 });
 
 test('administrator who is also an Entry Clerk may approve own remittance', async () => {
-  const h = harness({ userId: 'USR-1', employeeId: 'DPE-1', username: 'admin', roleNames: ['Administrator', 'Entry Clerk'], permissions: { manageUsers: true } });
+  const h = harness({ userId: 'USR-1', employeeId: 'DPE-1', name: 'admin', roleNames: ['Administrator', 'Entry Clerk'], permissions: { manageUsers: true } });
   const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[10] = 350; collection[19] = 'Posted'; collection[28] = 'Pending Remittance Approval'; collection[29] = 'REM-1';
   const remittance = Array(24).fill(''); remittance[0] = 'REM-1'; remittance[4] = 'Pending Approval'; remittance[6] = 'USR-1'; remittance[10] = 350; remittance[11] = 350;
   const collectionHeader = Array(33).fill(''); collectionHeader[28] = 'Remittance Status';
@@ -347,6 +347,48 @@ test('administrator who is also an Entry Clerk may approve own remittance', asyn
   h.rows['Remittance Collections'] = [['Remittance Collection ID'], ['RCL-1', 'REM-1', 'COL-1', 350]];
   const response = await h.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: 'REM-1', decision: 'approve' }));
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+});
+
+test('any Remittances user can create an approved remittance when full cash is confirmed', async () => {
+  const h = harness({ userId: 'USR-7', employeeId: 'MD-2026-0007', name: 'April', roleNames: ['Entry Clerk'], permissions: {} });
+  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[6] = 'MINTAL'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 300; collection[28] = 'Outstanding'; collection[30] = 'EMP-1'; collection[31] = 'Ana'; collection[32] = 'Collector';
+  const collectionHeader = Array(33).fill(''); collectionHeader[28] = 'Remittance Status';
+  const remittanceHeader = Array(25).fill(''); remittanceHeader[12] = 'Difference';
+  h.rows.Collections = [collectionHeader, collection];
+  h.rows.Remittances = [remittanceHeader];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID']];
+  const route = h.load('app/api/remittances/route.ts');
+  const short = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 299, remittanceDate: '2026-09-28', cashConfirmed: true }));
+  assert.equal(short.status, 400);
+  const response = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 300, remittanceDate: '2026-09-28', cashConfirmed: true }));
+  const result = await response.json();
+  assert.equal(response.status, 201, JSON.stringify(result));
+  assert.equal(result.remittance.status, 'Approved');
+  const requests = h.writes.at(-1).requestBody.requests;
+  const row = requests[0].appendCells.rows[0].values.map((cell) => cell.userEnteredValue.stringValue ?? cell.userEnteredValue.numberValue);
+  assert.equal(row[4], 'Approved');
+  assert.deepEqual(row.slice(18, 21), ['USR-7', 'MD-2026-0007', 'April']);
+  assert.match(row[23], /Cash received in full/);
+  assert.equal(requests.at(-1).updateCells.rows[0].values[0].userEnteredValue.stringValue, 'Remitted');
+});
+
+test('sign-in looks up the active account by Employee ID and reads configured role pages', async () => {
+  const h = harness();
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-3', 'MD-2026-0007', 'April', 'hash', 'active', '', 'ROLE-FINANCE']];
+  h.rows.Roles = [[], ['ROLE-FINANCE', 'Finance', '', false, false, false, 'active', '', '', '', '', '/remittances, /expenses']];
+  h.rows['User Roles'] = [[], ['USR-3', 'ROLE-FINANCE']];
+  const { getLoginUserByEmployeeId } = h.load('lib/google-sheets-data.ts');
+  const user = await getLoginUserByEmployeeId('md-2026-0007');
+  assert.equal(user.fullName, 'April');
+  assert.deepEqual(user.roles[0].pages, ['/remittances', '/expenses']);
+  assert.equal(await getLoginUserByEmployeeId('april'), null);
+});
+
+test('new Employee IDs follow the most used prefix and the current year, and stay unique', () => {
+  const { suggestEmployeeId } = harness().load('lib/employees.ts');
+  assert.equal(suggestEmployeeId(['MD-2026-0001', 'MD-2026-0007', 'DPE-0001'], '2026'), 'MD-2026-0008');
+  assert.equal(suggestEmployeeId(['MD-2026-0007'], '2027'), 'MD-2027-0001');
+  assert.equal(suggestEmployeeId([], '2026'), 'MD-2026-0001');
 });
 
 test('attendance updates never touch original encoder cells, even for historical rows', async () => {
@@ -387,7 +429,7 @@ test('concurrent requests keep distinct encoder timestamps and identities', asyn
     return Response.json({});
   });
   const first = handler(request());
-  h.setUser({ userId: 'USR-2', employeeId: 'DPE-0002', username: 'second' });
+  h.setUser({ userId: 'USR-2', employeeId: 'DPE-0002', name: 'second' });
   await Promise.all([first, handler(request())]);
   assert.notEqual(snapshots[0], snapshots[1]);
   assert.deepEqual(new Set(snapshots.map((actor) => actor.userId)), new Set(['USR-1', 'USR-2']));

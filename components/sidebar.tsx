@@ -105,8 +105,8 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, mobil
 
       <div className={`shrink-0 border-t border-white/60 p-2.5 ${collapsed ? "md:px-2" : ""}`}>
         <div className={`flex items-center gap-2 rounded-xl bg-white/50 p-1.5 ${collapsed ? "md:flex-col md:bg-transparent md:p-0" : ""}`}>
-          {user && <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-60 to-purple-50 text-xs font-bold uppercase text-white" title={`${user.username} · ${activeRole}`} aria-hidden>{initials(user.username)}</span>}
-          <span className={`min-w-0 flex-1 leading-tight ${rail}`}>{user && <><span className="block truncate text-sm font-semibold text-violet-10">{user.username}</span><span className="block truncate text-[11px] text-violet-30/80">{activeRole}{user.employeeId ? ` · ${user.employeeId}` : ""}</span></>}</span>
+          {user && <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-60 to-purple-50 text-xs font-bold uppercase text-white" title={`${user.name} · ${activeRole}`} aria-hidden>{initials(user.name)}</span>}
+          <span className={`min-w-0 flex-1 leading-tight ${rail}`}>{user && <><span className="block truncate text-sm font-semibold text-violet-10">{user.name}</span><span className="block truncate text-[11px] text-violet-30/80">{activeRole}{user.employeeId ? ` · ${user.employeeId}` : ""}</span></>}</span>
           <IconAction label="Settings" href="/settings" active={pathname === "/settings"}><Settings className="size-4" /></IconAction>
           <IconAction label="Sign out" onClick={() => void signOut()} danger><LogOut className="size-4" /></IconAction>
         </div>

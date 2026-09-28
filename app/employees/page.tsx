@@ -39,6 +39,8 @@ export default function EmployeesPage() {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [showForm, setShowForm] = useState(false);
+  const [newEmployeeId, setNewEmployeeId] = useState("");
+  const [suggestedEmployeeId, setSuggestedEmployeeId] = useState("");
   const [expandedEmployeeId, setExpandedEmployeeId] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -47,6 +49,7 @@ export default function EmployeesPage() {
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load employees.");
       setEmployees(result.employees); setCanRegister(result.canRegister); setCanManage(result.canManage);
       setBranches(result.branches ?? []); setOperationalRoles(result.operationalRoles ?? []);
+      setSuggestedEmployeeId(result.nextEmployeeId ?? ""); setNewEmployeeId(result.nextEmployeeId ?? "");
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load employees."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -83,7 +86,7 @@ export default function EmployeesPage() {
       } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to register employee."); }
       finally { setSaving(false); }
     }}><h2 className="font-semibold">Register employee</h2><fieldset disabled={saving} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <label className="text-sm">Employee ID<input name="employeeId" required pattern="[A-Za-z]{2,5}-[0-9]{4}-[0-9]{4}" placeholder="MD-2026-0082" className={fieldClass}/></label>
+      <label className="text-sm">Employee ID<input name="employeeId" required pattern="[A-Za-z]{2,5}-[0-9]{4}-[0-9]{4}" placeholder="MD-2026-0082" value={newEmployeeId} onChange={(event) => setNewEmployeeId(event.target.value.toUpperCase())} className={`${fieldClass} font-mono`}/><span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">{newEmployeeId === suggestedEmployeeId ? "Assigned automatically. You can edit it." : <>Edited. <button type="button" className="font-medium text-primary underline" onClick={() => setNewEmployeeId(suggestedEmployeeId)}>Use {suggestedEmployeeId}</button></>}</span></label>
       <label className="text-sm">Full name<input name="name" required maxLength={150} className={fieldClass}/></label>
       <fieldset className="space-y-3 rounded-md border p-3 sm:col-span-2 lg:col-span-3"><legend className="px-1 text-sm">Branch assignments *</legend><div className="flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={() => setSelectedBranchIds(branches.map((item) => item.id))}>Select all</Button><Button type="button" size="sm" variant="ghost" onClick={() => setSelectedBranchIds([])}>Clear</Button>{territories.map((territory) => { const ids = branches.filter((item) => (item.territory || "Other") === territory).map((item) => item.id); const selected = ids.every((id) => selectedBranchIds.includes(id)); return <Button key={territory} type="button" size="sm" variant="outline" onClick={() => setSelectedBranchIds((current) => selected ? current.filter((id) => !ids.includes(id)) : [...new Set([...current, ...ids])])}>{selected ? "Clear" : "Select"} {territory}</Button>; })}</div><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{branches.map((item) => <label key={`${item.id}-${item.name}`} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selectedBranchIds.includes(item.id)} onChange={() => setSelectedBranchIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])}/><span>{item.name}<span className="block text-xs text-muted-foreground">{item.territory}</span></span></label>)}</div></fieldset>
       <fieldset className="space-y-2 rounded-md border p-3 sm:col-span-2 lg:col-span-3"><legend className="px-1 text-sm">Operational roles *</legend><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{operationalRoles.map((item) => <label key={item} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selectedRoles.includes(item)} onChange={() => setSelectedRoles((current) => current.includes(item) ? current.filter((roleName) => roleName !== item) : [...current, item])}/>{item}</label>)}</div></fieldset>

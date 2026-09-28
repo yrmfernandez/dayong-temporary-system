@@ -20,7 +20,7 @@ import { preferenceKeys, readDensity, readIndicator, writePreference, type Indic
 
  type SessionUser = {
   employeeId: string;
-  username: string;
+  name: string;
   roles: string[];
   permissions: Record<string, boolean>;
 };
@@ -41,7 +41,6 @@ export default function SettingsPage() {
   const [signingOut, setSigningOut] = useState(false);
   const [compactTables, setCompactTables] = useState(false);
   const [indicator, setIndicator] = useState<IndicatorStyle>("pill");
-  const [username, setUsername] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(false);
@@ -75,7 +74,7 @@ export default function SettingsPage() {
           throw new Error(result.message || "Unable to load account settings.");
         }
 
-        setUser(result.user); setUsername(result.user.username);
+        setUser(result.user);
       } catch (failure) {
         setError(
           failure instanceof Error
@@ -139,8 +138,8 @@ export default function SettingsPage() {
             ) : user ? (
               <div className="divide-y rounded-lg border">
                 <div className="flex items-center justify-between gap-4 p-4">
-                  <span className="text-sm text-muted-foreground">Username</span>
-                  <span className="text-sm font-medium">{user.username}</span>
+                  <span className="text-sm text-muted-foreground">Name</span>
+                  <span className="text-sm font-medium">{user.name}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4 p-4">
                   <span className="text-sm text-muted-foreground">Employee ID</span>
@@ -250,7 +249,7 @@ export default function SettingsPage() {
 
       <FinanceSettings />
 
-      <Card><CardHeader><CardTitle>Security and sign-in</CardTitle><CardDescription>Change your username or password. Your current password is required.</CardDescription></CardHeader><CardContent><form className="grid gap-4 sm:grid-cols-2" onSubmit={async (event) => { event.preventDefault(); setSaving(true); setAccountMessage(""); try { const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, currentPassword, newPassword }) }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to update account."); setUser((current) => current ? { ...current, username: result.username } : current); setCurrentPassword(""); setNewPassword(""); setAccountMessage("Account settings updated."); } catch (failure) { setAccountMessage(failure instanceof Error ? failure.message : "Unable to update account."); } finally { setSaving(false); } }}><div className="space-y-2"><Label htmlFor="settings-username">Username</Label><Input id="settings-username" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username"/></div><div className="space-y-2"><Label htmlFor="current-password">Current password *</Label><Input id="current-password" type="password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password"/></div><div className="space-y-2"><Label htmlFor="new-password">New password</Label><Input id="new-password" type="password" minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password"/><p className="text-xs text-muted-foreground">Leave blank to keep the current password. New passwords require at least 12 characters.</p></div><div className="flex items-end"><Button disabled={saving}>{saving ? "Saving..." : "Save sign-in settings"}</Button></div>{accountMessage && <p className="text-sm sm:col-span-2" role="status">{accountMessage}</p>}</form></CardContent></Card>
+      <Card><CardHeader><CardTitle>Security and sign-in</CardTitle><CardDescription>You sign in with your Employee ID. Change your password here; your current password is required.</CardDescription></CardHeader><CardContent><form className="grid gap-4 sm:grid-cols-2" onSubmit={async (event) => { event.preventDefault(); setSaving(true); setAccountMessage(""); try { const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to update account."); setCurrentPassword(""); setNewPassword(""); setAccountMessage("Password changed."); } catch (failure) { setAccountMessage(failure instanceof Error ? failure.message : "Unable to update account."); } finally { setSaving(false); } }}><div className="space-y-2"><Label htmlFor="settings-employee-id">Employee ID</Label><Input id="settings-employee-id" value={user?.employeeId ?? ""} readOnly className="bg-muted/50" autoComplete="username"/></div><div className="space-y-2"><Label htmlFor="current-password">Current password *</Label><Input id="current-password" type="password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password"/></div><div className="space-y-2"><Label htmlFor="new-password">New password *</Label><Input id="new-password" type="password" required minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password"/><p className="text-xs text-muted-foreground">At least 12 characters.</p></div><div className="flex items-end"><Button disabled={saving}>{saving ? "Saving..." : "Change password"}</Button></div>{accountMessage && <p className="text-sm sm:col-span-2" role="status">{accountMessage}</p>}</form></CardContent></Card>
 
       <Card>
         <CardHeader>

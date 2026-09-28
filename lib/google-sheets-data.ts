@@ -3,6 +3,8 @@ import { getEmployees } from "@/lib/employees";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
 import { encoderHeaders } from "@/lib/encoder-schema";
+import { parsePageAccess } from "@/lib/roles";
+import { assertUsernameColumnRemoved, loadUsers, readUserRows, USERS_RANGE } from "@/lib/users-sheet";
 import {
   GOOGLE_SHEET_ID,
   sheets,
@@ -1382,12 +1384,12 @@ export type LoginRole = {
   manageUsers: boolean;
   manageAttendance: boolean;
   viewAttendanceReports: boolean;
+  pages: string[] | null;
 };
 
 export type LoginUserData = {
   id: string;
   employeeId: string;
-  username: string;
   fullName: string;
   passwordHash: string;
   roles: LoginRole[];
@@ -1411,53 +1413,27 @@ function isEnabled(value: unknown) {
   );
 }
 
-export async function getLoginUserByUsername(
-  username: string,
+export async function getLoginUserByEmployeeId(
+  employeeId: string,
 ): Promise<LoginUserData | null> {
-  const normalizedUsername = username
-    .trim()
-    .toLowerCase();
-
-  if (!normalizedUsername) {
-    return null;
-  }
+  const normalizedId = employeeId.trim().toUpperCase();
+  if (!normalizedId) return null;
 
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: ["Users!A:G", "Roles!A:G", "'User Roles'!A:B"],
+    ranges: [USERS_RANGE, "Roles!A:L", "'User Roles'!A:B"],
   });
-  const users = response.data.valueRanges?.[0]?.values ?? [];
+  const { users } = readUserRows(response.data.valueRanges?.[0]?.values ?? []);
   const roles = response.data.valueRanges?.[1]?.values ?? [];
   const userRoles = response.data.valueRanges?.[2]?.values ?? [];
 
-  const userRow = users.slice(1).find((row) => {
-    const rowUsername = String(row[2] ?? "")
-      .trim()
-      .toLowerCase();
-
-    const status = String(row[5] ?? "")
-      .trim()
-      .toLowerCase();
-
-    return (
-      rowUsername === normalizedUsername &&
-      status === "active"
-    );
-  });
-
-  if (!userRow) {
-    return null;
-  }
-
-  const userId = String(userRow[0] ?? "").trim();
+  const user = users.find((row) => row.employeeId.toUpperCase() === normalizedId && row.status === "active");
+  if (!user) return null;
 
   const assignedRoleIds = new Set(
     userRoles
       .slice(1)
-      .filter(
-        (row) =>
-          String(row[0] ?? "").trim() === userId,
-      )
+      .filter((row) => String(row[0] ?? "").trim() === user.id)
       .map((row) => String(row[1] ?? "").trim())
       .filter(Boolean),
   );
@@ -1467,15 +1443,8 @@ export async function getLoginUserByUsername(
     .slice(1)
     .filter((row) => {
       const roleId = String(row[0] ?? "").trim();
-      const status = String(row[6] ?? "")
-        .trim()
-        .toLowerCase();
-
-      const allowed = (
-        assignedRoleIds.has(roleId) &&
-        status === "active" &&
-        !uniqueRoleIds.has(roleId)
-      );
+      const status = String(row[6] ?? "").trim().toLowerCase();
+      const allowed = assignedRoleIds.has(roleId) && status === "active" && !uniqueRoleIds.has(roleId);
       if (allowed) uniqueRoleIds.add(roleId);
       return allowed;
     })
@@ -1485,14 +1454,14 @@ export async function getLoginUserByUsername(
       manageUsers: isEnabled(row[3]),
       manageAttendance: isEnabled(row[4]),
       viewAttendanceReports: isEnabled(row[5]),
+      pages: parsePageAccess(row[11]),
     }));
 
   return {
-    id: userId,
-    employeeId: String(userRow[1] ?? "").trim(),
-    username: String(userRow[2] ?? "").trim(),
-    fullName: String(userRow[3] ?? "").trim(),
-    passwordHash: String(userRow[4] ?? "").trim(),
+    id: user.id,
+    employeeId: user.employeeId,
+    fullName: user.fullName,
+    passwordHash: user.passwordHash,
     roles: assignedRoles,
   };
 }
@@ -1504,7 +1473,6 @@ export type AccountRole = {
 
 export type CreateEmployeeAccountData = {
   employeeId?: string;
-  username: string;
   fullName: string;
   passwordHash: string;
   roleIds: string[];
@@ -1550,140 +1518,54 @@ export async function getActiveAccountRoles(): Promise<
 export async function createEmployeeAccount(
   data: CreateEmployeeAccountData,
 ) {
-  const username = data.username
-    .trim()
-    .toLowerCase();
-
-  let employeeId = (data.employeeId ?? "")
-    .trim()
-    .toUpperCase();
-
+  let employeeId = (data.employeeId ?? "").trim().toUpperCase();
   const fullName = data.fullName.trim();
 
+  if (!fullName) throw new Error("Full name is required.");
+  if (!data.passwordHash) throw new Error("Password hash is required.");
+  if (data.roleIds.length === 0) throw new Error("Select at least one role.");
 
-  if (!username) {
-    throw new Error("Username is required.");
-  }
-
-  if (!fullName) {
-    throw new Error("Full name is required.");
-  }
-
-  if (!data.passwordHash) {
-    throw new Error("Password hash is required.");
-  }
-
-  if (data.roleIds.length === 0) {
-    throw new Error("Select at least one role.");
-  }
-
-  const [usersResponse, activeRoles] =
-    await Promise.all([
-      sheets.spreadsheets.values.get({
-        spreadsheetId: GOOGLE_SHEET_ID,
-        range: "Users!A:H",
-      }),
-
-      getActiveAccountRoles(),
-    ]);
-
-  const users = usersResponse.data.values ?? [];
+  const [{ columns, users }, activeRoles] = await Promise.all([loadUsers(), getActiveAccountRoles()]);
+  assertUsernameColumnRemoved(columns);
 
   if (!employeeId) {
-    const highest = users.slice(1).reduce((max, row) => {
-      const match = /^DPE-(\d{4})$/.exec(String(row[1] ?? "").trim());
+    const highest = users.reduce((max, user) => {
+      const match = /^DPE-(d{4})$/.exec(user.employeeId);
       return match ? Math.max(max, Number(match[1])) : max;
     }, 0);
     employeeId = `DPE-${String(highest + 1).padStart(4, "0")}`;
   }
 
-  if (!/^(?:DPE-\d{4}|[A-Z]{2,5}-\d{4}-\d{4})$/.test(employeeId)) throw new Error("Employee ID must use the company format, for example MD-2026-0082.");
+  if (!/^(?:DPE-d{4}|[A-Z]{2,5}-d{4}-d{4})$/.test(employeeId)) throw new Error("Employee ID must use the company format, for example MD-2026-0082.");
+  // The Employee ID is the sign-in identifier, so each may hold only one account.
+  if (users.some((user) => user.employeeId.toUpperCase() === employeeId)) throw new Error("This Employee ID already has a user account.");
 
-  const duplicateUsername = users
-    .slice(1)
-    .some(
-      (row) =>
-        String(row[2] ?? "")
-          .trim()
-          .toLowerCase() === username,
-    );
+  const activeRoleIds = new Set(activeRoles.map((role) => role.id));
+  const roleIds = [...new Set(data.roleIds.map((roleId) => roleId.trim()).filter(Boolean))];
+  if (roleIds.some((roleId) => !activeRoleIds.has(roleId))) throw new Error("One or more selected roles are invalid or inactive.");
 
-  if (duplicateUsername) {
-    throw new Error("This username already exists.");
-  }
+  const highestUserNumber = users.reduce((highest, user) => {
+    const match = /^USR-(d+)$/.exec(user.id);
+    return match ? Math.max(highest, Number(match[1])) : highest;
+  }, 0);
+  const userId = `USR-${String(highestUserNumber + 1).padStart(4, "0")}`;
+  const createdAt = new Date().toISOString().split("T")[0];
 
-  const duplicateEmployeeId = users
-    .slice(1)
-    .some(
-      (row) =>
-        String(row[1] ?? "")
-          .trim()
-          .toUpperCase() === employeeId,
-    );
-
-  if (duplicateEmployeeId) {
-    throw new Error("This Employee ID already exists.");
-  }
-
-  const activeRoleIds = new Set(
-    activeRoles.map((role) => role.id),
-  );
-
-  const roleIds = [
-    ...new Set(
-      data.roleIds
-        .map((roleId) => roleId.trim())
-        .filter(Boolean),
-    ),
-  ];
-
-  if (
-    roleIds.some(
-      (roleId) => !activeRoleIds.has(roleId),
-    )
-  ) {
-    throw new Error(
-      "One or more selected roles are invalid or inactive.",
-    );
-  }
-
-  const highestUserNumber = users
-    .slice(1)
-    .reduce((highest, row) => {
-      const match = /^USR-(\d+)$/.exec(
-        String(row[0] ?? "").trim(),
-      );
-
-      return match
-        ? Math.max(highest, Number(match[1]))
-        : highest;
-    }, 0);
-
-  const userId = `USR-${String(
-    highestUserNumber + 1,
-  ).padStart(4, "0")}`;
-
-  const createdAt = new Date()
-    .toISOString()
-    .split("T")[0];
+  const row: string[] = [];
+  row[columns.id] = userId;
+  row[columns.employeeId] = employeeId;
+  row[columns.fullName] = fullName;
+  row[columns.passwordHash] = data.passwordHash;
+  row[columns.status] = "active";
+  row[columns.createdAt] = createdAt;
+  row[columns.roleId] = roleIds[0];
 
   await appendEncodedRows({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: "Users!A:H",
+    range: "Users!A:G",
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: [[
-        userId,
-        employeeId,
-        username,
-        fullName,
-        data.passwordHash,
-        "active",
-        createdAt,
-        roleIds[0],
-      ]],
-    },
+    requestBody: { values: [Array.from(row, (value) => value ?? "")] },
   });
 
   await appendEncodedRows({
@@ -1691,27 +1573,16 @@ export async function createEmployeeAccount(
     range: "User Roles!A:B",
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: roleIds.map((roleId) => [
-        userId,
-        roleId,
-      ]),
-    },
+    requestBody: { values: roleIds.map((roleId) => [userId, roleId]) },
   });
 
-  return {
-    id: userId,
-    employeeId,
-    username,
-    fullName,
-    roleIds,
-  };
+  return { id: userId, employeeId, fullName, roleIds };
 }
 
 export async function getActiveMasStaff(): Promise<MasStaff[]> {
   const [usersResponse, rolesResponse, userRolesResponse] =
     await Promise.all([
-      sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:G" }),
+      loadUsers(),
       sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Roles!A:G" }),
       sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'User Roles'!A:B" }),
     ]);
@@ -1727,10 +1598,9 @@ export async function getActiveMasStaff(): Promise<MasStaff[]> {
       masRoleIds.has(String(row[1] ?? "").trim()),
     ).map((row) => String(row[0] ?? "").trim()),
   );
-  const legacy = (usersResponse.data.values ?? []).slice(1).filter((row) =>
-    masUserIds.has(String(row[0] ?? "").trim()) &&
-    String(row[5] ?? "").trim().toLowerCase() === "active",
-  ).map((row) => ({ employeeId: String(row[1] ?? "").trim(), fullName: String(row[3] ?? "").trim() }))
+  const legacy = usersResponse.users.filter((user) =>
+    masUserIds.has(user.id) && user.status === "active",
+  ).map((user) => ({ employeeId: user.employeeId, fullName: user.fullName }))
     .filter((staff) => staff.employeeId !== "")
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
   const employees = await getEmployees();
@@ -1859,23 +1729,9 @@ export async function getCollectionHistory(
 export async function getActiveAttendanceEmployees(): Promise<
   AttendanceEmployee[]
 > {
-  const response =
-    await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: "Users!A:G",
-    });
-
-  const legacy = (response.data.values ?? [])
-    .slice(1)
-    .filter((row) =>
-      String(row[5] ?? "")
-        .trim()
-        .toLowerCase() === "active",
-    )
-    .map((row) => ({
-      employeeId: String(row[1] ?? "").trim(),
-      fullName: String(row[3] ?? "").trim(),
-    }))
+  const legacy = (await loadUsers()).users
+    .filter((user) => user.status === "active")
+    .map((user) => ({ employeeId: user.employeeId, fullName: user.fullName }))
     .filter((employee) => employee.employeeId !== "")
     .sort((first, second) =>
       first.fullName.localeCompare(second.fullName),

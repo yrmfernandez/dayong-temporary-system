@@ -47,6 +47,24 @@ function readBranchIds(body: Record<string, unknown>) {
   return [...new Set((Array.isArray(body.branchIds) ? body.branchIds : []).map((id) => typeof id === "string" ? id.trim() : "").filter(Boolean))];
 }
 
+/**
+ * Next company-format Employee ID (PREFIX-YYYY-NNNN): the most used prefix, the current Manila year,
+ * and one more than the highest number already issued with that prefix and year.
+ */
+export function suggestEmployeeId(existingIds: string[], year = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric" }).format(new Date())) {
+  const parsed = existingIds.map((id) => /^([A-Z]{2,5})-(\d{4})-(\d{4})$/.exec(id.trim().toUpperCase())).filter((match): match is RegExpExecArray => Boolean(match));
+  const counts = new Map<string, number>();
+  parsed.forEach((match) => counts.set(match[1], (counts.get(match[1]) ?? 0) + 1));
+  const prefix = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "MD";
+  const highest = parsed.filter((match) => match[1] === prefix && match[2] === year).reduce((max, match) => Math.max(max, Number(match[3])), 0);
+  return `${prefix}-${year}-${String(highest + 1).padStart(4, "0")}`;
+}
+
+export async function getNextEmployeeId() {
+  const [employees, users] = await Promise.all([getEmployeeRows(), sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:B" })]);
+  return suggestEmployeeId([...employees.map((employee) => employee.id), ...(users.data.values ?? []).slice(1).map((row) => String(row[1] ?? ""))]);
+}
+
 export async function registerEmployee(body: Record<string, unknown>, validRoles: string[], branches: Array<{ id: string; name: string }>) {
   const text = (key: string) => typeof body[key] === "string" ? (body[key] as string).trim() : "";
   const id=text("employeeId").toUpperCase(),name = text("name"), branchIds = readBranchIds(body), roles = readRoles(body), contact = text("contact"), email = text("email"), dateHired = text("dateHired");

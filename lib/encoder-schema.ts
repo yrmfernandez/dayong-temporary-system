@@ -1,8 +1,8 @@
 export const encoderHeaders = [
-  "Encoded By User ID", "Encoded By Employee ID", "Encoded By Username", "Encoded At",
+  "Encoded By User ID", "Encoded By Employee ID", "Encoded By Name", "Encoded At",
 ];
 export const editorHeaders = [
-  "Updated By User ID", "Updated By Employee ID", "Updated By Username",
+  "Updated By User ID", "Updated By Employee ID", "Updated By Name",
 ];
 
 // Business columns retain their existing positions. Migration only appends headers.
@@ -18,7 +18,7 @@ export const encoderSheets = [
   { title: "Programs", columns: 6 },
   { title: "Program Incentives", columns: 8 },
   { title: "Branches", columns: 13 },
-  { title: "Users", columns: 8 },
+  { title: "Users", columns: 7 },
   { title: "User Roles", columns: 2 },
   { title: "Attendance", columns: 18 },
   { title: "Leave Requests", columns: 11 },

@@ -8,7 +8,7 @@ CRUD is implemented according to the type of record and its audit requirements.
 | Programs | Program and incentive form | Program directory | Details, status, base pay, and incentive tiers | Delete only when no member enrollment references it; otherwise mark inactive |
 | Members | New Sales registration | Member directory and MAM | Contact number and master status | Delete only without a program enrollment; enrolled members retain their history |
 | Employees | Employee registration | Employee directory | Details, roles, branches, and status | Delete only when no login account references the employee |
-| User Accounts | Administrator account form | Account directory | Username, status, roles, and optional password reset | Administrators cannot delete their current signed-in account |
+| User Accounts | Administrator account form | Account directory | Status, roles, and optional password reset (the Employee ID is the sign-in ID and is not editable) | Administrators cannot delete their current signed-in account |
 | Expenses and Cash Transactions | Finance forms | Finance ledger | Void lifecycle | Posted financial records are voided with a reason |
 | Collections and Remittances | Encoding and turnover | History, MAM, and remittance workspace | Status, approval, or rejection | Financial history is retained for reconciliation |
 | Attendance and Leave | Employee and review workflows | Attendance and leave views | Clock, review, approval, or rejection | Personnel history is retained |

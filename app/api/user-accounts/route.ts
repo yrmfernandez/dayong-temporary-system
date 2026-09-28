@@ -70,11 +70,6 @@ export const POST = withEncoder(async function POST(request: Request) {
     const employee = (await getEmployees()).find((e) => e.id === employeeId && e.status.toLowerCase() === "active");
     if (!employee) return NextResponse.json({ success: false, message: "Select an active registered employee." }, { status: 400 });
 
-    const username =
-      typeof body.username === "string"
-        ? body.username
-        : "";
-
     const password =
       typeof body.password === "string"
         ? body.password
@@ -108,7 +103,6 @@ export const POST = withEncoder(async function POST(request: Request) {
 
     const user = await createEmployeeAccount({
       employeeId,
-      username,
       fullName: employee.name,
       passwordHash,
       roleIds,
@@ -143,7 +137,7 @@ export const PATCH = withEncoder(async (request: Request) => {
     const body = await request.json();
     const id = typeof body.id === "string" ? body.id.trim() : "";
     const roleIds = Array.isArray(body.roleIds) ? body.roleIds.filter((value: unknown): value is string => typeof value === "string") : [];
-    return NextResponse.json({ success: true, account: await updateUserAccount(id, { username: typeof body.username === "string" ? body.username : "", status: body.status === "inactive" ? "inactive" : "active", roleIds, password: typeof body.password === "string" ? body.password : "" }) });
+    return NextResponse.json({ success: true, account: await updateUserAccount(id, { status: body.status === "inactive" ? "inactive" : "active", roleIds, password: typeof body.password === "string" ? body.password : "" }) });
   } catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to update account." }, { status: 400 }); }
 });
 

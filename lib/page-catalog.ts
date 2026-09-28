@@ -1,0 +1,41 @@
+// Pages an administrator can grant to a role in Roles → Page access. Dashboard and Settings are always allowed.
+export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; label: string }> }> = [
+  { group: "Operations", pages: [
+    { href: "/new-sales", label: "New Sales" },
+    { href: "/collections", label: "Collections" },
+    { href: "/remittances", label: "Remittances" },
+    { href: "/mam", label: "MAM" },
+  ] },
+  { group: "Finance", pages: [
+    { href: "/cash-transactions", label: "Cash Transactions" },
+    { href: "/expenses", label: "Expenses" },
+    { href: "/vendor-payables", label: "Vendor Payables" },
+    { href: "/commissions", label: "Commissions" },
+    { href: "/fidelity", label: "Fidelity" },
+  ] },
+  { group: "Reports", pages: [
+    { href: "/reports", label: "Reports (daily to yearly)" },
+    { href: "/admin-reports", label: "User Report Review" },
+    { href: "/history", label: "Audit Log" },
+  ] },
+  { group: "People", pages: [
+    { href: "/employees", label: "Employees" },
+    { href: "/attendance", label: "My Attendance" },
+    { href: "/attendance-reviews", label: "Attendance Review" },
+    { href: "/attendance-tracking", label: "Attendance Tracking" },
+    { href: "/leave-requests", label: "Leave Requests" },
+    { href: "/leave-approvals", label: "Leave Approvals" },
+  ] },
+  { group: "Master Data", pages: [
+    { href: "/members", label: "Members" },
+    { href: "/programs", label: "Programs" },
+    { href: "/branches", label: "Branches" },
+    { href: "/master-data", label: "Master Data" },
+  ] },
+  { group: "Administration", pages: [
+    { href: "/user-accounts", label: "User Accounts" },
+    { href: "/roles", label: "Roles" },
+  ] },
+];
+
+export const pageCatalogRoutes = pageCatalog.flatMap((group) => group.pages.map((page) => page.href));

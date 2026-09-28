@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getSessionUser } from "@/lib/auth-server";
 
-type Encoder = { userId: string; employeeId: string; username: string; encodedAt: string };
+type Encoder = { userId: string; employeeId: string; name: string; encodedAt: string };
 const storage = new AsyncLocalStorage<Encoder>();
 export function isEncodingRequest() { return Boolean(storage.getStore()); }
 
@@ -9,14 +9,14 @@ export function isEncodingRequest() { return Boolean(storage.getStore()); }
 export function withEncoder(handler: (request: Request) => Promise<Response>) {
   return async (request: Request): Promise<Response> => {
     const user = await getSessionUser();
-    if (!user?.userId || !user.employeeId || !user.username) {
+    if (!user?.userId || !user.employeeId || !user.name) {
       return Response.json(
         { success: false, message: "Please sign in to save entries.", error: "Please sign in to save entries." },
         { status: 401 },
       );
     }
     return storage.run({
-      userId: user.userId, employeeId: user.employeeId, username: user.username,
+      userId: user.userId, employeeId: user.employeeId, name: user.name,
       encodedAt: new Date().toISOString(),
     }, () => handler(request));
   };
@@ -31,6 +31,6 @@ export function getEncoder() {
 export function encoderValues() {
   const actor = getEncoder();
   // USER_ENTERED must treat identity snapshots as literal text, never formulas/numbers.
-  return [actor.userId, actor.employeeId, actor.username].map((value) => `'${value}`)
+  return [actor.userId, actor.employeeId, actor.name].map((value) => `'${value}`)
     .concat(actor.encodedAt);
 }

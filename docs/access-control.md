@@ -9,6 +9,19 @@ Dayong uses four access layers:
 
 Role names are read from the live `Roles` and `User Roles` sheets during login and stored in the signed session token alongside stable role IDs. Navigation never depends on a hard-coded role ID.
 
+## Page access per role
+
+Administrators choose which pages each role can open in **Roles → Page access**. The selection is stored as comma-separated routes in `Roles` column L (`page_access`) and copied into the signed session at sign-in, so changes apply the next time affected users sign in.
+
+- A blank `page_access` means the role still uses its built-in defaults from `lib/access-control.ts`; the editor pre-fills those defaults.
+- Dashboard and Settings are always allowed. Administrator always has every page and cannot be restricted.
+- A user receives the combined pages of all their roles. Action permissions (`manage_users`, `manage_attendance`, `view_attendance_reports`) still add the pages their APIs need.
+- In the sidebar, a configured role shows only its granted pages; granted pages outside the role's usual workspace appear under **More**.
+
+## Sign-in
+
+Employees sign in with their **Employee ID** and password. Usernames were removed from the Users sheet and the application (`npm run sheets:employee-login`).
+
 ## Sidebar role workspaces
 
 Workspaces are defined once in `lib/navigation.ts`. Each role's sidebar lists that role's work first, then oversight, reference lookups, and personal self-service (My HR). Settings and Sign out sit in the sidebar footer for every role. A link only appears when `canAccessPath` also allows it for the session, so the sidebar never shows a page the server would redirect away from.

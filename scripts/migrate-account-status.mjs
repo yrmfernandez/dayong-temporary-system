@@ -24,7 +24,7 @@ try {
   if (!properties) throw new Error(`Missing sheet ${title}.`);
   const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: "'Member programs'!1:1" }, options);
   const headers = response.data.values?.[0] ?? [];
-  const expected = ["status", "date_created", "encoded_by_user_id", "encoded_by_employee_id", "encoded_by_username", "encoded_at"];
+  const expected = ["status", "date_created", "encoded_by_user_id", "encoded_by_employee_id", "encoded_by_name", "encoded_at"];
   if (headers[0] !== "enrollment_id" || expected.some((value, i) => headers[12 + i] !== value)) {
     throw new Error("Member programs layout changed. Review columns before migrating.");
   }

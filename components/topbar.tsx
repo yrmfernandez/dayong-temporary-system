@@ -30,8 +30,8 @@ export function Topbar({ sections, activeRole, user, onMenu }: TopbarProps) {
         </nav>
         <span className="hidden text-xs text-violet-30/80 lg:block" suppressHydrationWarning>{today}</span>
         {activeRole && <span className="hidden rounded-full border border-white/80 bg-white/60 px-2.5 py-1 text-xs font-semibold text-violet-30 shadow-sm sm:block">{activeRole}</span>}
-        {user && <Link href="/settings" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-60 to-purple-50 text-xs font-bold uppercase text-white shadow-md shadow-violet-60/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden" aria-label={`Account settings for ${user.username}`}>
-          {initials(user.username)}
+        {user && <Link href="/settings" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-60 to-purple-50 text-xs font-bold uppercase text-white shadow-md shadow-violet-60/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden" aria-label={`Account settings for ${user.name}`}>
+          {initials(user.name)}
         </Link>}
       </div>
     </header>

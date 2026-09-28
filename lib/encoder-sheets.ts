@@ -12,7 +12,8 @@ async function verifyTrackingHeaders(range: string) {
     range: `${quotedSheet(schema.title)}!${columnName(schema.columns + 1)}1:${columnName(schema.columns + expected.length)}1`,
   });
   const actual = response.data.values?.[0] ?? [];
-  if (expected.some((header, index) => !headerMatches(actual[index], header))) {
+  // "... By Username" is the pre-migration name of "... By Name" (npm run sheets:employee-login).
+  if (expected.some((header, index) => !headerMatches(actual[index], header) && !headerMatches(actual[index], header.replace(/ Name$/, " Username")))) {
     throw new Error(`Encoder headers are missing or changed in ${schema.title}. Run the encoder tracking migration before saving.`);
   }
   if (schema.title === "Member programs") {

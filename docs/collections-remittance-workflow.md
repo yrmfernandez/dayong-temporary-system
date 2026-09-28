@@ -42,6 +42,7 @@ Run `npm run sheets:remittances` for a dry run and `npm run sheets:remittances -
 - A Remittance contains Collections for one accountable person and branch.
 - Expected Amount is recalculated on the server from the selected Collection rows.
 - The backend rechecks eligibility before submission and approval.
-- The submitting user cannot decide the same Remittance.
+- The submitting user cannot decide the same Remittance through Pending Approval.
+- **Cash received in full:** any user who can open Remittances may tick it when the actual cash equals the expected amount (including Fidelity) to the centavo. The server then creates the Remittance already Approved in one write, records the encoder as the decision maker with the note "Cash received in full and confirmed during encoding.", and marks the linked Collections Remitted.
 - Approval and rejection currently require the existing administrative `manageUsers` permission until dedicated finance permissions are added.
 - Approved records have no ordinary edit/delete endpoint. Future corrections require a void/reversal workflow with reason, user, and timestamp.

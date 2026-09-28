@@ -37,7 +37,7 @@ export type CashRemittance = {
   submittedAt: string;
   submittedByUserId: string;
   submittedByEmployeeId: string;
-  submittedByUsername: string;
+  submittedByName: string;
   expectedAmount: number;
   actualAmount: number;
   difference: number;
@@ -46,7 +46,7 @@ export type CashRemittance = {
   collectionCount: number;
   receivedByEmployeeId: string;
   receivedByName: string;
-  decisionByUsername: string;
+  decisionByName: string;
   decisionAt: string;
   remarks: string;
   decisionReason: string;
@@ -76,9 +76,9 @@ async function loadLedger() {
   })).filter((collection) => collection.id && text(rows.Collections[collection.rowNumber - 1]?.[19]).toLowerCase() === "posted");
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
     id: text(row[0]), rowNumber: index + 2, branch: text(row[1]), accountableName: text(row[2]), remittanceDate: text(row[3]), status: text(row[4]) || "Legacy",
-    submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByUsername: text(row[8]),
+    submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
-    collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByUsername: text(row[20]), decisionAt: text(row[21]),
+    collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByName: text(row[20]), decisionAt: text(row[21]),
     remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId),
   })).filter((remittance) => remittance.id);
   return { collections, remittances, mappings };
@@ -122,7 +122,9 @@ async function sheetIds() {
   return { collections: id("Collections"), remittances: id("Remittances"), mappings: id("Remittance Collections") };
 }
 
-export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; fidelityAmount: number; remittanceDate: string; remarks?: string }) {
+export const CASH_IN_FULL_NOTE = "Cash received in full and confirmed during encoding.";
+
+export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; fidelityAmount: number; remittanceDate: string; remarks?: string; cashConfirmed?: boolean }) {
   const actor = getEncoder();
   const ledger = await loadLedger();
   const ids = [...new Set(input.collectionIds.map(text).filter(Boolean))];
@@ -151,17 +153,21 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const expected = Math.round((collections.reduce((sum, collection) => sum + collection.remittanceAmount, 0) + input.fidelityAmount) * 100) / 100;
   const actual = Math.round(input.actualAmount * 100) / 100;
   const difference = Math.round((actual - expected) * 100) / 100;
-  const status = difference === 0 ? "Pending Approval" : "Discrepancy";
+  // Confirmed full cash is created and approved in one atomic write by whoever received it.
+  if (input.cashConfirmed && difference !== 0) throw new Error("Cash received in full requires the actual amount to equal the expected amount.");
+  const approved = Boolean(input.cashConfirmed);
+  const status = approved ? "Approved" : difference === 0 ? "Pending Approval" : "Discrepancy";
   const id = createReadableId("REM");
   const timestamp = actor.encodedAt;
-  const identity = [actor.userId, actor.employeeId, actor.username, timestamp];
+  const identity = [actor.userId, actor.employeeId, actor.name, timestamp];
+  const decision = approved ? [actor.userId, actor.employeeId, actor.name, timestamp] : ["", "", "", ""];
   const row = [id, owner.branch, owner.accountableName, input.remittanceDate, status, timestamp, ...identity, expected, actual, difference,
-    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, actor.username, "", "", "", "", text(input.remarks), "", Math.round(input.fidelityAmount*100)/100];
+    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, actor.name, ...decision, text(input.remarks), approved ? CASH_IN_FULL_NOTE : "", Math.round(input.fidelityAmount*100)/100];
   const sheet = await sheetIds();
   const requests = [
     { appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } },
     ...collections.map((collection) => ({ appendCells: { sheetId: sheet.mappings, rows: [{ values: [createReadableId("RCL"), id, collection.id, collection.remittanceAmount, timestamp, ...identity].map(cell) }], fields: "userEnteredValue" } })),
-    ...collections.map((collection) => ({ updateCells: { range: { sheetId: sheet.collections, startRowIndex: collection.rowNumber - 1, endRowIndex: collection.rowNumber, startColumnIndex: 28, endColumnIndex: 30 }, rows: [{ values: [cell("Pending Remittance Approval"), cell(id)] }], fields: "userEnteredValue" } })),
+    ...collections.map((collection) => ({ updateCells: { range: { sheetId: sheet.collections, startRowIndex: collection.rowNumber - 1, endRowIndex: collection.rowNumber, startColumnIndex: 28, endColumnIndex: 30 }, rows: [{ values: [cell(approved ? "Remitted" : "Pending Remittance Approval"), cell(id)] }], fields: "userEnteredValue" } })),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
   return { id, status, expectedAmount: expected, actualAmount: actual, difference, fidelityAmount: Math.round(input.fidelityAmount*100)/100 };
@@ -186,7 +192,7 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   const status = decision === "approve" ? "Approved" : "Rejected";
   const requests = [
     { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 4, endColumnIndex: 5 }, rows: [{ values: [cell(status)] }], fields: "userEnteredValue" } },
-    { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 18, endColumnIndex: 24 }, rows: [{ values: [actor.userId, actor.employeeId, actor.username, timestamp, remittance.remarks, text(reason)].map(cell) }], fields: "userEnteredValue" } },
+    { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 18, endColumnIndex: 24 }, rows: [{ values: [actor.userId, actor.employeeId, actor.name, timestamp, remittance.remarks, text(reason)].map(cell) }], fields: "userEnteredValue" } },
     ...linked.map((collection) => ({ updateCells: { range: { sheetId: sheet.collections, startRowIndex: collection!.rowNumber - 1, endRowIndex: collection!.rowNumber, startColumnIndex: 28, endColumnIndex: 30 }, rows: [{ values: [cell(decision === "approve" ? "Remitted" : "Outstanding"), cell(decision === "approve" ? remittance.id : "")] }], fields: "userEnteredValue" } })),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });

@@ -2,6 +2,7 @@
 import bcrypt from "bcryptjs";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { loadUsers, userCell } from "@/lib/users-sheet";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -70,30 +71,27 @@ export async function deleteBranchRecord(id: string) {
 }
 
 export async function getUserAccounts() {
-  const [users, roles, links] = await Promise.all([rows("Users!A:H"), rows("Roles!A:G"), rows("'User Roles'!A:B")]);
+  const [{ users }, roles, links] = await Promise.all([loadUsers(), rows("Roles!A:G"), rows("'User Roles'!A:B")]);
   const roleNames = new Map(roles.slice(1).map((row) => [text(row[0]), text(row[1])]));
-  return users.slice(1).filter((row) => text(row[0])).map((row) => {
-    const primaryRoleId = text(row[7]);
-    const linkedRoleIds = links.slice(1).filter((link) => text(link[0]) === text(row[0])).map((link) => text(link[1])).filter(Boolean);
-    const roleIds = [...new Set([...linkedRoleIds, primaryRoleId].filter(Boolean))];
-    return { id: text(row[0]), employeeId: text(row[1]), username: text(row[2]), fullName: text(row[3]), status: text(row[5]).toLowerCase() || "active", createdAt: text(row[6]), primaryRoleId: primaryRoleId || roleIds[0] || "", roleIds, roles: roleIds.map((roleId) => roleNames.get(roleId) || roleId) };
+  return users.map((user) => {
+    const linkedRoleIds = links.slice(1).filter((link) => text(link[0]) === user.id).map((link) => text(link[1])).filter(Boolean);
+    const roleIds = [...new Set([...linkedRoleIds, user.roleId].filter(Boolean))];
+    return { id: user.id, employeeId: user.employeeId, fullName: user.fullName, status: user.status || "active", createdAt: user.createdAt, primaryRoleId: user.roleId || roleIds[0] || "", roleIds, roles: roleIds.map((roleId) => roleNames.get(roleId) || roleId) };
   });
 }
 
-export async function updateUserAccount(id: string, input: { username: string; status: string; roleIds: string[]; password?: string }) {
-  const [users, roles, links] = await Promise.all([rows("Users!A:H"), rows("Roles!A:G"), rows("'User Roles'!A:B")]);
-  const rowNumber = findRow(users, id);
-  const username = input.username.trim().toLowerCase();
-  if (!/^[a-z0-9._-]{3,50}$/.test(username)) throw new Error("Enter a valid username.");
-  if (users.slice(1).some((row, index) => index + 2 !== rowNumber && text(row[2]).toLowerCase() === username)) throw new Error("This username is already in use.");
+export async function updateUserAccount(id: string, input: { status: string; roleIds: string[]; password?: string }) {
+  const [{ columns, users }, roles, links] = await Promise.all([loadUsers(), rows("Roles!A:G"), rows("'User Roles'!A:B")]);
+  const user = users.find((row) => row.id === id);
+  if (!user) throw new Error("Record not found.");
   const activeRoleIds = new Set(roles.slice(1).filter((row) => text(row[6]).toLowerCase() === "active").map((row) => text(row[0])));
   const roleIds = [...new Set(input.roleIds.map(text).filter(Boolean))];
   if (!roleIds.length || roleIds.some((roleId) => !activeRoleIds.has(roleId))) throw new Error("Select valid active roles.");
   const status = input.status === "inactive" ? "inactive" : "active";
-  const data = [{ range: `Users!C${rowNumber}`, values: [[username]] }, { range: `Users!F${rowNumber}`, values: [[status]] }, {range:`Users!H${rowNumber}`,values:[[roleIds[0]]]}];
+  const data = [{ range: userCell(columns.status, user.rowNumber), values: [[status]] }, { range: userCell(columns.roleId, user.rowNumber), values: [[roleIds[0]]] }];
   if (input.password) {
     if (input.password.length < 12) throw new Error("Temporary password must contain at least 12 characters.");
-    data.push({ range: `Users!E${rowNumber}`, values: [[await bcrypt.hash(input.password, 12)]] });
+    data.push({ range: userCell(columns.passwordHash, user.rowNumber), values: [[await bcrypt.hash(input.password, 12)]] });
   }
   await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data } });
   await clearRows("User Roles", "F", links.slice(1).map((row, index) => text(row[0]) === id ? index + 2 : 0).filter(Boolean));
@@ -103,8 +101,10 @@ export async function updateUserAccount(id: string, input: { username: string; s
 
 export async function deleteUserAccount(id: string, actorUserId: string) {
   if (id === actorUserId) throw new Error("You cannot delete your own signed-in account.");
-  const [users, links] = await Promise.all([rows("Users!A:H"), rows("'User Roles'!A:B")]);
-  await clearRows("Users", "L", [findRow(users, id)]);
+  const [{ users }, links] = await Promise.all([loadUsers(), rows("'User Roles'!A:B")]);
+  const user = users.find((row) => row.id === id);
+  if (!user) throw new Error("Record not found.");
+  await clearRows("Users", "L", [user.rowNumber]);
   await clearRows("User Roles", "F", links.slice(1).map((row, index) => text(row[0]) === id ? index + 2 : 0).filter(Boolean));
 }
 

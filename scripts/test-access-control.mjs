@@ -5,6 +5,19 @@ import { canAccessPath } from "../lib/access-control.ts";
 const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };
 const access = (roleNames, pathname, overrides = {}) => canAccessPath({ roleNames, permissions: { ...permissions, ...overrides } }, pathname);
 
+test("configured role pages replace that role's defaults, but never restrict Administrator", () => {
+  const context = (roleNames, rolePages) => ({ roleNames, permissions, rolePages });
+  const finance = context(["Finance"], { finance: ["/remittances"] });
+  assert.equal(canAccessPath(finance, "/remittances"), true);
+  assert.equal(canAccessPath(finance, "/expenses"), false);
+  assert.equal(canAccessPath(finance, "/"), true);
+  assert.equal(canAccessPath(finance, "/settings"), true);
+  assert.equal(canAccessPath(context(["Entry Clerk"], { "entry clerk": ["/expenses"] }), "/expenses"), true);
+  assert.equal(canAccessPath(context(["Administrator"], { administrator: [] }), "/roles"), true);
+  // Unconfigured roles keep defaults alongside configured ones.
+  assert.equal(canAccessPath(context(["Finance", "Entry Clerk"], { finance: ["/remittances"] }), "/new-sales"), true);
+});
+
 test("Administrator can open every implemented workspace", () => {
   assert.equal(access(["Administrator"], "/expenses"), true);
   assert.equal(access(["Administrator"], "/user-accounts"), true);

@@ -19,7 +19,8 @@
     "sheets:roles": "node scripts/migrate-roles.mjs",
     "sheets:program-rules": "node scripts/migrate-program-rules.mjs",
     "sheets:ids": "node scripts/migrate-readable-ids.mjs",
-    "sheets:repair": "node scripts/repair-sheet-rows.mjs"
+    "sheets:repair": "node scripts/repair-sheet-rows.mjs",
+    "sheets:employee-login": "node scripts/migrate-employee-login.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

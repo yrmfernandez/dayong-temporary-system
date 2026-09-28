@@ -24,7 +24,7 @@ Filters for branch, program, and MAS/Collector apply to Sales and Collections. B
 - Monthly shows totals grouped into calendar-day bands: days 1-7, 8-14, 15-21, 22-28, and 29-end.
 - Yearly shows monthly totals for the selected year.
 
-Every report records the signed-in username and generation timestamp in the rendered result. Print uses the browser print workflow. Export produces a formula-safe UTF-8 CSV that opens in Excel.
+Every report records the signed-in employee's name and generation timestamp in the rendered result. Print uses the browser print workflow. Export produces a formula-safe UTF-8 CSV that opens in Excel.
 
 ## Current schema limits
 
