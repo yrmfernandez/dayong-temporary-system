@@ -420,6 +420,36 @@ test('form buttons declare a type because the Base UI Button defaults to type="b
   assert.deepEqual(offenders, [], 'A submit <Button> needs type="submit"; other buttons need type="button" or onClick.');
 });
 
+test('payroll run is calculated from pay setup, attendance, and pending commissions', async () => {
+  const h = harness({ userId: 'USR-1', employeeId: 'MD-2099-0001', name: 'Finance User', roleNames: ['Finance'], permissions: {} });
+  h.rows.Employees = [[], ['MD-2099-0010', 'Office Staff', 'BR-1', 'Entry Clerk', 'active'], ['MD-2099-0011', 'Field MAS', 'BR-1', 'MAS', 'active'], ['MD-2099-0012', 'No Setup', 'BR-1', 'HR Officer', 'active']];
+  h.rows['Employee Branches'] = [[]];
+  h.rows['Pay Profiles'] = [[], ['MD-2099-0010', 'daily', 800, false, 8, 1.25, 'active', '', ''], ['MD-2099-0011', 'none', 0, true, 8, 1.25, 'active', '', '']];
+  const attendance = (date, status, ot = 0) => { const row = Array(18).fill(''); row[0] = `ATT-${date}`; row[1] = 'MD-2099-0010'; row[2] = date; row[9] = ot; row[10] = status; return row; };
+  h.rows.Attendance = [[], attendance('2099-09-01', 'Present', 2), attendance('2099-09-02', 'Present'), attendance('2099-09-03', 'Absent')];
+  h.rows.Commissions = [[], ['COM-1', 'MD-2099-0011', 'Field MAS', '2099-09-01', '2099-09-15', 5000, 500, 4500, 'Pending', '', '', ''], ['COM-2', 'MD-2099-0011', 'Field MAS', '2099-08-01', '2099-08-15', 100, 0, 100, 'Paid', '', '', '']];
+  h.rows.Collections = [[]];
+  h.rows['Payroll Runs'] = [[]]; h.rows['Payroll Lines'] = [[]]; h.rows['Payroll Adjustments'] = [[]];
+  const route = h.load('app/api/payroll/route.ts');
+  const post = (body) => route.POST(new Request('http://localhost/api/payroll', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+  const response = await post({ action: 'create', periodFrom: '2099-09-01', periodTo: '2099-09-15' });
+  const result = await response.json();
+  assert.equal(response.status, 201, JSON.stringify(result));
+  assert.deepEqual(result.missingProfiles, ['No Setup']);
+  const appended = h.writes.filter((write) => write.range?.startsWith("'Payroll"));
+  const runRow = appended.find((write) => write.range.startsWith("'Payroll Runs'")).requestBody.values[0];
+  assert.equal(runRow[4], 'Draft');
+  assert.equal(runRow[9], 6350); // staff: 2 days × 800 + 2h OT 250 = 1850; MAS: pending commission 4500 (the paid one is excluded)
+  const lines = appended.find((write) => write.range.startsWith("'Payroll Lines'")).requestBody.values;
+  const staff = lines.find((row) => row[2] === 'MD-2099-0010'), mas = lines.find((row) => row[2] === 'MD-2099-0011');
+  assert.equal(staff[12], 1600);
+  assert.equal(staff[14], 250);
+  assert.equal(mas[20], 4500);
+  assert.equal(mas[21], 'COM-1');
+  const denied = await (await route.POST(new Request('http://localhost/api/payroll', { method: 'POST', body: JSON.stringify({ action: 'create' }) }))).json();
+  assert.match(denied.message, /valid pay period/);
+});
+
 test('password change verifies the current password and writes only the hash cell', async () => {
   const bcrypt = require('bcryptjs');
   const h = harness({ userId: 'USR-3', employeeId: 'MD-2099-0102', name: 'Test Clerk', roleNames: ['Finance'], permissions: {} });

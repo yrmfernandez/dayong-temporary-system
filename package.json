@@ -22,7 +22,8 @@
     "sheets:repair": "node scripts/repair-sheet-rows.mjs",
     "sheets:employee-login": "node scripts/migrate-employee-login.mjs",
     "sheets:payment-methods": "node scripts/migrate-payment-methods.mjs",
-    "sheets:program-age": "node scripts/migrate-program-age.mjs"
+    "sheets:program-age": "node scripts/migrate-program-age.mjs",
+    "sheets:payroll": "node scripts/migrate-payroll.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

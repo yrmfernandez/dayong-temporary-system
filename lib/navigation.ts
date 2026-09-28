@@ -1,7 +1,7 @@
 import {
   BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
   ClipboardList, CreditCard, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
-  LayoutDashboard, PiggyBank, Receipt, ShieldCheck, UserCog, Users, Wallet,
+  LayoutDashboard, Banknote, PiggyBank, Receipt, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,8 +21,9 @@ const page = {
   cash: { name: "Cash Transactions", href: "/cash-transactions", icon: HandCoins },
   payables: { name: "Vendor Payables", href: "/vendor-payables", icon: FileText },
   commissions: { name: "Commissions", href: "/commissions", icon: CreditCard },
+  payroll: { name: "Payroll", href: "/payroll", icon: Banknote },
   fidelity: { name: "Fidelity", href: "/fidelity", icon: PiggyBank },
-  myFidelity: { name: "My Fidelity", href: "/fidelity", icon: PiggyBank },
+  myFidelity: { name: "My Fidelity", href: "/fidelity/me", icon: PiggyBank },
   reports: {
     name: "Reports", href: "/reports", icon: ChartNoAxesColumnIncreasing, children: [
       { name: "Daily", href: "/reports/daily", icon: FileText },
@@ -48,7 +49,9 @@ const page = {
   auditLog: { name: "Audit Log", href: "/history", icon: History },
 } satisfies Record<string, NavItem>;
 
-const myHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests] };
+// Personal self-service. MAS lists My Fidelity under My Portfolio instead.
+const myHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests, page.myFidelity] };
+const masHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests] };
 
 /**
  * Sidebar workspace per role. Sections follow each role's daily workflow:
@@ -59,7 +62,7 @@ const workspaces: Record<string, NavSection[]> = {
   administrator: [
     { title: "Overview", items: [page.dashboard] },
     { title: "Operations", items: [page.newSales, page.collections, page.remittances, page.mam] },
-    { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.fidelity] },
+    { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.payroll, page.fidelity] },
     { title: "Reports", items: [page.reports, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
     { title: "Master Data", items: [page.members, page.programs, page.branches] },
@@ -68,17 +71,17 @@ const workspaces: Record<string, NavSection[]> = {
   ],
   executive: [
     { title: "Overview", items: [page.dashboard, page.reports, page.mam] },
-    { title: "Cash Oversight", items: [page.remittances, page.cash, page.fidelity] },
+    { title: "Cash Oversight", items: [page.remittances, page.cash, page.payroll, page.fidelity] },
     { title: "Directory", items: [page.members, page.programs, page.branches] },
     myHr,
   ],
   finance: [
     { title: "Overview", items: [page.dashboard] },
     { title: "Cash", items: [page.remittances, page.collections, page.cash] },
-    { title: "Payables", items: [page.expenses, page.payables, page.commissions] },
+    { title: "Payables", items: [page.payroll, page.commissions, page.expenses, page.payables] },
     { title: "Monitoring", items: [page.mam, page.fidelity, page.reports, page.auditLog] },
     { title: "Directory", items: [page.members, page.programs] },
-    { title: "My HR", items: [page.attendance, page.attendanceTracking, page.leaveRequests] },
+    { title: "My HR", items: [page.attendance, page.attendanceTracking, page.leaveRequests, page.myFidelity] },
   ],
   "entry clerk": [
     { title: "Overview", items: [page.dashboard] },
@@ -103,7 +106,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Overview", items: [page.dashboard] },
     { title: "My Portfolio", items: [page.myMembers, page.mam, page.myFidelity] },
     { title: "Reference", items: [page.programs, page.branches, page.masterData] },
-    myHr,
+    masHr,
   ],
 };
 
@@ -158,12 +161,21 @@ export function isInWorkspace(role: string, pathname: string, access?: AccessCon
 /** Section and page labels for the top bar breadcrumb. */
 export function locatePage(pathname: string, sections: NavSection[]) {
   if (pathname === "/settings") return { section: "Account", title: "Settings" };
+  const active = activeHref(pathname, sections);
   for (const section of sections) {
     for (const item of section.items) {
-      const child = item.children?.find((entry) => pathname === entry.href);
+      const child = item.children?.find((entry) => entry.href === active);
       if (child) return { section: item.name, title: `${child.name} Report` };
-      if (item.href === "/" ? pathname === "/" : routeMatches(pathname, item.href)) return { section: section.title, title: item.name };
+      if (item.href === active) return { section: section.title, title: item.name };
     }
   }
   return { section: "Dayong", title: "Workspace" };
+}
+
+/** The most specific nav href for this path, so /fidelity/me highlights My Fidelity, not Fidelity. */
+export function activeHref(pathname: string, sections: NavSection[]) {
+  const hrefs = sections.flatMap((section) => section.items.flatMap((item) => [item.href, ...(item.children ?? []).map((child) => child.href)]));
+  return hrefs
+    .filter((href) => href === "/" ? pathname === "/" : routeMatches(pathname, href))
+    .sort((a, b) => b.length - a.length)[0] ?? "";
 }

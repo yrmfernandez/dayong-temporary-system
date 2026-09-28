@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ShellUser } from "@/components/app-shell";
 import { BrandLogo } from "@/components/brand-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { routeMatches, type NavItem, type NavSection } from "@/lib/navigation";
+import { activeHref, type NavItem, type NavSection } from "@/lib/navigation";
 import { onPreferencesChange, preferenceKeys, readIndicator, readPreference, removePreference, writePreference, type IndicatorStyle } from "@/lib/ui-preferences";
 
 type SidebarProps = {
@@ -51,6 +51,7 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, mobil
   }, [sections, query]);
 
   const itemCount = sections.reduce((sum, section) => sum + section.items.length, 0);
+  const active = activeHref(pathname, sections);
   // On phones the drawer is always expanded; "collapsed" only narrows the desktop rail.
   const rail = collapsed ? "md:hidden" : "";
 
@@ -99,7 +100,7 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, mobil
           {filtered.map((section) => <div key={section.title}>
             <p className={`mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-sidebar-muted ${rail}`}>{section.title}</p>
             {collapsed && <div className="mx-auto mb-2 hidden h-px w-6 bg-sidebar-border md:block" />}
-            <div className="space-y-0.5">{section.items.map((item) => <NavLink key={item.href} item={item} pathname={pathname} collapsed={collapsed} indicator={indicator} forceOpen={!!query} />)}</div>
+            <div className="space-y-0.5">{section.items.map((item) => <NavLink key={item.href} item={item} pathname={pathname} active={active} collapsed={collapsed} indicator={indicator} forceOpen={!!query} />)}</div>
           </div>)}
         </div>
       </nav>
@@ -121,9 +122,10 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, mobil
   </>;
 }
 
-function NavLink({ item, pathname, collapsed, indicator, forceOpen }: { item: NavItem; pathname: string; collapsed: boolean; indicator: IndicatorStyle; forceOpen: boolean }) {
+function NavLink({ item, pathname, active, collapsed, indicator, forceOpen }: { item: NavItem; pathname: string; active: string; collapsed: boolean; indicator: IndicatorStyle; forceOpen: boolean }) {
   const Icon = item.icon;
-  const inside = item.href === "/" ? pathname === "/" : routeMatches(pathname, item.href);
+  // Highlight only the most specific matching link (e.g. My Fidelity at /fidelity/me, not Fidelity).
+  const inside = item.href === active || !!item.children?.some((child) => child.href === active);
   const [expanded, setExpanded] = useState(inside);
   const open = !!item.children?.length && (expanded || inside || forceOpen);
   const exact = item.children ? pathname === item.href : inside;

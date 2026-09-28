@@ -10,3 +10,8 @@ Fidelity is a voluntary savings benefit for MAS employees. It does not apply to 
 - MAS users see their own balance. Finance, Administrators, CEO, and President can review all MAS balances and remittance history.
 
 Reports show the manually encoded approved Fidelity amount separately.
+
+## My Fidelity vs Fidelity monitoring
+
+- **My Fidelity** (`/fidelity/me`) always shows only the signed-in employee's own savings: progress toward the cap, pending amounts, remaining balance, past claims, and their own history. It is under My Portfolio for MAS and under My HR for every other role, and uses `GET /api/fidelity?scope=me`.
+- **Fidelity** (`/fidelity`) is company-wide monitoring for Administrator, Finance, CEO, and President, where Finance or an Administrator records claims. Other roles opening `/fidelity` are redirected to My Fidelity.

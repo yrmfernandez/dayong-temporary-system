@@ -11,6 +11,7 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
     { href: "/expenses", label: "Expenses" },
     { href: "/vendor-payables", label: "Vendor Payables" },
     { href: "/commissions", label: "Commissions" },
+    { href: "/payroll", label: "Payroll" },
     { href: "/fidelity", label: "Fidelity" },
   ] },
   { group: "Reports", pages: [

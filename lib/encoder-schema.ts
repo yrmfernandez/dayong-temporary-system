@@ -32,6 +32,10 @@ export const encoderSheets = [
   { title: "Vendor Payables", columns: 15 },
   { title: "Commissions", columns: 12 },
   { title: "Payment Methods", columns: 5 },
+  { title: "Pay Profiles", columns: 9 },
+  { title: "Payroll Runs", columns: 24 },
+  { title: "Payroll Lines", columns: 24 },
+  { title: "Payroll Adjustments", columns: 8 },
 ];
 
 export function columnName(index: number): string {
