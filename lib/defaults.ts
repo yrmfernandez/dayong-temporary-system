@@ -17,12 +17,6 @@ function createId(): string {
 export function emptyAddress(): Address {
   return {
     houseBlockLot: "",
-    street: "",
-    subdivisionVillage: "",
-    barangay: "",
-    municipalityCity: "",
-    province: "",
-    zipCode: "",
   };
 }
 

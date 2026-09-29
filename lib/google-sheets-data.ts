@@ -43,24 +43,12 @@ export type MemberSheetData = {
   contactNumber: string;
 
   addressHouse: string;
-  addressStreet: string;
-  addressSubdivision: string;
-  addressBarangay: string;
-  addressCity: string;
-  addressProvince: string;
-  addressZip: string;
 
   claimantName: string;
   claimantContact: string;
   claimantSameAsMember: string;
 
   claimantAddressHouse: string;
-  claimantAddressStreet: string;
-  claimantAddressSubdivision: string;
-  claimantAddressBarangay: string;
-  claimantAddressCity: string;
-  claimantAddressProvince: string;
-  claimantAddressZip: string;
 
   status: string;
 };
@@ -85,24 +73,12 @@ export async function addMember(
     member.contactNumber,
 
     member.addressHouse,
-    member.addressStreet,
-    member.addressSubdivision,
-    member.addressBarangay,
-    member.addressCity,
-    member.addressProvince,
-    member.addressZip,
 
     member.claimantName,
     member.claimantContact,
     member.claimantSameAsMember,
 
     member.claimantAddressHouse,
-    member.claimantAddressStreet,
-    member.claimantAddressSubdivision,
-    member.claimantAddressBarangay,
-    member.claimantAddressCity,
-    member.claimantAddressProvince,
-    member.claimantAddressZip,
 
     member.status,
   ];
@@ -110,7 +86,7 @@ export async function addMember(
   const response =
     await appendEncodedRows({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${MEMBERS_SHEET}!A:AD`,
+      range: `${MEMBERS_SHEET}!A:R`,
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
@@ -145,7 +121,7 @@ export async function findMemberByNumber(
   const response =
     await sheets.spreadsheets.values.get({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${MEMBERS_SHEET}!A:AD`,
+      range: `${MEMBERS_SHEET}!A:R`,
     });
 
   const rows = response.data.values ?? [];
@@ -191,7 +167,7 @@ export async function searchMembersByName(
 ) {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [`${MEMBERS_SHEET}!A:AD`, `'${MEMBER_PROGRAMS_SHEET}'!A:N`],
+    ranges: [`${MEMBERS_SHEET}!A:R`, `'${MEMBER_PROGRAMS_SHEET}'!A:N`],
   });
   const rows = response.data.valueRanges?.[0]?.values ?? [];
   const enrollments = response.data.valueRanges?.[1]?.values ?? [];
@@ -270,39 +246,23 @@ export async function searchMembersByName(
 
       address: {
         houseBlockLot: row[12] ?? "",
-        street: row[13] ?? "",
-        subdivisionVillage:
-          row[14] ?? "",
-        barangay: row[15] ?? "",
-        municipalityCity:
-          row[16] ?? "",
-        province: row[17] ?? "",
-        zipCode: row[18] ?? "",
       },
 
       claimant: {
-        completeName: row[19] ?? "",
-        contactNumber: row[20] ?? "",
+        completeName: row[13] ?? "",
+        contactNumber: row[14] ?? "",
 
         sameAsMemberAddress: [
           "true",
           "yes",
         ].includes(
-          String(row[21] ?? "")
+          String(row[15] ?? "")
             .trim()
             .toLowerCase(),
         ),
 
         address: {
-          houseBlockLot: row[22] ?? "",
-          street: row[23] ?? "",
-          subdivisionVillage:
-            row[24] ?? "",
-          barangay: row[25] ?? "",
-          municipalityCity:
-            row[26] ?? "",
-          province: row[27] ?? "",
-          zipCode: row[28] ?? "",
+          houseBlockLot: row[16] ?? "",
         },
       },
     }));
@@ -446,24 +406,12 @@ export type SaleSheetData = {
   contactNumber: string;
 
   addressHouse: string;
-  addressStreet: string;
-  addressSubdivision: string;
-  addressBarangay: string;
-  addressCity: string;
-  addressProvince: string;
-  addressZip: string;
 
   claimantName: string;
   claimantContact: string;
   claimantSameAsMember: string;
 
   claimantAddressHouse: string;
-  claimantAddressStreet: string;
-  claimantAddressSubdivision: string;
-  claimantAddressBarangay: string;
-  claimantAddressCity: string;
-  claimantAddressProvince: string;
-  claimantAddressZip: string;
 
   programId: string;
   doi: string;
@@ -506,24 +454,12 @@ export async function addSale(
     sale.contactNumber,
 
     sale.addressHouse,
-    sale.addressStreet,
-    sale.addressSubdivision,
-    sale.addressBarangay,
-    sale.addressCity,
-    sale.addressProvince,
-    sale.addressZip,
 
     sale.claimantName,
     sale.claimantContact,
     sale.claimantSameAsMember,
 
     sale.claimantAddressHouse,
-    sale.claimantAddressStreet,
-    sale.claimantAddressSubdivision,
-    sale.claimantAddressBarangay,
-    sale.claimantAddressCity,
-    sale.claimantAddressProvince,
-    sale.claimantAddressZip,
 
     sale.programId,
     sale.doi,
@@ -543,7 +479,7 @@ export async function addSale(
   const response =
     await appendEncodedRows({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${SALES_SHEET}!A:AQ`,
+      range: `${SALES_SHEET}!A:AE`,
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: {

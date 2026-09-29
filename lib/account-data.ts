@@ -34,7 +34,7 @@ export async function loadAccountData() {
     id: str(r[0]), enrollmentId: str(r[2]), orDate: sheetDate(r[9]), orNumber: str(r[8]), monthFrom: sheetDate(r[11]).slice(0, 7), monthTo: sheetDate(r[12]).slice(0, 7),
     nopFrom: Number(r[13]), nopTo: Number(r[14]), amount: Number(r[10]), dateRemitted: sheetDate(r[9]), mas: str(r[7]),
   }));
-  const sales = tables.Sales.slice(1).map((r) => ({ memberNumber: str(r[5]), programId: str(r[33]), applicationNumber: str(r[40]), registrationFee: Number(r[37]) || 0 }));
+  const sales = tables.Sales.slice(1).map((r) => ({ memberNumber: str(r[5]), programId: str(r[21]), applicationNumber: str(r[28]), registrationFee: Number(r[25]) || 0 }));
   const incentives = tables["Program Incentives"].slice(1).filter((r) => str(r[0])).map((r) => ({
     id: str(r[0]), programId: str(r[1]), role: str(r[2]) as IncentiveTier["role"], fromMonth: Number(r[3]), toMonth: Number(r[4]),
     incentiveType: str(r[5]) as IncentiveTier["incentiveType"], markUp: Number(r[6]), incentiveAmount: Number(r[7]),

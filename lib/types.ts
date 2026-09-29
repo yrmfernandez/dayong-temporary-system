@@ -1,11 +1,6 @@
+/** A member or claimant address, entered as one complete line (house, street, barangay, city, province). */
 export type Address = {
   houseBlockLot: string;
-  street: string;
-  subdivisionVillage: string;
-  barangay: string;
-  municipalityCity: string;
-  province: string;
-  zipCode: string;
 };
 
 export type PersonName = {

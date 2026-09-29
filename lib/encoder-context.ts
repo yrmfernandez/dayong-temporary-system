@@ -28,6 +28,11 @@ export function getEncoder() {
   return encoder;
 }
 
+/** The signed-in actor of the current save request, or null outside one. */
+export function currentEncoder() {
+  return storage.getStore() ?? null;
+}
+
 export function encoderValues() {
   const actor = getEncoder();
   // USER_ENTERED must treat identity snapshots as literal text, never formulas/numbers.

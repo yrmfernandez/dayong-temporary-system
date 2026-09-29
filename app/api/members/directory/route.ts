@@ -10,7 +10,7 @@ export async function GET() {
   try {
     const response = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: GOOGLE_SHEET_ID,
-      ranges: ["'Members'!A:AD", "'Member programs'!A:M", "'Programs'!A:F"],
+      ranges: ["'Members'!A:R", "'Member programs'!A:M", "'Programs'!A:F"],
       valueRenderOption: "FORMATTED_VALUE",
     });
     const tables = response.data.valueRanges ?? [];

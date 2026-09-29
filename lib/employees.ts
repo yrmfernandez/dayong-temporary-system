@@ -1,5 +1,6 @@
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
+import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
 import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
 
 export const employmentStatuses = ["active", "inactive", "resigned"] as const;
@@ -101,7 +102,8 @@ export async function updateEmployee(employeeId: string, body: Record<string, un
   if (contact.length > 50 || email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error("Check the contact number and email.");
   if (dateHired && (!/^\d{4}-\d{2}-\d{2}$/.test(dateHired) || !Number.isFinite(Date.parse(dateHired)))) throw new Error("Enter a valid date hired.");
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'Employees'!A${employee.rowNumber}:I${employee.rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[employee.id, name, primaryBranch, roles.join(", "), status, contact, email, dateHired, employee.createdAt]] } });
-  if (old.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: old.map((assignment) => ({ range: `'Employee Branches'!A${assignment.rowNumber}:G${assignment.rowNumber}`, values: [Array(7).fill("")] })) } });
+  // Old assignments go before the new ones are added, so only the old rows match.
+  if (old.length) await deleteRowsWhere("Employee Branches", (row) => String(row[1] ?? "").trim() === employeeId);
   await appendEncodedRows({ range: "'Employee Branches'!A:C", requestBody: { values: branchIds.map((branchId, index) => [`EBA-${employeeId}-${Date.now()}-${index + 1}`, employeeId, branchId]) } });
   return { id: employeeId };
 }
@@ -124,7 +126,7 @@ export async function deleteEmployee(employeeId: string) {
   const linkedAccount = (usersResponse.data.values ?? []).slice(1).some((row) => String(row[1] ?? "").trim() === employeeId);
   if (linkedAccount) throw new Error("This employee has a linked user account. Deactivate or remove that account before deleting the employee.");
   const assignments = (await getEmployeeBranchAssignments()).filter((assignment) => assignment.employeeId === employeeId);
-  if (assignments.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: assignments.map((assignment) => ({ range: `'Employee Branches'!A${assignment.rowNumber}:G${assignment.rowNumber}`, values: [Array(7).fill("")] })) } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'Employees'!A${employee.rowNumber}:M${employee.rowNumber}`, valueInputOption: "RAW", requestBody: { values: [Array(13).fill("")] } });
+  if (assignments.length) await deleteRowsWhere("Employee Branches", (row) => String(row[1] ?? "").trim() === employeeId);
+  await deleteRowsById("Employees", [employeeId]);
   return { id: employeeId };
 }

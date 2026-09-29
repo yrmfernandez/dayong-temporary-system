@@ -41,24 +41,12 @@ type SalePayloadItem = {
   contactNumber: string;
 
   addressHouse: string;
-  addressStreet: string;
-  addressSubdivision: string;
-  addressBarangay: string;
-  addressCity: string;
-  addressProvince: string;
-  addressZip: string;
 
   claimantName: string;
   claimantContact: string;
   claimantSameAsMember: boolean;
 
   claimantAddressHouse: string;
-  claimantAddressStreet: string;
-  claimantAddressSubdivision: string;
-  claimantAddressBarangay: string;
-  claimantAddressCity: string;
-  claimantAddressProvince: string;
-  claimantAddressZip: string;
 
   applicationNo: string;
   orDate: string;
@@ -513,19 +501,7 @@ export const POST = withEncoder(async function POST(request: Request) {
             sale.contactNumber,
 
           addressHouse:
-            sale.addressHouse,
-          addressStreet:
-            sale.addressStreet,
-          addressSubdivision:
-            sale.addressSubdivision,
-          addressBarangay:
-            sale.addressBarangay,
-          addressCity:
-            sale.addressCity,
-          addressProvince:
-            sale.addressProvince,
-          addressZip:
-            sale.addressZip,
+            sale.addressHouse,
 
           claimantName:
             sale.claimantName,
@@ -537,19 +513,7 @@ export const POST = withEncoder(async function POST(request: Request) {
               : "No",
 
           claimantAddressHouse:
-            sale.claimantAddressHouse,
-          claimantAddressStreet:
-            sale.claimantAddressStreet,
-          claimantAddressSubdivision:
-            sale.claimantAddressSubdivision,
-          claimantAddressBarangay:
-            sale.claimantAddressBarangay,
-          claimantAddressCity:
-            sale.claimantAddressCity,
-          claimantAddressProvince:
-            sale.claimantAddressProvince,
-          claimantAddressZip:
-            sale.claimantAddressZip,
+            sale.claimantAddressHouse,
 
           status: "Active",
         };
@@ -644,19 +608,7 @@ export const POST = withEncoder(async function POST(request: Request) {
           sale.contactNumber,
 
         addressHouse:
-          sale.addressHouse,
-        addressStreet:
-          sale.addressStreet,
-        addressSubdivision:
-          sale.addressSubdivision,
-        addressBarangay:
-          sale.addressBarangay,
-        addressCity:
-          sale.addressCity,
-        addressProvince:
-          sale.addressProvince,
-        addressZip:
-          sale.addressZip,
+          sale.addressHouse,
 
         claimantName:
           sale.claimantName,
@@ -668,19 +620,7 @@ export const POST = withEncoder(async function POST(request: Request) {
             : "No",
 
         claimantAddressHouse:
-          sale.claimantAddressHouse,
-        claimantAddressStreet:
-          sale.claimantAddressStreet,
-        claimantAddressSubdivision:
-          sale.claimantAddressSubdivision,
-        claimantAddressBarangay:
-          sale.claimantAddressBarangay,
-        claimantAddressCity:
-          sale.claimantAddressCity,
-        claimantAddressProvince:
-          sale.claimantAddressProvince,
-        claimantAddressZip:
-          sale.claimantAddressZip,
+          sale.claimantAddressHouse,
 
         programId:
           sale.programId,

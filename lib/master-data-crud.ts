@@ -2,6 +2,7 @@
 import bcrypt from "bcryptjs";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
 import { loadUsers, userCell } from "@/lib/users-sheet";
 import { ageRestrictionCells, normalizeAgeRestriction } from "@/lib/program-age";
 
@@ -17,19 +18,11 @@ function findRow(data: unknown[][], id: string) {
   return index + 2;
 }
 
-async function clearRows(sheet: string, width: string, rowNumbers: number[]) {
-  if (!rowNumbers.length) return;
-  await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: rowNumbers.map((row) => ({ range: `'${sheet}'!A${row}:${width}${row}`, values: [[...Array(columnCount(width))].map(() => "")] })) } });
-}
-
-function columnCount(name: string) {
-  return [...name].reduce((value, character) => value * 26 + character.charCodeAt(0) - 64, 0);
-}
 
 export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: Array<{ role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number }> };
 
 export async function updateProgramRecord(id: string, input: ProgramInput) {
-  const [programs, incentives] = await Promise.all([rows("Programs!A:F"), rows("'Program Incentives'!A:H")]);
+  const programs = await rows("Programs!A:F");
   const rowNumber = findRow(programs, id);
   if (!input.code || !input.name || !Number.isFinite(input.basePay) || input.basePay <= 0 || !input.incentiveTiers.length) throw new Error("Complete the program and incentive details.");
   if (!Number.isFinite(input.registrationAmount) || input.registrationAmount < 0 || !Number.isFinite(input.payBalanceTotal) || input.payBalanceTotal < 0) throw new Error("Registration and pay-the-balance amounts cannot be negative.");
@@ -42,16 +35,17 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
   if (input.incentiveTiers.some((tier, index) => input.incentiveTiers.some((other, otherIndex) => index !== otherIndex && tier.role === other.role && tier.fromMonth <= other.toMonth && other.fromMonth <= tier.toMonth))) throw new Error("Incentive tiers for the same role cannot overlap.");
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!A${rowNumber}:F${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[id, input.code, input.name, input.basePay, input.status, input.description]] } });
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:P${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal, ...ageRestrictionCells(ageRestriction)]] } });
-  await clearRows("Program Incentives", "L", incentives.slice(1).map((row, index) => text(row[1]) === id ? index + 2 : 0).filter(Boolean));
+  await deleteRowsWhere("Program Incentives", (row) => text(row[1]) === id);
   await appendEncodedRows({ range: "'Program Incentives'!A:H", requestBody: { values: input.incentiveTiers.map((tier) => [createReadableId("INC"), id, tier.role, tier.fromMonth, tier.toMonth, tier.incentiveType, tier.markUp, tier.incentiveAmount]) } });
   return { id };
 }
 
 export async function deleteProgramRecord(id: string) {
-  const [programs, incentives, enrollments] = await Promise.all([rows("Programs!A:F"), rows("'Program Incentives'!A:H"), rows("'Member programs'!A:D")]);
+  const [programs, enrollments] = await Promise.all([rows("Programs!A:F"), rows("'Member programs'!A:D")]);
   if (enrollments.slice(1).some((row) => text(row[3]) === id)) throw new Error("This program has member enrollments. Set it to inactive instead of deleting it.");
-  await clearRows("Programs", "J", [findRow(programs, id)]);
-  await clearRows("Program Incentives", "L", incentives.slice(1).map((row, index) => text(row[1]) === id ? index + 2 : 0).filter(Boolean));
+  findRow(programs, id);
+  await deleteRowsWhere("Program Incentives", (row) => text(row[1]) === id);
+  await deleteRowsById("Programs", [id]);
 }
 
 export type BranchInput = { name: string; territory: string; barangay: string; cityMunicipality: string; province: string; country: string; postalCode: string; contactNumber: string; email: string; dateOpened: string; dateClosed: string; status: "active" | "inactive" };
@@ -69,7 +63,7 @@ export async function deleteBranchRecord(id: string) {
   const branch = branches[findRow(branches, id) - 1];
   const name = text(branch[1]);
   if (assignments.slice(1).some((row) => text(row[2]) === id) || enrollments.slice(1).some((row) => text(row[5]) === name)) throw new Error("This branch is assigned to employees or member enrollments. Set it to inactive instead of deleting it.");
-  await clearRows("Branches", "Q", [findRow(branches, id)]);
+  await deleteRowsById("Branches", [id]);
 }
 
 export async function getUserAccounts() {
@@ -83,7 +77,7 @@ export async function getUserAccounts() {
 }
 
 export async function updateUserAccount(id: string, input: { status: string; roleIds: string[]; password?: string }) {
-  const [{ columns, users }, roles, links] = await Promise.all([loadUsers(), rows("Roles!A:G"), rows("'User Roles'!A:B")]);
+  const [{ columns, users }, roles] = await Promise.all([loadUsers(), rows("Roles!A:G")]);
   const user = users.find((row) => row.id === id);
   if (!user) throw new Error("Record not found.");
   const activeRoleIds = new Set(roles.slice(1).filter((row) => text(row[6]).toLowerCase() === "active").map((row) => text(row[0])));
@@ -96,34 +90,34 @@ export async function updateUserAccount(id: string, input: { status: string; rol
     data.push({ range: userCell(columns.passwordHash, user.rowNumber), values: [[await bcrypt.hash(input.password, 12)]] });
   }
   await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data } });
-  await clearRows("User Roles", "F", links.slice(1).map((row, index) => text(row[0]) === id ? index + 2 : 0).filter(Boolean));
+  await deleteRowsWhere("User Roles", (row) => text(row[0]) === id);
   await appendEncodedRows({ range: "'User Roles'!A:B", requestBody: { values: roleIds.map((roleId) => [id, roleId]) } });
   return { id };
 }
 
 export async function deleteUserAccount(id: string, actorUserId: string) {
   if (id === actorUserId) throw new Error("You cannot delete your own signed-in account.");
-  const [{ users }, links] = await Promise.all([loadUsers(), rows("'User Roles'!A:B")]);
-  const user = users.find((row) => row.id === id);
-  if (!user) throw new Error("Record not found.");
-  await clearRows("Users", "L", [user.rowNumber]);
-  await clearRows("User Roles", "F", links.slice(1).map((row, index) => text(row[0]) === id ? index + 2 : 0).filter(Boolean));
+  const { columns, users } = await loadUsers();
+  if (!users.some((row) => row.id === id)) throw new Error("Record not found.");
+  await deleteRowsWhere("User Roles", (row) => text(row[0]) === id);
+  await deleteRowsWhere("Users", (row) => text(row[columns.id]) === id);
 }
 
 export async function updateMemberRecord(id: string, input: { contact: string; status: string }) {
-  const members = await rows("Members!A:AD");
+  const members = await rows("Members!A:R");
   const rowNumber = findRow(members, id);
   const status = input.status.trim();
   if (!status) throw new Error("Member status is required.");
   await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: [
     { range: `Members!L${rowNumber}`, values: [[input.contact.trim()]] },
-    { range: `Members!AD${rowNumber}`, values: [[status]] },
+    { range: `Members!R${rowNumber}`, values: [[status]] },
   ] } });
   return { id };
 }
 
 export async function deleteMemberRecord(id: string) {
-  const [members, enrollments] = await Promise.all([rows("Members!A:AD"), rows("'Member programs'!A:B")]);
+  const [members, enrollments] = await Promise.all([rows("Members!A:R"), rows("'Member programs'!A:B")]);
   if (enrollments.slice(1).some((row) => text(row[1]) === id)) throw new Error("This member has program enrollments and transaction history. Update the member status instead of deleting the record.");
-  await clearRows("Members", "AH", [findRow(members, id)]);
+  findRow(members, id);
+  await deleteRowsById("Members", [id]);
 }

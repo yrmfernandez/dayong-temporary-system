@@ -1,6 +1,7 @@
 import { google, type sheets_v4 } from "googleapis";
 import { SheetsReadCache } from "@/lib/sheets-read-cache";
-import { isEncodingRequest } from "@/lib/encoder-context";
+import { auditedWrite, planBatchUpdate, planValuesBatchUpdate, planValuesUpdate } from "@/lib/audit-log";
+import { currentEncoder, isEncodingRequest } from "@/lib/encoder-context";
 import {
   getGooglePrivateKey,
   getGoogleSheetId,
@@ -57,16 +58,21 @@ async function write<T>(operation: () => Promise<T>) {
   cache.invalidate();
   try { return await operation(); } finally { cache.invalidate(); }
 }
+// Edits and deletes are recorded in the Audit Log sheet (lib/audit-log.ts); appends are creations and are not.
+const actor = () => currentEncoder();
+function audited<T>(spreadsheetId: string | null | undefined, plan: Parameters<typeof auditedWrite>[2], operation: () => Promise<T>) {
+  return write(() => auditedWrite(getClient(), spreadsheetId ?? GOOGLE_SHEET_ID, plan, actor, operation));
+}
 export const sheets = {
   spreadsheets: {
     get: async (params: sheets_v4.Params$Resource$Spreadsheets$Get) => ({ data: await cache.read(JSON.stringify(["metadata", params]), async () => (await getClient().spreadsheets.get(params, { retry: false })).data, isEncodingRequest()) }),
-    batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Batchupdate) => write(() => getClient().spreadsheets.batchUpdate(params)),
+    batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Batchupdate) => audited(params.spreadsheetId, planBatchUpdate(getClient(), params), () => getClient().spreadsheets.batchUpdate(params)),
     values: {
       get: async (params: sheets_v4.Params$Resource$Spreadsheets$Values$Get) => ({ data: await cache.read(JSON.stringify(["get", params]), async () => (await getClient().spreadsheets.values.get(params, { retry: false })).data, fresh([params.range ?? ""])) }),
       batchGet: async (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchget) => ({ data: await cache.read(JSON.stringify(["batchGet", params]), async () => (await getClient().spreadsheets.values.batchGet(params, { retry: false })).data, fresh(params.ranges ?? [])) }),
       append: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Append) => write(() => getClient().spreadsheets.values.append(params)),
-      update: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Update) => write(() => getClient().spreadsheets.values.update(params)),
-      batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchupdate) => write(() => getClient().spreadsheets.values.batchUpdate(params)),
+      update: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Update) => audited(params.spreadsheetId, planValuesUpdate(params), () => getClient().spreadsheets.values.update(params)),
+      batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchupdate) => audited(params.spreadsheetId, planValuesBatchUpdate(params), () => getClient().spreadsheets.values.batchUpdate(params)),
     },
   },
 };

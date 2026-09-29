@@ -1,5 +1,6 @@
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { getEncoder } from "@/lib/encoder-context";
+import { deleteRowsById } from "@/lib/sheet-rows";
 import { isAdministratorRole } from "@/lib/access-control";
 import { pageCatalogRoutes } from "@/lib/page-catalog";
 
@@ -67,5 +68,5 @@ export async function deleteRole(id: string) {
   if ((links.data.values ?? []).slice(1).some((row) => text(row[1]) === id)) throw new Error("This role is assigned to user accounts. Remove those assignments or set the role inactive.");
   const rowIndex = roles.slice(1).findIndex((row) => text(row[0]) === id);
   if (rowIndex < 0) throw new Error("Role not found.");
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Roles!A${rowIndex + 2}:L${rowIndex + 2}`, valueInputOption: "RAW", requestBody: { values: [Array(12).fill("")] } });
+  await deleteRowsById("Roles", [id]);
 }

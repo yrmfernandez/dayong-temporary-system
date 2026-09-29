@@ -6,7 +6,7 @@ if(!spreadsheetId)throw new Error("Missing GOOGLE_SHEET_ID.");
 const auth=new google.auth.GoogleAuth({credentials:{client_email:process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,private_key:process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g,"\n")},scopes:["https://www.googleapis.com/auth/spreadsheets"]});
 const sheets=google.sheets({version:"v4",auth}),text=v=>String(v??"").trim();
 const tables=[
- {sheet:"Employee Branches",range:"A:F",prefix:"EBA"},{sheet:"Member programs",range:"A:R",prefix:"ENR"},{sheet:"Sales",range:"A:AU",prefix:"SAL"},
+ {sheet:"Employee Branches",range:"A:F",prefix:"EBA"},{sheet:"Member programs",range:"A:R",prefix:"ENR"},{sheet:"Sales",range:"A:AI",prefix:"SAL"},
  {sheet:"Remittances",range:"A:AB",prefix:"REM"},{sheet:"Remittance Collections",range:"A:I",prefix:"RCL"},{sheet:"Collections",range:"A:AG",prefix:"COL"},
  {sheet:"Program Incentives",range:"A:L",prefix:"INC"},{sheet:"Attendance",range:"A:Y",prefix:"ATT"},{sheet:"Leave Requests",range:"A:O",prefix:"LR"},
  {sheet:"Expenses",range:"A:U",prefix:"EXP"},{sheet:"Cash Transactions",range:"A:T",prefix:"CASH"},

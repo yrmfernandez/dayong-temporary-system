@@ -9,9 +9,9 @@ export const editorHeaders = [
 export const encoderSheets = [
   { title: "Employees", columns: 9 },
   { title: "Employee Branches", columns: 3 },
-  { title: "Members", columns: 30 },
+  { title: "Members", columns: 18 },
   { title: "Member programs", columns: 14 },
-  { title: "Sales", columns: 43 },
+  { title: "Sales", columns: 31 },
   { title: "Remittances", columns: 6 },
   { title: "Remittance Collections", columns: 5 },
   { title: "Collections", columns: 21 },

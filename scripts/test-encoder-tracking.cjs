@@ -12,7 +12,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
   const writes = [];
   const rows = {};
   let missingHeaders = false;
-  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales', 'Beneficiaries', 'Branches', 'Employees', 'Employee Branches'];
+  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales', 'Beneficiaries', 'Branches', 'Employees', 'Employee Branches', 'Users', 'User Roles', 'Roles', 'Program Incentives'];
   const sheets = { spreadsheets: {
     get: async () => ({ data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId } })) } }),
     batchUpdate: async (params) => { writes.push(params); return { data: {} }; },
@@ -26,6 +26,8 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       if (/^'?Branches'?!A:M$/.test(range)) return { data: { values: rows.Branches ?? [[]] } };
       if (/^'?Roles'?!A:G$/.test(range)) return { data: { values: rows.Roles ?? [[]] } };
       if (/^'?Users'?!A:(?:B|G|H|Z)$/.test(range)) return { data: { values: rows.Users ?? [[]] } };
+      if (range === "'Audit Log'!A:J") return { data: { values: rows['Audit Log'] ?? [[]] } };
+      if (/!A:ZZ$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
       return { data: { values: /1:.*1$/.test(range)
         ? [missingHeaders ? [] : load('lib/encoder-schema.ts').trackingHeaders(schema.title)]
@@ -100,7 +102,8 @@ test('employee status updates and deletion protect linked login accounts', async
   assert.equal(h.writes.at(-1).range, "'Employees'!E2");
   response = await route.DELETE(request({ employeeId: 'DPE-0002' }));
   assert.equal(response.status, 200);
-  assert.equal(h.writes.at(-1).range, "'Employees'!A2:M2");
+  // The whole row is removed (rows below move up), not blanked.
+  assert.deepEqual(h.writes.at(-1).requestBody.requests, [{ deleteDimension: { range: { sheetId: 9, dimension: 'ROWS', startIndex: 1, endIndex: 2 } } }]);
   h.rows.Users = [[], ['USR-2', 'DPE-0002']];
   response = await route.DELETE(request({ employeeId: 'DPE-0002' }));
   assert.equal(response.status, 400);
@@ -118,6 +121,7 @@ test('user account edits preserve the primary role and save updated roles', asyn
   assert.equal(response.status, 200, JSON.stringify(await response.json()));
   assert.ok(h.writes.some((write) => write.requestBody?.data?.some?.((item) => item.range === 'Users!E2')));
   assert.ok(h.writes.some((write) => write.range === "'User Roles'!A:F"));
+  assert.ok(!h.writes.some((write) => write.requestBody?.data?.some?.((item) => /^'User Roles'!Ad/.test(item.range))), 'old role links are deleted, never blanked');
 });
 
 test('master-data CRUD updates programs and blocks deleting referenced records', async () => {
@@ -150,7 +154,7 @@ test('member directory requires login, joins accounts once, and filters the same
   assert.equal((await route.GET()).status, 401);
   h.setUser({ userId: 'U1' });
   const member = ['M1', 'PH-001', 'Santos', 'Ana'];
-  member[12] = '12'; member[16] = 'City'; member[17] = 'Province'; member[21] = 'TRUE'; member[29] = 'Active';
+  member[12] = 'Blk 12, Mintal, Davao City'; member[13] = 'Pedro Santos'; member[15] = 'TRUE'; member[17] = 'Active';
   h.rows.Members = [[], member, ['M2', 'PH-002', 'Cruz', 'Ben']];
   h.rows['Member programs'] = [[], ['E1', 'M1', 'PH-001', 'P1', '2026-01-01', 'North', 'MAS1'], ['E2', 'M1', 'PH-001', 'P2', '2026-02-01', 'South', 'MAS2']];
   h.rows.Programs = [[], ['P1', 'A', 'Program A'], ['P2', 'B', 'Program B']];
@@ -160,7 +164,10 @@ test('member directory requires login, joins accounts once, and filters the same
   assert.equal(members.length, 2);
   const ana = members.find((m) => m.id === 'M1');
   assert.equal(ana.enrollments.length, 2);
+  assert.equal(ana.address, 'Blk 12, Mintal, Davao City');
   assert.equal(ana.claimantAddress, ana.address);
+  assert.equal(ana.claimant, 'Pedro Santos');
+  assert.equal(ana.status, 'Active');
   const { filterMemberDirectory, emptyDirectoryFilters, buildMemberDirectory } = h.load('lib/member-directory.ts');
   const filter = (values) => filterMemberDirectory(members, { ...emptyDirectoryFilters, ...values });
   assert.equal(filter({ branch: 'North', program: 'P2' }).length, 0);
@@ -224,6 +231,18 @@ for (const existingMember of [false, true]) {
       assert.ok(!Number.isNaN(Date.parse(values[3])));
     }
     assert.ok(!existingMember || h.writes.every((write) => !write.range.startsWith("'Members'!")));
+    // One complete address per person: Sales is A:AE (+4 encoder columns), Members is A:R (+4).
+    const saleRow = h.writes.find((write) => write.range.startsWith("'Sales'!")).requestBody.values[0];
+    assert.equal(saleRow.length, 35);
+    assert.equal(saleRow[16], 'Complete Address');
+    assert.equal(saleRow[21], 'DP-1');
+    assert.equal(saleRow[28], 'APP-1');
+    if (!existingMember) {
+      const memberRow = h.writes.find((write) => write.range.startsWith("'Members'!")).requestBody.values[0];
+      assert.equal(memberRow.length, 22);
+      assert.equal(memberRow[12], 'Complete Address');
+      assert.equal(memberRow[17], 'Active');
+    }
     if (!existingMember) {
       const beneficiary = h.writes.find((write) => write.range === "'Beneficiaries'!A:M").requestBody.values[0];
       assert.match(beneficiary[0], /^BEN-/);
@@ -500,7 +519,7 @@ test('attendance updates never touch original encoder cells, even for historical
 test('missing headers or missing encoder context cannot create untracked entries', async () => {
   const h = harness();
   const { appendEncodedRows } = h.load('lib/encoder-sheets.ts');
-  const params = { range: 'Members!A:AD', requestBody: { values: [Array(30).fill('')] } };
+  const params = { range: 'Members!A:R', requestBody: { values: [Array(18).fill('')] } };
   await assert.rejects(appendEncodedRows(params), /verified encoder/);
   h.missingHeaders();
   await assert.rejects(h.load('lib/encoder-context.ts').withEncoder(async () => {
@@ -589,7 +608,7 @@ test('MAM future columns are projections and do not include future receipt data'
 
 test('operational reports reconcile source transactions without duplicating data', async () => {
   const h = harness();
-  const sale = Array(43).fill(''); sale[0] = 'SAL-1'; sale[1] = '2026-09-10'; sale[2] = 'MATINA'; sale[3] = 'Maria'; sale[33] = 'DP-1'; sale[38] = 350;
+  const sale = Array(35).fill(''); sale[0] = 'SAL-1'; sale[1] = '2026-09-10'; sale[2] = 'MATINA'; sale[3] = 'Maria'; sale[21] = 'DP-1'; sale[26] = 350; sale[33] = 'Clerk Name';
   const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[5] = 'DP-1'; collection[6] = 'MATINA'; collection[7] = 'Maria'; collection[9] = '2026-09-10'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 200; collection[31] = 'Maria'; collection[32] = 'MAS';
   const expense = Array(17).fill(''); expense[0] = 'EXP-1'; expense[1] = '2026-09-10'; expense[4] = 50; expense[7] = 'MATINA'; expense[11] = 'Posted';
   const remittance = Array(24).fill(''); remittance[0] = 'REM-1'; remittance[1] = 'MATINA'; remittance[3] = '2026-09-10'; remittance[4] = 'Approved'; remittance[11] = 200;
@@ -607,6 +626,8 @@ test('operational reports reconcile source transactions without duplicating data
   assert.equal(report.summary.difference, 300);
   assert.equal(report.collections[0].masCommission, 150);
   assert.equal(report.sales.length, 1);
+  assert.equal(report.sales[0].encodedBy, 'Clerk Name', 'report reads the encoder from Sales');
+  assert.equal(report.sales[0].programId, 'DP-1');
 });
 
 test('account role loading rejects duplicate primary keys', async () => {
@@ -639,4 +660,110 @@ test('payslip lists earnings and deductions with reasons and downloads as a vali
   assert.equal(pdf.slice(xref, xref + 4), 'xref', 'startxref points at the cross-reference table');
   for (const [index, offset] of [...pdf.matchAll(/(\d{10}) 00000 n /g)].map((match) => Number(match[1])).entries()) assert.equal(pdf.slice(offset, offset + `${index + 1} 0 obj`.length), `${index + 1} 0 obj`);
   assert.equal(payslipFileName(slip), 'Payslip-PAY-1-MD-2099-0010.pdf');
+});
+
+test('entry history lists every tracked sheet, including records saved before tracking, without password hashes', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const tracked = (columns, values, who = 'Clerk', at = '2026-09-20T01:00:00.000Z') => { const row = Array(columns + 4).fill(''); values.forEach((value, index) => { row[index] = value; }); row[columns + 2] = who; row[columns + 3] = at; return row; };
+  h.rows.Sales = [[], tracked(31, ['SAL-1', '', '', '', '', 'PH-1', 'Santos', 'Ana', '', '', '', '', '', '', '', '', 'Blk 1', '', '', '', '', 'DP-1', '', '', '', '', 350, 'note', 'APP-9'])];
+  h.rows.Collections = [[], tracked(21, ['COL-1', '', '', '', 'PH-1', 'DP-1', '', '', 'OR-5', '2026-09-20', 350], 'Collector', '2026-09-21T01:00:00.000Z')];
+  h.rows['User Roles'] = [[], tracked(2, ['USR-2', 'ROLE-1']), tracked(2, ['USR-2', 'ROLE-2'])];
+  h.rows.Users = [[], ['USR-0001', 'DPE-0001', 'Master Admin', '$2b$10$secret-hash', 'active']];
+  h.rows['Audit Log'] = [[],
+    ['AUD-1', '2026-09-22T01:00:00.000Z', 'Edited', 'Members', 'MEM-1', 2, JSON.stringify({ changes: { member_contact: ['0917', '0999'], status: ['Active', 'Inactive'] } }), 'USR-1', 'DPE-1', 'Clerk One'],
+    ['AUD-2', '2026-09-23T01:00:00.000Z', 'Deleted', 'Members', 'MEM-2', 3, JSON.stringify({ headers: [], row: ['MEM-2', 'PH-2', 'Cruz', 'Ben'] }), 'USR-1', 'DPE-1', 'Clerk One']];
+  const response = await h.load('app/api/history/route.ts').GET();
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  const sheetCount = h.load('lib/encoder-schema.ts').encoderSheets.length;
+  assert.equal(result.modules.length, sheetCount, 'every tracked sheet is a module, even when empty');
+  for (const module of ['New Sales', 'Collections', 'Remittances', 'Members', 'Expenses', 'Payroll', 'User Roles', 'Branch Assignments']) assert.ok(result.modules.includes(module), module);
+  assert.deepEqual(result.entries.map((entry) => [entry.action, entry.module]), [['Deleted', 'Members'], ['Edited', 'Members'], ['Created', 'Collections'], ['Created', 'New Sales'], ['Created', 'User Roles'], ['Created', 'User Roles'], ['Created', 'User Accounts']]);
+  const [deleted, edited] = result.entries;
+  assert.equal(edited.detail, 'member contact: 0917 → 0999; status: Active → Inactive');
+  assert.equal(edited.encodedBy, 'Clerk One');
+  assert.equal(deleted.id, 'MEM-2');
+  assert.equal(deleted.detail, 'PH-2 · Ben Cruz');
+  assert.equal(deleted.data, null, 'edits and deletes are not correctable from History');
+  assert.equal(new Set(result.entries.map((entry) => entry.key)).size, result.entries.length, 'rows without a unique ID still get unique keys');
+  const sale = result.entries.find((entry) => entry.module === 'New Sales');
+  assert.equal(sale.detail, 'Ana Santos · DP-1 · App APP-9 · ₱350.00');
+  assert.deepEqual(sale.data, { applicationNumber: 'APP-9', amountPaid: 350, notes: 'note' });
+  const legacy = result.entries.at(-1);
+  assert.equal(legacy.id, 'USR-0001');
+  assert.equal(legacy.encodedBy, '');
+  assert.ok(!JSON.stringify(result).includes('secret-hash'), 'password hashes never leave the server');
+});
+
+// A tiny in-memory spreadsheet for the audit log: row ranges, header rows, updates, appends, and row deletes.
+function fakeSpreadsheet(tables) {
+  const ids = new Map(Object.keys(tables).map((title, index) => [title, index + 1]));
+  const titleOf = (id) => [...ids].find(([, value]) => value === id)?.[0];
+  const parse = (range) => { const m = /^'((?:[^']|'')+)'!(\d+):(\d+)$/.exec(range) || /^'?((?:[^'!])+)'?!([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/.exec(range); return m; };
+  const col = (letters) => [...letters].reduce((value, character) => value * 26 + character.charCodeAt(0) - 64, 0) - 1;
+  const writeRange = (range, values) => {
+    const m = /^'?((?:[^'!])+)'?!([A-Z]+)(\d+)/.exec(range); const table = tables[m[1]]; const start = col(m[2]), row = Number(m[3]) - 1;
+    values.forEach((cells, r) => { table[row + r] ??= []; cells.forEach((value, c) => { table[row + r][start + c] = String(value); }); });
+  };
+  return { tables, spreadsheets: {
+    get: async () => ({ data: { sheets: [...ids].map(([title, sheetId]) => ({ properties: { title, sheetId } })) } }),
+    batchUpdate: async ({ requestBody }) => {
+      for (const request of requestBody.requests) {
+        if (request.addSheet) { const title = request.addSheet.properties.title; tables[title] = []; ids.set(title, ids.size + 1); }
+        if (request.deleteDimension) { const { sheetId, startIndex, endIndex } = request.deleteDimension.range; tables[titleOf(sheetId)].splice(startIndex, endIndex - startIndex); }
+      }
+      return { data: {} };
+    },
+    values: {
+      batchGet: async ({ ranges }) => ({ data: { valueRanges: ranges.map((range) => { const m = parse(range); return { values: [tables[m[1]][Number(m[2]) - 1] ?? []] }; }) } }),
+      update: async ({ range, requestBody }) => { writeRange(range, requestBody.values); return { data: {} }; },
+      batchUpdate: async ({ requestBody }) => { for (const item of requestBody.data) writeRange(item.range, item.values); return { data: {} }; },
+      append: async ({ range, requestBody }) => { const title = /^'((?:[^']|'')+)'/.exec(range)[1]; tables[title].push(...requestBody.values.map((row) => row.map(String))); return { data: {} }; },
+    },
+  } };
+}
+
+test('audit log records edits as before/after, deletes as snapshots, and hides password hashes', async () => {
+  const audit = harness().load('lib/audit-log.ts');
+  audit.resetAuditSheetCache();
+  const book = fakeSpreadsheet({
+    Members: [['member_id', 'member_number', 'surname', 'member_contact', 'status'], ['MEM-1', 'PH-1', 'Santos', '0917', 'Active'], ['MEM-2', 'PH-2', 'Cruz', '0918', 'Active']],
+    Users: [['user_id', 'employee_id', 'full_name', 'password_hash', 'status'], ['USR-2', 'DPE-2', 'Ana', 'old-hash', 'active']],
+  });
+  const actor = () => ({ userId: 'USR-1', employeeId: 'DPE-1', name: 'Clerk One' });
+  const run = (plan, write) => audit.auditedWrite(book, 'x', plan, actor, write);
+  const edit = { spreadsheetId: 'x', requestBody: { valueInputOption: 'RAW', data: [{ range: 'Members!D2', values: [['0999']] }, { range: 'Members!E2', values: [['Inactive']] }] } };
+  await run(audit.planValuesBatchUpdate(edit), () => book.spreadsheets.values.batchUpdate(edit));
+  // Saving the same value again is not a change and is not logged.
+  const same = { spreadsheetId: 'x', range: 'Members!E2', requestBody: { values: [['Inactive']] } };
+  await run(audit.planValuesUpdate(same), () => book.spreadsheets.values.update(same));
+  const password = { spreadsheetId: 'x', range: 'Users!D2', requestBody: { values: [['new-hash']] } };
+  await run(audit.planValuesUpdate(password), () => book.spreadsheets.values.update(password));
+  const removal = { spreadsheetId: 'x', requestBody: { requests: [{ deleteDimension: { range: { sheetId: 1, dimension: 'ROWS', startIndex: 2, endIndex: 3 } } }] } };
+  await run(audit.planBatchUpdate(book, removal), () => book.spreadsheets.batchUpdate(removal));
+
+  const log = book.tables['Audit Log'];
+  assert.deepEqual(log[0], audit.AUDIT_HEADERS);
+  assert.equal(log.length, 4, 'header + edit + password edit + delete');
+  const [edited, passwordEdit, deleted] = log.slice(1);
+  assert.deepEqual([edited[2], edited[3], edited[4], edited[5]], ['Edited', 'Members', 'MEM-1', '2']);
+  assert.deepEqual(JSON.parse(edited[6]), { changes: { member_contact: ['0917', '0999'], status: ['Active', 'Inactive'] } });
+  assert.deepEqual(edited.slice(7), ['USR-1', 'DPE-1', 'Clerk One']);
+  assert.deepEqual(JSON.parse(passwordEdit[6]), { changes: { password_hash: ['(hidden)', '(changed)'] } });
+  assert.ok(!log.flat().some((cell) => /old-hash|new-hash/.test(cell)), 'hashes never reach the log');
+  assert.deepEqual([deleted[2], deleted[3], deleted[4]], ['Deleted', 'Members', 'MEM-2']);
+  assert.deepEqual(JSON.parse(deleted[6]).row, ['MEM-2', 'PH-2', 'Cruz', '0918', 'Active']);
+  assert.deepEqual(book.tables.Members.map((row) => row[0]), ['member_id', 'MEM-1'], 'the row is gone, not blanked');
+  // Header rows and the log itself are never audited.
+  assert.deepEqual(audit.planValuesUpdate({ range: 'Members!A1:E1', requestBody: { values: [[]] } }).edits, []);
+  assert.deepEqual(audit.parseRange("'Payroll Runs'!G5:J5"), { title: 'Payroll Runs', startRow: 5, endRow: 5 });
+  assert.equal(audit.parseRange("'Sales'!A:AI"), null);
+});
+
+test('deleting rows removes them bottom-up and keeps one row under a frozen header', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
+  h.rows['User Roles'] = [['user_id', 'role_id'], ['USR-2', 'ROLE-1'], ['USR-3', 'ROLE-1'], ['USR-2', 'ROLE-2']];
+  const removed = await h.load('lib/sheet-rows.ts').deleteRowsWhere('User Roles', (row) => row[0] === 'USR-2');
+  assert.equal(removed, 2);
+  assert.deepEqual(h.writes.at(-1).requestBody.requests.map((request) => request.deleteDimension.range.startIndex), [3, 1], 'bottom-up so indexes stay valid');
 });

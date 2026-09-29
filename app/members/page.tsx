@@ -36,7 +36,7 @@ export default function MembersPage() {
     return () => controller.abort();
   }, [revision]);
   const filtered = filterMemberDirectory(members, filters).sort((a, b) => {
-    const key = sort as "name" | "number" | "city" | "province" | "status";
+    const key = sort as "name" | "number" | "status";
     return (a[key].localeCompare(b[key], undefined, { numeric: true, sensitivity: "base" }) || a.id.localeCompare(b.id)) * (descending ? -1 : 1);
   });
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -51,7 +51,7 @@ export default function MembersPage() {
     { key: "branch", label: "Branch", values: unique(enrollments.map((e) => e.branch)).map((v) => [v, v]) },
     { key: "mas", label: "MAS / Officer", values: unique(enrollments.map((e) => e.mas)).map((v) => [v, v]) },
     { key: "program", label: "Program", values: [...new Map(enrollments.map((e) => [e.programId, e.programName])).entries()].sort((a, b) => a[1].localeCompare(b[1])) },
-    ...(["status", "province", "city"] as const).map((key) => ({ key, label: key === "status" ? "Member status" : key === "city" ? "City / Municipality" : "Province", values: unique(members.map((m) => m[key])).map((v): [string, string] => [v, v]) })),
+    { key: "status", label: "Member status", values: unique(members.map((m) => m.status)).map((v): [string, string] => [v, v]) },
   ];
   return <section className="space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -60,7 +60,7 @@ export default function MembersPage() {
     </div>
     <div className="grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-4">
       <label className="text-sm">Search<input className={fieldClass} value={filters.search} onChange={(e) => update("search", e.target.value)} placeholder="Name, PH number, contact number" /></label>
-      <label className="text-sm">Sort by<select className={fieldClass} value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>{[["name", "Member name"], ["number", "PH number"], ["city", "City / Municipality"], ["province", "Province"], ["status", "Member status"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label className="text-sm">Sort by<select className={fieldClass} value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>{[["name", "Member name"], ["number", "PH number"], ["status", "Member status"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="text-sm">Order<select className={fieldClass} value={descending ? "desc" : "asc"} onChange={(e) => { setDescending(e.target.value === "desc"); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
       {options.map(({ key, label, values }) => key === "branch" || key === "mas" || key === "program" ? <label key={key} className="text-sm">{label}<SearchSelect aria-label={label} className="mt-1 h-9" clearable placeholder="All" value={filters[key]} onValueChange={(value) => update(key, value)} options={values.map(([value, text]) => ({ value, label: text }))}/></label> : <label key={key} className="text-sm">{label}<select className={fieldClass} value={filters[key]} onChange={(e) => update(key, e.target.value)}><option value="">All</option>{values.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>)}
       <div className="flex items-end"><Button variant="ghost" onClick={() => { setFilters({ ...emptyDirectoryFilters }); setPage(1); setSelected(null); }}>Reset filters</Button></div>

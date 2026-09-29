@@ -87,12 +87,6 @@ function validContactNumber(value: string) {
 function emptyAddress(): Address {
   return {
     houseBlockLot: "",
-    street: "",
-    subdivisionVillage: "",
-    barangay: "",
-    municipalityCity: "",
-    province: "",
-    zipCode: "",
   };
 }
 
@@ -889,22 +883,10 @@ export default function NewSalesPage() {
             civilStatus: sale.member.civilStatus,
             contactNumber: sale.member.contactNumber,
             addressHouse: sale.member.address.houseBlockLot,
-            addressStreet: sale.member.address.street,
-            addressSubdivision: sale.member.address.subdivisionVillage,
-            addressBarangay: sale.member.address.barangay,
-            addressCity: sale.member.address.municipalityCity,
-            addressProvince: sale.member.address.province,
-            addressZip: sale.member.address.zipCode,
             claimantName: sale.member.claimant.completeName,
             claimantContact: sale.member.claimant.contactNumber,
             claimantSameAsMember: sale.member.claimant.sameAsMemberAddress,
             claimantAddressHouse: sale.member.claimant.address.houseBlockLot,
-            claimantAddressStreet: sale.member.claimant.address.street,
-            claimantAddressSubdivision: sale.member.claimant.address.subdivisionVillage,
-            claimantAddressBarangay: sale.member.claimant.address.barangay,
-            claimantAddressCity: sale.member.claimant.address.municipalityCity,
-            claimantAddressProvince: sale.member.claimant.address.province,
-            claimantAddressZip: sale.member.claimant.address.zipCode,
             applicationNo: sale.applicationNumber,
             orNumber: "",
             orDate: sale.orDate,
