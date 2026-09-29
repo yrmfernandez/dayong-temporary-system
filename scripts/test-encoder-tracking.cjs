@@ -976,11 +976,13 @@ test('daily audit: HR, Finance, and Admin can open it; only Admin approves and a
   h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-3', 'MD-3', 'Clerk One', 'x', 'active', '', 'R-EC'], ['USR-4', 'MD-4', 'Only MAS', 'x', 'active', '', 'R-MAS']];
   h.rows.Roles = [[], ['R-EC', 'Entry Clerk', '', false, false, false, 'active'], ['R-MAS', 'MAS', '', false, false, false, 'active']];
   h.rows['User Roles'] = [[], ['USR-3', 'R-EC'], ['USR-4', 'R-MAS']];
+  h.rows.Employees = [[], ['MD-3', 'Clerk One', 'MATINA', 'Entry Clerk', 'active'], ['MD-4', 'Only MAS', 'MATINA', 'MAS', 'active'], ['MD-8', 'Finance Person', 'TORIL', 'Finance', 'active'], ['MD-9', 'Old Clerk', 'TORIL', 'Entry Clerk', 'resigned']];
+  h.rows['Employee Branches'] = [[]];
   h.rows['Daily Audits'] = [[]];
   const audit = h.load('lib/daily-audit.ts');
-  assert.deepEqual((await audit.auditedEmployees()).map((item) => item.name), ['Clerk One'], 'only those who can open the Daily Report are audited');
+  assert.deepEqual((await audit.auditedEmployees()).map((item) => item.name), ['Clerk One'], 'only active Entry Clerks are audited');
   await assert.rejects(audit.saveDailyAudit({ date: '2026-09-28', employeeId: 'MD-3', findings: '', result: 'With findings' }), /Describe the findings/);
-  await assert.rejects(audit.saveDailyAudit({ date: '2026-09-28', employeeId: 'MD-4', findings: '', result: 'Balanced' }), /does not have Daily Report access/);
+  await assert.rejects(audit.saveDailyAudit({ date: '2026-09-28', employeeId: 'MD-4', findings: '', result: 'Balanced' }), /Only active Entry Clerks/);
 
   const route = h.load('app/api/audit/route.ts');
   const post = await route.POST(request({ date: '2026-09-28', employeeId: 'MD-3', findings: 'Receipts match', result: 'Balanced' }));
@@ -1019,4 +1021,39 @@ test('a program enrollment transfers only to an active employee in the same bran
   assert.deepEqual(history.slice(1, 10), ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', 'MATINA', 'Old MAS', 'New MAS', 'MD-6', 'Old MAS resigned']);
   h.setUser({ userId: 'USR-3', employeeId: 'MD-3', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
   assert.equal((await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: 'x y z' }))).status, 403, 'only Administrators and HR Officers');
+});
+
+test('audit summary counts only approved Entry Clerk audits in the period, by branch and clerk', async () => {
+  const h = harness({ userId: 'USR-1', employeeId: 'MD-0', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  h.rows.Employees = [[], ['MD-3', 'Clerk One', 'MATINA', 'Entry Clerk', 'active'], ['MD-5', 'Clerk Two', 'TORIL', 'Entry Clerk', 'active'], ['MD-8', 'Finance Person', 'TORIL', 'Finance', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'TORIL', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active'], ['BR-3', 'CALINAN', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[]];
+  const figures = (gross, remit) => JSON.stringify({ accounts: 1, gross, incentives: gross - remit, fidelity: 0, penalty: 0, expectedRemittance: remit, sales: [], collections: [] });
+  const audit = (id, date, employeeId, name, status, result, gross, remit) => [id, date, employeeId, name, status, figures(gross, remit), result === 'With findings' ? 'Short by 50' : '', result, '', status === 'Approved' ? 'Admin' : '', status === 'Approved' ? '2026-09-10T09:00:00Z' : '', '', ''];
+  h.rows['Daily Audits'] = [[],
+    audit('A1', '2026-09-01', 'MD-3', 'Clerk One', 'Approved', 'Balanced', 320, 270),
+    audit('A2', '2026-09-02', 'MD-3', 'Clerk One', 'Approved', 'With findings', 640, 540),
+    audit('A3', '2026-09-03', 'MD-3', 'Clerk One', 'Draft', 'Balanced', 100, 100),
+    audit('A4', '2026-09-02', 'MD-5', 'Clerk Two', 'Approved', 'Balanced', 500, 500),
+    audit('A5', '2026-08-31', 'MD-3', 'Clerk One', 'Approved', 'Balanced', 999, 999),
+    audit('A6', '2026-09-02', 'MD-8', 'Finance Person', 'Approved', 'Balanced', 777, 777)];
+  const route = h.load('app/api/audit/summary/route.ts');
+  const get = async (query) => (await (await route.GET(new Request(`http://localhost/api/audit/summary?${query}`))).json()).summary;
+  const all = await get('from=2026-09-01&to=2026-09-30');
+  assert.deepEqual(all.counts, { approved: 3, balanced: 2, withFindings: 1, drafts: 1 }, 'August, drafts, and non-clerks are excluded');
+  assert.equal(all.totals.gross, 1460);
+  assert.equal(all.totals.expectedRemittance, 1310);
+  assert.deepEqual(all.byClerk.map((clerk) => [clerk.name, clerk.approvedDays, clerk.withFindings, clerk.drafts]), [['Clerk One', 2, 1, 1], ['Clerk Two', 1, 0, 0]]);
+  const toril = await get('from=2026-09-01&to=2026-09-30&branch=TORIL');
+  assert.deepEqual(toril.audits.map((item) => item.employeeName), ['Clerk Two']);
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-3', 'BR-1'], ['EBA-2', 'MD-3', 'BR-3']];
+  h.clearCache?.();
+  const calinan = await get('from=2026-09-01&to=2026-09-30&branch=CALINAN');
+  assert.deepEqual(calinan.byClerk.map((clerk) => clerk.name), ['Clerk One'], 'a clerk counts for every assigned branch, not only the primary one');
+  assert.equal(calinan.counts.approved, 2);
+  assert.deepEqual(calinan.branches, ['CALINAN', 'MATINA', 'TORIL']);
+  const one = await get('from=2026-09-01&to=2026-09-30&employeeId=MD-3');
+  assert.deepEqual(one.audits.map((item) => item.date), ['2026-09-02', '2026-09-01'], 'newest first');
+  h.setUser({ userId: 'USR-3', employeeId: 'MD-3', name: 'Clerk One', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await route.GET(new Request('http://localhost/api/audit/summary?from=2026-09-01&to=2026-09-30'))).status, 403);
 });

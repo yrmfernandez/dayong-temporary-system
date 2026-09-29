@@ -1,13 +1,14 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, Printer } from "lucide-react";
 
 import { InlineRow } from "@/components/inline-panel";
 import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchSelect } from "@/components/ui/search-select";
 import { todayInManila } from "@/lib/account-rules";
 
 type Figures = {
@@ -16,13 +17,14 @@ type Figures = {
   collections: Array<{ program: string; branch: string; accounts: number; gross: number; expectedRemittance: number }>;
 };
 type Audit = { id: string; status: string; findings: string; result: string; approvedByName: string; approvedAt: string; reopenReason: string; updatedAt: string; preparedBy: string };
-type Row = { employeeId: string; employeeName: string; status: "Not started" | "Draft" | "Approved"; audit: Audit | null; figures: Figures };
+type Row = { employeeId: string; employeeName: string; branch: string; status: "Not started" | "Draft" | "Approved"; audit: Audit | null; figures: Figures };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
 const when = (value: string) => (value ? value.replace("T", " ").slice(0, 16) : "");
 
-/** HR, Finance, and Administrators audit each employee's Daily Report; only an Administrator approves. */
+/** HR, Finance, and Administrators audit each Entry Clerk's Daily Report; only an Administrator approves. */
 export default function DailyAuditPage() {
+  const [tab, setTab] = useState<"daily" | "summary">("daily");
   const [date, setDate] = useState(todayInManila());
   const [rows, setRows] = useState<Row[]>([]);
   const [canApprove, setCanApprove] = useState(false);
@@ -74,16 +76,22 @@ export default function DailyAuditPage() {
           <div className="tone-soft tone-brand rounded-2xl p-3"><ClipboardCheck className="size-8" /></div>
           <div>
             <h1 className="text-2xl font-bold">Daily Audit</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Check each employee&apos;s Daily Report for the day. HR and Finance prepare the audit; an Administrator approves it, which locks it.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Check each Entry Clerk&apos;s Daily Report for the day. HR and Finance prepare the audit; an Administrator approves it, which locks it.</p>
           </div>
         </div>
-        <label className="text-sm">Report date<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { setOpen(""); setDate(event.target.value); }} /></label>
+        {tab === "daily" && <label className="text-sm">Report date<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { setOpen(""); setDate(event.target.value); }} /></label>}
       </div>
     </header>
 
+    <div role="tablist" aria-label="Daily Audit views" className="flex w-fit gap-1 rounded-xl border bg-muted/40 p-1 print:hidden">
+      {([["daily", "Daily audit"], ["summary", "Summary"]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === id ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
+    </div>
+
+    {tab === "summary" ? <AuditSummary /> : <>
+
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <MetricTile tone="brand" label="Employees to audit" value={String(rows.length)} detail="Those with Daily Report access" />
+      <MetricTile tone="brand" label="Entry Clerks to audit" value={String(rows.length)} detail="Active Entry Clerks" />
       <MetricTile tone="warning" label="Not started" value={String(count("Not started"))} />
       <MetricTile tone="teal" label="Draft" value={String(count("Draft"))} detail="Prepared, awaiting approval" />
       <MetricTile tone="success" label="Approved" value={String(count("Approved"))} />
@@ -95,7 +103,7 @@ export default function DailyAuditPage() {
         <tbody>
           {rows.map((row) => <Fragment key={row.employeeId}>
             <tr className="border-t">
-              <td className="p-3"><strong>{row.employeeName}</strong><span className="block font-mono text-xs text-muted-foreground">{row.employeeId}</span></td>
+              <td className="p-3"><strong>{row.employeeName}</strong><span className="block text-xs text-muted-foreground"><span className="font-mono">{row.employeeId}</span>{row.branch ? ` · ${row.branch}` : ""}</span></td>
               <td className="p-3 tabular-nums">{row.figures.accounts}</td>
               <td className="p-3 tabular-nums">{money(row.figures.gross)}</td>
               <td className="p-3 tabular-nums">{money(row.figures.expectedRemittance)}</td>
@@ -135,9 +143,82 @@ export default function DailyAuditPage() {
               </div>
             </InlineRow>}
           </Fragment>)}
-          {!rows.length && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">{busy ? "Loading..." : "No employees with Daily Report access."}</td></tr>}
+          {!rows.length && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">{busy ? "Loading..." : "No active Entry Clerks to audit."}</td></tr>}
         </tbody>
       </table>
     </div>
+    </>}
   </section>;
+}
+
+type Totals = { accounts: number; gross: number; incentives: number; fidelity: number; penalty: number; expectedRemittance: number };
+type Summary = {
+  from: string; to: string; clerks: Array<{ employeeId: string; name: string; branch: string; branches: string[] }>; branches: string[];
+  counts: { approved: number; balanced: number; withFindings: number; drafts: number }; totals: Totals;
+  byClerk: Array<Totals & { employeeId: string; name: string; branch: string; branches: string[]; approvedDays: number; balanced: number; withFindings: number; drafts: number }>;
+  audits: Array<{ date: string; employeeId: string; employeeName: string; branch: string; result: string; findings: string; approvedByName: string; approvedAt: string; figures: Totals | null }>;
+};
+
+/** Approved audits for a period, branch (any branch the clerk is assigned to), and Entry Clerk. */
+function AuditSummary() {
+  const today = todayInManila();
+  const [filters, setFilters] = useState({ from: `${today.slice(0, 7)}-01`, to: today, branch: "", employeeId: "" });
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(true);
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = new URLSearchParams(filters).toString();
+    fetch(`/api/audit/summary?${query}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to load the summary."); setSummary(result.summary); setError(""); })
+      .catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load the summary."); })
+      .finally(() => { if (!controller.signal.aborted) setBusy(false); });
+    return () => controller.abort();
+  }, [filters]);
+  const set = (patch: Partial<typeof filters>) => { setBusy(true); setFilters((current) => ({ ...current, ...patch })); };
+  const figureCells = (totals: Totals) => [String(totals.accounts), money(totals.gross), money(totals.incentives), money(totals.fidelity), money(totals.penalty), money(totals.expectedRemittance)];
+  const figureHeaders = ["Accounts", "Collected", "Incentives", "Fidelity", "Penalties", "Expected remittance"];
+  return <div className="space-y-6">
+    <div className="grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-5 print:hidden">
+      <label className="text-sm">This month<Input type="month" className="mt-1 h-9" value={filters.from.slice(0, 7) === filters.to.slice(0, 7) ? filters.from.slice(0, 7) : ""} onChange={(event) => { const month = event.target.value; if (!month) return; const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10); set({ from: `${month}-01`, to: last > today ? today : last }); }} /></label>
+      <label className="text-sm">From<Input type="date" className="mt-1 h-9" value={filters.from} max={filters.to} onChange={(event) => event.target.value && set({ from: event.target.value })} /></label>
+      <label className="text-sm">To<Input type="date" className="mt-1 h-9" value={filters.to} min={filters.from} onChange={(event) => event.target.value && set({ to: event.target.value })} /></label>
+      <label className="text-sm">Branch<SearchSelect aria-label="Branch" className="mt-1 h-9" clearable placeholder="All branches" value={filters.branch} onValueChange={(branch) => set({ branch })} options={(summary?.branches ?? []).map((branch) => ({ value: branch, label: branch }))} /></label>
+      <label className="text-sm">Entry Clerk<SearchSelect aria-label="Entry Clerk" className="mt-1 h-9" clearable placeholder="All Entry Clerks" value={filters.employeeId} onValueChange={(employeeId) => set({ employeeId })} options={(summary?.clerks ?? []).filter((clerk) => !filters.branch || clerk.branches.includes(filters.branch)).map((clerk) => ({ value: clerk.employeeId, label: clerk.name, description: `${clerk.employeeId} · ${clerk.branches.join(", ") || "No branch"}` }))} /></label>
+    </div>
+    {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+    {summary && <>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">Approved audits from {summary.from} to {summary.to}{filters.branch ? ` · ${filters.branch}` : ""}{filters.employeeId ? ` · ${summary.clerks.find((clerk) => clerk.employeeId === filters.employeeId)?.name ?? ""}` : ""}{busy ? " · updating..." : ""}</p>
+        <Button type="button" variant="outline" className="print:hidden" onClick={() => window.print()}><Printer className="size-4" />Print</Button>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricTile tone="success" label="Approved audits" value={String(summary.counts.approved)} />
+        <MetricTile tone="brand" label="Balanced" value={String(summary.counts.balanced)} />
+        <MetricTile tone="danger" label="With findings" value={String(summary.counts.withFindings)} />
+        <MetricTile tone="warning" label="Not yet approved" value={String(summary.counts.drafts)} detail="Drafts in this period (not counted)" />
+      </div>
+      <div className="grid gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">{figureHeaders.map((label, index) => <div key={label} className="rounded-lg border bg-background p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold tabular-nums">{figureCells(summary.totals)[index]}</p></div>)}</div>
+
+      <div className="overflow-x-auto rounded-xl border bg-background">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="bg-muted"><tr>{["Entry Clerk", "Branch", "Approved days", "Balanced", "With findings", ...figureHeaders].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
+          <tbody>
+            {summary.byClerk.map((clerk) => <tr key={clerk.employeeId} className="border-t"><td className="p-3"><strong>{clerk.name}</strong>{clerk.drafts > 0 && <span className="block text-xs text-amber-700">{clerk.drafts} not yet approved</span>}</td><td className="p-3">{clerk.branch || "—"}{clerk.branches.length > 1 && <span className="block text-xs text-muted-foreground">Also: {clerk.branches.filter((name) => name !== clerk.branch).join(", ")}</span>}</td><td className="p-3 tabular-nums">{clerk.approvedDays}</td><td className="p-3 tabular-nums">{clerk.balanced}</td><td className="p-3 tabular-nums">{clerk.withFindings}</td>{figureCells(clerk).map((value, index) => <td key={index} className="p-3 tabular-nums">{value}</td>)}</tr>)}
+            {!summary.byClerk.length && <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">No Entry Clerks match these filters.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border bg-background">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="bg-muted"><tr>{["Date", "Entry Clerk", "Branch", "Result", "Collected", "Expected remittance", "Findings", "Approved by"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
+          <tbody>
+            {summary.audits.map((audit) => <tr key={`${audit.date}-${audit.employeeId}`} className="border-t align-top"><td className="p-3 whitespace-nowrap">{audit.date}</td><td className="p-3">{audit.employeeName}</td><td className="p-3">{audit.branch || "—"}</td><td className="p-3"><StatusBadge status={audit.result} tone={audit.result === "Balanced" ? "success" : "danger"} /></td><td className="p-3 tabular-nums">{money(audit.figures?.gross ?? 0)}</td><td className="p-3 tabular-nums">{money(audit.figures?.expectedRemittance ?? 0)}</td><td className="p-3 whitespace-pre-wrap">{audit.findings || "—"}</td><td className="p-3">{audit.approvedByName}<span className="block text-xs text-muted-foreground">{when(audit.approvedAt)}</span></td></tr>)}
+            {!summary.audits.length && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{busy ? "Loading..." : "No approved audits in this period."}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>}
+  </div>;
 }

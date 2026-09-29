@@ -1,14 +1,13 @@
-import { canAccessPath, type AccessContext } from "@/lib/access-control";
 import { getEncoder } from "@/lib/encoder-context";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
+import { getEmployees } from "@/lib/employees";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { getUserAccounts } from "@/lib/master-data-crud";
+import { getBranches } from "@/lib/google-sheets-data";
 import { createReadableId } from "@/lib/readable-id";
 import { buildOperationalReport } from "@/lib/reports";
-import { getRoles } from "@/lib/roles";
 
 /**
- * Daily Audit: one audit per employee per day, covering everyone whose roles can open the Daily Report.
+ * Daily Audit: one audit per Entry Clerk per day (Entry Clerks only; other roles are never audited here).
  * HR and Administrators prepare and edit an audit; only an Administrator approves it. An approved audit is locked
  * until an Administrator reopens it with a reason. Sheet "Daily Audits" (A:M business columns + encoder identity).
  */
@@ -46,19 +45,20 @@ function readAudit(row: unknown[], index: number): DailyAudit {
   };
 }
 
-/** Active sign-in accounts whose roles can open the Daily Report (Reports), i.e. the people audited each day. */
+/**
+ * Active employees with the Entry Clerk role: the only people audited. `branch` is their primary branch (for display);
+ * `branches` is every branch they are assigned to, primary first, so a clerk counts for each branch they serve.
+ */
 export async function auditedEmployees() {
-  const [accounts, roles] = await Promise.all([getUserAccounts(), getRoles()]);
-  const byName = new Map(roles.map((role) => [role.name.trim().toLowerCase(), role]));
-  return accounts.filter((account) => account.status.toLowerCase() === "active").filter((account) => {
-    const own = account.roles.map((name) => byName.get(name.trim().toLowerCase())).filter((role): role is NonNullable<typeof role> => Boolean(role && role.status === "active"));
-    const context: AccessContext = {
-      roleNames: own.map((role) => role.name),
-      permissions: { manageUsers: own.some((role) => role.manageUsers), manageAttendance: own.some((role) => role.manageAttendance), viewAttendanceReports: own.some((role) => role.viewAttendanceReports) },
-      rolePages: Object.fromEntries(own.filter((role) => role.pages).map((role) => [role.name.trim().toLowerCase(), role.pages as string[]])),
-    };
-    return canAccessPath(context, "/reports/daily");
-  }).map((account) => ({ employeeId: account.employeeId, name: account.fullName }));
+  const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
+  const names = new Map(branches.map((branch) => [branch.id, branch.name]));
+  return employees
+    .filter((employee) => employee.status.toLowerCase() === "active" && employee.roles.some((role) => role.trim().toLowerCase() === "entry clerk"))
+    .map((employee) => {
+      const assigned = employee.branchIds.map((id) => names.get(id)).filter((name): name is string => Boolean(name));
+      return { employeeId: employee.id, name: employee.name, branch: employee.branch || assigned[0] || "", branches: [...new Set([employee.branch, ...assigned].filter(Boolean))] };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** The employee's Daily Report for the date: what they encoded, as the Daily Report shows it with the Encoder filter. */
@@ -80,7 +80,7 @@ export async function getDailyAudits(date: string) {
     const audit = saved.find((item) => item.employeeId === employee.employeeId);
     // Approved audits show the figures they were approved on; open ones show the current report.
     const figures = audit?.status === "Approved" && audit.figures ? audit.figures : await figuresFor(date, employee.name);
-    return { employeeId: employee.employeeId, employeeName: employee.name, status: (audit?.status ?? "Not started") as AuditStatus, audit: audit ?? null, figures };
+    return { employeeId: employee.employeeId, employeeName: employee.name, branch: employee.branch, status: (audit?.status ?? "Not started") as AuditStatus, audit: audit ?? null, figures };
   }));
 }
 
@@ -97,7 +97,7 @@ export async function saveDailyAudit(input: { date: string; employeeId: string; 
   if (result === "With findings" && findings.length < 3) throw new Error("Describe the findings.");
   if (findings.length > 2000) throw new Error("Findings must be 2,000 characters or fewer.");
   const employee = (await auditedEmployees()).find((item) => item.employeeId === employeeId);
-  if (!employee) throw new Error("This employee does not have Daily Report access to audit.");
+  if (!employee) throw new Error("Only active Entry Clerks are audited.");
   const existing = await findAudit(date, employeeId);
   if (existing?.status === "Approved") throw new Error("This audit is approved and locked. An Administrator must reopen it first.");
   const figures = JSON.stringify(await figuresFor(date, employee.name));
@@ -131,4 +131,44 @@ export async function decideDailyAudit(input: { date: string; employeeId: string
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'Daily Audits'!E${audit.rowNumber}:M${audit.rowNumber}`, valueInputOption: "RAW",
     requestBody: { values: [["Draft", JSON.stringify(audit.figures), audit.findings, audit.result, "", "", "", reason, now]] } });
   return { id: audit.id, status: "Draft" as const };
+}
+
+export type AuditSummaryFilters = { from: string; to: string; branch?: string; employeeId?: string };
+
+/**
+ * Approved audits in a date range, optionally for one branch (any branch the clerk is assigned to) and one Entry Clerk, with
+ * totals and a per-clerk breakdown. Only approved audits count; drafts and missing days are reported separately.
+ */
+export async function getAuditSummary(filters: AuditSummaryFilters) {
+  const from = text(filters.from), to = text(filters.to), branch = text(filters.branch), employeeId = text(filters.employeeId);
+  if (!datePattern.test(from) || !datePattern.test(to) || from > to) throw new Error("Choose a valid date range.");
+  const [clerks, rows] = await Promise.all([auditedEmployees(), auditRows()]);
+  const inScope = clerks.filter((clerk) => (!branch || clerk.branches.includes(branch)) && (!employeeId || clerk.employeeId === employeeId));
+  const ids = new Set(inScope.map((clerk) => clerk.employeeId));
+  const all = rows.slice(1).map(readAudit).filter((audit) => audit.id && audit.date >= from && audit.date <= to && ids.has(audit.employeeId));
+  const approved = all.filter((audit) => audit.status === "Approved").sort((a, b) => b.date.localeCompare(a.date) || a.employeeName.localeCompare(b.employeeName));
+  const branchOf = new Map(clerks.map((clerk) => [clerk.employeeId, clerk.branch]));
+  const zero = { accounts: 0, gross: 0, incentives: 0, fidelity: 0, penalty: 0, expectedRemittance: 0 };
+  const add = (sum: typeof zero, figures: AuditFigures | null) => {
+    for (const key of Object.keys(zero) as Array<keyof typeof zero>) sum[key] = Math.round((sum[key] + Number(figures?.[key] ?? 0)) * 100) / 100;
+    return sum;
+  };
+  const totals = approved.reduce((sum, audit) => add(sum, audit.figures), { ...zero });
+  const byClerk = inScope.map((clerk) => {
+    const own = approved.filter((audit) => audit.employeeId === clerk.employeeId);
+    return {
+      employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch, branches: clerk.branches, approvedDays: own.length,
+      balanced: own.filter((audit) => audit.result === "Balanced").length, withFindings: own.filter((audit) => audit.result === "With findings").length,
+      drafts: all.filter((audit) => audit.employeeId === clerk.employeeId && audit.status !== "Approved").length,
+      ...own.reduce((sum, audit) => add(sum, audit.figures), { ...zero }),
+    };
+  });
+  return {
+    from, to, branch, employeeId,
+    clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch, branches: clerk.branches })),
+    branches: [...new Set(clerks.flatMap((clerk) => clerk.branches))].sort(),
+    counts: { approved: approved.length, balanced: approved.filter((audit) => audit.result === "Balanced").length, withFindings: approved.filter((audit) => audit.result === "With findings").length, drafts: all.length - approved.length },
+    totals, byClerk,
+    audits: approved.map((audit) => ({ date: audit.date, employeeId: audit.employeeId, employeeName: audit.employeeName, branch: branchOf.get(audit.employeeId) ?? "", result: audit.result, findings: audit.findings, approvedByName: audit.approvedByName, approvedAt: audit.approvedAt, figures: audit.figures })),
+  };
 }
