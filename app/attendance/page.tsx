@@ -15,15 +15,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { SearchSelect } from "@/components/ui/search-select";
-
-type Branch = {
-  id: string;
-  name: string;
-  territory?: string;
-  status: "active" | "inactive";
-};
 
 type AttendanceRecord = {
   attendanceDate: string;
@@ -90,8 +81,9 @@ function formatDuration(totalSeconds: number) {
 
 export default function AttendancePage() {
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
-  const [branches, setBranches] = useState<Branch[]>([]);
+  // The branch on the employee's record; attendance never asks for one.
   const [branch, setBranch] = useState("");
+  const [assignedBranches, setAssignedBranches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
@@ -107,7 +99,8 @@ export default function AttendancePage() {
       }
 
       setRecord(result.record ?? null);
-      if (result.record?.branch) setBranch(result.record.branch);
+      setBranch(result.record?.branch || result.assignedBranch || "");
+      setAssignedBranches(result.assignedBranches ?? []);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to load attendance.",
@@ -124,20 +117,6 @@ export default function AttendancePage() {
 
   useEffect(() => {
     const loadPage = async () => {
-      try {
-        const response = await fetch("/api/branches", { cache: "no-store" });
-        const result = await response.json();
-        if (response.ok && result.success) {
-          setBranches(
-            (result.branches ?? []).filter(
-              (item: Branch) => item.status === "active",
-            ),
-          );
-        }
-      } catch {
-        setBranches([]);
-      }
-
       await loadAttendance();
     };
 
@@ -168,7 +147,7 @@ export default function AttendancePage() {
   const submitAttendance = async (action: "time-in" | "time-out") => {
     setMessage("");
     if (action === "time-in" && !branch) {
-      setMessage("Select your branch first.");
+      setMessage("No branch is assigned to you yet. Ask HR or an administrator to assign one in Employees.");
       return;
     }
 
@@ -177,7 +156,7 @@ export default function AttendancePage() {
       const response = await fetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, branch }),
+        body: JSON.stringify({ action }),
       });
       const result = await response.json();
 
@@ -261,7 +240,7 @@ export default function AttendancePage() {
 
                 <div className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-40">
                   <MapPin className="size-4 text-violet-60" />
-                  {record?.branch || branch || "Select your branch"}
+                  {record?.branch || branch || (loading ? "Loading branch..." : "No branch assigned")}
                 </div>
               </div>
 
@@ -289,19 +268,15 @@ export default function AttendancePage() {
             <div className="space-y-4">
               {!record?.timeIn && (
                 <div className="space-y-2 rounded-2xl border border-violet-90 bg-violet-95/40 p-4">
-                  <Label className="flex items-center gap-2 font-bold text-violet-10">
+                  <p className="flex items-center gap-2 text-sm font-bold text-violet-10">
                     <Building2 className="size-4 text-violet-60" />
-                    Work branch
-                  </Label>
-                  <SearchSelect
-                    aria-label="Work branch"
-                    className="bg-white"
-                    value={branch}
-                    onValueChange={setBranch}
-                    disabled={submitting}
-                    placeholder="Search branch"
-                    options={branches.map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))}
-                  />
+                    Your branch
+                  </p>
+                  <p className="text-base font-semibold text-violet-10">{branch || (loading ? "Loading..." : "No branch assigned")}</p>
+                  {assignedBranches.length > 1 && <p className="text-sm text-violet-40" title={assignedBranches.join(", ")}>
+                    Assigned to {assignedBranches.slice(0, 3).join(", ")}{assignedBranches.length > 3 ? ` and ${assignedBranches.length - 3} more` : ""}
+                  </p>}
+                  <p className="text-xs text-violet-40">{branch ? (assignedBranches.length > 1 ? `You clock in at ${branch}, your primary branch. HR updates it in Employees.` : "Taken from your employee record. HR updates it in Employees.") : "Ask HR or an administrator to assign your branch before clocking in."}</p>
                 </div>
               )}
 
@@ -310,7 +285,7 @@ export default function AttendancePage() {
                   type="button"
                   size="lg"
                   className="h-14 w-full rounded-2xl text-base font-extrabold shadow-[0_10px_25px_-5px_rgb(105_51_255_/_0.35)]"
-                  disabled={submitting}
+                  disabled={submitting || loading || !branch}
                   onClick={() => void submitAttendance("time-in")}
                 >
                   <LogIn className="size-5" />
@@ -451,7 +426,7 @@ export default function AttendancePage() {
             <Clock3 className="mb-3 size-8 text-violet-70" />
             <p className="font-bold text-violet-10">No attendance activity yet</p>
             <p className="mt-1 text-sm text-violet-40">
-              Select your branch and clock in to begin today&apos;s record.
+              Clock in to begin today&apos;s record.
             </p>
           </div>
         )}

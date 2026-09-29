@@ -1,14 +1,11 @@
 import { withEncoder } from "@/lib/encoder-context";
-import bcrypt from "bcryptjs";
 import { getEmployees } from "@/lib/employees";
 import { NextResponse } from "next/server";
+import { createDefaultAccount, DEFAULT_PASSWORD } from "@/lib/employee-accounts";
 
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { deleteUserAccount, getUserAccounts, updateUserAccount } from "@/lib/master-data-crud";
-import {
-  createEmployeeAccount,
-  getActiveAccountRoles,
-} from "@/lib/google-sheets-data";
+import { getActiveAccountRoles } from "@/lib/google-sheets-data";
 
 export async function GET() {
   try {
@@ -70,43 +67,13 @@ export const POST = withEncoder(async function POST(request: Request) {
     const employee = (await getEmployees()).find((e) => e.id === employeeId && e.status.toLowerCase() === "active");
     if (!employee) return NextResponse.json({ success: false, message: "Select an active registered employee." }, { status: 400 });
 
-    const password =
-      typeof body.password === "string"
-        ? body.password
-        : "";
-
-    let roleIds = Array.isArray(body.roleIds)
-        ? body.roleIds.filter(
-      (roleId: unknown): roleId is string =>
-        typeof roleId === "string",
-    )
-    : [];
-
-    roleIds = [...new Set(roleIds.map((roleId: string) => roleId.trim()).filter(Boolean))];
-    if (roleIds.length === 0) return NextResponse.json({ success: false, message: "Select at least one account role." }, { status: 400 });
-
-    if (password.length < 12) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Password must be at least 12 characters.",
-        },
-        { status: 400 },
-      );
-    }
-
-    const passwordHash = await bcrypt.hash(
-      password,
-      12,
-    );
-
-    const user = await createEmployeeAccount({
-      employeeId,
-      fullName: employee.name,
-      passwordHash,
-      roleIds,
-    });
+    // Accounts always start with the default password; the person changes it in Settings → Security.
+    const roleIds: string[] = Array.isArray(body.roleIds)
+      ? [...new Set<string>(body.roleIds.filter((roleId: unknown): roleId is string => typeof roleId === "string").map((roleId: string) => roleId.trim()).filter(Boolean))]
+      : [];
+    const result = await createDefaultAccount(employee, roleIds);
+    if (!result.created) return NextResponse.json({ success: false, message: result.reason }, { status: 400 });
+    const user = { id: result.userId, employeeId: employee.id, fullName: employee.name, roleIds: result.roleIds, defaultPassword: DEFAULT_PASSWORD };
 
     return NextResponse.json(
       {

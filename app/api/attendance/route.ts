@@ -7,6 +7,23 @@ import {
   type AttendanceRecord,
   updateAttendanceRecord,
 } from "@/lib/attendance-data";
+import { getEmployees } from "@/lib/employees";
+import { getBranches } from "@/lib/google-sheets-data";
+
+// Attendance uses the branch on the employee's record (primary branch, else the first assignment); nobody picks one.
+// All assigned branches are returned too, primary first, so the page can show them.
+async function employeeBranches(employeeId: string) {
+  const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
+  const employee = employees.find((item) => item.id === employeeId);
+  if (!employee) return { primary: "", all: [] as string[] };
+  const assigned = employee.branchIds.map((id) => branches.find((branch) => branch.id === id)?.name).filter((name): name is string => Boolean(name));
+  const primary = employee.branch || assigned[0] || "";
+  return { primary, all: primary ? [primary, ...assigned.filter((name) => name !== primary)] : assigned };
+}
+
+async function assignedBranch(employeeId: string) {
+  return (await employeeBranches(employeeId)).primary;
+}
 import {
   getPhilippineDate,
   getPhilippineTime,
@@ -46,16 +63,17 @@ export async function GET() {
 
     const nonWorkingDay = await getAttendanceForEmployeeDate("SYSTEM", attendanceDate);
 
-    const { record } =
-      await getAttendanceForEmployeeDate(
-        user.employeeId,
-        attendanceDate,
-      );
+    const [{ record }, branches] = await Promise.all([
+      getAttendanceForEmployeeDate(user.employeeId, attendanceDate),
+      employeeBranches(user.employeeId),
+    ]);
 
     return NextResponse.json({
       success: true,
       attendanceDate,
       record,
+      assignedBranch: branches.primary,
+      assignedBranches: branches.all,
       nonWorkingDay: nonWorkingDay.record?.status === "Non-working Day" ? nonWorkingDay.record : null,
     });
   } catch (error) {
@@ -103,10 +121,6 @@ export const POST = withEncoder(async function POST(request: Request) {
         ? "time-out"
         : "time-in";
 
-    const branch =
-      typeof body.branch === "string"
-        ? body.branch.trim()
-        : "";
 
     const attendanceDate = getPhilippineDate();
     const nonWorkingDay = await getAttendanceForEmployeeDate("SYSTEM", attendanceDate);
@@ -121,12 +135,13 @@ export const POST = withEncoder(async function POST(request: Request) {
       );
 
     if (action === "time-in") {
+      const branch = await assignedBranch(user.employeeId);
       if (!branch) {
         return NextResponse.json(
           {
             success: false,
             message:
-              "Select your branch before clocking in.",
+              "No branch is assigned to you yet. Ask HR or an administrator to assign one in Employees.",
           },
           { status: 400 },
         );

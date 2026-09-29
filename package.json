@@ -26,7 +26,9 @@
     "sheets:payroll": "node scripts/migrate-payroll.mjs",
     "sheets:single-address": "node scripts/migrate-single-address.mjs",
     "sheets:remove-blank-rows": "node scripts/remove-blank-rows.mjs",
-    "sheets:remittance-penalty": "node scripts/migrate-remittance-penalty.mjs"
+    "sheets:remittance-penalty": "node scripts/migrate-remittance-penalty.mjs",
+    "sheets:primary-branch": "node scripts/migrate-primary-branch.mjs",
+    "sheets:collector-role": "node scripts/migrate-collector-role.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

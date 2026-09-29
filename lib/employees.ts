@@ -40,6 +40,18 @@ export async function getEmployees() {
   }));
 }
 
+/**
+ * The primary branch (Employees column C, `primary_branch`) is chosen from the employee's assigned branches. It is
+ * where they clock in and the branch shown first everywhere. With a single assigned branch it is that branch.
+ */
+function readPrimaryBranch(body: Record<string, unknown>, branchIds: string[], branches: Array<{ id: string; name: string }>) {
+  const chosen = typeof body.primaryBranchId === "string" ? body.primaryBranchId.trim() : "";
+  const primaryId = chosen || (branchIds.length === 1 ? branchIds[0] : "");
+  if (!primaryId) throw new Error("Choose the primary branch.");
+  if (!branchIds.includes(primaryId)) throw new Error("The primary branch must be one of the assigned branches.");
+  return branches.find((branch) => branch.id === primaryId)?.name ?? "";
+}
+
 function readRoles(body: Record<string, unknown>) {
   const source = Array.isArray(body.roles) ? body.roles : typeof body.role === "string" ? [body.role] : [];
   return [...new Set(source.map((role) => typeof role === "string" ? role.trim() : "").filter(Boolean))];
@@ -80,10 +92,10 @@ export async function registerEmployee(body: Record<string, unknown>, validRoles
   const [employees, users] = await Promise.all([getEmployees(), sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:B" })]);
   const ids = [...employees.map((e) => e.id.toUpperCase()), ...(users.data.values ?? []).slice(1).map((r) => String(r[1] ?? "").trim().toUpperCase())];
   if(ids.includes(id))throw new Error("This Employee ID already exists.");
-  const primaryBranch = branches.find((branch) => branch.id === branchIds[0])?.name ?? "";
+  const primaryBranch = readPrimaryBranch(body, branchIds, branches);
   await appendEncodedRows({ range: "Employees!A:I", requestBody: { values: [[id, name, primaryBranch, roles.join(", "), "active", contact, email, dateHired, new Date().toISOString()].map((v) => `'${v}`)] } });
   await appendEncodedRows({ range: "'Employee Branches'!A:C", requestBody: { values: branchIds.map((branchId, index) => [`EBA-${id}-${String(index + 1).padStart(2, "0")}`, id, branchId]) } });
-  return { id };
+  return { id, name, roles, primaryBranch };
 }
 
 export async function updateEmployee(employeeId: string, body: Record<string, unknown>, validRoles: string[], branches: Array<{ id: string; name: string }>) {
@@ -97,7 +109,7 @@ export async function updateEmployee(employeeId: string, body: Record<string, un
   if (!branchIds.length || branchIds.some((id) => !branches.some((branch) => branch.id === id))) throw new Error("Select valid branch assignments.");
   const assignments = await getEmployeeBranchAssignments();
   const old = assignments.filter((assignment) => assignment.employeeId === employeeId);
-  const primaryBranch = branches.find((branch) => branch.id === branchIds[0])?.name ?? "";
+  const primaryBranch = readPrimaryBranch(body, branchIds, branches);
   const contact = text("contact"), email = text("email"), dateHired = text("dateHired");
   if (contact.length > 50 || email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error("Check the contact number and email.");
   if (dateHired && (!/^\d{4}-\d{2}-\d{2}$/.test(dateHired) || !Number.isFinite(Date.parse(dateHired)))) throw new Error("Enter a valid date hired.");

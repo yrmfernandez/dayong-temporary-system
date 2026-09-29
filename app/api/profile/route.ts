@@ -40,7 +40,9 @@ export async function GET() {
           contact: employee.contact,
           email: employee.email,
           dateHired: employee.dateHired,
-          branches: assigned.length ? assigned : primary ? [{ id: primary.id, name: primary.name, territory: primary.territory }] : employee.branch ? [{ id: "", name: employee.branch, territory: "" }] : [],
+          // Primary branch (Employees column C) first, then the other assignments.
+          branches: assigned.length ? [...assigned].sort((a, b) => Number(b.name === employee.branch) - Number(a.name === employee.branch)) : primary ? [{ id: primary.id, name: primary.name, territory: primary.territory }] : employee.branch ? [{ id: "", name: employee.branch, territory: "" }] : [],
+          primaryBranch: employee.branch || assigned[0]?.name || "",
         } : null,
       },
     }, { headers: { "Cache-Control": "private, no-store" } });

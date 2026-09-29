@@ -77,15 +77,36 @@ test('employee registration is independent of login and records its encoder', as
   h.rows.Employees = [[], ['DPE-0002', 'Ana', 'North', 'MAS', 'active']];
   h.rows.Users = [[], ['U1', 'DPE-0005']];
   h.rows.Branches = [[], ['BR-1', 'South', 'DDO 1', '', '', '', '', '', '', '', '', '', 'active']];
-  h.rows.Roles = [[], ['R1', 'MAS', '', '', '', '', 'active']];
+  h.rows.Roles = [[], ['R1', 'MAS', '', '', '', '', 'active'], ['R2', 'Collector', '', '', '', '', 'active']];
   const response = await route.POST(request({ employeeId: 'MD-2099-0101', name: '=Staff', branchIds: ['BR-1'], roles: ['Collector', 'MAS'], dateHired: '2026-09-25', encodedBy: 'spoof' }));
   assert.equal(response.status, 201);
-  assert.equal((await response.json()).employee.id, 'MD-2099-0101');
-  assert.equal(h.writes.length, 2);
+  const registered = await response.json();
+  assert.equal(registered.employee.id, 'MD-2099-0101');
+  // Registration also creates the sign-in account: employee, branch assignment, Users row, User Roles row.
+  assert.equal(h.writes.length, 4);
   assert.equal(h.writes[0].range, "'Employees'!A:M");
   const row = h.writes[0].requestBody.values[0];
   assert.equal(row[1], "'=Staff");
+  assert.equal(row[2], "'South", 'a single assigned branch is the primary branch');
   assert.equal(row[9], "'U1");
+  assert.deepEqual(registered.account, { created: true, defaultPassword: 'password12345' });
+  const userRow = h.writes.find((write) => write.range.startsWith("'Users'!")).requestBody.values[0];
+  assert.equal(userRow[1], 'MD-2099-0101');
+  assert.ok(await require('bcryptjs').compare('password12345', userRow[3]), 'the account opens with the default password');
+  assert.deepEqual(h.writes.find((write) => write.range.startsWith("'User Roles'!")).requestBody.values.map((values) => values.slice(0, 2)), [['USR-0001', 'R1'], ['USR-0001', 'R2']], 'each employee role is the same account role');
+  // Collector is an ordinary role, so a Collector-only employee gets an account too.
+  h.rows.Branches.push(['BR-2', 'North', 'DDO 1', '', '', '', '', '', '', '', '', '', 'active']);
+  const collector = await (await route.POST(request({ employeeId: 'MD-2099-0102', name: 'Col Lector', branchIds: ['BR-1', 'BR-2'], primaryBranchId: 'BR-2', roles: ['Collector'] }))).json();
+  assert.equal(collector.account.created, true);
+  // A role added later on the Roles page is offered at registration and gets an account the same way.
+  h.rows.Roles.push(['R3', 'Cashier', '', '', '', '', 'active']);
+  assert.ok((await (await route.GET()).json()).operationalRoles.includes('Cashier'));
+  const cashier = await (await route.POST(request({ employeeId: 'MD-2099-0105', name: 'Cash Ier', branchIds: ['BR-1'], roles: ['Cashier'] }))).json();
+  assert.equal(cashier.account.created, true);
+  assert.equal((await (await route.POST(request({ employeeId: 'MD-2099-0106', name: 'Made Up', branchIds: ['BR-1'], roles: ['Not A Role'] }))).json()).message, 'One or more operational roles are invalid.');
+  // The primary branch must be chosen from the assigned branches.
+  assert.match((await (await route.POST(request({ employeeId: 'MD-2099-0103', name: 'Two Branches', branchIds: ['BR-1', 'BR-2'], roles: ['MAS'] }))).json()).message, /Choose the primary branch/);
+  assert.match((await (await route.POST(request({ employeeId: 'MD-2099-0104', name: 'Wrong Primary', branchIds: ['BR-1'], primaryBranchId: 'BR-2', roles: ['MAS'] }))).json()).message, /one of the assigned branches/);
   assert.equal((await route.POST(request({ name: 'Bad', branchIds: ['BR-X'], roles: ['Invented'] }))).status, 400);
   const data = await (await route.GET()).json();
   assert.equal(data.employees[0].name, 'Ana');
@@ -865,4 +886,27 @@ test('attendance finds a clock-in even after Google Sheets converted its date an
   assert.equal(rowNumber, 2);
   assert.deepEqual([record.attendanceDate, record.scheduledTimeIn, record.scheduledTimeOut, record.timeIn, record.timeOut], ['2026-09-29', '08:00', '17:00', '13:45', '']);
   assert.equal((await data.getAttendanceRecordsForRange('2026-09-01', '2026-09-30')).length, 1);
+});
+
+test('clock-in uses the branch on the employee record, never one sent by the page', async (t) => {
+  const h = harness({ userId: 'USR-5', employeeId: 'MD-2026-0082', name: 'Yman Rey Fernandez', roleNames: ['MAS'], permissions: {} });
+  const attendance = h.load('lib/attendance.ts');
+  if (new Date(`${attendance.getPhilippineDate()}T00:00:00Z`).getUTCDay() === 0) return t.skip('clocking is closed on Sundays');
+  h.rows.Employees = [[], ['MD-2026-0082', 'Yman Rey Fernandez', 'BALIOK', 'MAS', 'active'], ['MD-2026-0099', 'No Branch', '', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-2026-0082', 'BR-0001'], ['EBA-2', 'MD-2026-0082', 'BR-0004'], ['EBA-3', 'MD-2026-0082', 'BR-0002']];
+  h.rows.Branches = [[], ['BR-0001', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active'], ['BR-0002', 'TORIL', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active'], ['BR-0004', 'BALIOK', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Attendance = [[]];
+  const route = h.load('app/api/attendance/route.ts');
+  const status = await (await route.GET()).json();
+  assert.equal(status.assignedBranch, 'BALIOK');
+  assert.deepEqual(status.assignedBranches, ['BALIOK', 'MATINA', 'TORIL'], 'primary first, then the other assignments');
+  const response = await route.POST(request({ action: 'time-in', branch: 'SOMEWHERE ELSE' }));
+  assert.equal(response.status, 201, JSON.stringify(await response.clone().json()));
+  const row = h.writes.find((write) => write.range?.startsWith("'Attendance'!")).requestBody.values[0];
+  assert.equal(row[3], 'BALIOK', 'the submitted branch is ignored');
+  assert.match(row[2], /^'\d{4}-\d{2}-\d{2}$/, 'the date is saved as text so Sheets cannot turn it into a number');
+  h.setUser({ userId: 'USR-9', employeeId: 'MD-2026-0099', name: 'No Branch', roleNames: ['MAS'], permissions: {} });
+  const refused = await route.POST(request({ action: 'time-in', branch: 'BALIOK' }));
+  assert.equal(refused.status, 400);
+  assert.match((await refused.json()).message, /No branch is assigned/);
 });

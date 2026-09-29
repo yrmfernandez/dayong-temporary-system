@@ -27,6 +27,7 @@ export type Profile = {
     contact: string;
     email: string;
     dateHired: string;
+    primaryBranch: string;
     branches: Array<{ id: string; name: string; territory: string }>;
   };
 };
@@ -104,7 +105,7 @@ export function ProfileDetails({ profile, compact = false }: { profile: Profile;
         <Detail icon={<IdCard />} label="Employee ID"><span className="font-mono">{employee.id}</span></Detail>
         <Detail icon={<UserRound />} label="Employment status">{employee.employmentStatus ? <StatusBadge status={employee.employmentStatus} /> : notRecorded}</Detail>
         <Detail icon={<BriefcaseBusiness />} label="Operational roles">{employee.operationalRoles.join(", ") || notRecorded}</Detail>
-        <Detail icon={<Building2 />} label="Assigned branches">{employee.branches.length ? <ul className="space-y-0.5">{employee.branches.map((branch) => <li key={branch.id || branch.name}>{branch.name}{branch.territory && <span className="text-muted-foreground"> · {branch.territory}</span>}</li>)}</ul> : notRecorded}</Detail>
+        <Detail icon={<Building2 />} label="Assigned branches">{employee.branches.length ? <ul className="space-y-0.5">{employee.branches.map((branch) => <li key={branch.id || branch.name}>{branch.name}{branch.name === employee.primaryBranch && <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary">primary</span>}{branch.territory && <span className="text-muted-foreground"> · {branch.territory}</span>}</li>)}</ul> : notRecorded}</Detail>
         <Detail icon={<CalendarDays />} label="Date hired">{dateText(employee.dateHired) || notRecorded}</Detail>
       </> : <p className="text-sm text-muted-foreground">No employee record is linked to this sign-in ({profile.employeeId}).</p>}
     </section>
