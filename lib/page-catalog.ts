@@ -16,6 +16,7 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
   ] },
   { group: "Reports", pages: [
     { href: "/reports", label: "Reports (daily to yearly)" },
+    { href: "/audit", label: "Daily Audit" },
     { href: "/admin-reports", label: "User Report Review" },
     { href: "/history", label: "Audit Log" },
   ] },

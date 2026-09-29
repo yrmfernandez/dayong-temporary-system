@@ -8,6 +8,7 @@ import { calculateRemittance } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { createCashRemittance } from "@/lib/remittance-workflow";
+import { FIDELITY_CAP, getFidelityData } from "@/lib/fidelity";
 
 export async function GET(request: Request) {
   if (!(await getSessionUser())) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
@@ -53,6 +54,10 @@ export const POST = withEncoder(async (request: Request) => {
     if (!Number.isFinite(penalty) || penalty < 0) throw new Error("The penalty must be zero or a positive amount.");
     if (penalty > 0 && penaltyNote.length < 3) throw new Error("Explain what the penalty is for (at least 3 characters).");
     if (penaltyNote.length > 300) throw new Error("The penalty note must be 300 characters or fewer.");
+    // MAS Fidelity set aside from this batch's incentives: it lowers the MAS's incentive and is added to the remittance.
+    const fidelity = Math.round((Number(body.fidelityAmount) || 0) * 100) / 100;
+    if (!Number.isFinite(fidelity) || fidelity < 0) throw new Error("Fidelity must be zero or a positive amount.");
+    if (fidelity > 0 && collectedBy === "Collector") throw new Error("Fidelity comes from the MAS incentive; a Collector batch has none.");
     if (autoApproveRemittance) {
       // Same rule as Remittances: anyone who can encode may confirm full physical cash; other methods are verified there.
       if (!paymentMethod.isCash) throw new Error(`${paymentMethod.name} payments are verified in Remittances before approval.`);
@@ -87,11 +92,18 @@ export const POST = withEncoder(async (request: Request) => {
         input.orNumber, input.orDate, input.amount, input.monthFrom, input.monthTo, input.nopFrom, input.nopTo,
         entry.reactivation === "Yes" ? "Yes" : "No", entry.transferred === "Yes" ? "Yes" : "No", input.waiver, input.originalMas, "Posted", timestamp,
         input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS", paymentMethod.name, paymentReference,
-        !rows.length && penalty > 0 ? penalty : "", !rows.length && penalty > 0 ? penaltyNote : ""]);
+        !rows.length && penalty > 0 ? penalty : "", !rows.length && penalty > 0 ? penaltyNote : "", !rows.length && fidelity > 0 ? fidelity : ""]);
     }
-    const expectedRemittance = (rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) + Math.round(penalty * 100)) / 100;
+    if (fidelity > 0) {
+      const incentives = rows.reduce((sum, row) => sum + Math.round((Number(row[10]) - Number(row[22])) * 100), 0) / 100;
+      if (fidelity > incentives) throw new Error(`Fidelity cannot exceed the batch's total incentives of ${incentives.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}.`);
+      const account = (await getFidelityData(accountableEmployeeId, true)).accounts.find((item) => item.masEmployeeId === accountableEmployeeId);
+      const remaining = Math.max(0, Math.round((FIDELITY_CAP - (account?.approved ?? 0) - (account?.pending ?? 0)) * 100) / 100);
+      if (fidelity > remaining) throw new Error(`Fidelity can be at most ${remaining.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} for this MAS (the ${FIDELITY_CAP.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} limit).`);
+    }
+    const expectedRemittance = (rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) + Math.round(penalty * 100) + Math.round(fidelity * 100)) / 100;
     if (autoApproveRemittance && Math.round(cashReceived * 100) !== Math.round(expectedRemittance * 100)) {
-      throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}${penalty > 0 ? " (including the penalty)" : ""}.`);
+      throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}${penalty > 0 || fidelity > 0 ? " (including penalty and Fidelity)" : ""}.`);
     }
     writing = true;
     await commitCollections(rows, [...touched.values()], payments);

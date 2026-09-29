@@ -43,6 +43,8 @@ const describe: Record<string, { module?: string; detail: (r: Row) => string; ed
   "Pay Profiles": { detail: (r) => join(r[0], r[1], r[2]) },
   "Payroll Runs": { module: "Payroll", detail: (r) => join(`${t(r[1])} to ${t(r[2])}`, r[4], peso(r[9])) },
   "Payroll Lines": { detail: (r) => join(r[1], r[3]) },
+  "Daily Audits": { module: "Daily Audit", detail: (r) => join(r[1], r[3], r[4], r[7]) },
+  "Member Transfers": { detail: (r) => join(r[3], r[4], `${t(r[6])} → ${t(r[7])}`, r[9]) },
   "Payroll Adjustments": { detail: (r) => join(r[1], r[2], r[3], r[4], peso(r[5])) },
 };
 
@@ -106,10 +108,11 @@ export const PATCH = withEncoder(async (request: Request) => {
     if (!id || !reason) throw new Error("Record and correction reason are required.");
     const isSale = moduleName === "New Sales", sheet = isSale ? "Sales" : moduleName === "Collections" ? "Collections" : "";
     if (!sheet) throw new Error("Only New Sales and Collections can be corrected here.");
-    const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${sheet}'!A:AI`, valueRenderOption: "UNFORMATTED_VALUE" });
+    const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${sheet}'!A:AL`, valueRenderOption: "UNFORMATTED_VALUE" });
     const rows = response.data.values ?? [], index = rows.slice(1).findIndex((row) => String(row[0] ?? "").trim() === id);
     if (index < 0) throw new Error("Record not found."); const rowNumber = index + 2, row = rows[index + 1];
-    if (!isSale && !["", "Outstanding"].includes(String(row[28] ?? ""))) throw new Error("A Collection linked to a Remittance must be corrected through reconciliation, not direct editing.");
+    // Money already on a remittance slip (Collections AC, Sales AJ) is corrected through reconciliation, not here.
+    if (!["", "Outstanding"].includes(String(row[isSale ? 35 : 28] ?? ""))) throw new Error(`A ${isSale ? "New Sale" : "Collection"} linked to a Remittance must be corrected through reconciliation, not direct editing.`);
     const before = isSale ? { applicationNumber: row[28], amountPaid: row[26], notes: row[27] } : { orNumber: row[8], orDate: row[9], amountCollected: row[10] };
     const amount = Number(isSale ? body.amountPaid : body.amountCollected); if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid amount greater than zero.");
     const after = isSale ? { applicationNumber: String(body.applicationNumber ?? "").trim(), amountPaid: amount, notes: String(body.notes ?? "").trim() } : { orNumber: String(body.orNumber ?? "").trim(), orDate: String(body.orDate ?? "").trim(), amountCollected: amount };

@@ -28,7 +28,10 @@
     "sheets:remove-blank-rows": "node scripts/remove-blank-rows.mjs",
     "sheets:remittance-penalty": "node scripts/migrate-remittance-penalty.mjs",
     "sheets:primary-branch": "node scripts/migrate-primary-branch.mjs",
-    "sheets:collector-role": "node scripts/migrate-collector-role.mjs"
+    "sheets:collector-role": "node scripts/migrate-collector-role.mjs",
+    "sheets:sales-remittance": "node scripts/migrate-sales-remittance.mjs",
+    "sheets:batch-extras": "node scripts/migrate-batch-extras.mjs",
+    "sheets:audit-transfers": "node scripts/migrate-audit-transfers.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

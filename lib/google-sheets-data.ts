@@ -428,8 +428,15 @@ export type SaleSheetData = {
   orDate: string;
 };
 
+/**
+ * Saves a New Sale. The cash it brings in is owed by the accountable MAS until a New Sales remittance covers it, so
+ * each sale starts Outstanding (Sales AJ remittance_status, AK linked_remittance_id, AL accountable_employee_id).
+ * A batch's remittance penalty (AM amount, AN note) is passed for the batch's first sale only.
+ */
 export async function addSale(
   sale: SaleSheetData,
+  accountableEmployeeId: string,
+  penalty: { amount: number; note: string } = { amount: 0, note: "" },
 ) {
   const values = [
     sale.saleId,
@@ -485,7 +492,7 @@ export async function addSale(
       requestBody: {
         values: [values],
       },
-    });
+    }, [["Outstanding", "", accountableEmployeeId, penalty.amount > 0 ? penalty.amount : "", penalty.amount > 0 ? penalty.note : ""]]);
 
   return response.data;
 }

@@ -5,6 +5,7 @@ import { CheckCircle2, Clock3, HandCoins, PiggyBank, Target, Users } from "lucid
 
 import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge } from "@/components/status-badge";
+import { SearchSelect } from "@/components/ui/search-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -113,9 +114,11 @@ export function MyFidelity() {
 export function FidelityMonitoring() {
   const { data, error, setError, load } = useFidelity("all");
   const [message, setMessage] = useState("");
-  const [search, setSearch] = useState("");
+  // Pick one MAS from the dropdown (searchable) to focus both the balances and the history on them.
+  const [masId, setMasId] = useState("");
   const [busy, setBusy] = useState(false);
-  const accounts = useMemo(() => data?.accounts.filter((item) => `${item.masName} ${item.masEmployeeId}`.toLowerCase().includes(search.toLowerCase())) ?? [], [data, search]);
+  const accounts = useMemo(() => data?.accounts.filter((item) => !masId || item.masEmployeeId === masId) ?? [], [data, masId]);
+  const transactions = useMemo(() => data?.transactions.filter((item) => !masId || item.masEmployeeId === masId) ?? [], [data, masId]);
   const total = accounts.reduce((sum, item) => sum + item.approved, 0);
   const pending = accounts.reduce((sum, item) => sum + item.pending, 0);
 
@@ -152,7 +155,11 @@ export function FidelityMonitoring() {
         <MetricTile tone="warning" icon={Clock3} label="Pending" value={money(pending)} detail="Awaiting remittance approval" />
         <MetricTile tone="teal" icon={CheckCircle2} label="Ready to claim" value={String(accounts.filter((item) => item.readyForRelease).length)} />
       </div>
-      <input className="w-full max-w-md rounded-lg border bg-background p-2.5 text-sm" placeholder="Search MAS name or employee ID" value={search} onChange={(event) => setSearch(event.target.value)} />
+      <div className="max-w-md space-y-1">
+        <SearchSelect aria-label="Find a MAS" className="h-10" clearable placeholder={data.accounts.length ? "All MAS - search name or employee ID" : "No MAS yet"} disabled={!data.accounts.length} value={masId} onValueChange={setMasId}
+          options={data.accounts.map((item) => ({ value: item.masEmployeeId, label: item.masName, description: `${item.masEmployeeId} · balance ${money(item.approved)}` }))} />
+        {!data.accounts.length && <p className="text-xs text-muted-foreground">Fidelity is saved from MAS incentives. Every active employee can sell as a MAS and appears here; none are registered yet.</p>}
+      </div>
       <Card>
         <CardHeader><CardTitle>MAS balances</CardTitle></CardHeader>
         <CardContent>
@@ -182,7 +189,7 @@ export function FidelityMonitoring() {
             <table className="w-full min-w-[800px] text-left text-sm">
               <thead><tr>{["Date", "Reference", "MAS", "Type", "Amount", "Status", "Encoded by"].map((item) => <th key={item} className="p-3">{item}</th>)}</tr></thead>
               <tbody>
-                {data.transactions.map((item) => <tr key={item.id} className="border-t">
+                {transactions.map((item) => <tr key={item.id} className="border-t">
                   <td className="p-3">{item.date}</td>
                   <td className="p-3 font-mono text-xs">{item.id}</td>
                   <td className="p-3">{item.masName}</td>
@@ -191,7 +198,7 @@ export function FidelityMonitoring() {
                   <td className="p-3"><StatusBadge status={item.status} /></td>
                   <td className="p-3">{item.encodedBy || "—"}</td>
                 </tr>)}
-                {!data.transactions.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No Fidelity activity has been recorded.</td></tr>}
+                {!transactions.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No Fidelity activity has been recorded.</td></tr>}
               </tbody>
             </table>
           </div>

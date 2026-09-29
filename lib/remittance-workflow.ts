@@ -4,11 +4,20 @@ import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
 import { FIDELITY_CAP, getFidelityData } from "@/lib/fidelity";
 
-const titles = ["Collections", "Remittances", "Remittance Collections"] as const;
+const titles = ["Collections", "Remittances", "Remittance Collections", "Sales"] as const;
+
+/**
+ * A MAS turns over Collections and New Sales on separate remittance slips, so every remittance is one kind. Both are
+ * "items" owed by an accountable person; each kind keeps its remittance status in its own sheet and columns.
+ */
+export type RemittanceKind = "Collections" | "New Sales";
+const itemSheet = { Collections: { status: 28 }, "New Sales": { status: 35 } } as const;
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
 
 export type CashCollection = {
+  /** Collections (member payments) or New Sales; a remittance contains only one kind. */
+  kind: RemittanceKind;
   id: string;
   batchId: string;
   rowNumber: number;
@@ -25,6 +34,8 @@ export type CashCollection = {
   /** Remittance penalty charged to the accountable MAS/Collector; set on the batch's first Collection only. */
   penalty: number;
   penaltyNote: string;
+  /** MAS Fidelity entered with a Collections batch (first row only); it comes out of the batch's incentives. */
+  fidelity: number;
   remittanceStatus: string;
   linkedRemittanceId: string;
   daysOutstanding: number;
@@ -34,6 +45,8 @@ export type CashCollection = {
 };
 
 export type CashRemittance = {
+  /** What this slip covers: Collections or New Sales (blank rows written before New Sales remittances are Collections). */
+  type: RemittanceKind;
   id: string;
   rowNumber: number;
   branch: string;
@@ -81,18 +94,29 @@ async function loadLedger() {
     id: text(row[0]), remittanceId: text(row[1]), collectionId: text(row[2]), amount: number(row[3]), linkedAt: text(row[4]),
   }));
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
-    id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
+    kind: "Collections" as const, id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
-    collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]),
+    collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]), fidelity: number(row[37]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${text(row[9])}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((collection) => collection.id && text(rows.Collections[collection.rowNumber - 1]?.[19]).toLowerCase() === "posted");
+  // New Sales: the full amount paid is owed by the sale's MAS (Sales AJ status, AK linked remittance, AL accountable ID).
+  const saleDate = (row: unknown[]) => text(row[30]) || text(row[1]).slice(0, 10);
+  const sales: CashCollection[] = rows.Sales.slice(1).map((row, index) => ({
+    kind: "New Sales" as const, id: text(row[0]), batchId: "", rowNumber: index + 2, memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
+    accountableEmployeeId: text(row[37]), accountableName: text(row[3]), accountableRole: "MAS",
+    orNumber: text(row[29]) || (text(row[28]) ? `App ${text(row[28])}` : ""), orDate: saleDate(row), amount: number(row[26]), remittanceAmount: number(row[26]),
+    remittanceStatus: text(row[35]) || "Needs Historical Review", linkedRemittanceId: text(row[36]),
+    collectedBy: "MAS", paymentMethod: text(row[23]) || "Cash", paymentReference: "", penalty: number(row[38]), penaltyNote: text(row[39]), fidelity: 0,
+    daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${saleDate(row)}T00:00:00Z`).getTime()) / 86400000)) || 0,
+  })).filter((sale) => sale.id);
+  collections.push(...sales);
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
     id: text(row[0]), rowNumber: index + 2, branch: text(row[1]), accountableName: text(row[2]), remittanceDate: text(row[3]), status: text(row[4]) || "Legacy",
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByName: text(row[20]), decisionAt: text(row[21]),
-    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [],
+    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : "Collections") as RemittanceKind, collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [],
   })).filter((remittance) => remittance.id);
   const byId = new Map(collections.map((collection) => [collection.id, collection]));
   for (const remittance of remittances) {
@@ -143,7 +167,13 @@ async function sheetIds() {
     if (value === undefined || value === null) throw new Error(`Missing ${title} sheet.`);
     return value;
   };
-  return { collections: id("Collections"), remittances: id("Remittances"), mappings: id("Remittance Collections") };
+  return { collections: id("Collections"), sales: id("Sales"), remittances: id("Remittances"), mappings: id("Remittance Collections") };
+}
+
+/** Sets an item's remittance status and linked remittance ID in its own sheet (Collections AC:AD, Sales AJ:AK). */
+function statusUpdate(sheet: Awaited<ReturnType<typeof sheetIds>>, item: CashCollection, status: string, remittanceId: string) {
+  const column = itemSheet[item.kind].status;
+  return { updateCells: { range: { sheetId: item.kind === "New Sales" ? sheet.sales : sheet.collections, startRowIndex: item.rowNumber - 1, endRowIndex: item.rowNumber, startColumnIndex: column, endColumnIndex: column + 2 }, rows: [{ values: [cell(status), cell(remittanceId)] }], fields: "userEnteredValue" } };
 }
 
 export const CASH_IN_FULL_NOTE = "Cash received in full and confirmed during encoding.";
@@ -152,10 +182,12 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const actor = getEncoder();
   const ledger = await loadLedger();
   const ids = [...new Set(input.collectionIds.map(text).filter(Boolean))];
-  if (!ids.length) throw new Error("Select at least one outstanding Collection.");
+  if (!ids.length) throw new Error("Select at least one outstanding Collection or New Sale.");
   const selected = ids.map((id) => ledger.collections.find((collection) => collection.id === id));
-  if (selected.some((collection) => !collection)) throw new Error("One or more selected Collections no longer exist.");
+  if (selected.some((collection) => !collection)) throw new Error("One or more selected items no longer exist.");
   const collections = selected as CashCollection[];
+  const kind = collections[0].kind;
+  if (collections.some((collection) => collection.kind !== kind)) throw new Error("Collections and New Sales are remitted on separate slips. Select only one kind.");
   if (collections[0].batchId) {
     const completeBatch = ledger.collections.filter((collection) => collection.batchId === collections[0].batchId && collection.remittanceStatus === "Outstanding");
     if (collections.some((collection) => collection.batchId !== collections[0].batchId) || completeBatch.length !== collections.length || completeBatch.some((collection) => !ids.includes(collection.id))) throw new Error("One Collection save is one Remittance. Select every Collection card from the same saved batch.");
@@ -168,13 +200,17 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.remittanceDate)) throw new Error("Enter a valid remittance date.");
   if (!Number.isFinite(input.actualAmount) || input.actualAmount < 0) throw new Error("Enter the actual amount received.");
   if (!Number.isFinite(input.fidelityAmount) || input.fidelityAmount < 0) throw new Error("Fidelity must be zero or a positive amount.");
-  if (owner.accountableRole.toLowerCase() !== "mas" && input.fidelityAmount !== 0) throw new Error("Fidelity is only available for MAS remittances.");
+  const encodedFidelity = Math.round(collections.reduce((sum, item) => sum + item.fidelity, 0) * 100) / 100;
+  if (encodedFidelity > 0 && input.fidelityAmount > 0 && Math.round(input.fidelityAmount * 100) !== Math.round(encodedFidelity * 100)) throw new Error("Fidelity for this batch was entered with the Collections and is already included.");
+  const fidelityAmount = encodedFidelity || input.fidelityAmount;
+  if (owner.accountableRole.toLowerCase() !== "mas" && fidelityAmount !== 0) throw new Error("Fidelity is only available for MAS remittances.");
+  if (kind === "New Sales" && fidelityAmount !== 0) throw new Error("Fidelity comes from collection incentives; it is not recorded on a New Sales remittance.");
   const availableIncentive=Math.round(collections.reduce((sum,item)=>sum+Math.max(0,item.amount-item.remittanceAmount),0)*100)/100;
-  if(input.fidelityAmount>availableIncentive)throw new Error(`Fidelity cannot exceed the MAS incentive of ${availableIncentive.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} in this Remittance.`);
+  if(fidelityAmount>availableIncentive)throw new Error(`Fidelity cannot exceed the MAS incentive of ${availableIncentive.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} in this Remittance.`);
   const fidelityAccount=(await getFidelityData(owner.accountableEmployeeId,true)).accounts.find(item=>item.masEmployeeId===owner.accountableEmployeeId);
   const remainingFidelity = Math.max(0,Math.round((FIDELITY_CAP-(fidelityAccount?.approved??0)-(fidelityAccount?.pending??0))*100)/100);
-  if (input.fidelityAmount > remainingFidelity) throw new Error(`Fidelity can be at most ${remainingFidelity.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} for this MAS.`);
-  const expected = Math.round((collections.reduce((sum, collection) => sum + amountDue(collection), 0) + input.fidelityAmount) * 100) / 100;
+  if (fidelityAmount > remainingFidelity) throw new Error(`Fidelity can be at most ${remainingFidelity.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} for this MAS.`);
+  const expected = Math.round((collections.reduce((sum, collection) => sum + amountDue(collection), 0) + fidelityAmount) * 100) / 100;
   const actual = Math.round(input.actualAmount * 100) / 100;
   const difference = Math.round((actual - expected) * 100) / 100;
   // Confirmed full cash is created and approved in one atomic write by whoever received it.
@@ -190,15 +226,15 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const identity = [actor.userId, actor.employeeId, actor.name, timestamp];
   const decision = approved ? [actor.userId, actor.employeeId, actor.name, timestamp] : ["", "", "", ""];
   const row = [id, owner.branch, owner.accountableName, input.remittanceDate, status, timestamp, ...identity, expected, actual, difference,
-    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, actor.name, ...decision, remarks, approved ? CASH_IN_FULL_NOTE : "", Math.round(input.fidelityAmount*100)/100];
+    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, actor.name, ...decision, remarks, approved ? CASH_IN_FULL_NOTE : "", Math.round(fidelityAmount*100)/100, kind];
   const sheet = await sheetIds();
   const requests = [
     { appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } },
     ...collections.map((collection) => ({ appendCells: { sheetId: sheet.mappings, rows: [{ values: [createReadableId("RCL"), id, collection.id, collection.remittanceAmount, timestamp, ...identity].map(cell) }], fields: "userEnteredValue" } })),
-    ...collections.map((collection) => ({ updateCells: { range: { sheetId: sheet.collections, startRowIndex: collection.rowNumber - 1, endRowIndex: collection.rowNumber, startColumnIndex: 28, endColumnIndex: 30 }, rows: [{ values: [cell(approved ? "Remitted" : "Pending Remittance Approval"), cell(id)] }], fields: "userEnteredValue" } })),
+    ...collections.map((collection) => statusUpdate(sheet, collection, approved ? "Remitted" : "Pending Remittance Approval", id)),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
-  return { id, status, expectedAmount: expected, actualAmount: actual, difference, fidelityAmount: Math.round(input.fidelityAmount*100)/100 };
+  return { id, type: kind, status, expectedAmount: expected, actualAmount: actual, difference, fidelityAmount: Math.round(fidelityAmount*100)/100 };
 }
 
 export async function decideCashRemittance(remittanceId: string, decision: "approve" | "reject", reason = "", allowOwnDecision = false) {
@@ -211,9 +247,9 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   if (decision === "reject" && !text(reason)) throw new Error("A rejection reason is required.");
   if (decision === "approve" && remittance.difference !== 0 && !text(reason)) throw new Error("Explain how the remittance discrepancy was resolved before approval.");
   const linked = remittance.collectionIds.map((id) => ledger.collections.find((collection) => collection.id === id));
-  if (!linked.length || linked.some((collection) => !collection)) throw new Error("The Remittance collection links are incomplete.");
+  if (!linked.length || linked.some((collection) => !collection)) throw new Error("The Remittance links are incomplete.");
   if (decision === "approve" && linked.some((collection) => collection?.linkedRemittanceId !== remittance.id || collection.remittanceStatus !== "Pending Remittance Approval")) {
-    throw new Error("A linked Collection changed before approval. Refresh and investigate it.");
+    throw new Error(`A linked ${remittance.type === "New Sales" ? "New Sale" : "Collection"} changed before approval. Refresh and investigate it.`);
   }
   const sheet = await sheetIds();
   const timestamp = actor.encodedAt;
@@ -221,7 +257,7 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   const requests = [
     { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 4, endColumnIndex: 5 }, rows: [{ values: [cell(status)] }], fields: "userEnteredValue" } },
     { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 18, endColumnIndex: 24 }, rows: [{ values: [actor.userId, actor.employeeId, actor.name, timestamp, remittance.remarks, text(reason)].map(cell) }], fields: "userEnteredValue" } },
-    ...linked.map((collection) => ({ updateCells: { range: { sheetId: sheet.collections, startRowIndex: collection!.rowNumber - 1, endRowIndex: collection!.rowNumber, startColumnIndex: 28, endColumnIndex: 30 }, rows: [{ values: [cell(decision === "approve" ? "Remitted" : "Outstanding"), cell(decision === "approve" ? remittance.id : "")] }], fields: "userEnteredValue" } })),
+    ...linked.map((collection) => statusUpdate(sheet, collection!, decision === "approve" ? "Remitted" : "Outstanding", decision === "approve" ? remittance.id : "")),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
   return { id: remittance.id, status };

@@ -36,6 +36,8 @@ export const encoderSheets = [
   { title: "Payroll Runs", columns: 24 },
   { title: "Payroll Lines", columns: 24 },
   { title: "Payroll Adjustments", columns: 8 },
+  { title: "Daily Audits", columns: 13 },
+  { title: "Member Transfers", columns: 10 },
 ];
 
 export function columnName(index: number): string {

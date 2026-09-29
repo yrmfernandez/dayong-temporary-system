@@ -23,19 +23,26 @@ async function verifyTrackingHeaders(range: string) {
   return schema;
 }
 
-export async function appendEncodedRows(params: sheets_v4.Params$Resource$Spreadsheets$Values$Append) {
+/**
+ * Appends business rows followed by the encoder identity. `trailing` adds per-row values that live after the identity
+ * columns (workflow columns added later, e.g. Sales remittance status); every row must have the same number.
+ */
+export async function appendEncodedRows(params: sheets_v4.Params$Resource$Spreadsheets$Values$Append, trailing?: unknown[][]) {
   const identity = encoderValues();
   const schema = await verifyTrackingHeaders(params.range ?? "");
-  const values = (params.requestBody?.values ?? []).map((row: unknown[]) => {
+  const rows = params.requestBody?.values ?? [];
+  const extra = schema.title === "Member programs" ? rows.map(() => ["NS"]) : trailing ?? rows.map(() => []);
+  if (extra.length !== rows.length || extra.some((values) => values.length !== extra[0].length)) throw new Error(`Unexpected trailing values for ${schema.title}.`);
+  const values = rows.map((row: unknown[], index: number) => {
     if (row.length !== schema.columns) {
       throw new Error(`Unexpected business column count for ${schema.title}.`);
     }
-    return [...row, ...identity, ...(schema.title === "Member programs" ? ["NS"] : [])];
+    return [...row, ...identity, ...extra[index]];
   });
   return sheets.spreadsheets.values.append({
     ...params,
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${quotedSheet(schema.title)}!A:${columnName(schema.columns + 4 + (schema.title === "Member programs" ? 1 : 0))}`,
+    range: `${quotedSheet(schema.title)}!A:${columnName(schema.columns + 4 + (extra[0]?.length ?? 0))}`,
     valueInputOption: "USER_ENTERED",
     requestBody: { ...params.requestBody, values },
   });

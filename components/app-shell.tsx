@@ -22,6 +22,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isLogin = pathname === "/login";
 
+  // The mouse wheel must never change a number field (amounts, NOP, rates): a focused number input lets go of focus
+  // before the wheel acts, so the wheel scrolls the page instead. Covers every number field, including future ones.
+  useEffect(() => {
+    const releaseNumberField = (event: WheelEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.type === "number" && document.activeElement === target) target.blur();
+    };
+    document.addEventListener("wheel", releaseNumberField, { capture: true, passive: true });
+    return () => document.removeEventListener("wheel", releaseNumberField, { capture: true });
+  }, []);
+
   useEffect(() => {
     if (isLogin) return;
     const controller = new AbortController();

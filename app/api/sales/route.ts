@@ -23,6 +23,9 @@ type SalePayload = {
   mas: string;
   dateRemitted: string;
   sales: SalePayloadItem[];
+  /** Optional remittance penalty on the batch, charged to the MAS, with what it is for. */
+  penalty?: number;
+  penaltyNote?: string;
 };
 
 type SalePayloadItem = {
@@ -134,6 +137,13 @@ export const POST = withEncoder(async function POST(request: Request) {
         { status: 400 },
       );
     }
+
+    // A remittance penalty is charged to the MAS (their own money), added once to this batch's remittance.
+    const penalty = Math.round((Number(body.penalty) || 0) * 100) / 100;
+    const penaltyNote = typeof body.penaltyNote === "string" ? body.penaltyNote.trim() : "";
+    if (!Number.isFinite(penalty) || penalty < 0) return NextResponse.json({ success: false, message: "The penalty must be zero or a positive amount." }, { status: 400 });
+    if (penalty > 0 && penaltyNote.length < 3) return NextResponse.json({ success: false, message: "Explain what the penalty is for (at least 3 characters)." }, { status: 400 });
+    if (penaltyNote.length > 300) return NextResponse.json({ success: false, message: "The penalty note must be 300 characters or fewer." }, { status: 400 });
 
     if (
       !Array.isArray(body.sales) ||
@@ -501,7 +511,7 @@ export const POST = withEncoder(async function POST(request: Request) {
             sale.contactNumber,
 
           addressHouse:
-            sale.addressHouse,
+            sale.addressHouse,
 
           claimantName:
             sale.claimantName,
@@ -513,7 +523,7 @@ export const POST = withEncoder(async function POST(request: Request) {
               : "No",
 
           claimantAddressHouse:
-            sale.claimantAddressHouse,
+            sale.claimantAddressHouse,
 
           status: "Active",
         };
@@ -608,7 +618,7 @@ export const POST = withEncoder(async function POST(request: Request) {
           sale.contactNumber,
 
         addressHouse:
-          sale.addressHouse,
+          sale.addressHouse,
 
         claimantName:
           sale.claimantName,
@@ -620,7 +630,7 @@ export const POST = withEncoder(async function POST(request: Request) {
             : "No",
 
         claimantAddressHouse:
-          sale.claimantAddressHouse,
+          sale.claimantAddressHouse,
 
         programId:
           sale.programId,
@@ -648,6 +658,8 @@ export const POST = withEncoder(async function POST(request: Request) {
 
       await addSale(
         saleData,
+        selectedStaff.id,
+        savedSales.length === 0 ? { amount: penalty, note: penaltyNote } : undefined,
       );
 
       await addBeneficiaries(memberId, saleId, sale.beneficiaries ?? []);

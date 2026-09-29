@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useFormDraft } from "@/lib/use-form-draft";
+import { RemittanceSummary } from "@/components/remittance-summary";
 import {
   Select,
   SelectContent,
@@ -250,11 +251,13 @@ export default function CollectionsPage() {
   // Remittance penalty: charged to the accountable MAS/Collector (their own money), added once to the batch's remittance.
   const [penalty, setPenalty] = useState("");
   const [penaltyNote, setPenaltyNote] = useState("");
+  // MAS Fidelity set aside from this batch's incentives (not for Collector batches).
+  const [fidelity, setFidelity] = useState("");
 
   // The unsaved batch survives leaving the page and coming back (member search results included, so picks still show).
   useFormDraft(
     "collections",
-    { branch, mas, dateRemitted, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote },
+    { branch, mas, dateRemitted, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity },
     (draft) => {
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
@@ -269,6 +272,7 @@ export default function CollectionsPage() {
       setPaymentReference(draft.paymentReference ?? "");
       setPenalty(draft.penalty ?? "");
       setPenaltyNote(draft.penaltyNote ?? "");
+      setFidelity(draft.fidelity ?? "");
     },
   );
   const selectedPaymentMethod = paymentMethods.find((method) => method.name === paymentMethod);
@@ -412,7 +416,9 @@ export default function CollectionsPage() {
   const totalCollected = collections.reduce((sum, entry) => sum + Math.round(Number(entry.amountCollected || 0) * 100), 0) / 100;
   const totalRemittance = quotes.every((q) => "remittance" in q) ? quotes.reduce((sum, q) => sum + Math.round(("remittance" in q ? q.remittance : 0) * 100), 0) / 100 : null;
   const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
-  const totalDue = totalRemittance === null ? null : (Math.round(totalRemittance * 100) + Math.round(penaltyAmount * 100)) / 100;
+  const fidelityAmount = collectedBy === "Collector" ? 0 : Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
+  const batchIncentives = totalRemittance === null ? 0 : Math.round((totalCollected - totalRemittance) * 100) / 100;
+  const totalDue = totalRemittance === null ? null : (Math.round(totalRemittance * 100) + Math.round(penaltyAmount * 100) + Math.round(fidelityAmount * 100)) / 100;
 
   function updateCollection(
     id: string,
@@ -711,6 +717,11 @@ export default function CollectionsPage() {
       return;
     }
 
+    if (fidelityAmount > batchIncentives) {
+      setSaveMessage(`Fidelity cannot exceed the batch's total incentives of ${formatCurrency(batchIncentives)}.`);
+      return;
+    }
+
     if (penaltyAmount > 0 && penaltyNote.trim().length < 3) {
       setSaveMessage("Explain what the penalty is for.");
       return;
@@ -770,6 +781,7 @@ export default function CollectionsPage() {
           cashReceived: Number(cashReceived),
           penalty: penaltyAmount,
           penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "",
+          fidelityAmount,
           collections: collections.map((entry) => ({
             ...entry,
             memberNumber: members.find(
@@ -812,6 +824,7 @@ export default function CollectionsPage() {
     setCashReceived("");
     setPenalty("");
     setPenaltyNote("");
+    setFidelity("");
     setCollectedBy("MAS");
     setPaymentMethod(paymentMethods.find((method) => method.isCash)?.name || paymentMethods[0]?.name || "");
     setPaymentReference("");
@@ -912,6 +925,17 @@ export default function CollectionsPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Charged to the {collectedBy === "Collector" ? "Collector" : "MAS"}, paid from their own money, and added to this batch&apos;s total remittance. Members are not charged.</p>
+            </fieldset>
+
+            <fieldset className="space-y-2 rounded-lg border p-3 md:col-span-3">
+              <legend className="px-1 text-sm font-medium">MAS Fidelity (optional)</legend>
+              <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
+                <div className="space-y-1">
+                  <Label htmlFor="fidelity-amount">Fidelity amount</Label>
+                  <Input id="fidelity-amount" type="number" min="0" step="0.01" max={batchIncentives || undefined} value={collectedBy === "Collector" ? "" : fidelity} disabled={collectedBy === "Collector"} placeholder="0.00" onChange={(event) => { setFidelity(event.target.value); setAutoApproveRemittance(false); }} />
+                </div>
+                <p className="text-xs text-muted-foreground">{collectedBy === "Collector" ? "Not available: a Collector batch's incentive belongs to the Collector." : `Set aside from the MAS's incentives as savings (up to ${formatCurrency(batchIncentives)} in this batch; ₱10,000 lifetime limit). It lowers the incentives and is added to the remittance.`}</p>
+              </div>
             </fieldset>
           </div>
         </CardContent>
@@ -1599,26 +1623,8 @@ export default function CollectionsPage() {
                 },
               )}
 
-              {/* TOTAL */}
-              <div className="rounded-xl border bg-muted/30 p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
-                    Total Amount Collected
-                  </span>
-
-                  <span className="text-lg font-semibold">
-                    {formatCurrency(totalCollected)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-1 rounded-xl border bg-primary/5 p-4">
-                <div className="flex items-center justify-between"><span className="text-sm font-medium">Incentive calculation reference</span><strong>{totalRemittance === null ? "Complete payment and incentive details" : formatCurrency(totalRemittance)}</strong></div>
-                {penaltyAmount > 0 && <>
-                  <div className="flex items-center justify-between text-sm text-red-700"><span>+ Penalty{penaltyNote.trim() ? `: ${penaltyNote.trim()}` : ""}</span><strong>{formatCurrency(penaltyAmount)}</strong></div>
-                  <div className="flex items-center justify-between border-t pt-1"><span className="text-sm font-semibold">Total remittance due</span><strong>{totalDue === null ? "Pending" : formatCurrency(totalDue)}</strong></div>
-                </>}
-              </div>
+              {/* TOTALS: amount collected, incentives (less Fidelity), penalty, total remittance */}
+              <RemittanceSummary collected={totalCollected} remittance={totalRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} />
 
               <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px]">
                 <label className="flex items-start gap-3 text-sm">

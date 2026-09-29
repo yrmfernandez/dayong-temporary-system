@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { Fragment, useEffect, useState } from "react";
 import { InlineRow } from "@/components/inline-panel";
+import { SearchSelect } from "@/components/ui/search-select";
+import { Input } from "@/components/ui/input";
 import { readApiResponse } from "@/lib/api-response";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { SearchSelect } from "@/components/ui/search-select";
 import { emptyDirectoryFilters, filterMemberDirectory, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
 
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
@@ -24,6 +25,9 @@ export default function MembersPage() {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [canManage, setCanManage] = useState(false);
+  // Administrators and HR Officers can move an enrollment to another employee in the same branch.
+  const [canTransfer, setCanTransfer] = useState(false);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [editing, setEditing] = useState<DirectoryMember | null>(null);
   // The member just saved, so the confirmation shows on that row.
   const [savedId, setSavedId] = useState("");
@@ -33,7 +37,7 @@ export default function MembersPage() {
     fetch("/api/members/directory", { cache: "no-store", signal: controller.signal }).then(async (response) => {
       const result = await readApiResponse(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load members.");
-      setMembers(result.members); setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage));
+      setMembers(result.members); setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanTransfer(Boolean(result.canTransfer)); setTransfers(result.transfers ?? []);
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -89,7 +93,7 @@ export default function MembersPage() {
         ["Claimant", selected.claimant], ["Claimant contact", selected.claimantContact], ["Claimant address", selected.claimantAddress],
       ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1">{value || "Not recorded"}</dd></div>)}</dl>
       <h3 className="font-semibold">All program enrollments</h3>
-      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{["Program", "DOI", "Branch", "MAS / Officer", "Remittance method", "Enrollment status", "Payment status"].map((label) => <th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead><tbody>{selected.enrollments.map((e) => <tr key={e.id} className="border-t">{[e.programName, e.doi, e.branch, e.mas, e.paymentMethod, e.status, e.accountError || `${e.accountStatus || "Needs review"}${e.temporarilySuspended ? " (temporarily suspended)" : ""}`].map((v, i) => <td key={i} className="p-2">{v || "-"}</td>)}</tr>)}</tbody></table>{!selected.enrollments.length && <p className="p-2 text-sm">No program enrollments.</p>}</div>
+      <EnrollmentTable enrollments={selected.enrollments} canTransfer={canTransfer} transfers={transfers} onTransferred={(enrollmentId, toMas) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, mas: toMas } : item) }); setRevision((value) => value + 1); }} />
       <Link className="text-sm underline" href="/mam">Open Member Account Monitoring</Link>
 </section>{editing?.id === member.id && <form className="mt-4 space-y-4 border-t pt-4" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch("/api/members/directory", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, contact: form.get("contact"), status: form.get("status") }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member updated." : result.message || "Unable to update member."); if (response.ok) { setSavedId(editing.id); setEditing(null); setSelected(null); setRevision((value) => value + 1); } }}><div className="flex justify-between"><h2 className="font-semibold">Edit {editing.name}</h2><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Contact number<input name="contact" className={fieldClass} defaultValue={editing.contact}/></label><label className="text-sm">Member status<input name="status" required className={fieldClass} defaultValue={editing.status}/></label></div><Button type="submit">Save member</Button></form>}</InlineRow>}</Fragment>)}{!visible.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">{members.length ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
         </table>
@@ -97,4 +101,69 @@ export default function MembersPage() {
       <div className="flex items-center justify-end gap-3"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-sm">Page {currentPage} of {pages}</span><Button type="button" variant="outline" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
     </>}
   </section>;
+}
+
+type Transfer = { enrollmentId: string; fromMas: string; toMas: string; reason: string; by: string; at: string };
+type Enrollment = DirectoryMember["enrollments"][number];
+
+/** A member's program enrollments; Administrators and HR Officers can move one to another employee in its branch. */
+function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }: { enrollments: Enrollment[]; canTransfer: boolean; transfers: Transfer[]; onTransferred: (enrollmentId: string, toMas: string) => void }) {
+  const [open, setOpen] = useState("");
+  const [candidates, setCandidates] = useState<Array<{ employeeId: string; name: string }>>([]);
+  const [target, setTarget] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  async function start(enrollment: Enrollment) {
+    setNote(""); setTarget(""); setReason("");
+    if (open === enrollment.id) { setOpen(""); return; }
+    setOpen(enrollment.id); setCandidates([]); setBusy(true);
+    try {
+      const response = await fetch(`/api/members/transfer?enrollmentId=${encodeURIComponent(enrollment.id)}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to load employees.");
+      setCandidates(result.candidates);
+    } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to load employees."); }
+    finally { setBusy(false); }
+  }
+  async function transfer(enrollment: Enrollment) {
+    setBusy(true); setNote("");
+    try {
+      const response = await fetch("/api/members/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enrollmentId: enrollment.id, toEmployeeId: target, reason }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to transfer.");
+      setOpen(""); setNote(`${enrollment.programName} moved from ${result.transfer.fromMas} to ${result.transfer.toMas}. Future collections belong to ${result.transfer.toMas}.`);
+      onTransferred(enrollment.id, result.transfer.toMas);
+    } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to transfer."); }
+    finally { setBusy(false); }
+  }
+  const headers = ["Program", "DOI", "Branch", "MAS / Officer", "Remittance method", "Enrollment status", "Payment status", ...(canTransfer ? [""] : [])];
+  return <div className="overflow-x-auto">
+    <table className="w-full text-left text-sm">
+      <thead><tr>{headers.map((label, index) => <th key={index} scope="col" className="p-2">{label}</th>)}</tr></thead>
+      <tbody>{enrollments.map((e) => {
+        const last = transfers.find((item) => item.enrollmentId === e.id);
+        return <Fragment key={e.id}>
+          <tr className="border-t">
+            <td className="p-2">{e.programName || "-"}</td><td className="p-2">{e.doi || "-"}</td><td className="p-2">{e.branch || "-"}</td>
+            <td className="p-2">{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">Transferred from {last.fromMas}{last.at ? ` on ${last.at.slice(0, 10)}` : ""} · {last.reason}</span>}</td>
+            <td className="p-2">{e.paymentMethod || "-"}</td><td className="p-2">{e.status || "-"}</td>
+            <td className="p-2">{e.accountError || `${e.accountStatus || "Needs review"}${e.temporarilySuspended ? " (temporarily suspended)" : ""}`}</td>
+            {canTransfer && <td className="p-2 text-right"><Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{open === e.id ? "Transferring" : "Transfer"}</Button></td>}
+          </tr>
+          {open === e.id && <InlineRow colSpan={headers.length}>
+            <p className="text-sm font-semibold">Transfer {e.programName} from {e.mas || "no MAS"}</p>
+            <p className="mb-3 text-xs text-muted-foreground">To another active employee in {e.branch}. Future collections belong to the new MAS; past collections and cash already owed stay with {e.mas || "the current MAS"}.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">New MAS / employee *<SearchSelect aria-label="New MAS" className="mt-1 h-9" placeholder={busy && !candidates.length ? "Loading..." : candidates.length ? "Search employee" : "No other employee in this branch"} disabled={!candidates.length} value={target} onValueChange={setTarget} options={candidates.map((item) => ({ value: item.employeeId, label: item.name, description: item.employeeId }))} /></label>
+              <label className="text-sm">Reason *<Input className="mt-1 h-9" maxLength={300} value={reason} placeholder="e.g. Original MAS resigned; member requested a new officer" onChange={(event) => setReason(event.target.value)} /></label>
+            </div>
+            <div className="mt-3 flex gap-2"><Button type="button" disabled={busy || !target || reason.trim().length < 3} onClick={() => void transfer(e)}>{busy ? "Saving..." : "Transfer"}</Button><Button type="button" variant="ghost" onClick={() => setOpen("")}>Cancel</Button></div>
+          </InlineRow>}
+        </Fragment>;
+      })}</tbody>
+    </table>
+    {!enrollments.length && <p className="p-2 text-sm">No program enrollments.</p>}
+    {note && <p role="status" className="p-2 text-sm">{note}</p>}
+  </div>;
 }

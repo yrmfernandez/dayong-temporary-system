@@ -4,6 +4,7 @@ import { deleteMemberRecord, updateMemberRecord } from "@/lib/master-data-crud";
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
 import { buildMemberDirectory } from "@/lib/member-directory";
 import { accountReport } from "@/lib/account-data";
+import { canTransferMembers, getTransferHistory } from "@/lib/member-transfer";
 
 export async function GET() {
   if (!(await getSessionUser())) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
@@ -29,7 +30,8 @@ export async function GET() {
       statusWarning = "Payment statuses could not be calculated. Check MAM or refresh to retry.";
       for (const member of members) for (const enrollment of member.enrollments) enrollment.accountStatus = "Needs review";
     }
-    return Response.json({ success: true, members, statusWarning, canManage: await canManageUsers() }, { headers: { "Cache-Control": "private, no-store" } });
+    const [canTransfer, transfers] = await Promise.all([canTransferMembers(), getTransferHistory()]);
+    return Response.json({ success: true, members, statusWarning, canManage: await canManageUsers(), canTransfer, transfers }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Member directory error:", error);
     return Response.json({ success: false, message: "Unable to load members. Please retry or check the member records." }, { status: 500 });

@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { todayInManila } from "@/lib/account-rules";
 import { useFormDraft } from "@/lib/use-form-draft";
+import { RemittanceSummary } from "@/components/remittance-summary";
 import {
   Select,
   SelectContent,
@@ -231,16 +232,24 @@ export default function NewSalesPage() {
   const [memberSearchTerms, setMemberSearchTerms] =
     useState<Record<string, string>>({});
 
+  // Remittance penalty on this New Sales batch: charged to the MAS (their own money), added to the remittance.
+  const [penalty, setPenalty] = useState("");
+  const [penaltyNote, setPenaltyNote] = useState("");
+  const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
+  const totalPaid = sales.reduce((sum, sale) => sum + Math.round((Number(sale.program.amountPaid) || 0) * 100), 0) / 100;
+
   // The unsaved form survives leaving the page (e.g. to Collections) and coming back.
   useFormDraft(
     "new-sales",
-    { branch, mas, dateRemitted, sales, expandedSales },
+    { branch, mas, dateRemitted, sales, expandedSales, penalty, penaltyNote },
     (draft) => {
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
       setDateRemitted(draft.dateRemitted ?? "");
       if (Array.isArray(draft.sales) && draft.sales.length) setSales(draft.sales);
       setExpandedSales(draft.expandedSales ?? {});
+      setPenalty(draft.penalty ?? "");
+      setPenaltyNote(draft.penaltyNote ?? "");
     },
   );
 
@@ -877,6 +886,16 @@ export default function NewSalesPage() {
       }
     }
 
+    if (Number(penalty) < 0) {
+      setSaveMessage("The penalty must be zero or a positive amount.");
+      return;
+    }
+
+    if (penaltyAmount > 0 && penaltyNote.trim().length < 3) {
+      setSaveMessage("Explain what the penalty is for.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -934,6 +953,8 @@ export default function NewSalesPage() {
             dateRemitted,
             sales:
               preparedSales,
+            penalty: penaltyAmount,
+            penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "",
           }),
         },
       );
@@ -960,6 +981,8 @@ export default function NewSalesPage() {
       );
 
       resetForm();
+      setPenalty("");
+      setPenaltyNote("");
     } catch (error: unknown) {
       console.error(
         "New Sales save error:",
@@ -2473,6 +2496,27 @@ export default function NewSalesPage() {
         <Plus className="mr-2 size-4" />
         Add New Sale
       </Button>
+
+      {/* PENALTY AND TOTALS */}
+      <Card>
+        <CardContent className="space-y-4 pt-6">
+          <fieldset className={`space-y-2 rounded-lg border p-3 ${penaltyAmount > 0 ? "border-red-300 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20" : ""}`}>
+            <legend className="px-1 text-sm font-medium">Remittance penalty (optional)</legend>
+            <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+              <div className="space-y-1">
+                <Label htmlFor="sales-penalty-amount">Penalty amount</Label>
+                <Input id="sales-penalty-amount" type="number" min="0" step="0.01" value={penalty} placeholder="0.00" onChange={(event) => setPenalty(event.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="sales-penalty-note">What is the penalty for?{penaltyAmount > 0 ? " *" : ""}</Label>
+                <Input id="sales-penalty-note" maxLength={300} value={penaltyNote} disabled={penaltyAmount <= 0} placeholder={penaltyAmount > 0 ? "e.g. Late turnover of new sales" : "Enter a penalty amount first"} onChange={(event) => setPenaltyNote(event.target.value)} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Charged to the MAS, paid from their own money, and added to this batch&apos;s New Sales remittance. Members are not charged.</p>
+          </fieldset>
+          <RemittanceSummary collected={totalPaid} remittance={totalPaid} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} incentiveNote="New Sales carry no incentive, so the full amount paid is remitted." />
+        </CardContent>
+      </Card>
 
       {/* SAVE */}
       <Card>

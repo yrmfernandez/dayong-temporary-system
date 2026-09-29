@@ -24,7 +24,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
     get: async ({ range }) => {
       if (range === "'Member programs'!S1") return { data: { values: [['Account Status']] } };
       if (/^'?Branches'?!A:M$/.test(range)) return { data: { values: rows.Branches ?? [[]] } };
-      if (/^'?Roles'?!A:G$/.test(range)) return { data: { values: rows.Roles ?? [[]] } };
+      if (/^'?Roles'?!A:[GL]$/.test(range)) return { data: { values: rows.Roles ?? [[]] } };
       if (/^'?Users'?!A:(?:B|G|H|Z)$/.test(range)) return { data: { values: rows.Users ?? [[]] } };
       if (range === "'Audit Log'!A:J") return { data: { values: rows['Audit Log'] ?? [[]] } };
       if (/!A:ZZ$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
@@ -245,7 +245,9 @@ for (const existingMember of [false, true]) {
     }));
     assert.equal(response.status, 200, JSON.stringify(await response.json()));
     assert.equal(h.writes.length, existingMember ? 2 : 4);
-    const audit = h.writes.map((write) => write.requestBody.values[0].slice(write.range.startsWith("\'Member programs\'") ? -5 : -4, write.range.startsWith("\'Member programs\'") ? -1 : undefined));
+    // Encoder identity follows the business columns; Member programs and Sales keep workflow columns after it.
+    const trailing = (range) => range.startsWith("'Member programs'") ? 1 : range.startsWith("'Sales'") ? 5 : 0;
+    const audit = h.writes.map((write) => { const row = write.requestBody.values[0], extra = trailing(write.range); return row.slice(row.length - 4 - extra, row.length - extra); });
     for (const values of audit) {
       assert.deepEqual(values.slice(0, 3), ["'USR-1", "'DPE-0001", "'=encoder"]);
       assert.equal(values[3], audit[0][3]);
@@ -254,7 +256,9 @@ for (const existingMember of [false, true]) {
     assert.ok(!existingMember || h.writes.every((write) => !write.range.startsWith("'Members'!")));
     // One complete address per person: Sales is A:AE (+4 encoder columns), Members is A:R (+4).
     const saleRow = h.writes.find((write) => write.range.startsWith("'Sales'!")).requestBody.values[0];
-    assert.equal(saleRow.length, 35);
+    assert.equal(saleRow.length, 40);
+    // A new sale is cash the MAS owes until a New Sales remittance covers it (no penalty on this batch).
+    assert.deepEqual(saleRow.slice(35), ['Outstanding', '', 'DPE-0002', '', '']);
     assert.equal(saleRow[16], 'Complete Address');
     assert.equal(saleRow[21], 'DP-1');
     assert.equal(saleRow[28], 'APP-1');
@@ -305,6 +309,9 @@ test('collection batch is encoded atomically without creating a remittance', asy
   // A remittance penalty needs a note saying what it is for.
   assert.match((await (await route.POST(request({ ...batch, penalty: 50, penaltyNote: '' }))).json()).message, /what the penalty is for/);
   assert.match((await (await route.POST(request({ ...batch, penalty: -5, penaltyNote: 'x' }))).json()).message, /zero or a positive/);
+  // Fidelity comes out of the MAS incentive: not on a Collector batch, and never more than the batch's incentives.
+  assert.match((await (await route.POST(request({ ...batch, collectedBy: 'Collector', fidelityAmount: 10 }))).json()).message, /Collector batch has none/);
+  assert.match((await (await route.POST(request({ ...batch, fidelityAmount: 999 }))).json()).message, /cannot exceed the batch's total incentives/);
   assert.equal(h.writes.length, 0);
   const response = await route.POST(request({ ...batch, collectedBy: 'Collector', originalMasOfficerName: 'ignored', penalty: 50, penaltyNote: 'Late turnover' }));
   const result = await response.json();
@@ -909,4 +916,107 @@ test('clock-in uses the branch on the employee record, never one sent by the pag
   const refused = await route.POST(request({ action: 'time-in', branch: 'BALIOK' }));
   assert.equal(refused.status, 400);
   assert.match((await refused.json()).message, /No branch is assigned/);
+});
+
+test('new sales are remitted on their own slip, separate from collections', async () => {
+  const h = harness();
+  const collectionsHeader = Array(37).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const collection = Array(37).fill(''); collection[0] = 'COL-1'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 270; collection[28] = 'Outstanding'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS';
+  const sale = Array(38).fill(''); sale[0] = 'SAL-1'; sale[1] = '2026-09-25T02:00:00.000Z'; sale[2] = 'BR-1'; sale[3] = 'Maria'; sale[5] = 'PH-2'; sale[21] = 'DP-1'; sale[23] = 'Cash'; sale[26] = 500; sale[28] = 'APP-7'; sale[35] = 'Outstanding'; sale[37] = 'DPE-2'; sale.push(25, 'Late turnover of new sales');
+  const remittancesHeader = Array(26).fill(''); remittancesHeader[12] = 'Difference';
+  h.rows.Collections = [collectionsHeader, collection];
+  h.rows.Sales = [Array(38).fill(''), sale];
+  h.rows.Remittances = [remittancesHeader];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  const route = h.load('app/api/remittances/route.ts');
+  const dashboard = await (await route.GET()).json();
+  assert.deepEqual(dashboard.outstanding.map((item) => [item.kind, item.id, item.remittanceAmount, item.penalty]), [['Collections', 'COL-1', 270, 0], ['New Sales', 'SAL-1', 500, 25]]);
+  const post = async (body) => { const response = await route.POST(request({ actualAmount: 500, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
+  assert.match((await post({ collectionIds: ['COL-1', 'SAL-1'] })).body.error, /separate slips/);
+  assert.match((await post({ collectionIds: ['SAL-1'], fidelityAmount: 10 })).body.error, /not recorded on a New Sales remittance/);
+  const created = await post({ collectionIds: ['SAL-1'], actualAmount: 525 });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.remittance.type, 'New Sales');
+  assert.equal(created.body.remittance.expectedAmount, 525, 'the full amount paid on the sale plus the batch penalty');
+  const requests = h.writes.at(-1).requestBody.requests;
+  const remittance = requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.equal(remittance[25], 'New Sales');
+  const saleStatus = requests.at(-1).updateCells;
+  assert.equal(saleStatus.range.startColumnIndex, 35, 'the sale is marked in Sales AJ:AK, not in Collections');
+  assert.deepEqual(saleStatus.rows[0].values.map((value) => value.userEnteredValue.stringValue), ['Pending Remittance Approval', created.body.remittance.id]);
+});
+
+test('fidelity entered with a Collections batch is used by its remittance and lowers the incentives', async () => {
+  const h = harness();
+  const collectionsHeader = Array(38).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const collection = Array(38).fill(''); collection[0] = 'COL-9'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-9'; collection[9] = '2026-09-25'; collection[10] = 320; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 270; collection[28] = 'Outstanding'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS'; collection[37] = 20;
+  const remittancesHeader = Array(26).fill(''); remittancesHeader[12] = 'Difference';
+  h.rows.Collections = [collectionsHeader, collection];
+  h.rows.Sales = [Array(40).fill('')];
+  h.rows.Remittances = [remittancesHeader];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  const route = h.load('app/api/remittances/route.ts');
+  const post = async (body) => { const response = await route.POST(request({ collectionIds: ['COL-9'], actualAmount: 290, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
+  assert.match((await post({ fidelityAmount: 5 })).body.error, /already included/);
+  const created = await post({});
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  // Collected 320: remittance 270 + Fidelity 20 = 290 expected; the MAS keeps 50 - 20 = 30.
+  assert.equal(created.body.remittance.expectedAmount, 290);
+  assert.equal(created.body.remittance.fidelityAmount, 20);
+  const remittance = h.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.equal(remittance[24], 20, 'the Fidelity is recorded on the remittance, where the Fidelity page reads it');
+});
+
+test('daily audit: HR, Finance, and Admin can open it; only Admin approves and approval locks the audit', async () => {
+  const access = harness().load('lib/access-control.ts');
+  const can = (role) => access.canAccessPath({ roleNames: [role], permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false } }, '/audit');
+  assert.deepEqual(['HR Officer', 'Finance', 'Administrator', 'Entry Clerk', 'MAS'].map(can), [true, true, true, false, false]);
+
+  const h = harness({ userId: 'USR-2', employeeId: 'MD-1', name: 'HR Person', roleNames: ['HR Officer'], permissions: {} });
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-3', 'MD-3', 'Clerk One', 'x', 'active', '', 'R-EC'], ['USR-4', 'MD-4', 'Only MAS', 'x', 'active', '', 'R-MAS']];
+  h.rows.Roles = [[], ['R-EC', 'Entry Clerk', '', false, false, false, 'active'], ['R-MAS', 'MAS', '', false, false, false, 'active']];
+  h.rows['User Roles'] = [[], ['USR-3', 'R-EC'], ['USR-4', 'R-MAS']];
+  h.rows['Daily Audits'] = [[]];
+  const audit = h.load('lib/daily-audit.ts');
+  assert.deepEqual((await audit.auditedEmployees()).map((item) => item.name), ['Clerk One'], 'only those who can open the Daily Report are audited');
+  await assert.rejects(audit.saveDailyAudit({ date: '2026-09-28', employeeId: 'MD-3', findings: '', result: 'With findings' }), /Describe the findings/);
+  await assert.rejects(audit.saveDailyAudit({ date: '2026-09-28', employeeId: 'MD-4', findings: '', result: 'Balanced' }), /does not have Daily Report access/);
+
+  const route = h.load('app/api/audit/route.ts');
+  const post = await route.POST(request({ date: '2026-09-28', employeeId: 'MD-3', findings: 'Receipts match', result: 'Balanced' }));
+  assert.equal(post.status, 200, JSON.stringify(await post.clone().json()));
+  const saved = h.writes.find((write) => write.range.startsWith("'Daily Audits'!")).requestBody.values[0];
+  assert.deepEqual([saved[1], saved[2], saved[4], saved[6], saved[7]], ['2026-09-28', 'MD-3', 'Draft', 'Receipts match', 'Balanced']);
+  assert.equal((await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'approve' }))).status, 403, 'HR prepares; only Admin approves');
+
+  h.rows['Daily Audits'] = [[], [...saved.slice(0, 13)]];
+  h.setUser({ userId: 'USR-1', employeeId: 'MD-0', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const approved = await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'approve' }));
+  assert.equal(approved.status, 200, JSON.stringify(await approved.clone().json()));
+  assert.equal(h.writes.at(-1).requestBody.values[0][0], 'Approved');
+  h.rows['Daily Audits'][1][4] = 'Approved';
+  assert.match((await (await route.POST(request({ date: '2026-09-28', employeeId: 'MD-3', findings: 'x', result: 'Balanced' }))).json()).message, /approved and locked/);
+  assert.match((await (await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'reopen', reason: '' }))).json()).message, /reason/);
+});
+
+test('a program enrollment transfers only to an active employee in the same branch, with a reason and history', async () => {
+  const h = harness({ userId: 'USR-2', employeeId: 'MD-1', name: 'HR Person', roleNames: ['HR Officer'], permissions: {} });
+  h.rows['Member programs'] = [[], ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', '2026-01-15', 'MATINA', 'Old MAS', 'Cash', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['MD-5', 'Old MAS', 'MATINA', 'MAS', 'active'], ['MD-6', 'New MAS', 'MATINA', 'MAS', 'active'], ['MD-7', 'Toril MAS', 'TORIL', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-5', 'BR-1'], ['EBA-2', 'MD-6', 'BR-1'], ['EBA-3', 'MD-7', 'BR-2']];
+  h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'TORIL', 'METRO', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Member Transfers'] = [[]];
+  const route = h.load('app/api/members/transfer/route.ts');
+  const listed = await (await route.GET(new Request('http://localhost/api/members/transfer?enrollmentId=ENR-1'))).json();
+  assert.deepEqual(listed.candidates.map((item) => item.name), ['New MAS'], 'same branch, not the current MAS');
+  assert.match((await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-7', reason: 'Moved' }))).json()).message, /assigned to MATINA/);
+  assert.match((await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: '' }))).json()).message, /reason/);
+  const done = await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: 'Old MAS resigned' }))).json();
+  assert.deepEqual([done.transfer.fromMas, done.transfer.toMas], ['Old MAS', 'New MAS']);
+  const update = h.writes.find((write) => write.range === "'Member programs'!G2");
+  assert.deepEqual(update.requestBody.values, [['New MAS']], 'only the enrollment MAS changes');
+  const history = h.writes.find((write) => write.range.startsWith("'Member Transfers'!")).requestBody.values[0];
+  assert.deepEqual(history.slice(1, 10), ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', 'MATINA', 'Old MAS', 'New MAS', 'MD-6', 'Old MAS resigned']);
+  h.setUser({ userId: 'USR-3', employeeId: 'MD-3', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: 'x y z' }))).status, 403, 'only Administrators and HR Officers');
 });
