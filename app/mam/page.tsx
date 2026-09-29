@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SearchSelect } from "@/components/ui/search-select";
 import {
   Download, 
   Printer,
@@ -250,46 +251,39 @@ export default function MamPage() {
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Branch</label>
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            <SearchSelect
+              aria-label="Branch"
+              className="h-9"
+              clearable
+              placeholder="All branches"
               value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-            >
-              <option value="">All branches</option>
-              {options("branch").map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
+              onValueChange={setBranch}
+              options={options("branch").map((s) => ({ value: s, label: s }))}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">MAS</label>
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            <SearchSelect
+              aria-label="MAS"
+              className="h-9"
+              clearable
+              placeholder="All MAS"
               value={mas}
-              onChange={(e) => setMas(e.target.value)}
-            >
-              <option value="">All MAS</option>
-              {options("mas").map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
+              onValueChange={setMas}
+              options={options("mas").map((s) => ({ value: s, label: s }))}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Program</label>
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            <SearchSelect
+              aria-label="Program"
+              className="h-9"
+              clearable
+              placeholder="All programs"
               value={program}
-              onChange={(e) => setProgram(e.target.value)}
-            >
-              <option value="">All programs</option>
-              {[...new Map(report?.rows.map((r) => [r.programId, r.programName])).entries()].map(
-                ([id, name]) => (
-                  <option key={id} value={id}>
-                    {name}
-                  </option>
-                )
-              )}
-            </select>
+              onValueChange={setProgram}
+              options={[...new Map(report?.rows.map((r) => [r.programId, r.programName])).entries()].map(([id, name]) => ({ value: id, label: name, keywords: id }))}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Status</label>

@@ -5,9 +5,9 @@ import { getEmployees } from "@/lib/employees";
 import { createCashTransaction } from "@/lib/finance-data";
 import { getCashAccounts, getCommissions, payCommission } from "@/lib/finance-operations";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { getBranches } from "@/lib/google-sheets-data";
+import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import {
-  ADJUSTMENT_CATEGORIES, computePayrollLine, defaultPayrollSettings, runTotals,
+  ADJUSTMENT_CATEGORIES, COMPANY_PROGRAM_CATEGORY, computePayrollLine, defaultPayrollSettings, runTotals,
   type Adjustment, type BaseType, type PayProfile, type PayrollLine, type PayrollSettings,
 } from "@/lib/payroll-calc";
 import { createReadableId } from "@/lib/readable-id";
@@ -122,7 +122,7 @@ async function loadPayroll() {
 }
 
 export async function getPayrollOverview() {
-  const [{ runs }, profiles, employees, accounts, branches] = await Promise.all([loadPayroll(), getPayProfiles(), getEmployees(), getCashAccounts(), getBranches()]);
+  const [{ runs }, profiles, employees, accounts, branches, programs] = await Promise.all([loadPayroll(), getPayProfiles(), getEmployees(), getCashAccounts(), getBranches(), getPrograms()]);
   return {
     runs: runs.sort((a, b) => b.periodFrom.localeCompare(a.periodFrom) || b.id.localeCompare(a.id)),
     profiles,
@@ -130,6 +130,7 @@ export async function getPayrollOverview() {
     cashAccounts: accounts.filter((account) => account.status === "active").map((account) => account.name),
     branches: branches.filter((branch) => branch.status === "active").map((branch) => branch.name),
     adjustmentCategories: ADJUSTMENT_CATEGORIES,
+    programs: programs.filter((program) => program.status === "active").map((program) => ({ id: program.id, code: program.code, name: program.name, basePay: program.basePay })),
   };
 }
 
@@ -232,12 +233,18 @@ export async function recalculatePayrollRun(runId: string, input: Record<string,
 
 export async function addPayrollAdjustment(runId: string, input: Record<string, unknown>) {
   const { lines } = await draftRun(runId);
-  const employeeId = text(input.employeeId), kind = text(input.kind), category = text(input.category), amount = centavos(num(input.amount)), reason = text(input.reason);
+  const employeeId = text(input.employeeId), kind = text(input.kind), category = text(input.category), amount = centavos(num(input.amount));
+  let reason = text(input.reason);
   if (!lines.some((line) => line.employeeId === employeeId)) throw new Error("Select an employee in this payroll.");
-  if (!["Addition", "Deduction"].includes(kind)) throw new Error("Choose an addition or a deduction.");
-  if (!(ADJUSTMENT_CATEGORIES as readonly string[]).includes(category)) throw new Error("Choose an adjustment category.");
+  if (kind !== "Addition" && kind !== "Deduction") throw new Error("Choose an addition or a deduction.");
+  if (!(ADJUSTMENT_CATEGORIES[kind] as readonly string[]).includes(category)) throw new Error(`Choose a ${kind.toLowerCase()} category.`);
   if (!(amount > 0)) throw new Error("Enter an amount greater than zero.");
   if (reason.length < 3 || reason.length > 300) throw new Error("Explain the reason for this adjustment (3–300 characters).");
+  if (category === COMPANY_PROGRAM_CATEGORY) {
+    const program = (await getPrograms()).find((item) => item.id === text(input.programId));
+    if (!program) throw new Error("Select the company program being deducted.");
+    reason = `${program.code} - ${program.name}: ${reason}`;
+  }
   const id = createReadableId("PAJ");
   await appendEncodedRows({ range: "'Payroll Adjustments'!A:H", requestBody: { values: [[id, runId, employeeId, kind, category, amount, reason, "active"]] } });
   await storeRunTotals(runId);

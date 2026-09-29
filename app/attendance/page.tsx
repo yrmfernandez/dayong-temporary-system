@@ -16,13 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchSelect } from "@/components/ui/search-select";
 
 type Branch = {
   id: string;
@@ -299,22 +293,15 @@ export default function AttendancePage() {
                     <Building2 className="size-4 text-violet-60" />
                     Work branch
                   </Label>
-                  <Select
+                  <SearchSelect
+                    aria-label="Work branch"
+                    className="bg-white"
                     value={branch}
-                    onValueChange={(value) => setBranch(value ?? "")}
+                    onValueChange={setBranch}
                     disabled={submitting}
-                  >
-                    <SelectTrigger className="w-full bg-white">
-                      <SelectValue placeholder="Select branch" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {branches.map((item) => (
-                        <SelectItem key={item.id} value={item.name}>
-                          {item.name} · {item.territory || "Unassigned territory"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Search branch"
+                    options={branches.map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))}
+                  />
                 </div>
               )}
 

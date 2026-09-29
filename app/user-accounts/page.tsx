@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchSelect } from "@/components/ui/search-select";
 
 type Role = {
   id: string;
@@ -34,7 +35,6 @@ export default function UserAccountsPage() {
   const [resetPassword, setResetPassword] = useState("");
   const [revision, setRevision] = useState(0);
   const [employeeId, setEmployeeId] = useState("");
-  const [employeeSearch, setEmployeeSearch] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [roleIds, setRoleIds] = useState<string[]>([]);
@@ -191,8 +191,7 @@ export default function UserAccountsPage() {
                   <Label htmlFor="employee-id">
                     Employee ID *
                   </Label>
-                  <Input id="employee-id" list="employee-options" required aria-label="Search and select employee" placeholder="Type an ID or employee name" value={employeeSearch} onChange={(event) => { const value = event.target.value; setEmployeeSearch(value); const employee = employees.find((item) => `${item.id} - ${item.name}` === value); setEmployeeId(employee?.id ?? ""); setFullName(employee?.name ?? ""); setRoleIds(employee?.roleIds ?? []); }} disabled={saving}/>
-                  <datalist id="employee-options">{employees.map((employee) => <option key={employee.id} value={`${employee.id} - ${employee.name}`} />)}</datalist>
+                  <SearchSelect id="employee-id" aria-label="Search and select employee" placeholder="Type an ID or employee name" value={employeeId} options={employees.map((employee) => ({ value: employee.id, label: employee.name, description: employee.id }))} onValueChange={(value) => { const employee = employees.find((item) => item.id === value); setEmployeeId(employee?.id ?? ""); setFullName(employee?.name ?? ""); setRoleIds(employee?.roleIds ?? []); }} disabled={saving}/>
                   <input type="hidden" name="employeeId" value={employeeId}/>
                 </div>
 

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { readApiResponse } from "@/lib/api-response";
 import { Button } from "@/components/ui/button";
+import { SearchSelect } from "@/components/ui/search-select";
 import { StatusBadge } from "@/components/status-badge";
 
 type Employee = { id: string; name: string; status: string; branch: string; branchIds: string[]; roles: string[]; roleIds:string[]; createdAt: string; contact: string; email: string; dateHired: string };
@@ -103,7 +104,7 @@ export default function EmployeesPage() {
         { label: "Branch", value: branch, options: unique(branches.map((item) => item.name)), set: setBranch },
         { label: "Operational role", value: role, options: unique(employees.flatMap((e) => e.roles)), set: setRole },
         { label: "Employment status", value: status, options: unique(employees.map((e) => e.status)), set: setStatus },
-      ].map((filter) => <label key={filter.label} className="text-sm">{filter.label}<select className={fieldClass} value={filter.value} onChange={(e) => { filter.set(e.target.value); setPage(1); }}><option value="">All</option>{filter.options.map((v) => <option key={v}>{v}</option>)}</select></label>)}
+      ].map((filter) => filter.label === "Branch" ? <label key={filter.label} className="text-sm">{filter.label}<SearchSelect aria-label={filter.label} className="mt-1 h-9" clearable placeholder="All" value={filter.value} onValueChange={(value) => { filter.set(value); setPage(1); }} options={filter.options.map((v) => ({ value: v, label: v }))}/></label> : <label key={filter.label} className="text-sm">{filter.label}<select className={fieldClass} value={filter.value} onChange={(e) => { filter.set(e.target.value); setPage(1); }}><option value="">All</option>{filter.options.map((v) => <option key={v}>{v}</option>)}</select></label>)}
       <label className="text-sm">Sort by<select className={fieldClass} value={sort} onChange={(e) => { setSort(e.target.value as typeof sort); setPage(1); }}>{[["name", "Employee name"], ["id", "Employee ID"], ["branch", "Branch"], ["status", "Employment status"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="text-sm">Order<select className={fieldClass} value={descending ? "desc" : "asc"} onChange={(e) => { setDescending(e.target.value === "desc"); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
       <div className="flex items-end"><Button variant="ghost" onClick={() => { setSearch(""); setBranch(""); setRole(""); setStatus(""); setPage(1); }}>Reset filters</Button></div>

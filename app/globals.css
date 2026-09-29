@@ -698,9 +698,14 @@ main [data-slot="card"]:nth-child(4) {
   .mam-report th, .mam-report td { position: static !important; min-width: 0 !important; padding: 4px !important; }
   .mam-report table { width: 100% !important; table-layout: fixed; }
   .mam-report tr { break-inside: avoid; }
-  /* Payroll: print only the open payslip. */
-  html.print-payslip body * { visibility: hidden !important; }
-  html.print-payslip .payslip, html.print-payslip .payslip * { visibility: visible !important; }
-  html.print-payslip .payslip { position: absolute; inset: 0 auto auto 0; width: 100%; margin: 0; box-shadow: none; }
+  /* Payroll: print only the open payslip (its overlay is a direct child of body), on its own portrait page. */
+  html.print-payslip body > :not(.payslip-overlay) { display: none !important; }
+  html.print-payslip .payslip-overlay { position: static !important; display: block !important; overflow: visible !important; padding: 0 !important; background: none !important; }
+  html.print-payslip .payslip-overlay > div { max-width: none !important; }
   html.print-payslip .payslip-actions { display: none !important; }
+  html.print-payslip .payslip { page: payslip; margin: 0; padding: 0 !important; border: 0 !important; border-radius: 0; box-shadow: none !important;
+    /* Paper is always black on white, even when the app is in dark mode. */
+    --card: #fff; --card-foreground: #000; --foreground: #000; --muted-foreground: #555; --border: #bbb; --destructive: #b91c1c;
+    background: #fff !important; color: #000 !important; }
+  @page payslip { size: A4 portrait; margin: 12mm; }
 }

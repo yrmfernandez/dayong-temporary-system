@@ -448,6 +448,19 @@ test('payroll run is calculated from pay setup, attendance, and pending commissi
   assert.equal(mas[21], 'COM-1');
   const denied = await (await route.POST(new Request('http://localhost/api/payroll', { method: 'POST', body: JSON.stringify({ action: 'create' }) }))).json();
   assert.match(denied.message, /valid pay period/);
+
+  // Additions and deductions: categories belong to their kind, and a company-program deduction names the program.
+  h.rows['Payroll Runs'] = [[], runRow]; h.rows['Payroll Lines'] = [[], ...lines];
+  h.rows.Programs = [[], ['DP-0001', 'P1', 'Plan One', 350, 'active', '']];
+  const adjust = async (body) => { const res = await post({ action: 'addAdjustment', runId: result.id, employeeId: 'MD-2099-0010', amount: 350, reason: 'Program contribution, September', ...body }); return { status: res.status, body: await res.json() }; };
+  assert.match((await adjust({ kind: 'Addition', category: 'SSS contribution' })).body.message, /addition category/);
+  assert.match((await adjust({ kind: 'Deduction', category: 'Company program' })).body.message, /company program/);
+  assert.match((await adjust({ kind: 'Deduction', category: 'SSS contribution', reason: '' })).body.message, /reason/);
+  const program = await adjust({ kind: 'Deduction', category: 'Company program', programId: 'DP-0001' });
+  assert.equal(program.status, 201, JSON.stringify(program.body));
+  const saved = h.writes.filter((write) => write.range?.startsWith("'Payroll Adjustments'")).at(-1).requestBody.values[0];
+  assert.deepEqual(saved.slice(2, 8), ['MD-2099-0010', 'Deduction', 'Company program', 350, 'P1 - Plan One: Program contribution, September', 'active']);
+  assert.equal((await adjust({ kind: 'Addition', category: '13th month pay', reason: 'Pro-rated 13th month' })).status, 201);
 });
 
 test('password change verifies the current password and writes only the hash cell', async () => {
@@ -600,4 +613,30 @@ test('account role loading rejects duplicate primary keys', async () => {
   const h = harness();
   h.rows.Roles = [[], ['ROLE-1', 'Administrator', '', true, false, false, 'active'], ['ROLE-1', 'Finance', '', false, false, false, 'active']];
   await assert.rejects(h.load('lib/google-sheets-data.ts').getActiveAccountRoles(), /Duplicate role ID ROLE-1/);
+});
+
+test('payslip lists earnings and deductions with reasons and downloads as a valid PDF', () => {
+  const { buildPayslip, payslipPdf, payslipFileName } = harness().load('lib/payslip.ts');
+  const line = { employeeId: 'MD-2099-0010', employeeName: 'Office Staff (Niño)', roles: 'Entry Clerk', baseType: 'daily', dailyRate: 800, daysPaid: 2, leaveDays: 0, absentDays: 1, basePay: 1600, overtimeHours: 2, overtimePay: 250, lateMinutes: 0, lateDeduction: 0, undertimeMinutes: 0, undertimeDeduction: 0, absenceDeduction: 800, commission: 0, commissionIds: [], earnedIncentive: 0 };
+  const adjustments = [
+    { id: 'A1', employeeId: 'MD-2099-0010', kind: 'Addition', category: '13th month pay', amount: 500, reason: 'Pro-rated (partial)' },
+    { id: 'A2', employeeId: 'MD-2099-0010', kind: 'Deduction', category: 'SSS contribution', amount: 225, reason: 'SSS employee share — September' },
+    { id: 'A3', employeeId: 'OTHER', kind: 'Deduction', category: 'Cash advance', amount: 999, reason: 'not this employee' },
+  ];
+  const slip = buildPayslip({ id: 'PAY-1', periodFrom: '2099-09-01', periodTo: '2099-09-15', payDate: '', status: 'Draft' }, line, adjustments);
+  assert.deepEqual(slip.earnings.map((row) => row.label), ['Base pay', 'Overtime', '13th month pay']);
+  assert.deepEqual(slip.deductions.map((row) => [row.label, row.amount]), [['Absences', 800], ['SSS contribution', 225]]);
+  assert.equal(slip.net, 1325);
+  const bytes = payslipPdf(slip);
+  const pdf = Buffer.from(bytes).toString('latin1');
+  if (process.env.PAYSLIP_OUT) fs.writeFileSync(process.env.PAYSLIP_OUT, bytes);
+  assert.match(pdf, /^%PDF-1\.4/);
+  assert.match(pdf, /%%EOF\n$/);
+  assert.ok(pdf.includes('(Office Staff \\(Ni\u00f1o\\))'), 'escapes parentheses and keeps Latin-1 letters');
+  assert.ok(pdf.includes('(SSS employee share - September)'), 'replaces symbols the PDF font lacks');
+  assert.ok(pdf.includes('PHP 1,325.00'), 'shows net pay');
+  const xref = Number(pdf.match(/startxref\n(\d+)/)[1]);
+  assert.equal(pdf.slice(xref, xref + 4), 'xref', 'startxref points at the cross-reference table');
+  for (const [index, offset] of [...pdf.matchAll(/(\d{10}) 00000 n /g)].map((match) => Number(match[1])).entries()) assert.equal(pdf.slice(offset, offset + `${index + 1} 0 obj`.length), `${index + 1} 0 obj`);
+  assert.equal(payslipFileName(slip), 'Payslip-PAY-1-MD-2099-0010.pdf');
 });

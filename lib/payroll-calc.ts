@@ -65,10 +65,21 @@ export type PayrollLine = {
 
 export type Adjustment = { id: string; employeeId: string; kind: "Addition" | "Deduction"; category: string; amount: number; reason: string };
 
-export const ADJUSTMENT_CATEGORIES = [
-  "Performance bonus", "Sales / production bonus", "Management discretion", "Attendance incentive",
-  "Attendance deduction", "Cash advance", "Loan repayment", "Shortage / accountability", "Other",
-] as const;
+/** A deduction for the employee's own enrollment in a company program; it names the program in its reason. */
+export const COMPANY_PROGRAM_CATEGORY = "Company program";
+
+// Categories offered per kind. Older rows may hold retired names ("Loan repayment", "Other") and still display as recorded.
+export const ADJUSTMENT_CATEGORIES = {
+  Addition: [
+    "Performance bonus", "Sales / production bonus", "13th month pay", "Holiday / special day pay", "Allowance",
+    "Attendance incentive", "Salary adjustment / back pay", "Management discretion", "Other addition",
+  ],
+  Deduction: [
+    "SSS contribution", "PhilHealth contribution", "Pag-IBIG (HDMF) contribution", "Withholding tax",
+    "SSS loan", "Pag-IBIG loan", COMPANY_PROGRAM_CATEGORY, "Cash advance", "Company loan repayment",
+    "Shortage / accountability", "Attendance deduction", "Other deduction",
+  ],
+} as const satisfies Record<Adjustment["kind"], readonly string[]>;
 
 const centavos = (value: number) => Math.round(value * 100) / 100;
 

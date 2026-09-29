@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchSelect } from "@/components/ui/search-select";
 import {
   Select,
   SelectContent,
@@ -1010,7 +1011,7 @@ export default function NewSalesPage() {
                 Branch *
               </Label>
 
-              <Input list="new-sales-branches" value={branch} placeholder="Search branch" onChange={(event) => { const selected=event.target.value; setBranch(selected); setMas(""); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,branch:selected,mas:""}}))); }}/><datalist id="new-sales-branches">{branches.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.name}>{item.territory || "Unassigned territory"}</option>)}</datalist>
+              <SearchSelect aria-label="Branch" value={branch} placeholder="Search branch" options={branches.filter((item) => item.status === "active").map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))} onValueChange={(selected) => { setBranch(selected); setMas(""); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,branch:selected,mas:""}}))); }}/>
             </div>
 
             {/* MAS */}
@@ -1019,7 +1020,7 @@ export default function NewSalesPage() {
                 Marketing Account Staff *
               </Label>
 
-              <Input list="new-sales-staff" value={mas} placeholder={branch ? "Search employee / MAS" : "Select a branch first"} disabled={!branch} onChange={(event) => { const selected=event.target.value; setMas(selected); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,mas:selected}}))); }}/><datalist id="new-sales-staff">{masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => <option key={staff.employeeId} value={staff.fullName}>{staff.employeeId}</option>)}</datalist>
+              <SearchSelect aria-label="Marketing Account Staff" value={mas} placeholder={branch ? "Search employee / MAS" : "Select a branch first"} disabled={!branch} options={masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(selected) => { setMas(selected); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,mas:selected}}))); }}/>
             </div>
 
             {/* Date Remitted */}
@@ -2063,23 +2064,19 @@ export default function NewSalesPage() {
                             Program Type *
                           </Label>
 
-                          <Input
-                            list={`new-sale-programs-${sale.id}`}
+                          <SearchSelect
+                            aria-label="Program Type"
                             value={sale.program.programCode}
                             disabled={programLoading || availablePrograms.length === 0}
                             placeholder={programLoading ? "Loading programs..." : "Search program code or name"}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              const normalized = value.trim().toLowerCase();
-                              const chosen = availablePrograms.find((program) =>
-                                program.code.toLowerCase() === normalized ||
-                                `${program.code} - ${program.name}`.toLowerCase() === normalized
-                              );
+                            options={availablePrograms.map((program) => ({ value: program.code, label: `${program.code} - ${program.name}` }))}
+                            onValueChange={(code) => {
+                              const chosen = availablePrograms.find((program) => program.code === code);
                               updateSale(sale.id, (current) => ({
                                 ...current,
                                 program: {
                                   ...current.program,
-                                  programCode: chosen?.code ?? value,
+                                  programCode: chosen?.code ?? "",
                                   withRegistrationFee: Boolean(chosen?.registrationFeeRequired),
                                   registrationAmount: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
                                   amountPaid: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
@@ -2087,11 +2084,6 @@ export default function NewSalesPage() {
                               }));
                             }}
                           />
-                          <datalist id={`new-sale-programs-${sale.id}`}>
-                            {availablePrograms.map((program) => (
-                              <option key={program.id} value={program.code}>{program.name}</option>
-                            ))}
-                          </datalist>
 
                           {programLoading && (
                             <p className="text-xs text-muted-foreground">

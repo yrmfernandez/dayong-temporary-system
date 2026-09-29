@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Banknote, CalendarRange, Calculator, FileText, MinusCircle, PlusCircle, Printer, Users, Wallet } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Banknote, CalendarRange, Calculator, Download, FileText, MinusCircle, PlusCircle, Printer, Users, Wallet, X } from "lucide-react";
 
 import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge } from "@/components/status-badge";
@@ -9,10 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { dailyRateOf, defaultPayrollSettings, lineTotals, type Adjustment, type PayProfile, type PayrollLine, type PayrollSettings } from "@/lib/payroll-calc";
+import { SearchSelect } from "@/components/ui/search-select";
+import { COMPANY_PROGRAM_CATEGORY, dailyRateOf, defaultPayrollSettings, lineTotals, type Adjustment, type PayProfile, type PayrollLine, type PayrollSettings } from "@/lib/payroll-calc";
+import { buildPayslip, PAYSLIP_COMPANY, payslipFileName, payslipPdf, type PayslipRow } from "@/lib/payslip";
 
 type Run = { id: string; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings; employeeCount: number; grossTotal: number; deductionsTotal: number; netTotal: number; preparedByUserId: string; preparedByName: string; approvedByName: string; approvedAt: string; paidAt: string; cashAccount: string; paymentReference: string; cashTransactionId: string; branch: string; voidReason: string; remarks: string };
-type Overview = { canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; roles: string[] }>; cashAccounts: string[]; branches: string[]; adjustmentCategories: string[] };
+type Overview = { canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; roles: string[] }>; cashAccounts: string[]; branches: string[]; adjustmentCategories: Record<Adjustment["kind"], string[]>; programs: Array<{ id: string; code: string; name: string; basePay: number }> };
 type Detail = { canManage: boolean; isAdministrator: boolean; currentUserId: string; run: Run; lines: PayrollLine[]; adjustments: Array<Adjustment & { status: string }>; totals: { gross: number; deductions: number; net: number } };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
@@ -65,7 +68,8 @@ export default function PayrollPage() {
       setMessage(success + missing);
       await loadOverview();
       if (after) await after(result);
-    } catch (failure) { setError(failure instanceof Error ? failure.message : "Payroll request failed."); }
+      return true;
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Payroll request failed."); return false; }
     finally { setBusy(false); }
   }
 
@@ -125,7 +129,7 @@ function SettingsFields({ settings, onChange, disabled }: { settings: PayrollSet
   </div>;
 }
 
-function RunsList({ overview, busy, onOpen, onCreate }: { overview: Overview; busy: boolean; onOpen: (id: string) => void; onCreate: (body: Record<string, unknown>) => Promise<void> }) {
+function RunsList({ overview, busy, onOpen, onCreate }: { overview: Overview; busy: boolean; onOpen: (id: string) => void; onCreate: (body: Record<string, unknown>) => Promise<unknown> }) {
   const half = currentHalfMonth();
   const [form, setForm] = useState({ periodFrom: half.from, periodTo: half.to, payDate: "", remarks: "" });
   const [settings, setSettings] = useState<PayrollSettings>(defaultPayrollSettings);
@@ -184,12 +188,27 @@ function RunsList({ overview, busy, onOpen, onCreate }: { overview: Overview; bu
   </div>;
 }
 
-function RunDetail({ overview, detail, busy, onBack, act }: { overview: Overview; detail: Detail; busy: boolean; onBack: () => void; act: (body: Record<string, unknown>, success: string) => Promise<void> }) {
+function RunDetail({ overview, detail, busy, onBack, act }: { overview: Overview; detail: Detail; busy: boolean; onBack: () => void; act: (body: Record<string, unknown>, success: string) => Promise<boolean> }) {
   const { run, lines, adjustments, totals } = detail;
   const draft = run.status === "Draft" && detail.canManage;
   const [settings, setSettings] = useState<PayrollSettings>(run.settings);
   const [adjusting, setAdjusting] = useState<string | null>(null);
-  const [adjustment, setAdjustment] = useState({ kind: "Addition", category: overview.adjustmentCategories[0] ?? "Other", amount: "", reason: "" });
+  const emptyAdjustment = (kind: Adjustment["kind"]) => ({ kind, category: overview.adjustmentCategories[kind][0] ?? "", programId: "", amount: "", reason: "" });
+  const [adjustment, setAdjustment] = useState(emptyAdjustment("Addition"));
+  const period = `${run.periodFrom} to ${run.periodTo}`;
+  const suggestedReasons: Record<string, string> = {
+    "SSS contribution": `SSS employee share, ${period}`,
+    "PhilHealth contribution": `PhilHealth employee share, ${period}`,
+    "Pag-IBIG (HDMF) contribution": `Pag-IBIG employee share, ${period}`,
+    "Withholding tax": `Withholding tax on compensation, ${period}`,
+    [COMPANY_PROGRAM_CATEGORY]: `Program contribution, ${period}`,
+  };
+  // Picking a category fills a standard reason, but never overwrites one the user typed.
+  const chooseCategory = (category: string) => setAdjustment((current) => ({ ...current, category, programId: category === COMPANY_PROGRAM_CATEGORY ? current.programId : "", reason: !current.reason || Object.values(suggestedReasons).includes(current.reason) ? suggestedReasons[category] ?? "" : current.reason }));
+  const adjustingLine = lines.find((line) => line.employeeId === adjusting);
+  const pendingAmount = Number(adjustment.amount) || 0;
+  const netBefore = adjustingLine ? lineTotals(adjustingLine, adjustments).net : 0;
+  const netAfter = adjustingLine ? lineTotals(adjustingLine, [...adjustments, { id: "pending", employeeId: adjustingLine.employeeId, kind: adjustment.kind, category: adjustment.category, amount: pendingAmount, reason: "" }]).net : 0;
   const [payment, setPayment] = useState({ payDate: run.payDate || today(), cashAccount: overview.cashAccounts[0] ?? "", branch: overview.branches[0] ?? "", paymentReference: "" });
   const [payslip, setPayslip] = useState<PayrollLine | null>(null);
   const settingsChanged = JSON.stringify(settings) !== JSON.stringify(run.settings);
@@ -248,15 +267,33 @@ function RunDetail({ overview, detail, busy, onBack, act }: { overview: Overview
       </CardContent>
     </Card>
 
-    {adjusting && draft && <Card>
-      <CardHeader><CardTitle>Adjust pay: {lines.find((line) => line.employeeId === adjusting)?.employeeName}</CardTitle></CardHeader>
+    {adjusting && draft && adjustingLine && <Card>
+      <CardHeader>
+        <CardTitle>Adjust pay: {adjustingLine.employeeName}</CardTitle>
+        <p className="text-sm text-muted-foreground">Add to or deduct from this employee&apos;s pay. Every entry needs a reason, which prints on the payslip.</p>
+      </CardHeader>
       <CardContent>
-        <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "addAdjustment", employeeId: adjusting, ...adjustment }, "Adjustment added.").then(() => { setAdjusting(null); setAdjustment({ ...adjustment, amount: "", reason: "" }); }); }}>
-          <div className="space-y-2"><Label>Type</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={adjustment.kind} onChange={(event) => setAdjustment({ ...adjustment, kind: event.target.value })}><option value="Addition">Addition (+)</option><option value="Deduction">Deduction (−)</option></select></div>
-          <div className="space-y-2"><Label>Category</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={adjustment.category} onChange={(event) => setAdjustment({ ...adjustment, category: event.target.value })}>{overview.adjustmentCategories.map((category) => <option key={category}>{category}</option>)}</select></div>
-          <div className="space-y-2"><Label>Amount *</Label><Input type="number" min="0.01" step="0.01" required value={adjustment.amount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} /></div>
-          <div className="space-y-2 lg:col-span-4"><Label>Reason *</Label><Input required minLength={3} maxLength={300} placeholder="e.g. Sales target reached for September; approved by the owner" value={adjustment.reason} onChange={(event) => setAdjustment({ ...adjustment, reason: event.target.value })} /></div>
-          <div className="flex gap-2 lg:col-span-4"><Button type="submit" disabled={busy}>Add adjustment</Button><Button type="button" variant="ghost" onClick={() => setAdjusting(null)}>Cancel</Button></div>
+        <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "addAdjustment", employeeId: adjusting, ...adjustment }, adjustment.kind === "Addition" ? "Addition added." : "Deduction added.").then((saved) => { if (saved) setAdjustment(emptyAdjustment(adjustment.kind)); }); }}>
+          <div className="grid grid-cols-2 gap-2 sm:col-span-2 lg:col-span-4" role="radiogroup" aria-label="Adjustment type">
+            {(["Addition", "Deduction"] as const).map((kind) => {
+              const active = adjustment.kind === kind;
+              const Icon = kind === "Addition" ? PlusCircle : MinusCircle;
+              return <button key={kind} type="button" role="radio" aria-checked={active} onClick={() => { if (!active) setAdjustment({ ...emptyAdjustment(kind), amount: adjustment.amount }); }}
+                className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 text-sm font-semibold transition-colors ${active ? (kind === "Addition" ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200" : "border-red-600 bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200") : "border-border text-muted-foreground hover:bg-muted"}`}>
+                <Icon className="size-5" />{kind === "Addition" ? "Add to pay (+)" : "Deduct from pay (−)"}
+                <span className="hidden text-xs font-normal sm:inline">{kind === "Addition" ? "bonus, allowance, 13th month…" : "SSS, PhilHealth, Pag-IBIG, program…"}</span>
+              </button>;
+            })}
+          </div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="adjustment-category">{adjustment.kind === "Addition" ? "Addition type *" : "Deduction type *"}</Label><SearchSelect id="adjustment-category" placeholder="Search category" value={adjustment.category} onValueChange={chooseCategory} options={overview.adjustmentCategories[adjustment.kind].map((category) => ({ value: category, label: category }))} /></div>
+          {adjustment.category === COMPANY_PROGRAM_CATEGORY && <div className="space-y-2 sm:col-span-2"><Label htmlFor="adjustment-program">Company program *</Label><SearchSelect id="adjustment-program" placeholder="Search program code or name" value={adjustment.programId} emptyText="No active program matches." onValueChange={(programId) => { const program = overview.programs.find((item) => item.id === programId); setAdjustment((current) => ({ ...current, programId, amount: current.amount || (program?.basePay ? String(program.basePay) : "") })); }} options={overview.programs.map((program) => ({ value: program.id, label: `${program.code} - ${program.name}`, description: program.basePay ? `${money(program.basePay)} monthly` : undefined }))} /></div>}
+          <div className="space-y-2"><Label htmlFor="adjustment-amount">Amount *</Label><Input id="adjustment-amount" type="number" min="0.01" step="0.01" required value={adjustment.amount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} /></div>
+          <div className="space-y-2 sm:col-span-2 lg:col-span-4"><Label htmlFor="adjustment-reason">Reason *</Label><Input id="adjustment-reason" required minLength={3} maxLength={300} placeholder={adjustment.kind === "Addition" ? "e.g. Sales target reached for September; approved by the owner" : "e.g. Cash advance of Sept 5, 2nd of 4 installments"} value={adjustment.reason} onChange={(event) => setAdjustment({ ...adjustment, reason: event.target.value })} /></div>
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-4">
+            <Button type="submit" disabled={busy || !adjustment.category || (adjustment.category === COMPANY_PROGRAM_CATEGORY && !adjustment.programId)}>{adjustment.kind === "Addition" ? <PlusCircle className="size-4" /> : <MinusCircle className="size-4" />}{adjustment.kind === "Addition" ? "Add to pay" : "Deduct from pay"}</Button>
+            <Button type="button" variant="ghost" onClick={() => { setAdjusting(null); setAdjustment(emptyAdjustment("Addition")); }}>Done</Button>
+            {pendingAmount > 0 && <span className="text-sm text-muted-foreground">Net pay {money(netBefore)} → <strong className="text-foreground">{money(netAfter)}</strong></span>}
+          </div>
         </form>
       </CardContent>
     </Card>}
@@ -285,7 +322,7 @@ function RunDetail({ overview, detail, busy, onBack, act }: { overview: Overview
           <p className="text-sm text-muted-foreground sm:col-span-2 lg:col-span-4">Approved by {run.approvedByName}. Recording payment posts one cash outflow and marks the included commissions Paid.</p>
           <div className="space-y-2"><Label>Pay date *</Label><Input type="date" required value={payment.payDate} onChange={(event) => setPayment({ ...payment, payDate: event.target.value })} /></div>
           <div className="space-y-2"><Label>Paid from *</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" required value={payment.cashAccount} onChange={(event) => setPayment({ ...payment, cashAccount: event.target.value })}>{overview.cashAccounts.map((account) => <option key={account}>{account}</option>)}</select></div>
-          <div className="space-y-2"><Label>Branch charged *</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" required value={payment.branch} onChange={(event) => setPayment({ ...payment, branch: event.target.value })}>{overview.branches.map((branch) => <option key={branch}>{branch}</option>)}</select></div>
+          <div className="space-y-2"><Label>Branch charged *</Label><SearchSelect aria-label="Branch charged" className="h-10" placeholder="Search branch" value={payment.branch} onValueChange={(branch) => setPayment({ ...payment, branch })} options={overview.branches.map((branch) => ({ value: branch, label: branch }))} /></div>
           <div className="space-y-2"><Label>Reference</Label><Input maxLength={100} placeholder="Bank batch / voucher no." value={payment.paymentReference} onChange={(event) => setPayment({ ...payment, paymentReference: event.target.value })} /></div>
           <div className="sm:col-span-2 lg:col-span-4"><Button type="submit" disabled={busy}>Record payment ({money(totals.net)})</Button></div>
         </form>}
@@ -301,50 +338,71 @@ function RunDetail({ overview, detail, busy, onBack, act }: { overview: Overview
 }
 
 function Payslip({ run, line, adjustments, onClose }: { run: Run; line: PayrollLine; adjustments: Adjustment[]; onClose: () => void }) {
-  const totals = lineTotals(line, adjustments);
-  const own = adjustments.filter((item) => item.employeeId === line.employeeId);
-  const print = () => { document.documentElement.classList.add("print-payslip"); window.print(); document.documentElement.classList.remove("print-payslip"); };
-  const rows: Array<[string, number, string?]> = [
-    ["Base pay", line.basePay, line.baseType === "none" ? "No base pay" : `${line.daysPaid} day(s) × ${money(line.dailyRate)}`],
-    ["Overtime", line.overtimePay, `${line.overtimeHours} hour(s)`],
-    ["Commission", line.commission, line.commissionIds.join(", ")],
-    ...own.filter((item) => item.kind === "Addition").map((item): [string, number, string] => [item.category, item.amount, item.reason]),
-  ];
-  const deductions: Array<[string, number, string?]> = [
-    ["Late", line.lateDeduction, `${line.lateMinutes} minute(s)`],
-    ["Undertime", line.undertimeDeduction, `${line.undertimeMinutes} minute(s)`],
-    ["Absences", line.absenceDeduction, `${line.absentDays} day(s)`],
-    ...own.filter((item) => item.kind === "Deduction").map((item): [string, number, string] => [item.category, item.amount, item.reason]),
-  ];
-  return <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" role="dialog" aria-modal="true" aria-label={`Payslip for ${line.employeeName}`} onClick={onClose}>
-    <div className="payslip my-8 w-full max-w-2xl rounded-2xl bg-card p-6 text-card-foreground shadow-2xl" onClick={(event) => event.stopPropagation()}>
-      <div className="flex items-start justify-between gap-4 border-b pb-4">
-        <div><p className="text-xs font-semibold uppercase tracking-[.2em] text-muted-foreground">D&apos; San Roque Dayong Providers, Inc.</p><h2 className="text-xl font-bold">Payslip</h2><p className="text-sm text-muted-foreground">{run.periodFrom} to {run.periodTo}{run.payDate ? ` · Paid ${run.payDate}` : ""} · {run.id}</p></div>
-        <div className="text-right"><p className="font-semibold">{line.employeeName}</p><p className="text-sm text-muted-foreground">{line.employeeId}</p><p className="text-xs text-muted-foreground">{line.roles}</p></div>
+  const slip = useMemo(() => buildPayslip(run, line, adjustments), [run, line, adjustments]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const cleanup = () => document.documentElement.classList.remove("print-payslip");
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("afterprint", cleanup);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("afterprint", cleanup); cleanup(); };
+  }, [onClose]);
+  const print = () => { document.documentElement.classList.add("print-payslip"); window.print(); };
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([payslipPdf(slip) as BlobPart], { type: "application/pdf" }));
+    const link = Object.assign(document.createElement("a"), { href: url, download: payslipFileName(slip) });
+    document.body.append(link); link.click(); link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  // Rendered on <body>: the animated page wrapper would otherwise anchor this "fixed" overlay to the page instead of the screen.
+  return createPortal(<div className="payslip-overlay fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={`Payslip for ${line.employeeName}`} onClick={onClose}>
+    <div className="w-full max-w-2xl" onClick={(event) => event.stopPropagation()}>
+      <div className="payslip-actions sticky top-0 z-10 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-card p-3 shadow-lg">
+        <span className="text-sm font-semibold">Payslip · {line.employeeName}</span>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={print}><Printer className="size-4" />Print</Button>
+          <Button type="button" variant="outline" onClick={download}><Download className="size-4" />Download PDF</Button>
+          <Button type="button" variant="ghost" onClick={onClose}><X className="size-4" />Close</Button>
+        </div>
       </div>
-      <div className="mt-4 grid gap-6 sm:grid-cols-2">
-        <PayslipSection title="Earnings" rows={rows} total={totals.gross} />
-        <PayslipSection title="Deductions" rows={deductions} total={totals.deductions} negative />
-      </div>
-      <div className="mt-6 flex items-center justify-between rounded-xl border-2 border-primary/40 p-4"><span className="font-semibold">Net pay</span><span className="text-2xl font-bold tabular-nums">{money(totals.net)}</span></div>
-      <div className="mt-6 grid grid-cols-2 gap-8 pt-8 text-center text-xs text-muted-foreground"><div className="border-t pt-2">Prepared by</div><div className="border-t pt-2">Received by</div></div>
-      <div className="payslip-actions mt-6 flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Close</Button><Button type="button" onClick={print}><Printer className="size-4" />Print</Button></div>
+      <article className="payslip rounded-2xl border bg-card p-6 text-card-foreground shadow-2xl sm:p-8">
+        <header className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-foreground pb-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[.2em] text-muted-foreground">{PAYSLIP_COMPANY}</p>
+            <h2 className="text-2xl font-black tracking-tight">PAYSLIP</h2>
+            <p className="text-sm text-muted-foreground">Pay period: {slip.periodFrom} to {slip.periodTo}</p>
+            <p className="text-sm text-muted-foreground">Pay date: {slip.payDate || "Not yet paid"} · Payroll {slip.runId} · {slip.status}</p>
+          </div>
+          <div className="sm:text-right">
+            <p className="text-lg font-bold">{slip.employee.name}</p>
+            <p className="text-sm text-muted-foreground">Employee ID: {slip.employee.id}</p>
+            {slip.employee.roles && <p className="text-xs text-muted-foreground">{slip.employee.roles}</p>}
+          </div>
+        </header>
+        <div className="mt-5 grid gap-6 sm:grid-cols-2">
+          <PayslipSection title="Earnings" rows={slip.earnings} total={slip.gross} />
+          <PayslipSection title="Deductions" rows={slip.deductions} total={slip.totalDeductions} negative />
+        </div>
+        <div className="mt-6 flex items-center justify-between rounded-xl border-2 border-foreground p-4"><span className="font-bold">NET PAY</span><span className="text-2xl font-black tabular-nums">{money(slip.net)}</span></div>
+        {slip.shortfall > 0 && <p className="mt-2 text-xs text-destructive">Deductions exceed earnings by {money(slip.shortfall)}; net pay is shown as zero.</p>}
+        <div className="mt-6 grid grid-cols-2 gap-8 pt-10 text-center text-xs text-muted-foreground"><div className="border-t border-border pt-2">Prepared by</div><div className="border-t border-border pt-2">Received by</div></div>
+      </article>
     </div>
-  </div>;
+  </div>, document.body);
 }
 
-function PayslipSection({ title, rows, total, negative = false }: { title: string; rows: Array<[string, number, string?]>; total: number; negative?: boolean }) {
-  return <div>
-    <p className="mb-2 text-sm font-semibold">{title}</p>
-    <div className="space-y-1.5 text-sm">
-      {rows.filter(([, amount]) => amount > 0).map(([label, amount, note], index) => <div key={`${label}-${index}`} className="flex justify-between gap-3"><span>{label}{note && <span className="block text-xs text-muted-foreground">{note}</span>}</span><span className="tabular-nums">{negative ? "−" : ""}{money(amount)}</span></div>)}
-      {!rows.some(([, amount]) => amount > 0) && <p className="text-muted-foreground">None</p>}
-      <div className="flex justify-between border-t pt-1.5 font-semibold"><span>Total</span><span className="tabular-nums">{negative ? "−" : ""}{money(total)}</span></div>
+function PayslipSection({ title, rows, total, negative = false }: { title: string; rows: PayslipRow[]; total: number; negative?: boolean }) {
+  return <section>
+    <p className="mb-2 border-b border-border pb-1 text-sm font-bold uppercase tracking-wide">{title}</p>
+    <div className="space-y-2 text-sm">
+      {rows.map((row, index) => <div key={`${row.label}-${index}`} className="flex justify-between gap-3"><span className="min-w-0">{row.label}{row.note && <span className="block break-words text-xs text-muted-foreground">{row.note}</span>}</span><span className="shrink-0 tabular-nums">{negative ? "−" : ""}{money(row.amount)}</span></div>)}
+      {!rows.length && <p className="text-muted-foreground">None</p>}
+      <div className="flex justify-between border-t border-border pt-1.5 font-bold"><span>Total</span><span className="tabular-nums">{negative ? "−" : ""}{money(total)}</span></div>
     </div>
-  </div>;
+  </section>;
 }
 
-function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolean; onSave: (body: Record<string, unknown>) => Promise<void> }) {
+function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolean; onSave: (body: Record<string, unknown>) => Promise<unknown> }) {
   const profiles = useMemo(() => new Map(overview.profiles.map((profile) => [profile.employeeId, profile])), [overview.profiles]);
   const [editing, setEditing] = useState<(PayProfile & { employeeName: string }) | null>(null);
   const [search, setSearch] = useState("");

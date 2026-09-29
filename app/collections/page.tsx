@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Search,
   Plus,
   Trash2,
   Pencil,
@@ -19,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchSelect } from "@/components/ui/search-select";
 import {
   Select,
   SelectContent,
@@ -360,31 +360,6 @@ export default function CollectionsPage() {
       ) ?? null
     );
   }, [activeCollection, programs]);
-
-  const matchingMembers = useMemo(() => {
-    if (!activeCollection) return [];
-
-    const search =
-      activeCollection.memberSearch.trim().toLowerCase();
-
-    if (!search || activeCollection.memberId) {
-      return [];
-    }
-
-    return members.filter((member) => {
-      const fullName = getMemberFullName(member).toLowerCase();
-      const displayName =
-        getMemberDisplayName(member).toLowerCase();
-      const phNumber =
-        member.phMemberNumber.toLowerCase();
-
-      return (
-        fullName.includes(search) ||
-        displayName.includes(search) ||
-        phNumber.includes(search)
-      );
-    });
-  }, [activeCollection, members]);
 
   const history = useMemo(() => {
     if (!activeMember || !activeProgram) {
@@ -831,13 +806,13 @@ export default function CollectionsPage() {
             <div className="space-y-2">
               <Label>Branch *</Label>
 
-              <Input list="collection-branches" value={branch} placeholder="Search branch" onChange={(event) => { setBranch(event.target.value); setMas(""); clearScopedMemberSelections(); }}/><datalist id="collection-branches">{branches.map((item) => <option key={item.id} value={item.name}>{item.territory || "Unassigned territory"}</option>)}</datalist>
+              <SearchSelect aria-label="Branch" value={branch} placeholder="Search branch" options={branches.map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))} onValueChange={(value) => { setBranch(value); setMas(""); clearScopedMemberSelections(); }}/>
             </div>
 
             <div className="space-y-2">
               <Label>MAS *</Label>
 
-              <Input list="collection-staff" value={mas} placeholder={branch ? "Search employee / MAS" : "Select a branch first"} disabled={!branch} onChange={(event) => { setMas(event.target.value); clearScopedMemberSelections(); }}/><datalist id="collection-staff">{masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => <option key={staff.employeeId} value={staff.fullName}>{staff.employeeId}</option>)}</datalist>
+              <SearchSelect aria-label="MAS" value={mas} placeholder={branch ? "Search employee / MAS" : "Select a branch first"} disabled={!branch} options={masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(value) => { setMas(value); clearScopedMemberSelections(); }}/>
             </div>
 
             <div className="space-y-2">
@@ -1108,116 +1083,25 @@ export default function CollectionsPage() {
                               Search Member by Full Name *
                             </Label>
 
-                            <div className="relative">
-                              <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <SearchSelect
+                              aria-label="Member"
+                              value={entry.memberId}
+                              disabled={!branch || !mas}
+                              placeholder={branch && mas ? "Type member name or number..." : "Select Branch and MAS first"}
+                              emptyText="No matching member found."
+                              options={members.map((member) => ({ value: member.id, label: getMemberFullName(member), description: [member.phMemberNumber, member.contactNumber].filter(Boolean).join(" · "), keywords: getMemberDisplayName(member) }))}
+                              onSearchChange={(query) => { setActiveCollectionId(entry.id); void searchMembers(query); }}
+                              onValueChange={(memberId) => {
+                                if (memberId) { selectMember(entry.id, memberId); return; }
+                                selectionVersions.current[entry.id] = (selectionVersions.current[entry.id] ?? 0) + 1;
+                                updateCollection(entry.id, { memberSearch: "", memberId: "", programId: "", programSearch: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
+                                setHistories((current) => ({ ...current, [entry.id]: [] }));
+                              }}
+                            />
 
-                              <Input
-                                className="pl-9"
-                                placeholder={branch && mas ? "Type member name or number..." : "Select Branch and MAS first"}
-                                disabled={!branch || !mas}
-                                value={
-                                  entry.memberSearch
-                                }
-                                onChange={(
-                                  event,
-                                ) => {
-                                  updateCollection(
-                                    entry.id,
-                                    {
-                                      memberSearch:
-                                        event.target
-                                          .value,
-                                      memberId: "",
-                                      programId: "",
-                                      programSearch: "",
-                                      monthFrom:
-                                        "",
-                                      monthTo: "",
-                                      nopFrom: null,
-                                      nopTo: null,
-                                   },
-                                 );
-                                  void searchMembers(
-                                    event.target.value,
-                                  );
-                                }}
-                              />
-
-                              {activeCollectionId ===
-                                entry.id &&
-                                !entry.memberId &&
-                                entry.memberSearch.trim() &&
-                                matchingMembers.length >
-                                  0 && (
-                                  <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border bg-background shadow-xl">
-                                    {matchingMembers.map(
-                                      (
-                                        member,
-                                      ) => (
-                                        <button
-                                          key={
-                                            member.id
-                                          }
-                                          type="button"
-                                          className="block w-full border-b px-4 py-3 text-left last:border-b-0 hover:bg-muted"
-                                          onMouseDown={(
-                                            event,
-                                          ) =>
-                                            event.preventDefault()
-                                          }
-                                          onClick={() =>
-                                            selectMember(
-                                              entry.id,
-                                              member.id,
-                                            )
-                                          }
-                                        >
-                                          <p className="font-medium">
-                                            {
-                                              member
-                                                .name
-                                                .surname
-                                            }
-                                            ,{" "}
-                                            {
-                                              member
-                                                .name
-                                                .firstName
-                                            }{" "}
-                                            {
-                                              member
-                                                .name
-                                                .middleName
-                                            }
-                                          </p>
-
-                                          <p className="text-xs text-muted-foreground">
-                                            {
-                                              member.phMemberNumber
-                                            }{" "}
-                                            ·{" "}
-                                            {
-                                              member.contactNumber
-                                            }
-                                          </p>
-                                        </button>
-                                      ),
-                                    )}
-                                  </div>
-                                )}
-                            </div>
-
-                            {!branch || !mas ? (
+                            {(!branch || !mas) && (
                               <p className="text-xs text-muted-foreground">Member results are limited to enrollments matching both the selected Branch and MAS.</p>
-                            ) : entry.memberSearch.trim() &&
-                              matchingMembers.length ===
-                                0 &&
-                              !entry.memberId && (
-                                <p className="text-xs text-muted-foreground">
-                                  No matching member
-                                  found.
-                                </p>
-                              )}
+                            )}
                           </div>
 
                           {/* SELECTED MEMBER */}
@@ -1262,32 +1146,20 @@ export default function CollectionsPage() {
                           {/* PROGRAM */}
                           <div className="space-y-2">
                             <Label>Dayong Program *</Label>
-                            <Input
-                              list={`collection-programs-${entry.id}`}
-                              value={entry.programSearch}
+                            <SearchSelect
+                              aria-label="Dayong Program"
+                              value={entry.programId}
                               disabled={!entry.memberId}
                               placeholder={entry.memberId ? "Search program code or name" : "Select a member first"}
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                const normalized = value.trim().toLowerCase();
-                                const selected = entryPrograms.find((program) =>
-                                  program.code.toLowerCase() === normalized ||
-                                  `${program.code} - ${program.name}`.toLowerCase() === normalized
-                                );
-                                if (selected) {
-                                  void selectProgram(entry.id, selected.id);
-                                } else {
-                                  updateCollection(entry.id, { programSearch: value, programId: "", accountStatus: "", temporarilySuspended: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" });
-                                  setHistories((current) => ({ ...current, [entry.id]: [] }));
-                                }
+                              emptyText="No enrolled program matches."
+                              options={entryPrograms.map((program) => ({ value: program.id, label: `${program.code} - ${program.name}`, keywords: program.code }))}
+                              onValueChange={(programId) => {
+                                if (programId) { void selectProgram(entry.id, programId); return; }
+                                selectionVersions.current[entry.id] = (selectionVersions.current[entry.id] ?? 0) + 1;
+                                updateCollection(entry.id, { programSearch: "", programId: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" });
+                                setHistories((current) => ({ ...current, [entry.id]: [] }));
                               }}
                             />
-                            <datalist id={`collection-programs-${entry.id}`}>
-                              {entryPrograms.map((program) => (
-                                <option key={program.id} value={program.code}>{program.name}</option>
-                              ))}
-                            </datalist>
-                            {entry.programId && <p className="text-xs text-muted-foreground">Selected: {entryPrograms.find((program) => program.id === entry.programId)?.code} - {entryPrograms.find((program) => program.id === entry.programId)?.name}</p>}
                           </div>
                           {/* PAYMENT PERIOD */}
                           <div className="space-y-3">

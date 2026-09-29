@@ -34,7 +34,12 @@ Settings can be changed on a Draft and recalculated; they lock at approval.
 
 ## Adjustments (bonuses and deductions)
 
-Add any number of additions or deductions per employee on a Draft. Each needs a category (performance bonus, sales/production bonus, management discretion, attendance incentive or deduction, cash advance, loan repayment, shortage/accountability, other) and a reason. "Management discretion" covers pay decided by the owner. Removing an adjustment keeps its row as `removed`.
+Use **Adjust** on an employee in a Draft, choose **Add to pay (+)** or **Deduct from pay (−)**, then a type, amount and reason. The form stays open so several entries (for example SSS, PhilHealth and Pag-IBIG) can be added in a row, and it previews the employee's net pay before saving.
+
+- **Additions:** performance bonus, sales/production bonus, 13th month pay, holiday/special day pay, allowance, attendance incentive, salary adjustment/back pay, management discretion (pay decided by the owner), other addition.
+- **Deductions:** SSS, PhilHealth and Pag-IBIG (HDMF) employee shares, withholding tax, SSS loan, Pag-IBIG loan, company program, cash advance, company loan repayment, shortage/accountability, attendance deduction, other deduction.
+
+Contribution amounts are entered by Finance from the current SSS, PhilHealth and Pag-IBIG tables; the system does not compute them. Choosing a contribution, tax or company-program type fills a standard reason for the pay period, which can be edited. A **company program** deduction requires the program (for an employee enrolled in one of the company's own plans); its code and name are saved at the start of the reason, so they appear on the payslip. Every entry needs a reason of 3–300 characters. Removing an adjustment keeps its row as `removed`. Older entries recorded under retired categories ("Loan repayment", "Other") still display as recorded.
 
 Net pay = base + overtime + commission + additions − late − undertime − absences − deductions, never below zero. A line whose deductions exceed its earnings is flagged.
 

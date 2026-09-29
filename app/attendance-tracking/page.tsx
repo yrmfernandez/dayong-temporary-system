@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Clock3, Search, Timer, UserCheck } from "lucide-react";
+import { BarChart3, Clock3, Timer, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchSelect } from "@/components/ui/search-select";
 
 type Employee = { id: string; name: string; roles: string[]; status: string; branches: string[] };
 type Record = { id: string; employeeId: string; attendanceDate: string; branch: string; scheduledTimeIn: string; scheduledTimeOut: string; timeIn: string; timeOut: string; workedHours: number; overtimeHours: number; status: string; lateMinutes: number; undertimeMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string };
@@ -20,7 +21,6 @@ export default function AttendanceTrackingPage() {
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(ManilaToday);
   const [employeeId, setEmployeeId] = useState("");
-  const [employeeSearch, setEmployeeSearch] = useState("");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [records, setRecords] = useState<Record[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,10 +55,10 @@ export default function AttendanceTrackingPage() {
     </header>
 
     <Card><CardContent className="grid gap-4 p-4 md:grid-cols-4">
-      <div className="space-y-2 md:col-span-2"><Label>Employee</Label><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input className="pl-9" list="attendance-employees" value={employeeSearch} placeholder="Search employee ID or name" onChange={(event) => { const value = event.target.value; setEmployeeSearch(value); const employee = employees.find((item) => `${item.id} - ${item.name}` === value); setEmployeeId(employee?.id ?? ""); }}/></div><datalist id="attendance-employees">{employees.map((employee) => <option key={employee.id} value={`${employee.id} - ${employee.name}`} />)}</datalist></div>
+      <div className="space-y-2 md:col-span-2"><Label>Employee</Label><SearchSelect aria-label="Employee" clearable value={employeeId} placeholder="All employees - search ID or name" options={employees.map((employee) => ({ value: employee.id, label: employee.name, description: employee.id }))} onValueChange={setEmployeeId}/></div>
       <div className="space-y-2"><Label>From</Label><Input type="date" value={from} onChange={(event) => setFrom(event.target.value)}/></div>
       <div className="space-y-2"><Label>To</Label><Input type="date" min={from} value={to} onChange={(event) => setTo(event.target.value)}/></div>
-      <div className="md:col-span-4 flex flex-wrap items-center gap-3"><Button type="button" disabled={loading || !from || !to || from > to} onClick={() => void load()}>{loading ? "Loading..." : "Apply filters"}</Button><Button type="button" variant="ghost" onClick={() => { setEmployeeId(""); setEmployeeSearch(""); }}>All employees</Button>{selectedEmployee && <p className="text-sm text-muted-foreground">{selectedEmployee.roles.join(", ") || "Employee"} · {selectedEmployee.branches.join(", ") || "No branch assignment"}</p>}</div>
+      <div className="md:col-span-4 flex flex-wrap items-center gap-3"><Button type="button" disabled={loading || !from || !to || from > to} onClick={() => void load()}>{loading ? "Loading..." : "Apply filters"}</Button><Button type="button" variant="ghost" onClick={() => setEmployeeId("")}>All employees</Button>{selectedEmployee && <p className="text-sm text-muted-foreground">{selectedEmployee.roles.join(", ") || "Employee"} · {selectedEmployee.branches.join(", ") || "No branch assignment"}</p>}</div>
     </CardContent></Card>
 
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
