@@ -31,7 +31,7 @@ export const encoderSheets = [
   { title: "Cash Accounts", columns: 5 },
   { title: "Vendor Payables", columns: 15 },
   { title: "Commissions", columns: 12 },
-  { title: "Payment Methods", columns: 5 },
+  { title: "Remittance Methods", columns: 5 },
   { title: "Pay Profiles", columns: 9 },
   { title: "Payroll Runs", columns: 24 },
   { title: "Payroll Lines", columns: 24 },

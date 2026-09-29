@@ -12,8 +12,8 @@ import { Label } from "@/components/ui/label";
 type Method = { id: string; name: string; isCash: boolean; requiresReference: boolean; status: "active" | "inactive" };
 const empty: Method = { id: "", name: "", isCash: false, requiresReference: true, status: "active" };
 
-/** Administrators manage the ways of payment offered in Collections (Cash, GCash, bank, ...). */
-export function PaymentMethodSettings() {
+/** Administrators manage the remittance methods offered in Collections. */
+export function RemittanceMethodSettings() {
   const [methods, setMethods] = useState<Method[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [form, setForm] = useState<Method>(empty);
@@ -21,7 +21,7 @@ export function PaymentMethodSettings() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/payment-methods", { cache: "no-store" });
+    const response = await fetch("/api/remittance-methods", { cache: "no-store" });
     const result = await response.json();
     if (!response.ok) { setMessage(result.message); return; }
     setMethods(result.methods ?? []); setCanManage(Boolean(result.canManage));
@@ -31,7 +31,7 @@ export function PaymentMethodSettings() {
 
   async function save(event: FormEvent) {
     event.preventDefault(); setBusy(true); setMessage("");
-    const response = await fetch("/api/payment-methods", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+    const response = await fetch("/api/remittance-methods", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
     const result = await response.json();
     setBusy(false);
     if (!response.ok) { setMessage(result.message); return; }
@@ -43,7 +43,7 @@ export function PaymentMethodSettings() {
     <CardHeader>
       <div className="flex items-center gap-3">
         <div className="tone-soft tone-teal rounded-lg p-2"><CreditCard className="size-5" /></div>
-        <div><CardTitle>Ways of payment</CardTitle><CardDescription>Options offered in Collections for how a MAS remits a batch. Deactivate instead of deleting so past records keep their method.</CardDescription></div>
+        <div><CardTitle>Remittance Methods</CardTitle><CardDescription>Options offered in Collections for how a MAS remits a batch. Deactivate instead of deleting so past records keep their method.</CardDescription></div>
       </div>
     </CardHeader>
     <CardContent className="space-y-4">
@@ -60,7 +60,7 @@ export function PaymentMethodSettings() {
           <span><strong>{method.name}</strong> <span className="text-muted-foreground">· {method.isCash ? "Physical cash" : method.requiresReference ? "Reference required" : "No reference"}</span></span>
           <StatusBadge status={method.status} />
         </button>)}
-        {!methods.length && <p className="p-3 text-sm text-muted-foreground">No payment methods yet.</p>}
+        {!methods.length && <p className="p-3 text-sm text-muted-foreground">No remittance methods yet.</p>}
       </div>
     </CardContent>
   </Card>;

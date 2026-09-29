@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FinanceSettings } from "@/components/finance-settings";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { PaymentMethodSettings } from "@/components/payment-method-settings";
+import { RemittanceMethodSettings } from "@/components/remittance-method-settings";
 import { preferenceKeys, readDensity, readIndicator, writePreference, type IndicatorStyle } from "@/lib/ui-preferences";
 
  type SessionUser = {
@@ -261,7 +261,7 @@ export default function SettingsPage() {
 
       <FinanceSettings />
 
-      <PaymentMethodSettings />
+      <RemittanceMethodSettings />
 
       <Card><CardHeader><CardTitle>Security and sign-in</CardTitle><CardDescription>You sign in with your Employee ID. Change your password here; your current password is required.</CardDescription></CardHeader><CardContent><form className="grid gap-4 sm:grid-cols-2" onSubmit={async (event) => { event.preventDefault(); setAccountMessage(""); if (newPassword !== confirmPassword) { setAccountMessage("New passwords do not match."); return; } setSaving(true); try { const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to update account."); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setAccountMessage("Password changed successfully. Use it the next time you sign in."); } catch (failure) { setAccountMessage(failure instanceof Error ? failure.message : "Unable to update account."); } finally { setSaving(false); } }}><div className="space-y-2"><Label htmlFor="settings-employee-id">Employee ID</Label><Input id="settings-employee-id" value={user?.employeeId ?? ""} readOnly className="bg-muted/50" autoComplete="username"/></div><div className="space-y-2"><Label htmlFor="current-password">Current password *</Label><Input id="current-password" type="password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password"/></div><div className="space-y-2"><Label htmlFor="new-password">New password *</Label><Input id="new-password" type="password" required minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password"/><p className="text-xs text-muted-foreground">At least 12 characters.</p></div><div className="space-y-2"><Label htmlFor="confirm-password">Confirm new password *</Label><Input id="confirm-password" type="password" required minLength={12} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password"/></div><div className="flex items-end"><Button type="submit" disabled={saving || !user}>{saving ? "Saving..." : "Change password"}</Button></div>{accountMessage && <p className="text-sm sm:col-span-2" role="status">{accountMessage}</p>}</form></CardContent></Card>
 

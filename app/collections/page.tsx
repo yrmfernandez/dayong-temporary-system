@@ -254,7 +254,7 @@ export default function CollectionsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/payment-methods", { cache: "no-store", signal: controller.signal })
+    fetch("/api/remittance-methods", { cache: "no-store", signal: controller.signal })
       .then((response) => response.json())
       .then((result) => {
         const active: PaymentMethodOption[] = (result.methods ?? []).filter((method: PaymentMethodOption & { status: string }) => method.status === "active");
@@ -713,7 +713,7 @@ export default function CollectionsPage() {
     }
 
     if (!selectedPaymentMethod) {
-      setSaveMessage("Select the way of payment.");
+      setSaveMessage("Remittance method is required.");
       return;
     }
 
@@ -874,9 +874,9 @@ export default function CollectionsPage() {
             </fieldset>
 
             <div className="space-y-2">
-              <Label htmlFor="payment-method">Way of payment *</Label>
+              <Label htmlFor="payment-method">Remittance Method *</Label>
               <select id="payment-method" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={paymentMethod} onChange={(event) => { setPaymentMethod(event.target.value); setPaymentReference(""); }}>
-                {!paymentMethods.length && <option value="">No payment methods configured</option>}
+                {!paymentMethods.length && <option value="">No remittance methods configured</option>}
                 {paymentMethods.map((method) => <option key={method.id} value={method.name}>{method.name}</option>)}
               </select>
               <p className="text-xs text-muted-foreground">How the MAS remitted this batch to the office.</p>

@@ -3,7 +3,7 @@ import { withEncoder } from "@/lib/encoder-context";
 import { getSessionUser } from "@/lib/auth-server";
 import { loadAccountData, commitCollections } from "@/lib/account-data";
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
-import { findActivePaymentMethod } from "@/lib/payment-methods";
+import { findActivePaymentMethod } from "@/lib/remittance-methods";
 import { calculateRemittance } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";

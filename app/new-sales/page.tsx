@@ -2216,7 +2216,7 @@ export default function NewSalesPage() {
                         {/* PAYMENT METHOD */}
                         <div className="space-y-2">
                           <Label>
-                            Mode of Payment *
+                            Remittance Method *
                           </Label>
 
                           <Select
@@ -2243,7 +2243,7 @@ export default function NewSalesPage() {
                             }
                           >
                             <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Payment method" />
+                              <SelectValue placeholder="Remittance method" />
                             </SelectTrigger>
 
                             <SelectContent>
