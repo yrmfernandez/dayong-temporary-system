@@ -4,14 +4,14 @@ const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
 const round = (value: number) => Math.round(value * 100) / 100;
 
-export type ReportLine = { date: string; branch: string; programId: string; programName: string; person: string; role: string; encodedBy: string; accounts: number; gross: number; masCommission: number; collectorCommission: number; incentives: number; fidelity: number; net: number; expectedRemittance: number };
-export type ReportSummary = { accounts: number; gross: number; masCommission: number; collectorCommission: number; incentives: number; fidelity: number; net: number; expenses: number; expectedRemittance: number; actualRemittance: number; deposits: number; difference: number };
+export type ReportLine = { date: string; branch: string; programId: string; programName: string; person: string; role: string; encodedBy: string; accounts: number; gross: number; masCommission: number; collectorCommission: number; incentives: number; fidelity: number; penalty: number; net: number; expectedRemittance: number };
+export type ReportSummary = { accounts: number; gross: number; masCommission: number; collectorCommission: number; incentives: number; fidelity: number; penalty: number; net: number; expenses: number; expectedRemittance: number; actualRemittance: number; deposits: number; difference: number };
 
 function summarize(lines: ReportLine[], expenses: number, actualRemittance: number, deposits: number): ReportSummary {
   const total = (key: keyof ReportLine) => round(lines.reduce((sum, line) => sum + Number(line[key] ?? 0), 0));
   const net = total("net");
   const expectedRemittance = round(net - expenses);
-  return { accounts: total("accounts"), gross: total("gross"), masCommission: total("masCommission"), collectorCommission: total("collectorCommission"), incentives: total("incentives"), fidelity: total("fidelity"), net, expenses: round(expenses), expectedRemittance, actualRemittance: round(actualRemittance), deposits: round(deposits), difference: round(expectedRemittance - actualRemittance) };
+  return { accounts: total("accounts"), gross: total("gross"), masCommission: total("masCommission"), collectorCommission: total("collectorCommission"), incentives: total("incentives"), fidelity: total("fidelity"), penalty: total("penalty"), net, expenses: round(expenses), expectedRemittance, actualRemittance: round(actualRemittance), deposits: round(deposits), difference: round(expectedRemittance - actualRemittance) };
 }
 
 function aggregate(lines: ReportLine[], key: (line: ReportLine) => string) {
@@ -21,14 +21,14 @@ function aggregate(lines: ReportLine[], key: (line: ReportLine) => string) {
     if (!current) { groups.set(id, { ...line }); continue; }
     current.accounts += line.accounts; current.gross += line.gross; current.masCommission += line.masCommission;
     current.collectorCommission += line.collectorCommission; current.incentives += line.incentives;
-    current.fidelity += line.fidelity; current.net += line.net; current.expectedRemittance += line.expectedRemittance;
+    current.fidelity += line.fidelity; current.penalty += line.penalty; current.net += line.net; current.expectedRemittance += line.expectedRemittance;
   }
   return [...groups.values()].map((line) => Object.fromEntries(Object.entries(line).map(([key, value]) => [key, typeof value === "number" ? round(value) : value])) as ReportLine);
 }
 
 export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; encoder?: string } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error("Choose a valid report date range.");
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AI", "'Collections'!A:AG", "'Programs'!A:F", "'Remittances'!A:Y", "'Expenses'!A:Q", "'Cash Transactions'!A:P", "'Remittance Collections'!A:I"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
+  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AI", "'Collections'!A:AK", "'Programs'!A:F", "'Remittances'!A:Y", "'Expenses'!A:Q", "'Cash Transactions'!A:P", "'Remittance Collections'!A:I"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
   const [sales, collections, programs, remittances, expenses, cash, remittanceCollections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const inRange = (date: string) => date >= from && date <= to;
@@ -38,12 +38,12 @@ export async function buildOperationalReport(from: string, to: string, filters: 
   for(const row of remittanceCollections.slice(1)){const remittanceId=text(row[1]);if(!assigned.has(remittanceId)&&approvedFidelity.has(remittanceId)){fidelityByCollection.set(text(row[2]),approvedFidelity.get(remittanceId)??0);assigned.add(remittanceId)}}
   const salesLines: ReportLine[] = sales.slice(1).filter((row) => text(row[0])).map((row) => {
     const date = text(row[1]).slice(0, 10), branch = text(row[2]), person = text(row[3]), programId = text(row[21]), gross = number(row[26]);
-    return { date, branch, programId, programName: programNames.get(programId) || programId, person, role: "MAS", encodedBy: text(row[33]), accounts: 1, gross, masCommission: 0, collectorCommission: 0, incentives: 0, fidelity: 0, net: gross, expectedRemittance: gross };
+    return { date, branch, programId, programName: programNames.get(programId) || programId, person, role: "MAS", encodedBy: text(row[33]), accounts: 1, gross, masCommission: 0, collectorCommission: 0, incentives: 0, fidelity: 0, penalty: 0, net: gross, expectedRemittance: gross };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const collectionLines: ReportLine[] = collections.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted").map((row) => {
     const date = text(row[9]).slice(0, 10), branch = text(row[6]), programId = text(row[5]), person = text(row[31]) || text(row[7]), role = text(row[25]) || text(row[32]) || "MAS", gross = number(row[10]), expected = number(row[26]) || gross;
-    const incentives = Math.max(0, round(gross - expected)), fidelityAmount=role.toLowerCase()==="collector"?0:(fidelityByCollection.get(text(row[0]))??0), net=round(expected+fidelityAmount);
-    return { date, branch, programId, programName: programNames.get(programId) || programId, person, role, encodedBy: text(row[23]), accounts: 1, gross, masCommission: role.toLowerCase() === "collector" ? 0 : incentives, collectorCommission: role.toLowerCase() === "collector" ? incentives : 0, incentives, fidelity: fidelityAmount, net, expectedRemittance: net };
+    const incentives = Math.max(0, round(gross - expected)), fidelityAmount=role.toLowerCase()==="collector"?0:(fidelityByCollection.get(text(row[0]))??0), penalty=number(row[35]), net=round(expected+fidelityAmount+penalty);
+    return { date, branch, programId, programName: programNames.get(programId) || programId, person, role, encodedBy: text(row[23]), accounts: 1, gross, masCommission: role.toLowerCase() === "collector" ? 0 : incentives, collectorCommission: role.toLowerCase() === "collector" ? incentives : 0, incentives, fidelity: fidelityAmount, penalty, net, expectedRemittance: net };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const postedExpenses = expenses.slice(1).filter((row) => text(row[0]) && text(row[11]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[7]) === filters.branch)).reduce((sum, row) => sum + number(row[4]), 0);
   const approvedRemittances = remittances.slice(1).filter((row) => text(row[0]) && text(row[4]) === "Approved" && inRange(text(row[3]).slice(0, 10)) && (!filters.branch || text(row[1]) === filters.branch)).reduce((sum, row) => sum + number(row[11]), 0);

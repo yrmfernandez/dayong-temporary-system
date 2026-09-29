@@ -35,6 +35,75 @@ export type AttendanceRecord = {
   updatedAt: string;
 };
 
+/**
+ * Google Sheets turns "2026-09-29" and "13:45" typed into a cell into a date serial (46294) and a day fraction
+ * (0.5729...). Reads normalize both forms, plus day-first text such as "29/09/2026", back to YYYY-MM-DD and HH:MM,
+ * so lookups by date keep working for old and new rows.
+ */
+export function sheetDateText(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86400000).toISOString().slice(0, 10);
+  const text = String(value ?? "").trim();
+  const dayFirst = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+  if (dayFirst) return `${dayFirst[3]}-${dayFirst[2].padStart(2, "0")}-${dayFirst[1].padStart(2, "0")}`;
+  if (/^\d+(\.\d+)?$/.test(text)) return sheetDateText(Number(text));
+  return text.slice(0, 10);
+}
+
+export function sheetTimeText(value: unknown) {
+  const numeric = typeof value === "number" ? value : /^\d*\.\d+$|^0$/.test(String(value ?? "").trim()) ? Number(value) : NaN;
+  if (Number.isFinite(numeric)) {
+    const minutes = Math.round((numeric % 1) * 1440) % 1440;
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  }
+  const match = /^(\d{1,2}):(\d{2})/.exec(String(value ?? "").trim());
+  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : "";
+}
+
+const statusOf = (value: unknown): AttendanceStatus => {
+  const status = String(value ?? "").trim();
+  return status === "Leave" || status === "Absent" || status === "AWOL" ? status : "Present";
+};
+
+function readAttendanceRow(row: unknown[]): AttendanceRecord {
+  return {
+    id: String(row[0] ?? "").trim(),
+    employeeId: String(row[1] ?? "").trim(),
+    attendanceDate: sheetDateText(row[2]),
+    branch: String(row[3] ?? "").trim(),
+    scheduledTimeIn: sheetTimeText(row[4]),
+    scheduledTimeOut: sheetTimeText(row[5]),
+    timeIn: sheetTimeText(row[6]),
+    timeOut: sheetTimeText(row[7]),
+    workedHours: Number(row[8] ?? 0) || 0,
+    overtimeHours: Number(row[9] ?? 0) || 0,
+    status: statusOf(row[10]),
+    lateMinutes: Number(row[11] ?? 0) || 0,
+    undertimeMinutes: Number(row[12] ?? 0) || 0,
+    leaveType: String(row[13] ?? "").trim(),
+    leaveApprovalStatus: String(row[14] ?? "").trim(),
+    notes: String(row[15] ?? "").trim(),
+    createdAt: String(row[16] ?? "").trim(),
+    updatedAt: String(row[17] ?? "").trim(),
+  };
+}
+
+async function attendanceRows() {
+  const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${ATTENDANCE_SHEET}!A:R`, valueRenderOption: "UNFORMATTED_VALUE" });
+  return response.data.values ?? [];
+}
+
+// A leading apostrophe makes Sheets keep dates and times as the exact text written.
+const asText = (value: string) => (value ? `'${value}` : "");
+
+function attendanceValues(record: AttendanceRecord) {
+  return [
+    record.id, record.employeeId, asText(record.attendanceDate), record.branch,
+    asText(record.scheduledTimeIn), asText(record.scheduledTimeOut), asText(record.timeIn), asText(record.timeOut),
+    record.workedHours, record.overtimeHours, record.status, record.lateMinutes, record.undertimeMinutes,
+    record.leaveType, record.leaveApprovalStatus, record.notes, record.createdAt, record.updatedAt,
+  ];
+}
+
 export async function getAttendanceForEmployeeDate(
   employeeId: string,
   attendanceDate: string,
@@ -42,51 +111,11 @@ export async function getAttendanceForEmployeeDate(
   record: AttendanceRecord | null;
   rowNumber: number | null;
 }> {
-  const response =
-    await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${ATTENDANCE_SHEET}!A:R`,
-    });
-
-  const rows = response.data.values ?? [];
-
+  const rows = await attendanceRows();
   for (let index = 1; index < rows.length; index++) {
     const row = rows[index];
-
-    if (
-      String(row[1] ?? "").trim() === employeeId &&
-      String(row[2] ?? "").trim() === attendanceDate
-    ) {
-      return {
-        rowNumber: index + 1,
-        record: {
-          id: String(row[0] ?? "").trim(),
-          employeeId: String(row[1] ?? "").trim(),
-          attendanceDate: String(row[2] ?? "").trim(),
-          branch: String(row[3] ?? "").trim(),
-          scheduledTimeIn: String(row[4] ?? "").trim(),
-          scheduledTimeOut: String(row[5] ?? "").trim(),
-          timeIn: String(row[6] ?? "").trim(),
-          timeOut: String(row[7] ?? "").trim(),
-          workedHours: Number(row[8] ?? 0) || 0,
-          overtimeHours: Number(row[9] ?? 0) || 0,
-          status:
-            String(row[10] ?? "").trim() === "Leave"
-              ? "Leave"
-              : String(row[10] ?? "").trim() === "Absent"
-                ? "Absent"
-                : String(row[10] ?? "").trim() === "AWOL"
-                  ? "AWOL"
-                  : "Present",
-          lateMinutes: Number(row[11] ?? 0) || 0,
-          undertimeMinutes: Number(row[12] ?? 0) || 0,
-          leaveType: String(row[13] ?? "").trim(),
-          leaveApprovalStatus: String(row[14] ?? "").trim(),
-          notes: String(row[15] ?? "").trim(),
-          createdAt: String(row[16] ?? "").trim(),
-          updatedAt: String(row[17] ?? "").trim(),
-        },
-      };
+    if (String(row[1] ?? "").trim() === employeeId && sheetDateText(row[2]) === attendanceDate) {
+      return { rowNumber: index + 1, record: readAttendanceRow(row) };
     }
   }
 
@@ -105,26 +134,7 @@ export async function addAttendanceRecord(
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
-      values: [[
-        record.id,
-        record.employeeId,
-        record.attendanceDate,
-        record.branch,
-        record.scheduledTimeIn,
-        record.scheduledTimeOut,
-        record.timeIn,
-        record.timeOut,
-        record.workedHours,
-        record.overtimeHours,
-        record.status,
-        record.lateMinutes,
-        record.undertimeMinutes,
-        record.leaveType,
-        record.leaveApprovalStatus,
-        record.notes,
-        record.createdAt,
-        record.updatedAt,
-      ]],
+      values: [attendanceValues(record)],
     },
   });
 }
@@ -138,26 +148,7 @@ export async function updateAttendanceRecord(
     range: `${ATTENDANCE_SHEET}!A${rowNumber}:R${rowNumber}`,
     valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [[
-        record.id,
-        record.employeeId,
-        record.attendanceDate,
-        record.branch,
-        record.scheduledTimeIn,
-        record.scheduledTimeOut,
-        record.timeIn,
-        record.timeOut,
-        record.workedHours,
-        record.overtimeHours,
-        record.status,
-        record.lateMinutes,
-        record.undertimeMinutes,
-        record.leaveType,
-        record.leaveApprovalStatus,
-        record.notes,
-        record.createdAt,
-        record.updatedAt,
-      ]],
+      values: [attendanceValues(record)],
     },
   });
 }
@@ -165,83 +156,15 @@ export async function updateAttendanceRecord(
 export async function getAttendanceRecordsForDate(
   attendanceDate: string,
 ): Promise<AttendanceRecord[]> {
-  const response =
-    await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${ATTENDANCE_SHEET}!A:R`,
-    });
-
-  return (response.data.values ?? [])
-    .slice(1)
-    .filter(
-      (row) =>
-        String(row[2] ?? "").trim() === attendanceDate,
-    )
-    .map((row) => ({
-      id: String(row[0] ?? "").trim(),
-      employeeId: String(row[1] ?? "").trim(),
-      attendanceDate: String(row[2] ?? "").trim(),
-      branch: String(row[3] ?? "").trim(),
-      scheduledTimeIn: String(row[4] ?? "").trim(),
-      scheduledTimeOut: String(row[5] ?? "").trim(),
-      timeIn: String(row[6] ?? "").trim(),
-      timeOut: String(row[7] ?? "").trim(),
-      workedHours: Number(row[8] ?? 0) || 0,
-      overtimeHours: Number(row[9] ?? 0) || 0,
-      status:
-        String(row[10] ?? "").trim() === "Leave"
-          ? "Leave"
-          : String(row[10] ?? "").trim() === "Absent"
-            ? "Absent"
-            : String(row[10] ?? "").trim() === "AWOL"
-              ? "AWOL"
-              : "Present",
-      lateMinutes: Number(row[11] ?? 0) || 0,
-      undertimeMinutes: Number(row[12] ?? 0) || 0,
-      leaveType: String(row[13] ?? "").trim(),
-      leaveApprovalStatus: String(row[14] ?? "").trim(),
-      notes: String(row[15] ?? "").trim(),
-      createdAt: String(row[16] ?? "").trim(),
-      updatedAt: String(row[17] ?? "").trim(),
-    }));
+  return (await attendanceRows()).slice(1).map(readAttendanceRow).filter((record) => record.attendanceDate === attendanceDate);
 }
 
 export async function getAttendanceRecordsForRange(
   dateFrom: string,
   dateTo: string,
 ): Promise<AttendanceRecord[]> {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${ATTENDANCE_SHEET}!A:R`,
-  });
-
-  return (response.data.values ?? [])
-    .slice(1)
-    .filter((row) => {
-      const employeeId = String(row[1] ?? "").trim();
-      const date = String(row[2] ?? "").trim();
-      return employeeId && employeeId !== "SYSTEM" && date >= dateFrom && date <= dateTo;
-    })
-    .map((row) => ({
-      id: String(row[0] ?? "").trim(),
-      employeeId: String(row[1] ?? "").trim(),
-      attendanceDate: String(row[2] ?? "").trim(),
-      branch: String(row[3] ?? "").trim(),
-      scheduledTimeIn: String(row[4] ?? "").trim(),
-      scheduledTimeOut: String(row[5] ?? "").trim(),
-      timeIn: String(row[6] ?? "").trim(),
-      timeOut: String(row[7] ?? "").trim(),
-      workedHours: Number(row[8] ?? 0) || 0,
-      overtimeHours: Number(row[9] ?? 0) || 0,
-      status: (["Present", "Leave", "Absent", "AWOL"].includes(String(row[10] ?? "").trim()) ? String(row[10]).trim() : "Present") as AttendanceStatus,
-      lateMinutes: Number(row[11] ?? 0) || 0,
-      undertimeMinutes: Number(row[12] ?? 0) || 0,
-      leaveType: String(row[13] ?? "").trim(),
-      leaveApprovalStatus: String(row[14] ?? "").trim(),
-      notes: String(row[15] ?? "").trim(),
-      createdAt: String(row[16] ?? "").trim(),
-      updatedAt: String(row[17] ?? "").trim(),
-    }))
+  return (await attendanceRows()).slice(1).map(readAttendanceRow)
+    .filter((record) => record.employeeId && record.employeeId !== "SYSTEM" && record.attendanceDate >= dateFrom && record.attendanceDate <= dateTo)
     .sort((first, second) => second.attendanceDate.localeCompare(first.attendanceDate));
 }
 

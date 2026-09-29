@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { InlinePanel } from "@/components/inline-panel";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -75,6 +76,8 @@ export default function BranchesPage() {
   const [message, setMessage] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // The branch just saved, so its confirmation shows beside it instead of at the top of the page.
+  const [savedId, setSavedId] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
 
@@ -136,6 +139,7 @@ export default function BranchesPage() {
 
       setForm(emptyBranchForm);
       setMessage(editingId ? "Branch updated successfully." : "Branch saved successfully.");
+      setSavedId(editingId);
       setEditingId(null);
       setShowForm(false);
       await loadBranches();
@@ -152,8 +156,73 @@ export default function BranchesPage() {
     setExpandedBranchId((current) => current === branchId ? null : branchId);
   };
 
-  const editBranch = (branch: Branch) => { const { id: _id, ...values } = branch; void _id; setForm(values); setEditingId(branch.id); setShowForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  // Edit opens under the branch itself; clicking Edit again closes it.
+  const closeForm = () => { setEditingId(null); setForm(emptyBranchForm); setShowForm(false); };
+  const editBranch = (branch: Branch) => { if (editingId === branch.id) { closeForm(); return; } const { id: _id, ...values } = branch; void _id; setMessage(""); setSavedId(null); setForm(values); setEditingId(branch.id); setShowForm(false); };
   const deleteBranch = async (branch: Branch) => { if (!window.confirm(`Delete ${branch.name} from ${branch.territory}?`)) return; setMessage(""); try { const response = await fetch(`/api/branches?id=${encodeURIComponent(branch.id)}`, { method: "DELETE" }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to delete branch."); setMessage("Branch deleted successfully."); await loadBranches(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to delete branch."); } };
+
+  const branchForm = (
+      <form className="space-y-4" onSubmit={saveBranch}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="branch-name">Branch Name / Code *</Label>
+            <Input id="branch-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Example: Main Branch" />
+          </div>
+          <div className="space-y-2"><Label htmlFor="branch-territory">Territory *</Label><Input id="branch-territory" required value={form.territory} onChange={(event) => setForm((current) => ({ ...current, territory: event.target.value }))} placeholder="Example: METRO DAVAO 1" /></div>
+          <div className="space-y-2">
+            <Label htmlFor="branch-barangay">Barangay</Label>
+            <Input id="branch-barangay" value={form.barangay} onChange={(event) => setForm((current) => ({ ...current, barangay: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="branch-city">City / Municipality</Label>
+            <Input id="branch-city" value={form.cityMunicipality} onChange={(event) => setForm((current) => ({ ...current, cityMunicipality: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="branch-province">Province</Label>
+            <Input id="branch-province" value={form.province} onChange={(event) => setForm((current) => ({ ...current, province: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="branch-country">Country</Label>
+            <Input id="branch-country" value={form.country} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="branch-postal-code">Postal Code</Label>
+            <Input id="branch-postal-code" value={form.postalCode} onChange={(event) => setForm((current) => ({ ...current, postalCode: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="branch-contact">Contact Number</Label>
+            <Input id="branch-contact" value={form.contactNumber} onChange={(event) => setForm((current) => ({ ...current, contactNumber: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="branch-email">Email</Label>
+            <Input id="branch-email" type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="branch-date-opened">Date Opened</Label>
+            <Input id="branch-date-opened" type="date" value={form.dateOpened} onChange={(event) => setForm((current) => ({ ...current, dateOpened: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="branch-date-closed">Date Closed</Label>
+            <Input id="branch-date-closed" type="date" value={form.dateClosed} onChange={(event) => setForm((current) => ({ ...current, dateClosed: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value === "inactive" ? "inactive" : "active" }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <Button type="submit" disabled={saving}>
+          {saving ? "Saving..." : editingId ? "Save Changes" : "Add Branch"}
+        </Button>
+        {(editingId || showForm) && <Button type="button" variant="ghost" onClick={closeForm}>Cancel</Button>}
+      </form>
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -165,79 +234,20 @@ export default function BranchesPage() {
           </p>
         </div>
 
-        {canManage && <Button type="button" onClick={() => setShowForm(true)}>
+        {canManage && <Button type="button" onClick={() => { setEditingId(null); setSavedId(null); setForm(emptyBranchForm); setMessage(""); setShowForm(true); }}>
           Add Branch
         </Button>}
       </div>
 
-      {message && !showForm && <p role="status" className="rounded-md border bg-background p-3 text-sm">{message}</p>}
+      {message && !showForm && !editingId && !savedId && <p role="status" className="rounded-md border bg-background p-3 text-sm">{message}</p>}
 
-      {showForm && (
+      {showForm && !editingId && (
         <Card>
         <CardHeader>
-          <CardTitle>{editingId ? "Edit Branch" : "Add Branch"}</CardTitle>
+          <CardTitle>Add Branch</CardTitle>
         </CardHeader>
         <CardContent>
-          <form className="space-y-4" onSubmit={saveBranch}>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="branch-name">Branch Name / Code *</Label>
-                <Input id="branch-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Example: Main Branch" />
-              </div>
-              <div className="space-y-2"><Label htmlFor="branch-territory">Territory *</Label><Input id="branch-territory" required value={form.territory} onChange={(event) => setForm((current) => ({ ...current, territory: event.target.value }))} placeholder="Example: METRO DAVAO 1" /></div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-barangay">Barangay</Label>
-                <Input id="branch-barangay" value={form.barangay} onChange={(event) => setForm((current) => ({ ...current, barangay: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-city">City / Municipality</Label>
-                <Input id="branch-city" value={form.cityMunicipality} onChange={(event) => setForm((current) => ({ ...current, cityMunicipality: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-province">Province</Label>
-                <Input id="branch-province" value={form.province} onChange={(event) => setForm((current) => ({ ...current, province: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-country">Country</Label>
-                <Input id="branch-country" value={form.country} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-postal-code">Postal Code</Label>
-                <Input id="branch-postal-code" value={form.postalCode} onChange={(event) => setForm((current) => ({ ...current, postalCode: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-contact">Contact Number</Label>
-                <Input id="branch-contact" value={form.contactNumber} onChange={(event) => setForm((current) => ({ ...current, contactNumber: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-email">Email</Label>
-                <Input id="branch-email" type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-date-opened">Date Opened</Label>
-                <Input id="branch-date-opened" type="date" value={form.dateOpened} onChange={(event) => setForm((current) => ({ ...current, dateOpened: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-date-closed">Date Closed</Label>
-                <Input id="branch-date-closed" type="date" value={form.dateClosed} onChange={(event) => setForm((current) => ({ ...current, dateClosed: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value === "inactive" ? "inactive" : "active" }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : editingId ? "Save Changes" : "Add Branch"}
-            </Button>
-            {editingId && <Button type="button" variant="ghost" onClick={() => { setEditingId(null); setForm(emptyBranchForm); setShowForm(false); }}>Cancel</Button>}
-          </form>
+          {branchForm}
 
           {message && (
             <p className="mt-4 text-sm text-muted-foreground">{message}</p>
@@ -290,7 +300,7 @@ export default function BranchesPage() {
                           )}
                           {isExpanded ? "Collapse" : "Expand"}
                         </Button>
-                        {canManage && <Button type="button" variant="outline" onClick={() => editBranch(branch)}><Pencil className="mr-2 size-4"/>Edit</Button>}
+                        {canManage && <Button type="button" variant={editingId === branch.id ? "default" : "outline"} aria-expanded={editingId === branch.id} onClick={() => editBranch(branch)}><Pencil className="mr-2 size-4"/>{editingId === branch.id ? "Editing" : "Edit"}</Button>}
                         {canManage && <Button type="button" variant="outline" className="text-destructive" onClick={() => void deleteBranch(branch)}><Trash2 className="mr-2 size-4"/>Delete</Button>}
                       </div>
                     </div>
@@ -335,6 +345,16 @@ export default function BranchesPage() {
                           <p>{branch.dateClosed || "Not provided"}</p>
                         </div>
                       </div>
+                    )}
+
+                    {savedId === branch.id && !editingId && message && <p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{message}</p>}
+
+                    {editingId === branch.id && (
+                      <InlinePanel>
+                        <p className="mb-3 text-sm font-semibold">Edit {branch.name}</p>
+                        {branchForm}
+                        {message && <p className="mt-3 text-sm text-muted-foreground" role="status">{message}</p>}
+                      </InlinePanel>
                     )}
                   </div>
                 );

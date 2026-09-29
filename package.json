@@ -25,7 +25,8 @@
     "sheets:program-age": "node scripts/migrate-program-age.mjs",
     "sheets:payroll": "node scripts/migrate-payroll.mjs",
     "sheets:single-address": "node scripts/migrate-single-address.mjs",
-    "sheets:remove-blank-rows": "node scripts/remove-blank-rows.mjs"
+    "sheets:remove-blank-rows": "node scripts/remove-blank-rows.mjs",
+    "sheets:remittance-penalty": "node scripts/migrate-remittance-penalty.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

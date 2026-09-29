@@ -20,13 +20,13 @@ export function calculateRemittance(basePay: number, tiers: IncentiveTier[], rol
     if (!Number.isFinite(tier.markUp) || tier.markUp < 0 || tier.markUp > basePay || !Number.isFinite(tier.incentiveAmount) || tier.incentiveAmount < 0 || !["fixed", "percentage"].includes(tier.incentiveType) || (tier.incentiveType === "percentage" && tier.incentiveAmount > 100)) throw new Error(`Invalid incentive configuration for NOP ${nop}.`);
     const markUpCents = Math.round(tier.markUp * 100);
     const incentiveBase = baseCents - markUpCents;
-    // User-defined remittance: total = base - markup; total1 = total - percentage;
-    // remittance = total - total1 + markup. Fixed tiers use their fixed amount.
-    const percentageOrFixed = tier.incentiveType === "percentage" ? Math.round(incentiveBase * tier.incentiveAmount / 100) : Math.round(tier.incentiveAmount * 100);
-    const remittanceCents = percentageOrFixed + markUpCents;
-    if (remittanceCents > baseCents) throw new Error(`Remittance exceeds the installment for NOP ${nop}.`);
+    // Remittance = ((base pay - mark-up) - incentive) + mark-up. The incentive is what the MAS/Collector keeps for
+    // this NOP: a fixed amount, or a percentage of (base pay - mark-up). The mark-up always goes to the company.
+    const incentiveCents = tier.incentiveType === "percentage" ? Math.round(incentiveBase * tier.incentiveAmount / 100) : Math.round(tier.incentiveAmount * 100);
+    if (incentiveCents > incentiveBase) throw new Error(`The incentive for NOP ${nop} is more than the installment less mark-up.`);
+    const remittanceCents = (incentiveBase - incentiveCents) + markUpCents;
     breakdown.push({ nop, tierId: tier.id ?? "", role, basePay: baseCents / 100, markUp: markUpCents / 100,
-      incentiveType: tier.incentiveType, incentiveAmount: tier.incentiveAmount, remittance: remittanceCents / 100 });
+      incentiveType: tier.incentiveType, incentiveAmount: tier.incentiveAmount, incentive: incentiveCents / 100, remittance: remittanceCents / 100 });
   }
   const grossCents = baseCents * breakdown.length;
   const collectedCents = amountCollected === undefined ? grossCents : Math.round(amountCollected * 100);

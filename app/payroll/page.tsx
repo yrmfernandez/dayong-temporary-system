@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Banknote, CalendarRange, Calculator, Download, FileText, MinusCircle, PlusCircle, Printer, Users, Wallet, X } from "lucide-react";
 
+import { InlineRow } from "@/components/inline-panel";
 import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -100,7 +101,7 @@ export default function PayrollPage() {
     {!overview && !error && <p className="text-sm text-muted-foreground">Loading payroll...</p>}
     {overview && tab === "runs" && !detail && <RunsList overview={overview} busy={busy} onOpen={(id) => void openRun(id).catch((failure) => setError(failure.message))}
       onCreate={(body) => act({ action: "create", ...body }, "Payroll draft created.", async (result) => { await openRun(String(result.id)); })} />}
-    {overview && tab === "runs" && detail && <RunDetail overview={overview} detail={detail} busy={busy} onBack={() => setDetail(null)}
+    {overview && tab === "runs" && detail && <RunDetail overview={overview} detail={detail} busy={busy} error={error} onBack={() => setDetail(null)}
       act={(body, success) => act({ runId: detail.run.id, ...body }, success, async () => { await openRun(detail.run.id); })} />}
     {overview && tab === "rates" && <PayRates overview={overview} busy={busy} onSave={(body) => act({ action: "saveProfile", ...body }, "Pay setup saved.")} />}
   </section>;
@@ -188,11 +189,13 @@ function RunsList({ overview, busy, onOpen, onCreate }: { overview: Overview; bu
   </div>;
 }
 
-function RunDetail({ overview, detail, busy, onBack, act }: { overview: Overview; detail: Detail; busy: boolean; onBack: () => void; act: (body: Record<string, unknown>, success: string) => Promise<boolean> }) {
+function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: Overview; detail: Detail; busy: boolean; error: string; onBack: () => void; act: (body: Record<string, unknown>, success: string) => Promise<boolean> }) {
   const { run, lines, adjustments, totals } = detail;
   const draft = run.status === "Draft" && detail.canManage;
   const [settings, setSettings] = useState<PayrollSettings>(run.settings);
   const [adjusting, setAdjusting] = useState<string | null>(null);
+  // Confirmation of the last entry, shown in the open Adjust panel beside the row.
+  const [adjustNote, setAdjustNote] = useState("");
   const emptyAdjustment = (kind: Adjustment["kind"]) => ({ kind, category: overview.adjustmentCategories[kind][0] ?? "", programId: "", amount: "", reason: "" });
   const [adjustment, setAdjustment] = useState(emptyAdjustment("Addition"));
   const period = `${run.periodFrom} to ${run.periodTo}`;
@@ -245,7 +248,7 @@ function RunDetail({ overview, detail, busy, onBack, act }: { overview: Overview
             <tbody>
               {lines.map((line) => {
                 const lineTotal = lineTotals(line, adjustments);
-                return <tr key={line.employeeId} className="border-t align-top">
+                return <Fragment key={line.employeeId}><tr className="border-t align-top">
                   <td className="p-3"><strong>{line.employeeName}</strong><span className="block text-xs text-muted-foreground">{line.employeeId} · {line.roles || "—"}</span></td>
                   <td className="p-3 tabular-nums">{line.baseType === "none" ? <span className="text-muted-foreground">No base</span> : <>{money(line.basePay)}<span className="block text-xs text-muted-foreground">{line.daysPaid} day(s) × {money(line.dailyRate)}{line.leaveDays ? ` · ${line.leaveDays} leave` : ""}</span></>}</td>
                   <td className="p-3 tabular-nums">{money(line.overtimePay)}<span className="block text-xs text-muted-foreground">{line.overtimeHours} hr</span></td>
@@ -256,9 +259,38 @@ function RunDetail({ overview, detail, busy, onBack, act }: { overview: Overview
                   <td className="p-3 font-bold tabular-nums">{money(lineTotal.net)}{lineTotal.shortfall > 0 && <span className="block text-xs font-normal text-brand-red">Deductions exceed pay by {money(lineTotal.shortfall)}</span>}</td>
                   <td className="p-3"><div className="flex flex-col gap-1">
                     <Button type="button" size="sm" variant="outline" onClick={() => setPayslip(line)}><Printer className="size-3.5" />Payslip</Button>
-                    {draft && <Button type="button" size="sm" variant="ghost" onClick={() => setAdjusting(line.employeeId)}>Adjust</Button>}
+                    {draft && <Button type="button" size="sm" variant={adjusting === line.employeeId ? "default" : "ghost"} aria-expanded={adjusting === line.employeeId} onClick={() => { setAdjustNote(""); setAdjustment(emptyAdjustment("Addition")); setAdjusting((current) => current === line.employeeId ? null : line.employeeId); }}>{adjusting === line.employeeId ? "Adjusting" : "Adjust"}</Button>}
                   </div></td>
-                </tr>;
+                </tr>
+                {adjusting === line.employeeId && draft && <InlineRow colSpan={9}>
+                  <p className="text-sm font-semibold">Adjust pay: {line.employeeName}</p>
+                  <p className="mb-3 text-xs text-muted-foreground">Add to or deduct from this employee&apos;s pay. Every entry needs a reason, which prints on the payslip.</p>
+    <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "addAdjustment", employeeId: adjusting, ...adjustment }, adjustment.kind === "Addition" ? "Addition added." : "Deduction added.").then((saved) => { if (saved) { setAdjustNote(`${adjustment.kind === "Addition" ? "Added" : "Deducted"} ${money(Number(adjustment.amount) || 0)} (${adjustment.category}).`); setAdjustment(emptyAdjustment(adjustment.kind)); } }); }}>
+      <div className="grid grid-cols-2 gap-2 sm:col-span-2 lg:col-span-4" role="radiogroup" aria-label="Adjustment type">
+        {(["Addition", "Deduction"] as const).map((kind) => {
+          const active = adjustment.kind === kind;
+          const Icon = kind === "Addition" ? PlusCircle : MinusCircle;
+          return <button key={kind} type="button" role="radio" aria-checked={active} onClick={() => { if (!active) setAdjustment({ ...emptyAdjustment(kind), amount: adjustment.amount }); }}
+            className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 text-sm font-semibold transition-colors ${active ? (kind === "Addition" ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200" : "border-red-600 bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200") : "border-border text-muted-foreground hover:bg-muted"}`}>
+            <Icon className="size-5" />{kind === "Addition" ? "Add to pay (+)" : "Deduct from pay (−)"}
+            <span className="hidden text-xs font-normal sm:inline">{kind === "Addition" ? "bonus, allowance, 13th month…" : "SSS, PhilHealth, Pag-IBIG, program…"}</span>
+          </button>;
+        })}
+      </div>
+      <div className="space-y-2 sm:col-span-2"><Label htmlFor="adjustment-category">{adjustment.kind === "Addition" ? "Addition type *" : "Deduction type *"}</Label><SearchSelect id="adjustment-category" placeholder="Search category" value={adjustment.category} onValueChange={chooseCategory} options={overview.adjustmentCategories[adjustment.kind].map((category) => ({ value: category, label: category }))} /></div>
+      {adjustment.category === COMPANY_PROGRAM_CATEGORY && <div className="space-y-2 sm:col-span-2"><Label htmlFor="adjustment-program">Company program *</Label><SearchSelect id="adjustment-program" placeholder="Search program code or name" value={adjustment.programId} emptyText="No active program matches." onValueChange={(programId) => { const program = overview.programs.find((item) => item.id === programId); setAdjustment((current) => ({ ...current, programId, amount: current.amount || (program?.basePay ? String(program.basePay) : "") })); }} options={overview.programs.map((program) => ({ value: program.id, label: `${program.code} - ${program.name}`, description: program.basePay ? `${money(program.basePay)} monthly` : undefined }))} /></div>}
+      <div className="space-y-2"><Label htmlFor="adjustment-amount">Amount *</Label><Input id="adjustment-amount" type="number" min="0.01" step="0.01" required value={adjustment.amount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} /></div>
+      <div className="space-y-2 sm:col-span-2 lg:col-span-4"><Label htmlFor="adjustment-reason">Reason *</Label><Input id="adjustment-reason" required minLength={3} maxLength={300} placeholder={adjustment.kind === "Addition" ? "e.g. Sales target reached for September; approved by the owner" : "e.g. Cash advance of Sept 5, 2nd of 4 installments"} value={adjustment.reason} onChange={(event) => setAdjustment({ ...adjustment, reason: event.target.value })} /></div>
+      <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-4">
+        <Button type="submit" disabled={busy || !adjustment.category || (adjustment.category === COMPANY_PROGRAM_CATEGORY && !adjustment.programId)}>{adjustment.kind === "Addition" ? <PlusCircle className="size-4" /> : <MinusCircle className="size-4" />}{adjustment.kind === "Addition" ? "Add to pay" : "Deduct from pay"}</Button>
+        <Button type="button" variant="ghost" onClick={() => { setAdjusting(null); setAdjustment(emptyAdjustment("Addition")); }}>Done</Button>
+        {pendingAmount > 0 && <span className="text-sm text-muted-foreground">Net pay {money(netBefore)} → <strong className="text-foreground">{money(netAfter)}</strong></span>}
+        {adjustNote && !pendingAmount && <span role="status" className="text-sm text-emerald-700">{adjustNote}</span>}
+        {error && <span role="alert" className="text-sm text-destructive">{error}</span>}
+      </div>
+    </form>
+                </InlineRow>}
+                </Fragment>;
               })}
               {!lines.length && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No employees in this payroll.</td></tr>}
             </tbody>
@@ -266,37 +298,6 @@ function RunDetail({ overview, detail, busy, onBack, act }: { overview: Overview
         </div>
       </CardContent>
     </Card>
-
-    {adjusting && draft && adjustingLine && <Card>
-      <CardHeader>
-        <CardTitle>Adjust pay: {adjustingLine.employeeName}</CardTitle>
-        <p className="text-sm text-muted-foreground">Add to or deduct from this employee&apos;s pay. Every entry needs a reason, which prints on the payslip.</p>
-      </CardHeader>
-      <CardContent>
-        <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "addAdjustment", employeeId: adjusting, ...adjustment }, adjustment.kind === "Addition" ? "Addition added." : "Deduction added.").then((saved) => { if (saved) setAdjustment(emptyAdjustment(adjustment.kind)); }); }}>
-          <div className="grid grid-cols-2 gap-2 sm:col-span-2 lg:col-span-4" role="radiogroup" aria-label="Adjustment type">
-            {(["Addition", "Deduction"] as const).map((kind) => {
-              const active = adjustment.kind === kind;
-              const Icon = kind === "Addition" ? PlusCircle : MinusCircle;
-              return <button key={kind} type="button" role="radio" aria-checked={active} onClick={() => { if (!active) setAdjustment({ ...emptyAdjustment(kind), amount: adjustment.amount }); }}
-                className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 text-sm font-semibold transition-colors ${active ? (kind === "Addition" ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200" : "border-red-600 bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200") : "border-border text-muted-foreground hover:bg-muted"}`}>
-                <Icon className="size-5" />{kind === "Addition" ? "Add to pay (+)" : "Deduct from pay (−)"}
-                <span className="hidden text-xs font-normal sm:inline">{kind === "Addition" ? "bonus, allowance, 13th month…" : "SSS, PhilHealth, Pag-IBIG, program…"}</span>
-              </button>;
-            })}
-          </div>
-          <div className="space-y-2 sm:col-span-2"><Label htmlFor="adjustment-category">{adjustment.kind === "Addition" ? "Addition type *" : "Deduction type *"}</Label><SearchSelect id="adjustment-category" placeholder="Search category" value={adjustment.category} onValueChange={chooseCategory} options={overview.adjustmentCategories[adjustment.kind].map((category) => ({ value: category, label: category }))} /></div>
-          {adjustment.category === COMPANY_PROGRAM_CATEGORY && <div className="space-y-2 sm:col-span-2"><Label htmlFor="adjustment-program">Company program *</Label><SearchSelect id="adjustment-program" placeholder="Search program code or name" value={adjustment.programId} emptyText="No active program matches." onValueChange={(programId) => { const program = overview.programs.find((item) => item.id === programId); setAdjustment((current) => ({ ...current, programId, amount: current.amount || (program?.basePay ? String(program.basePay) : "") })); }} options={overview.programs.map((program) => ({ value: program.id, label: `${program.code} - ${program.name}`, description: program.basePay ? `${money(program.basePay)} monthly` : undefined }))} /></div>}
-          <div className="space-y-2"><Label htmlFor="adjustment-amount">Amount *</Label><Input id="adjustment-amount" type="number" min="0.01" step="0.01" required value={adjustment.amount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} /></div>
-          <div className="space-y-2 sm:col-span-2 lg:col-span-4"><Label htmlFor="adjustment-reason">Reason *</Label><Input id="adjustment-reason" required minLength={3} maxLength={300} placeholder={adjustment.kind === "Addition" ? "e.g. Sales target reached for September; approved by the owner" : "e.g. Cash advance of Sept 5, 2nd of 4 installments"} value={adjustment.reason} onChange={(event) => setAdjustment({ ...adjustment, reason: event.target.value })} /></div>
-          <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-4">
-            <Button type="submit" disabled={busy || !adjustment.category || (adjustment.category === COMPANY_PROGRAM_CATEGORY && !adjustment.programId)}>{adjustment.kind === "Addition" ? <PlusCircle className="size-4" /> : <MinusCircle className="size-4" />}{adjustment.kind === "Addition" ? "Add to pay" : "Deduct from pay"}</Button>
-            <Button type="button" variant="ghost" onClick={() => { setAdjusting(null); setAdjustment(emptyAdjustment("Addition")); }}>Done</Button>
-            {pendingAmount > 0 && <span className="text-sm text-muted-foreground">Net pay {money(netBefore)} → <strong className="text-foreground">{money(netAfter)}</strong></span>}
-          </div>
-        </form>
-      </CardContent>
-    </Card>}
 
     <Card>
       <CardHeader><CardTitle>Adjustments</CardTitle></CardHeader>
@@ -405,42 +406,18 @@ function PayslipSection({ title, rows, total, negative = false }: { title: strin
 function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolean; onSave: (body: Record<string, unknown>) => Promise<unknown> }) {
   const profiles = useMemo(() => new Map(overview.profiles.map((profile) => [profile.employeeId, profile])), [overview.profiles]);
   const [editing, setEditing] = useState<(PayProfile & { employeeName: string }) | null>(null);
+  const [savedId, setSavedId] = useState("");
   const [search, setSearch] = useState("");
   const employees = overview.employees.filter((employee) => `${employee.name} ${employee.id} ${employee.roles.join(" ")}`.toLowerCase().includes(search.toLowerCase()));
 
   function edit(employee: Overview["employees"][number]) {
+    setSavedId("");
+    if (editing?.employeeId === employee.id) { setEditing(null); return; }
     const isMas = employee.roles.some((role) => role.trim().toLowerCase() === "mas");
     setEditing({ employeeName: employee.name, ...(profiles.get(employee.id) ?? { employeeId: employee.id, baseType: isMas ? "none" : "daily", baseRate: 0, commissionEligible: isMas, hoursPerDay: 8, overtimeMultiplier: 1.25, status: "active", notes: "" }) });
   }
 
   return <div className="space-y-6">
-    {editing && overview.canManage && <Card>
-      <CardHeader><CardTitle>Pay setup: {editing.employeeName}</CardTitle></CardHeader>
-      <CardContent>
-        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void onSave({ ...editing }).then(() => setEditing(null)); }}>
-          <div className="space-y-2">
-            <Label>Base pay</Label>
-            <div role="radiogroup" aria-label="Base pay" className="grid gap-1 rounded-lg border bg-muted/50 p-1 sm:grid-cols-3">
-              {([["daily", "Daily rate"], ["monthly", "Monthly salary"], ["none", "No base (commission only)"]] as const).map(([value, label]) => (
-                <button key={value} type="button" role="radio" aria-checked={editing.baseType === value} onClick={() => setEditing({ ...editing, baseType: value })}
-                  className={`rounded-md px-3 py-2 text-sm font-semibold ${editing.baseType === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2"><Label>{editing.baseType === "monthly" ? "Monthly salary *" : "Daily rate *"}</Label><Input type="number" min="0" step="0.01" disabled={editing.baseType === "none"} required={editing.baseType !== "none"} value={editing.baseType === "none" ? "" : editing.baseRate || ""} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setEditing({ ...editing, baseRate: Number(event.target.value) })} />
-              {editing.baseType === "monthly" && editing.baseRate > 0 && <p className="text-xs text-muted-foreground">≈ {money(dailyRateOf(editing))} per day (× 12 ÷ 313 working days)</p>}</div>
-            <div className="space-y-2"><Label>Hours per day</Label><Input type="number" min="1" max="24" step="0.5" value={editing.hoursPerDay} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setEditing({ ...editing, hoursPerDay: Number(event.target.value) })} /></div>
-            <div className="space-y-2"><Label>Overtime multiplier</Label><Input type="number" min="1" max="5" step="0.05" value={editing.overtimeMultiplier} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setEditing({ ...editing, overtimeMultiplier: Number(event.target.value) })} /><p className="text-xs text-muted-foreground">1.25 = regular-day overtime</p></div>
-            <div className="space-y-2"><Label>Status</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={editing.status} onChange={(event) => setEditing({ ...editing, status: event.target.value as PayProfile["status"] })}><option value="active">Active (include in payroll)</option><option value="inactive">Inactive</option></select></div>
-          </div>
-          <label className="flex items-start gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" className="mt-0.5" checked={editing.commissionEligible} onChange={(event) => setEditing({ ...editing, commissionEligible: event.target.checked })} /><span><strong>Earns commissions</strong><span className="block text-xs text-muted-foreground">MAS and other sales roles: pending Commissions records (net of Fidelity) are added to their pay.</span></span></label>
-          <div className="space-y-2"><Label>Notes</Label><Input maxLength={200} value={editing.notes} onChange={(event) => setEditing({ ...editing, notes: event.target.value })} /></div>
-          <div className="flex gap-2"><Button type="submit" disabled={busy}>Save pay setup</Button><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
-        </form>
-      </CardContent>
-    </Card>}
-
     <Card>
       <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>Employee pay rates</CardTitle><Input className="max-w-xs" placeholder="Search employee or role" value={search} onChange={(event) => setSearch(event.target.value)} /></div></CardHeader>
       <CardContent>
@@ -450,15 +427,41 @@ function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolea
             <tbody>
               {employees.map((employee) => {
                 const profile = profiles.get(employee.id);
-                return <tr key={employee.id} className="border-t">
+                return <Fragment key={employee.id}><tr className="border-t">
                   <td className="p-3"><strong>{employee.name}</strong><span className="block text-xs text-muted-foreground">{employee.id}</span></td>
                   <td className="p-3">{employee.roles.join(", ") || "—"}</td>
                   <td className="p-3 tabular-nums">{!profile ? "—" : profile.baseType === "none" ? "No base" : `${money(profile.baseRate)} / ${profile.baseType === "monthly" ? "month" : "day"}`}</td>
                   <td className="p-3">{profile?.commissionEligible ? "Yes" : profile ? "No" : "—"}</td>
                   <td className="p-3">{profile ? `× ${profile.overtimeMultiplier}` : "—"}</td>
                   <td className="p-3">{profile ? <StatusBadge status={profile.status} /> : <StatusBadge status="Needs pay setup" tone="warning" />}</td>
-                  <td className="p-3 text-right">{overview.canManage && <Button type="button" size="sm" variant="outline" onClick={() => edit(employee)}>{profile ? "Edit" : "Set up"}</Button>}</td>
-                </tr>;
+                  <td className="p-3 text-right">{overview.canManage && <Button type="button" size="sm" variant={editing?.employeeId === employee.id ? "default" : "outline"} aria-expanded={editing?.employeeId === employee.id} onClick={() => edit(employee)}>{editing?.employeeId === employee.id ? "Editing" : profile ? "Edit" : "Set up"}</Button>}</td>
+                </tr>
+                {savedId === employee.id && !editing && <tr><td colSpan={7} className="px-3 pb-3"><p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Pay setup saved for {employee.name}.</p></td></tr>}
+                {editing?.employeeId === employee.id && overview.canManage && <InlineRow colSpan={7}>
+                  <p className="mb-3 text-sm font-semibold">Pay setup: {editing.employeeName}</p>
+    <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); const employeeId = editing.employeeId; void onSave({ ...editing }).then((saved) => { if (saved !== false) { setSavedId(employeeId); setEditing(null); } }); }}>
+      <div className="space-y-2">
+        <Label>Base pay</Label>
+        <div role="radiogroup" aria-label="Base pay" className="grid gap-1 rounded-lg border bg-muted/50 p-1 sm:grid-cols-3">
+          {([["daily", "Daily rate"], ["monthly", "Monthly salary"], ["none", "No base (commission only)"]] as const).map(([value, label]) => (
+            <button key={value} type="button" role="radio" aria-checked={editing.baseType === value} onClick={() => setEditing({ ...editing, baseType: value })}
+              className={`rounded-md px-3 py-2 text-sm font-semibold ${editing.baseType === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="space-y-2"><Label>{editing.baseType === "monthly" ? "Monthly salary *" : "Daily rate *"}</Label><Input type="number" min="0" step="0.01" disabled={editing.baseType === "none"} required={editing.baseType !== "none"} value={editing.baseType === "none" ? "" : editing.baseRate || ""} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setEditing({ ...editing, baseRate: Number(event.target.value) })} />
+          {editing.baseType === "monthly" && editing.baseRate > 0 && <p className="text-xs text-muted-foreground">≈ {money(dailyRateOf(editing))} per day (× 12 ÷ 313 working days)</p>}</div>
+        <div className="space-y-2"><Label>Hours per day</Label><Input type="number" min="1" max="24" step="0.5" value={editing.hoursPerDay} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setEditing({ ...editing, hoursPerDay: Number(event.target.value) })} /></div>
+        <div className="space-y-2"><Label>Overtime multiplier</Label><Input type="number" min="1" max="5" step="0.05" value={editing.overtimeMultiplier} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setEditing({ ...editing, overtimeMultiplier: Number(event.target.value) })} /><p className="text-xs text-muted-foreground">1.25 = regular-day overtime</p></div>
+        <div className="space-y-2"><Label>Status</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={editing.status} onChange={(event) => setEditing({ ...editing, status: event.target.value as PayProfile["status"] })}><option value="active">Active (include in payroll)</option><option value="inactive">Inactive</option></select></div>
+      </div>
+      <label className="flex items-start gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" className="mt-0.5" checked={editing.commissionEligible} onChange={(event) => setEditing({ ...editing, commissionEligible: event.target.checked })} /><span><strong>Earns commissions</strong><span className="block text-xs text-muted-foreground">MAS and other sales roles: pending Commissions records (net of Fidelity) are added to their pay.</span></span></label>
+      <div className="space-y-2"><Label>Notes</Label><Input maxLength={200} value={editing.notes} onChange={(event) => setEditing({ ...editing, notes: event.target.value })} /></div>
+      <div className="flex gap-2"><Button type="submit" disabled={busy}>Save pay setup</Button><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
+    </form>
+                </InlineRow>}
+                </Fragment>;
               })}
               {!employees.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No active employees match.</td></tr>}
             </tbody>

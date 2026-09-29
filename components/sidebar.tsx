@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, Settings, X } from "lucide-react";
+import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type { ShellUser } from "@/components/app-shell";
 import { BrandLogo } from "@/components/brand-logo";
+import { Avatar, ProfileMenu } from "@/components/profile";
+import { clearFormDrafts } from "@/lib/use-form-draft";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { activeHref, type NavItem, type NavSection } from "@/lib/navigation";
 import { onPreferencesChange, preferenceKeys, readIndicator, readPreference, removePreference, writePreference, type IndicatorStyle } from "@/lib/ui-preferences";
@@ -58,6 +60,7 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, mobil
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
     removePreference(preferenceKeys.activeRole);
+    clearFormDrafts();
     onMobileClose();
     router.replace("/login");
     router.refresh();
@@ -108,9 +111,12 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, mobil
       <div className={`shrink-0 space-y-2 border-t border-sidebar-border p-2.5 ${collapsed ? "md:px-2" : ""}`}>
         <div className={rail}><ThemeToggle className="flex w-full border-sidebar-border bg-sidebar-accent [&_button]:flex-1 [&_button]:justify-center [&_[aria-checked=false]]:text-sidebar-muted [&_[aria-checked=false]:hover]:text-white" showLabels /></div>
         <div className={`flex items-center gap-2 rounded-xl bg-sidebar-accent p-1.5 ${collapsed ? "md:flex-col md:bg-transparent md:p-0" : ""}`}>
-          {user && <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-lime to-brand-moss text-xs font-bold uppercase text-[#14101a]" title={`${user.name} · ${activeRole}`} aria-hidden>{initials(user.name)}</span>}
-          <span className={`min-w-0 flex-1 leading-tight ${rail}`}>{user && <><span className="block truncate text-sm font-semibold text-sidebar-accent-foreground">{user.name}</span><span className="block truncate text-[11px] text-sidebar-muted">{activeRole}{user.employeeId ? ` · ${user.employeeId}` : ""}</span></>}</span>
-          <IconAction label="Settings" href="/settings" active={pathname === "/settings"}><Settings className="size-4" /></IconAction>
+          {/* Clicking your name or avatar opens your profile card (details, My profile, Settings, Sign out). */}
+          {user ? <ProfileMenu name={user.name} employeeId={user.employeeId} activeRole={activeRole} side={collapsed ? "right" : "top"} onNavigate={onMobileClose}
+            triggerClassName={`flex min-w-0 flex-1 items-center gap-2 rounded-lg p-0.5 text-left hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary data-[popup-open]:bg-white/10 ${collapsed ? "md:flex-none" : ""}`}>
+            <Avatar name={user.name} className="size-8 shadow-none" />
+            <span className={`min-w-0 flex-1 leading-tight ${rail}`}><span className="block truncate text-sm font-semibold text-sidebar-accent-foreground">{user.name}</span><span className="block truncate text-[11px] text-sidebar-muted">{activeRole}{user.employeeId ? ` · ${user.employeeId}` : ""}</span></span>
+          </ProfileMenu> : <span className={`min-w-0 flex-1 ${rail}`} />}
           <IconAction label="Sign out" onClick={() => void signOut()} danger><LogOut className="size-4" /></IconAction>
         </div>
         <button type="button" onClick={() => writePreference(preferenceKeys.collapsed, String(!collapsed))} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -164,7 +170,4 @@ function linkStyle(active: boolean, indicator: IndicatorStyle) {
     : "rounded-r-lg border-l-[3px] border-sidebar-primary bg-sidebar-accent text-sidebar-accent-foreground";
 }
 
-export function initials(name: string) {
-  const parts = name.replace(/[^A-Za-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
-  return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : name.slice(0, 2)) || "?";
-}
+export { initials } from "@/components/profile";

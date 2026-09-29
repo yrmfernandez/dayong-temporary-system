@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, ChevronRight, Menu } from "lucide-react";
 
 import type { ShellUser } from "@/components/app-shell";
-import { initials } from "@/components/sidebar";
+import { Avatar, ProfileMenu } from "@/components/profile";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { locatePage, type NavSection } from "@/lib/navigation";
 
@@ -34,9 +33,9 @@ export function Topbar({ sections, activeRole, user, onMenu }: TopbarProps) {
         {activeRole && <span className="tone-chip tone-brand hidden rounded-full px-2.5 py-1 text-xs font-semibold sm:block">{activeRole}</span>}
         {/* The sidebar holds the labelled switch; phones get this compact one since the drawer is closed. */}
         <ThemeToggle className="md:hidden" />
-        {user && <Link href="/settings" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-lime to-brand-moss text-xs font-bold uppercase text-[#14101a] shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden" aria-label={`Account settings for ${user.name}`}>
-          {initials(user.name)}
-        </Link>}
+        {user && <ProfileMenu name={user.name} employeeId={user.employeeId} activeRole={activeRole} side="bottom" triggerClassName="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden">
+          <Avatar name={user.name} />
+        </ProfileMenu>}
       </div>
     </header>
   );

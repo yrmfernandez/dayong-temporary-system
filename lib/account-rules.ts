@@ -85,11 +85,12 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
     status = unpaidMonths === 0 ? (lastCoveredMonth > currentMonth ? "ADV" : "U")
       : (["60D", "90D", "120D", "150D"] as const)[Math.min(unpaidMonths, 4) - 1];
   }
-  const nop = Math.max(0, ...[...coverage.values()].map((value) => value.nop));
+  // The New Sale itself is NOP 1 (the DOI month), so an NS account's first Collection is NOP 2, the month after DOI.
+  const nop = Math.max(1, ...[...coverage.values()].map((value) => value.nop));
   const multipliers: Record<AccountStatus, number> = { NS: 1, U: 1, ADV: 0, "60D": 2, "90D": 3, "120D": 4, "150D": 5, Paid: 0, Forfeited: 0 };
   return {
     status, temporarilySuspended, anchor, suspendedAt, forfeitedAt, nop, nextNop: nop + 1,
-    lastCoveredMonth, nextMonth: lastCoveredMonth ? monthName(monthIndex(lastCoveredMonth) + 1) : account.doi.slice(0, 7),
+    lastCoveredMonth, nextMonth: monthName(monthIndex(lastCoveredMonth || account.doi.slice(0, 7)) + 1),
     monthlyAmount: account.basePay, tmd: account.basePay * nop,
     balance: forfeited ? null : account.basePay * multipliers[status],
     unpaidMonths, latestOrDate: latest?.orDate ?? "", latestOrNumber: latest?.orNumber ?? "",
@@ -112,13 +113,13 @@ export function validatePayment(account: Account, history: AccountPayment[], inp
   if (atPayment.status === "Forfeited") throw new Error("The account was forfeited on this OR Date.");
   if ((state.temporarilySuspended || atPayment.temporarilySuspended) && input.waiver !== "Waiver") throw new Error("Select Waiver under If Suspended before accepting payment.");
   if (!(COLLECTION_CHANNELS as readonly string[]).includes(input.collectedByRole)) throw new Error("Select whether the collection was made by MAS, Collector, or DTO (Direct to Office).");
-  if (input.collectedByRole === "Collector" && !input.originalMas.trim()) throw new Error("Original MAS / Officer Name is required for Collector transactions.");
   if (!input.orNumber.trim()) throw new Error("OR Number is required.");
   if (history.some((p) => p.enrollmentId === account.id && p.orNumber === input.orNumber)) throw new Error("This receipt is already recorded for the account.");
   if (!validMonth(input.monthFrom) || !validMonth(input.monthTo)) throw new Error("Select valid covered months.");
   const count = monthCount(input.monthFrom, input.monthTo);
   if (count < 1 || count > 1200 || !Number.isInteger(input.nopFrom) || input.nopFrom < 1 || !Number.isInteger(input.nopTo) || input.nopTo - input.nopFrom + 1 !== count) throw new Error("NOP range must match the number of covered months.");
-  if (state.status !== "NS" && input.nopFrom !== state.nextNop) throw new Error(`NOP must start at ${state.nextNop}. Refresh the account history.`);
+  // NOP is never typed: it always continues from the account (NS starts at 2 because the sale is NOP 1).
+  if (input.nopFrom !== state.nextNop) throw new Error(`NOP must start at ${state.nextNop}. Refresh the account history.`);
   if (input.monthFrom !== state.nextMonth) throw new Error(`Payment must begin with ${state.nextMonth}; do not skip unpaid months or repay covered months.`);
   const expected = Math.round(account.basePay * 100) * count;
   const amountCents = Math.round(input.amount * 100);

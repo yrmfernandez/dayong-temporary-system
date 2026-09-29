@@ -40,11 +40,19 @@ export const POST = withEncoder(async (request: Request) => {
     // Batch-level details: who brought the payments in and how the MAS remitted them.
     const collectedBy = String(body.collectedBy ?? "").trim();
     if (!(COLLECTION_CHANNELS as readonly string[]).includes(collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");
-    const originalMas = String(body.originalMasOfficerName ?? "").trim();
+    // A Collector brings in payments for the batch's own MAS, so that MAS is the original MAS on record.
+    const originalMas = collectedBy === "Collector" ? mas : "";
     const paymentMethod = await findActivePaymentMethod(String(body.paymentMethod ?? ""));
     const paymentReference = String(body.paymentReference ?? "").trim();
     if (paymentMethod.requiresReference && !paymentReference) throw new Error(`Enter the ${paymentMethod.name} reference number.`);
     if (paymentReference.length > 100) throw new Error("The payment reference must be 100 characters or fewer.");
+    // A remittance penalty is charged to the accountable MAS/Collector (paid from their own money), not to members.
+    // It is added once to the batch's total remittance and stored on the batch's first Collection row.
+    const penalty = Math.round((Number(body.penalty) || 0) * 100) / 100;
+    const penaltyNote = String(body.penaltyNote ?? "").trim();
+    if (!Number.isFinite(penalty) || penalty < 0) throw new Error("The penalty must be zero or a positive amount.");
+    if (penalty > 0 && penaltyNote.length < 3) throw new Error("Explain what the penalty is for (at least 3 characters).");
+    if (penaltyNote.length > 300) throw new Error("The penalty note must be 300 characters or fewer.");
     if (autoApproveRemittance) {
       // Same rule as Remittances: anyone who can encode may confirm full physical cash; other methods are verified there.
       if (!paymentMethod.isCash) throw new Error(`${paymentMethod.name} payments are verified in Remittances before approval.`);
@@ -78,11 +86,12 @@ export const POST = withEncoder(async (request: Request) => {
       rows.push([id, batchId, account.id, account.memberId, account.memberNumber, account.programId, branch, mas,
         input.orNumber, input.orDate, input.amount, input.monthFrom, input.monthTo, input.nopFrom, input.nopTo,
         entry.reactivation === "Yes" ? "Yes" : "No", entry.transferred === "Yes" ? "Yes" : "No", input.waiver, input.originalMas, "Posted", timestamp,
-        input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS", paymentMethod.name, paymentReference]);
+        input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS", paymentMethod.name, paymentReference,
+        !rows.length && penalty > 0 ? penalty : "", !rows.length && penalty > 0 ? penaltyNote : ""]);
     }
-    const expectedRemittance = rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) / 100;
+    const expectedRemittance = (rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) + Math.round(penalty * 100)) / 100;
     if (autoApproveRemittance && Math.round(cashReceived * 100) !== Math.round(expectedRemittance * 100)) {
-      throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}.`);
+      throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}${penalty > 0 ? " (including the penalty)" : ""}.`);
     }
     writing = true;
     await commitCollections(rows, [...touched.values()], payments);
@@ -90,6 +99,6 @@ export const POST = withEncoder(async (request: Request) => {
       const remittance = await createCashRemittance({ collectionIds: rows.map((row) => String(row[0])), actualAmount: cashReceived, fidelityAmount: 0, remittanceDate: dateRemitted, remarks: "Cash received in full during collection encoding.", cashConfirmed: true });
       return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, remittanceId: remittance.id, message: `${rows.length} collection(s) saved and Remittance ${remittance.id} approved.` }, { status: 201 });
     }
-    return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, message: `${rows.length} collection(s) saved. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
+    return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, message: `${rows.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save collections." }, { status: writing ? 500 : 400 }); }
 });

@@ -55,11 +55,13 @@ export function SearchSelect({
   onSearchChange,
   limit = 200,
 }: SearchSelectProps) {
-  const selected = React.useMemo(() => options.find((option) => option.value === value) ?? null, [options, value])
+  // One option per value: duplicate source data (e.g. two branches with the same name) must not break the list.
+  const items = React.useMemo(() => [...new Map(options.map((option) => [option.value, option])).values()], [options])
+  const selected = React.useMemo(() => items.find((option) => option.value === value) ?? null, [items, value])
 
   return (
     <Combobox.Root<SearchSelectOption>
-      items={options}
+      items={items}
       value={selected}
       onValueChange={(option) => onValueChange(option?.value ?? "")}
       onInputValueChange={(query) => { if (onSearchChange && query !== selected?.label) onSearchChange(query) }}

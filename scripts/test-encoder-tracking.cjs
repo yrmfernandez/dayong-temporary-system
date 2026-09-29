@@ -272,21 +272,31 @@ test('collection batch is encoded atomically without creating a remittance', asy
   const remHeader = Array(10).fill(''); auditHeaders.forEach((v, i) => { remHeader[6 + i] = v; });
   remHeader[10] = 'Gross Collection'; remHeader[11] = 'Total Remittance';
   h.rows.Remittances = [remHeader];
-  h.rows['Program Incentives'] = [[], ['I1', 'DP-1', 'MAS', 1, 999, 'percentage', 50, 50]];
+  h.rows['Program Incentives'] = [[], ['I1', 'DP-1', 'MAS', 1, 999, 'percentage', 50, 50], ['I2', 'DP-1', 'Collector', 1, 999, 'percentage', 50, 20]];
   h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, true, 'active']];
-  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: month, monthTo: month, amountCollected: 350, nopFrom: 1, nopTo: 1, orNumber: 'OR-1', orDate: today };
-  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', collections: [entry, { ...entry, monthFrom: next, monthTo: next, nopFrom: 2, nopTo: 2, orNumber: 'OR-2' }] };
+  // The New Sale is NOP 1 (DOI month), so the first collection is NOP 2 for the following month.
+  const afterNext = h.load('lib/account-rules.ts').monthName(h.load('lib/account-rules.ts').monthIndex(month) + 2);
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: 'OR-1', orDate: today };
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: 'OR-2' }] };
   const route = h.load('app/api/collections/route.ts');
   assert.match((await (await route.POST(request({ ...batch, paymentReference: '' }))).json()).message, /GCash reference number/);
   assert.match((await (await route.POST(request({ ...batch, autoApproveRemittance: true, cashReceived: 400 }))).json()).message, /verified in Remittances/);
+  // A remittance penalty needs a note saying what it is for.
+  assert.match((await (await route.POST(request({ ...batch, penalty: 50, penaltyNote: '' }))).json()).message, /what the penalty is for/);
+  assert.match((await (await route.POST(request({ ...batch, penalty: -5, penaltyNote: 'x' }))).json()).message, /zero or a positive/);
   assert.equal(h.writes.length, 0);
-  const response = await route.POST(request(batch));
+  const response = await route.POST(request({ ...batch, collectedBy: 'Collector', originalMasOfficerName: 'ignored', penalty: 50, penaltyNote: 'Late turnover' }));
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
   assert.equal(h.writes.length, 1);
   const requests = h.writes[0].requestBody.requests;
   assert.equal(requests.length, 2);
   let batchId;
+  const written = requests[0].appendCells.rows.map((row) => row.values.map((v) => v.userEnteredValue.stringValue ?? v.userEnteredValue.numberValue));
+  // The penalty is stored once, on the batch's first row, so a remittance counts it exactly once.
+  assert.deepEqual(written.map((values) => values.slice(35, 37)), [[50, 'Late turnover'], ['', '']]);
+  // Collector batches record the batch MAS as the original MAS; no separate field is asked for.
+  assert.deepEqual(written.map((values) => values[18]), ['MAS-2', 'MAS-2']);
   for (const row of requests[0].appendCells.rows) {
     const values = row.values.map((v) => v.userEnteredValue.stringValue ?? v.userEnteredValue.numberValue);
     assert.deepEqual(values.slice(21, 24), ['USR-1', 'DPE-0001', '=encoder']);
@@ -297,14 +307,15 @@ test('collection batch is encoded atomically without creating a remittance', asy
     assert.equal(values[28], 'Outstanding');
     assert.equal(values[29], '');
     assert.equal(values[30], 'DPE-0002');
-    // DTO keeps the current MAS incentive tier.
-    assert.equal(values[25], 'DTO');
-    assert.equal(values[26], 200);
+    assert.equal(values[25], 'Collector');
+    const tiers = [{ role: 'Collector', fromMonth: 1, toMonth: 999, incentiveType: 'percentage', markUp: 50, incentiveAmount: 20 }];
+    assert.equal(values[26], h.load('lib/remittance.ts').calculateRemittance(350, tiers, 'Collector', values[13], values[14], 350).remittance, 'Collector tier applies');
     assert.deepEqual(values.slice(33, 35), ['GCash', 'GC-778899']);
   }
   assert.equal(requests[1].updateCells.rows[0].values[0].userEnteredValue.stringValue, 'ADV');
   assert.equal(result.remittanceId, undefined);
   assert.equal(result.grossCollection, 700);
+  assert.match(result.message, /₱50.00 penalty/);
 });
 
 test('collection member search matches branch and MAS and returns eligible programs', async () => {
@@ -603,7 +614,7 @@ test('MAM future columns are projections and do not include future receipt data'
   const report = h.load('lib/mam-report.ts').buildMamReport({ accounts: [a], payments: [p], sales: [] }, '2026-09', '2026-10', '2026-09-25');
   assert.equal(report.rows[0].periods[1].projected, true);
   assert.equal(report.rows[0].periods[1].collected, 0);
-  assert.equal(report.rows[0].periods[1].state.nop, 0);
+  assert.equal(report.rows[0].periods[1].state.nop, 1, 'only the New Sale (NOP 1) counts; the future receipt does not');
 });
 
 test('operational reports reconcile source transactions without duplicating data', async () => {
@@ -766,4 +777,92 @@ test('deleting rows removes them bottom-up and keeps one row under a frozen head
   const removed = await h.load('lib/sheet-rows.ts').deleteRowsWhere('User Roles', (row) => row[0] === 'USR-2');
   assert.equal(removed, 2);
   assert.deepEqual(h.writes.at(-1).requestBody.requests.map((request) => request.deleteDimension.range.startIndex), [3, 1], 'bottom-up so indexes stay valid');
+});
+
+test('branch names stay unique across territories when creating or renaming', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
+  h.rows.Branches = [[], ['BR-0022', 'BUTUAN', 'SURIGAO', '', '', '', '', '', '', '', '', '', 'active'], ['BR-0024', 'TORIL', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
+  const crud = h.load('lib/master-data-crud.ts');
+  const branch = { name: 'butuan', territory: 'BUTUAN', barangay: '', cityMunicipality: '', province: '', country: '', postalCode: '', contactNumber: '', email: '', dateOpened: '', dateClosed: '', status: 'active' };
+  await assert.rejects(() => crud.updateBranchRecord('BR-0024', branch), /already named "butuan"/);
+  await crud.updateBranchRecord('BR-0022', { ...branch, name: 'BUTUAN' });
+  const route = h.load('app/api/branches/route.ts');
+  const response = await route.POST(request({ name: 'Butuan', territory: 'BUTUAN' }));
+  assert.equal(response.status, 409, 'same name in another territory is still a duplicate');
+});
+
+test('a remittance penalty is added to the expected amount and noted on the remittance', async () => {
+  const h = harness();
+  const collectionsHeader = Array(33).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 200; collection[28] = 'Outstanding'; collection[30] = 'DPE-0002'; collection[31] = 'Maria'; collection[32] = 'MAS';
+  const remittancesHeader = Array(24).fill(''); remittancesHeader[12] = 'Difference';
+  h.rows.Collections = [collectionsHeader, collection];
+  h.rows.Remittances = [remittancesHeader];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  collection.length = 37; collection[35] = 50; collection[36] = 'Late turnover: held 5 days';
+  const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 250, remittanceDate: '2026-09-26', receivedByName: 'Cashier' }));
+  const result = await response.json();
+  assert.equal(response.status, 201, JSON.stringify(result));
+  assert.equal(result.remittance.expectedAmount, 250, 'remittance 200 + penalty 50');
+  assert.equal(result.remittance.difference, 0);
+  const remittance = h.writes[0].requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.match(remittance[22], /Includes penalty ₱50.00: Late turnover: held 5 days/);
+  const dashboard = await h.load('lib/remittance-workflow.ts').getRemittanceDashboard();
+  assert.ok(dashboard.remittances.every((item) => item.penaltyAmount === 0 || item.penaltyNotes.length), 'penalties carry their notes');
+});
+
+test('profile returns the signed-in person only, with branches and account details but no password hash', async () => {
+  const h = harness(null);
+  const route = h.load('app/api/profile/route.ts');
+  assert.equal((await route.GET()).status, 401);
+  h.setUser({ userId: 'USR-2', employeeId: 'MD-2026-0002', name: 'Jo-Ann Bautista', roles: ['ROLE-FIN'], roleNames: ['Finance'], permissions: { manageUsers: false, manageAttendance: true, viewAttendanceReports: false } });
+  h.rows.Employees = [[], ['MD-2026-0001', 'Someone Else', 'MATINA', 'MAS', 'active'], ['MD-2026-0002', 'Jo-Ann Bautista', 'TORIL', 'Finance, HR', 'active', '0917 000 0000', 'joann@example.com', '2026-01-15']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-2026-0002', 'BR-0002'], ['EBA-2', 'MD-2026-0001', 'BR-0001']];
+  h.rows.Branches = [[], ['BR-0001', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active'], ['BR-0002', 'TORIL', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-2', 'MD-2026-0002', 'Jo-Ann Bautista', '$2b$12$secret-hash', 'active', '2026-09-20T01:00:00.000Z', 'ROLE-FIN']];
+  const response = await route.GET();
+  const text = await response.text();
+  assert.equal(response.status, 200, text);
+  assert.ok(!text.includes('secret-hash'), 'password hash never leaves the server');
+  const { profile } = JSON.parse(text);
+  assert.equal(profile.name, 'Jo-Ann Bautista');
+  assert.deepEqual(profile.accountRoles, ['Finance']);
+  assert.equal(profile.accountCreatedAt, '2026-09-20T01:00:00.000Z');
+  assert.deepEqual(profile.employee.branches, [{ id: 'BR-0002', name: 'TORIL', territory: 'METRO DAVAO 1' }]);
+  assert.deepEqual(profile.employee.operationalRoles, ['Finance', 'HR Officer']);
+  assert.equal(profile.employee.email, 'joann@example.com');
+});
+
+test('profile finds the employee through the Users row, flags an ID mismatch, and falls back to the primary branch', async () => {
+  const h = harness({ userId: 'USR-2', employeeId: 'MD-2026-0004', name: 'Jo-Ann Bautista', roles: [], roleNames: ['Administrator'], permissions: {} });
+  h.rows.Employees = [[], ['MD-2026-0002', 'Jo-Ann Bautista', 'MATINA', 'Administrator', 'active'], ['MD-2026-0082', 'Yman Rey Fernandez', 'BALIOK', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-2026-0002', 'BR-0001']];
+  h.rows.Branches = [[], ['BR-0001', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active'], ['BR-0004', 'BALIOK', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-2', 'MD-2026-0004', 'Jo-Ann Bautista', 'x', 'active', '', ''], ['USR-5', 'MD-2026-0082', 'Yman Rey Fernandez', 'x', 'active', '', '']];
+  const route = h.load('app/api/profile/route.ts');
+  let { profile } = await (await route.GET()).json();
+  assert.equal(profile.employee.id, 'MD-2026-0002', 'same-name employee is used when the sign-in ID matches nobody');
+  assert.deepEqual(profile.employee.branches.map((branch) => branch.name), ['MATINA']);
+  assert.match(profile.employeeLinkIssue, /MD-2026-0004 does not match your employee record MD-2026-0002/);
+  h.setUser({ userId: 'USR-5', employeeId: 'MD-2026-0082', name: 'Yman Rey Fernandez', roles: [], roleNames: ['MAS'], permissions: {} });
+  ({ profile } = await (await route.GET()).json());
+  assert.equal(profile.employeeLinkIssue, '');
+  assert.deepEqual(profile.employee.branches, [{ id: 'BR-0004', name: 'BALIOK', territory: 'METRO DAVAO 1' }], 'no assignments: the primary branch is shown');
+});
+
+test('attendance finds a clock-in even after Google Sheets converted its date and times to numbers', async () => {
+  const h = harness();
+  const data = h.load('lib/attendance-data.ts');
+  assert.equal(data.sheetDateText(46294), '2026-09-29');
+  assert.equal(data.sheetDateText('29/09/2026'), '2026-09-29');
+  assert.equal(data.sheetDateText('2026-09-29'), '2026-09-29');
+  assert.equal(data.sheetTimeText(0.5729166666666666), '13:45');
+  assert.equal(data.sheetTimeText('08:00'), '08:00');
+  assert.equal(data.sheetTimeText(''), '');
+  // The live row as Sheets returns it: date serial and day-fraction times.
+  h.rows.Attendance = [[], ['ATT-20260929-MD-2026-0078', 'MD-2026-0078', 46294, 'BUHANGIN', 0.3333333333333333, 0.7083333333333334, 0.5729166666666666]];
+  const { record, rowNumber } = await data.getAttendanceForEmployeeDate('MD-2026-0078', '2026-09-29');
+  assert.equal(rowNumber, 2);
+  assert.deepEqual([record.attendanceDate, record.scheduledTimeIn, record.scheduledTimeOut, record.timeIn, record.timeOut], ['2026-09-29', '08:00', '17:00', '13:45', '']);
+  assert.equal((await data.getAttendanceRecordsForRange('2026-09-01', '2026-09-30')).length, 1);
 });

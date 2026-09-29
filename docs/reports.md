@@ -13,7 +13,7 @@ The Reports workspace provides daily, weekly, monthly, and yearly views. Each vi
 | Expenses | Posted `Expenses` | `expense_date` |
 | Deposits | Posted deposit inflows in `Cash Transactions` | `transaction_date` |
 
-Collection incentive is the gross amount received less the saved remittance amount. The report assigns that incentive to the stored accountable role, either MAS or Collector. The manually recorded Fidelity amount from an approved MAS Remittance is shown separately and added back to accountable remittance because it is retained as savings. Expected remittance is net less posted expenses. Difference is expected remittance less actual approved remittance, so a positive value indicates a shortage and a negative value indicates an overage.
+Collection incentive is the gross amount received less the saved remittance amount. The report assigns that incentive to the stored accountable role, either MAS or Collector. The manually recorded Fidelity amount from an approved MAS Remittance is shown separately and added back to accountable remittance because it is retained as savings. A remittance penalty charged to the MAS/Collector is added to net (and shown as "Penalties included" when present). Expected remittance is net less posted expenses. Difference is expected remittance less actual approved remittance, so a positive value indicates a shortage and a negative value indicates an overage.
 
 Filters for branch, program, and MAS/Collector apply to Sales and Collections. Branch also filters Expenses, Remittances, and Deposits. Program and person filters cannot be applied to those finance records because their current schemas do not contain those dimensions.
 

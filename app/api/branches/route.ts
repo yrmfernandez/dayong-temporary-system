@@ -50,15 +50,16 @@ export const POST = withEncoder(async function POST(request: Request) {
     }
 
     const branches = await getBranches();
+    // Records (attendance, sales, collections) store the branch name, so a name may be used by only one branch.
     const duplicate = branches.some(
-      (branch) => branch.name.toLowerCase() === name.toLowerCase() && branch.territory.toLowerCase() === readField("territory").trim().toLowerCase(),
+      (branch) => branch.name.trim().toLowerCase() === name.toLowerCase(),
     );
 
     if (duplicate) {
       return NextResponse.json(
         {
           success: false,
-          message: "A branch with this name already exists.",
+          message: "A branch with this name already exists. Use a distinct name, e.g. add the territory.",
         },
         { status: 409 },
       );

@@ -7,23 +7,22 @@ This implements the clarified account rules and the later month-range/remittance
 - Amount Collected is read-only and equals covered months multiplied by the program's base pay. The server independently validates the amount and NOP coverage.
 - NS allows editing NOP From/To. Non-NS locks them and the API checks the expected next NOP. Each entry has its own loaded status/history, with stale selection responses ignored.
 - Payments cover full installments in continuous month order. The implementation starts a new account's coverage in its DOI month and requires subsequent payments to start with the next unpaid month. This is the chosen default to prevent advancing while skipping arrears.
-- Collector entries require Original MAS / Officer Name. The separate Collected By Role is saved; it is not inferred from the signed-in encoder.
+- Collector entries record the batch MAS as the original MAS automatically. The separate Collected By Role is saved; it is not inferred from the signed-in encoder.
 - Suspended accounts require the existing Waiver selection. Forfeited accounts cannot pay, even with a waiver. OR Date cannot be future-dated, precede DOI, or precede the account's latest recorded OR Date; older corrections require review rather than changing the ordinary forward-entry workflow.
 - Calendar dates use Asia/Manila's current date. The clock starts from DOI before first collection, otherwise the last OR Date. An advance payment extends it to the DOI day of the last covered month. Nonexistent days clamp to month-end. Suspension begins at two calendar months; forfeiture at six calendar months plus one day.
 
 ## Remittance
 
-The user's formula is applied **per NOP**:
+The formula is applied **per NOP** (confirmed by the owner, replacing an earlier version that treated the tier amount as the company's share):
 
 ```text
-total = base pay - mark up
-total1 = total - (total × incentive percentage)
-remittance = total - total1 + mark up
+incentive  = fixed amount, or (base pay - mark up) × incentive percentage
+remittance = ((base pay - mark up) - incentive) + mark up        (= base pay - incentive)
 ```
 
-For base pay 350, mark up 50, and 50%, remittance is **200**, while gross collection is **350**. At 30%, remittance is **140**. The term “remittance” follows the user's definition; it is not silently replaced with the gross-minus-incentive complement.
+The incentive is what the MAS or Collector keeps for that NOP; the mark up always goes to the company. Examples: base pay 350, mark up 50, 50% → incentive 150, remittance **200**; at 30% → incentive 90, remittance **260**. DS-320 (₱320, no mark up, MAS fixed ₱50 for NOP 1–12 and ₱0 from NOP 13; Collector ₱50 then ₱40) → MAS NOP 1 remits **270**, NOP 13 remits **320**; Collector NOP 13 remits **280**.
 
-Use the configured MAS or Collector tier for each NOP. A multi-month payment crossing a tier boundary uses each month's applicable tier. Existing fixed tiers use fixed incentive amount plus mark up. Round each month's amount to centavos before summing. Missing, overlapping, invalid, or over-gross tiers block submission rather than defaulting to zero.
+Use the configured MAS or Collector tier for each NOP. A multi-month payment crossing a tier boundary uses each month's applicable tier. An incentive larger than (base pay - mark up) is rejected. Round each month's amount to centavos before summing. Missing, overlapping, invalid, or over-gross tiers block submission rather than defaulting to zero.
 
 New columns preserve existing positions:
 

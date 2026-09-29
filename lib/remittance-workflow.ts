@@ -22,6 +22,9 @@ export type CashCollection = {
   orDate: string;
   amount: number;
   remittanceAmount:number;
+  /** Remittance penalty charged to the accountable MAS/Collector; set on the batch's first Collection only. */
+  penalty: number;
+  penaltyNote: string;
   remittanceStatus: string;
   linkedRemittanceId: string;
   daysOutstanding: number;
@@ -58,6 +61,9 @@ export type CashRemittance = {
   /** How the MAS remitted the linked Collections; non-cash methods carry references for verification. */
   paymentMethods: string[];
   paymentReferences: string[];
+  /** Penalties included in this remittance's expected amount, with what each was for. */
+  penaltyAmount: number;
+  penaltyNotes: string[];
 };
 
 async function loadLedger() {
@@ -78,7 +84,7 @@ async function loadLedger() {
     id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
-    collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]),
+    collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${text(row[9])}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((collection) => collection.id && text(rows.Collections[collection.rowNumber - 1]?.[19]).toLowerCase() === "posted");
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
@@ -86,16 +92,21 @@ async function loadLedger() {
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByName: text(row[20]), decisionAt: text(row[21]),
-    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [],
+    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [],
   })).filter((remittance) => remittance.id);
   const byId = new Map(collections.map((collection) => [collection.id, collection]));
   for (const remittance of remittances) {
     const linked = remittance.collectionIds.map((id) => byId.get(id)).filter((item): item is CashCollection => Boolean(item));
     remittance.paymentMethods = [...new Set(linked.map((item) => item.paymentMethod))];
     remittance.paymentReferences = [...new Set(linked.map((item) => item.paymentReference).filter(Boolean))];
+    remittance.penaltyAmount = Math.round(linked.reduce((sum, item) => sum + item.penalty, 0) * 100) / 100;
+    remittance.penaltyNotes = linked.filter((item) => item.penalty > 0).map((item) => item.penaltyNote);
   }
   return { collections, remittances, mappings };
 }
+
+/** What the accountable person must turn over for one Collection: the company remittance plus any penalty. */
+export const amountDue = (collection: Pick<CashCollection, "remittanceAmount" | "penalty">) => collection.remittanceAmount + collection.penalty;
 
 export async function getRemittanceDashboard() {
   const ledger = await loadLedger();
@@ -107,11 +118,11 @@ export async function getRemittanceDashboard() {
   const accountability = [...new Set(accountable.map((collection) => `${collection.accountableEmployeeId}\u0000${collection.accountableName}\u0000${collection.accountableRole}\u0000${collection.branch}`))].map((key) => {
     const [employeeId, name, role, branch] = key.split("\u0000");
     const owned = accountable.filter((collection) => collection.accountableEmployeeId === employeeId && collection.accountableName === name && collection.branch === branch);
-    return { employeeId, name, role, branch, collectionCount: owned.length, outstandingAmount: owned.reduce((sum, collection) => sum + collection.remittanceAmount, 0) };
+    return { employeeId, name, role, branch, collectionCount: owned.length, outstandingAmount: owned.reduce((sum, collection) => sum + amountDue(collection), 0) };
   });
   return {
     summary: {
-      outstandingAmount: accountable.reduce((sum, collection) => sum + collection.remittanceAmount, 0), outstandingCount: accountable.length,
+      outstandingAmount: accountable.reduce((sum, collection) => sum + amountDue(collection), 0), outstandingCount: accountable.length,
       pendingAmount: pending.reduce((sum, remittance) => sum + remittance.expectedAmount, 0), pendingCount: pending.length,
       approvedTodayAmount: approvedToday.reduce((sum, remittance) => sum + remittance.actualAmount, 0), approvedTodayCount: approvedToday.length,
       discrepancyAmount: pending.reduce((sum, remittance) => sum + Math.abs(remittance.difference), 0),
@@ -163,19 +174,23 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const fidelityAccount=(await getFidelityData(owner.accountableEmployeeId,true)).accounts.find(item=>item.masEmployeeId===owner.accountableEmployeeId);
   const remainingFidelity = Math.max(0,Math.round((FIDELITY_CAP-(fidelityAccount?.approved??0)-(fidelityAccount?.pending??0))*100)/100);
   if (input.fidelityAmount > remainingFidelity) throw new Error(`Fidelity can be at most ${remainingFidelity.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} for this MAS.`);
-  const expected = Math.round((collections.reduce((sum, collection) => sum + collection.remittanceAmount, 0) + input.fidelityAmount) * 100) / 100;
+  const expected = Math.round((collections.reduce((sum, collection) => sum + amountDue(collection), 0) + input.fidelityAmount) * 100) / 100;
   const actual = Math.round(input.actualAmount * 100) / 100;
   const difference = Math.round((actual - expected) * 100) / 100;
   // Confirmed full cash is created and approved in one atomic write by whoever received it.
   if (input.cashConfirmed && difference !== 0) throw new Error("Cash received in full requires the actual amount to equal the expected amount.");
   const approved = Boolean(input.cashConfirmed);
+  // The Remittances sheet itself shows whether a penalty is included and what it was for.
+  const penalized = collections.filter((collection) => collection.penalty > 0);
+  const penaltyText = penalized.map((collection) => `Includes penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}: ${collection.penaltyNote}`).join("; ");
+  const remarks = [text(input.remarks), penaltyText].filter(Boolean).join(" | ");
   const status = approved ? "Approved" : difference === 0 ? "Pending Approval" : "Discrepancy";
   const id = createReadableId("REM");
   const timestamp = actor.encodedAt;
   const identity = [actor.userId, actor.employeeId, actor.name, timestamp];
   const decision = approved ? [actor.userId, actor.employeeId, actor.name, timestamp] : ["", "", "", ""];
   const row = [id, owner.branch, owner.accountableName, input.remittanceDate, status, timestamp, ...identity, expected, actual, difference,
-    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, actor.name, ...decision, text(input.remarks), approved ? CASH_IN_FULL_NOTE : "", Math.round(input.fidelityAmount*100)/100];
+    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, actor.name, ...decision, remarks, approved ? CASH_IN_FULL_NOTE : "", Math.round(input.fidelityAmount*100)/100];
   const sheet = await sheetIds();
   const requests = [
     { appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } },

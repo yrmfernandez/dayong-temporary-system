@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { InlineRow } from "@/components/inline-panel";
 import { readApiResponse } from "@/lib/api-response";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SearchSelect } from "@/components/ui/search-select";
@@ -24,6 +25,8 @@ export default function MembersPage() {
   const [revision, setRevision] = useState(0);
   const [canManage, setCanManage] = useState(false);
   const [editing, setEditing] = useState<DirectoryMember | null>(null);
+  // The member just saved, so the confirmation shows on that row.
+  const [savedId, setSavedId] = useState("");
   const [message, setMessage] = useState("");
   useEffect(() => {
     const controller = new AbortController();
@@ -68,23 +71,18 @@ export default function MembersPage() {
     <p className="text-sm text-muted-foreground">Branch, officer, program, and payment status filters match the same enrollment. Payment statuses use today&apos;s MAM calculations. View payment history in <Link className="underline" href="/mam">MAM</Link>.</p>
     {statusWarning && <p role="alert" className="text-amber-700">{statusWarning}</p>}
     {error && <p role="alert" className="text-red-600">{error}</p>}
-    {message && <p role="status" className="text-sm">{message}</p>}
+    {message && !savedId && <p role="status" className="text-sm">{message}</p>}
     {busy ? <p role="status">Loading members...</p> : !error && <>
       <p className="text-sm" aria-live="polite">{filtered.length} of {members.length} members</p>
       <div className="overflow-x-auto rounded-xl border bg-background">
         <table className="w-full text-left text-sm"><thead className="bg-muted"><tr>{["PH number", "Member", "Contact", "Branch", "Member status", "Programs / Payment status", "Details"].map((label) => <th key={label} scope="col" className="whitespace-nowrap p-3">{label}</th>)}</tr></thead>
-          <tbody>{visible.map((member) => <tr key={member.id} className="border-t">
+          <tbody>{visible.map((member) => <Fragment key={member.id}><tr className="border-t">
             <td className="p-3">{member.number || "-"}</td><td className="p-3 font-medium">{member.name || "Unnamed member"}</td><td className="p-3">{member.contact || "-"}</td>
             <td className="p-3">{unique(member.enrollments.map((enrollment) => enrollment.branch)).join(", ") || "-"}</td><td className="p-3">{member.status || "Not recorded"}</td>
             <td className="p-3">{member.enrollments.map((e) => `${e.programName}: ${e.accountStatus || "Needs review"}${e.temporarilySuspended ? " (temporarily suspended)" : ""}`).join(", ") || "No enrollments"}</td>
-            <td className="p-3"><Button variant="outline" aria-expanded={selected?.id === member.id} aria-label={`View ${member.name}`} onClick={() => setSelected((current) => current?.id === member.id ? null : member)}>{selected?.id === member.id ? "Collapse" : "View"}</Button></td>
-          </tr>)}{!visible.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">{members.length ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
-        </table>
-      </div>
-      <div className="flex items-center justify-end gap-3"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-sm">Page {currentPage} of {pages}</span><Button type="button" variant="outline" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
-    </>}
-    {selected && <section aria-label="Member details" className="space-y-4 rounded-xl border bg-background p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selected.name}</h2><div className="flex gap-2">{canManage && <Button variant="outline" onClick={() => setEditing(selected)}>Edit</Button>}{canManage && <Button variant="outline" className="text-destructive" onClick={async () => { if (!window.confirm(`Delete ${selected.name}?`)) return; const response = await fetch("/api/members/directory", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selected.id }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member deleted." : result.message || "Unable to delete member."); if (response.ok) { setSelected(null); setRevision((value) => value + 1); } }}>Delete</Button>}<Button variant="ghost" onClick={() => setSelected(null)}>Close details</Button></div></div>
+            <td className="p-3"><Button variant="outline" aria-expanded={selected?.id === member.id} aria-label={`View ${member.name}`} onClick={() => { setSavedId(""); setEditing(null); setSelected((current) => current?.id === member.id ? null : member); }}>{selected?.id === member.id ? "Collapse" : "View"}</Button></td>
+          </tr>{savedId === member.id && !selected && message && <tr><td colSpan={7} className="px-3 pb-3"><p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{message}</p></td></tr>}{selected?.id === member.id && <InlineRow colSpan={7}><section aria-label="Member details" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selected.name}</h2><div className="flex gap-2">{canManage && <Button variant={editing?.id === selected.id ? "default" : "outline"} aria-expanded={editing?.id === selected.id} onClick={() => setEditing((current) => current?.id === selected.id ? null : selected)}>{editing?.id === selected.id ? "Editing" : "Edit"}</Button>}{canManage && <Button variant="outline" className="text-destructive" onClick={async () => { if (!window.confirm(`Delete ${selected.name}?`)) return; setSavedId(""); const response = await fetch("/api/members/directory", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selected.id }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member deleted." : result.message || "Unable to delete member."); if (response.ok) { setSelected(null); setRevision((value) => value + 1); } }}>Delete</Button>}<Button variant="ghost" onClick={() => setSelected(null)}>Close details</Button></div></div>
       <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">{[
         ["PH number", selected.number], ["Member status", selected.status], ["Birthdate", selected.birthdate], ["Birthplace", selected.birthplace],
         ["Gender", selected.gender], ["Civil status", selected.civilStatus], ["Contact", selected.contact], ["Address", selected.address],
@@ -93,7 +91,10 @@ export default function MembersPage() {
       <h3 className="font-semibold">All program enrollments</h3>
       <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{["Program", "DOI", "Branch", "MAS / Officer", "Remittance method", "Enrollment status", "Payment status"].map((label) => <th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead><tbody>{selected.enrollments.map((e) => <tr key={e.id} className="border-t">{[e.programName, e.doi, e.branch, e.mas, e.paymentMethod, e.status, e.accountError || `${e.accountStatus || "Needs review"}${e.temporarilySuspended ? " (temporarily suspended)" : ""}`].map((v, i) => <td key={i} className="p-2">{v || "-"}</td>)}</tr>)}</tbody></table>{!selected.enrollments.length && <p className="p-2 text-sm">No program enrollments.</p>}</div>
       <Link className="text-sm underline" href="/mam">Open Member Account Monitoring</Link>
-    </section>}
-    {editing && <form className="space-y-4 rounded-xl border bg-background p-5" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch("/api/members/directory", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, contact: form.get("contact"), status: form.get("status") }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member updated." : result.message || "Unable to update member."); if (response.ok) { setEditing(null); setSelected(null); setRevision((value) => value + 1); } }}><div className="flex justify-between"><h2 className="font-semibold">Edit {editing.name}</h2><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Contact number<input name="contact" className={fieldClass} defaultValue={editing.contact}/></label><label className="text-sm">Member status<input name="status" required className={fieldClass} defaultValue={editing.status}/></label></div><Button type="submit">Save member</Button></form>}
+</section>{editing?.id === member.id && <form className="mt-4 space-y-4 border-t pt-4" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch("/api/members/directory", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, contact: form.get("contact"), status: form.get("status") }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member updated." : result.message || "Unable to update member."); if (response.ok) { setSavedId(editing.id); setEditing(null); setSelected(null); setRevision((value) => value + 1); } }}><div className="flex justify-between"><h2 className="font-semibold">Edit {editing.name}</h2><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Contact number<input name="contact" className={fieldClass} defaultValue={editing.contact}/></label><label className="text-sm">Member status<input name="status" required className={fieldClass} defaultValue={editing.status}/></label></div><Button type="submit">Save member</Button></form>}</InlineRow>}</Fragment>)}{!visible.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">{members.length ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
+        </table>
+      </div>
+      <div className="flex items-center justify-end gap-3"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-sm">Page {currentPage} of {pages}</span><Button type="button" variant="outline" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
+    </>}
   </section>;
 }

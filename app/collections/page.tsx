@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
+import { useFormDraft } from "@/lib/use-form-draft";
 import {
   Select,
   SelectContent,
@@ -87,7 +88,6 @@ type CollectionEntry = {
   reactivation: string;
   transferred: string;
   ifSuspended: string;
-  originalMasOfficerName: string;
 
   status: string;
   accountStatus: string;
@@ -122,7 +122,6 @@ function createEmptyCollection(id: string): CollectionEntry {
     reactivation: "No",
     transferred: "No",
     ifSuspended: "",
-    originalMasOfficerName: "",
 
     status: "Active",
     accountStatus: "", temporarilySuspended: false, collectedByRole: "MAS", accountLoading: false,
@@ -245,10 +244,33 @@ export default function CollectionsPage() {
   const [cashReceived, setCashReceived] = useState("");
   // Batch-level: who brought these payments in, and how the MAS remitted them to the office.
   const [collectedBy, setCollectedBy] = useState<CollectionChannel>("MAS");
-  const [originalMasOfficerName, setOriginalMasOfficerName] = useState("");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
+  // Remittance penalty: charged to the accountable MAS/Collector (their own money), added once to the batch's remittance.
+  const [penalty, setPenalty] = useState("");
+  const [penaltyNote, setPenaltyNote] = useState("");
+
+  // The unsaved batch survives leaving the page and coming back (member search results included, so picks still show).
+  useFormDraft(
+    "collections",
+    { branch, mas, dateRemitted, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote },
+    (draft) => {
+      setBranch(draft.branch ?? "");
+      setMas(draft.mas ?? "");
+      setDateRemitted(draft.dateRemitted ?? "");
+      if (Array.isArray(draft.collections) && draft.collections.length) setCollections(draft.collections);
+      if (draft.activeCollectionId) setActiveCollectionId(draft.activeCollectionId);
+      if (draft.nextCollectionId) setNextCollectionId(draft.nextCollectionId);
+      setMembers(draft.members ?? []);
+      setHistories(draft.histories ?? {});
+      if (draft.collectedBy) setCollectedBy(draft.collectedBy);
+      if (draft.paymentMethod) setPaymentMethod(draft.paymentMethod);
+      setPaymentReference(draft.paymentReference ?? "");
+      setPenalty(draft.penalty ?? "");
+      setPenaltyNote(draft.penaltyNote ?? "");
+    },
+  );
   const selectedPaymentMethod = paymentMethods.find((method) => method.name === paymentMethod);
   const isCashPayment = selectedPaymentMethod?.isCash ?? false;
 
@@ -389,6 +411,8 @@ export default function CollectionsPage() {
   const quotes = collections.map(quoteEntry);
   const totalCollected = collections.reduce((sum, entry) => sum + Math.round(Number(entry.amountCollected || 0) * 100), 0) / 100;
   const totalRemittance = quotes.every((q) => "remittance" in q) ? quotes.reduce((sum, q) => sum + Math.round(("remittance" in q ? q.remittance : 0) * 100), 0) / 100 : null;
+  const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
+  const totalDue = totalRemittance === null ? null : (Math.round(totalRemittance * 100) + Math.round(penaltyAmount * 100)) / 100;
 
   function updateCollection(
     id: string,
@@ -682,8 +706,13 @@ export default function CollectionsPage() {
       return;
     }
 
-    if (collectedBy === "Collector" && !originalMasOfficerName.trim()) {
-      setSaveMessage("Original MAS / Officer Name is required for Collector batches.");
+    if (Number(penalty) < 0) {
+      setSaveMessage("The penalty must be zero or a positive amount.");
+      return;
+    }
+
+    if (penaltyAmount > 0 && penaltyNote.trim().length < 3) {
+      setSaveMessage("Explain what the penalty is for.");
       return;
     }
 
@@ -735,11 +764,12 @@ export default function CollectionsPage() {
           accountableEmployeeId: masStaff.find((staff) => staff.fullName === mas)?.employeeId ?? "",
           dateRemitted,
           collectedBy,
-          originalMasOfficerName: collectedBy === "Collector" ? originalMasOfficerName.trim() : "",
           paymentMethod,
           paymentReference: selectedPaymentMethod?.requiresReference ? paymentReference.trim() : "",
           autoApproveRemittance: autoApproveRemittance && isCashPayment,
           cashReceived: Number(cashReceived),
+          penalty: penaltyAmount,
+          penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "",
           collections: collections.map((entry) => ({
             ...entry,
             memberNumber: members.find(
@@ -780,8 +810,9 @@ export default function CollectionsPage() {
     setShowPreview(false);
     setAutoApproveRemittance(false);
     setCashReceived("");
+    setPenalty("");
+    setPenaltyNote("");
     setCollectedBy("MAS");
-    setOriginalMasOfficerName("");
     setPaymentMethod(paymentMethods.find((method) => method.isCash)?.name || paymentMethods[0]?.name || "");
     setPaymentReference("");
   }
@@ -845,7 +876,6 @@ export default function CollectionsPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">{collectionChannels.find((channel) => channel.value === collectedBy)?.hint}. Applies to every entry; DTO uses the current MAS incentive.</p>
-              {collectedBy === "Collector" && <div className="space-y-1 pt-1"><Label htmlFor="original-mas">Original MAS / Officer Name *</Label><Input id="original-mas" value={originalMasOfficerName} onChange={(event) => setOriginalMasOfficerName(event.target.value)} /></div>}
             </fieldset>
 
             <div className="space-y-2">
@@ -868,6 +898,21 @@ export default function CollectionsPage() {
                 {isCashPayment ? "Physical cash: count it on turnover. You can approve immediately below when it matches." : "No reference needed for this method."}
               </div>
             )}
+
+            <fieldset className={`space-y-2 rounded-lg border p-3 md:col-span-3 ${penaltyAmount > 0 ? "border-red-300 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20" : ""}`}>
+              <legend className="px-1 text-sm font-medium">Remittance penalty (optional)</legend>
+              <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+                <div className="space-y-1">
+                  <Label htmlFor="penalty-amount">Penalty amount</Label>
+                  <Input id="penalty-amount" type="number" min="0" step="0.01" value={penalty} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => { setPenalty(event.target.value); setAutoApproveRemittance(false); }} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="penalty-note">What is the penalty for?{penaltyAmount > 0 ? " *" : ""}</Label>
+                  <Input id="penalty-note" maxLength={300} value={penaltyNote} disabled={penaltyAmount <= 0} placeholder={penaltyAmount > 0 ? "e.g. Late turnover: collections held 5 days past schedule" : "Enter a penalty amount first"} onChange={(event) => setPenaltyNote(event.target.value)} />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Charged to the {collectedBy === "Collector" ? "Collector" : "MAS"}, paid from their own money, and added to this batch&apos;s total remittance. Members are not charged.</p>
+            </fieldset>
           </div>
         </CardContent>
       </Card>
@@ -1246,7 +1291,7 @@ export default function CollectionsPage() {
                               </Label>
 
                               <p className="text-xs text-muted-foreground">
-                                NS accounts may edit the NOP range. Other accounts use the next NOP from their payment history.
+                                Set automatically from the covered months and the account&apos;s history. For an NS account the New Sale is NOP 1, so the first collection starts at NOP 2.
                               </p>
                             </div>
 
@@ -1262,27 +1307,10 @@ export default function CollectionsPage() {
                                     entry.nopFrom ??
                                     ""
                                   }
-                                  readOnly={entry.accountStatus !== "NS"}
-                                  tabIndex={
-                                    entry.accountStatus !== "NS" ? -1 : undefined
-                                  }
-                                  className={
-                                    entry.accountStatus !== "NS"
-                                      ? "bg-muted/50"
-                                      : undefined
-                                  }
-                                  placeholder={
-                                    entry.accountStatus !== "NS" ? "Auto" : "Enter NOP"
-                                  }
-                                  onChange={(event) =>
-                                    updateCollection(entry.id, {
-                                      nopFrom:
-                                        event.target.value === ""
-                                          ? null
-                                          : Number(event.target.value),
-                                    })
-                                  }
-                                  onWheel={(event) => event.currentTarget.blur()}
+                                  readOnly
+                                  tabIndex={-1}
+                                  className="bg-muted/50"
+                                  placeholder="Auto"
                                 />
                               </div>
 
@@ -1297,27 +1325,10 @@ export default function CollectionsPage() {
                                     entry.nopTo ??
                                     ""
                                   }
-                                  readOnly={entry.accountStatus !== "NS"}
-                                  tabIndex={
-                                    entry.accountStatus !== "NS" ? -1 : undefined
-                                  }
-                                  className={
-                                    entry.accountStatus !== "NS"
-                                      ? "bg-muted/50"
-                                      : undefined
-                                  }
-                                  placeholder={
-                                    entry.accountStatus !== "NS" ? "Auto" : "Enter NOP"
-                                  }
-                                  onChange={(event) =>
-                                    updateCollection(entry.id, {
-                                      nopTo:
-                                        event.target.value === ""
-                                          ? null
-                                          : Number(event.target.value),
-                                    })
-                                  }
-                                  onWheel={(event) => event.currentTarget.blur()}
+                                  readOnly
+                                  tabIndex={-1}
+                                  className="bg-muted/50"
+                                  placeholder="Auto"
                                 />
                               </div>
                             </div>
@@ -1564,33 +1575,6 @@ export default function CollectionsPage() {
                                   </Select>
                                 </div>
 
-                                <div className="space-y-2">
-                                  <Label>
-                                    Original MAS /
-                                    Officer&apos;s Name
-                                  </Label>
-
-                                  <Input
-                                    value={
-                                      entry.originalMasOfficerName
-                                    }
-                                    onChange={(
-                                      event,
-                                    ) =>
-                                      updateCollection(
-                                        entry.id,
-                                        {
-                                          originalMasOfficerName:
-                                            event
-                                              .target
-                                              .value,
-                                        },
-                                      )
-                                    }
-                                    placeholder="Enter original MAS / Officer"
-                                  />
-                                </div>
-
 
                               </div>
                             )}
@@ -1628,9 +1612,12 @@ export default function CollectionsPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between rounded-xl border bg-primary/5 p-4">
-                <span className="text-sm font-medium">Incentive calculation reference</span>
-                <strong>{totalRemittance === null ? "Complete payment and incentive details" : formatCurrency(totalRemittance)}</strong>
+              <div className="space-y-1 rounded-xl border bg-primary/5 p-4">
+                <div className="flex items-center justify-between"><span className="text-sm font-medium">Incentive calculation reference</span><strong>{totalRemittance === null ? "Complete payment and incentive details" : formatCurrency(totalRemittance)}</strong></div>
+                {penaltyAmount > 0 && <>
+                  <div className="flex items-center justify-between text-sm text-red-700"><span>+ Penalty{penaltyNote.trim() ? `: ${penaltyNote.trim()}` : ""}</span><strong>{formatCurrency(penaltyAmount)}</strong></div>
+                  <div className="flex items-center justify-between border-t pt-1"><span className="text-sm font-semibold">Total remittance due</span><strong>{totalDue === null ? "Pending" : formatCurrency(totalDue)}</strong></div>
+                </>}
               </div>
 
               <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px]">
@@ -1639,10 +1626,10 @@ export default function CollectionsPage() {
                     type="checkbox"
                     className="mt-1"
                     checked={autoApproveRemittance && isCashPayment}
-                    disabled={totalRemittance === null || !isCashPayment}
+                    disabled={totalDue === null || !isCashPayment}
                     onChange={(event) => {
                       setAutoApproveRemittance(event.target.checked);
-                      if (event.target.checked && totalRemittance !== null) setCashReceived(totalRemittance.toFixed(2));
+                      if (event.target.checked && totalDue !== null) setCashReceived(totalDue.toFixed(2));
                     }}
                   />
                   <span><strong>Cash received in full</strong><span className="block text-xs text-muted-foreground">{isCashPayment ? "Create and immediately approve the Remittance when the cash handed over equals the calculated amount." : `${paymentMethod || "Non-cash"} payments go to Remittances so Finance can verify the reference before approval.`}</span></span>
@@ -1655,7 +1642,7 @@ export default function CollectionsPage() {
 
               {/* SAVE / RESET */}
               <div className="space-y-3 border-t pt-4">
-                {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Batch total: {formatCurrency(totalCollected)} · Remittance: {totalRemittance === null ? "Pending" : formatCurrency(totalRemittance)}</p></div>}
+                {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Batch total: {formatCurrency(totalCollected)} · Remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p></div>}
                 {saveMessage && (
                   <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
                     {saveMessage}

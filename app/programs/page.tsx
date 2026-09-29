@@ -10,6 +10,7 @@ Trash2,
 X,
 } from "lucide-react";
 
+import { InlinePanel } from "@/components/inline-panel";
 import { Button } from "@/components/ui/button";
 import {
 Card,
@@ -244,21 +245,22 @@ return (
 return safeAmount;
 }
 
-function calculateTotalRemittance(
+// Remittance = ((base pay - mark-up) - incentive) + mark-up, for whoever collected (MAS or Collector).
+function calculateRemittanceFor(
 basePay: number,
 markUp: number,
 incentiveType: IncentiveType,
-totalIncentive: number,
+roleIncentive: number,
 ) {
 const incentive =
 calculateIncentive(
 basePay,
 markUp,
 incentiveType,
-totalIncentive,
+roleIncentive,
 );
 
-return incentive + markUp;
+return Math.max(0, basePay - markUp - incentive) + markUp;
 }
 
 function getSplitTotal(
@@ -859,11 +861,16 @@ try {
 
 }
 
+// Edit opens inside the program's card; clicking Edit again closes it.
 function editProgram(
 program: Program,
 ) {
+if (editingId === program.id) {
+  resetForm();
+  return;
+}
 setEditingId(program.id);
-setShowForm(true);
+setShowForm(false);
 
 const existingTiers =
   Array.isArray(
@@ -1009,11 +1016,6 @@ setForm({
       : [createEmptyTier()],
 });
 
-window.scrollTo({
-  top: 0,
-  behavior: "smooth",
-});
-
 }
 
 async function deleteProgram(
@@ -1113,13 +1115,8 @@ const incentive =
     totalIncentive,
   );
 
-const totalRemittance =
-  calculateTotalRemittance(
-    basePay,
-    markUp,
-    tier.incentiveType,
-    totalIncentive,
-  );
+const masRemittance = calculateRemittanceFor(basePay, markUp, tier.incentiveType, masIncentive);
+const collectorRemittance = calculateRemittanceFor(basePay, markUp, tier.incentiveType, collectorIncentive);
 
 const incentiveBase =
   Math.max(
@@ -1701,14 +1698,7 @@ return (
 
         <div>
           <p className="text-xs text-muted-foreground">
-            Total Remittance
-          </p>
-
-          <p className="text-sm font-bold">
-            {formatPeso(
-              totalRemittance,
-            )}
-          </p>
+            Remittance if MAS collects</p><p className="text-sm font-bold">{formatPeso(masRemittance)}</p><p className="mt-1 text-xs text-muted-foreground">If Collector collects</p><p className="text-sm font-bold">{formatPeso(collectorRemittance)}</p>
         </div>
       </div>
 
@@ -1755,40 +1745,8 @@ return (
 
 }
 
-return ( <div className="mx-auto max-w-7xl space-y-6">
-{loadError && <div role="alert" className="rounded-md border border-destructive p-3 text-sm">{loadError}<Button variant="outline" disabled={loading} onClick={() => void loadPrograms()} className="ml-3">Retry</Button></div>}
-{/* PAGE HEADER */} <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-  <div>
-    <h1 className="text-2xl font-bold tracking-tight">
-      Programs
-    </h1>
-
-    <p className="text-sm text-muted-foreground">
-      Manage Dayong programs, base
-      pay, mark up, and incentive
-      sharing between MAS and
-      Collector.
-    </p>
-  </div>
-
-  {canManage && <Button type="button" onClick={startAddingProgram}>
-    <Plus className="mr-2 size-4" />
-    Add Program
-  </Button>}
-</div>
-
-  {/* PROGRAM FORM */}
-  {showForm && (
-  <Card>
-    <CardHeader>
-      <CardTitle>
-        {editingId
-          ? "Edit Program"
-          : "Add Program"}
-      </CardTitle>
-    </CardHeader>
-
-    <CardContent className="space-y-6">
+const programForm = (
+  <div className="space-y-6">
       {/* PROGRAM INFORMATION */}
       <div>
         <h3 className="mb-4 text-sm font-semibold">
@@ -2027,6 +1985,42 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
               : "Add Program"}
         </Button>
       </div>
+  </div>
+);
+
+return ( <div className="mx-auto max-w-7xl space-y-6">
+{loadError && <div role="alert" className="rounded-md border border-destructive p-3 text-sm">{loadError}<Button variant="outline" disabled={loading} onClick={() => void loadPrograms()} className="ml-3">Retry</Button></div>}
+{/* PAGE HEADER */} <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <div>
+    <h1 className="text-2xl font-bold tracking-tight">
+      Programs
+    </h1>
+
+    <p className="text-sm text-muted-foreground">
+      Manage Dayong programs, base
+      pay, mark up, and incentive
+      sharing between MAS and
+      Collector.
+    </p>
+  </div>
+
+  {canManage && <Button type="button" onClick={startAddingProgram}>
+    <Plus className="mr-2 size-4" />
+    Add Program
+  </Button>}
+</div>
+
+  {/* PROGRAM FORM */}
+  {showForm && !editingId && (
+  <Card>
+    <CardHeader>
+      <CardTitle>
+        Add Program
+      </CardTitle>
+    </CardHeader>
+
+    <CardContent>
+      {programForm}
     </CardContent>
   </Card>
   )}
@@ -2146,7 +2140,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
 
                         {canManage && <Button
                           type="button"
-                          variant="outline"
+                          variant={editingId === program.id ? "default" : "outline"}
+                          aria-expanded={editingId === program.id}
                           onClick={() =>
                             editProgram(
                               program,
@@ -2154,7 +2149,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           }
                         >
                           <Pencil className="mr-2 size-4" />
-                          Edit
+                          {editingId === program.id ? "Editing" : "Edit"}
                         </Button>}
 
                         {canManage && <Button
@@ -2171,6 +2166,13 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                         </Button>}
                       </div>
                     </div>
+
+                    {editingId === program.id && (
+                      <InlinePanel>
+                        <p className="mb-3 text-sm font-semibold">Edit {program.code} - {program.name}</p>
+                        {programForm}
+                      </InlinePanel>
+                    )}
 
                     {expandedProgramId === program.id && (
                       <>
@@ -2265,13 +2267,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                                 totalIncentive,
                               );
 
-                            const totalRemittance =
-                              calculateTotalRemittance(
-                                program.basePay,
-                                baseTier.markUp,
-                                baseTier.incentiveType,
-                                totalIncentive,
-                              );
+                            const masRemittance = calculateRemittanceFor(program.basePay, baseTier.markUp, baseTier.incentiveType, masAmount);
+const collectorRemittance = calculateRemittanceFor(program.basePay, baseTier.markUp, baseTier.incentiveType, collectorAmount);
 
                             return (
                               <div
@@ -2359,14 +2356,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
 
                                   <div>
                                     <p className="text-xs text-muted-foreground">
-                                      Total Remittance
-                                    </p>
-
-                                    <p className="text-sm font-bold">
-                                      {formatPeso(
-                                        totalRemittance,
-                                      )}
-                                    </p>
+                                      Remittance if MAS collects</p><p className="text-sm font-bold">{formatPeso(masRemittance)}</p><p className="mt-1 text-xs text-muted-foreground">If Collector collects</p><p className="text-sm font-bold">{formatPeso(collectorRemittance)}</p>
                                   </div>
                                 </div>
                               </div>

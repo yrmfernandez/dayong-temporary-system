@@ -35,8 +35,8 @@ Fractional-installment accumulation is not needed. Implementation defaults to co
 ### Collections NOP entry and advance eligibility
 
 - Collections shows **NOP From** and **NOP To** for both NS and non-NS accounts. The first collection payment can cover several months, so the range also applies to NS. This supersedes the earlier single-NOP-field requirement.
-- When the Member Program's account status is NS, the NOP range is editable. The range must still match the number of covered months. The New Sales transaction itself remains excluded from NOP.
-- When the account status is not NS, Collections shows **NOP From** and **NOP To** as automatically calculated, non-editable fields. The server must enforce the calculated values rather than trusting a submitted range.
+- The New Sale itself counts as **NOP 1** (the DOI month). An NS account's first collection therefore starts at **NOP 2**, for the month after DOI.
+- For every status, including NS, Collections shows **NOP From** and **NOP To** as automatically calculated, non-editable fields: NOP From continues from the account, and NOP To follows the covered months the clerk selects. The server enforces the calculated values rather than trusting a submitted range.
 - Each covered month maps to its corresponding NOP. For example, January through March with NOP From 1 and NOP To 3 means January = 1, February = 2, March = 3. These month names and NOP values are illustrative, not fixed starting values.
 - Advance payment is allowed only when the payment brings the account to U or ADV. An account with arrears may pay enough to catch up and cover future months in the same payment; it may not skip unpaid due months to pay future months while remaining overdue.
 - Account status (NS/U/ADV/delinquency) is distinct from a transaction's posting status and from the existing Active/Inactive-style UI field. Do not let a manually selected status bypass payment or NOP validation.
@@ -45,8 +45,8 @@ Collections now uses each entry's calculated account status for NOP editability.
 
 ### Collector tracking, suspension, and forfeiture
 
-- **Original MAS / Officer's Name** is required when a collection is performed by a **Collector**, to track the account's original MAS/officer. Its purpose is not specifically reactivation. The Collector, the original MAS/officer, and the signed-in encoder are separate identities.
-- Collections now has a separate **Collected By Role** field (MAS or Collector). Original MAS / Officer Name is required for Collector entries in both frontend and backend; reactivation alone does not require it. The role is not inferred from the signed-in encoder.
+- **Original MAS / Officer's Name** is no longer asked for. A Collector always collects for the batch's own MAS (chosen at the top of Collections), so the server records that MAS as the original MAS for Collector batches. The Collector, the MAS, and the signed-in encoder remain separate identities.
+- Collections now has a separate **Collected By Role** field (MAS or Collector). The original MAS for Collector entries is the batch MAS, recorded automatically. The role is not inferred from the signed-in encoder.
 - "Suspended" means **temporarily suspended**, per Member Program, after two months without payment. Resuming payment requires the existing Collections **If Suspended → Waiver** option (`ifSuspended: "Waiver"`). The user confirmed this existing control should be used; do not add a separate checkbox, reference requirement, or upload flow. Visitation Form and Other exist in the dropdown but have not been approved as substitutes for the required waiver.
 - An account becomes **forfeited after six months and one day without payment**. The user confirmed its status must become **Forfeited** and **payments must be blocked**. Enforce this on the server as well as the form; a waiver must not bypass forfeiture. No reinstatement exception is authorized.
 - Payment-status labels (NS/U/ADV/60D/90D/120D/150D) and suspension/forfeiture are distinct concepts. The existing 150D cap does not replace the six-month-and-one-day forfeiture rule.

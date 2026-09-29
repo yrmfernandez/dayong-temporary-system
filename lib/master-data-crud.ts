@@ -54,6 +54,9 @@ export async function updateBranchRecord(id: string, input: BranchInput) {
   const branches = await rows("Branches!A:M");
   const rowNumber = findRow(branches, id);
   if (!input.name || !input.territory) throw new Error("Branch name and territory are required.");
+  if (branches.slice(1).some((row) => text(row[0]) !== id && text(row[1]).toLowerCase() === input.name.trim().toLowerCase())) {
+    throw new Error(`Another branch is already named "${input.name.trim()}". Branch names must be unique because records store the branch name.`);
+  }
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Branches!A${rowNumber}:M${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[id, input.name, input.territory, input.barangay, input.cityMunicipality, input.province, input.country, input.postalCode, input.contactNumber, input.email, input.dateOpened, input.dateClosed, input.status]] } });
   return { id };
 }

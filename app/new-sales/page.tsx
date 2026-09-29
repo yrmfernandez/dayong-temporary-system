@@ -24,6 +24,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
+import { todayInManila } from "@/lib/account-rules";
+import { useFormDraft } from "@/lib/use-form-draft";
 import {
   Select,
   SelectContent,
@@ -206,6 +208,8 @@ function updateAddress(
 }
 
 export default function NewSalesPage() {
+  // Birthdates cannot be in the future.
+  const today = todayInManila();
   const [branch, setBranch] = useState("");
   const [mas, setMas] = useState("");
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
@@ -226,6 +230,19 @@ export default function NewSalesPage() {
 
   const [memberSearchTerms, setMemberSearchTerms] =
     useState<Record<string, string>>({});
+
+  // The unsaved form survives leaving the page (e.g. to Collections) and coming back.
+  useFormDraft(
+    "new-sales",
+    { branch, mas, dateRemitted, sales, expandedSales },
+    (draft) => {
+      setBranch(draft.branch ?? "");
+      setMas(draft.mas ?? "");
+      setDateRemitted(draft.dateRemitted ?? "");
+      if (Array.isArray(draft.sales) && draft.sales.length) setSales(draft.sales);
+      setExpandedSales(draft.expandedSales ?? {});
+    },
+  );
 
   const [programs, setPrograms] = useState<
     Program[]
@@ -1365,11 +1382,8 @@ export default function NewSalesPage() {
                           </Label>
 
                           <Input
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="YYYY-MM-DD"
-                            pattern="\\d{4}-\\d{2}-\\d{2}"
-                            maxLength={10}
+                            type="date"
+                            max={today}
                             value={
                               sale.member
                                 .birthdate
@@ -1777,11 +1791,8 @@ export default function NewSalesPage() {
                               />
 
                               <Input
-                                type="text"
-                                inputMode="numeric"
-                                placeholder="YYYY-MM-DD"
-                                pattern="\\d{4}-\\d{2}-\\d{2}"
-                                maxLength={10}
+                                type="date"
+                                max={today}
                                 value={
                                   beneficiary.birthdate
                                 }
