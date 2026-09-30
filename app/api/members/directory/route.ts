@@ -1,3 +1,4 @@
+import { canAccessPath } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { deleteMemberRecord, updateMemberRecord } from "@/lib/master-data-crud";
@@ -7,7 +8,8 @@ import { accountReport } from "@/lib/account-data";
 import { canTransferMembers, getTransferHistory } from "@/lib/member-transfer";
 
 export async function GET() {
-  if (!(await getSessionUser())) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
+  const user = await getSessionUser();
+  if (!user) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
   try {
     const response = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: GOOGLE_SHEET_ID,
@@ -31,7 +33,7 @@ export async function GET() {
       for (const member of members) for (const enrollment of member.enrollments) enrollment.accountStatus = "Needs review";
     }
     const [canTransfer, transfers] = await Promise.all([canTransferMembers(), getTransferHistory()]);
-    return Response.json({ success: true, members, statusWarning, canManage: await canManageUsers(), canTransfer, transfers }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, members, statusWarning, canManage: await canManageUsers(), canTransfer, transfers, canAddMember: canAccessPath(user, "/new-sales") }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Member directory error:", error);
     return Response.json({ success: false, message: "Unable to load members. Please retry or check the member records." }, { status: 500 });

@@ -88,6 +88,7 @@ try {
   for (const table of definition.tables) {
     const sheet = byTitle.get(table.sheet);
     if (!sheet) {
+      if (table.optional) continue; // created by the app on first use
       add(errors, table.sheet, "required sheet is missing");
       continue;
     }

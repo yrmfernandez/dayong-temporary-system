@@ -17,7 +17,7 @@ export const executivePeriods = {
 export type ExecutivePeriod = keyof typeof executivePeriods;
 export const isExecutivePeriod = (value: unknown): value is ExecutivePeriod => typeof value === "string" && value in executivePeriods;
 
-type Sale = { date: string; branch: string; programId: string; mas: string; amount: number; paymentMode: string; age: number | null; gender: string };
+type Sale = { date: string; branch: string; programId: string; mas: string; amount: number; incentive: number; paymentMode: string; age: number | null; gender: string };
 type Collection = { date: string; branch: string; programId: string; person: string; amount: number; remitted: number };
 export type Ranked = { key: string; label: string; accounts: number; amount: number; previous: number; share: number };
 export type TrendPoint = { month: string; label: string; sales: number; collections: number; accounts: number };
@@ -58,7 +58,7 @@ export async function getExecutiveAnalytics(period: ExecutivePeriod) {
   const today = todayInManila();
   const range = periodRange(period, today);
   const [response, targets] = await Promise.all([
-    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AN", "'Collections'!A:AK", "'Programs'!A:F", "'Member programs'!A:S", "'Branches'!A:M", "'Expenses'!A:Q", "'Remittances'!A:Y", "'Members'!A:A", "'Cash Transactions'!A:P", "'Cash Accounts'!A:E", "'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Vendor Payables'!A:O"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AQ", "'Collections'!A:AK", "'Programs'!A:F", "'Member programs'!A:S", "'Branches'!A:M", "'Expenses'!A:Q", "'Remittances'!A:Y", "'Members'!A:A", "'Cash Transactions'!A:P", "'Cash Accounts'!A:E", "'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Vendor Payables'!A:O"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
     getCompanyTargets(),
   ]);
   const [salesRows, collectionRows, programRows, enrollmentRows, branchRows, expenseRows, remittanceRows, memberRows, cashRows, cashAccountRows, payrollRunRows, payrollLineRows, payableRows] = response.data.valueRanges?.map((item) => item.values ?? []) ?? [];
@@ -70,7 +70,7 @@ export async function getExecutiveAnalytics(period: ExecutivePeriod) {
 
   const sales: Sale[] = salesRows.slice(1).filter((row) => text(row[0]) && validDay(day(row[1]))).map((row) => {
     const age = Number.parseInt(text(row[13]), 10);
-    return { date: day(row[1]), branch: branchLabel(text(row[2])), programId: text(row[21]), mas: text(row[3]), amount: number(row[26]) + number(row[38]), paymentMode: text(row[23]) || "Not recorded", age: Number.isFinite(age) && age >= 0 && age < 130 ? age : null, gender: text(row[12]) };
+    return { date: day(row[1]), branch: branchLabel(text(row[2])), programId: text(row[21]), mas: text(row[3]), amount: number(row[26]) + number(row[38]), incentive: text(row[41]) === "" ? 0 : Math.max(0, number(row[26]) - number(row[41])), paymentMode: text(row[23]) || "Not recorded", age: Number.isFinite(age) && age >= 0 && age < 130 ? age : null, gender: text(row[12]) };
   });
   const collections: Collection[] = collectionRows.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted" && validDay(day(row[9]))).map((row) => ({
     date: day(row[9]), branch: branchLabel(text(row[6])), programId: text(row[5]), person: text(row[31]) || text(row[7]), amount: number(row[10]), remitted: number(row[26]) || number(row[10]),
@@ -85,7 +85,9 @@ export async function getExecutiveAnalytics(period: ExecutivePeriod) {
   const salesGross = sum(periodSales, (row) => row.amount), previousSalesGross = sum(previousSales, (row) => row.amount);
   const collectionGross = sum(periodCollections, (row) => row.amount), previousCollectionGross = sum(previousCollections, (row) => row.amount);
   const inPeriod = (date: string) => date >= range.from && date <= range.to;
-  const commissions = sum(periodCollections, (row) => Math.max(0, row.amount - row.remitted));
+  // Agent commissions: incentives kept on Collections and on New Sales (Sales AO/AP).
+  const agentIncentives = (salesRows: Sale[], collectionRows: Collection[]) => round(sum(salesRows, (row) => row.incentive) + sum(collectionRows, (row) => Math.max(0, row.amount - row.remitted)));
+  const commissions = agentIncentives(periodSales, periodCollections);
   const postedExpenses = expenseRows.slice(1).filter((row) => text(row[0]) && text(row[11]).toLowerCase() === "posted");
   const expenses = round(postedExpenses.filter((row) => inPeriod(day(row[1]))).reduce((total, row) => total + number(row[4]), 0));
   // Paid payroll by pay date. Commission inside payroll is left out: agent incentives are already deducted to reach Net Sales.
@@ -157,7 +159,7 @@ export async function getExecutiveAnalytics(period: ExecutivePeriod) {
     period, periodLabel: executivePeriods[period].label, compareLabel: executivePeriods[period].compare, ...range, today,
     kpis: {
       grossSales: { value: grossSales, change: change(grossSales, previousSalesGross + previousCollectionGross) },
-      netSales: { value: netSales, change: change(netSales, previousSalesGross + previousCollectionGross - sum(previousCollections, (row) => Math.max(0, row.amount - row.remitted))) },
+      netSales: { value: netSales, change: change(netSales, previousSalesGross + previousCollectionGross - agentIncentives(previousSales, previousCollections)) },
       salesGross: { value: salesGross, change: change(salesGross, previousSalesGross) },
       newAccounts: { value: periodSales.length, change: change(periodSales.length, previousSales.length) },
       averageSale: { value: periodSales.length ? round(salesGross / periodSales.length) : 0, change: change(periodSales.length ? salesGross / periodSales.length : 0, previousSales.length ? previousSalesGross / previousSales.length : 0) },

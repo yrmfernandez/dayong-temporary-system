@@ -3,6 +3,10 @@ import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
+import { attachmentList, choiceWithOther, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
+
+// Expenses V attachments and W approved_by follow the encoder columns (R:U); see npm run sheets:expense-fields.
+export const EXPENSE_EXTRA_HEADERS = ["attachments", "approved_by"];
 
 const text = (value: unknown) => String(value ?? "").trim();
 const amount = (value: unknown) => Number(value ?? 0) || 0;
@@ -14,6 +18,7 @@ export type ExpenseRecord = {
   amount: number; payee: string; paidBy: string; branch: string; paymentMethod: string;
   referenceNumber: string; receiptNumber: string; status: string; remarks: string;
   createdAt: string; encodedBy: string; voidedAt: string; voidReason: string;
+  attachments: string; approvedBy: string;
 };
 
 export type CashLedgerEntry = {
@@ -46,6 +51,7 @@ export async function getFinanceData() {
     branch: text(row[7]), paymentMethod: text(row[8]), referenceNumber: text(row[9]),
     receiptNumber: text(row[10]), status: text(row[11]) || "Posted", remarks: text(row[12]),
     createdAt: text(row[13]), voidedAt: text(row[14]), voidReason: text(row[16]), encodedBy: text(row[19]),
+    attachments: text(row[21]), approvedBy: text(row[22]),
   })).filter((row) => row.id);
   const manual = rows.cash.slice(1).map<CashLedgerEntry>((row, index) => ({
     id: text(row[0]), rowNumber: index + 2, date: text(row[1]), direction: text(row[2]) === "outflow" ? "outflow" : "inflow",
@@ -72,15 +78,21 @@ function required(value: unknown, label: string) {
   const result = text(value); if (!result) throw new Error(`${label} is required.`); return result;
 }
 
+/** Saves an entry from the company expense form. Payee and payment details are optional extras. */
 export async function createExpense(input: Record<string, unknown>) {
   const value = round(Number(input.amount));
-  if (!datePattern.test(text(input.date))) throw new Error("Enter a valid expense date.");
+  if (!datePattern.test(text(input.date))) throw new Error("Enter a valid date of expense.");
   if (!Number.isFinite(value) || value <= 0) throw new Error("Expense amount must be greater than zero.");
+  const account = choiceWithOther(EXPENSE_ACCOUNTS, input.category, input.categoryOther, "account name");
+  const approvedBy = choiceWithOther(EXPENSE_APPROVERS, input.approvedBy, input.approvedByOther, "approver");
+  const attachments = attachmentList(input.attachments, input.attachmentOther);
+  const header = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Expenses!V1:W1" })).data.values?.[0] ?? [];
+  if (EXPENSE_EXTRA_HEADERS.some((name, index) => !headerMatches(header[index], name))) throw new Error("Run npm run sheets:expense-fields -- --apply to add the Attachments and Approved By columns before saving expenses.");
   const id = createReadableId("EXP");
-  await appendEncodedRows({ range: "Expenses!A:Q", requestBody: { values: [[id, text(input.date), required(input.category, "Category"),
-    required(input.description, "Description"), value, required(input.payee, "Payee"), text(input.paidBy), required(input.branch, "Branch"),
-    required(input.paymentMethod, "Payment method"), text(input.referenceNumber), text(input.receiptNumber), "Posted", text(input.remarks),
-    new Date().toISOString(), "", "", ""]] } });
+  await appendEncodedRows({ range: "Expenses!A:Q", requestBody: { values: [[id, text(input.date), account,
+    required(input.description, "Purpose"), value, text(input.payee), text(input.paidBy) || "Cash on Hand", required(input.branch, "Branch"),
+    text(input.paymentMethod) || "Cash", text(input.referenceNumber), text(input.receiptNumber), "Posted", text(input.remarks),
+    new Date().toISOString(), "", "", ""]] } }, [[attachments, approvedBy]]);
   return { id };
 }
 

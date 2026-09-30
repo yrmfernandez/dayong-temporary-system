@@ -1,6 +1,7 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
 import { withEncoder } from "@/lib/encoder-context";
-import { getSessionUser } from "@/lib/auth-server";
+import { getSessionUser, userWithPageAccess } from "@/lib/auth-server";
+import { withWriteLock } from "@/lib/google-sheets";
 import { loadAccountData, commitCollections } from "@/lib/account-data";
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
 import { findActivePaymentMethod } from "@/lib/remittance-methods";
@@ -24,6 +25,13 @@ export async function GET(request: Request) {
 }
 
 export const POST = withEncoder(async (request: Request) => {
+  if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
+  // One collection batch at a time per server: validation reads the latest payments, so a concurrent batch for the
+  // same account cannot slip in between that check and the write.
+  return withWriteLock("collections", () => saveCollections(request));
+});
+
+async function saveCollections(request: Request) {
   let writing = false;
   try {
     const body = await request.json();
@@ -113,4 +121,4 @@ export const POST = withEncoder(async (request: Request) => {
     }
     return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, message: `${rows.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save collections." }, { status: writing ? 500 : 400 }); }
-});
+}

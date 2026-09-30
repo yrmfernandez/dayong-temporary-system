@@ -1,3 +1,4 @@
+import { canManageConfiguration } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
@@ -46,6 +47,8 @@ export async function GET(
 export const POST = withEncoder(async function POST(
   request: Request,
 ) {
+  // Incentive tiers drive commission and remittance math, so only program managers may change them.
+  if (!(await canManageConfiguration())) return NextResponse.json({ success: false, message: "You are not allowed to change program incentives." }, { status: 403 });
   try {
     const body = await request.json();
 

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { userWithPageAccess } from "@/lib/auth-server";
+
 import {
   findMemberByNumber,
   findMemberProgramEnrollment,
@@ -21,6 +23,7 @@ type ValidationBatchPayload = {
 export async function POST(
   request: Request,
 ) {
+  if (!(await userWithPageAccess("/new-sales"))) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
   try {
     const body =
       (await request.json()) as ValidationBatchPayload;

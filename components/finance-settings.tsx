@@ -15,6 +15,7 @@ export function FinanceSettings() {
   // New accounts use the form at the top; an existing account is edited in place, under its own row.
   const [form, setForm] = useState<AccountForm>(blank), [editing, setEditing] = useState<AccountForm | null>(null), [savedId, setSavedId] = useState("");
   async function load() { const r = await fetch("/api/finance-options", { cache: "no-store" }); if (r.status === 403) return; const j = await r.json(); if (r.ok) { setAllowed(true); setAccounts(j.accounts ?? []); } }
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
   useEffect(() => { void load(); }, []);
   async function save(values: AccountForm, done: () => void) {
     const r = await fetch("/api/finance-options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...values, openingBalance: Number(values.openingBalance) }) }), j = await r.json();

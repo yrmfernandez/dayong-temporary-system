@@ -5,6 +5,7 @@ import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
 import { loadUsers, userCell } from "@/lib/users-sheet";
 import { ageRestrictionCells, normalizeAgeRestriction } from "@/lib/program-age";
+import { normalizeSaleIncentive } from "@/lib/remittance";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -19,7 +20,7 @@ function findRow(data: unknown[][], id: string) {
 }
 
 
-export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: Array<{ role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number }> };
+export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: Array<{ role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number }> };
 
 export async function updateProgramRecord(id: string, input: ProgramInput) {
   const programs = await rows("Programs!A:F");
@@ -28,13 +29,14 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
   if (!Number.isFinite(input.registrationAmount) || input.registrationAmount < 0 || !Number.isFinite(input.payBalanceTotal) || input.payBalanceTotal < 0) throw new Error("Registration and pay-the-balance amounts cannot be negative.");
   if (input.registrationFeeRequired && input.registrationAmount <= 0) throw new Error("Enter the required registration amount.");
   const ageRestriction = normalizeAgeRestriction(input);
+  const saleIncentive = normalizeSaleIncentive(input);
   for (const tier of input.incentiveTiers) {
     if (!Number.isInteger(tier.fromMonth) || !Number.isInteger(tier.toMonth) || tier.fromMonth < 1 || tier.toMonth < tier.fromMonth) throw new Error("Enter valid whole-month incentive ranges.");
     if (!Number.isFinite(tier.markUp) || tier.markUp < 0 || tier.markUp > input.basePay || !Number.isFinite(tier.incentiveAmount) || tier.incentiveAmount < 0 || (tier.incentiveType === "percentage" && tier.incentiveAmount > 100)) throw new Error("Enter valid mark-up and incentive amounts.");
   }
   if (input.incentiveTiers.some((tier, index) => input.incentiveTiers.some((other, otherIndex) => index !== otherIndex && tier.role === other.role && tier.fromMonth <= other.toMonth && other.fromMonth <= tier.toMonth))) throw new Error("Incentive tiers for the same role cannot overlap.");
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!A${rowNumber}:F${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[id, input.code, input.name, input.basePay, input.status, input.description]] } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:P${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal, ...ageRestrictionCells(ageRestriction)]] } });
+  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:R${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal, ...ageRestrictionCells(ageRestriction), saleIncentive.saleIncentiveType, saleIncentive.saleIncentiveType ? saleIncentive.saleIncentiveAmount : ""]] } });
   await deleteRowsWhere("Program Incentives", (row) => text(row[1]) === id);
   await appendEncodedRows({ range: "'Program Incentives'!A:H", requestBody: { values: input.incentiveTiers.map((tier) => [createReadableId("INC"), id, tier.role, tier.fromMonth, tier.toMonth, tier.incentiveType, tier.markUp, tier.incentiveAmount]) } });
   return { id };
@@ -74,7 +76,9 @@ export async function getUserAccounts() {
   const roleNames = new Map(roles.slice(1).map((row) => [text(row[0]), text(row[1])]));
   return users.map((user) => {
     const linkedRoleIds = links.slice(1).filter((link) => text(link[0]) === user.id).map((link) => text(link[1])).filter(Boolean);
-    const roleIds = [...new Set([...linkedRoleIds, user.roleId].filter(Boolean))];
+    // Sign-in reads only User Roles, so show exactly those. Users.role_id is a legacy primary-role cell; it is shown only
+    // for an account with no links, and editing would otherwise silently grant it.
+    const roleIds = [...new Set(linkedRoleIds.length ? linkedRoleIds : [user.roleId].filter(Boolean))];
     return { id: user.id, employeeId: user.employeeId, fullName: user.fullName, status: user.status || "active", createdAt: user.createdAt, primaryRoleId: user.roleId || roleIds[0] || "", roleIds, roles: roleIds.map((roleId) => roleNames.get(roleId) || roleId) };
   });
 }

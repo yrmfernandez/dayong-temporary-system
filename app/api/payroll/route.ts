@@ -1,4 +1,5 @@
 import { getSessionUser } from "@/lib/auth-server";
+import { canAccessPath } from "@/lib/access-control";
 import { withEncoder } from "@/lib/encoder-context";
 import {
   addPayrollAdjustment, approvePayrollRun, createPayrollRun, getPayrollOverview, getPayrollRun,
@@ -7,15 +8,14 @@ import {
 
 const normalized = (roles: string[]) => roles.map((role) => role.trim().toLowerCase());
 const isAdministrator = (roles: string[]) => roles.some((role) => role === "administrator" || role === "admin");
-// Finance and Administrators run payroll; the CEO and President may review it.
-const canView = (roles: string[]) => isAdministrator(roles) || roles.some((role) => ["finance", "ceo", "president"].includes(role));
+// Anyone who can open the Payroll page may review it; only Finance and Administrators run it.
 const canManage = (roles: string[]) => isAdministrator(roles) || roles.includes("finance");
 
 export async function GET(request: Request) {
   const user = await getSessionUser();
   if (!user) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
   const roles = normalized(user.roleNames);
-  if (!canView(roles)) return Response.json({ success: false, message: "Finance access is required for payroll." }, { status: 403 });
+  if (!canAccessPath(user, "/payroll")) return Response.json({ success: false, message: "You do not have access to Payroll." }, { status: 403 });
   try {
     const runId = new URL(request.url).searchParams.get("runId");
     const body = runId ? await getPayrollRun(runId) : await getPayrollOverview();

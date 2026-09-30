@@ -27,6 +27,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       if (/^'?Roles'?!A:[GL]$/.test(range)) return { data: { values: rows.Roles ?? [[]] } };
       if (/^'?Users'?!A:(?:B|G|H|Z)$/.test(range)) return { data: { values: rows.Users ?? [[]] } };
       if (range === "'Audit Log'!A:J") return { data: { values: rows['Audit Log'] ?? [[]] } };
+      if (range === 'Expenses!V1:W1' || range === 'Sales!AO1:AQ1') return { data: { values: rows[range] ?? [[]] } };
       if (/!A:ZZ$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
       return { data: { values: /1:.*1$/.test(range)
@@ -45,12 +46,21 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
     }).outputText;
     const localRequire = (name) => {
-      if (name === '@/lib/auth-server') return {
-        getSessionUser: async () => user,
-        canManageUsers: async () => Boolean(user?.permissions?.manageUsers),
-        canManageAttendance: async () => Boolean(user?.permissions?.manageAttendance),
-      };
-      if (name === '@/lib/google-sheets') return { sheets, GOOGLE_SHEET_ID: 'test' };
+      if (name === '@/lib/auth-server') {
+        // Page and job permissions use the real access rules against the test session.
+        const access = load('lib/access-control.ts');
+        const withRoles = () => user && { roleNames: [], ...user, permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false, ...user.permissions } };
+        return {
+          getSessionUser: async () => user,
+          canManageUsers: async () => Boolean(user?.permissions?.manageUsers),
+          canManageAttendance: async () => Boolean(user?.permissions?.manageAttendance),
+          canManageAccounts: async () => Boolean(user && access.canManageAccountsFor(withRoles())),
+          canManageEmployees: async () => Boolean(user && access.canManageEmployeesFor(withRoles())),
+          canManageConfiguration: async () => Boolean(user && access.canManageConfigurationFor(withRoles())),
+          userWithPageAccess: async (...paths) => user && paths.some((path) => access.canAccessPath(withRoles(), path)) ? user : null,
+        };
+      }
+      if (name === '@/lib/google-sheets') return { sheets, GOOGLE_SHEET_ID: 'test', withWriteLock: (key, work) => work(), readingFresh: (work) => work(), sheetsStats: () => ({}) };
       if (name === 'next/server') return { NextResponse: Response };
       if (name.startsWith('@/')) return load(name.slice(2) + '.ts');
       if (name.startsWith('./')) return load(path.posix.join(path.posix.dirname(file), name) + '.ts');
@@ -145,6 +155,81 @@ test('user account edits preserve the primary role and save updated roles', asyn
   assert.ok(!h.writes.some((write) => write.requestBody?.data?.some?.((item) => /^'User Roles'!Ad/.test(item.range))), 'old role links are deleted, never blanked');
 });
 
+test('expense entries follow the company form: account, attachments, approver, and page access', async () => {
+  const h = harness({ userId: 'U3', employeeId: 'DPE-0003', name: 'finance', roleNames: ['Finance'], permissions: {} });
+  const route = h.load('app/api/expenses/route.ts');
+  const entry = { branch: 'BALIOK', date: '2026-09-30', category: 'Other', categoryOther: 'Parking', amount: 150, attachments: ['Receipt', 'Voucher', 'Other'], attachmentOther: 'Gate pass', receiptNumber: 'OR-77', description: 'Client visit parking', approvedBy: 'CEO/President', remarks: '' };
+  const missing = await route.POST(request(entry));
+  assert.equal(missing.status, 400);
+  assert.match((await missing.json()).message, /sheets:expense-fields/, 'saving before the migration explains how to fix it');
+  h.rows['Expenses!V1:W1'] = [['attachments', 'approved_by']];
+  const saved = await route.POST(request(entry));
+  assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
+  const write = h.writes.find((item) => item.range === "'Expenses'!A:W");
+  assert.ok(write, 'the row spans the business, encoder, and form columns');
+  const row = write.requestBody.values[0];
+  assert.equal(row[2], 'Other: Parking');
+  assert.equal(row[3], 'Client visit parking');
+  assert.equal(row[6], 'Cash on Hand', 'paid from defaults to Cash on Hand');
+  assert.deepEqual(row.slice(-2), ['Voucher, Receipt, Other: Gate pass', 'CEO/President']);
+  assert.equal((await route.POST(request({ ...entry, category: 'Snacks' }))).status, 400, 'only listed accounts are accepted');
+  assert.equal((await route.POST(request({ ...entry, approvedBy: 'Other', approvedByOther: '' }))).status, 400, 'an Other approver must be named');
+  h.setUser({ userId: 'U8', employeeId: 'DPE-0008', name: 'mas', roleNames: ['MAS'], permissions: {} });
+  assert.equal((await route.POST(request(entry))).status, 403, 'MAS cannot post expenses');
+});
+
+test('statement of account lists the new sale and every collection with running totals, for administrators only', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const encoder = ['Encoded By User ID', 'Encoded By Employee ID', 'Encoded By Name', 'Encoded At'];
+  const programsHeader = Array(19).fill(''); encoder.forEach((name, i) => { programsHeader[14 + i] = name; }); programsHeader[18] = 'Account Status';
+  const collectionsHeader = Array(29).fill(''); encoder.forEach((name, i) => { collectionsHeader[21 + i] = name; }); collectionsHeader[25] = 'Collected By Role'; collectionsHeader[26] = 'Remittance Amount'; collectionsHeader[27] = 'Remittance Breakdown';
+  const remittancesHeader = Array(12).fill(''); encoder.forEach((name, i) => { remittancesHeader[6 + i] = name; }); remittancesHeader[10] = 'Gross Collection'; remittancesHeader[11] = 'Total Remittance';
+  const enrollment = Array(19).fill(''); Object.assign(enrollment, { 0: 'ENR-1', 1: 'MEM-1', 2: 'PH-1', 3: 'DP-1', 4: '2026-06-15', 5: 'MINTAL', 6: 'Maria', 12: 'Active', 18: 'U' });
+  const payment = Array(29).fill(''); Object.assign(payment, { 0: 'COL-1', 2: 'ENR-1', 7: 'Maria', 8: 'OR-100', 9: '2026-07-10', 10: 640, 11: '2026-07', 12: '2026-08', 13: 2, 14: 3, 19: 'Posted' });
+  const member = Array(18).fill(''); Object.assign(member, { 0: 'MEM-1', 1: 'PH-1', 2: 'Santos', 3: 'Ana', 11: '0917', 12: 'Mintal, Davao City' });
+  const sale = Array(31).fill(''); Object.assign(sale, { 0: 'SAL-1', 5: 'PH-1', 21: 'DP-1', 26: 320, 28: 'APP-1', 30: '2026-06-15' });
+  h.rows['Member programs'] = [programsHeader, enrollment];
+  h.rows.Collections = [collectionsHeader, payment];
+  h.rows.Remittances = [remittancesHeader];
+  h.rows.Members = [[], member];
+  h.rows.Sales = [[], sale];
+  h.rows.Programs = [[], ['DP-1', 'C', 'DS-320', 320, 'active', '', '', '', '', '', 'No', 0, 19200]];
+  h.rows['Program Incentives'] = [[]];
+  const route = h.load('app/api/soa/route.ts');
+  const list = await (await route.GET(new Request('http://localhost/api/soa'))).json();
+  assert.deepEqual(list.accounts.map((item) => [item.id, item.memberName, item.programName]), [['ENR-1', 'Santos, Ana', 'DS-320']]);
+  const response = await route.GET(new Request('http://localhost/api/soa?account=ENR-1'));
+  const { statement } = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(statement.member.name, 'Ana Santos');
+  assert.equal(statement.member.address, 'Mintal, Davao City');
+  assert.deepEqual(statement.newSale.amount, 320);
+  assert.deepEqual(statement.history.map((row) => [row.orNumber, row.monthFrom, row.monthTo, row.nopFrom, row.nopTo, row.runningTotal]), [['OR-100', '2026-07', '2026-08', 2, 3, 640]]);
+  assert.equal(statement.summary.totalPaid, 960, 'the new sale plus collections');
+  assert.equal(statement.summary.monthsPaid, 3);
+  assert.equal(statement.summary.nextNop, 4);
+  assert.equal(statement.summary.nextMonth, '2026-09');
+  assert.equal(statement.summary.remainingBalance, 18560, 'pay-the-balance total less collections');
+  h.setUser({ userId: 'U3', employeeId: 'DPE-0003', name: 'finance', roleNames: ['Finance'], permissions: {} });
+  assert.equal((await route.GET(new Request('http://localhost/api/soa'))).status, 403);
+});
+
+test('IT manages ordinary accounts and roles but cannot hand out administrator power', async () => {
+  const h = harness({ userId: 'U9', employeeId: 'DPE-0009', name: 'it', roleNames: ['IT Clerk'], permissions: {} });
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-2', 'DPE-0002', 'Ana', 'hash', 'active', '', 'ROLE-MAS'], ['USR-1', 'DPE-0001', 'Boss', 'hash', 'active', '', 'ROLE-ADMIN']];
+  h.rows.Roles = [[], ['ROLE-ADMIN', 'Administrator', '', 'TRUE', 'TRUE', 'TRUE', 'active'], ['ROLE-MAS', 'MAS', '', 'FALSE', '', '', 'active'], ['ROLE-ENTRY', 'Entry Clerk', '', 'FALSE', '', '', 'active']];
+  h.rows['User Roles'] = [[], ['USR-2', 'ROLE-MAS'], ['USR-1', 'ROLE-ADMIN']];
+  const accounts = h.load('app/api/user-accounts/route.ts');
+  assert.equal((await accounts.GET()).status, 200, 'IT can open User Accounts without the manage_users flag');
+  assert.equal((await accounts.PATCH(request({ id: 'USR-2', status: 'active', roleIds: ['ROLE-ENTRY'] }))).status, 200, 'IT can change an ordinary account');
+  assert.equal((await accounts.PATCH(request({ id: 'USR-2', status: 'active', roleIds: ['ROLE-ADMIN'] }))).status, 403, 'IT cannot grant Administrator');
+  assert.equal((await accounts.PATCH(request({ id: 'USR-1', status: 'inactive', roleIds: ['ROLE-MAS'] }))).status, 403, "IT cannot demote an administrator's account");
+  assert.equal((await accounts.DELETE(request({ id: 'USR-1' }))).status, 403, "IT cannot delete an administrator's account");
+  const roles = h.load('app/api/roles/route.ts');
+  assert.equal((await roles.PATCH(request({ id: 'ROLE-MAS', name: 'MAS', manageUsers: true }))).status, 403, 'IT cannot turn on manage users');
+  assert.equal((await roles.PATCH(request({ id: 'ROLE-ADMIN', name: 'Administrator', manageUsers: true }))).status, 403, 'IT cannot edit the Administrator role');
+});
+
 test('master-data CRUD updates programs and blocks deleting referenced records', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const route = h.load('app/api/programs/route.ts');
@@ -173,7 +258,7 @@ test('member directory requires login, joins accounts once, and filters the same
   const h = harness(null);
   const route = h.load('app/api/members/directory/route.ts');
   assert.equal((await route.GET()).status, 401);
-  h.setUser({ userId: 'U1' });
+  h.setUser({ userId: 'U1', roleNames: ['MAS'], permissions: {} });
   const member = ['M1', 'PH-001', 'Santos', 'Ana'];
   member[12] = 'Blk 12, Mintal, Davao City'; member[13] = 'Pedro Santos'; member[15] = 'TRUE'; member[17] = 'Active';
   h.rows.Members = [[], member, ['M2', 'PH-002', 'Cruz', 'Ben']];
@@ -181,7 +266,8 @@ test('member directory requires login, joins accounts once, and filters the same
   h.rows.Programs = [[], ['P1', 'A', 'Program A'], ['P2', 'B', 'Program B']];
   const response = await route.GET();
   assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
-  const { members } = await response.json();
+  const { members, canAddMember } = await response.json();
+  assert.equal(canAddMember, false, 'only encoders are offered Add Member (New Sales)');
   assert.equal(members.length, 2);
   const ana = members.find((m) => m.id === 'M1');
   assert.equal(ana.enrollments.length, 2);
@@ -237,16 +323,18 @@ for (const existingMember of [false, true]) {
     h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active']];
     h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
     h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+    h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
     if (existingMember) h.rows.Members = [[], ['MEM-1', 'PH-1']];
     const response = await h.load('app/api/sales/route.ts').POST(request({
       branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25',
       encodedBy: 'attacker', userId: 'attacker',
-      sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', applicationNo: 'APP-1', addressHouse: 'Complete Address', encodedBy: 'attacker', beneficiaries: existingMember ? [] : [{ surname: 'Santos', firstName: 'Ben', middleName: '', birthdate: '2000-01-02', age: 26, relationship: 'Child' }] }],
+      sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', encodedBy: 'attacker', beneficiaries: existingMember ? [] : [{ surname: 'Santos', firstName: 'Ben', middleName: '', birthdate: '2000-01-02', age: 26, relationship: 'Child' }] }],
     }));
     assert.equal(response.status, 200, JSON.stringify(await response.json()));
     assert.equal(h.writes.length, existingMember ? 2 : 4);
     // Encoder identity follows the business columns; Member programs and Sales keep workflow columns after it.
-    const trailing = (range) => range.startsWith("'Member programs'") ? 1 : range.startsWith("'Sales'") ? 5 : 0;
+    const trailing = (range) => range.startsWith("'Member programs'") ? 1 : range.startsWith("'Sales'") ? 8 : 0;
     const audit = h.writes.map((write) => { const row = write.requestBody.values[0], extra = trailing(write.range); return row.slice(row.length - 4 - extra, row.length - extra); });
     for (const values of audit) {
       assert.deepEqual(values.slice(0, 3), ["'USR-1", "'DPE-0001", "'=encoder"]);
@@ -256,9 +344,10 @@ for (const existingMember of [false, true]) {
     assert.ok(!existingMember || h.writes.every((write) => !write.range.startsWith("'Members'!")));
     // One complete address per person: Sales is A:AE (+4 encoder columns), Members is A:R (+4).
     const saleRow = h.writes.find((write) => write.range.startsWith("'Sales'!")).requestBody.values[0];
-    assert.equal(saleRow.length, 40);
-    // A new sale is cash the MAS owes until a New Sales remittance covers it (no penalty on this batch).
-    assert.deepEqual(saleRow.slice(35), ['Outstanding', '', 'DPE-0002', '', '']);
+    assert.equal(saleRow.length, 43);
+    // A new sale is cash the MAS owes until a New Sales remittance covers it (no penalty, no Fidelity on this batch).
+    // No registration fee: the month-1 MAS tier on the ₱350 base pay (₱50 mark-up, 50%) leaves ₱150 incentive, ₱200 owed.
+    assert.deepEqual(saleRow.slice(35), ['Outstanding', '', 'DPE-0002', '', '', 150, 200, '']);
     assert.equal(saleRow[16], 'Complete Address');
     assert.equal(saleRow[21], 'DP-1');
     assert.equal(saleRow[28], 'APP-1');
@@ -716,7 +805,7 @@ test('entry history lists every tracked sheet, including records saved before tr
   assert.equal(response.status, 200, JSON.stringify(result));
   const sheetCount = h.load('lib/encoder-schema.ts').encoderSheets.length;
   assert.equal(result.modules.length, sheetCount, 'every tracked sheet is a module, even when empty');
-  for (const module of ['New Sales', 'Collections', 'Remittances', 'Members', 'Expenses', 'Payroll', 'User Roles', 'Branch Assignments']) assert.ok(result.modules.includes(module), module);
+  for (const moduleName of ['New Sales', 'Collections', 'Remittances', 'Members', 'Expenses', 'Payroll', 'User Roles', 'Branch Assignments']) assert.ok(result.modules.includes(moduleName), moduleName);
   assert.deepEqual(result.entries.map((entry) => [entry.action, entry.module]), [['Deleted', 'Members'], ['Edited', 'Members'], ['Created', 'Collections'], ['Created', 'New Sales'], ['Created', 'User Roles'], ['Created', 'User Roles'], ['Created', 'User Accounts']]);
   const [deleted, edited] = result.entries;
   assert.equal(edited.detail, 'member contact: 0917 → 0999; status: Active → Inactive');
@@ -933,7 +1022,7 @@ test('new sales are remitted on their own slip, separate from collections', asyn
   assert.deepEqual(dashboard.outstanding.map((item) => [item.kind, item.id, item.remittanceAmount, item.penalty]), [['Collections', 'COL-1', 270, 0], ['New Sales', 'SAL-1', 500, 25]]);
   const post = async (body) => { const response = await route.POST(request({ actualAmount: 500, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
   assert.match((await post({ collectionIds: ['COL-1', 'SAL-1'] })).body.error, /separate slips/);
-  assert.match((await post({ collectionIds: ['SAL-1'], fidelityAmount: 10 })).body.error, /not recorded on a New Sales remittance/);
+  assert.match((await post({ collectionIds: ['SAL-1'], fidelityAmount: 10 })).body.error, /cannot exceed the MAS incentive of ₱0\.00/, 'a sale saved before incentives existed has none to save from');
   const created = await post({ collectionIds: ['SAL-1'], actualAmount: 525 });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.remittance.type, 'New Sales');
@@ -944,6 +1033,43 @@ test('new sales are remitted on their own slip, separate from collections', asyn
   const saleStatus = requests.at(-1).updateCells;
   assert.equal(saleStatus.range.startColumnIndex, 35, 'the sale is marked in Sales AJ:AK, not in Collections');
   assert.deepEqual(saleStatus.rows[0].values.map((value) => value.userEnteredValue.stringValue), ['Pending Remittance Approval', created.body.remittance.id]);
+});
+
+test('New Sales Fidelity comes out of the sale incentive and is shown on its remittance', async () => {
+  const h = harness();
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'Maria', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+  h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
+  const sales = h.load('app/api/sales/route.ts');
+  const body = (fidelityAmount) => ({ branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', fidelityAmount, sales: [{ existingMember: false, memberNumber: '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-9', addressHouse: 'Address', beneficiaries: [] }] });
+  const tooMuch = await sales.POST(request(body(200)));
+  assert.equal(tooMuch.status, 400);
+  assert.match((await tooMuch.json()).message, /cannot exceed the batch's total incentives of ₱150\.00/);
+  const saved = await sales.POST(request(body(50)));
+  assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
+  const saleRow = h.writes.find((write) => write.range.startsWith("'Sales'!")).requestBody.values[0];
+  assert.deepEqual(saleRow.slice(40), [150, 200, 50], 'incentive, company share, and the batch Fidelity');
+
+  // Its remittance expects the company share plus the Fidelity, and says the Fidelity came out of the incentives.
+  const h2 = harness();
+  const sale = Array(43).fill(''); sale[0] = 'SAL-9'; sale[1] = '2026-09-25T02:00:00.000Z'; sale[2] = 'BR-1'; sale[3] = 'Maria'; sale[21] = 'DP-1'; sale[26] = 350; sale[35] = 'Outstanding'; sale[37] = 'DPE-0002'; sale[40] = 150; sale[41] = 200; sale[42] = 50;
+  const collectionsHeader = Array(37).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const remittancesHeader = Array(26).fill(''); remittancesHeader[12] = 'Difference';
+  h2.rows.Collections = [collectionsHeader]; h2.rows.Sales = [Array(43).fill(''), sale]; h2.rows.Remittances = [remittancesHeader];
+  h2.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  const remittances = h2.load('app/api/remittances/route.ts');
+  const outstanding = (await (await remittances.GET()).json()).outstanding;
+  assert.deepEqual(outstanding.map((item) => [item.id, item.remittanceAmount, item.fidelity]), [['SAL-9', 200, 50]]);
+  const created = await remittances.POST(request({ collectionIds: ['SAL-9'], actualAmount: 250, remittanceDate: '2026-09-26' }));
+  const result = await created.json();
+  assert.equal(created.status, 201, JSON.stringify(result));
+  assert.equal(result.remittance.expectedAmount, 250);
+  assert.equal(result.remittance.fidelityAmount, 50);
+  const row = h2.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.match(row[22], /Includes MAS Fidelity ₱50\.00, deducted from the MAS's incentives/);
 });
 
 test('fidelity entered with a Collections batch is used by its remittance and lowers the incentives', async () => {

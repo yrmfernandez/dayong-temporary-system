@@ -6,6 +6,13 @@ import { getEncoder } from "@/lib/encoder-context";
 import { encoderHeaders } from "@/lib/encoder-schema";
 import { parsePageAccess } from "@/lib/roles";
 import { ageRestrictionCells, normalizeAgeRestriction, readAgeRestriction, type AgeRestriction } from "@/lib/program-age";
+import { normalizeSaleIncentive } from "@/lib/remittance";
+
+/** Programs!Q:R cells for the New Sale incentive (blank unless the program has a registration fee). */
+const saleIncentiveCells = (data: { registrationFeeRequired?: unknown; registrationAmount?: unknown; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown }) => {
+  const setting = normalizeSaleIncentive(data);
+  return [setting.saleIncentiveType, setting.saleIncentiveType ? setting.saleIncentiveAmount : ""];
+};
 import { assertUsernameColumnRemoved, loadUsers, readUserRows, USERS_RANGE } from "@/lib/users-sheet";
 import {
   GOOGLE_SHEET_ID,
@@ -437,6 +444,8 @@ export async function addSale(
   sale: SaleSheetData,
   accountableEmployeeId: string,
   penalty: { amount: number; note: string } = { amount: 0, note: "" },
+  // AO mas_incentive, AP remittance_amount (what the company is owed), AQ fidelity_amount (batch's first sale only).
+  quote: { incentive: number; remittance: number; fidelity: number },
 ) {
   const values = [
     sale.saleId,
@@ -492,7 +501,7 @@ export async function addSale(
       requestBody: {
         values: [values],
       },
-    }, [["Outstanding", "", accountableEmployeeId, penalty.amount > 0 ? penalty.amount : "", penalty.amount > 0 ? penalty.note : ""]]);
+    }, [["Outstanding", "", accountableEmployeeId, penalty.amount > 0 ? penalty.amount : "", penalty.amount > 0 ? penalty.note : "", quote.incentive, quote.remittance, quote.fidelity > 0 ? quote.fidelity : ""]]);
 
   return response.data;
 }
@@ -723,6 +732,8 @@ export type ProgramIncentiveSheetData = {
 };
 
 export type CreateProgramData = {
+  saleIncentiveType?: unknown;
+  saleIncentiveAmount?: unknown;
   code: string;
   name: string;
   basePay: number;
@@ -756,7 +767,7 @@ export type CreateProgramData = {
 export async function getPrograms() {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [`${PROGRAMS_SHEET}!A:P`, `${PROGRAM_INCENTIVES_SHEET}!A:H`],
+    ranges: [`${PROGRAMS_SHEET}!A:R`, `${PROGRAM_INCENTIVES_SHEET}!A:H`],
   });
   const rows = response.data.valueRanges?.[0]?.values ?? [];
   if (rows.length <= 1) {
@@ -793,6 +804,9 @@ export async function getPrograms() {
       registrationAmount: Number(row[11] ?? 0) || 0,
       payBalanceTotal: Number(row[12] ?? 0) || 0,
       ...readAgeRestriction(row),
+      // New Sale incentive for programs with a registration fee (Programs Q type, R amount).
+      saleIncentiveType: (["fixed", "percentage"].includes(String(row[16] ?? "").trim()) ? String(row[16]).trim() : "") as "fixed" | "percentage" | "",
+      saleIncentiveAmount: Number(row[17] ?? 0) || 0,
     }));
 
   const incentives =
@@ -964,9 +978,9 @@ export async function createProgram(
   const rowNumber = programRows.findIndex((row) => String(row[0] ?? "").trim() === programId) + 1;
   if (rowNumber > 1) await sheets.spreadsheets.values.update({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${PROGRAMS_SHEET}!K${rowNumber}:P${rowNumber}`,
+    range: `${PROGRAMS_SHEET}!K${rowNumber}:R${rowNumber}`,
     valueInputOption: "RAW",
-    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal, ...ageRestrictionCells(program)]] },
+    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal, ...ageRestrictionCells(program), ...saleIncentiveCells(data)]] },
   });
 
   /*

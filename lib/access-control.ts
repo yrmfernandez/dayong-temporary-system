@@ -10,6 +10,7 @@ export type AccessContext = {
 };
 
 // Default page access for roles whose page access has not been configured in the Roles sheet.
+// New Sales, Collections and Reports are the Entry Clerk's daily operations, so no other role receives them by default.
 const roleRoutes: Record<string, string[]> = {
   administrator: ["*"],
   admin: ["*"],
@@ -18,11 +19,12 @@ const roleRoutes: Record<string, string[]> = {
   president: ["/", "/attendance-tracking", "/attendance", "/settings"],
   "hr officer": ["/", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
   hr: ["/", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
-  finance: ["/", "/audit", "/members", "/collections", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/reports", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
+  finance: ["/", "/audit", "/members", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
   "entry clerk": ["/", "/new-sales", "/members", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/settings"],
-  "it clerk": ["/", "/employees", "/user-accounts", "/branches", "/settings"],
-  it: ["/", "/employees", "/user-accounts", "/branches", "/settings"],
-  mas: ["/", "/members", "/collections", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
+  // IT builds and runs the system: accounts, roles, configuration, and the audit trail.
+  "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/settings"],
+  it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/settings"],
+  mas: ["/", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
 };
 
 // Every signed-in employee's shared workspace, added to roles that still use default access.
@@ -33,6 +35,20 @@ const alwaysAllowed = ["/", "/settings"];
 
 export const normalizeRoleName = (role: string) => role.trim().toLowerCase();
 export const isAdministratorRole = (role: string) => ["administrator", "admin"].includes(normalizeRoleName(role));
+export const itRoles = ["it clerk", "it"];
+export const hrRoles = ["hr officer", "hr"];
+const hasRole = (context: Pick<AccessContext, "roleNames">, names: string[]) => context.roleNames.some((role) => names.includes(normalizeRoleName(role)) || isAdministratorRole(role));
+
+/**
+ * Job-specific management rights. `manage_users` still grants all of them, but it also approves remittances and voids
+ * finance records, so IT and HR receive only the part of it their work needs.
+ */
+// Sign-in accounts, roles and the audit trail: IT's job.
+export const canManageAccountsFor = (context: AccessContext) => context.permissions.manageUsers || hasRole(context, itRoles);
+// The employee register: HR hires, IT sets up access.
+export const canManageEmployeesFor = (context: AccessContext) => context.permissions.manageUsers || hasRole(context, [...itRoles, ...hrRoles]);
+// Branches, programs and incentive tiers: system configuration kept by IT.
+export const canManageConfigurationFor = (context: AccessContext) => context.permissions.manageUsers || hasRole(context, itRoles);
 
 /** Pages a role receives when its page access has not been configured. Used to pre-fill the Roles editor. */
 export function defaultRoutesForRole(role: string) {
@@ -68,4 +84,36 @@ export function accessibleRoutes(context: AccessContext) {
 export function canAccessPath(context: AccessContext, pathname: string) {
   const routes = accessibleRoutes(context);
   return routes.includes("*") || routes.some((route) => routeMatches(pathname, route));
+}
+
+export type DashboardKind = "admin" | "executive" | "hr" | "finance" | "entry" | "it" | "mas" | "collector";
+
+function kindOfRole(role: string): DashboardKind | null {
+  const name = normalizeRoleName(role);
+  if (isAdministratorRole(name)) return "admin";
+  if (executiveRoles.includes(name)) return "executive";
+  if (name === "finance") return "finance";
+  if (hrRoles.includes(name)) return "hr";
+  if (itRoles.includes(name)) return "it";
+  if (name === "entry clerk") return "entry";
+  if (name === "collector") return "collector";
+  if (name === "mas") return "mas";
+  return null;
+}
+
+/**
+ * The dashboard for the workspace the user chose in the sidebar, when they really hold that role; otherwise their most
+ * senior role. Every employee may also use the MAS workspace, except users whose only roles are executive.
+ */
+export function dashboardKind(user: Pick<AccessContext, "roleNames">, preferredRole = ""): DashboardKind {
+  const roles = user.roleNames.map(normalizeRoleName);
+  const preferred = normalizeRoleName(preferredRole);
+  const executiveOnly = roles.length > 0 && roles.every((role) => executiveRoles.includes(role));
+  if (preferred && (roles.includes(preferred) || (preferred === "mas" && !executiveOnly))) {
+    const kind = kindOfRole(preferred);
+    if (kind) return kind;
+  }
+  const order: DashboardKind[] = ["admin", "executive", "finance", "hr", "it", "entry", "collector", "mas"];
+  const held = roles.map(kindOfRole).filter((kind): kind is DashboardKind => Boolean(kind));
+  return order.find((kind) => held.includes(kind)) ?? "mas";
 }

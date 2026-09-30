@@ -1,14 +1,17 @@
-import { canManageUsers, getSessionUser } from "@/lib/auth-server";
+import { canManageEmployees, getSessionUser, userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { deleteEmployee, getEmployees, getNextEmployeeId, registerEmployee, updateEmployee, updateEmployeeStatus } from "@/lib/employees";
 import { getActiveAccountRoles, getBranches } from "@/lib/google-sheets-data";
 import { getUserAccounts } from "@/lib/master-data-crud";
-import { createDefaultAccount, DEFAULT_PASSWORD } from "@/lib/employee-accounts";
+import { accountRoleIdsFor, createDefaultAccount, DEFAULT_PASSWORD } from "@/lib/employee-accounts";
+import { guardAccountChange } from "@/lib/privilege-guard";
 
 export async function GET() {
   if (!(await getSessionUser())) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
+  // The directory serves the Employees page and the Commissions employee picker.
+  if (!(await userWithPageAccess("/employees", "/commissions"))) return Response.json({ success: false, message: "You do not have access to Employees." }, { status: 403 });
   try {
-    const [employees, branches, accountRoles, accounts, canManage] = await Promise.all([getEmployees(), getBranches(), getActiveAccountRoles(),getUserAccounts(), canManageUsers()]);
+    const [employees, branches, accountRoles, accounts, canManage] = await Promise.all([getEmployees(), getBranches(), getActiveAccountRoles(),getUserAccounts(), canManageEmployees()]);
     const nextEmployeeId = canManage ? await getNextEmployeeId() : "";
     // Every role comes from the Roles page, so a role an administrator adds is offered here straight away.
     const operationalRoles = [...new Set(accountRoles.map((role) => role.name))].sort();
@@ -19,7 +22,7 @@ export async function GET() {
   }
 }
 export const POST = withEncoder(async (request: Request) => {
-  if (!(await canManageUsers())) return Response.json({ success: false, message: "You are not allowed to register employees." }, { status: 403 });
+  if (!(await canManageEmployees())) return Response.json({ success: false, message: "You are not allowed to register employees." }, { status: 403 });
   try {
     const body = await request.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Invalid employee details.");
@@ -29,6 +32,9 @@ export const POST = withEncoder(async (request: Request) => {
     // Every new employee gets a sign-in account straight away, with the default password.
     let account: { created: boolean; reason?: string; defaultPassword?: string };
     try {
+      // HR and IT may register anyone, but an account with administrator-level roles needs an administrator.
+      const denied = await guardAccountChange({ roleIds: accountRoleIdsFor(employee.roles, accountRoles) });
+      if (denied) return Response.json({ success: true, employee, account: { created: false, reason: `The employee was registered. ${denied} Ask an administrator to create this account.` } }, { status: 201 });
       const result = await createDefaultAccount(employee);
       account = result.created ? { created: true, defaultPassword: DEFAULT_PASSWORD } : { created: false, reason: result.reason };
     } catch (error) {
@@ -39,7 +45,7 @@ export const POST = withEncoder(async (request: Request) => {
 });
 
 export const PATCH = withEncoder(async (request: Request) => {
-  if (!(await canManageUsers())) return Response.json({ success: false, message: "You are not allowed to update employees." }, { status: 403 });
+  if (!(await canManageEmployees())) return Response.json({ success: false, message: "You are not allowed to update employees." }, { status: 403 });
   try {
     const body = await request.json();
     const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
@@ -54,7 +60,7 @@ export const PATCH = withEncoder(async (request: Request) => {
 });
 
 export const DELETE = withEncoder(async (request: Request) => {
-  if (!(await canManageUsers())) return Response.json({ success: false, message: "You are not allowed to delete employees." }, { status: 403 });
+  if (!(await canManageEmployees())) return Response.json({ success: false, message: "You are not allowed to delete employees." }, { status: 403 });
   try {
     const body = await request.json();
     const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";

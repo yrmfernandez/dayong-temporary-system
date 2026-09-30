@@ -7,7 +7,9 @@ import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { executiveRoles, type AccessContext } from "@/lib/access-control";
 import { isInWorkspace, normalizeRole, visibleNavigation } from "@/lib/navigation";
-import { onPreferencesChange, preferenceKeys, readDensity, readPreference, writePreference } from "@/lib/ui-preferences";
+import { ACTIVE_ROLE_COOKIE, onPreferencesChange, preferenceKeys, readDensity, readPreference, writeActiveRoleCookie, writePreference } from "@/lib/ui-preferences";
+
+const safeDecode = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };
 
 export type ShellUser = { name: string; employeeId: string };
 
@@ -53,11 +55,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         });
         const available = roleOptions(roleNames);
         const saved = readPreference(preferenceKeys.activeRole);
-        setActiveRole(available.find((role) => normalizeRole(role) === normalizeRole(saved)) ?? available[0]);
+        const resolved = available.find((role) => normalizeRole(role) === normalizeRole(saved)) ?? available[0];
+        setActiveRole(resolved);
+        // The server renders the dashboard for this role; re-render it if it was drawn for a different one.
+        const drawnFor = document.cookie.split("; ").find((item) => item.startsWith(`${ACTIVE_ROLE_COOKIE}=`))?.split("=")[1] ?? "";
+        writeActiveRoleCookie(resolved);
+        if (normalizeRole(safeDecode(drawnFor)) !== normalizeRole(resolved) && window.location.pathname === "/") router.refresh();
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, [isLogin]);
+  }, [isLogin, router]);
 
   useEffect(() => {
     const applyDensity = () => { document.documentElement.dataset.density = readDensity(); };
@@ -74,7 +81,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   function chooseRole(role: string) {
     setActiveRole(role);
     writePreference(preferenceKeys.activeRole, role);
+    writeActiveRoleCookie(role);
     if (!isInWorkspace(role, pathname, access)) router.push("/");
+    else if (pathname === "/") router.refresh();
   }
 
   if (isLogin) return <>{children}</>;

@@ -1,6 +1,6 @@
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
-import { canManageUsers } from "@/lib/auth-server";
+import { canManageConfiguration } from "@/lib/auth-server";
 import { deleteBranchRecord, updateBranchRecord, type BranchInput } from "@/lib/master-data-crud";
 
 import {
@@ -15,7 +15,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       branches,
-      canManage: await canManageUsers(),
+      canManage: await canManageConfiguration(),
     });
   } catch (error) {
     console.error("Get branches error:", error);
@@ -31,7 +31,7 @@ export async function GET() {
 }
 
 export const POST = withEncoder(async function POST(request: Request) {
-  if (!(await canManageUsers())) return NextResponse.json({ success: false, message: "You are not allowed to create branches." }, { status: 403 });
+  if (!(await canManageConfiguration())) return NextResponse.json({ success: false, message: "You are not allowed to create branches." }, { status: 403 });
   try {
     const body = await request.json();
     const readField = (field: string) =>
@@ -103,13 +103,13 @@ function branchInput(body: Record<string, unknown>): BranchInput {
 }
 
 export const PUT = withEncoder(async (request: Request) => {
-  if (!(await canManageUsers())) return NextResponse.json({ success: false, message: "You are not allowed to update branches." }, { status: 403 });
+  if (!(await canManageConfiguration())) return NextResponse.json({ success: false, message: "You are not allowed to update branches." }, { status: 403 });
   try { const id = new URL(request.url).searchParams.get("id")?.trim() ?? ""; const body = await request.json(); return NextResponse.json({ success: true, branch: await updateBranchRecord(id, branchInput(body)) }); }
   catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to update branch." }, { status: 400 }); }
 });
 
 export const DELETE = withEncoder(async (request: Request) => {
-  if (!(await canManageUsers())) return NextResponse.json({ success: false, message: "You are not allowed to delete branches." }, { status: 403 });
+  if (!(await canManageConfiguration())) return NextResponse.json({ success: false, message: "You are not allowed to delete branches." }, { status: 403 });
   try { const id = new URL(request.url).searchParams.get("id")?.trim() ?? ""; await deleteBranchRecord(id); return NextResponse.json({ success: true }); }
   catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to delete branch." }, { status: 400 }); }
 });

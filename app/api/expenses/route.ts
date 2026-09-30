@@ -1,9 +1,11 @@
-import { getSessionUser, canManageUsers } from "@/lib/auth-server";
+import { canManageUsers, userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense, getFinanceData, voidFinanceRecord } from "@/lib/finance-data";
 
+const denied = () => Response.json({ success: false, message: "You do not have access to Expenses." }, { status: 403 });
+
 export async function GET() {
-  if (!(await getSessionUser())) return Response.json({ success: false, message: "Not signed in." }, { status: 401 });
+  if (!(await userWithPageAccess("/expenses"))) return denied();
   try {
     const data = await getFinanceData();
     return Response.json({ success: true, expenses: data.expenses, canVoid: await canManageUsers() }, { headers: { "Cache-Control": "private, no-store" } });
@@ -11,6 +13,7 @@ export async function GET() {
 }
 
 export const POST = withEncoder(async (request: Request) => {
+  if (!(await userWithPageAccess("/expenses"))) return denied();
   try { return Response.json({ success: true, ...(await createExpense(await request.json())) }, { status: 201 }); }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save expense." }, { status: 400 }); }
 });

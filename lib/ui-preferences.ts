@@ -10,6 +10,12 @@ export const preferenceKeys = {
 
 const changeEvent = "dayong-preferences";
 
+/** Mirrors the chosen workspace for the server-rendered dashboard. The server checks it against the signed-in roles. */
+export const ACTIVE_ROLE_COOKIE = "dayong_role";
+export function writeActiveRoleCookie(role: string) {
+  try { document.cookie = `${ACTIVE_ROLE_COOKIE}=${encodeURIComponent(role)}; path=/; max-age=31536000; samesite=lax`; } catch { /* cookies blocked */ }
+}
+
 // Storage can throw in private windows or when site data is blocked; preferences are conveniences only.
 export function readPreference(key: string, fallback = "") {
   try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }

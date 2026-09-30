@@ -2,7 +2,7 @@
 
 Fidelity is a voluntary savings benefit for MAS employees. It does not apply to Collector incentives.
 
-- The Entry Clerk manually records the amount requested by the MAS on each Remittance. The amount may be zero.
+- The Entry Clerk records the amount the MAS asks to save when encoding a Collections or New Sales batch (or on the Remittance for older batches). The amount may be zero. It comes out of that batch's incentives and is added to the remittance.
 - Lifetime approved contributions stop at ₱10,000; the final amount is limited to the remaining balance.
 - Savings remain locked until the ₱10,000 cap is reached.
 - When Finance or an Administrator records the MAS claim, the current balance resets to zero and a new ₱10,000 savings cycle begins. The previous claim remains in the Fidelity history.

@@ -28,7 +28,7 @@ function aggregate(lines: ReportLine[], key: (line: ReportLine) => string) {
 
 export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; encoder?: string } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error("Choose a valid report date range.");
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AN", "'Collections'!A:AK", "'Programs'!A:F", "'Remittances'!A:Y", "'Expenses'!A:Q", "'Cash Transactions'!A:P", "'Remittance Collections'!A:I"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
+  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AQ", "'Collections'!A:AK", "'Programs'!A:F", "'Remittances'!A:Y", "'Expenses'!A:Q", "'Cash Transactions'!A:P", "'Remittance Collections'!A:I"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
   const [sales, collections, programs, remittances, expenses, cash, remittanceCollections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const inRange = (date: string) => date >= from && date <= to;
@@ -38,7 +38,10 @@ export async function buildOperationalReport(from: string, to: string, filters: 
   for(const row of remittanceCollections.slice(1)){const remittanceId=text(row[1]);if(!assigned.has(remittanceId)&&approvedFidelity.has(remittanceId)){fidelityByCollection.set(text(row[2]),approvedFidelity.get(remittanceId)??0);assigned.add(remittanceId)}}
   const salesLines: ReportLine[] = sales.slice(1).filter((row) => text(row[0])).map((row) => {
     const date = text(row[1]).slice(0, 10), branch = text(row[2]), person = text(row[3]), programId = text(row[21]), gross = number(row[26]), penalty = number(row[38]);
-    return { date, branch, programId, programName: programNames.get(programId) || programId, person, role: "MAS", encodedBy: text(row[33]), accounts: 1, gross, masCommission: 0, collectorCommission: 0, incentives: 0, fidelity: 0, penalty, net: gross + penalty, expectedRemittance: gross + penalty };
+    // AP is the company's share after the MAS's New Sale incentive; blank on sales saved before incentives existed.
+    const remittance = text(row[41]) === "" ? gross : number(row[41]), incentives = Math.max(0, round(gross - remittance));
+    const fidelityAmount = fidelityByCollection.get(text(row[0])) ?? 0, net = round(remittance + fidelityAmount + penalty);
+    return { date, branch, programId, programName: programNames.get(programId) || programId, person, role: "MAS", encodedBy: text(row[33]), accounts: 1, gross, masCommission: incentives, collectorCommission: 0, incentives, fidelity: fidelityAmount, penalty, net, expectedRemittance: net };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const collectionLines: ReportLine[] = collections.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted").map((row) => {
     const date = text(row[9]).slice(0, 10), branch = text(row[6]), programId = text(row[5]), person = text(row[31]) || text(row[7]), role = text(row[25]) || text(row[32]) || "MAS", gross = number(row[10]), expected = number(row[26]) || gross;
@@ -58,6 +61,6 @@ export async function buildOperationalReport(from: string, to: string, filters: 
     byBranch: aggregate(allLines, (line) => line.branch || "Unassigned").sort((a, b) => a.branch.localeCompare(b.branch)),
     byProgram: aggregate(allLines, (line) => line.programId || "Unassigned").sort((a, b) => a.programName.localeCompare(b.programName)),
     summary: summarize(allLines, postedExpenses, approvedRemittances, deposits),
-    notes: ["Fidelity is the manual amount recorded by the Entry Clerk on an approved MAS Remittance. It may be zero and accumulates toward the ₱10,000 lifetime cap.", "New Sales incentives are shown as zero because no approved sales-incentive rule is stored; Collection incentives use gross less the saved remittance amount."]
+    notes: ["Fidelity is the manual amount recorded by the Entry Clerk on an approved MAS Remittance. It may be zero and accumulates toward the ₱10,000 lifetime cap.", "New Sales incentives follow the program: its New Sale incentive when it has a registration fee, otherwise the month-1 MAS tier on the base pay. Collection incentives use gross less the saved remittance amount. Sales saved before New Sale incentives existed show none."]
   };
 }

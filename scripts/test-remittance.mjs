@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calculateRemittance } from "../lib/remittance.ts";
+import { calculateRemittance, calculateSaleIncentive, normalizeSaleIncentive } from "../lib/remittance.ts";
 // Remittance = ((base pay - mark-up) - incentive) + mark-up; incentive = fixed amount or % of (base pay - mark-up).
 const tier = { id: "T1", role: "MAS", fromMonth: 1, toMonth: 6, incentiveType: "percentage", markUp: 50, incentiveAmount: 50 };
 
@@ -48,4 +48,28 @@ test("missing, overlapping, and invalid tiers block saving instead of guessing",
   assert.throws(() => calculateRemittance(350, [tier, tier], "MAS", 1, 1), /exactly one/);
   assert.throws(() => calculateRemittance(350, [{ ...tier, markUp: 400 }], "MAS", 1, 1), /Invalid/);
   assert.throws(() => calculateRemittance(350, [{ ...tier, incentiveType: "fixed", incentiveAmount: 301 }], "MAS", 1, 1), /more than the installment less mark-up/);
+});
+
+test("New Sale with a registration fee uses the program's own incentive", () => {
+  const program = { basePay: 350, registrationFeeRequired: true, incentiveTiers: [tier], saleIncentiveType: "percentage", saleIncentiveAmount: 20 };
+  assert.deepEqual(calculateSaleIncentive(program, 500).incentive, 100);
+  assert.equal(calculateSaleIncentive(program, 500).remittance, 400);
+  assert.equal(calculateSaleIncentive({ ...program, saleIncentiveType: "fixed", saleIncentiveAmount: 150 }, 500).incentive, 150);
+  assert.equal(calculateSaleIncentive({ ...program, saleIncentiveType: "fixed", saleIncentiveAmount: 150 }, 100).incentive, 100, "a fixed incentive never exceeds what was paid");
+  assert.equal(calculateSaleIncentive({ ...program, saleIncentiveType: "", saleIncentiveAmount: 0 }, 500).remittance, 500, "no incentive set: everything is remitted");
+});
+
+test("New Sale without a registration fee uses the month-1 tier on the base pay", () => {
+  const program = { basePay: 350, registrationFeeRequired: false, incentiveTiers: [tier], saleIncentiveType: "", saleIncentiveAmount: 0 };
+  assert.deepEqual([calculateSaleIncentive(program, 350).incentive, calculateSaleIncentive(program, 350).remittance], [150, 200]);
+  assert.deepEqual([calculateSaleIncentive(program, 400).incentive, calculateSaleIncentive(program, 400).remittance], [150, 250], "above one month is remitted in full");
+  assert.equal(calculateSaleIncentive(program, 200).incentive, 0, "less than one month earns no incentive");
+  assert.throws(() => calculateSaleIncentive({ ...program, incentiveTiers: [] }, 350), /NOP 1/);
+});
+
+test("New Sale incentive settings are validated", () => {
+  assert.deepEqual(normalizeSaleIncentive({ registrationFeeRequired: false, saleIncentiveType: "fixed", saleIncentiveAmount: 50 }), { saleIncentiveType: "", saleIncentiveAmount: 0 });
+  assert.deepEqual(normalizeSaleIncentive({ registrationFeeRequired: true, registrationAmount: 500, saleIncentiveType: "percentage", saleIncentiveAmount: "25" }), { saleIncentiveType: "percentage", saleIncentiveAmount: 25 });
+  assert.throws(() => normalizeSaleIncentive({ registrationFeeRequired: true, registrationAmount: 500, saleIncentiveType: "percentage", saleIncentiveAmount: 120 }), /100%/);
+  assert.throws(() => normalizeSaleIncentive({ registrationFeeRequired: true, registrationAmount: 100, saleIncentiveType: "fixed", saleIncentiveAmount: 150 }), /registration amount/);
 });

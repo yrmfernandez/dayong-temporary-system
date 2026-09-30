@@ -60,6 +60,50 @@ test("CEO and President only open the dashboard and attendance pages", () => {
   }
 });
 
+test("IT runs accounts and configuration; HR manages employees; neither approves money", async () => {
+  const { canManageAccountsFor, canManageEmployeesFor, canManageConfigurationFor } = await import("../lib/access-control.ts");
+  const context = (roleNames, overrides = {}) => ({ roleNames, permissions: { ...permissions, ...overrides } });
+  assert.equal(canManageAccountsFor(context(["IT Clerk"])), true);
+  assert.equal(canManageConfigurationFor(context(["IT Clerk"])), true);
+  assert.equal(canManageEmployeesFor(context(["IT Clerk"])), true);
+  assert.equal(canManageEmployeesFor(context(["HR Officer"])), true);
+  assert.equal(canManageAccountsFor(context(["HR Officer"])), false);
+  assert.equal(canManageAccountsFor(context(["Finance"])), false);
+  assert.equal(canManageAccountsFor(context(["Administrator"])), true);
+  assert.equal(canManageAccountsFor(context(["MAS"], { manageUsers: true })), true);
+  for (const path of ["/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history"]) assert.equal(access(["IT Clerk"], path), true, path);
+  for (const path of ["/remittances", "/expenses", "/payroll", "/cash-transactions"]) assert.equal(access(["IT Clerk"], path), false, path);
+});
+
+test("the dashboard follows the chosen workspace only when the user holds that role", async () => {
+  const { dashboardKind } = await import("../lib/access-control.ts");
+  const user = (roleNames) => ({ roleNames, permissions, rolePages: {}, roles: [], userId: "U", employeeId: "E", name: "N" });
+  assert.equal(dashboardKind(user(["Administrator", "Entry Clerk"])), "admin");
+  assert.equal(dashboardKind(user(["Administrator", "Entry Clerk"]), "Entry Clerk"), "entry");
+  assert.equal(dashboardKind(user(["Entry Clerk"]), "Administrator"), "entry", "a forged cookie cannot unlock another dashboard");
+  assert.equal(dashboardKind(user(["Finance"]), "MAS"), "mas");
+  assert.equal(dashboardKind(user(["CEO"]), "MAS"), "executive", "executive-only users have no MAS workspace");
+  assert.equal(dashboardKind(user(["IT Clerk"])), "it");
+  assert.equal(dashboardKind(user(["Collector"])), "collector");
+  assert.equal(dashboardKind(user(["HR Officer", "Finance"]), "HR Officer"), "hr");
+});
+
+test("New Sales, Collections and Reports belong to the Entry Clerk's daily operations", () => {
+  const encoding = ["/new-sales", "/collections", "/reports", "/reports/daily", "/reports/weekly", "/reports/monthly", "/reports/yearly"];
+  for (const path of encoding) assert.equal(access(["Entry Clerk"], path), true, `Entry Clerk ${path}`);
+  for (const role of ["Finance", "MAS", "Collector", "HR Officer", "IT Clerk", "CEO", "President"]) {
+    for (const path of encoding) assert.equal(access([role], path), false, `${role} ${path}`);
+  }
+  assert.equal(access(["Finance", "Entry Clerk"], "/collections"), true, "a person holding both roles keeps the encoding pages");
+  assert.equal(access(["Administrator"], "/collections"), true, "Administrator keeps every page");
+});
+
+test("Statement of Account is an Administrator page unless granted", () => {
+  assert.equal(access(["Administrator"], "/soa"), true);
+  for (const role of ["Finance", "Entry Clerk", "MAS", "HR Officer", "IT Clerk", "CEO"]) assert.equal(access([role], "/soa"), false, role);
+  assert.equal(canAccessPath({ roleNames: ["Finance"], permissions, rolePages: { finance: ["/soa"] } }, "/soa"), true, "an administrator can grant it in Roles");
+});
+
 test("specific action flags supplement role navigation", () => {
   assert.equal(access(["Entry Clerk"], "/user-accounts", { manageUsers: true }), true);
   assert.equal(access(["MAS"], "/attendance-reviews", { viewAttendanceReports: true }), true);

@@ -34,7 +34,7 @@ export type CashCollection = {
   /** Remittance penalty charged to the accountable MAS/Collector; set on the batch's first Collection only. */
   penalty: number;
   penaltyNote: string;
-  /** MAS Fidelity entered with a Collections batch (first row only); it comes out of the batch's incentives. */
+  /** MAS Fidelity entered with a Collections or New Sales batch (first row only); it comes out of the batch's incentives. */
   fidelity: number;
   remittanceStatus: string;
   linkedRemittanceId: string;
@@ -100,14 +100,16 @@ async function loadLedger() {
     collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]), fidelity: number(row[37]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${text(row[9])}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((collection) => collection.id && text(rows.Collections[collection.rowNumber - 1]?.[19]).toLowerCase() === "posted");
-  // New Sales: the full amount paid is owed by the sale's MAS (Sales AJ status, AK linked remittance, AL accountable ID).
+  // New Sales are owed by the sale's MAS (Sales AJ status, AK linked remittance, AL accountable ID). AP holds the company's
+  // share after the MAS's New Sale incentive (AO); sales saved before incentives existed owe the full amount paid.
+  // AQ is the batch's MAS Fidelity, on its first sale.
   const saleDate = (row: unknown[]) => text(row[30]) || text(row[1]).slice(0, 10);
   const sales: CashCollection[] = rows.Sales.slice(1).map((row, index) => ({
     kind: "New Sales" as const, id: text(row[0]), batchId: "", rowNumber: index + 2, memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
     accountableEmployeeId: text(row[37]), accountableName: text(row[3]), accountableRole: "MAS",
-    orNumber: text(row[29]) || (text(row[28]) ? `App ${text(row[28])}` : ""), orDate: saleDate(row), amount: number(row[26]), remittanceAmount: number(row[26]),
+    orNumber: text(row[29]) || (text(row[28]) ? `App ${text(row[28])}` : ""), orDate: saleDate(row), amount: number(row[26]), remittanceAmount: text(row[41]) === "" ? number(row[26]) : number(row[41]),
     remittanceStatus: text(row[35]) || "Needs Historical Review", linkedRemittanceId: text(row[36]),
-    collectedBy: "MAS", paymentMethod: text(row[23]) || "Cash", paymentReference: "", penalty: number(row[38]), penaltyNote: text(row[39]), fidelity: 0,
+    collectedBy: "MAS", paymentMethod: text(row[23]) || "Cash", paymentReference: "", penalty: number(row[38]), penaltyNote: text(row[39]), fidelity: number(row[42]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${saleDate(row)}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((sale) => sale.id);
   collections.push(...sales);
@@ -201,10 +203,9 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   if (!Number.isFinite(input.actualAmount) || input.actualAmount < 0) throw new Error("Enter the actual amount received.");
   if (!Number.isFinite(input.fidelityAmount) || input.fidelityAmount < 0) throw new Error("Fidelity must be zero or a positive amount.");
   const encodedFidelity = Math.round(collections.reduce((sum, item) => sum + item.fidelity, 0) * 100) / 100;
-  if (encodedFidelity > 0 && input.fidelityAmount > 0 && Math.round(input.fidelityAmount * 100) !== Math.round(encodedFidelity * 100)) throw new Error("Fidelity for this batch was entered with the Collections and is already included.");
+  if (encodedFidelity > 0 && input.fidelityAmount > 0 && Math.round(input.fidelityAmount * 100) !== Math.round(encodedFidelity * 100)) throw new Error("Fidelity for this batch was entered when it was encoded and is already included.");
   const fidelityAmount = encodedFidelity || input.fidelityAmount;
   if (owner.accountableRole.toLowerCase() !== "mas" && fidelityAmount !== 0) throw new Error("Fidelity is only available for MAS remittances.");
-  if (kind === "New Sales" && fidelityAmount !== 0) throw new Error("Fidelity comes from collection incentives; it is not recorded on a New Sales remittance.");
   const availableIncentive=Math.round(collections.reduce((sum,item)=>sum+Math.max(0,item.amount-item.remittanceAmount),0)*100)/100;
   if(fidelityAmount>availableIncentive)throw new Error(`Fidelity cannot exceed the MAS incentive of ${availableIncentive.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} in this Remittance.`);
   const fidelityAccount=(await getFidelityData(owner.accountableEmployeeId,true)).accounts.find(item=>item.masEmployeeId===owner.accountableEmployeeId);
@@ -219,7 +220,8 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   // The Remittances sheet itself shows whether a penalty is included and what it was for.
   const penalized = collections.filter((collection) => collection.penalty > 0);
   const penaltyText = penalized.map((collection) => `Includes penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}: ${collection.penaltyNote}`).join("; ");
-  const remarks = [text(input.remarks), penaltyText].filter(Boolean).join(" | ");
+  const fidelityText = fidelityAmount > 0 ? `Includes MAS Fidelity ${fidelityAmount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}, deducted from the MAS's incentives` : "";
+  const remarks = [text(input.remarks), penaltyText, fidelityText].filter(Boolean).join(" | ");
   const status = approved ? "Approved" : difference === 0 ? "Pending Approval" : "Discrepancy";
   const id = createReadableId("REM");
   const timestamp = actor.encodedAt;

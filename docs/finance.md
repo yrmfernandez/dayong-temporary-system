@@ -10,7 +10,16 @@ The consolidated Cash Ledger is generated from those sources. Users must not re-
 
 ## Expense records
 
-Each expense has a stable ID, expense date, category, description, amount, payee, payment source, branch, payment method, reference and receipt numbers, status, remarks, creation timestamp, encoder identity, and void history.
+The entry form follows the company expense form: Branch, Date of Expense, Account Name, Amount, Attachments, Invoice/Receipt No., Purpose, Approved by, and Remarks. Choices live in `lib/expense-options.ts`:
+
+- **Account Name** (`category`): Transportation, Meals/Snacks, Electric Bill, Water Bill, Internet/Load, Monthly Office Rent, Bank Fee/Charge, Cash Burial Assistance, Allowance, Office Supplies, Cash Advance, Miscellaneous, Other. "Other" must be specified and is saved as `Other: <detail>`.
+- **Attachments** (column V `attachments`): a checklist of the supporting documents (Voucher, Invoice, Receipt, MC Minutes, Other), saved comma-separated. Files themselves are kept on paper; no upload is stored.
+- **Approved by** (column W `approved_by`): VP Finance, CEO/President, or Other with a name.
+- **Purpose** is saved in `description`; **Invoice/Receipt No.** in `receipt_number`.
+
+Payee, payment method, payment reference and "Paid from" are optional payment details. "Paid from" defaults to Cash on Hand, which is how the expense leaves the cash ledger. Run `npm run sheets:expense-fields -- --apply` once to add columns V and W; expenses saved earlier read as no attachments and no approver recorded.
+
+Each expense also keeps a stable ID, status, creation timestamp, encoder identity, and void history.
 
 ## Cash records
 

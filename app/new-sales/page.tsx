@@ -27,6 +27,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { todayInManila } from "@/lib/account-rules";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { RemittanceSummary } from "@/components/remittance-summary";
+import { calculateSaleIncentive } from "@/lib/remittance";
 import {
   Select,
   SelectContent,
@@ -216,12 +217,12 @@ export default function NewSalesPage() {
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
   const [dateRemitted, setDateRemitted] = useState("");
 
-  const [sales, setSales] = useState<NewSale[]>([
-    emptyNewSale(),
-  ]);
+  // The first sale starts expanded, so its form is ready to fill in.
+  const [initialSale] = useState(emptyNewSale);
+  const [sales, setSales] = useState<NewSale[]>([initialSale]);
 
   const [expandedSales, setExpandedSales] =
-    useState<Record<string, boolean>>({});
+    useState<Record<string, boolean>>(() => ({ [initialSale.id]: true }));
   const saleRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [scrollTargetSaleId, setScrollTargetSaleId] =
     useState("");
@@ -237,11 +238,14 @@ export default function NewSalesPage() {
   const [penaltyNote, setPenaltyNote] = useState("");
   const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
   const totalPaid = sales.reduce((sum, sale) => sum + Math.round((Number(sale.program.amountPaid) || 0) * 100), 0) / 100;
+  // MAS Fidelity for this batch: what the MAS asks to save, taken out of the batch's New Sale incentives. Zero is allowed.
+  const [fidelity, setFidelity] = useState("");
+  const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
 
   // The unsaved form survives leaving the page (e.g. to Collections) and coming back.
   useFormDraft(
     "new-sales",
-    { branch, mas, dateRemitted, sales, expandedSales, penalty, penaltyNote },
+    { branch, mas, dateRemitted, sales, expandedSales, penalty, penaltyNote, fidelity },
     (draft) => {
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
@@ -250,12 +254,28 @@ export default function NewSalesPage() {
       setExpandedSales(draft.expandedSales ?? {});
       setPenalty(draft.penalty ?? "");
       setPenaltyNote(draft.penaltyNote ?? "");
+      setFidelity(draft.fidelity ?? "");
     },
   );
 
   const [programs, setPrograms] = useState<
     Program[]
   >([]);
+
+  // Each sale's MAS incentive and company share, by the same rule the server saves (lib/remittance.ts).
+  const saleQuotes = sales.map((sale) => {
+    const program = programs.find((item) => item.code === sale.program.programCode);
+    if (!program) return null;
+    try {
+      return calculateSaleIncentive({ basePay: program.basePay, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: program.incentiveTiers ?? [] }, Number(sale.program.amountPaid) || 0);
+    } catch (error) {
+      return { incentive: 0, remittance: 0, rule: "", error: error instanceof Error ? error.message : "The incentive could not be calculated." };
+    }
+  });
+  const quoteProblem = saleQuotes.find((quote) => quote && "error" in quote) as { error: string } | undefined;
+  const quotesReady = saleQuotes.every(Boolean) && !quoteProblem;
+  const totalSaleRemittance = quotesReady ? saleQuotes.reduce((sum, quote) => sum + Math.round((quote?.remittance ?? 0) * 100), 0) / 100 : null;
+  const totalSaleIncentives = Math.round((totalPaid - (totalSaleRemittance ?? totalPaid)) * 100) / 100;
 
   const [branches, setBranches] = useState<
     NonNullable<BranchApiResponse["branches"]>
@@ -274,15 +294,6 @@ export default function NewSalesPage() {
   const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
-    if (sales.length > 0) {
-      setExpandedSales((current) => ({
-        ...current,
-        [sales[0].id]: true,
-      }));
-    }
-  }, []);
-
-  useEffect(() => {
     const loadMasStaff = async () => {
       const response = await fetch("/api/mas", { cache: "no-store" });
       const result = await response.json();
@@ -298,6 +309,7 @@ export default function NewSalesPage() {
       behavior: "smooth",
       block: "start",
     });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the one-shot scroll request once it has run
     setScrollTargetSaleId("");
   }, [sales, scrollTargetSaleId]);
 
@@ -529,12 +541,14 @@ export default function NewSalesPage() {
 
   const dismissMemberChoices = (saleId: string) => {
     setMemberSearchResults((current) => {
-      const { [saleId]: _dismissed, ...remaining } = current;
+      const remaining = { ...current };
+      delete remaining[saleId];
       return remaining;
     });
 
     setMemberSearchTerms((current) => {
-      const { [saleId]: _dismissed, ...remaining } = current;
+      const remaining = { ...current };
+      delete remaining[saleId];
       return remaining;
     });
   };
@@ -896,6 +910,16 @@ export default function NewSalesPage() {
       return;
     }
 
+    if (quoteProblem) {
+      setSaveMessage(quoteProblem.error);
+      return;
+    }
+
+    if (Number(fidelity) < 0 || fidelityAmount > totalSaleIncentives) {
+      setSaveMessage("Fidelity must be zero or more, and no more than the batch's incentives.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -955,6 +979,7 @@ export default function NewSalesPage() {
               preparedSales,
             penalty: penaltyAmount,
             penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "",
+            fidelityAmount,
           }),
         },
       );
@@ -983,6 +1008,7 @@ export default function NewSalesPage() {
       resetForm();
       setPenalty("");
       setPenaltyNote("");
+      setFidelity("");
     } catch (error: unknown) {
       console.error(
         "New Sales save error:",
@@ -2514,7 +2540,19 @@ export default function NewSalesPage() {
             </div>
             <p className="text-xs text-muted-foreground">Charged to the MAS, paid from their own money, and added to this batch&apos;s New Sales remittance. Members are not charged.</p>
           </fieldset>
-          <RemittanceSummary collected={totalPaid} remittance={totalPaid} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} incentiveNote="New Sales carry no incentive, so the full amount paid is remitted." />
+          <fieldset className={`space-y-2 rounded-lg border p-3 ${fidelityAmount > 0 ? "border-emerald-300 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20" : ""}`}>
+            <legend className="px-1 text-sm font-medium">MAS Fidelity</legend>
+            <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
+              <div className="space-y-1">
+                <Label htmlFor="sales-fidelity-amount">Fidelity amount</Label>
+                <Input id="sales-fidelity-amount" type="number" min="0" max={totalSaleIncentives} step="0.01" value={fidelity} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setFidelity(event.target.value)} />
+              </div>
+              <p className="text-xs text-muted-foreground">The amount the MAS asks to save; zero is allowed. It comes out of this batch&apos;s New Sale incentives ({new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(totalSaleIncentives)} available) and is added to the remittance.</p>
+            </div>
+            {fidelityAmount > totalSaleIncentives && <p role="alert" className="text-xs font-medium text-destructive">Fidelity cannot be more than the batch&apos;s incentives.</p>}
+          </fieldset>
+          {quoteProblem && <p role="alert" className="text-sm text-destructive">{quoteProblem.error}</p>}
+          <RemittanceSummary collected={totalPaid} remittance={totalSaleRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} incentiveNote="From each program's New Sale incentive, or its month-1 MAS tier when there is no registration fee." />
         </CardContent>
       </Card>
 
@@ -2546,7 +2584,7 @@ export default function NewSalesPage() {
             )}
           </div>
 
-          {showPreview && <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.amountPaid)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}</div>; })}</div></div>}
+          {showPreview && <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.amountPaid)}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}</div>; })}</div></div>}
 
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button

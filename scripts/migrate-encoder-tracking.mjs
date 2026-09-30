@@ -23,7 +23,7 @@ try {
   const requests = [];
   for (const schema of encoderSheets) {
     const properties = metadata.data.sheets.find((sheet) => sheet.properties.title === schema.title)?.properties;
-    if (!properties) throw new Error(`Missing sheet ${schema.title}.`);
+    if (!properties) { if (schema.optional) continue; throw new Error(`Missing sheet ${schema.title}.`); }
     const headers = trackingHeaders(schema.title).map(canonical);
     const width = properties.gridProperties.columnCount;
     const requiredWidth = schema.columns + headers.length;

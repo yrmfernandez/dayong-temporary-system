@@ -1,7 +1,7 @@
 import {
   BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
   ClipboardList, CreditCard, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
-  LayoutDashboard, Banknote, PiggyBank, Receipt, ShieldCheck, UserCog, Users, Wallet,
+  LayoutDashboard, Banknote, PiggyBank, Receipt, ScrollText, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,6 +33,7 @@ const page = {
     ],
   },
   userReports: { name: "User Report Review", href: "/admin-reports", icon: FileSearch },
+  soa: { name: "Statement of Account", href: "/soa", icon: ScrollText },
   dailyAudit: { name: "Daily Audit", href: "/audit", icon: ClipboardCheck },
   members: { name: "Members", href: "/members", icon: Users },
   myMembers: { name: "My Members", href: "/members", icon: Users },
@@ -64,7 +65,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Overview", items: [page.dashboard] },
     { title: "Operations", items: [page.newSales, page.collections, page.remittances, page.mam] },
     { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.payroll, page.fidelity] },
-    { title: "Reports", items: [page.reports, page.dailyAudit, page.userReports] },
+    { title: "Reports", items: [page.reports, page.soa, page.dailyAudit, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
     { title: "Master Data", items: [page.members, page.programs, page.branches] },
     { title: "Administration", items: [page.userAccounts, page.roles, page.auditLog] },
@@ -77,11 +78,11 @@ const workspaces: Record<string, NavSection[]> = {
   ],
   finance: [
     { title: "Overview", items: [page.dashboard] },
-    { title: "Cash", items: [page.remittances, page.collections, page.cash] },
+    { title: "Cash", items: [page.remittances, page.cash] },
     { title: "Payables", items: [page.payroll, page.commissions, page.expenses, page.payables] },
-    { title: "Monitoring", items: [page.mam, page.fidelity, page.reports, page.dailyAudit, page.auditLog] },
+    { title: "Monitoring", items: [page.mam, page.fidelity, page.dailyAudit, page.attendanceTracking, page.auditLog] },
     { title: "Directory", items: [page.members, page.programs] },
-    { title: "My HR", items: [page.attendance, page.attendanceTracking, page.leaveRequests, page.myFidelity] },
+    myHr,
   ],
   "entry clerk": [
     { title: "Overview", items: [page.dashboard] },
@@ -97,10 +98,12 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Directory", items: [page.branches] },
     myHr,
   ],
+  // IT runs the system: its dashboard is system health, then access control, configuration, and the audit trail.
   it: [
-    { title: "Overview", items: [page.dashboard] },
-    { title: "Access", items: [page.userAccounts, page.employees, page.roles] },
-    { title: "Configuration", items: [page.branches, page.programs, page.auditLog] },
+    { title: "System", items: [{ ...page.dashboard, name: "System Health" }] },
+    { title: "Access Control", items: [page.userAccounts, page.roles, page.employees] },
+    { title: "Configuration", items: [page.branches, page.programs, page.masterData] },
+    { title: "Monitoring", items: [page.auditLog] },
     myHr,
   ],
   mas: [

@@ -712,4 +712,9 @@ main [data-slot="card"]:nth-child(4) {
     --card: #fff; --card-foreground: #000; --foreground: #000; --muted-foreground: #555; --border: #bbb; --destructive: #b91c1c;
     background: #fff !important; color: #000 !important; }
   @page payslip { size: A4 portrait; margin: 12mm; }
+  /* Statement of Account: one portrait page per member, black on white. */
+  .soa-sheet { page: soa; border: 0 !important; padding: 0 !important; border-radius: 0;
+    --card: #fff; --card-foreground: #000; --foreground: #000; --muted-foreground: #555; --border: #bbb;
+    background: #fff !important; color: #000 !important; }
+  @page soa { size: A4 portrait; margin: 12mm; }
 }

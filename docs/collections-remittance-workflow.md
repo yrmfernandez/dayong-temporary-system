@@ -17,7 +17,7 @@ This document supersedes the earlier behavior where saving a collection batch al
 A MAS turns over New Sales on their own remittance slip, separate from Collections, so every remittance is one kind (Remittances Z `remittance_type`: `Collections` or `New Sales`; blank rows are Collections).
 
 - Saving a New Sale makes its full amount paid owed by the sale's MAS: Sales AJ `remittance_status` starts `Outstanding`, AK `linked_remittance_id`, AL `accountable_employee_id`. There is no sales incentive, so the expected amount is the amount paid.
-- On Remittances → New Remittance, choose **Collections slip** or **New Sales slip**; the accountable-person list and items follow that choice. Mixing kinds is refused. Fidelity applies only to Collections slips.
+- On Remittances → New Remittance, choose **Collections slip** or **New Sales slip**; the accountable-person list and items follow that choice. Mixing kinds is refused. Fidelity applies to MAS Collections and New Sales slips.
 - Submitting, approving, and rejecting move the sale through the same statuses as a Collection (`Pending Remittance Approval`, `Remitted`, back to `Outstanding`). The Remittances sheet, Pending Approval, and Records show each slip's type.
 - A New Sale already on a remittance cannot be corrected from Entry History.
 
@@ -34,7 +34,14 @@ Total incentives   = amount collected - company remittance - MAS Fidelity
 Total remittance   = company remittance + MAS Fidelity + penalty
 ```
 
-New Sales carry no incentive, so their total remittance is the amount paid plus any penalty. The same total is what "Cash received in full" must match and what the Remittances page expects.
+New Sales earn a MAS incentive (`calculateSaleIncentive` in `lib/remittance.ts`):
+
+- **Program with a registration fee:** the program's New Sale incentive (Programs Q type, R amount), a fixed amount or a percentage of the amount paid. None set means none earned.
+- **Program without a registration fee:** the sale pays the first month, so the month-1 MAS incentive tier applies to the base pay, as for a Collection at NOP 1. Anything above one month is remitted in full; less than one month earns nothing.
+
+Each sale stores Sales AO `mas_incentive` and AP `remittance_amount`. The Entry Clerk may enter the MAS's Fidelity for the batch (zero allowed); it must not exceed the batch's incentives or the MAS's remaining ₱10,000, and is stored on the first sale (AQ `fidelity_amount`). The total remittance is the company share plus Fidelity plus any penalty. Sales saved before incentives existed have blank AO:AQ and still owe the full amount paid. Run `npm run sheets:sale-incentives -- --apply` once to add these columns.
+
+Every remittance that includes Fidelity says so: in the Remittances sheet remarks ("Includes MAS Fidelity ₱…, deducted from the MAS's incentives"), on the selected items, in the expected amount, on pending approvals, and in the records' MAS Fidelity column. The same total is what "Cash received in full" must match and what the Remittances page expects.
 
 ## MAS Fidelity at encoding
 

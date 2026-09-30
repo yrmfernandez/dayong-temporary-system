@@ -1,14 +1,17 @@
-import { canManageUsers, getSessionUser } from "@/lib/auth-server";
+import { canManageUsers, userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { createCashTransaction, getFinanceData, voidFinanceRecord } from "@/lib/finance-data";
 
+const denied = () => Response.json({ success: false, message: "You do not have access to Cash Transactions." }, { status: 403 });
+
 export async function GET() {
-  if (!(await getSessionUser())) return Response.json({ success: false, message: "Not signed in." }, { status: 401 });
+  if (!(await userWithPageAccess("/cash-transactions"))) return denied();
   try { const data = await getFinanceData(); return Response.json({ success: true, ledger: data.ledger, canVoid: await canManageUsers() }, { headers: { "Cache-Control": "private, no-store" } }); }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load cash ledger." }, { status: 500 }); }
 }
 
 export const POST = withEncoder(async (request: Request) => {
+  if (!(await userWithPageAccess("/cash-transactions"))) return denied();
   try { return Response.json({ success: true, ...(await createCashTransaction(await request.json())) }, { status: 201 }); }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save cash transaction." }, { status: 400 }); }
 });

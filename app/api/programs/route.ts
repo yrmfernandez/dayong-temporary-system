@@ -1,6 +1,6 @@
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
-import { canManageUsers } from "@/lib/auth-server";
+import { canManageConfiguration } from "@/lib/auth-server";
 import { deleteProgramRecord, updateProgramRecord, type ProgramInput } from "@/lib/master-data-crud";
 
 import {
@@ -27,7 +27,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       programs,
-      canManage: await canManageUsers(),
+      canManage: await canManageConfiguration(),
     });
   } catch (error) {
     console.error(
@@ -53,7 +53,7 @@ export async function GET() {
 export const POST = withEncoder(async function POST(
   request: Request,
 ) {
-  if (!(await canManageUsers())) return NextResponse.json({ success: false, error: "You are not allowed to create programs." }, { status: 403 });
+  if (!(await canManageConfiguration())) return NextResponse.json({ success: false, error: "You are not allowed to create programs." }, { status: 403 });
   try {
     const body = await request.json();
 
@@ -355,6 +355,8 @@ export const POST = withEncoder(async function POST(
         registrationFeeRequired: Boolean(registrationFeeRequired),
         registrationAmount: normalizedRegistrationAmount,
         payBalanceTotal: normalizedPayBalanceTotal,
+        saleIncentiveType: body.saleIncentiveType,
+        saleIncentiveAmount: body.saleIncentiveAmount,
         ageRestricted: body.ageRestricted,
         minAge: body.minAge,
         maxAge: body.maxAge,
@@ -401,6 +403,8 @@ function programInput(body: Record<string, unknown>): ProgramInput {
     registrationFeeRequired: Boolean(body.registrationFeeRequired),
     registrationAmount: Number(body.registrationAmount) || 0,
     payBalanceTotal: Number(body.payBalanceTotal) || 0,
+    saleIncentiveType: body.saleIncentiveType,
+    saleIncentiveAmount: body.saleIncentiveAmount,
     ageRestricted: body.ageRestricted,
     minAge: body.minAge,
     maxAge: body.maxAge,
@@ -409,7 +413,7 @@ function programInput(body: Record<string, unknown>): ProgramInput {
 }
 
 export const PUT = withEncoder(async (request: Request) => {
-  if (!(await canManageUsers())) return NextResponse.json({ success: false, error: "You are not allowed to update programs." }, { status: 403 });
+  if (!(await canManageConfiguration())) return NextResponse.json({ success: false, error: "You are not allowed to update programs." }, { status: 403 });
   try {
     const id = new URL(request.url).searchParams.get("id")?.trim() ?? "";
     const body = await request.json();
@@ -418,7 +422,7 @@ export const PUT = withEncoder(async (request: Request) => {
 });
 
 export const DELETE = withEncoder(async (request: Request) => {
-  if (!(await canManageUsers())) return NextResponse.json({ success: false, error: "You are not allowed to delete programs." }, { status: 403 });
+  if (!(await canManageConfiguration())) return NextResponse.json({ success: false, error: "You are not allowed to delete programs." }, { status: 403 });
   try {
     const id = new URL(request.url).searchParams.get("id")?.trim() ?? "";
     await deleteProgramRecord(id);

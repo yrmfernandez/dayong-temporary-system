@@ -37,6 +37,7 @@ export default function AttendanceTrackingPage() {
     finally { setLoading(false); }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
   useEffect(() => { void load(); }, []);
   const selectedEmployee = employees.find((employee) => employee.id === employeeId);
   const summary = useMemo(() => ({

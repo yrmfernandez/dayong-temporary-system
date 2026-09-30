@@ -70,6 +70,7 @@ export default function LeaveApprovalsPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
     void loadRequests();
   }, []);
 

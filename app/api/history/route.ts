@@ -1,4 +1,4 @@
-﻿import { canManageUsers, getSessionUser } from "@/lib/auth-server";
+﻿import { canManageAccounts, canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { recordCorrection } from "@/lib/record-corrections";
@@ -88,11 +88,16 @@ async function auditEntries() {
 export async function GET() {
   const user = await getSessionUser();
   const finance = user?.roleNames.some((role) => role.trim().toLowerCase() === "finance");
-  if (!(await canManageUsers()) && !finance) return Response.json({ success: false, message: "Administrator or Finance access is required." }, { status: 403 });
+  if (!(await canManageAccounts()) && !finance) return Response.json({ success: false, message: "Administrator, IT, or Finance access is required." }, { status: 403 });
   try {
-    const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: sources.map((source) => source.range), valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
+    // A tracked sheet that has not been created yet (e.g. Company Targets before the first target) would fail the whole
+    // read, so only existing sheets are read. Every module is still listed in the filter.
+    const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties.title" });
+    const existing = new Set((metadata.data.sheets ?? []).map((sheet) => sheet.properties?.title ?? ""));
+    const present = sources.filter((source) => existing.has(source.title));
+    const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: present.map((source) => source.range), valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
     // Every saved row is listed; rows saved before encoder tracking existed show "Not recorded" and sort last.
-    const all = sources.flatMap((source, index) => (response.data.valueRanges?.[index]?.values ?? []).slice(1)
+    const all = present.flatMap((source, index) => (response.data.valueRanges?.[index]?.values ?? []).slice(1)
       .map((row, rowIndex) => ({ row, rowNumber: rowIndex + 2 }))
       .filter(({ row }) => t(row[0]))
       .map(({ row, rowNumber }) => ({ key: `${source.title}!${rowNumber}`, action: "Created", id: t(row[0]), module: source.module, detail: source.detail(row), encodedBy: t(row[source.user]).replace(/^'/, ""), encodedAt: t(row[source.at]), data: source.editable ? source.editable(row) : null })))

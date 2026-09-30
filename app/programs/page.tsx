@@ -73,6 +73,8 @@ description: string;
 registrationFeeRequired: boolean;
 registrationAmount: number;
 payBalanceTotal: number;
+saleIncentiveType?: "" | "fixed" | "percentage";
+saleIncentiveAmount?: number;
 ageRestricted: boolean;
 minAge: number | null;
 maxAge: number | null;
@@ -87,6 +89,8 @@ description: string;
 registrationFeeRequired: boolean;
 registrationAmount: string;
 payBalanceTotal: string;
+saleIncentiveType: "" | "fixed" | "percentage";
+saleIncentiveAmount: string;
 ageRestricted: boolean;
 minAge: string;
 maxAge: string;
@@ -122,6 +126,8 @@ description: "",
 registrationFeeRequired: false,
 registrationAmount: "0",
 payBalanceTotal: "0",
+saleIncentiveType: "",
+saleIncentiveAmount: "0",
 ageRestricted: false,
 minAge: "",
 maxAge: "",
@@ -791,6 +797,8 @@ try {
     registrationFeeRequired: form.registrationFeeRequired,
     registrationAmount: Number(form.registrationAmount) || 0,
     payBalanceTotal: Number(form.payBalanceTotal) || 0,
+    saleIncentiveType: form.registrationFeeRequired ? form.saleIncentiveType : "",
+    saleIncentiveAmount: Number(form.saleIncentiveAmount) || 0,
     ageRestricted: form.ageRestricted,
     minAge: form.ageRestricted ? form.minAge.trim() : "",
     maxAge: form.ageRestricted ? form.maxAge.trim() : "",
@@ -1001,6 +1009,8 @@ setForm({
   registrationFeeRequired: Boolean(program.registrationFeeRequired),
   registrationAmount: String(program.registrationAmount ?? 0),
   payBalanceTotal: String(program.payBalanceTotal ?? 0),
+  saleIncentiveType: program.saleIncentiveType ?? "",
+  saleIncentiveAmount: String(program.saleIncentiveAmount ?? 0),
   ageRestricted: Boolean(program.ageRestricted),
   minAge: program.minAge === null || program.minAge === undefined ? "" : String(program.minAge),
   maxAge: program.maxAge === null || program.maxAge === undefined ? "" : String(program.maxAge),
@@ -1880,6 +1890,14 @@ const programForm = (
           </label>
           <div className="space-y-2"><Label>Registration amount</Label><Input type="number" min="0" step="0.01" disabled={!form.registrationFeeRequired} value={form.registrationAmount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("registrationAmount", event.target.value)} /></div>
           <div className="space-y-2"><Label>Pay-the-balance total</Label><Input type="number" min="0" step="0.01" value={form.payBalanceTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("payBalanceTotal", event.target.value)} /><p className="text-xs text-muted-foreground">Set to 0 when the program has no fixed payoff total.</p></div>
+        </div>
+        <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-3">
+          <div className="md:col-span-3"><h4 className="text-sm font-semibold">New Sale MAS incentive</h4><p className="text-xs text-muted-foreground">{form.registrationFeeRequired ? "What the MAS keeps from the registration paid on a new sale. MAS Fidelity on a New Sales batch comes out of this." : "Without a registration fee, a new sale pays the first month, so the month-1 MAS incentive tier below applies to the base pay."}</p></div>
+          {form.registrationFeeRequired && <>
+            <div className="space-y-2"><Label>Incentive type</Label><select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={form.saleIncentiveType} onChange={(event) => setForm((current) => ({ ...current, saleIncentiveType: event.target.value as ProgramForm["saleIncentiveType"] }))}><option value="">No New Sale incentive</option><option value="fixed">Fixed amount (₱)</option><option value="percentage">Percentage of amount paid</option></select></div>
+            <div className="space-y-2"><Label>{form.saleIncentiveType === "percentage" ? "Incentive (%)" : "Incentive (₱)"}</Label><Input type="number" min="0" max={form.saleIncentiveType === "percentage" ? 100 : undefined} step="0.01" disabled={!form.saleIncentiveType} value={form.saleIncentiveAmount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("saleIncentiveAmount", event.target.value)} /></div>
+            <p className="self-end text-xs text-muted-foreground">{form.saleIncentiveType === "percentage" ? `On ₱${Number(form.registrationAmount || 0).toLocaleString("en-PH")}: MAS keeps ₱${((Number(form.registrationAmount) || 0) * (Number(form.saleIncentiveAmount) || 0) / 100).toLocaleString("en-PH", { maximumFractionDigits: 2 })}.` : form.saleIncentiveType === "fixed" ? `MAS keeps ₱${Number(form.saleIncentiveAmount || 0).toLocaleString("en-PH")} per new sale.` : "The full registration is remitted."}</p>
+          </>}
         </div>
         <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-3">
           <div className="space-y-2">

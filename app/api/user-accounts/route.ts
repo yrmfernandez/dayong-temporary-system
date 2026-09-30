@@ -3,13 +3,14 @@ import { getEmployees } from "@/lib/employees";
 import { NextResponse } from "next/server";
 import { createDefaultAccount, DEFAULT_PASSWORD } from "@/lib/employee-accounts";
 
-import { canManageUsers, getSessionUser } from "@/lib/auth-server";
+import { canManageAccounts, getSessionUser } from "@/lib/auth-server";
 import { deleteUserAccount, getUserAccounts, updateUserAccount } from "@/lib/master-data-crud";
 import { getActiveAccountRoles } from "@/lib/google-sheets-data";
+import { guardAccountChange } from "@/lib/privilege-guard";
 
 export async function GET() {
   try {
-    const allowed = await canManageUsers();
+    const allowed = await canManageAccounts();
 
     if (!allowed) {
       return NextResponse.json(
@@ -49,7 +50,7 @@ export async function GET() {
 
 export const POST = withEncoder(async function POST(request: Request) {
   try {
-    const allowed = await canManageUsers();
+    const allowed = await canManageAccounts();
 
     if (!allowed) {
       return NextResponse.json(
@@ -71,6 +72,8 @@ export const POST = withEncoder(async function POST(request: Request) {
     const roleIds: string[] = Array.isArray(body.roleIds)
       ? [...new Set<string>(body.roleIds.filter((roleId: unknown): roleId is string => typeof roleId === "string").map((roleId: string) => roleId.trim()).filter(Boolean))]
       : [];
+    const denied = await guardAccountChange({ roleIds });
+    if (denied) return NextResponse.json({ success: false, message: denied }, { status: 403 });
     const result = await createDefaultAccount(employee, roleIds);
     if (!result.created) return NextResponse.json({ success: false, message: result.reason }, { status: 400 });
     const user = { id: result.userId, employeeId: employee.id, fullName: employee.name, roleIds: result.roleIds, defaultPassword: DEFAULT_PASSWORD };
@@ -99,21 +102,25 @@ export const POST = withEncoder(async function POST(request: Request) {
 });
 
 export const PATCH = withEncoder(async (request: Request) => {
-  if (!(await canManageUsers())) return NextResponse.json({ success: false, message: "You are not allowed to update user accounts." }, { status: 403 });
+  if (!(await canManageAccounts())) return NextResponse.json({ success: false, message: "You are not allowed to update user accounts." }, { status: 403 });
   try {
     const body = await request.json();
     const id = typeof body.id === "string" ? body.id.trim() : "";
     const roleIds = Array.isArray(body.roleIds) ? body.roleIds.filter((value: unknown): value is string => typeof value === "string") : [];
+    const denied = await guardAccountChange({ roleIds, accountId: id });
+    if (denied) return NextResponse.json({ success: false, message: denied }, { status: 403 });
     return NextResponse.json({ success: true, account: await updateUserAccount(id, { status: body.status === "inactive" ? "inactive" : "active", roleIds, password: typeof body.password === "string" ? body.password : "" }) });
   } catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to update account." }, { status: 400 }); }
 });
 
 export const DELETE = withEncoder(async (request: Request) => {
-  if (!(await canManageUsers())) return NextResponse.json({ success: false, message: "You are not allowed to delete user accounts." }, { status: 403 });
+  if (!(await canManageAccounts())) return NextResponse.json({ success: false, message: "You are not allowed to delete user accounts." }, { status: 403 });
   try {
     const user = await getSessionUser();
     const body = await request.json();
     const id = typeof body.id === "string" ? body.id.trim() : "";
+    const denied = await guardAccountChange({ accountId: id });
+    if (denied) return NextResponse.json({ success: false, message: denied }, { status: 403 });
     await deleteUserAccount(id, user?.userId ?? "");
     return NextResponse.json({ success: true });
   } catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to delete account." }, { status: 400 }); }

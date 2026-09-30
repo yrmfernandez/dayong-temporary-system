@@ -28,10 +28,14 @@ function columnName(index) {
 
 try {
   if (!spreadsheetId) throw new Error("Missing GOOGLE_SHEET_ID.");
-  const ranges = definition.tables.map(({ sheet }) => `${quoted(sheet)}!1:1`);
+  // Optional tables (created by the app on first use) are skipped until their sheet exists.
+  const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" }, options);
+  const existing = new Set((metadata.data.sheets ?? []).map((sheet) => sheet.properties?.title));
+  const tables = definition.tables.filter((table) => !table.optional || existing.has(table.sheet));
+  const ranges = tables.map(({ sheet }) => `${quoted(sheet)}!1:1`);
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges, valueRenderOption: "FORMULA" }, options);
   const data = [];
-  for (const [index, table] of definition.tables.entries()) {
+  for (const [index, table] of tables.entries()) {
     const current = response.data.valueRanges?.[index]?.values?.[0] ?? [];
     if (!current.length) throw new Error(`${table.sheet} has no header row.`);
     const last = current.findLastIndex((header) => String(header ?? "").trim() !== "");

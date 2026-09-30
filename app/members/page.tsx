@@ -27,6 +27,8 @@ export default function MembersPage() {
   const [canManage, setCanManage] = useState(false);
   // Administrators and HR Officers can move an enrollment to another employee in the same branch.
   const [canTransfer, setCanTransfer] = useState(false);
+  // New members are added through New Sales, which only encoders can open.
+  const [canAddMember, setCanAddMember] = useState(false);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [editing, setEditing] = useState<DirectoryMember | null>(null);
   // The member just saved, so the confirmation shows on that row.
@@ -37,7 +39,7 @@ export default function MembersPage() {
     fetch("/api/members/directory", { cache: "no-store", signal: controller.signal }).then(async (response) => {
       const result = await readApiResponse(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load members.");
-      setMembers(result.members); setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanTransfer(Boolean(result.canTransfer)); setTransfers(result.transfers ?? []);
+      setMembers(result.members); setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanTransfer(Boolean(result.canTransfer)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []);
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -63,7 +65,7 @@ export default function MembersPage() {
   return <section className="space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-bold">Members</h1><p className="text-sm text-muted-foreground">Member master data. Each person appears once, with all their program enrollments.</p></div>
-      <div className="flex gap-2"><Link className={buttonVariants()} href="/new-sales">Add Member</Link><Button variant="outline" disabled={busy} onClick={() => { setBusy(true); setError(""); setMembers([]); setSelected(null); setRevision((v) => v + 1); }}>Refresh</Button></div>
+      <div className="flex gap-2">{canAddMember && <Link className={buttonVariants()} href="/new-sales">Add Member</Link>}<Button variant="outline" disabled={busy} onClick={() => { setBusy(true); setError(""); setMembers([]); setSelected(null); setRevision((v) => v + 1); }}>Refresh</Button></div>
     </div>
     <div className="grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-4">
       <label className="text-sm">Search<input className={fieldClass} value={filters.search} onChange={(e) => update("search", e.target.value)} placeholder="Name, PH number, contact number" /></label>

@@ -60,6 +60,11 @@ export type Program = {
   ageRestricted: boolean;
   minAge: number | null;
   maxAge: number | null;
+  /** New Sale incentive for programs with a registration fee (Programs Q:R). */
+  saleIncentiveType?: "fixed" | "percentage" | "";
+  saleIncentiveAmount?: number;
+  /** MAS and Collector incentive tiers by month; month 1 applies to a New Sale without a registration fee. */
+  incentiveTiers?: Array<{ role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number }>;
 };
 /**
  * Program enrollment for a member.

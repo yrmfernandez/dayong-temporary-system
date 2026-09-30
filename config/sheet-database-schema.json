@@ -34,7 +34,7 @@
     { "sheet": "Cash Accounts", "table": "cash_accounts", "primaryKey": "cash_account_id", "firstHeader": "cash_account_id" },
     { "sheet": "Vendor Payables", "table": "vendor_payables", "primaryKey": "payable_id", "firstHeader": "payable_id" },
     { "sheet": "Commissions", "table": "commissions", "primaryKey": "commission_id", "firstHeader": "commission_id" },
-    { "sheet": "Company Targets", "table": "company_targets", "primaryKey": "target_id", "firstHeader": "target_id" }
+    { "sheet": "Company Targets", "table": "company_targets", "primaryKey": "target_id", "firstHeader": "target_id", "optional": true }
   ],
   "columnTypes": {
     "*_id": "text",

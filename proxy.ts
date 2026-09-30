@@ -6,6 +6,10 @@ import {
 import { verifySessionToken } from "@/lib/auth";
 import { canAccessPath } from "@/lib/access-control";
 
+// API routes reachable without a session. Every other /api route needs a valid sign-in before its handler runs;
+// handlers still check their own page or action permission.
+const publicApi = new Set(["/api/auth/login", "/api/auth/logout", "/api/auth/session"]);
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -16,6 +20,11 @@ export async function proxy(request: NextRequest) {
   const session = token
     ? await verifySessionToken(token)
     : null;
+
+  if (pathname.startsWith("/api/")) {
+    if (session || publicApi.has(pathname)) return NextResponse.next();
+    return NextResponse.json({ success: false, message: "Please sign in." }, { status: 401 });
+  }
 
   if (pathname === "/login") {
     if (session) {
@@ -60,6 +69,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|icon.png|dayong-logo.png).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.png|dayong-logo.png).*)",
   ],
 };

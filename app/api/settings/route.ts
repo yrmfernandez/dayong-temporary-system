@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth-server";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { GOOGLE_SHEET_ID, readingFresh, sheets } from "@/lib/google-sheets";
 import { loadUsers, userCell } from "@/lib/users-sheet";
 
 const blockedPasswords = new Set(["password", "password123", "12345678", "qwerty123", "admin123", "dayong123"]);
@@ -13,7 +13,8 @@ export async function PATCH(request: Request) {
     const body = await request.json();
     const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
     const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
-    const { columns, users } = await loadUsers();
+    // The current password is checked against the live hash, never a cached copy.
+    const { columns, users } = await readingFresh(loadUsers);
     // Employee ID remains stable when readable user IDs are migrated. This
     // fallback also repairs password changes from sessions issued before migration.
     const user = users.find((row) => row.id === session.userId)

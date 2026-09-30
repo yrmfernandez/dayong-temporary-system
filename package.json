@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test": "node --test scripts/test-access-control.mjs scripts/test-account-rules.mjs scripts/test-encoder-tracking.cjs scripts/test-remittance.mjs scripts/test-sheets-cache.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -31,7 +32,9 @@
     "sheets:collector-role": "node scripts/migrate-collector-role.mjs",
     "sheets:sales-remittance": "node scripts/migrate-sales-remittance.mjs",
     "sheets:batch-extras": "node scripts/migrate-batch-extras.mjs",
-    "sheets:audit-transfers": "node scripts/migrate-audit-transfers.mjs"
+    "sheets:audit-transfers": "node scripts/migrate-audit-transfers.mjs",
+    "sheets:expense-fields": "node scripts/migrate-expense-fields.mjs",
+    "sheets:sale-incentives": "node scripts/migrate-sale-incentives.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

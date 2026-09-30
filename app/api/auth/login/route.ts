@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
 import { createSessionToken } from "@/lib/auth";
+import { readingFresh } from "@/lib/google-sheets";
 import { getLoginUserByEmployeeId } from "@/lib/google-sheets-data";
 import {
   assertServerConfiguration,
@@ -62,7 +63,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await getLoginUserByEmployeeId(employeeId);
+    // Sign-in always reads the current account, password and roles.
+    const user = await readingFresh(() => getLoginUserByEmployeeId(employeeId));
 
     if (!user) {
       return NextResponse.json(

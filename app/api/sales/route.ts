@@ -1,3 +1,4 @@
+import { userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
@@ -17,6 +18,12 @@ import {
 import { getEmployees } from "@/lib/employees";
 import { ageRestrictionError } from "@/lib/program-age";
 import { todayInManila } from "@/lib/account-rules";
+import { FIDELITY_CAP, getFidelityData } from "@/lib/fidelity";
+import { GOOGLE_SHEET_ID, readingFresh, sheets, withWriteLock } from "@/lib/google-sheets";
+import { calculateSaleIncentive } from "@/lib/remittance";
+import { headerMatches } from "@/lib/sheet-headers";
+
+const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
 
 type SalePayload = {
   branch: string;
@@ -26,6 +33,8 @@ type SalePayload = {
   /** Optional remittance penalty on the batch, charged to the MAS, with what it is for. */
   penalty?: number;
   penaltyNote?: string;
+  /** MAS Fidelity for this batch; it comes out of the batch's New Sale incentives. Zero is allowed. */
+  fidelityAmount?: number;
 };
 
 type SalePayloadItem = {
@@ -80,7 +89,22 @@ function createId(prefix: string) {
     .toUpperCase()}`;
 }
 
+// Generated member numbers keep the PH-######## format but always increase, so two new members saved in the same
+// millisecond (in one batch, or by two users) never share a number.
+const numbering = globalThis as typeof globalThis & { dayongLastMemberNumber?: number };
+function nextMemberNumber() {
+  const candidate = Number(Date.now().toString().slice(-8));
+  numbering.dayongLastMemberNumber = Math.max(candidate, (numbering.dayongLastMemberNumber ?? 0) + 1) % 100_000_000;
+  return `PH-${String(numbering.dayongLastMemberNumber).padStart(8, "0")}`;
+}
+
 export const POST = withEncoder(async function POST(request: Request) {
+  if (!(await userWithPageAccess("/new-sales"))) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
+  // One sale batch at a time per server, so duplicate-member and enrollment checks see each other's saves.
+  return withWriteLock("sales", () => saveSales(request));
+});
+
+async function saveSales(request: Request) {
   try {
     const body =
       (await request.json()) as SalePayload;
@@ -144,6 +168,8 @@ export const POST = withEncoder(async function POST(request: Request) {
     if (!Number.isFinite(penalty) || penalty < 0) return NextResponse.json({ success: false, message: "The penalty must be zero or a positive amount." }, { status: 400 });
     if (penalty > 0 && penaltyNote.length < 3) return NextResponse.json({ success: false, message: "Explain what the penalty is for (at least 3 characters)." }, { status: 400 });
     if (penaltyNote.length > 300) return NextResponse.json({ success: false, message: "The penalty note must be 300 characters or fewer." }, { status: 400 });
+    const fidelity = Math.round((Number(body.fidelityAmount) || 0) * 100) / 100;
+    if (!Number.isFinite(fidelity) || fidelity < 0) return NextResponse.json({ success: false, message: "Fidelity must be zero or a positive amount." }, { status: 400 });
 
     if (
       !Array.isArray(body.sales) ||
@@ -419,11 +445,12 @@ export const POST = withEncoder(async function POST(request: Request) {
       /*
        * Generate the new member number.
        */
-      const generatedMemberNumber =
-        memberNumber ||
-        `PH-${Date.now()
-          .toString()
-          .slice(-8)}`;
+      let generatedMemberNumber = memberNumber;
+      if (!generatedMemberNumber) {
+        // Never reuse a number: skip any already on record or already given out.
+        do generatedMemberNumber = nextMemberNumber();
+        while (await findMemberByNumber(generatedMemberNumber));
+      }
 
       const memberId =
         createId("MEM");
@@ -464,6 +491,30 @@ export const POST = withEncoder(async function POST(request: Request) {
           generatedMemberNumber,
         isNewMember: true,
       });
+    }
+
+    /*
+     * What the MAS keeps from each sale and what the company is owed (lib/remittance.ts calculateSaleIncentive).
+     * The batch's Fidelity comes out of these incentives and is added to the remittance.
+     */
+    const quotes: Array<{ incentive: number; remittance: number }> = [];
+    for (const [index, prepared] of preparedSales.entries()) {
+      const program = programs.find((item) => item.id === prepared.sale.programId?.trim());
+      const amountPaid = Number(prepared.sale.amountPaid);
+      if (!program || !Number.isFinite(amountPaid) || amountPaid < 0) return NextResponse.json({ success: false, message: `Sale #${index + 1}: Enter a valid amount paid.` }, { status: 400 });
+      try { quotes.push(calculateSaleIncentive(program, amountPaid)); }
+      catch (error) { return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${error instanceof Error ? error.message : "The incentive could not be calculated."}` }, { status: 400 }); }
+    }
+    if (fidelity > 0) {
+      const incentives = Math.round(quotes.reduce((sum, quote) => sum + Math.round(quote.incentive * 100), 0)) / 100;
+      if (fidelity > incentives) return NextResponse.json({ success: false, message: `Fidelity cannot exceed the batch's total incentives of ${peso(incentives)}.` }, { status: 400 });
+      const account = (await getFidelityData(selectedStaff.id, true)).accounts.find((item) => item.masEmployeeId === selectedStaff.id);
+      const remaining = Math.max(0, Math.round((FIDELITY_CAP - (account?.approved ?? 0) - (account?.pending ?? 0)) * 100) / 100);
+      if (fidelity > remaining) return NextResponse.json({ success: false, message: `Fidelity can be at most ${peso(remaining)} for this MAS (the ${peso(FIDELITY_CAP)} limit).` }, { status: 400 });
+    }
+    const salesHeader = (await readingFresh(() => sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Sales!AO1:AQ1" }))).data.values?.[0] ?? [];
+    if (["mas_incentive", "remittance_amount", "fidelity_amount"].some((name, index) => !headerMatches(salesHeader[index], name))) {
+      return NextResponse.json({ success: false, message: "Run npm run sheets:sale-incentives -- --apply to add the New Sales incentive and Fidelity columns before saving." }, { status: 400 });
     }
 
     /*
@@ -511,7 +562,7 @@ export const POST = withEncoder(async function POST(request: Request) {
             sale.contactNumber,
 
           addressHouse:
-            sale.addressHouse,
+            sale.addressHouse,
 
           claimantName:
             sale.claimantName,
@@ -523,7 +574,7 @@ export const POST = withEncoder(async function POST(request: Request) {
               : "No",
 
           claimantAddressHouse:
-            sale.claimantAddressHouse,
+            sale.claimantAddressHouse,
 
           status: "Active",
         };
@@ -618,7 +669,7 @@ export const POST = withEncoder(async function POST(request: Request) {
           sale.contactNumber,
 
         addressHouse:
-          sale.addressHouse,
+          sale.addressHouse,
 
         claimantName:
           sale.claimantName,
@@ -630,7 +681,7 @@ export const POST = withEncoder(async function POST(request: Request) {
             : "No",
 
         claimantAddressHouse:
-          sale.claimantAddressHouse,
+          sale.claimantAddressHouse,
 
         programId:
           sale.programId,
@@ -656,10 +707,12 @@ export const POST = withEncoder(async function POST(request: Request) {
           sale.orDate,
       };
 
+      const quote = quotes[savedSales.length];
       await addSale(
         saleData,
         selectedStaff.id,
         savedSales.length === 0 ? { amount: penalty, note: penaltyNote } : undefined,
+        { ...quote, fidelity: savedSales.length === 0 ? fidelity : 0 },
       );
 
       await addBeneficiaries(memberId, saleId, sale.beneficiaries ?? []);
@@ -697,4 +750,4 @@ export const POST = withEncoder(async function POST(request: Request) {
       { status: 500 },
     );
   }
-});
+}

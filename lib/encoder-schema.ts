@@ -38,7 +38,8 @@ export const encoderSheets = [
   { title: "Payroll Adjustments", columns: 8 },
   { title: "Daily Audits", columns: 13 },
   { title: "Member Transfers", columns: 10 },
-  { title: "Company Targets", columns: 5 },
+  // Created by the app the first time a target is saved, so migrations skip it until it exists.
+  { title: "Company Targets", columns: 5, optional: true },
 ];
 
 export function columnName(index: number): string {
