@@ -908,7 +908,7 @@ test('branch names stay unique across territories when creating or renaming', as
   assert.equal(response.status, 409, 'same name in another territory is still a duplicate');
 });
 
-test('a remittance penalty is added to the expected amount and noted on the remittance', async () => {
+test('a remittance penalty is noted on the remittance but kept out of the expected amount', async () => {
   const h = harness();
   const collectionsHeader = Array(33).fill(''); collectionsHeader[28] = 'Remittance Status';
   const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 200; collection[28] = 'Outstanding'; collection[30] = 'DPE-0002'; collection[31] = 'Maria'; collection[32] = 'MAS';
@@ -917,13 +917,13 @@ test('a remittance penalty is added to the expected amount and noted on the remi
   h.rows.Remittances = [remittancesHeader];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
   collection.length = 37; collection[35] = 50; collection[36] = 'Late turnover: held 5 days';
-  const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 250, remittanceDate: '2026-09-26', receivedByName: 'Cashier' }));
+  const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 200, remittanceDate: '2026-09-26', receivedByName: 'Cashier' }));
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
-  assert.equal(result.remittance.expectedAmount, 250, 'remittance 200 + penalty 50');
+  assert.equal(result.remittance.expectedAmount, 200, 'the penalty is independent of the remittance');
   assert.equal(result.remittance.difference, 0);
   const remittance = h.writes[0].requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.match(remittance[22], /Includes penalty ₱50.00: Late turnover: held 5 days/);
+  assert.match(remittance[22], /Penalty ₱50\.00 \(separate from remittance\): Late turnover: held 5 days/);
   const dashboard = await h.load('lib/remittance-workflow.ts').getRemittanceDashboard();
   assert.ok(dashboard.remittances.every((item) => item.penaltyAmount === 0 || item.penaltyNotes.length), 'penalties carry their notes');
 });
@@ -1023,10 +1023,10 @@ test('new sales are remitted on their own slip, separate from collections', asyn
   const post = async (body) => { const response = await route.POST(request({ actualAmount: 500, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
   assert.match((await post({ collectionIds: ['COL-1', 'SAL-1'] })).body.error, /separate slips/);
   assert.match((await post({ collectionIds: ['SAL-1'], fidelityAmount: 10 })).body.error, /cannot exceed the MAS incentive of ₱0\.00/, 'a sale saved before incentives existed has none to save from');
-  const created = await post({ collectionIds: ['SAL-1'], actualAmount: 525 });
+  const created = await post({ collectionIds: ['SAL-1'], actualAmount: 500 });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.remittance.type, 'New Sales');
-  assert.equal(created.body.remittance.expectedAmount, 525, 'the full amount paid on the sale plus the batch penalty');
+  assert.equal(created.body.remittance.expectedAmount, 500, 'the full amount paid on the sale; the batch penalty is separate');
   const requests = h.writes.at(-1).requestBody.requests;
   const remittance = requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
   assert.equal(remittance[25], 'New Sales');
@@ -1063,13 +1063,13 @@ test('New Sales Fidelity comes out of the sale incentive and is shown on its rem
   const remittances = h2.load('app/api/remittances/route.ts');
   const outstanding = (await (await remittances.GET()).json()).outstanding;
   assert.deepEqual(outstanding.map((item) => [item.id, item.remittanceAmount, item.fidelity]), [['SAL-9', 200, 50]]);
-  const created = await remittances.POST(request({ collectionIds: ['SAL-9'], actualAmount: 250, remittanceDate: '2026-09-26' }));
+  const created = await remittances.POST(request({ collectionIds: ['SAL-9'], actualAmount: 200, remittanceDate: '2026-09-26' }));
   const result = await created.json();
   assert.equal(created.status, 201, JSON.stringify(result));
-  assert.equal(result.remittance.expectedAmount, 250);
+  assert.equal(result.remittance.expectedAmount, 200, 'Fidelity is independent of the remittance');
   assert.equal(result.remittance.fidelityAmount, 50);
   const row = h2.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.match(row[22], /Includes MAS Fidelity ₱50\.00, deducted from the MAS's incentives/);
+  assert.match(row[22], /MAS Fidelity ₱50\.00 \(separate from remittance\), deducted from the MAS's incentives/);
 });
 
 test('fidelity entered with a Collections batch is used by its remittance and lowers the incentives', async () => {
@@ -1082,12 +1082,12 @@ test('fidelity entered with a Collections batch is used by its remittance and lo
   h.rows.Remittances = [remittancesHeader];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
   const route = h.load('app/api/remittances/route.ts');
-  const post = async (body) => { const response = await route.POST(request({ collectionIds: ['COL-9'], actualAmount: 290, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
-  assert.match((await post({ fidelityAmount: 5 })).body.error, /already included/);
+  const post = async (body) => { const response = await route.POST(request({ collectionIds: ['COL-9'], actualAmount: 270, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
+  assert.match((await post({ fidelityAmount: 5 })).body.error, /already recorded/);
   const created = await post({});
   assert.equal(created.status, 201, JSON.stringify(created.body));
-  // Collected 320: remittance 270 + Fidelity 20 = 290 expected; the MAS keeps 50 - 20 = 30.
-  assert.equal(created.body.remittance.expectedAmount, 290);
+  // Collected 320: remittance 270 expected (Fidelity 20 is separate); the MAS keeps 50 - 20 = 30.
+  assert.equal(created.body.remittance.expectedAmount, 270);
   assert.equal(created.body.remittance.fidelityAmount, 20);
   const remittance = h.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
   assert.equal(remittance[24], 20, 'the Fidelity is recorded on the remittance, where the Fidelity page reads it');
@@ -1182,4 +1182,46 @@ test('audit summary counts only approved Entry Clerk audits in the period, by br
   assert.deepEqual(one.audits.map((item) => item.date), ['2026-09-02', '2026-09-01'], 'newest first');
   h.setUser({ userId: 'USR-3', employeeId: 'MD-3', name: 'Clerk One', roleNames: ['Entry Clerk'], permissions: {} });
   assert.equal((await route.GET(new Request('http://localhost/api/audit/summary?from=2026-09-01&to=2026-09-30'))).status, 403);
+});
+
+test('New Sales refuses a member or claimant contact number that belongs to an employee', async () => {
+  const h = harness();
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active', '0917 123 4567']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+  const sale = { existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', contactNumber: '0918 000 0000', claimantContact: '0918 000 0001', beneficiaries: [] };
+  const post = async (overrides) => { const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', sales: [{ ...sale, ...overrides }] })); return { status: response.status, body: await response.json() }; };
+  const member = await post({ contactNumber: '+63 917 123 4567' });
+  assert.equal(member.status, 400);
+  assert.match(member.body.message, /Member contact number .* belongs to employee different-mas \(DPE-0002\)/);
+  const claimant = await post({ claimantContact: '09171234567' });
+  assert.match(claimant.body.message, /Claimant contact number .* belongs to employee different-mas/);
+  assert.equal(h.writes.length, 0, 'nothing is saved');
+});
+
+test('member directory: Collector per program, deceased members, and the standing filters', () => {
+  const { buildMemberDirectory, filterMemberDirectory, emptyDirectoryFilters } = harness().load('lib/member-directory.ts');
+  const member = (id, number, status) => { const row = Array(18).fill(''); row[0] = id; row[1] = number; row[2] = id; row[12] = 'Purok 1, Matina'; row[17] = status; return row; };
+  const enrollment = (id, memberId, number) => [id, memberId, number, 'DP-1', '2026-01-10', 'BR-1', 'Maria', 'Cash', '', '', '', '', 'Active'];
+  const collection = (number, date, role, person) => { const row = Array(32).fill(''); row[4] = number; row[5] = 'DP-1'; row[9] = date; row[19] = 'Posted'; row[25] = role; row[31] = person; return row; };
+  const members = buildMemberDirectory(
+    [member('M1', 'PH-1', 'Active'), member('M2', 'PH-2', 'Deceased'), member('M3', 'PH-3', 'Inactive')],
+    [enrollment('E1', 'M1', 'PH-1'), enrollment('E2', 'M2', 'PH-2'), enrollment('E3', 'M3', 'PH-3')],
+    [['DP-1', 'CODE', 'Program']],
+    [collection('PH-1', '2026-03-01', 'Collector', 'Old Collector'), collection('PH-1', '2026-05-01', 'Collector', 'Jun Collector'), collection('PH-1', '2026-06-01', 'MAS', 'Maria')],
+  );
+  const one = (id) => members.find((item) => item.id === id);
+  assert.equal(one('M1').enrollments[0].collector, 'Jun Collector', 'the latest Collector collection, not a later MAS one');
+  assert.equal(one('M3').enrollments[0].collector, '');
+  assert.equal(one('M2').deceased, true);
+  one('M3').enrollments[0].accountStatus = 'Forfeited';
+  const ids = (standing) => filterMemberDirectory(members, { ...emptyDirectoryFilters, standing }).map((item) => item.id).sort().join(',');
+  assert.equal(ids('active'), 'M1');
+  assert.equal(ids('inactive'), 'M3');
+  assert.equal(ids('dead'), 'M2');
+  assert.equal(ids('alive'), 'M1,M3');
+  assert.equal(ids('forfeited'), 'M3');
+  assert.equal(filterMemberDirectory(members, { ...emptyDirectoryFilters, mas: 'Jun Collector' }).map((item) => item.id).join(','), 'M1', 'the MAS / Collector filter finds Collectors');
+  assert.equal(filterMemberDirectory(members, { ...emptyDirectoryFilters, search: 'matina' }).length, 3, 'search covers the address');
 });

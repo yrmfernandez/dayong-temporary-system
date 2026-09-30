@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Award, Building2, Flame, FilePlus2, Landmark, Lightbulb, Percent, PhilippinePeso, Receipt, Repeat, TrendingDown, TrendingUp, Users, Wallet, type LucideIcon } from "lucide-react";
 import { CompanyTargets } from "@/components/company-targets";
+import { PrintButton } from "@/components/print-button";
 import { Change, Columns, RankBars, RevenueTrend, ShareBar } from "@/components/executive-charts";
 import type { Tone } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,13 +16,15 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
   const k = data.kpis, f = data.finance, c = data.cash;
   const runway = c.runwayMonths === null ? "Self-funding" : `${c.runwayMonths.toFixed(1)} months`;
   const topPrograms = data.programs.slice(0, 8);
-  return <section className="space-y-6">
+  return <section className="executive-dashboard space-y-6">
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div><p className="text-sm font-medium text-primary">Executive overview</p><h1 className="text-2xl font-bold">Company Performance</h1><p className="text-sm text-muted-foreground">Welcome, {employeeName}. {data.periodLabel}: {longDate(data.from)} – {longDate(data.to)}, compared {data.compareLabel.replace(/^vs /, "with ")}.</p></div>
-      <nav aria-label="Reporting period" className="flex flex-wrap gap-1 rounded-xl border bg-card p-1">
+      <div className="flex flex-wrap items-center gap-2"><PrintButton label="Print dashboard" />
+      <nav aria-label="Reporting period" className="flex flex-wrap gap-1 rounded-xl border bg-card p-1 print:hidden">
         {Object.entries(executivePeriods).map(([key, period]) => <Link key={key} href={key === "mtd" ? "/" : `/?period=${key}`} aria-current={data.period === key ? "page" : undefined} className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${data.period === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>{period.label}</Link>)}
-      </nav>
+      </nav></div>
     </div>
+    <p className="hidden text-xs print:block">Printed {new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {employeeName}</p>
 
     <KpiGroup title="Sales">
       <Kpi label="Gross Sales" value={money(k.grossSales.value)} change={k.grossSales.change} note="All money received: New Sales + Collections" icon={PhilippinePeso} tone="brand" />

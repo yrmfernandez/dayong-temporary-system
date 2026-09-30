@@ -98,6 +98,13 @@ function nextMemberNumber() {
   return `PH-${String(numbering.dayongLastMemberNumber).padStart(8, "0")}`;
 }
 
+/** Compares Philippine mobile numbers regardless of spaces, dashes, or a +63 prefix; blank when no usable number. */
+function phoneKey(value: unknown) {
+  let digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.startsWith("63")) digits = `0${digits.slice(2)}`;
+  return digits.length >= 10 ? digits : "";
+}
+
 export const POST = withEncoder(async function POST(request: Request) {
   if (!(await userWithPageAccess("/new-sales"))) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
   // One sale batch at a time per server, so duplicate-member and enrollment checks see each other's saves.
@@ -162,7 +169,7 @@ async function saveSales(request: Request) {
       );
     }
 
-    // A remittance penalty is charged to the MAS (their own money), added once to this batch's remittance.
+    // A remittance penalty is charged to the MAS (their own money), recorded once on this batch, separate from the remittance.
     const penalty = Math.round((Number(body.penalty) || 0) * 100) / 100;
     const penaltyNote = typeof body.penaltyNote === "string" ? body.penaltyNote.trim() : "";
     if (!Number.isFinite(penalty) || penalty < 0) return NextResponse.json({ success: false, message: "The penalty must be zero or a positive amount." }, { status: 400 });
@@ -182,6 +189,15 @@ async function saveSales(request: Request) {
         },
         { status: 400 },
       );
+    }
+
+    // A member's or claimant's contact number may not be any employee's number (e.g. the MAS's own phone).
+    const employeeContacts = new Map(employees.map((employee) => [phoneKey(employee.contact), employee] as const).filter(([key]) => key));
+    for (const [index, sale] of body.sales.entries()) {
+      for (const [label, contact] of [["Member", sale?.contactNumber], ["Claimant", sale?.claimantContact]] as const) {
+        const employee = employeeContacts.get(phoneKey(contact));
+        if (employee) return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${label} contact number ${String(contact).trim()} belongs to employee ${employee.name} (${employee.id}). Use the member's or claimant's own number.` }, { status: 400 });
+      }
     }
 
     /*
@@ -495,7 +511,7 @@ async function saveSales(request: Request) {
 
     /*
      * What the MAS keeps from each sale and what the company is owed (lib/remittance.ts calculateSaleIncentive).
-     * The batch's Fidelity comes out of these incentives and is added to the remittance.
+     * The batch's Fidelity comes out of these incentives; it is tracked separately from the remittance.
      */
     const quotes: Array<{ incentive: number; remittance: number }> = [];
     for (const [index, prepared] of preparedSales.entries()) {

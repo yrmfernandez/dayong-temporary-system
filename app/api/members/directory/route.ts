@@ -13,11 +13,11 @@ export async function GET() {
   try {
     const response = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: GOOGLE_SHEET_ID,
-      ranges: ["'Members'!A:R", "'Member programs'!A:M", "'Programs'!A:F"],
+      ranges: ["'Members'!A:R", "'Member programs'!A:M", "'Programs'!A:F", "'Collections'!A:AF"],
       valueRenderOption: "FORMATTED_VALUE",
     });
     const tables = response.data.valueRanges ?? [];
-    const members = buildMemberDirectory(...[0, 1, 2].map((index) => (tables[index]?.values ?? []).slice(1)) as [unknown[][], unknown[][], unknown[][]]);
+    const members = buildMemberDirectory(...[0, 1, 2, 3].map((index) => (tables[index]?.values ?? []).slice(1)) as [unknown[][], unknown[][], unknown[][], unknown[][]]);
     let statusWarning = "";
     try {
       const report = await accountReport();

@@ -1,5 +1,5 @@
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
-import { accountState, type Account, type AccountPayment, todayInManila } from "@/lib/account-rules";
+import { accountState, monthIndex, monthName, type Account, type AccountPayment, todayInManila } from "@/lib/account-rules";
 import { getEncoder } from "@/lib/encoder-context";
 import { encoderHeaders } from "@/lib/encoder-schema";
 import type { IncentiveTier } from "@/lib/remittance";
@@ -58,6 +58,17 @@ export async function accountReport() {
 export async function mamReport(from?: string, to?: string) {
   const today = todayInManila();
   return buildMamReport(await loadAccountData(), from || today.slice(0, 7), to || today.slice(0, 7), today);
+}
+
+/** One member's MAM: each of their program accounts, month by month, from enrollment (at most the last 36 months) to today. */
+export async function memberMam(memberId: string) {
+  const today = todayInManila();
+  const data = await loadAccountData();
+  const accounts = data.accounts.filter((account) => account.memberId === memberId);
+  const current = monthIndex(today.slice(0, 7));
+  const earliest = Math.min(current, ...accounts.filter((account) => account.doi).map((account) => monthIndex(account.doi.slice(0, 7))));
+  const from = monthName(Math.max(earliest, current - 35));
+  return buildMamReport({ ...data, accounts, payments: data.payments.filter((payment) => accounts.some((account) => account.id === payment.enrollmentId)) }, from, today.slice(0, 7), today);
 }
 
 export async function syncAccountStatuses() {

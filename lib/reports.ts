@@ -40,12 +40,12 @@ export async function buildOperationalReport(from: string, to: string, filters: 
     const date = text(row[1]).slice(0, 10), branch = text(row[2]), person = text(row[3]), programId = text(row[21]), gross = number(row[26]), penalty = number(row[38]);
     // AP is the company's share after the MAS's New Sale incentive; blank on sales saved before incentives existed.
     const remittance = text(row[41]) === "" ? gross : number(row[41]), incentives = Math.max(0, round(gross - remittance));
-    const fidelityAmount = fidelityByCollection.get(text(row[0])) ?? 0, net = round(remittance + fidelityAmount + penalty);
+    const fidelityAmount = fidelityByCollection.get(text(row[0])) ?? 0, net = remittance;
     return { date, branch, programId, programName: programNames.get(programId) || programId, person, role: "MAS", encodedBy: text(row[33]), accounts: 1, gross, masCommission: incentives, collectorCommission: 0, incentives, fidelity: fidelityAmount, penalty, net, expectedRemittance: net };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const collectionLines: ReportLine[] = collections.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted").map((row) => {
     const date = text(row[9]).slice(0, 10), branch = text(row[6]), programId = text(row[5]), person = text(row[31]) || text(row[7]), role = text(row[25]) || text(row[32]) || "MAS", gross = number(row[10]), expected = number(row[26]) || gross;
-    const incentives = Math.max(0, round(gross - expected)), fidelityAmount=role.toLowerCase()==="collector"?0:(fidelityByCollection.get(text(row[0]))??0), penalty=number(row[35]), net=round(expected+fidelityAmount+penalty);
+    const incentives = Math.max(0, round(gross - expected)), fidelityAmount=role.toLowerCase()==="collector"?0:(fidelityByCollection.get(text(row[0]))??0), penalty=number(row[35]), net=expected;
     return { date, branch, programId, programName: programNames.get(programId) || programId, person, role, encodedBy: text(row[23]), accounts: 1, gross, masCommission: role.toLowerCase() === "collector" ? 0 : incentives, collectorCommission: role.toLowerCase() === "collector" ? incentives : 0, incentives, fidelity: fidelityAmount, penalty, net, expectedRemittance: net };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const postedExpenses = expenses.slice(1).filter((row) => text(row[0]) && text(row[11]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[7]) === filters.branch)).reduce((sum, row) => sum + number(row[4]), 0);

@@ -74,7 +74,7 @@ export type CashRemittance = {
   /** How the MAS remitted the linked Collections; non-cash methods carry references for verification. */
   paymentMethods: string[];
   paymentReferences: string[];
-  /** Penalties included in this remittance's expected amount, with what each was for. */
+  /** Penalties charged on the linked items, with what each was for; tracked separately and not part of the expected amount. */
   penaltyAmount: number;
   penaltyNotes: string[];
 };
@@ -131,8 +131,8 @@ async function loadLedger() {
   return { collections, remittances, mappings };
 }
 
-/** What the accountable person must turn over for one Collection: the company remittance plus any penalty. */
-export const amountDue = (collection: Pick<CashCollection, "remittanceAmount" | "penalty">) => collection.remittanceAmount + collection.penalty;
+/** What the accountable person must turn over for one Collection: the company remittance only. Penalty and Fidelity are tracked separately. */
+export const amountDue = (collection: Pick<CashCollection, "remittanceAmount">) => collection.remittanceAmount;
 
 export async function getRemittanceDashboard() {
   const ledger = await loadLedger();
@@ -203,7 +203,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   if (!Number.isFinite(input.actualAmount) || input.actualAmount < 0) throw new Error("Enter the actual amount received.");
   if (!Number.isFinite(input.fidelityAmount) || input.fidelityAmount < 0) throw new Error("Fidelity must be zero or a positive amount.");
   const encodedFidelity = Math.round(collections.reduce((sum, item) => sum + item.fidelity, 0) * 100) / 100;
-  if (encodedFidelity > 0 && input.fidelityAmount > 0 && Math.round(input.fidelityAmount * 100) !== Math.round(encodedFidelity * 100)) throw new Error("Fidelity for this batch was entered when it was encoded and is already included.");
+  if (encodedFidelity > 0 && input.fidelityAmount > 0 && Math.round(input.fidelityAmount * 100) !== Math.round(encodedFidelity * 100)) throw new Error("Fidelity for this batch was entered when it was encoded and is already recorded.");
   const fidelityAmount = encodedFidelity || input.fidelityAmount;
   if (owner.accountableRole.toLowerCase() !== "mas" && fidelityAmount !== 0) throw new Error("Fidelity is only available for MAS remittances.");
   const availableIncentive=Math.round(collections.reduce((sum,item)=>sum+Math.max(0,item.amount-item.remittanceAmount),0)*100)/100;
@@ -211,16 +211,16 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const fidelityAccount=(await getFidelityData(owner.accountableEmployeeId,true)).accounts.find(item=>item.masEmployeeId===owner.accountableEmployeeId);
   const remainingFidelity = Math.max(0,Math.round((FIDELITY_CAP-(fidelityAccount?.approved??0)-(fidelityAccount?.pending??0))*100)/100);
   if (fidelityAmount > remainingFidelity) throw new Error(`Fidelity can be at most ${remainingFidelity.toLocaleString("en-PH",{style:"currency",currency:"PHP"})} for this MAS.`);
-  const expected = Math.round((collections.reduce((sum, collection) => sum + amountDue(collection), 0) + fidelityAmount) * 100) / 100;
+  const expected = Math.round(collections.reduce((sum, collection) => sum + amountDue(collection), 0) * 100) / 100;
   const actual = Math.round(input.actualAmount * 100) / 100;
   const difference = Math.round((actual - expected) * 100) / 100;
   // Confirmed full cash is created and approved in one atomic write by whoever received it.
   if (input.cashConfirmed && difference !== 0) throw new Error("Cash received in full requires the actual amount to equal the expected amount.");
   const approved = Boolean(input.cashConfirmed);
-  // The Remittances sheet itself shows whether a penalty is included and what it was for.
+  // The Remittances sheet itself shows any penalty and Fidelity on the batch; neither is part of the expected amount.
   const penalized = collections.filter((collection) => collection.penalty > 0);
-  const penaltyText = penalized.map((collection) => `Includes penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}: ${collection.penaltyNote}`).join("; ");
-  const fidelityText = fidelityAmount > 0 ? `Includes MAS Fidelity ${fidelityAmount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}, deducted from the MAS's incentives` : "";
+  const penaltyText = penalized.map((collection) => `Penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (separate from remittance): ${collection.penaltyNote}`).join("; ");
+  const fidelityText = fidelityAmount > 0 ? `MAS Fidelity ${fidelityAmount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (separate from remittance), deducted from the MAS's incentives` : "";
   const remarks = [text(input.remarks), penaltyText, fidelityText].filter(Boolean).join(" | ");
   const status = approved ? "Approved" : difference === 0 ? "Pending Approval" : "Discrepancy";
   const id = createReadableId("REM");

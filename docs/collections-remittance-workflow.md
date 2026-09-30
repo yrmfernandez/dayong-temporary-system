@@ -30,31 +30,36 @@ Both encoding pages show the same panel before saving:
 ```text
 Total amount collected
 Total incentives   = amount collected - company remittance - MAS Fidelity
-+ Penalty          (MAS's own money, with its note)
-Total remittance   = company remittance + MAS Fidelity + penalty
+Total remittance   = company remittance
+
+Separate from the remittance:
+  MAS Fidelity     (set aside from incentives)
+  Penalty          (MAS's own money, with its note)
 ```
+
+MAS Fidelity and the penalty are independent of the remittance: neither is added to the total remittance, the Remittances page's expected amount, the "Cash received in full" check, outstanding accountability, or report net.
 
 New Sales earn a MAS incentive (`calculateSaleIncentive` in `lib/remittance.ts`):
 
 - **Program with a registration fee:** the program's New Sale incentive (Programs Q type, R amount), a fixed amount or a percentage of the amount paid. None set means none earned.
 - **Program without a registration fee:** the sale pays the first month, so the month-1 MAS incentive tier applies to the base pay, as for a Collection at NOP 1. Anything above one month is remitted in full; less than one month earns nothing.
 
-Each sale stores Sales AO `mas_incentive` and AP `remittance_amount`. The Entry Clerk may enter the MAS's Fidelity for the batch (zero allowed); it must not exceed the batch's incentives or the MAS's remaining ₱10,000, and is stored on the first sale (AQ `fidelity_amount`). The total remittance is the company share plus Fidelity plus any penalty. Sales saved before incentives existed have blank AO:AQ and still owe the full amount paid. Run `npm run sheets:sale-incentives -- --apply` once to add these columns.
+Each sale stores Sales AO `mas_incentive` and AP `remittance_amount`. The Entry Clerk may enter the MAS's Fidelity for the batch (zero allowed); it must not exceed the batch's incentives or the MAS's remaining ₱10,000, and is stored on the first sale (AQ `fidelity_amount`). The total remittance is the company share only; Fidelity and any penalty are tracked separately. Sales saved before incentives existed have blank AO:AQ and still owe the full amount paid. Run `npm run sheets:sale-incentives -- --apply` once to add these columns.
 
-Every remittance that includes Fidelity says so: in the Remittances sheet remarks ("Includes MAS Fidelity ₱…, deducted from the MAS's incentives"), on the selected items, in the expected amount, on pending approvals, and in the records' MAS Fidelity column. The same total is what "Cash received in full" must match and what the Remittances page expects.
+Every remittance whose batch has Fidelity says so: in the Remittances sheet remarks ("MAS Fidelity ₱… (separate from remittance), deducted from the MAS's incentives"), on the selected items, on pending approvals, and in the records' MAS Fidelity column. It is not part of the expected amount or what "Cash received in full" must match.
 
 ## MAS Fidelity at encoding
 
-The Entry Clerk may enter the MAS Fidelity with a Collections batch (Collections AL `fidelity_amount`, first row of the batch). It is set aside from the batch's incentives as the MAS's savings: the incentives go down by that amount and the remittance goes up by it. It is not allowed on Collector batches (their incentive is the Collector's), may not exceed the batch's incentives, and must fit the MAS's remaining ₱10,000 lifetime limit. The remittance for that batch uses the stored amount (Remittances Y), so the Fidelity page counts it; the Remittances page shows it read-only and only asks for Fidelity on batches encoded before this field existed.
+The Entry Clerk may enter the MAS Fidelity with a Collections batch (Collections AL `fidelity_amount`, first row of the batch). It is set aside from the batch's incentives as the MAS's savings: the incentives go down by that amount; the remittance is unchanged. It is not allowed on Collector batches (their incentive is the Collector's), may not exceed the batch's incentives, and must fit the MAS's remaining ₱10,000 lifetime limit. The remittance for that batch uses the stored amount (Remittances Y), so the Fidelity page counts it; the Remittances page shows it read-only and only asks for Fidelity on batches encoded before this field existed.
 
 ## Remittance penalty
 
 A penalty is charged to the accountable MAS or Collector (for example, for a late turnover). They pay it from their own money; members are never charged. It is entered once per Collections batch or New Sales batch (New Sales store it in Sales AM `penalty_amount`, AN `penalty_note`), with a required note of what it is for (3–300 characters).
 
 - It is stored on the batch's first Collection row (Collections AJ `penalty_amount`, AK `penalty_note`), so a Remittance counts it exactly once.
-- Expected Amount = the selected Collections' remittance amounts + the penalty + Fidelity. The full-cash check, outstanding accountability, and reports use the same total.
+- Expected Amount = the selected Collections' remittance amounts only. The penalty and Fidelity are independent and are not added; the full-cash check, outstanding accountability, and reports use the same total.
 - The incentive and Fidelity calculations are unchanged; the penalty is never treated as member payment or incentive.
-- Every remittance that includes a penalty shows it and its note: in the Collections totals, the Remittances selection list, Pending Approval, and Records (Penalty column), and in the Remittances sheet remarks ("Includes penalty ₱X: note").
+- Every remittance whose batch has a penalty shows it and its note, marked as separate from the remittance: in the Collections totals, the Remittances selection list, Pending Approval, and Records (Penalty column), and in the Remittances sheet remarks ("Penalty ₱X (separate from remittance): note").
 
 Run `npm run sheets:remittance-penalty` for a dry run and `-- --apply` to add the two Collections headers.
 

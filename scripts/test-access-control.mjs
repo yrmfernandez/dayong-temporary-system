@@ -50,13 +50,10 @@ test("HR and Finance receive separate workspaces", () => {
   assert.equal(access(["HR Officer"], "/attendance-tracking"), true);
 });
 
-test("CEO and President only open the dashboard and attendance pages", () => {
+test("CEO and President open the dashboard, User Report Review, MAM, Members, and attendance pages", () => {
   for (const role of ["CEO", "President"]) {
-    assert.equal(access([role], "/"), true);
-    assert.equal(access([role], "/attendance"), true);
-    assert.equal(access([role], "/attendance-tracking"), true);
-    assert.equal(access([role], "/settings"), true);
-    for (const path of ["/reports", "/remittances", "/members", "/mam", "/programs", "/fidelity", "/leave-requests", "/payroll"]) assert.equal(access([role], path), false, `${role} ${path}`);
+    for (const path of ["/", "/admin-reports", "/mam", "/members", "/attendance", "/attendance-tracking", "/settings"]) assert.equal(access([role], path), true, `${role} ${path}`);
+    for (const path of ["/reports", "/remittances", "/programs", "/fidelity", "/leave-requests", "/payroll"]) assert.equal(access([role], path), false, `${role} ${path}`);
   }
 });
 
@@ -166,4 +163,22 @@ test("payroll: monthly salary on scheduled days deducts recorded absences; MAS c
   const totals = lineTotals(masLine, [{ id: "A1", employeeId: "M1", kind: "Addition", category: "Management discretion", amount: 1000, reason: "Owner-approved" }, { id: "A2", employeeId: "M1", kind: "Deduction", category: "Cash advance", amount: 700, reason: "Advance" }]);
   assert.equal(totals.gross, 5500);
   assert.equal(totals.net, 4800);
+});
+
+test("attendance board: who is late, early, absent, AWOL, or on leave, and who may adjust late time", async () => {
+  const { boardCategory, canAdjustLateness, canViewAttendanceTracking } = await import("../lib/attendance-board.ts");
+  const record = (overrides) => ({ status: "Present", timeIn: "08:00", scheduledTimeIn: "08:00", lateMinutes: 0, ...overrides });
+  assert.equal(boardCategory(record({ timeIn: "08:25", lateMinutes: 25 }), "2026-09-29", "2026-09-30"), "Late");
+  assert.equal(boardCategory(record({ timeIn: "08:25", lateMinutes: 0 }), "2026-09-29", "2026-09-30"), "On time", "late adjusted to zero");
+  assert.equal(boardCategory(record({ timeIn: "07:40" }), "2026-09-29", "2026-09-30"), "Early");
+  assert.equal(boardCategory(record({}), "2026-09-29", "2026-09-30"), "On time");
+  assert.equal(boardCategory(record({ status: "AWOL", timeIn: "" }), "2026-09-29", "2026-09-30"), "AWOL");
+  assert.equal(boardCategory(record({ status: "Leave", timeIn: "" }), "2026-09-29", "2026-09-30"), "On leave");
+  assert.equal(boardCategory(null, "2026-09-29", "2026-09-30"), "Absent", "no record on a past day");
+  assert.equal(boardCategory(null, "2026-09-30", "2026-09-30"), "Not clocked in", "no record yet today");
+  const user = (roleNames, overrides = {}) => ({ roleNames, permissions: { ...permissions, ...overrides } });
+  for (const role of ["CEO", "President", "Administrator", "HR Officer"]) assert.equal(canAdjustLateness(user([role])), true, role);
+  assert.equal(canViewAttendanceTracking(user(["Finance"])), true);
+  assert.equal(canAdjustLateness(user(["Finance"])), false, "Finance views but does not adjust");
+  assert.equal(canAdjustLateness(user(["MAS"])), false);
 });

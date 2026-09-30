@@ -1,4 +1,5 @@
 import { getSessionUser } from "@/lib/auth-server";
+import { canViewAttendanceTracking } from "@/lib/attendance-board";
 import { getAttendanceRecordsForRange } from "@/lib/attendance-data";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
@@ -8,9 +9,7 @@ const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Numbe
 export async function GET(request: Request) {
   const user = await getSessionUser();
   if (!user) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
-  const roles = user.roleNames.map((role) => role.trim().toLowerCase());
-  const allowed = roles.some((role) => ["administrator", "admin", "hr officer", "hr", "finance", "ceo", "president"].includes(role)) || user.permissions.manageAttendance || user.permissions.viewAttendanceReports;
-  if (!allowed) return Response.json({ success: false, message: "Attendance tracking access is required." }, { status: 403 });
+  if (!canViewAttendanceTracking(user)) return Response.json({ success: false, message: "Attendance tracking access is required." }, { status: 403 });
 
   try {
     const params = new URL(request.url).searchParams;

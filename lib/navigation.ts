@@ -73,6 +73,8 @@ const workspaces: Record<string, NavSection[]> = {
   ],
   executive: [
     { title: "Overview", items: [page.dashboard] },
+    { title: "Reports", items: [page.userReports, page.mam] },
+    { title: "Directory", items: [page.members] },
     { title: "People", items: [page.attendanceTracking] },
     { title: "My HR", items: [page.attendance] },
   ],

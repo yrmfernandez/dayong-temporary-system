@@ -109,9 +109,10 @@ async function saveCollections(request: Request) {
       const remaining = Math.max(0, Math.round((FIDELITY_CAP - (account?.approved ?? 0) - (account?.pending ?? 0)) * 100) / 100);
       if (fidelity > remaining) throw new Error(`Fidelity can be at most ${remaining.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} for this MAS (the ${FIDELITY_CAP.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} limit).`);
     }
-    const expectedRemittance = (rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) + Math.round(penalty * 100) + Math.round(fidelity * 100)) / 100;
+    // Penalty and Fidelity are tracked separately and are not part of the remittance.
+    const expectedRemittance = rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) / 100;
     if (autoApproveRemittance && Math.round(cashReceived * 100) !== Math.round(expectedRemittance * 100)) {
-      throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}${penalty > 0 || fidelity > 0 ? " (including penalty and Fidelity)" : ""}.`);
+      throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}.`);
     }
     writing = true;
     await commitCollections(rows, [...touched.values()], payments);

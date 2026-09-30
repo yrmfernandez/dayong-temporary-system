@@ -84,9 +84,12 @@ function formatContactNumber(value: string) {
   return [digits.slice(0, 4), digits.slice(4, 7), digits.slice(7, 11)].filter(Boolean).join(" ");
 }
 
-function validContactNumber(value: string) {
-  return /^09\d{9}$/.test(value.replace(/\D/g, ""));
+function validContactNumber(value: string | undefined) {
+  return /^09\d{9}$/.test(String(value ?? "").replace(/\D/g, ""));
 }
+
+/** True when a form value is missing or only spaces; drafts and loaded members may lack a field. */
+const blank = (value: unknown) => !String(value ?? "").trim();
 
 function emptyAddress(): Address {
   return {
@@ -820,10 +823,21 @@ export default function NewSalesPage() {
    * SAVE
    * =========================================================
    */
+  // Any unexpected error must show on screen; otherwise the button appears to do nothing.
   const saveSales = async () => {
+    try {
+      await submitSales();
+    } catch (error: unknown) {
+      console.error("New Sales save error:", error);
+      setSaving(false);
+      setSaveMessage(error instanceof Error ? error.message : "Unable to save new sales.");
+    }
+  };
+
+  const submitSales = async () => {
     setSaveMessage("");
 
-    if (!branch.trim()) {
+    if (blank(branch)) {
       setSaveMessage(
         "Please select a branch.",
       );
@@ -831,7 +845,7 @@ export default function NewSalesPage() {
       return;
     }
 
-    if (!mas.trim()) {
+    if (blank(mas)) {
       setSaveMessage(
         "Please select the Marketing Account Staff.",
       );
@@ -845,7 +859,7 @@ export default function NewSalesPage() {
 
     for (const sale of sales) {
       if (
-        !sale.member.name.surname.trim()
+        blank(sale.member.name?.surname)
       ) {
         setSaveMessage(
           "Member surname is required.",
@@ -853,13 +867,13 @@ export default function NewSalesPage() {
         return;
       }
 
-      if (!validContactNumber(sale.member.contactNumber) || !validContactNumber(sale.member.claimant.contactNumber)) {
+      if (!validContactNumber(sale.member.contactNumber) || !validContactNumber(sale.member.claimant?.contactNumber)) {
         setSaveMessage("Member and claimant contact numbers must use the Philippine mobile format 09XX XXX XXXX.");
         return;
       }
 
       if (
-        !sale.program.programCode.trim()
+        blank(sale.program.programCode)
       ) {
         setSaveMessage(
           "Please select a program.",
@@ -868,7 +882,7 @@ export default function NewSalesPage() {
       }
 
       if (
-        !sale.member.address.houseBlockLot.trim()
+        blank(sale.member.address?.houseBlockLot)
       ) {
         setSaveMessage(
           "Complete Address is required.",
@@ -876,10 +890,10 @@ export default function NewSalesPage() {
         return;
       }
 
-      if (sale.beneficiaries.some((beneficiary) =>
-        !beneficiary.surname.trim() ||
-        !beneficiary.firstName.trim() ||
-        !beneficiary.relationship.trim()
+      if ((sale.beneficiaries ?? []).some((beneficiary) =>
+        blank(beneficiary.surname) ||
+        blank(beneficiary.firstName) ||
+        blank(beneficiary.relationship)
       )) {
         setSaveMessage("Each beneficiary needs a surname, first name, and relationship.");
         return;
@@ -894,7 +908,7 @@ export default function NewSalesPage() {
         return;
       }
 
-      if (!sale.applicationNumber.trim()) {
+      if (blank(sale.applicationNumber)) {
         setSaveMessage(
           "Application Number is required.",
         );

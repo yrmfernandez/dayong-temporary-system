@@ -418,7 +418,8 @@ export default function CollectionsPage() {
   const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
   const fidelityAmount = collectedBy === "Collector" ? 0 : Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
   const batchIncentives = totalRemittance === null ? 0 : Math.round((totalCollected - totalRemittance) * 100) / 100;
-  const totalDue = totalRemittance === null ? null : (Math.round(totalRemittance * 100) + Math.round(penaltyAmount * 100) + Math.round(fidelityAmount * 100)) / 100;
+  // Penalty and Fidelity are independent of the remittance, so the cash due is the company remittance alone.
+  const totalDue = totalRemittance === null ? null : Math.round(totalRemittance * 100) / 100;
 
   function updateCollection(
     id: string,

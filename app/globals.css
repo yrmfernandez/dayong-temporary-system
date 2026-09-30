@@ -698,6 +698,9 @@ main [data-slot="card"]:nth-child(4) {
   .page-hero, main [data-slot="card"] { box-shadow: none !important; background: #fff !important; backdrop-filter: none !important; }
   main [data-slot="card"]::before { display: none; }
   .mam-scroll { overflow: visible !important; }
+  /* CEO/President dashboard: keep each card and chart whole on a page; editing controls are not printed. */
+  .executive-dashboard [data-slot="card"], .executive-dashboard section > div > * { break-inside: avoid; }
+  .executive-dashboard button { display: none !important; }
   .mam-report table { font-size: 9px; }
   .mam-report th, .mam-report td { position: static !important; min-width: 0 !important; padding: 4px !important; }
   .mam-report table { width: 100% !important; table-layout: fixed; }

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
+import { DailyBoard } from "./daily-board";
 
 type Employee = { id: string; name: string; roles: string[]; status: string; branches: string[] };
 type Record = { id: string; employeeId: string; attendanceDate: string; branch: string; scheduledTimeIn: string; scheduledTimeOut: string; timeIn: string; timeOut: string; workedHours: number; overtimeHours: number; status: string; lateMinutes: number; undertimeMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string };
@@ -18,6 +19,17 @@ const monthStart = () => `${ManilaToday().slice(0, 7)}-01`;
 const hours = (value: number) => `${value.toFixed(2)} hrs`;
 
 export default function AttendanceTrackingPage() {
+  const [view, setView] = useState<"daily" | "history">("daily");
+  return <section className="mx-auto max-w-7xl space-y-6">
+    <header className="rounded-2xl page-hero p-5">
+      <div className="flex items-center gap-3"><div className="rounded-xl bg-violet-95 p-3 text-violet-40"><BarChart3 className="size-6" /></div><div><h1 className="text-2xl font-bold">Employee Attendance Tracking</h1><p className="text-sm text-violet-30/80">See who is present, late, early, absent, AWOL, or on leave each day, and review attendance history.</p></div></div>
+    </header>
+    <div role="tablist" className="flex gap-1 border-b print:hidden">{([["daily", "Daily board"], ["history", "History"]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`border-b-2 px-3 py-2.5 text-sm font-medium ${view === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{label}</button>)}</div>
+    {view === "daily" ? <DailyBoard /> : <AttendanceHistory />}
+  </section>;
+}
+
+function AttendanceHistory() {
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(ManilaToday);
   const [employeeId, setEmployeeId] = useState("");
@@ -50,11 +62,7 @@ export default function AttendanceTrackingPage() {
     undertime: records.reduce((sum, record) => sum + record.undertimeMinutes, 0),
   }), [records]);
 
-  return <section className="mx-auto max-w-7xl space-y-6">
-    <header className="rounded-2xl page-hero p-5">
-      <div className="flex items-center gap-3"><div className="rounded-xl bg-violet-95 p-3 text-violet-40"><BarChart3 className="size-6" /></div><div><h1 className="text-2xl font-bold">Employee Attendance Tracking</h1><p className="text-sm text-violet-30/80">Review attendance history, work hours, overtime, lateness, undertime, leave, and absences.</p></div></div>
-    </header>
-
+  return <div className="space-y-6">
     <Card><CardContent className="grid gap-4 p-4 md:grid-cols-4">
       <div className="space-y-2 md:col-span-2"><Label>Employee</Label><SearchSelect aria-label="Employee" clearable value={employeeId} placeholder="All employees - search ID or name" options={employees.map((employee) => ({ value: employee.id, label: employee.name, description: employee.id }))} onValueChange={setEmployeeId}/></div>
       <div className="space-y-2"><Label>From</Label><Input type="date" value={from} onChange={(event) => setFrom(event.target.value)}/></div>
@@ -72,7 +80,7 @@ export default function AttendanceTrackingPage() {
     <div className="grid gap-3 sm:grid-cols-2"><Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">Total late time</p><p className="mt-1 text-xl font-semibold">{summary.late} minutes</p></CardContent></Card><Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">Total undertime</p><p className="mt-1 text-xl font-semibold">{summary.undertime} minutes</p></CardContent></Card></div>
 
     <Card><CardHeader><CardTitle>Attendance records</CardTitle></CardHeader><CardContent><div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[980px] text-sm"><thead className="bg-muted/50 text-left"><tr>{["Date","Employee","Branch","Status","Time in","Time out","Worked","Overtime","Late","Undertime","Remarks"].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead><tbody>{records.map((record) => { const employee = employees.find((item) => item.id === record.employeeId); return <tr key={record.id} className="border-t"><td className="p-3">{record.attendanceDate}</td><td className="p-3"><strong>{employee?.name || record.employeeId}</strong><div className="text-xs text-muted-foreground">{record.employeeId}</div></td><td className="p-3">{record.branch || "—"}</td><td className="p-3"><Badge variant={record.status === "Present" ? "default" : "secondary"}>{record.status}</Badge></td><td className="p-3">{record.timeIn || "—"}</td><td className="p-3">{record.timeOut || "—"}</td><td className="p-3">{hours(record.workedHours)}</td><td className="p-3">{hours(record.overtimeHours)}</td><td className="p-3">{record.lateMinutes} min</td><td className="p-3">{record.undertimeMinutes} min</td><td className="max-w-64 p-3">{record.notes || (record.leaveType ? `${record.leaveType} · ${record.leaveApprovalStatus}` : "—")}</td></tr>; })}{!loading && !records.length && <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">No recorded attendance matches these filters.</td></tr>}</tbody></table></div></CardContent></Card>
-  </section>;
+  </div>;
 }
 
 function Metric({ icon: Icon, label, value, detail }: { icon: typeof UserCheck; label: string; value: string; detail?: string }) {
