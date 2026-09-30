@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const user = await getSessionUser();
   if (!user) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
   const roles = user.roleNames.map((role) => role.trim().toLowerCase());
-  const allowed = roles.some((role) => ["administrator", "admin", "hr officer", "hr", "finance"].includes(role)) || user.permissions.manageAttendance || user.permissions.viewAttendanceReports;
+  const allowed = roles.some((role) => ["administrator", "admin", "hr officer", "hr", "finance", "ceo", "president"].includes(role)) || user.permissions.manageAttendance || user.permissions.viewAttendanceReports;
   if (!allowed) return Response.json({ success: false, message: "Attendance tracking access is required." }, { status: 403 });
 
   try {

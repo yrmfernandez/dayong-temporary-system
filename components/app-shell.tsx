@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
-import type { AccessContext } from "@/lib/access-control";
+import { executiveRoles, type AccessContext } from "@/lib/access-control";
 import { isInWorkspace, normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { onPreferencesChange, preferenceKeys, readDensity, readPreference, writePreference } from "@/lib/ui-preferences";
 
@@ -90,7 +90,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Every employee may manage members, so MAS is always offered as a workspace (see docs/access-control.md).
+// Every employee may manage members, so MAS is always offered as a workspace (see docs/access-control.md),
+// except to executives whose only roles are CEO / President: their workspace is the dashboard and attendance.
 function roleOptions(roleNames: string[]) {
-  return [...new Map([...roleNames, "MAS"].map((role) => [normalizeRole(role), role])).values()];
+  const executiveOnly = roleNames.length > 0 && roleNames.every((role) => executiveRoles.includes(normalizeRole(role)));
+  return [...new Map([...roleNames, ...(executiveOnly ? [] : ["MAS"])].map((role) => [normalizeRole(role), role])).values()];
 }

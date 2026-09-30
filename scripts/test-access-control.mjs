@@ -50,6 +50,16 @@ test("HR and Finance receive separate workspaces", () => {
   assert.equal(access(["HR Officer"], "/attendance-tracking"), true);
 });
 
+test("CEO and President only open the dashboard and attendance pages", () => {
+  for (const role of ["CEO", "President"]) {
+    assert.equal(access([role], "/"), true);
+    assert.equal(access([role], "/attendance"), true);
+    assert.equal(access([role], "/attendance-tracking"), true);
+    assert.equal(access([role], "/settings"), true);
+    for (const path of ["/reports", "/remittances", "/members", "/mam", "/programs", "/fidelity", "/leave-requests", "/payroll"]) assert.equal(access([role], path), false, `${role} ${path}`);
+  }
+});
+
 test("specific action flags supplement role navigation", () => {
   assert.equal(access(["Entry Clerk"], "/user-accounts", { manageUsers: true }), true);
   assert.equal(access(["MAS"], "/attendance-reviews", { viewAttendanceReports: true }), true);

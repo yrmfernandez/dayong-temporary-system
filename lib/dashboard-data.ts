@@ -9,11 +9,15 @@ const text = (value: unknown) => String(value ?? "").trim();
 const date = (value: unknown) => text(value).slice(0, 10);
 export type DashboardKind = "admin" | "executive" | "hr" | "finance" | "entry" | "it" | "mas";
 
+export function dashboardKind(user: SessionUser): DashboardKind {
+  const roles = user.roleNames.map((role) => role.trim().toLowerCase());
+  return roles.some((role) => ["administrator", "admin"].includes(role)) ? "admin" : roles.some((role) => ["ceo", "president"].includes(role)) ? "executive" : roles.includes("finance") ? "finance" : roles.some((role) => ["hr", "hr officer"].includes(role)) ? "hr" : roles.some((role) => ["it", "it clerk"].includes(role)) ? "it" : roles.includes("entry clerk") ? "entry" : "mas";
+}
+
 export async function getDashboardData(user: SessionUser) {
   const today = todayInManila();
   const from = `${today.slice(0, 7)}-01`;
-  const roles = user.roleNames.map((role) => role.trim().toLowerCase());
-  const kind: DashboardKind = roles.some((role) => ["administrator", "admin"].includes(role)) ? "admin" : roles.some((role) => ["ceo", "president"].includes(role)) ? "executive" : roles.includes("finance") ? "finance" : roles.some((role) => ["hr", "hr officer"].includes(role)) ? "hr" : roles.some((role) => ["it", "it clerk"].includes(role)) ? "it" : roles.includes("entry clerk") ? "entry" : "mas";
+  const kind = dashboardKind(user);
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Employees'!A:M", USERS_RANGE, "'Branches'!A:Q", "'Members'!A:V", "'Programs'!A:J", "'Member programs'!A:S", "'Sales'!A:AI", "'Collections'!A:AG"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
   const [employees, users, branches, members, programs, enrollments, sales, collections] = response.data.valueRanges?.map((item) => item.values ?? []) ?? [];
   const employee = employees.slice(1).find((row) => text(row[0]) === user.employeeId);

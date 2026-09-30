@@ -5,7 +5,10 @@ import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge, type Tone } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSessionUser } from "@/lib/auth-server";
-import { getDashboardData } from "@/lib/dashboard-data";
+import { ExecutiveDashboard } from "@/components/executive-dashboard";
+import { dashboardKind, getDashboardData } from "@/lib/dashboard-data";
+import { getEmployees } from "@/lib/employees";
+import { getExecutiveAnalytics, isExecutivePeriod } from "@/lib/executive-analytics";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 // Icon and tone follow what a metric measures, so the same idea looks the same on every dashboard.
@@ -35,9 +38,18 @@ const metricStyle = (item: Metric) => {
 type Data = Awaited<ReturnType<typeof getDashboardData>>;
 type Metric = { label: string; value: string | number; detail: string; href?: string };
 
-export default async function Dashboard() {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (dashboardKind(user) === "executive") {
+    const { period } = await searchParams;
+    let loaded: [Awaited<ReturnType<typeof getExecutiveAnalytics>>, Awaited<ReturnType<typeof getEmployees>>];
+    try {
+      loaded = await Promise.all([getExecutiveAnalytics(isExecutivePeriod(period) ? period : "mtd"), getEmployees()]);
+    } catch (error) { return DashboardError(error instanceof Error ? error.message : "Unable to load dashboard."); }
+    const [analytics, employees] = loaded;
+    return <ExecutiveDashboard data={analytics} employeeName={employees.find((employee) => employee.id === user.employeeId)?.name || user.name} />;
+  }
   let data: Data;
   try {
     data = await getDashboardData(user);
@@ -55,7 +67,6 @@ function DashboardError(message: string) { return <section><h1 className="text-2
 function config(data: Data) {
   const m = data.monthReport.summary, t = data.todayActivity, r = data.remittance.summary;
   const finance = <><Financial data={data}/><Pending data={data}/></>;
-  if (data.kind === "executive") return { eyebrow: "Executive overview", title: "Company Performance", description: "Current performance with drill-down access to official reports.", metrics: [{ label: "Today's New Accounts", value: t.salesAccounts, detail: "New sales today", href: "/reports/daily" }, { label: "Today's Gross Sales", value: money(t.salesGross), detail: "Recorded today" }, { label: "Today's Collections", value: money(t.collectionGross), detail: "Posted today" }, { label: "Actual Remittance", value: money(m.actualRemittance), detail: "Approved this month" }], sections: finance };
   if (data.kind === "finance") return { eyebrow: "Finance workspace", title: "Cash & Remittance", description: "Review accountability, approvals, and discrepancies.", metrics: [{ label: "Gross Collections", value: money(data.monthReport.collections.reduce((sum, row) => sum + row.gross, 0)), detail: "This month" }, { label: "Incentives / Commissions", value: money(m.incentives), detail: "Gross this month" }, { label: "Fidelity Savings", value: money(m.fidelity), detail: "MAS contributions this month", href: "/fidelity" }, { label: "Expected Remittance", value: money(m.expectedRemittance), detail: "After expenses" }, { label: "Difference", value: money(m.difference), detail: m.difference > 0 ? "Shortage" : m.difference < 0 ? "Overage" : "Balanced" }], sections: finance };
   if (data.kind === "hr") return { eyebrow: "HR workspace", title: "Personnel Overview", description: "Staff status, roles, and branch assignments.", metrics: [{ label: "Total Employees", value: data.counts.employees, detail: "Registered staff" }, { label: "Active Employees", value: data.counts.activeEmployees, detail: "Current staff" }, { label: "MAS", value: data.counts.mas, detail: "Active staff" }, { label: "Collectors", value: data.counts.collectors, detail: "Active staff" }], sections: <><BranchStaff data={data}/><Links items={[["Manage Employees", "/employees"], ["Attendance Review", "/attendance-reviews"], ["Leave Approvals", "/leave-approvals"]]}/></> };
   if (data.kind === "entry") return { eyebrow: "Encoding workspace", title: "Today's Encoding", description: "Keep daily sales and collection entries complete and accurate.", metrics: [{ label: "Today's New Sales", value: t.salesAccounts, detail: money(t.salesGross) }, { label: "Today's Collections", value: t.collectionAccounts, detail: money(t.collectionGross) }, { label: "Transactions Encoded", value: data.encodedToday, detail: "Your entries today" }, { label: "Needs Attention", value: r.historicalReviewCount, detail: "Historical review entries" }], sections: <><Recent data={data}/><Links items={[["New Sale", "/new-sales"], ["Encode Collection", "/collections"], ["Daily Report", "/reports/daily"]]}/></> };

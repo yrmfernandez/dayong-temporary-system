@@ -421,6 +421,10 @@
   }
 
   .tone-bar { background: var(--tone); }
+
+  /* Executive dashboard charts. Series pair validated for colour-vision deficiency in both themes. */
+  .viz { --viz-1: #7b33c7; --viz-2: #eb6834; --viz-grid: color-mix(in oklab, var(--muted-foreground) 18%, transparent); }
+  .dark .viz { --viz-1: #9a6ae6; --viz-2: #d95926; }
 }
 
 /* Without blur support, or when the user asks for less transparency, glass becomes solid. */

@@ -29,7 +29,7 @@ Workspaces are defined once in `lib/navigation.ts`. Each role's sidebar lists th
 | Role | Sidebar sections |
 | --- | --- |
 | Administrator | Overview · Operations (New Sales, Collections, Remittances, MAM) · Finance (Cash Transactions, Expenses, Vendor Payables, Commissions, Fidelity) · Reports (Reports, User Report Review) · People · Master Data · Administration (User Accounts, Roles, Audit Log) · My HR |
-| CEO / President | Overview (Dashboard, Reports, MAM) · Cash Oversight (Remittances, Cash Transactions, Fidelity) · Directory (Members, Programs, Branches) · My HR |
+| CEO / President | Overview (Dashboard) · People (Attendance Tracking) · My HR (My Attendance). The dashboard is the executive analytics view (`lib/executive-analytics.ts`). Executive roles do not receive the shared employee pages, and a user whose only roles are CEO / President is not offered the MAS workspace. |
 | Finance | Overview · Cash (Remittances, Collections, Cash Transactions) · Payables (Expenses, Vendor Payables, Commissions) · Monitoring (MAM, Fidelity, Reports, Audit Log) · Directory (Members, Programs) · My HR (Attendance, Attendance Tracking, Leave Requests) |
 | Entry Clerk | Overview · Encoding (New Sales, Collections, Remittances) · Reports · Lookup (Members, Programs, Branches) · My HR |
 | HR Officer | Overview · People (Employees, Attendance Review, Attendance Tracking, Leave Approvals) · Directory (Branches) · My HR |

@@ -13,8 +13,9 @@ export type AccessContext = {
 const roleRoutes: Record<string, string[]> = {
   administrator: ["*"],
   admin: ["*"],
-  ceo: ["/", "/members", "/mam", "/remittances", "/programs", "/branches", "/cash-transactions", "/payroll", "/fidelity", "/reports", "/settings"],
-  president: ["/", "/members", "/mam", "/remittances", "/programs", "/branches", "/cash-transactions", "/payroll", "/fidelity", "/reports", "/settings"],
+  // The executive workspace is the analytics dashboard plus attendance; it does not receive the shared employee pages.
+  ceo: ["/", "/attendance-tracking", "/attendance", "/settings"],
+  president: ["/", "/attendance-tracking", "/attendance", "/settings"],
   "hr officer": ["/", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
   hr: ["/", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
   finance: ["/", "/audit", "/members", "/collections", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/reports", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
@@ -26,6 +27,7 @@ const roleRoutes: Record<string, string[]> = {
 
 // Every signed-in employee's shared workspace, added to roles that still use default access.
 const employeeRoutes = ["/programs", "/branches", "/master-data", "/members", "/mam", "/fidelity", "/attendance", "/leave-requests"];
+export const executiveRoles = ["ceo", "president"];
 // Always reachable so nobody is locked out of their dashboard or password change.
 const alwaysAllowed = ["/", "/settings"];
 
@@ -34,9 +36,9 @@ export const isAdministratorRole = (role: string) => ["administrator", "admin"].
 
 /** Pages a role receives when its page access has not been configured. Used to pre-fill the Roles editor. */
 export function defaultRoutesForRole(role: string) {
-  const routes = roleRoutes[normalizeRoleName(role)] ?? [];
+  const name = normalizeRoleName(role), routes = roleRoutes[name] ?? [];
   if (routes.includes("*")) return ["*"];
-  return [...new Set([...alwaysAllowed, ...routes, ...employeeRoutes])];
+  return [...new Set([...alwaysAllowed, ...routes, ...(executiveRoles.includes(name) ? [] : employeeRoutes)])];
 }
 
 function routeMatches(pathname: string, route: string) {

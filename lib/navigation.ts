@@ -71,10 +71,9 @@ const workspaces: Record<string, NavSection[]> = {
     myHr,
   ],
   executive: [
-    { title: "Overview", items: [page.dashboard, page.reports, page.mam] },
-    { title: "Cash Oversight", items: [page.remittances, page.cash, page.payroll, page.fidelity] },
-    { title: "Directory", items: [page.members, page.programs, page.branches] },
-    myHr,
+    { title: "Overview", items: [page.dashboard] },
+    { title: "People", items: [page.attendanceTracking] },
+    { title: "My HR", items: [page.attendance] },
   ],
   finance: [
     { title: "Overview", items: [page.dashboard] },
