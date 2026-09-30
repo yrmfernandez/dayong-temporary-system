@@ -99,6 +99,7 @@ function emptyClaimant() {
     completeName: "",
     contactNumber: "",
     sameAsMemberAddress: false,
+    sameAsMemberContact: false,
     address: emptyAddress(),
   };
 }
@@ -176,26 +177,34 @@ function calculateAge(
 ): number | null {
   if (!birthdate) return null;
 
-  const birth = new Date(birthdate);
-  const today = new Date();
+  const birth = new Date(`${birthdate}T00:00:00Z`);
+  const today = new Date(`${todayInManila()}T00:00:00Z`);
 
   let age =
-    today.getFullYear() -
-    birth.getFullYear();
+    today.getUTCFullYear() -
+    birth.getUTCFullYear();
 
   const monthDifference =
-    today.getMonth() -
-    birth.getMonth();
+    today.getUTCMonth() -
+    birth.getUTCMonth();
 
   if (
     monthDifference < 0 ||
     (monthDifference === 0 &&
-      today.getDate() < birth.getDate())
+      today.getUTCDate() < birth.getUTCDate())
   ) {
     age--;
   }
 
   return age >= 0 ? age : null;
+}
+
+function birthdateFromAge(age: number): string {
+  const [year, month, day] = todayInManila().split("-").map(Number);
+  const birthYear = year - age;
+  // February 29 becomes February 28 when the birth year is not a leap year.
+  const lastDay = new Date(Date.UTC(birthYear, month, 0)).getUTCDate();
+  return `${String(birthYear).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
 }
 
 function updateAddress(
@@ -1543,12 +1552,28 @@ export default function NewSalesPage() {
                           </Label>
 
                           <Input
+                            type="number"
+                            min={0}
+                            max={Number(today.slice(0, 4)) - 100}
+                            step={1}
                             value={
                               calculateAge(
                                 sale.member.birthdate,
                               ) ?? ""
                             }
-                            readOnly
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              const age = value === "" ? null : Number(value);
+                              if (age !== null && (!Number.isInteger(age) || age < 0 || age > Number(today.slice(0, 4)) - 100)) return;
+                              updateSale(sale.id, (current) => ({
+                                ...current,
+                                member: {
+                                  ...current.member,
+                                  age,
+                                  birthdate: age === null ? "" : birthdateFromAge(age),
+                                },
+                              }));
+                            }}
                             placeholder="Auto"
                           />
                         </div>
@@ -1631,6 +1656,12 @@ export default function NewSalesPage() {
                                     ...current.member,
 
                                     contactNumber: formatContactNumber(event.target.value),
+                                    claimant: {
+                                      ...current.member.claimant,
+                                      contactNumber: current.member.claimant.sameAsMemberContact
+                                        ? formatContactNumber(event.target.value)
+                                        : current.member.claimant.contactNumber,
+                                    },
                                   },
                                 }),
                               )
@@ -1946,6 +1977,7 @@ export default function NewSalesPage() {
                           </Label>
 
                           <Input
+                            disabled={sale.member.claimant.sameAsMemberContact ?? false}
                             value={
                               sale.member
                                 .claimant
@@ -1973,6 +2005,30 @@ export default function NewSalesPage() {
                             }
                             placeholder="09XXXXXXXXX"
                           />
+                          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                            <input
+                              type="checkbox"
+                              checked={sale.member.claimant.sameAsMemberContact ?? false}
+                              onChange={(event) => {
+                                const checked = event.target.checked;
+                                updateSale(sale.id, (current) => ({
+                                  ...current,
+                                  member: {
+                                    ...current.member,
+                                    claimant: {
+                                      ...current.member.claimant,
+                                      sameAsMemberContact: checked,
+                                      contactNumber: checked
+                                        ? current.member.contactNumber
+                                        : current.member.claimant.contactNumber,
+                                    },
+                                  },
+                                }));
+                              }}
+                              className="size-4 rounded border-input"
+                            />
+                            Same with member
+                          </label>
                         </div>
                       </div>
 

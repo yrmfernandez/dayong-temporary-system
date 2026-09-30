@@ -14,6 +14,7 @@ export type Claimant = {
   completeName: string;
   contactNumber: string;
   sameAsMemberAddress: boolean;
+  sameAsMemberContact?: boolean;
   address: Address;
 };
 
