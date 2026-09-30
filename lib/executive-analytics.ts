@@ -1,4 +1,5 @@
 import { addMonths, todayInManila } from "@/lib/account-rules";
+import { getCompanyTargets } from "@/lib/company-targets";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -56,8 +57,11 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export async function getExecutiveAnalytics(period: ExecutivePeriod) {
   const today = todayInManila();
   const range = periodRange(period, today);
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AN", "'Collections'!A:AK", "'Programs'!A:F", "'Member programs'!A:S", "'Branches'!A:M", "'Expenses'!A:Q", "'Remittances'!A:Y", "'Members'!A:A"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
-  const [salesRows, collectionRows, programRows, enrollmentRows, branchRows, expenseRows, remittanceRows, memberRows] = response.data.valueRanges?.map((item) => item.values ?? []) ?? [];
+  const [response, targets] = await Promise.all([
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AN", "'Collections'!A:AK", "'Programs'!A:F", "'Member programs'!A:S", "'Branches'!A:M", "'Expenses'!A:Q", "'Remittances'!A:Y", "'Members'!A:A", "'Cash Transactions'!A:P", "'Cash Accounts'!A:E", "'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Vendor Payables'!A:O"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+    getCompanyTargets(),
+  ]);
+  const [salesRows, collectionRows, programRows, enrollmentRows, branchRows, expenseRows, remittanceRows, memberRows, cashRows, cashAccountRows, payrollRunRows, payrollLineRows, payableRows] = response.data.valueRanges?.map((item) => item.values ?? []) ?? [];
 
   const programNames = new Map(programRows.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), text(row[2]) || text(row[1]) || text(row[0])]));
   const branchNames = new Map(branchRows.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), text(row[1]) || text(row[0])]));
@@ -80,8 +84,49 @@ export async function getExecutiveAnalytics(period: ExecutivePeriod) {
 
   const salesGross = sum(periodSales, (row) => row.amount), previousSalesGross = sum(previousSales, (row) => row.amount);
   const collectionGross = sum(periodCollections, (row) => row.amount), previousCollectionGross = sum(previousCollections, (row) => row.amount);
+  const inPeriod = (date: string) => date >= range.from && date <= range.to;
   const commissions = sum(periodCollections, (row) => Math.max(0, row.amount - row.remitted));
-  const expenses = round(expenseRows.slice(1).filter((row) => text(row[0]) && text(row[11]).toLowerCase() === "posted" && day(row[1]) >= range.from && day(row[1]) <= range.to).reduce((total, row) => total + number(row[4]), 0));
+  const postedExpenses = expenseRows.slice(1).filter((row) => text(row[0]) && text(row[11]).toLowerCase() === "posted");
+  const expenses = round(postedExpenses.filter((row) => inPeriod(day(row[1]))).reduce((total, row) => total + number(row[4]), 0));
+  // Paid payroll by pay date. Commission inside payroll is left out: agent incentives are already deducted to reach Net Sales.
+  const payrollCommission = new Map<string, number>();
+  for (const row of payrollLineRows.slice(1)) if (text(row[0]) && (text(row[23]) || "active") === "active") payrollCommission.set(text(row[1]), (payrollCommission.get(text(row[1])) ?? 0) + number(row[20]));
+  const payroll = round(payrollRunRows.slice(1).filter((row) => text(row[0]) && text(row[4]) === "Paid" && inPeriod(day(row[3]))).reduce((total, row) => total + Math.max(0, number(row[9]) - (payrollCommission.get(text(row[0])) ?? 0)), 0));
+  const vendorBills = round(payableRows.slice(1).filter((row) => text(row[0]) && !/void|cancel/i.test(text(row[10])) && inPeriod(day(row[1]))).reduce((total, row) => total + number(row[6]), 0));
+  const grossSales = round(salesGross + collectionGross), netSales = round(grossSales - commissions);
+  const operatingCosts = round(payroll + expenses + vendorBills), ebitda = round(netSales - operatingCosts);
+
+  // Cash position from the ledger: opening balances, approved remittances in, posted expenses out, manual movements.
+  const cashMoves: Array<{ date: string; amount: number }> = [
+    ...remittanceRows.slice(1).filter((row) => text(row[0]) && text(row[4]) === "Approved").map((row) => ({ date: day(row[3]), amount: number(row[11]) })),
+    ...postedExpenses.map((row) => ({ date: day(row[1]), amount: -number(row[4]) })),
+    ...cashRows.slice(1).filter((row) => text(row[0]) && (text(row[10]) || "Posted").toLowerCase() === "posted").map((row) => ({ date: day(row[1]), amount: text(row[2]) === "outflow" ? -number(row[5]) : number(row[5]) })),
+  ];
+  const openingCash = cashAccountRows.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() !== "inactive").reduce((total, row) => total + number(row[3]), 0);
+  const cashOnHand = round(openingCash + cashMoves.filter((move) => move.date <= today).reduce((total, move) => total + move.amount, 0));
+  // Burn over the three complete months before this one.
+  const burnFrom = addMonths(`${today.slice(0, 7)}-01`, -3), burnTo = `${today.slice(0, 7)}-01`;
+  const burnMoves = cashMoves.filter((move) => move.date >= burnFrom && move.date < burnTo);
+  const monthlyOutflow = round(Math.abs(burnMoves.filter((move) => move.amount < 0).reduce((total, move) => total + move.amount, 0)) / 3);
+  const monthlyInflow = round(burnMoves.filter((move) => move.amount > 0).reduce((total, move) => total + move.amount, 0) / 3);
+  const netBurn = round(monthlyOutflow - monthlyInflow);
+
+  // Recurring dues: the monthly program rate of every active account that still owes installments.
+  const basePay = new Map(programRows.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), number(row[3])]));
+  const paying = enrollmentRows.slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active" && !["PAID", "FORFEITED"].includes(text(row[18]).toUpperCase()));
+  const monthlyDues = round(paying.reduce((total, row) => total + (basePay.get(text(row[3])) ?? 0), 0));
+
+  // Targets for the current quarter and year, measured on Gross Sales to date and paced by elapsed days.
+  const quarter = Math.floor((Number(today.slice(5, 7)) - 1) / 3) + 1, year = today.slice(0, 4);
+  const dayMs = 86400000, time = (date: string) => Date.parse(`${date}T00:00:00Z`);
+  const progress = (key: string, label: string, start: string, end: string) => {
+    const achieved = sum([...sales, ...collections].filter((row) => row.date >= start && row.date <= today), (row) => row.amount);
+    const accounts = sales.filter((row) => row.date >= start && row.date <= today).length;
+    const target = targets.get(key), fraction = Math.min(1, Math.max(0, (time(today) - time(start) + dayMs) / (time(end) - time(start) + dayMs)));
+    return { key, label, start, end, achieved, accounts, target: target?.grossSales ?? 0, accountsTarget: target?.newAccounts ?? 0, notes: target?.notes ?? "", elapsed: round(fraction * 100), projected: fraction ? round(achieved / fraction) : 0 };
+  };
+  const quarterStart = `${year}-${String((quarter - 1) * 3 + 1).padStart(2, "0")}-01`;
+  const quarterEnd = new Date(Date.UTC(Number(year), quarter * 3, 0)).toISOString().slice(0, 10);
   const approved = remittanceRows.slice(1).filter((row) => text(row[0]) && text(row[4]) === "Approved" && day(row[3]) >= range.from && day(row[3]) <= range.to);
   const actualRemittance = round(approved.reduce((total, row) => total + number(row[11]), 0));
   const expectedRemittance = round(approved.reduce((total, row) => total + number(row[10]), 0));
@@ -111,7 +156,8 @@ export async function getExecutiveAnalytics(period: ExecutivePeriod) {
   return {
     period, periodLabel: executivePeriods[period].label, compareLabel: executivePeriods[period].compare, ...range, today,
     kpis: {
-      revenue: { value: round(salesGross + collectionGross), change: change(salesGross + collectionGross, previousSalesGross + previousCollectionGross) },
+      grossSales: { value: grossSales, change: change(grossSales, previousSalesGross + previousCollectionGross) },
+      netSales: { value: netSales, change: change(netSales, previousSalesGross + previousCollectionGross - sum(previousCollections, (row) => Math.max(0, row.amount - row.remitted))) },
       salesGross: { value: salesGross, change: change(salesGross, previousSalesGross) },
       newAccounts: { value: periodSales.length, change: change(periodSales.length, previousSales.length) },
       averageSale: { value: periodSales.length ? round(salesGross / periodSales.length) : 0, change: change(periodSales.length ? salesGross / periodSales.length : 0, previousSales.length ? previousSalesGross / previousSales.length : 0) },
@@ -121,7 +167,10 @@ export async function getExecutiveAnalytics(period: ExecutivePeriod) {
       members: memberRows.slice(1).filter((row) => text(row[0])).length,
       currentRate: tracked ? round((accountHealth[0].count / tracked) * 100) : 0,
     },
-    finance: { revenue: round(salesGross + collectionGross), commissions, expenses, retained: round(salesGross + collectionGross - commissions - expenses), expectedRemittance, actualRemittance, gap: round(expectedRemittance - actualRemittance), pendingCount: pendingRemittances.length, pendingAmount: round(pendingRemittances.reduce((total, row) => total + number(row[10]), 0)) },
+    finance: { grossSales, netSales, commissions, payroll, expenses, vendorBills, operatingCosts, ebitda, margin: grossSales ? round((ebitda / grossSales) * 100) : null, expectedRemittance, actualRemittance, gap: round(expectedRemittance - actualRemittance), pendingCount: pendingRemittances.length, pendingAmount: round(pendingRemittances.reduce((total, row) => total + number(row[10]), 0)) },
+    cash: { onHand: cashOnHand, monthlyOutflow, monthlyInflow, netBurn, runwayMonths: netBurn > 0 ? round(cashOnHand / netBurn) : null, coverMonths: monthlyOutflow > 0 ? round(cashOnHand / monthlyOutflow) : null },
+    recurring: { monthly: monthlyDues, annual: round(monthlyDues * 12), accounts: paying.length },
+    targets: [progress(`${year}-Q${quarter}`, `Q${quarter} ${year}`, quarterStart, quarterEnd), progress(year, `Year ${year}`, `${year}-01-01`, `${year}-12-31`)],
     trend,
     programs: rank(periodSales, previousSales, (row) => row.programId, (row) => row.amount, programLabel),
     programCollections: rank(periodCollections, previousCollections, (row) => row.programId, (row) => row.amount, programLabel),

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Award, Building2, FilePlus2, Lightbulb, PhilippinePeso, Receipt, TrendingDown, TrendingUp, Users, Wallet, type LucideIcon } from "lucide-react";
+import { Award, Building2, Flame, FilePlus2, Landmark, Lightbulb, Percent, PhilippinePeso, Receipt, Repeat, TrendingDown, TrendingUp, Users, Wallet, type LucideIcon } from "lucide-react";
+import { CompanyTargets } from "@/components/company-targets";
 import { Change, Columns, RankBars, RevenueTrend, ShareBar } from "@/components/executive-charts";
 import type { Tone } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +12,8 @@ const longDate = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateS
 const healthColors = ["var(--brand-moss)", "var(--brand-gold)", "var(--brand-orange)", "var(--brand-red)", "var(--muted-foreground)"];
 
 export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnalytics; employeeName: string }) {
-  const k = data.kpis, f = data.finance;
+  const k = data.kpis, f = data.finance, c = data.cash;
+  const runway = c.runwayMonths === null ? "Self-funding" : `${c.runwayMonths.toFixed(1)} months`;
   const topPrograms = data.programs.slice(0, 8);
   return <section className="space-y-6">
     <div className="flex flex-wrap items-end justify-between gap-4">
@@ -21,25 +23,39 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
       </nav>
     </div>
 
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <Kpi label="Total Revenue" value={money(k.revenue.value)} change={k.revenue.change} note="New Sales + Collections" icon={PhilippinePeso} tone="brand" />
-      <Kpi label="New Sales" value={money(k.salesGross.value)} change={k.salesGross.change} note={`${k.newAccounts.value.toLocaleString("en-PH")} new accounts`} icon={FilePlus2} tone="brand" />
+    <KpiGroup title="Sales">
+      <Kpi label="Gross Sales" value={money(k.grossSales.value)} change={k.grossSales.change} note="All money received: New Sales + Collections" icon={PhilippinePeso} tone="brand" />
+      <Kpi label="Net Sales" value={money(k.netSales.value)} change={k.netSales.change} note={`After ${money(f.commissions)} agent commissions`} icon={Wallet} tone="brand" />
+      <Kpi label="New Sales" value={money(k.salesGross.value)} change={k.salesGross.change} note={`${k.newAccounts.value.toLocaleString("en-PH")} new accounts`} icon={FilePlus2} tone="orange" />
       <Kpi label="Collections" value={money(k.collectionGross.value)} change={k.collectionGross.change} note={`${k.collectionCount.toLocaleString("en-PH")} posted payments`} icon={Receipt} tone="teal" />
-      <Kpi label="Net Retained" value={money(f.retained)} note="Revenue less commissions and expenses" icon={Wallet} tone={f.retained < 0 ? "danger" : "success"} />
+    </KpiGroup>
+    <KpiGroup title="Profitability & cash">
+      <Kpi label="EBITDA" value={money(f.ebitda)} note="Net Sales less payroll, expenses and vendor bills" icon={Landmark} tone={f.ebitda < 0 ? "danger" : "success"} />
+      <Kpi label="Net Profit Margin" value={f.margin === null ? "—" : `${f.margin.toFixed(1)}%`} note="Of Gross Sales, before interest and tax" icon={Percent} tone={f.margin === null ? "neutral" : f.margin < 0 ? "danger" : f.margin < 10 ? "warning" : "success"} />
+      <Kpi label="Cash on Hand" value={money(c.onHand)} note="All cash accounts, from the cash ledger" icon={Wallet} tone="teal" />
+      <Kpi label="Cash Runway" value={runway} note={`Burn ${money(c.monthlyOutflow)}/month · net ${c.netBurn > 0 ? `–${money(c.netBurn)}` : `+${money(-c.netBurn)}`}`} icon={Flame} tone={c.runwayMonths === null ? "success" : c.runwayMonths < 3 ? "danger" : c.runwayMonths < 6 ? "warning" : "success"} />
+    </KpiGroup>
+    <KpiGroup title="Growth & portfolio">
+      <Kpi label="Recurring Dues (ARR)" value={money(data.recurring.annual)} note={`${money(data.recurring.monthly)}/month from ${data.recurring.accounts.toLocaleString("en-PH")} paying accounts`} icon={Repeat} tone="info" />
       <Kpi label="New Accounts" value={k.newAccounts.value.toLocaleString("en-PH")} change={k.newAccounts.change} note="Enrollments sold" icon={Users} tone="info" />
       <Kpi label="Average Sale" value={money(k.averageSale.value)} change={k.averageSale.change} note="Per new account" icon={TrendingUp} tone="orange" />
-      <Kpi label="Active Accounts" value={k.activeAccounts.toLocaleString("en-PH")} note={`${k.members.toLocaleString("en-PH")} members on record`} icon={Users} tone="teal" />
-      <Kpi label="Accounts Current" value={`${k.currentRate.toFixed(1)}%`} note="Active accounts not yet 60 days late" icon={Award} tone={k.currentRate >= 80 ? "success" : k.currentRate >= 60 ? "warning" : "danger"} />
-    </div>
+      <Kpi label="Accounts Current" value={data.trackedAccounts ? `${k.currentRate.toFixed(1)}%` : "—"} note={`Of ${k.activeAccounts.toLocaleString("en-PH")} active accounts, not 60+ days late`} icon={Award} tone={!data.trackedAccounts ? "neutral" : k.currentRate >= 80 ? "success" : k.currentRate >= 60 ? "warning" : "danger"} />
+    </KpiGroup>
 
-    <Highlights data={data} />
+    <div className="grid gap-6 xl:grid-cols-3">
+      <CompanyTargets targets={data.targets} />
+      <Highlights data={data} className="xl:col-span-2" />
+    </div>
 
     <div className="grid gap-6 xl:grid-cols-3">
       <Panel title="Revenue Trend" subtitle="Last 12 months, by month" className="xl:col-span-2"><RevenueTrend points={data.trend} /></Panel>
-      <Panel title="Where the Money Goes" subtitle={data.periodLabel}>
-        <Rows rows={[["Revenue", money(f.revenue)], ["Commissions paid out", `– ${money(f.commissions)}`], ["Expenses", `– ${money(f.expenses)}`], ["Net retained", money(f.retained), true]]} />
+      <Panel title="Profit & Loss" subtitle={data.periodLabel}>
+        <Rows rows={[["Gross Sales", money(f.grossSales)], ["Agent commissions", `– ${money(f.commissions)}`], ["Net Sales", money(f.netSales), true], ["Payroll (excl. commissions)", `– ${money(f.payroll)}`], ["Expenses", `– ${money(f.expenses)}`], ["Vendor bills", `– ${money(f.vendorBills)}`], ["EBITDA", money(f.ebitda), true], ["Net profit margin", f.margin === null ? "—" : `${f.margin.toFixed(1)}%`, true]]} />
+        <div className="my-4 border-t" />
+        <Rows rows={[["Cash on hand", money(c.onHand), true], ["Avg. monthly cash in", money(c.monthlyInflow)], ["Avg. monthly cash out (burn)", money(c.monthlyOutflow)], ["Months of costs covered", c.coverMonths === null ? "—" : c.coverMonths.toFixed(1)]]} />
         <div className="my-4 border-t" />
         <Rows rows={[["Expected remittance", money(f.expectedRemittance)], ["Actual remittance", money(f.actualRemittance)], ["Remittance gap", money(f.gap), true], ["Awaiting approval", `${f.pendingCount} · ${money(f.pendingAmount)}`]]} />
+        <p className="mt-4 text-xs text-muted-foreground">No interest, tax, depreciation or amortization is recorded, so EBITDA equals operating profit and the margin is before tax. Cash burn averages the last three complete months.</p>
       </Panel>
     </div>
 
@@ -76,7 +92,7 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
 }
 
 /** Plain-language findings so the numbers above lead somewhere. */
-function Highlights({ data }: { data: ExecutiveAnalytics }) {
+function Highlights({ data, className = "" }: { data: ExecutiveAnalytics; className?: string }) {
   const compared = data.programs.filter((row) => row.previous > 0 && row.amount > 0);
   const rising = [...compared].sort((a, b) => (growth(b) ?? 0) - (growth(a) ?? 0))[0];
   const falling = data.programs.filter((row) => row.previous > 0).sort((a, b) => (growth(a) ?? 0) - (growth(b) ?? 0))[0];
@@ -88,8 +104,15 @@ function Highlights({ data }: { data: ExecutiveAnalytics }) {
   if (rising && (growth(rising) ?? 0) > 0) items.push({ icon: TrendingUp, tone: "success", text: <><strong>{rising.label}</strong> is growing fastest, up {growth(rising)!.toFixed(0)}% {data.compareLabel}.</> });
   if (falling && (growth(falling) ?? 0) < 0) items.push({ icon: TrendingDown, tone: "danger", text: <><strong>{falling.label}</strong> sales fell {Math.abs(growth(falling)!).toFixed(0)}% {data.compareLabel}.</> });
   if (data.kpis.currentRate < 80 && data.trackedAccounts) items.push({ icon: TrendingDown, tone: "warning", text: <>Only <strong>{data.kpis.currentRate.toFixed(0)}%</strong> of active accounts are current; {(data.trackedAccounts - data.accountHealth[0].count).toLocaleString("en-PH")} are 60+ days late or forfeited.</> });
-  if (!items.length) return null;
-  return <Card><CardHeader><CardTitle className="flex items-center gap-2"><Lightbulb className="size-4 text-primary" />Highlights</CardTitle></CardHeader><CardContent><ul className="grid gap-3 md:grid-cols-2">{items.map((item, index) => <li key={index} className={`tone-${item.tone} flex items-start gap-3 rounded-xl border p-3 text-sm`}><span className="tone-soft flex size-8 shrink-0 items-center justify-center rounded-lg"><item.icon className="size-4" /></span><span className="pt-1.5">{item.text}</span></li>)}</ul></CardContent></Card>;
+  const target = data.targets.find((item) => item.target > 0);
+  if (target) items.push({ icon: target.projected >= target.target ? TrendingUp : TrendingDown, tone: target.projected >= target.target ? "success" : "warning", text: <>{target.label} is {target.projected >= target.target ? "on pace" : "behind pace"}: projected <strong>{money(target.projected)}</strong> against a {money(target.target)} target.</> });
+  if (data.cash.runwayMonths !== null) items.push({ icon: Flame, tone: data.cash.runwayMonths < 6 ? "danger" : "warning", text: <>Cash outflows exceed inflows by {money(data.cash.netBurn)} a month; cash on hand lasts about <strong>{data.cash.runwayMonths.toFixed(1)} months</strong>.</> });
+  if (!items.length) return <Card className={className}><CardHeader><CardTitle className="flex items-center gap-2"><Lightbulb className="size-4 text-primary" />Highlights</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Highlights appear once sales are recorded for this period.</p></CardContent></Card>;
+  return <Card className={className}><CardHeader><CardTitle className="flex items-center gap-2"><Lightbulb className="size-4 text-primary" />Highlights</CardTitle></CardHeader><CardContent><ul className="grid gap-3 md:grid-cols-2">{items.map((item, index) => <li key={index} className={`tone-${item.tone} flex items-start gap-3 rounded-xl border p-3 text-sm`}><span className="tone-soft flex size-8 shrink-0 items-center justify-center rounded-lg"><item.icon className="size-4" /></span><span className="pt-1.5">{item.text}</span></li>)}</ul></CardContent></Card>;
+}
+
+function KpiGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="space-y-2"><h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{children}</div></div>;
 }
 
 function Kpi({ label, value, change, note, icon: Icon, tone }: { label: string; value: string; change?: number | null; note: string; icon: LucideIcon; tone: Tone }) {
