@@ -1,5 +1,5 @@
 import { withEncoder } from "@/lib/encoder-context";
-import { getEmployees } from "@/lib/employees";
+import { getEmployees, setEmployeeRoles } from "@/lib/employees";
 import { NextResponse } from "next/server";
 import { createDefaultAccount } from "@/lib/employee-accounts";
 
@@ -109,7 +109,12 @@ export const PATCH = withEncoder(async (request: Request) => {
     const roleIds = Array.isArray(body.roleIds) ? body.roleIds.filter((value: unknown): value is string => typeof value === "string") : [];
     const denied = await guardAccountChange({ roleIds, accountId: id });
     if (denied) return NextResponse.json({ success: false, message: denied }, { status: 403 });
-    return NextResponse.json({ success: true, account: await updateUserAccount(id, { status: body.status === "inactive" ? "inactive" : "active", roleIds }) });
+    const account = await updateUserAccount(id, { status: body.status === "inactive" ? "inactive" : "active", roleIds });
+    // The register follows the account, so the two cannot drift apart (see System Health).
+    const [accounts, roles] = await Promise.all([getUserAccounts(), getActiveAccountRoles()]);
+    const saved = accounts.find((item) => item.id === id);
+    if (saved?.employeeId) await setEmployeeRoles(saved.employeeId, saved.roleIds.map((roleId) => roles.find((role) => role.id === roleId)?.name ?? roleId));
+    return NextResponse.json({ success: true, account });
   } catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to update account." }, { status: 400 }); }
 });
 

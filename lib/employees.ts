@@ -117,7 +117,15 @@ export async function updateEmployee(employeeId: string, body: Record<string, un
   // Old assignments go before the new ones are added, so only the old rows match.
   if (old.length) await deleteRowsWhere("Employee Branches", (row) => String(row[1] ?? "").trim() === employeeId);
   await appendEncodedRows({ range: "'Employee Branches'!A:C", requestBody: { values: branchIds.map((branchId, index) => [`EBA-${employeeId}-${Date.now()}-${index + 1}`, employeeId, branchId]) } });
-  return { id: employeeId };
+  return { id: employeeId, name, roles };
+}
+
+/** Rewrites only the register's roles (column D), used to follow a change made to the sign-in account's roles. */
+export async function setEmployeeRoles(employeeId: string, roles: string[]) {
+  const employee = (await getEmployeeRows()).find((item) => item.id === employeeId);
+  if (!employee) return false;
+  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'Employees'!D${employee.rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[roles.join(", ")]] } });
+  return true;
 }
 
 export async function updateEmployeeStatus(employeeId: string, status: string) {
