@@ -16,7 +16,7 @@ Administrators choose which pages each role can open in **Roles → Page access*
 - A blank `page_access` means the role still uses its built-in defaults from `lib/access-control.ts`; the editor pre-fills those defaults.
 - Dashboard and Settings are always allowed. Administrator always has every page and cannot be restricted.
 - A user receives the combined pages of all their roles. Action permissions (`manage_users`, `manage_attendance`, `view_attendance_reports`) still add the pages their APIs need.
-- In the sidebar, a configured role shows only its granted pages; granted pages outside the role's usual workspace appear under **More**.
+- In the sidebar, a configured role shows only its granted pages. A granted page outside the role's usual workspace joins the section where it belongs: the role's section that already holds related pages, else the section of the same name, else a new section named as in the Administrator workspace (placed before My HR).
 
 ## Job permissions
 
@@ -80,4 +80,4 @@ Future permission work should replace broad boolean flags with stable permission
 
 ## Statement of Account
 
-`/soa` prints a member's Statement of Account for one program enrollment: member and plan details, the New Sale payment, every posted Collection with its months and NOP, and today's status, amount due, next due month, and remaining pay-the-balance. Figures come from the same rules as MAM (`lib/account-rules.ts`). It is an Administrator page by default; grant it to another role in Roles → Page access.
+`/soa` prints a member's Statement of Account for one program enrollment: member and plan details, the New Sale payment, every posted Collection with its months and NOP, and today's status, amount due, next due month, and remaining pay-the-balance. Figures come from the same rules as MAM (`lib/account-rules.ts`). Administrators, the CEO, and the President have it by default (under Reports); grant it to another role in Roles → Page access. Filters for search, branch, MAS, program, and today's status narrow the account picker and list the matching accounts.

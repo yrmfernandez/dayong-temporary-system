@@ -1,5 +1,5 @@
 import { canAccessPath } from "@/lib/access-control";
-import { canManageUsers, getSessionUser } from "@/lib/auth-server";
+import { canManageUsers, userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { deleteMemberRecord, updateMemberRecord } from "@/lib/master-data-crud";
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
@@ -8,8 +8,8 @@ import { accountReport } from "@/lib/account-data";
 import { canTransferMembers, getTransferHistory } from "@/lib/member-transfer";
 
 export async function GET() {
-  const user = await getSessionUser();
-  if (!user) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
+  const user = await userWithPageAccess("/members");
+  if (!user) return Response.json({ success: false, message: "You do not have access to Members." }, { status: 403 });
   try {
     const response = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: GOOGLE_SHEET_ID,

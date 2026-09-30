@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
-import { DEFAULT_PASSWORD } from "@/lib/default-password";
+import { type IssuedPassword, OneTimePasswordNotice } from "@/components/one-time-password";
 
 type Role = {
   id: string;
@@ -36,7 +36,8 @@ export default function UserAccountsPage() {
   const [editing, setEditing] = useState<Account | null>(null);
   // The account just saved, so the confirmation shows on its card.
   const [savedId, setSavedId] = useState("");
-  const [resetPassword, setResetPassword] = useState("");
+  // A one-time password just issued: shown once, until IT confirms it was handed over.
+  const [issued, setIssued] = useState<IssuedPassword | null>(null);
   const [revision, setRevision] = useState(0);
   // "Find a person": `acct:USR-…` opens that account's editor; `emp:MD-…` offers to create a missing account.
   const [found, setFound] = useState("");
@@ -86,7 +87,7 @@ export default function UserAccountsPage() {
   const foundEmployee = found.startsWith("emp:") ? withoutAccount.find((employee) => employee.id === found.slice(4)) : undefined;
 
   function findPerson(value: string) {
-    setFound(value); setMessage(""); setSavedId(""); setResetPassword("");
+    setFound(value); setMessage(""); setSavedId("");
     if (value.startsWith("acct:")) { setEditing(accounts.find((account) => account.id === value.slice(5)) ?? null); return; }
     setEditing(null);
     setNewRoleIds(employees.find((employee) => employee.id === value.slice(4))?.roleIds ?? []);
@@ -100,9 +101,22 @@ export default function UserAccountsPage() {
       const response = await fetch("/api/user-accounts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ employeeId: foundEmployee.id, roleIds: newRoleIds }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to create user account.");
-      setMessage(`Account created for ${foundEmployee.name}. They sign in with ${foundEmployee.id} and the password ${DEFAULT_PASSWORD}, then change it in Settings → Security.`);
+      setIssued(result.user);
+      setMessage(`Account created for ${foundEmployee.name}.`);
       setFound(""); setRevision((value) => value + 1);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to create user account."); }
+    finally { setSaving(false); }
+  }
+
+  async function resetPassword(account: Account) {
+    if (!window.confirm(`Reset the password for ${account.fullName} (${account.employeeId})? Their current password stops working and they are signed out within a few minutes.`)) return;
+    setSaving(true); setMessage(""); setSavedId("");
+    try {
+      const response = await fetch("/api/user-accounts/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: account.id }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to reset the password.");
+      setEditing(null); setFound(""); setIssued(result.account);
+    } catch (error) { setSavedId(account.id); setMessage(error instanceof Error ? error.message : "Unable to reset the password."); }
     finally { setSaving(false); }
   }
 
@@ -118,6 +132,8 @@ export default function UserAccountsPage() {
         </p>
       </div>
 
+      {issued && <OneTimePasswordNotice issued={issued} onDone={() => setIssued(null)} />}
+
       <Card>
         <CardHeader><CardTitle>Find a person</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -129,17 +145,17 @@ export default function UserAccountsPage() {
                   ...accounts.map((account) => ({ value: `acct:${account.id}`, label: account.fullName, description: `${account.employeeId} · ${account.roles.join(", ") || "No roles"} · ${account.status}` })),
                   ...withoutAccount.map((employee) => ({ value: `emp:${employee.id}`, label: employee.name, description: `${employee.id} · No sign-in account yet` })),
                 ]} />
-              <p className="text-xs text-muted-foreground">New employees get a sign-in account automatically when they are registered (password <span className="font-mono">{DEFAULT_PASSWORD}</span>). Pick someone to edit their account, or to create one if it is missing.</p>
+              <p className="text-xs text-muted-foreground">New employees get a sign-in account automatically when they are registered. For a new account or a forgotten password, use Reset password to issue a one-time password and hand it over in person or by text. Pick someone to edit their account, or to create one if it is missing.</p>
               {foundEmployee && <InlinePanel>
                 <p className="text-sm font-semibold">{foundEmployee.name} <span className="font-mono font-normal text-muted-foreground">{foundEmployee.id}</span> has no sign-in account.</p>
                 <div className="mt-3 grid gap-2 rounded-md border p-3 sm:grid-cols-2">{roles.map((role) => <label key={role.id} className="flex gap-2 text-sm"><input type="checkbox" checked={newRoleIds.includes(role.id)} onChange={() => setNewRoleIds((current) => current.includes(role.id) ? current.filter((id) => id !== role.id) : [...current, role.id])} />{role.name}</label>)}</div>
-                <div className="mt-3 flex flex-wrap items-center gap-2"><Button type="button" disabled={saving || !newRoleIds.length} onClick={() => void createAccount()}>{saving ? "Creating..." : "Create account"}</Button><span className="text-xs text-muted-foreground">Password: <span className="font-mono">{DEFAULT_PASSWORD}</span></span></div>
+                <div className="mt-3 flex flex-wrap items-center gap-2"><Button type="button" disabled={saving || !newRoleIds.length} onClick={() => void createAccount()}>{saving ? "Creating..." : "Create account"}</Button><span className="text-xs text-muted-foreground">A one-time password is shown once the account is created.</span></div>
               </InlinePanel>}
               {message && !editing && !savedId && <p className="text-sm" role="status">{message}</p>}
             </>}
         </CardContent>
       </Card>
-      <Card><CardHeader><CardTitle>Existing Accounts</CardTitle></CardHeader><CardContent className="space-y-3">{accounts.map((account) => <div key={account.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"><div><p className="font-medium">{account.fullName}</p><p className="text-sm text-muted-foreground">{account.employeeId} · {account.status}</p><p className="text-xs text-muted-foreground">{account.roles.join(", ") || "No roles"}</p></div><div className="flex gap-2"><Button variant={editing?.id === account.id ? "default" : "outline"} aria-expanded={editing?.id === account.id} onClick={() => { setMessage(""); setSavedId(""); setResetPassword(""); setFound(editing?.id === account.id ? "" : `acct:${account.id}`); setEditing((current) => current?.id === account.id ? null : account); }}>{editing?.id === account.id ? "Editing" : "Edit"}</Button><Button variant="outline" className="text-destructive" onClick={async () => { if (!window.confirm(`Delete the account for ${account.fullName} (${account.employeeId})?`)) return; setSavedId(""); const response = await fetch("/api/user-accounts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: account.id }) }); const result = await response.json(); setMessage(response.ok && result.success ? "Account deleted." : result.message || "Unable to delete account."); if (response.ok) setRevision((value) => value + 1); }}>Delete</Button></div>{savedId === account.id && !editing && message && <p role="status" className="basis-full rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{message}</p>}{editing?.id === account.id && <InlinePanel className="basis-full"><p className="mb-3 text-sm font-semibold">Edit {editing.fullName}</p><form className="space-y-4" onSubmit={async (event) => { event.preventDefault(); setMessage(""); setSaving(true); try { const response = await fetch("/api/user-accounts", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, status: editing.status, roleIds: editing.roleIds, password: resetPassword }) }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to update account."); setSavedId(editing.id); setEditing(null); setResetPassword(""); setMessage("Account updated."); setRevision((value) => value + 1); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to update account."); } finally { setSaving(false); } }}><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Sign-in ID</Label><Input value={editing.employeeId} readOnly className="bg-muted/50 font-mono"/></div><div className="space-y-2"><Label>Status</Label><select className="w-full rounded-md border bg-background p-2" value={editing.status} onChange={(event) => setEditing({ ...editing, status: event.target.value })}><option value="active">Active</option><option value="inactive">Inactive</option></select></div><div className="space-y-2"><Label>New temporary password</Label><Input type="password" minLength={12} value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="Leave blank to keep password"/><button type="button" className="text-xs font-medium text-primary underline" onClick={() => setResetPassword(DEFAULT_PASSWORD)}>Reset to default password ({DEFAULT_PASSWORD})</button></div></div><div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">{roles.map((role) => <label key={role.id} className="flex gap-2 text-sm"><input type="checkbox" checked={editing.roleIds.includes(role.id)} onChange={() => setEditing({ ...editing, roleIds: editing.roleIds.includes(role.id) ? editing.roleIds.filter((id) => id !== role.id) : [...editing.roleIds, role.id] })}/>{role.name}</label>)}</div>{message && <p className="text-sm text-muted-foreground">{message}</p>}<div className="flex gap-2"><Button type="submit" disabled={saving || editing.roleIds.length === 0}>{saving ? "Saving..." : "Save Account"}</Button><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div></form></InlinePanel>}</div>)}{!accounts.length && <p className="text-sm text-muted-foreground">No user accounts found.</p>}</CardContent></Card>
+      <Card><CardHeader><CardTitle>Existing Accounts</CardTitle></CardHeader><CardContent className="space-y-3">{accounts.map((account) => <div key={account.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"><div><p className="font-medium">{account.fullName}</p><p className="text-sm text-muted-foreground">{account.employeeId} · {account.status}</p><p className="text-xs text-muted-foreground">{account.roles.join(", ") || "No roles"}</p></div><div className="flex gap-2"><Button variant={editing?.id === account.id ? "default" : "outline"} aria-expanded={editing?.id === account.id} onClick={() => { setMessage(""); setSavedId(""); setFound(editing?.id === account.id ? "" : `acct:${account.id}`); setEditing((current) => current?.id === account.id ? null : account); }}>{editing?.id === account.id ? "Editing" : "Edit"}</Button>{account.status === "active" && <Button variant="outline" disabled={saving} onClick={() => void resetPassword(account)}>Reset password</Button>}<Button variant="outline" className="text-destructive" onClick={async () => { if (!window.confirm(`Delete the account for ${account.fullName} (${account.employeeId})?`)) return; setSavedId(""); const response = await fetch("/api/user-accounts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: account.id }) }); const result = await response.json(); setMessage(response.ok && result.success ? "Account deleted." : result.message || "Unable to delete account."); if (response.ok) setRevision((value) => value + 1); }}>Delete</Button></div>{savedId === account.id && !editing && message && <p role="status" className="basis-full rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{message}</p>}{editing?.id === account.id && <InlinePanel className="basis-full"><p className="mb-3 text-sm font-semibold">Edit {editing.fullName}</p><form className="space-y-4" onSubmit={async (event) => { event.preventDefault(); setMessage(""); setSaving(true); try { const response = await fetch("/api/user-accounts", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, status: editing.status, roleIds: editing.roleIds }) }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to update account."); setSavedId(editing.id); setEditing(null); setMessage("Account updated."); setRevision((value) => value + 1); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to update account."); } finally { setSaving(false); } }}><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Sign-in ID</Label><Input value={editing.employeeId} readOnly className="bg-muted/50 font-mono"/></div><div className="space-y-2"><Label>Status</Label><select className="w-full rounded-md border bg-background p-2" value={editing.status} onChange={(event) => setEditing({ ...editing, status: event.target.value })}><option value="active">Active</option><option value="inactive">Inactive</option></select></div></div><div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">{roles.map((role) => <label key={role.id} className="flex gap-2 text-sm"><input type="checkbox" checked={editing.roleIds.includes(role.id)} onChange={() => setEditing({ ...editing, roleIds: editing.roleIds.includes(role.id) ? editing.roleIds.filter((id) => id !== role.id) : [...editing.roleIds, role.id] })}/>{role.name}</label>)}</div>{message && <p className="text-sm text-muted-foreground">{message}</p>}<div className="flex gap-2"><Button type="submit" disabled={saving || editing.roleIds.length === 0}>{saving ? "Saving..." : "Save Account"}</Button><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div></form></InlinePanel>}</div>)}{!accounts.length && <p className="text-sm text-muted-foreground">No user accounts found.</p>}</CardContent></Card>
     </div>
   );
 }

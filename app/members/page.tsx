@@ -93,7 +93,7 @@ export default function MembersPage() {
             <td className="p-3">{unique(member.enrollments.map((enrollment) => enrollment.mas)).join(", ") || "-"}</td>
             <td className="p-3">{unique(member.enrollments.map((enrollment) => enrollment.collector)).join(", ") || "-"}</td>
             <td className="p-3"><span className="flex flex-col items-start gap-1"><StatusBadge status={member.deceased ? "Deceased" : member.status || "Not recorded"} tone={member.deceased ? "danger" : undefined} />{!member.deceased && <span className="text-xs text-muted-foreground">Alive</span>}</span></td>
-            <td className="p-3">{member.enrollments.map((e) => `${e.programName}: ${e.accountStatus || "Needs review"}${e.temporarilySuspended ? " (temporarily suspended)" : ""}`).join(", ") || "No enrollments"}</td>
+            <td className="p-3">{member.enrollments.length ? <span className="flex flex-col items-start gap-1">{member.enrollments.map((e) => <span key={e.id} className="flex flex-wrap items-center gap-1"><span>{e.programName}: {e.accountStatus || "Needs review"}</span><StandingBadge enrollment={e} /></span>)}</span> : "No enrollments"}</td>
             <td className="p-3"><Button variant="outline" aria-expanded={selected?.id === member.id} aria-label={`View ${member.name}`} onClick={() => { setSavedId(""); setEditing(null); setSelected((current) => current?.id === member.id ? null : member); }}>{selected?.id === member.id ? "Collapse" : "View"}</Button></td>
           </tr>{savedId === member.id && !selected && message && <tr><td colSpan={9} className="px-3 pb-3"><p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{message}</p></td></tr>}{selected?.id === member.id && <InlineRow colSpan={9}><section aria-label="Member details" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selected.name}</h2><div className="flex gap-2">{canManage && <Button variant={editing?.id === selected.id ? "default" : "outline"} aria-expanded={editing?.id === selected.id} onClick={() => setEditing((current) => current?.id === selected.id ? null : selected)}>{editing?.id === selected.id ? "Editing" : "Edit"}</Button>}{canManage && <Button variant="outline" className="text-destructive" onClick={async () => { if (!window.confirm(`Delete ${selected.name}?`)) return; setSavedId(""); const response = await fetch("/api/members/directory", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selected.id }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member deleted." : result.message || "Unable to delete member."); if (response.ok) { setSelected(null); setRevision((value) => value + 1); } }}>Delete</Button>}<Button variant="ghost" onClick={() => setSelected(null)}>Close details</Button></div></div>
@@ -158,7 +158,7 @@ function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }:
             <td className="p-2">{e.programName || "-"}</td><td className="p-2">{e.doi || "-"}</td><td className="p-2">{e.branch || "-"}</td>
             <td className="p-2">{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">Transferred from {last.fromMas}{last.at ? ` on ${last.at.slice(0, 10)}` : ""} · {last.reason}</span>}</td>
             <td className="p-2">{e.collector || "-"}</td><td className="p-2">{e.paymentMethod || "-"}</td><td className="p-2">{e.status || "-"}</td>
-            <td className="p-2">{e.accountError || `${e.accountStatus || "Needs review"}${e.temporarilySuspended ? " (temporarily suspended)" : ""}`}</td>
+            <td className="p-2">{e.accountError || <span className="flex flex-wrap items-center gap-1">{e.accountStatus || "Needs review"}<StandingBadge enrollment={e} /></span>}</td>
             {canTransfer && <td className="p-2 text-right"><Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{open === e.id ? "Transferring" : "Transfer"}</Button></td>}
           </tr>
           {open === e.id && <InlineRow colSpan={headers.length}>
@@ -176,4 +176,11 @@ function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }:
     {!enrollments.length && <p className="p-2 text-sm">No program enrollments.</p>}
     {note && <p role="status" className="p-2 text-sm">{note}</p>}
   </div>;
+}
+
+/** Suspension and forfeiture stand out in the list, since both change what can be collected or sold. */
+function StandingBadge({ enrollment }: { enrollment: { accountStatus?: string; temporarilySuspended?: boolean } }) {
+  if (enrollment.accountStatus === "Forfeited") return <StatusBadge status="Forfeited" tone="danger" />;
+  if (enrollment.temporarilySuspended) return <StatusBadge status="Temporarily suspended" tone="warning" />;
+  return null;
 }

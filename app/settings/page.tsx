@@ -81,7 +81,7 @@ function SettingsContent() {
           : profileError ? <p className="text-sm text-destructive">{profileError} <button type="button" className="underline" onClick={reload}>Retry</button></p>
           : <p className="text-sm text-muted-foreground">Loading your profile...</p>)}
         {tab === "preferences" && <PreferencesTab />}
-        {tab === "security" && <SecurityTab employeeId={user?.employeeId ?? profile?.employeeId ?? ""} />}
+        {tab === "security" && <SecurityTab employeeId={user?.employeeId ?? profile?.employeeId ?? ""} required={searchParams.get("required") === "1"} />}
         {tab === "organization" && canManageOrganization && <><FinanceSettings /><RemittanceMethodSettings /></>}
       </div>
     </section>
@@ -118,7 +118,7 @@ function PreferencesTab() {
   </Card>;
 }
 
-function SecurityTab({ employeeId }: { employeeId: string }) {
+function SecurityTab({ employeeId, required }: { employeeId: string; required: boolean }) {
   const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -136,7 +136,9 @@ function SecurityTab({ employeeId }: { employeeId: string }) {
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to update account.");
       setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
-      setMessage("Password changed successfully. Use it the next time you sign in.");
+      // The response carries a session without the change-password lock, so the rest of the system opens now.
+      if (required) { router.replace("/"); router.refresh(); return; }
+      setMessage("Password changed successfully. Other devices signed in to this account will be signed out within a few minutes.");
     } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to update account."); }
     finally { setSaving(false); }
   }
@@ -152,6 +154,7 @@ function SecurityTab({ employeeId }: { employeeId: string }) {
   }
 
   return <>
+    {required && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p className="font-semibold">Change your password to continue</p><p className="mt-1">You signed in with the default or a weak password. Choose a new password of at least 12 characters; the rest of the system opens once it is saved.</p></div>}
     <Card>
       <CardHeader><CardTitle>Change password</CardTitle><CardDescription>You sign in with your Employee ID. Your current password is required.</CardDescription></CardHeader>
       <CardContent>

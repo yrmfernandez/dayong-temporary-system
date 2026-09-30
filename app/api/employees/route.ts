@@ -1,9 +1,9 @@
-import { canManageEmployees, getSessionUser, userWithPageAccess } from "@/lib/auth-server";
+import { canManageAccounts, canManageEmployees, getSessionUser, userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { deleteEmployee, getEmployees, getNextEmployeeId, registerEmployee, updateEmployee, updateEmployeeStatus } from "@/lib/employees";
 import { getActiveAccountRoles, getBranches } from "@/lib/google-sheets-data";
 import { getUserAccounts } from "@/lib/master-data-crud";
-import { accountRoleIdsFor, createDefaultAccount, DEFAULT_PASSWORD } from "@/lib/employee-accounts";
+import { accountRoleIdsFor, createDefaultAccount } from "@/lib/employee-accounts";
 import { guardAccountChange } from "@/lib/privilege-guard";
 
 export async function GET() {
@@ -29,14 +29,17 @@ export const POST = withEncoder(async (request: Request) => {
     const [branches, accountRoles] = await Promise.all([getBranches(), getActiveAccountRoles()]);
     const validRoles = [...new Set(accountRoles.map((role) => role.name))];
     const employee = await registerEmployee(body, validRoles, branches.filter((branch) => branch.status === "active").map(({ id, name }) => ({ id, name })));
-    // Every new employee gets a sign-in account straight away, with the default password.
-    let account: { created: boolean; reason?: string; defaultPassword?: string };
+    // Every new employee gets a sign-in account straight away. Its one-time password is IT's to hand over, so HR
+    // registering the employee does not see it; IT issues one from User Accounts → Reset password.
+    let account: { created: boolean; reason?: string; oneTimePassword?: string; expiresAt?: string };
     try {
       // HR and IT may register anyone, but an account with administrator-level roles needs an administrator.
       const denied = await guardAccountChange({ roleIds: accountRoleIdsFor(employee.roles, accountRoles) });
       if (denied) return Response.json({ success: true, employee, account: { created: false, reason: `The employee was registered. ${denied} Ask an administrator to create this account.` } }, { status: 201 });
       const result = await createDefaultAccount(employee);
-      account = result.created ? { created: true, defaultPassword: DEFAULT_PASSWORD } : { created: false, reason: result.reason };
+      account = !result.created ? { created: false, reason: result.reason }
+        : await canManageAccounts() ? { created: true, oneTimePassword: result.oneTimePassword, expiresAt: result.expiresAt }
+        : { created: true };
     } catch (error) {
       account = { created: false, reason: `The employee was registered, but the account could not be created: ${error instanceof Error ? error.message : "unknown error"}. Create it in User Accounts.` };
     }

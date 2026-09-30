@@ -5,7 +5,7 @@ import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
 import { encoderHeaders } from "@/lib/encoder-schema";
 import { parsePageAccess } from "@/lib/roles";
-import { ageRestrictionCells, normalizeAgeRestriction, readAgeRestriction, type AgeRestriction } from "@/lib/program-age";
+import { ageRestrictionCells, isoDate, normalizeAgeRestriction, readAgeRestriction, type AgeRestriction } from "@/lib/program-age";
 import { normalizeSaleIncentive } from "@/lib/remittance";
 
 /** Programs!Q:R cells for the New Sale incentive (blank unless the program has a registration fee). */
@@ -104,6 +104,30 @@ export async function addMember(
   return response.data;
 }
 
+export type MemberDetails = Omit<MemberSheetData, "memberId" | "memberNumber" | "status">;
+
+// Members C:Q in sheet order: the personal and claimant details a New Sale collects.
+const memberDetailFields: Array<keyof MemberDetails> = ["surname", "firstName", "middleName", "nameExtension", "birthdate", "birthplace", "gender", "age", "civilStatus", "contactNumber", "addressHouse", "claimantName", "claimantContact", "claimantSameAsMember", "claimantAddressHouse"];
+
+/**
+ * Writes the details an encoder confirmed or corrected on a New Sale back to the existing member (Members C:Q). A blank
+ * value keeps what is on record; the member ID, number, and status never change. Returns whether anything changed.
+ */
+export async function updateMemberDetails(memberId: string, details: MemberDetails) {
+  const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${MEMBERS_SHEET}!A:R` });
+  const rows = response.data.values ?? [];
+  const index = rows.findIndex((row, position) => position > 0 && String(row[0] ?? "").trim() === memberId);
+  if (index < 1) throw new Error(`Member ${memberId} could not be found.`);
+  const current = rows[index].slice(2, 17).map((value) => String(value ?? "").trim());
+  const next = memberDetailFields.map((field, offset) => String(details[field] ?? "").trim() || current[offset] || "");
+  // Sheets returns dates formatted (5/1/1990), so birthdates compare as dates.
+  const same = (offset: number) => memberDetailFields[offset] === "birthdate" ? isoDate(next[offset]) === isoDate(current[offset]) : next[offset] === current[offset];
+  if (next.every((_, offset) => same(offset))) return false;
+  const rowNumber = index + 1;
+  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `${MEMBERS_SHEET}!C${rowNumber}:Q${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [next] } });
+  return true;
+}
+
 export async function addBeneficiaries(
   memberId: string,
   saleId: string,
@@ -188,7 +212,9 @@ export async function searchMembersByName(
 
   const normalizedBranch = branch.trim().toLowerCase();
   const normalizedMas = mas.trim().toLowerCase();
-  if (!searchTerm || !normalizedBranch || !normalizedMas) {
+  // Collections searches one branch and MAS's enrollments; New Sales searches every member (no branch or MAS given).
+  const scoped = Boolean(normalizedBranch || normalizedMas);
+  if (!searchTerm || (scoped && (!normalizedBranch || !normalizedMas))) {
     return [];
   }
 
@@ -199,7 +225,7 @@ export async function searchMembersByName(
     const enrollmentBranch = String(row[5] ?? "").trim().toLowerCase();
     const enrollmentMas = String(row[6] ?? "").trim().toLowerCase();
     const status = String(row[12] ?? "").trim().toLowerCase();
-    if (!memberId || !programId || enrollmentBranch !== normalizedBranch || enrollmentMas !== normalizedMas || (status && status !== "active")) continue;
+    if (!memberId || !programId || (scoped && (enrollmentBranch !== normalizedBranch || enrollmentMas !== normalizedMas || (status && status !== "active")))) continue;
     const programs = eligiblePrograms.get(memberId) ?? new Set<string>();
     programs.add(programId);
     eligiblePrograms.set(memberId, programs);
@@ -225,7 +251,7 @@ export async function searchMembersByName(
 
       const memberId = String(row[0] ?? "").trim();
       const memberNumber = String(row[1] ?? "").trim().toLowerCase();
-      return eligiblePrograms.has(memberId) && (fullName.includes(searchTerm) || memberNumber.includes(searchTerm));
+      return (!scoped || eligiblePrograms.has(memberId)) && (fullName.includes(searchTerm) || memberNumber.includes(searchTerm));
     })
     .slice(0, 5)
     .map((row) => ({
@@ -240,7 +266,8 @@ export async function searchMembersByName(
         nameExtension: row[5] ?? "",
       },
 
-      birthdate: row[6] ?? "",
+      // YYYY-MM-DD, so selecting the member fills New Sales' date input.
+      birthdate: isoDate(row[6]),
       birthplace: row[7] ?? "",
       gender: row[8] ?? "",
 

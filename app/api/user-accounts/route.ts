@@ -1,7 +1,7 @@
 import { withEncoder } from "@/lib/encoder-context";
 import { getEmployees } from "@/lib/employees";
 import { NextResponse } from "next/server";
-import { createDefaultAccount, DEFAULT_PASSWORD } from "@/lib/employee-accounts";
+import { createDefaultAccount } from "@/lib/employee-accounts";
 
 import { canManageAccounts, getSessionUser } from "@/lib/auth-server";
 import { deleteUserAccount, getUserAccounts, updateUserAccount } from "@/lib/master-data-crud";
@@ -68,7 +68,7 @@ export const POST = withEncoder(async function POST(request: Request) {
     const employee = (await getEmployees()).find((e) => e.id === employeeId && e.status.toLowerCase() === "active");
     if (!employee) return NextResponse.json({ success: false, message: "Select an active registered employee." }, { status: 400 });
 
-    // Accounts always start with the default password; the person changes it in Settings → Security.
+    // Accounts start with a one-time password shown only in this response; the person replaces it at first sign-in.
     const roleIds: string[] = Array.isArray(body.roleIds)
       ? [...new Set<string>(body.roleIds.filter((roleId: unknown): roleId is string => typeof roleId === "string").map((roleId: string) => roleId.trim()).filter(Boolean))]
       : [];
@@ -76,7 +76,7 @@ export const POST = withEncoder(async function POST(request: Request) {
     if (denied) return NextResponse.json({ success: false, message: denied }, { status: 403 });
     const result = await createDefaultAccount(employee, roleIds);
     if (!result.created) return NextResponse.json({ success: false, message: result.reason }, { status: 400 });
-    const user = { id: result.userId, employeeId: employee.id, fullName: employee.name, roleIds: result.roleIds, defaultPassword: DEFAULT_PASSWORD };
+    const user = { id: result.userId, employeeId: employee.id, fullName: employee.name, roleIds: result.roleIds, oneTimePassword: result.oneTimePassword, expiresAt: result.expiresAt };
 
     return NextResponse.json(
       {
@@ -109,7 +109,7 @@ export const PATCH = withEncoder(async (request: Request) => {
     const roleIds = Array.isArray(body.roleIds) ? body.roleIds.filter((value: unknown): value is string => typeof value === "string") : [];
     const denied = await guardAccountChange({ roleIds, accountId: id });
     if (denied) return NextResponse.json({ success: false, message: denied }, { status: 403 });
-    return NextResponse.json({ success: true, account: await updateUserAccount(id, { status: body.status === "inactive" ? "inactive" : "active", roleIds, password: typeof body.password === "string" ? body.password : "" }) });
+    return NextResponse.json({ success: true, account: await updateUserAccount(id, { status: body.status === "inactive" ? "inactive" : "active", roleIds }) });
   } catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Unable to update account." }, { status: 400 }); }
 });
 

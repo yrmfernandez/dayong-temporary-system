@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 
 import { canAccessPath, canManageAccountsFor, canManageConfigurationFor, canManageEmployeesFor } from "@/lib/access-control";
 import {
+  SESSION_COOKIE,
   type SessionUser,
   verifySessionToken,
 } from "@/lib/auth";
@@ -11,9 +12,7 @@ export async function getSessionUser(): Promise<
 > {
   const cookieStore = await cookies();
 
-  const token = cookieStore.get(
-    "dayong_session",
-  )?.value;
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
 
   if (!token) {
     return null;

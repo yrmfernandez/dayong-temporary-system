@@ -55,6 +55,19 @@ export async function accountReport() {
   return { today, month: today.slice(0, 7), rows };
 }
 
+export type ProgramStanding = { enrollmentId: string; programName: string; standing: "Temporarily suspended" | "Forfeited"; since: string; amountDue: number | null };
+
+/** A member's program accounts that are temporarily suspended or forfeited today, to warn before new business. */
+export async function memberStanding(memberId: string): Promise<ProgramStanding[]> {
+  const report = await accountReport();
+  return report.rows.filter((row) => row.memberId === memberId).flatMap((row): ProgramStanding[] => {
+    if (!("status" in row)) return [];
+    if (row.status === "Forfeited") return [{ enrollmentId: row.id, programName: row.programName, standing: "Forfeited", since: row.forfeitedAt, amountDue: null }];
+    if (row.temporarilySuspended) return [{ enrollmentId: row.id, programName: row.programName, standing: "Temporarily suspended", since: row.suspendedAt, amountDue: row.balance }];
+    return [];
+  });
+}
+
 export async function mamReport(from?: string, to?: string) {
   const today = todayInManila();
   return buildMamReport(await loadAccountData(), from || today.slice(0, 7), to || today.slice(0, 7), today);

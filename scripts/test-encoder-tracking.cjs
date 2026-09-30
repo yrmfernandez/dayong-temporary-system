@@ -7,6 +7,7 @@ const ts = require('typescript');
 
 // Execute the actual TS routes/data helpers with an in-memory Sheets transport.
 // No credentials, network calls, or production rows are used by these tests.
+process.env.AUTH_SECRET ||= 'test-secret-for-session-tokens-only';
 function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encoder', roleNames: ['Entry Clerk'], permissions: {} }) {
   const cache = new Map();
   const writes = [];
@@ -99,10 +100,14 @@ test('employee registration is independent of login and records its encoder', as
   assert.equal(row[1], "'=Staff");
   assert.equal(row[2], "'South", 'a single assigned branch is the primary branch');
   assert.equal(row[9], "'U1");
-  assert.deepEqual(registered.account, { created: true, defaultPassword: 'password12345' });
+  // An administrator or IT registering the employee receives the account's one-time password to hand over.
+  assert.equal(registered.account.created, true);
+  assert.match(registered.account.oneTimePassword, /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
   const userRow = h.writes.find((write) => write.range.startsWith("'Users'!")).requestBody.values[0];
   assert.equal(userRow[1], 'MD-2099-0101');
-  assert.ok(await require('bcryptjs').compare('password12345', userRow[3]), 'the account opens with the default password');
+  const opened = await h.load('lib/passwords.ts').checkPassword(registered.account.oneTimePassword, userRow[3]);
+  assert.deepEqual(opened, { matches: true, oneTime: true, expired: false }, 'the account opens with its one-time password');
+  assert.equal(await h.load('lib/passwords.ts').checkPassword('password12345', userRow[3]).then((result) => result.matches), false, 'the shared default password is never issued');
   assert.deepEqual(h.writes.find((write) => write.range.startsWith("'User Roles'!")).requestBody.values.map((values) => values.slice(0, 2)), [['USR-0001', 'R1'], ['USR-0001', 'R2']], 'each employee role is the same account role');
   // Collector is an ordinary role, so a Collector-only employee gets an account too.
   h.rows.Branches.push(['BR-2', 'North', 'DDO 1', '', '', '', '', '', '', '', '', '', 'active']);
@@ -254,10 +259,12 @@ test('master-data CRUD blocks deleting assigned branches', async () => {
   await assert.rejects(() => crud.deleteBranchRecord('BR-0001'), /assigned/i);
 });
 
-test('member directory requires login, joins accounts once, and filters the same enrollment', async () => {
+test('member directory requires Members page access, joins accounts once, and filters the same enrollment', async () => {
   const h = harness(null);
   const route = h.load('app/api/members/directory/route.ts');
-  assert.equal((await route.GET()).status, 401);
+  assert.equal((await route.GET()).status, 403);
+  h.setUser({ userId: 'U2', roleNames: ['HR Officer'], permissions: {}, rolePages: { 'hr officer': ['/employees'] } });
+  assert.equal((await route.GET()).status, 403, 'a role without the Members page cannot pull the directory');
   h.setUser({ userId: 'U1', roleNames: ['MAS'], permissions: {} });
   const member = ['M1', 'PH-001', 'Santos', 'Ana'];
   member[12] = 'Blk 12, Mintal, Davao City'; member[13] = 'Pedro Santos'; member[15] = 'TRUE'; member[17] = 'Active';
@@ -332,10 +339,14 @@ for (const existingMember of [false, true]) {
       sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', encodedBy: 'attacker', beneficiaries: existingMember ? [] : [{ surname: 'Santos', firstName: 'Ben', middleName: '', birthdate: '2000-01-02', age: 26, relationship: 'Child' }] }],
     }));
     assert.equal(response.status, 200, JSON.stringify(await response.json()));
-    assert.equal(h.writes.length, existingMember ? 2 : 4);
+    // An existing member's record takes the details confirmed on the sale; blanks keep what is on record.
+    const memberUpdate = h.writes.find((write) => write.range === 'Members!C2:Q2');
+    assert.equal(Boolean(memberUpdate), existingMember);
+    if (existingMember) assert.equal(memberUpdate.requestBody.values[0][10], 'Complete Address');
+    assert.equal(h.writes.length, existingMember ? 3 : 4);
     // Encoder identity follows the business columns; Member programs and Sales keep workflow columns after it.
     const trailing = (range) => range.startsWith("'Member programs'") ? 1 : range.startsWith("'Sales'") ? 8 : 0;
-    const audit = h.writes.map((write) => { const row = write.requestBody.values[0], extra = trailing(write.range); return row.slice(row.length - 4 - extra, row.length - extra); });
+    const audit = h.writes.filter((write) => write !== memberUpdate).map((write) => { const row = write.requestBody.values[0], extra = trailing(write.range); return row.slice(row.length - 4 - extra, row.length - extra); });
     for (const values of audit) {
       assert.deepEqual(values.slice(0, 3), ["'USR-1", "'DPE-0001", "'=encoder"]);
       assert.equal(values[3], audit[0][3]);
@@ -622,6 +633,149 @@ test('password change verifies the current password and writes only the hash cel
   const write = h.writes.at(-1);
   assert.equal(write.range, 'Users!D3');
   assert.ok(await bcrypt.compare('a-new-password-2', write.requestBody.values[0][0]));
+  // This device gets a session for the new password, without the change-password lock.
+  const cookie = response.headers.get('Set-Cookie');
+  assert.match(cookie, /^dayong_session=[^;]+; Path=\/; Max-Age=\d+; HttpOnly; SameSite=Lax/);
+  const session = await h.load('lib/auth.ts').verifySessionToken(cookie.split(';')[0].split('=')[1]);
+  assert.equal(session.mustChangePassword, false);
+  assert.equal(session.passwordStamp, h.load('lib/session-account.ts').passwordStamp(write.requestBody.values[0][0]));
+  assert.equal((await patch({ currentPassword: 'a-new-password-2', newPassword: 'password12345' })).status, 400, 'the default password is never accepted as a new one');
+});
+
+test('HR registering an employee creates the account without seeing its one-time password', async () => {
+  const h = harness({ userId: 'U9', employeeId: 'DPE-0009', name: 'hr', roleNames: ['HR Officer'], permissions: {} });
+  const route = h.load('app/api/employees/route.ts');
+  h.rows.Employees = [[]];
+  h.rows.Users = [[]];
+  h.rows.Branches = [[], ['BR-1', 'South', 'DDO 1', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Roles = [[], ['R1', 'MAS', '', '', '', '', 'active']];
+  const response = await route.POST(request({ employeeId: 'MD-2099-0201', name: 'New Staff', branchIds: ['BR-1'], roles: ['MAS'] }));
+  assert.equal(response.status, 201);
+  assert.deepEqual((await response.json()).account, { created: true });
+});
+
+test('IT resets a forgotten password to a one-time password that expires and must be changed', async () => {
+  const header = ['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'];
+  const h = harness({ userId: 'U7', employeeId: 'DPE-0007', name: 'it', roleNames: ['IT Clerk'], permissions: {} });
+  h.rows.Users = [header, ['USR-3', 'MD-2099-0102', 'Test Clerk', 'old-hash', 'active', '', 'R1'], ['USR-4', 'MD-2099-0103', 'Gone', 'x', 'inactive', '', 'R1']];
+  h.rows.Roles = [[], ['R1', 'Entry Clerk', '', '', '', '', 'active']];
+  h.rows['User Roles'] = [[], ['USR-3', 'R1']];
+  const route = h.load('app/api/user-accounts/password/route.ts');
+  const reset = (id) => route.POST(new Request('http://localhost/api/user-accounts/password', { method: 'POST', body: JSON.stringify({ id }), headers: { 'Content-Type': 'application/json' } }));
+  const response = await reset('USR-3');
+  assert.equal(response.status, 200);
+  const { account } = await response.json();
+  const stored = h.writes.at(-1);
+  assert.equal(stored.range, 'Users!D2', 'only the password cell changes');
+  const passwords = h.load('lib/passwords.ts');
+  assert.deepEqual(await passwords.checkPassword(account.oneTimePassword, stored.requestBody.values[0][0]), { matches: true, oneTime: true, expired: false });
+  const later = Date.now() + (passwords.ONE_TIME_PASSWORD_HOURS * 60 + 1) * 60 * 1000;
+  assert.equal((await passwords.checkPassword(account.oneTimePassword, stored.requestBody.values[0][0], later)).expired, true);
+  assert.equal((await reset('USR-4')).status, 400, 'an inactive account is reactivated before its password is reset');
+  h.setUser({ userId: 'U8', employeeId: 'DPE-0008', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await reset('USR-3')).status, 403, 'only IT or an administrator issues one-time passwords');
+});
+
+test('New Sales searches every member; Collections stays within its branch and MAS', async () => {
+  const h = harness();
+  const route = h.load('app/api/members/route.ts');
+  h.rows.Members = [[], ['M1', 'PH-001', 'Santos', 'Ana'], ['M2', 'PH-002', 'Santos', 'Ben']];
+  h.rows['Member programs'] = [[], ['E1', 'M1', 'PH-001', 'P1', '2026-01-01', 'North', 'MAS1']];
+  const search = async (query) => (await (await route.GET(new Request(`http://localhost/api/members?${query}`))).json()).members.map((member) => member.id);
+  assert.deepEqual(await search('search=santos'), ['M1', 'M2']);
+  assert.deepEqual(await search('search=santos&branch=North&mas=MAS1'), ['M1']);
+  assert.deepEqual(await search('search=santos&branch=North'), [], 'a half-scoped search returns nothing');
+});
+
+test('New Sales blocks double entries: repeated Application Numbers and members registered again as new', async () => {
+  const h = harness();
+  h.rows['Sales'] = [[], ['SALE-1', '', '', '', '', 'PH-7', ...Array(22).fill(''), 'APP-100']];
+  h.rows.Members = [[], ['MEM-7', 'PH-7', 'Santos', 'Ana', 'Cruz', '', '5/1/1990']];
+  const { newSalesDoubleEntry } = h.load('lib/duplicate-entries.ts');
+  const sale = (fields) => ({ existingMember: false, surname: 'Reyes', firstName: 'Ben', birthdate: '1991-02-03', applicationNo: 'APP-200', ...fields });
+  assert.equal(await newSalesDoubleEntry([sale({})]), '');
+  assert.match(await newSalesDoubleEntry([sale({ applicationNo: 'app 100' })]), /Application Number app 100 is already recorded \(sale SALE-1 for member PH-7\)/);
+  assert.match(await newSalesDoubleEntry([sale({}), sale({ surname: 'Lim', applicationNo: 'APP-200' })]), /Sale #2: Application Number APP-200 is already used by Sale #1/);
+  assert.match(await newSalesDoubleEntry([sale({ surname: ' santos ', firstName: 'ANA', birthdate: '1990-05-01' })]), /already member PH-7\. To add another program, type the surname and select the existing member/);
+  assert.equal(await newSalesDoubleEntry([sale({ existingMember: true, memberNumber: 'PH-7', surname: 'Santos', firstName: 'Ana', birthdate: '1990-05-01' })]), '', 'selecting the existing member is the right way to add a program');
+  assert.equal(await newSalesDoubleEntry([sale({}), sale({ applicationNo: 'APP-201' })]), '', 'a new member may take several programs in one batch');
+});
+
+test('a new member enrolled in two programs in one batch is registered once', async () => {
+  const h = harness();
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'mas', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows.Programs = [[], ['DP-1', 'A', 'Plan A', 350, 'active', '', '', '', '', '', 'No', 0, 0], ['DP-2', 'B', 'Plan B', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50], ['INC-2', 'DP-2', 'MAS', 1, 12, 'percentage', 50, 50]];
+  h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
+  const sale = (programId, applicationNo) => ({ existingMember: false, surname: 'Reyes', firstName: 'Ben', birthdate: '1991-02-03', programId, amountPaid: '350', applicationNo, addressHouse: 'Complete Address' });
+  const route = h.load('app/api/sales/route.ts');
+  const response = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', sales: [sale('DP-1', 'APP-1'), sale('DP-2', 'APP-2')] }));
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(h.writes.filter((write) => write.range.startsWith("'Members'!")).length, 1, 'one member record');
+  assert.equal(h.writes.filter((write) => write.range.startsWith("'Member programs'!")).length, 2, 'two program enrollments');
+  assert.equal(result.savedSales[0].memberNumber, result.savedSales[1].memberNumber);
+  const repeat = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', sales: [sale('DP-1', 'APP-3'), sale('DP-1', 'APP-4')] }));
+  assert.match((await repeat.json()).message, /Sale #2: This member is already enrolled in this program earlier in this batch/);
+});
+
+test('each OR Number is recorded once; a voided collection frees its receipt', async () => {
+  const h = harness();
+  const row = (id, member, or, status) => { const values = Array(20).fill(''); values[0] = id; values[4] = member; values[8] = or; values[19] = status; return values; };
+  h.rows.Collections = [[], row('COL-1', 'PH-1', 'OR-500', 'Posted'), row('COL-2', 'PH-2', 'OR-501', 'Voided')];
+  const { recordedOrNumbers, entryKey } = h.load('lib/duplicate-entries.ts');
+  const used = await recordedOrNumbers();
+  assert.deepEqual(used.get(entryKey('or 500')), { collectionId: 'COL-1', memberNumber: 'PH-1' });
+  assert.equal(used.has(entryKey('OR-501')), false);
+});
+
+test('pages granted to a role appear in the section where they belong, not under More', () => {
+  const { visibleNavigation } = harness().load('lib/navigation.ts');
+  const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };
+  const titles = (sections) => Object.fromEntries(sections.map((section) => [section.title, section.items.map((item) => item.href)]));
+  // CEO / President list the Statement of Account under Reports by default.
+  assert.deepEqual(titles(visibleNavigation('CEO', { roleNames: ['CEO'], permissions })).Reports, ['/admin-reports', '/mam', '/soa']);
+  // Configured page access: SOA joins Reports, Expenses opens a Finance section, Programs joins Members in Directory.
+  const configured = titles(visibleNavigation('President', { roleNames: ['President'], permissions, rolePages: { president: ['/admin-reports', '/members', '/expenses', '/programs', '/attendance'] } }));
+  assert.equal(configured.More, undefined);
+  assert.deepEqual(configured.Reports, ['/admin-reports']);
+  assert.deepEqual(configured.Directory, ['/members', '/programs']);
+  assert.deepEqual(configured.Finance, ['/expenses']);
+  const withSoa = titles(visibleNavigation('President', { roleNames: ['President'], permissions, rolePages: { president: ['/admin-reports', '/soa'] } }));
+  assert.deepEqual(withSoa.Reports, ['/admin-reports', '/soa']);
+  // A new section sits before the personal My HR section.
+  const order = visibleNavigation('President', { roleNames: ['President'], permissions, rolePages: { president: ['/attendance', '/expenses'] } }).map((section) => section.title);
+  assert.ok(order.indexOf('Finance') < order.indexOf('My HR'));
+});
+
+test('the default, short, and common passwords must be changed at sign-in', () => {
+  const { isWeakPassword, DEFAULT_PASSWORD } = harness().load('lib/default-password.ts');
+  assert.equal(isWeakPassword(DEFAULT_PASSWORD), true);
+  assert.equal(isWeakPassword('short-pass'), true);
+  assert.equal(isWeakPassword('Password123'), true);
+  assert.equal(isWeakPassword('a-long-unique-passphrase'), false);
+});
+
+test('session recheck ends sessions for deactivated accounts and changed passwords, and refreshes roles', async () => {
+  const h = harness();
+  const { recheckSession, sessionFor, passwordStamp } = h.load('lib/session-account.ts');
+  const header = ['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'];
+  h.rows.Users = [header, ['USR-3', 'MD-2099-0102', 'Test Clerk', 'hash-1', 'active', '', '']];
+  h.rows.Roles = [[], ['ROLE-1', 'Entry Clerk', '', '', '', '', 'active']];
+  h.rows['User Roles'] = [[], ['USR-3', 'ROLE-1']];
+  const signedIn = { ...sessionFor({ id: 'USR-3', employeeId: 'MD-2099-0102', fullName: 'Test Clerk', passwordHash: 'hash-1', roles: [] }, true), expiresAt: 2000000000 };
+  const current = await recheckSession(signedIn);
+  assert.deepEqual(current.roleNames, ['Entry Clerk'], 'roles granted after sign-in apply at the recheck');
+  assert.equal(current.mustChangePassword, true, 'the change-password lock survives a recheck');
+  assert.equal(current.expiresAt, 2000000000, 'a recheck never extends the session');
+  assert.equal(await recheckSession({ ...signedIn, passwordStamp: '' }), null, 'sessions from before rechecks sign in again');
+  h.rows.Users = [header, ['USR-3', 'MD-2099-0102', 'Test Clerk', 'hash-2', 'active', '', '']];
+  assert.equal(await recheckSession(signedIn), null, 'a password change or reset ends other sessions');
+  h.rows.Users = [header, ['USR-3', 'MD-2099-0102', 'Test Clerk', 'hash-1', 'inactive', '', '']];
+  assert.equal(await recheckSession(signedIn), null, 'a deactivated account is signed out');
+  assert.notEqual(passwordStamp('hash-1'), passwordStamp('hash-2'));
 });
 
 test('new Employee IDs follow the most used prefix and the current year, and stay unique', () => {

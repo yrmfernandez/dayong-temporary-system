@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { SearchSelect } from "@/components/ui/search-select";
 import { InlineRow } from "@/components/inline-panel";
 import { StatusBadge } from "@/components/status-badge";
+import { type IssuedPassword, OneTimePasswordNotice } from "@/components/one-time-password";
 
 type Employee = { id: string; name: string; status: string; branch: string; primaryBranchId: string; hasAccount: boolean; branchIds: string[]; roles: string[]; roleIds:string[]; createdAt: string; contact: string; email: string; dateHired: string };
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
@@ -35,6 +36,8 @@ export default function EmployeesPage() {
   const [savedId, setSavedId] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  // The new account's one-time password, returned only to IT and administrators.
+  const [issued, setIssued] = useState<IssuedPassword | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("");
@@ -91,7 +94,7 @@ export default function EmployeesPage() {
       try {
         const response = await fetch("/api/employees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(new FormData(form)), roles: selectedRoles, branchIds: selectedBranchIds, primaryBranchId: registerPrimaryId }) });
         const result = await readApiResponse(response); if (!response.ok || !result.success) throw new Error(result.message || "Unable to register employee.");
-        form.reset(); setSelectedRoles([]); setSelectedBranchIds([]); setMessage(result.account?.created ? `Employee ${result.employee.id} registered. Sign-in account created: Employee ID ${result.employee.id}, password ${result.account.defaultPassword}. Ask them to change it in Settings → Security.` : `Employee ${result.employee.id} registered. ${result.account?.reason ?? ""}`); setSelectedPrimaryId(""); setShowForm(false); setBusy(true); setRevision((v) => v + 1);
+        form.reset(); setSelectedRoles([]); setSelectedBranchIds([]); setIssued(result.account?.oneTimePassword ? { employeeId: result.employee.id, fullName: result.employee.name, oneTimePassword: result.account.oneTimePassword, expiresAt: result.account.expiresAt } : null); setMessage(!result.account?.created ? `Employee ${result.employee.id} registered. ${result.account?.reason ?? ""}` : result.account.oneTimePassword ? `Employee ${result.employee.id} registered with a sign-in account.` : `Employee ${result.employee.id} registered with a sign-in account. Ask IT to issue their one-time password from User Accounts → Reset password.`); setSelectedPrimaryId(""); setShowForm(false); setBusy(true); setRevision((v) => v + 1);
       } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to register employee."); }
       finally { setSaving(false); }
     }}><h2 className="font-semibold">Register employee</h2><fieldset disabled={saving} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -117,6 +120,7 @@ export default function EmployeesPage() {
     </div>
     <p className="text-sm text-muted-foreground">Employees are registered independently of login accounts. Their operational roles are automatically selected when an administrator creates their login.</p>
     {message && !showForm && !editing && !savedId && <p role="status" className="text-sm">{message}</p>}
+    {issued && <OneTimePasswordNotice issued={issued} onDone={() => setIssued(null)} />}
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {busy ? <p role="status">Loading employees...</p> : !error && <>
       <p className="text-sm" aria-live="polite">{filtered.length} of {employees.length} employees</p>

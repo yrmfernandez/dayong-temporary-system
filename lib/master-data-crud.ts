@@ -1,5 +1,5 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
-import bcrypt from "bcryptjs";
+import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } from "@/lib/passwords";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
@@ -83,7 +83,7 @@ export async function getUserAccounts() {
   });
 }
 
-export async function updateUserAccount(id: string, input: { status: string; roleIds: string[]; password?: string }) {
+export async function updateUserAccount(id: string, input: { status: string; roleIds: string[] }) {
   const [{ columns, users }, roles] = await Promise.all([loadUsers(), rows("Roles!A:G")]);
   const user = users.find((row) => row.id === id);
   if (!user) throw new Error("Record not found.");
@@ -92,14 +92,24 @@ export async function updateUserAccount(id: string, input: { status: string; rol
   if (!roleIds.length || roleIds.some((roleId) => !activeRoleIds.has(roleId))) throw new Error("Select valid active roles.");
   const status = input.status === "inactive" ? "inactive" : "active";
   const data = [{ range: userCell(columns.status, user.rowNumber), values: [[status]] }, { range: userCell(columns.roleId, user.rowNumber), values: [[roleIds[0]]] }];
-  if (input.password) {
-    if (input.password.length < 12) throw new Error("Temporary password must contain at least 12 characters.");
-    data.push({ range: userCell(columns.passwordHash, user.rowNumber), values: [[await bcrypt.hash(input.password, 12)]] });
-  }
   await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data } });
   await deleteRowsWhere("User Roles", (row) => text(row[0]) === id);
   await appendEncodedRows({ range: "'User Roles'!A:B", requestBody: { values: roleIds.map((roleId) => [id, roleId]) } });
   return { id };
+}
+
+/**
+ * Replaces the account's password with a new one-time password for IT to hand over. Sessions signed in with the old
+ * password end at their next recheck (lib/session-account.ts).
+ */
+export async function resetUserPassword(id: string) {
+  const { columns, users } = await loadUsers();
+  const user = users.find((row) => row.id === id);
+  if (!user) throw new Error("Record not found.");
+  if (user.status !== "active") throw new Error("Reactivate the account before resetting its password.");
+  const oneTimePassword = generateOneTimePassword(), issuedAt = Date.now();
+  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: userCell(columns.passwordHash, user.rowNumber), valueInputOption: "RAW", requestBody: { values: [[await hashOneTimePassword(oneTimePassword, issuedAt)]] } });
+  return { id, employeeId: user.employeeId, fullName: user.fullName, oneTimePassword, expiresAt: oneTimePasswordExpiry(issuedAt) };
 }
 
 export async function deleteUserAccount(id: string, actorUserId: string) {

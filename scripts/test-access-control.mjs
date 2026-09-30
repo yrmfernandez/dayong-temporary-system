@@ -18,6 +18,11 @@ test("configured role pages replace that role's defaults, but never restrict Adm
   assert.equal(canAccessPath(context(["Finance", "Entry Clerk"], { finance: ["/remittances"] }), "/new-sales"), true);
 });
 
+test("CEO and President open Statements of Account by default", () => {
+  assert.equal(access(["CEO"], "/soa"), true);
+  assert.equal(access(["President"], "/soa"), true);
+});
+
 test("Administrator can open every implemented workspace", () => {
   assert.equal(access(["Administrator"], "/expenses"), true);
   assert.equal(access(["Administrator"], "/user-accounts"), true);
@@ -95,9 +100,9 @@ test("New Sales, Collections and Reports belong to the Entry Clerk's daily opera
   assert.equal(access(["Administrator"], "/collections"), true, "Administrator keeps every page");
 });
 
-test("Statement of Account is an Administrator page unless granted", () => {
+test("Statement of Account belongs to Administrator and the executives unless granted", () => {
   assert.equal(access(["Administrator"], "/soa"), true);
-  for (const role of ["Finance", "Entry Clerk", "MAS", "HR Officer", "IT Clerk", "CEO"]) assert.equal(access([role], "/soa"), false, role);
+  for (const role of ["Finance", "Entry Clerk", "MAS", "HR Officer", "IT Clerk"]) assert.equal(access([role], "/soa"), false, role);
   assert.equal(canAccessPath({ roleNames: ["Finance"], permissions, rolePages: { finance: ["/soa"] } }, "/soa"), true, "an administrator can grant it in Roles");
 });
 

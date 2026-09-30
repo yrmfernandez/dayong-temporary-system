@@ -59,6 +59,12 @@ function dateParts(value: string) {
   return { year: parsed.getFullYear(), month: parsed.getMonth() + 1, day: parsed.getDate() };
 }
 
+/** A sheet date as YYYY-MM-DD (blank when it is not a date), so dates compare and fill date inputs consistently. */
+export function isoDate(value: unknown) {
+  const parts = dateParts(String(value ?? ""));
+  return parts ? `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}` : "";
+}
+
 /** Returns an error message when the member's age is outside the program's range, otherwise null. */
 export function ageRestrictionError(restriction: AgeRestriction, birthdate: string, onDate: string) {
   if (!restriction.ageRestricted || restriction.minAge === null) return null;

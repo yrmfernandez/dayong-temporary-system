@@ -11,6 +11,8 @@ import {
   findMemberProgramEnrollment,
   getBranches,
   getPrograms,
+  updateMemberDetails,
+  type MemberDetails,
   type MemberSheetData,
   type MemberProgramSheetData,
   type SaleSheetData,
@@ -22,6 +24,7 @@ import { FIDELITY_CAP, getFidelityData } from "@/lib/fidelity";
 import { GOOGLE_SHEET_ID, readingFresh, sheets, withWriteLock } from "@/lib/google-sheets";
 import { calculateSaleIncentive } from "@/lib/remittance";
 import { headerMatches } from "@/lib/sheet-headers";
+import { newSalesDoubleEntry, personKey } from "@/lib/duplicate-entries";
 
 const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
 
@@ -200,6 +203,10 @@ async function saveSales(request: Request) {
       }
     }
 
+    // Double entries: an Application Number used before, or a person already on record registered again as new.
+    const doubleEntry = await newSalesDoubleEntry(body.sales.filter(Boolean));
+    if (doubleEntry) return NextResponse.json({ success: false, duplicate: true, message: doubleEntry }, { status: 409 });
+
     /*
      * =====================================================
      * STEP 1: PRE-FLIGHT VALIDATION
@@ -220,11 +227,16 @@ async function saveSales(request: Request) {
       memberId: string;
       memberNumber: string;
       isNewMember: boolean;
+      /** A later program for a new member registered earlier in this batch: the member row is created once. */
+      sharesNewMember?: boolean;
     };
 
     const preparedSales: PreparedSale[] = [];
 
     const batchPrograms = new Set<string>();
+
+    // New members registered in this batch, by person, so one new member can enroll in several programs at once.
+    const batchNewMembers = new Map<string, { memberId: string; memberNumber: string }>();
 
     for (
       let index = 0;
@@ -269,8 +281,9 @@ async function saveSales(request: Request) {
           { status: 400 },
         );
       }
-      // Age-restricted programs: check the member's age today, using the stored birthdate for existing members.
-      const memberBirthdate = sale.existingMember
+      // Age-restricted programs: check the member's age today. An existing member's corrected birthdate is saved to their
+      // record with this sale, so it applies; a blank one keeps the stored birthdate.
+      const memberBirthdate = sale.existingMember && !sale.birthdate?.trim()
         ? (await findMemberByNumber(sale.memberNumber?.trim() ?? ""))?.birthdate ?? ""
         : sale.birthdate;
       const ageError = ageRestrictionError(selectedProgram, memberBirthdate, todayInManila());
@@ -458,10 +471,14 @@ async function saveSales(request: Request) {
         }
       }
 
+      // The same new person on an earlier sale in this batch: enroll them in this program too, under that member.
+      const person = personKey(sale);
+      const sameNewMember = person ? batchNewMembers.get(person) : undefined;
+
       /*
        * Generate the new member number.
        */
-      let generatedMemberNumber = memberNumber;
+      let generatedMemberNumber = sameNewMember?.memberNumber || memberNumber;
       if (!generatedMemberNumber) {
         // Never reuse a number: skip any already on record or already given out.
         do generatedMemberNumber = nextMemberNumber();
@@ -469,7 +486,8 @@ async function saveSales(request: Request) {
       }
 
       const memberId =
-        createId("MEM");
+        sameNewMember?.memberId ?? createId("MEM");
+      if (person && !sameNewMember) batchNewMembers.set(person, { memberId, memberNumber: generatedMemberNumber });
 
       const memberProgramKey =
         `${generatedMemberNumber}::${programId}`;
@@ -486,7 +504,7 @@ async function saveSales(request: Request) {
           {
             success: false,
             message:
-              `Sale #${saleNumber}: This member/program combination is already included in this batch.`,
+              `Sale #${saleNumber}: This member is already enrolled in this program earlier in this batch.`,
             duplicate: true,
             memberNumber:
               generatedMemberNumber,
@@ -506,6 +524,7 @@ async function saveSales(request: Request) {
         memberNumber:
           generatedMemberNumber,
         isNewMember: true,
+        sharesNewMember: Boolean(sameNewMember),
       });
     }
 
@@ -554,12 +573,22 @@ async function saveSales(request: Request) {
         memberId,
         memberNumber,
         isNewMember,
+        sharesNewMember,
       } = prepared;
 
+      const details: MemberDetails = {
+        surname: sale.surname, firstName: sale.firstName, middleName: sale.middleName, nameExtension: sale.nameExtension,
+        birthdate: sale.birthdate, birthplace: sale.birthplace, gender: sale.gender, age: sale.age, civilStatus: sale.civilStatus,
+        contactNumber: sale.contactNumber, addressHouse: sale.addressHouse, claimantName: sale.claimantName, claimantContact: sale.claimantContact,
+        claimantSameAsMember: sale.claimantSameAsMember ? "Yes" : "No", claimantAddressHouse: sale.claimantAddressHouse,
+      };
+      // An existing member's details as confirmed or corrected on this sale become their current record.
+      if (!isNewMember) await updateMemberDetails(memberId, details);
+
       /*
-       * Create Members row only for a new member.
+       * Create Members row only for a new member, once per person in the batch.
        */
-      if (isNewMember) {
+      if (isNewMember && !sharesNewMember) {
         const memberData: MemberSheetData = {
           memberId,
           memberNumber,

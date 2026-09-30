@@ -1,9 +1,12 @@
-import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
-import { createSessionToken } from "@/lib/auth";
+import { createSessionToken, SESSION_COOKIE, SESSION_SECONDS, sessionCookieOptions } from "@/lib/auth";
+import { isWeakPassword } from "@/lib/default-password";
+import { checkPassword, ONE_TIME_PASSWORD_HOURS } from "@/lib/passwords";
 import { readingFresh } from "@/lib/google-sheets";
 import { getLoginUserByEmployeeId } from "@/lib/google-sheets-data";
+import { clearAttempts, clientIp, recordAttempt, retryAfter } from "@/lib/rate-limit";
+import { sessionFor } from "@/lib/session-account";
 import {
   assertServerConfiguration,
   ServerConfigurationError,
@@ -37,6 +40,21 @@ function googleSheetsLoginMessage(error: unknown) {
   return null;
 }
 
+// Failed sign-ins allowed per window before that Employee ID, or that network address, must wait.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const FAILURES_PER_ACCOUNT = 5;
+const FAILURES_PER_IP = 20;
+
+function tooManyAttempts(seconds: number) {
+  return NextResponse.json(
+    {
+      success: false,
+      message: `Too many failed sign-in attempts. Try again in ${Math.ceil(seconds / 60)} minute(s).`,
+    },
+    { status: 429, headers: { "Retry-After": String(seconds) } },
+  );
+}
+
 export async function POST(request: Request) {
   try {
     assertServerConfiguration();
@@ -63,67 +81,54 @@ export async function POST(request: Request) {
       );
     }
 
+    const ipKey = `login-ip:${clientIp(request)}`;
+    const accountKey = `login-id:${employeeId.toUpperCase()}`;
+    const wait = Math.max(retryAfter(ipKey, FAILURES_PER_IP), retryAfter(accountKey, FAILURES_PER_ACCOUNT));
+    if (wait) return tooManyAttempts(wait);
+    const failed = () => {
+      recordAttempt(ipKey, LOGIN_WINDOW_MS);
+      recordAttempt(accountKey, LOGIN_WINDOW_MS);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid Employee ID or password.",
+        },
+        { status: 401 },
+      );
+    };
+
     // Sign-in always reads the current account, password and roles.
     const user = await readingFresh(() => getLoginUserByEmployeeId(employeeId));
 
     if (!user) {
+      return failed();
+    }
+
+    const passwordCheck = await checkPassword(password, user.passwordHash);
+
+    if (!passwordCheck.matches) {
+      return failed();
+    }
+
+    if (passwordCheck.expired) {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid Employee ID or password.",
+          message: `This one-time password expired after ${ONE_TIME_PASSWORD_HOURS} hours. Ask IT for a new one.`,
         },
         { status: 401 },
       );
     }
 
-    const passwordMatches = await bcrypt.compare(
-      password,
-      user.passwordHash,
-    );
+    clearAttempts(accountKey);
 
-    if (!passwordMatches) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid Employee ID or password.",
-        },
-        { status: 401 },
-      );
-    }
-
-    const permissions = {
-      manageUsers: user.roles.some(
-        (role) => role.manageUsers,
-      ),
-
-      manageAttendance: user.roles.some(
-        (role) => role.manageAttendance,
-      ),
-
-      viewAttendanceReports: user.roles.some(
-        (role) => role.viewAttendanceReports,
-      ),
-    };
-
-    // Only roles with configured page access are listed; the rest use their default pages.
-    const rolePages = Object.fromEntries(
-      user.roles
-        .filter((role) => role.pages)
-        .map((role) => [role.name.trim().toLowerCase(), role.pages as string[]]),
-    );
-
-    const token = await createSessionToken({
-      userId: user.id,
-      employeeId: user.employeeId,
-      name: user.fullName || user.employeeId,
-      roles: user.roles.map((role) => role.id),
-      roleNames: user.roles.map((role) => role.name),
-      permissions,
-      rolePages,
-    });
+    // A one-time, default or weak password still signs in, but only to change it (see proxy.ts).
+    const mustChangePassword = passwordCheck.oneTime || isWeakPassword(password);
+    const token = await createSessionToken(sessionFor(user, mustChangePassword));
 
     const response = NextResponse.json({
       success: true,
+      mustChangePassword,
       user: {
         employeeId: user.employeeId,
         fullName: user.fullName,
@@ -131,13 +136,7 @@ export async function POST(request: Request) {
       },
     });
 
-    response.cookies.set("dayong_session", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 8,
-    });
+    response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(SESSION_SECONDS));
 
     return response;
   } catch (error) {

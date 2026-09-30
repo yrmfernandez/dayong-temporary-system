@@ -1,6 +1,6 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
 import { withEncoder } from "@/lib/encoder-context";
-import { getSessionUser, userWithPageAccess } from "@/lib/auth-server";
+import { userWithPageAccess } from "@/lib/auth-server";
 import { withWriteLock } from "@/lib/google-sheets";
 import { loadAccountData, commitCollections } from "@/lib/account-data";
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
@@ -10,9 +10,10 @@ import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { createCashRemittance } from "@/lib/remittance-workflow";
 import { FIDELITY_CAP, getFidelityData } from "@/lib/fidelity";
+import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
 
 export async function GET(request: Request) {
-  if (!(await getSessionUser())) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
+  if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
   try {
     const { searchParams } = new URL(request.url);
     const data = await loadAccountData();
@@ -71,8 +72,10 @@ async function saveCollections(request: Request) {
       if (!paymentMethod.isCash) throw new Error(`${paymentMethod.name} payments are verified in Remittances before approval.`);
       if (!Number.isFinite(cashReceived) || cashReceived < 0) throw new Error("Enter the complete cash amount received.");
     }
-    const data = await loadAccountData();
+    const [data, recordedReceipts] = await Promise.all([loadAccountData(), recordedOrNumbers()]);
     const payments = [...data.payments];
+    // Each OR Number is one receipt for one entry: reusing one, here or in an earlier batch, is a double entry.
+    const batchReceipts = new Map<string, string>();
     const touched = new Map<string, typeof data.accounts[number]>();
     const rows: (string | number)[][] = [];
     const timestamp = new Date().toISOString();
@@ -88,6 +91,11 @@ async function saveCollections(request: Request) {
         orDate: String(entry.orDate ?? ""), orNumber: String(entry.orNumber ?? "").trim(), waiver: String(entry.ifSuspended ?? ""),
         collectedByRole: collectedBy, originalMas,
       };
+      const receipt = entryKey(input.orNumber);
+      const recorded = recordedReceipts.get(receipt);
+      if (recorded) throw new Error(`OR Number ${input.orNumber} is already recorded (collection ${recorded.collectionId}${recorded.memberNumber ? ` for member ${recorded.memberNumber}` : ""}). Each OR Number is used once.`);
+      if (receipt && batchReceipts.has(receipt)) throw new Error(`OR Number ${input.orNumber} is entered twice in this batch (${batchReceipts.get(receipt)} and ${account.memberNumber}). Each OR Number is used once.`);
+      if (receipt) batchReceipts.set(receipt, account.memberNumber);
       validatePayment(account, payments, input);
       const quote = calculateRemittance(account.basePay, data.incentives.filter((tier) => tier.programId === account.programId), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount);
       // Client totals are only a preview. Persist the authoritative server calculation.

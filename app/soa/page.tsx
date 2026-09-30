@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Printer } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
@@ -8,7 +8,15 @@ import { Button } from "@/components/ui/button";
 import { SearchSelect } from "@/components/ui/search-select";
 import type { StatementOfAccount } from "@/lib/statement-of-account";
 
-type AccountOption = { id: string; memberName: string; memberNumber: string; programName: string; branch: string; mas: string; doi: string; status: string };
+type AccountOption = { id: string; memberName: string; memberNumber: string; programName: string; branch: string; mas: string; doi: string; status: string; temporarilySuspended: boolean };
+type Filters = { search: string; branch: string; mas: string; program: string; status: string };
+const noFilters: Filters = { search: "", branch: "", mas: "", program: "", status: "" };
+const fieldClass = "mt-1 block h-9 w-full rounded-md border bg-background px-2 text-sm";
+const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const statusFilters: Array<[string, string]> = [["U", "U - Updated"], ["ADV", "ADV - Advance"], ["NS", "NS - New sale"], ["60D", "60D"], ["90D", "90D"], ["120D", "120D"], ["150D", "150D"], ["Suspended", "Temporarily suspended"], ["Forfeited", "Forfeited"], ["Paid", "Fully paid"], ["Needs review", "Needs review"]];
+const matchesStatus = (item: AccountOption, status: string) => !status || (status === "Suspended" ? item.temporarilySuspended && item.status !== "Forfeited" : item.status === status);
+const statusLabel = (item: AccountOption) => `${item.status}${item.temporarilySuspended && item.status !== "Forfeited" ? " · suspended" : ""}`;
+const statusTone = (status: string) => ["U", "ADV", "Paid"].includes(status) ? "success" as const : status === "NS" ? "info" as const : status === "Needs review" ? "warning" as const : "danger" as const;
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const longDate = (value: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—";
 const monthLabel = (value: string) => value ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", year: "numeric", timeZone: "UTC" }) : "—";
@@ -24,6 +32,15 @@ function StatementContent() {
   const selected = params.get("account") ?? "";
   const [accounts, setAccounts] = useState<AccountOption[]>([]), [statement, setStatement] = useState<StatementOfAccount | null>(null);
   const [loading, setLoading] = useState(false), [error, setError] = useState("");
+  const [filters, setFilters] = useState<Filters>(noFilters);
+  const filtering = Object.values(filters).some(Boolean);
+  // Filters narrow the account picker and the list below it, so a member is easy to find among many accounts.
+  const filtered = useMemo(() => {
+    const words = filters.search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return accounts.filter((item) => (!filters.branch || item.branch === filters.branch) && (!filters.mas || item.mas === filters.mas) && (!filters.program || item.programName === filters.program) && matchesStatus(item, filters.status)
+      && words.every((word) => `${item.memberName} ${item.memberNumber} ${item.programName} ${item.id}`.toLowerCase().includes(word)));
+  }, [accounts, filters]);
+  const update = (key: keyof Filters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
 
   const loadAccounts = useCallback(async () => {
     try { const response = await fetch("/api/soa", { cache: "no-store" }), result = await response.json(); if (!response.ok) throw new Error(result.message); setAccounts(result.accounts ?? []); }
@@ -52,10 +69,31 @@ function StatementContent() {
       <div><p className="text-sm font-medium text-primary">Administration</p><h1 className="text-2xl font-bold">Statement of Account</h1><p className="text-sm text-muted-foreground">Choose a member&apos;s program account to see its payments, standing, and amount due. Print it for the member.</p></div>
       {statement && <Button type="button" variant="outline" onClick={() => window.print()}><Printer className="size-4" />Print SOA</Button>}
     </header>
-    <div className="max-w-xl print:hidden"><SearchSelect aria-label="Member account" className="h-10" clearable placeholder="Search member name, member no., or program" value={selected} onValueChange={choose} options={accounts.map((item) => ({ value: item.id, label: `${item.memberName} · ${item.programName}`, description: `${item.memberNumber} · ${item.branch} · MAS ${item.mas} · ${item.status}` }))} /></div>
+    <div className="space-y-3 rounded-xl border bg-background p-4 print:hidden">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <label className="text-sm">Search<input className={fieldClass} value={filters.search} onChange={(event) => update("search", event.target.value)} placeholder="Name, member no., program" /></label>
+        <label className="text-sm">Branch<SearchSelect aria-label="Branch" className="mt-1 h-9" clearable placeholder="All" value={filters.branch} onValueChange={(value) => update("branch", value)} options={unique(accounts.map((item) => item.branch)).map((value) => ({ value, label: value }))} /></label>
+        <label className="text-sm">MAS<SearchSelect aria-label="MAS" className="mt-1 h-9" clearable placeholder="All" value={filters.mas} onValueChange={(value) => update("mas", value)} options={unique(accounts.filter((item) => !filters.branch || item.branch === filters.branch).map((item) => item.mas)).map((value) => ({ value, label: value }))} /></label>
+        <label className="text-sm">Program<SearchSelect aria-label="Program" className="mt-1 h-9" clearable placeholder="All" value={filters.program} onValueChange={(value) => update("program", value)} options={unique(accounts.map((item) => item.programName)).map((value) => ({ value, label: value }))} /></label>
+        <label className="text-sm">Status (today)<select className={fieldClass} value={filters.status} onChange={(event) => update("status", event.target.value)}><option value="">All</option>{statusFilters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-0 max-w-xl flex-1"><SearchSelect aria-label="Member account" className="h-10" clearable placeholder={filtering ? `Choose from ${filtered.length} matching account${filtered.length === 1 ? "" : "s"}` : "Search member name, member no., or program"} value={selected} onValueChange={choose} options={filtered.map((item) => ({ value: item.id, label: `${item.memberName} · ${item.programName}`, description: `${item.memberNumber} · ${item.branch} · MAS ${item.mas} · ${statusLabel(item)}` }))} /></div>
+        <p className="text-sm text-muted-foreground" aria-live="polite">{filtered.length} of {accounts.length} accounts</p>
+        {filtering && <Button type="button" variant="ghost" onClick={() => setFilters(noFilters)}>Reset filters</Button>}
+      </div>
+    </div>
     {error && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive print:hidden">{error}</p>}
     {loading && <p className="text-sm text-muted-foreground print:hidden">Preparing the statement...</p>}
-    {!selected && !loading && <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground print:hidden">Select an account to prepare its Statement of Account.</p>}
+    {!selected && !loading && (filtering && filtered.length ? <div className="overflow-x-auto rounded-xl border bg-background print:hidden">
+      <table className="w-full text-left text-sm"><thead className="bg-muted"><tr>{["Member", "Member no.", "Program", "Branch", "MAS", "Status (today)", ""].map((label) => <th key={label || "action"} scope="col" className="whitespace-nowrap p-3">{label}</th>)}</tr></thead>
+        <tbody>{filtered.slice(0, 50).map((item) => <tr key={item.id} className="border-t">
+          <td className="p-3 font-medium">{item.memberName}</td><td className="p-3">{item.memberNumber}</td><td className="p-3">{item.programName}</td><td className="p-3">{item.branch}</td><td className="p-3">{item.mas}</td>
+          <td className="p-3"><span className="flex flex-wrap gap-1"><StatusBadge status={item.status} tone={statusTone(item.status)} />{item.temporarilySuspended && item.status !== "Forfeited" && <StatusBadge status="Suspended" tone="warning" />}</span></td>
+          <td className="p-3 text-right"><Button type="button" size="sm" variant="outline" onClick={() => choose(item.id)}>View SOA</Button></td>
+        </tr>)}</tbody></table>
+      {filtered.length > 50 && <p className="border-t p-3 text-sm text-muted-foreground">Showing the first 50 of {filtered.length}. Narrow the filters to find the member.</p>}
+    </div> : <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground print:hidden">{filtering ? "No accounts match these filters." : "Filter or search, then select an account to prepare its Statement of Account."}</p>)}
 
     {statement && s && !loading && <article data-slot="card" className="soa-sheet space-y-6 rounded-2xl border bg-card p-6 text-sm sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4">

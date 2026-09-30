@@ -25,6 +25,7 @@ export async function GET() {
       roleIds: user.roles,
       roleNames: user.roleNames,
       permissions: user.permissions,
+      mustChangePassword: user.mustChangePassword,
     },
   });
 }

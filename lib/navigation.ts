@@ -73,7 +73,7 @@ const workspaces: Record<string, NavSection[]> = {
   ],
   executive: [
     { title: "Overview", items: [page.dashboard] },
-    { title: "Reports", items: [page.userReports, page.mam] },
+    { title: "Reports", items: [page.userReports, page.mam, page.soa] },
     { title: "Directory", items: [page.members] },
     { title: "People", items: [page.attendanceTracking] },
     { title: "My HR", items: [page.attendance] },
@@ -137,10 +137,30 @@ export const routeMatches = (pathname: string, href: string) => pathname === hre
 // Reversed so the first (generic) label wins where two entries share a route, e.g. Members / My Members.
 const pagesByHref = new Map<string, NavItem>(Object.values(page).reverse().map((item) => [item.href, item]));
 
+// The administrator workspace lists every page, so its sections say where each page belongs.
+const adminSections = workspaces.administrator;
+const adminSectionOf = (href: string) => adminSections.find((section) => section.items.some((item) => item.href === href));
+
+/**
+ * Places a page granted outside the role's usual workspace where it belongs: in the role's section that already holds
+ * related pages (Programs joins Members in "Directory"), else the role's section of the same name, else a new section
+ * named as in the administrator workspace, before My HR. Only pages no workspace lists fall back to "More".
+ */
+function placeGrantedPage(sections: NavSection[], item: NavItem) {
+  const home = adminSectionOf(item.href);
+  const related = new Set(home?.items.map((sibling) => sibling.href) ?? []);
+  const title = home?.title ?? "More";
+  const target = sections.find((section) => section.items.some((existing) => related.has(existing.href)))
+    ?? sections.find((section) => section.title === title);
+  if (target) { target.items.push(item); return; }
+  const personal = sections.findIndex((section) => section.title === "My HR");
+  sections.splice(personal >= 0 && title !== "My HR" ? personal : sections.length, 0, { title, items: [item] });
+}
+
 /**
  * The active role's workspace, minus any page the server would refuse for this session.
  * When an administrator configured the role's page access, only those pages show, and granted
- * pages outside the role's usual workspace are listed under "More".
+ * pages outside the role's usual workspace join the section where they belong.
  */
 export function visibleNavigation(role: string, access: AccessContext): NavSection[] {
   const configured = isAdministratorRole(role) ? undefined : access.rolePages?.[normalizeRole(role)];
@@ -155,7 +175,9 @@ export function visibleNavigation(role: string, access: AccessContext): NavSecti
   if (!configured) return sections;
   const shown = new Set(sections.flatMap((section) => section.items.map((item) => item.href)));
   const extra = configured.filter((href) => !shown.has(href) && href !== "/settings").map((href) => pagesByHref.get(href)).filter((item): item is NavItem => Boolean(item) && allowed(item!));
-  return extra.length ? [...sections, { title: "More", items: extra }] : sections;
+  const placed = sections.map((section) => ({ ...section, items: [...section.items] }));
+  for (const item of extra) placeGrantedPage(placed, item);
+  return placed;
 }
 
 export function isInWorkspace(role: string, pathname: string, access?: AccessContext) {

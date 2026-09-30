@@ -14,9 +14,9 @@ export type AccessContext = {
 const roleRoutes: Record<string, string[]> = {
   administrator: ["*"],
   admin: ["*"],
-  // The executive workspace is the analytics dashboard, User Report Review, MAM, Members, and attendance; it does not receive the shared employee pages.
-  ceo: ["/", "/admin-reports", "/mam", "/members", "/attendance-tracking", "/attendance", "/settings"],
-  president: ["/", "/admin-reports", "/mam", "/members", "/attendance-tracking", "/attendance", "/settings"],
+  // The executive workspace is the analytics dashboard, User Report Review, MAM, Statements of Account, Members, and attendance; it does not receive the shared employee pages.
+  ceo: ["/", "/admin-reports", "/mam", "/soa", "/members", "/attendance-tracking", "/attendance", "/settings"],
+  president: ["/", "/admin-reports", "/mam", "/soa", "/members", "/attendance-tracking", "/attendance", "/settings"],
   "hr officer": ["/", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
   hr: ["/", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
   finance: ["/", "/audit", "/members", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],

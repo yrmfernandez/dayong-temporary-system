@@ -11,6 +11,7 @@ import {
   ChevronUp,
   Plus,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { todayInManila } from "@/lib/account-rules";
+import type { ProgramStanding } from "@/lib/account-data";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import { calculateSaleIncentive } from "@/lib/remittance";
@@ -244,6 +246,12 @@ export default function NewSalesPage() {
 
   const [memberSearchTerms, setMemberSearchTerms] =
     useState<Record<string, string>>({});
+
+  // Suspended or forfeited programs of each existing member on the form, keyed by member ID. A warning only: the
+  // encoder confirms with the member before adding another program.
+  const [memberStandings, setMemberStandings] =
+    useState<Record<string, { programs: ProgramStanding[]; error: string }>>({});
+  const requestedStandings = useRef(new Set<string>());
 
   // Remittance penalty on this New Sales batch: charged to the MAS (their own money), added to the remittance.
   const [penalty, setPenalty] = useState("");
@@ -551,6 +559,22 @@ export default function NewSalesPage() {
     };
   }, [searchMember, surnameSearches]);
 
+  const existingMemberIds = [...new Set(sales.map((sale) => sale.member.id).filter(Boolean))].sort().join("|");
+
+  useEffect(() => {
+    for (const memberId of existingMemberIds.split("|").filter(Boolean)) {
+      if (requestedStandings.current.has(memberId)) continue;
+      requestedStandings.current.add(memberId);
+      void fetch(`/api/members/standing?memberId=${encodeURIComponent(memberId)}`, { cache: "no-store" })
+        .then(async (response) => {
+          const result = (await response.json()) as { success: boolean; programs?: ProgramStanding[]; message?: string };
+          if (!response.ok || !result.success) throw new Error(result.message || "Unable to check this member's accounts.");
+          setMemberStandings((current) => ({ ...current, [memberId]: { programs: result.programs ?? [], error: "" } }));
+        })
+        .catch((error: unknown) => setMemberStandings((current) => ({ ...current, [memberId]: { programs: [], error: error instanceof Error ? error.message : "Unable to check this member's accounts." } })));
+    }
+  }, [existingMemberIds]);
+
   const dismissMemberChoices = (saleId: string) => {
     setMemberSearchResults((current) => {
       const remaining = { ...current };
@@ -569,25 +593,33 @@ export default function NewSalesPage() {
     saleId: string,
     member: Member,
   ) => {
-    updateSale(saleId, (current) => ({
-      ...current,
-      member: {
-        ...member,
-        age: calculateAge(member.birthdate),
-        claimant: {
-          ...member.claimant,
-          address: {
-            ...member.claimant.address,
-          },
+    updateSale(saleId, (current) => {
+      const filled = fillFromRecord(current.member, member);
+      return {
+        ...current,
+        member: {
+          ...filled,
+          id: member.id,
+          phMemberNumber: member.phMemberNumber,
+          age: calculateAge(filled.birthdate),
         },
-      },
-      program: {
-        ...current.program,
-        memberId: member.id,
-      },
-    }));
+        program: {
+          ...current.program,
+          memberId: member.id,
+        },
+      };
+    });
 
     dismissMemberChoices(saleId);
+  };
+
+  // The encoder picked the wrong person: keep what is typed, but register it as a new member instead.
+  const unlinkExistingMember = (saleId: string) => {
+    updateSale(saleId, (current) => ({
+      ...current,
+      member: { ...current.member, id: "", phMemberNumber: "" },
+      program: { ...current.program, memberId: "" },
+    }));
   };
 
   /*
@@ -923,6 +955,14 @@ export default function NewSalesPage() {
       }
     }
 
+    // A repeated Application Number is a double entry; the server also checks every earlier sale.
+    const applicationKey = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const repeated = sales.findIndex((sale, index) => sales.findIndex((other) => applicationKey(other.applicationNumber) === applicationKey(sale.applicationNumber)) !== index);
+    if (repeated >= 0) {
+      setSaveMessage(`Sale #${repeated + 1}: Application Number ${sales[repeated].applicationNumber.trim()} is already used in this batch.`);
+      return;
+    }
+
     if (Number(penalty) < 0) {
       setSaveMessage("The penalty must be zero or a positive amount.");
       return;
@@ -1228,6 +1268,24 @@ export default function NewSalesPage() {
                           Member information.
                         </p>
                       </div>
+
+                      {sale.member.id && (
+                        <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                          <p>
+                            <span className="font-semibold">Existing member {sale.member.phMemberNumber}.</span>{" "}
+                            Details below come from their record. Any change you make here updates the member&apos;s record when this batch is saved.
+                          </p>
+                          <Button type="button" size="sm" variant="outline" onClick={() => unlinkExistingMember(sale.id)}>
+                            Not this member
+                          </Button>
+                        </div>
+                      )}
+
+                      {sale.member.id && (
+                        <MemberStandingWarning
+                          standing={memberStandings[sale.member.id]}
+                        />
+                      )}
 
                       <div className="grid gap-4 md:grid-cols-4">
                         <div className="space-y-2">
@@ -2654,7 +2712,7 @@ export default function NewSalesPage() {
             )}
           </div>
 
-          {showPreview && <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.amountPaid)}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}</div>; })}</div></div>}
+          {showPreview && <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.amountPaid)}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div></div>}
 
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button
@@ -2681,4 +2739,37 @@ export default function NewSalesPage() {
       </Card>
     </div>
   );
+}
+
+const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+const longDate = (value: string) => value ? new Date(`${value}T00:00:00`).toLocaleDateString("en-PH", { dateStyle: "medium" }) : "";
+
+/** Warns when an existing member already has suspended or forfeited programs. It does not block the sale. */
+function MemberStandingWarning({ standing }: { standing?: { programs: ProgramStanding[]; error: string } }) {
+  if (!standing) return <p className="text-sm text-muted-foreground">Checking this member&apos;s existing programs...</p>;
+  if (standing.error) return <p className="text-sm text-amber-700">Could not check this member&apos;s existing programs: {standing.error}</p>;
+  if (!standing.programs.length) return null;
+  return <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+    <p className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" />This member has programs that are not in good standing</p>
+    <ul className="mt-2 list-disc space-y-1 pl-5">
+      {standing.programs.map((program) => <li key={program.enrollmentId}>
+        <span className="font-medium">{program.programName}</span>: {program.standing.toLowerCase()}{program.since ? ` since ${longDate(program.since)}` : ""}{program.amountDue ? ` · ${peso(program.amountDue)} due` : ""}
+      </li>)}
+    </ul>
+    <p className="mt-2">Confirm with the member before adding a new program. Suspended accounts need a Waiver payment in Collections.</p>
+  </div>;
+}
+
+/**
+ * Fills the form from the member on record. A blank on record keeps what the encoder already typed; everything the
+ * record has replaces it, and the encoder can still edit it before saving.
+ */
+function fillFromRecord<T>(current: T, record: T): T {
+  if (record === null || record === undefined) return current;
+  if (typeof record === "string") return (record.trim() ? record : current) as T;
+  if (typeof record === "object" && !Array.isArray(record)) {
+    const typed = (current ?? {}) as Record<string, unknown>, stored = record as Record<string, unknown>;
+    return Object.fromEntries([...new Set([...Object.keys(typed), ...Object.keys(stored)])].map((key) => [key, fillFromRecord(typed[key], stored[key])])) as T;
+  }
+  return record;
 }

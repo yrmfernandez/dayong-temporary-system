@@ -615,6 +615,12 @@ export default function CollectionsPage() {
       return "OR Number is required.";
     }
 
+    // Each OR Number is one receipt; the server also checks every earlier batch.
+    const receipt = entry.orNumber.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (collections.some((other) => other.id !== entry.id && other.orNumber.toUpperCase().replace(/[^A-Z0-9]/g, "") === receipt)) {
+      return `OR Number ${entry.orNumber.trim()} is already entered in this batch. Each OR Number is used once.`;
+    }
+
     if (!entry.orDate) {
       return "OR Date is required.";
     }

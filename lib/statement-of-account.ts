@@ -1,15 +1,21 @@
 import { accountState, todayInManila } from "@/lib/account-rules";
-import { loadAccountData } from "@/lib/account-data";
+import { accountReport, loadAccountData } from "@/lib/account-data";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const round = (value: number) => Math.round(value * 100) / 100;
 
-/** Accounts an SOA can be issued for, for the account picker: one row per member program enrollment. */
+/**
+ * Accounts an SOA can be issued for, for the account picker: one row per member program enrollment, with today's
+ * status from the same rules as MAM (not the last synchronized one), so the picker can be filtered by standing.
+ */
 export async function listStatementAccounts() {
-  const data = await loadAccountData();
-  return data.accounts.map((account) => ({ id: account.id, memberName: account.memberName, memberNumber: account.memberNumber, programName: account.programName, branch: account.branch, mas: account.mas, doi: account.doi, status: account.storedStatus || "NS" }))
-    .sort((a, b) => a.memberName.localeCompare(b.memberName));
+  const report = await accountReport();
+  return report.rows.map((account) => ({
+    id: account.id, memberName: account.memberName, memberNumber: account.memberNumber, programName: account.programName, branch: account.branch, mas: account.mas, doi: account.doi,
+    status: "status" in account ? account.status : "Needs review",
+    temporarilySuspended: "temporarilySuspended" in account ? account.temporarilySuspended : false,
+  })).sort((a, b) => a.memberName.localeCompare(b.memberName));
 }
 
 /**
