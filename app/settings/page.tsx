@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { Building, LogOut, ShieldCheck, SlidersHorizontal, UserRound } from "lucide-react";
+import { Building, CheckCircle2, Eye, EyeOff, LogOut, ShieldCheck, TriangleAlert, SlidersHorizontal, UserRound } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -124,12 +124,12 @@ function SecurityTab({ employeeId, required }: { employeeId: string; required: b
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
   async function changePassword(event: React.FormEvent) {
-    event.preventDefault(); setMessage("");
-    if (newPassword !== confirmPassword) { setMessage("New passwords do not match."); return; }
+    event.preventDefault(); setMessage(null);
+    if (newPassword !== confirmPassword) { setMessage({ tone: "error", text: "Password not changed: the new passwords do not match." }); return; }
     setSaving(true);
     try {
       const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) });
@@ -137,9 +137,14 @@ function SecurityTab({ employeeId, required }: { employeeId: string; required: b
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to update account.");
       setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
       // The response carries a session without the change-password lock, so the rest of the system opens now.
-      if (required) { router.replace("/"); router.refresh(); return; }
-      setMessage("Password changed successfully. Other devices signed in to this account will be signed out within a few minutes.");
-    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to update account."); }
+      if (required) {
+        // Let the user see the confirmation before the rest of the system opens.
+        setMessage({ tone: "success", text: "Password changed successfully. Opening the system..." });
+        setTimeout(() => { router.replace("/"); router.refresh(); }, 1500);
+        return;
+      }
+      setMessage({ tone: "success", text: "Password changed successfully. Other devices signed in to this account will be signed out within a few minutes." });
+    } catch (failure) { setMessage({ tone: "error", text: `Password not changed: ${failure instanceof Error ? failure.message : "Unable to update account."}` }); }
     finally { setSaving(false); }
   }
 
@@ -160,11 +165,13 @@ function SecurityTab({ employeeId, required }: { employeeId: string; required: b
       <CardContent>
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={changePassword}>
           <div className="space-y-2"><Label htmlFor="settings-employee-id">Employee ID</Label><Input id="settings-employee-id" value={employeeId} readOnly className="bg-muted/50" autoComplete="username" /></div>
-          <div className="space-y-2"><Label htmlFor="current-password">Current password *</Label><Input id="current-password" type="password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" /></div>
-          <div className="space-y-2"><Label htmlFor="new-password">New password *</Label><Input id="new-password" type="password" required minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" /><p className="text-xs text-muted-foreground">At least 12 characters.</p></div>
-          <div className="space-y-2"><Label htmlFor="confirm-password">Confirm new password *</Label><Input id="confirm-password" type="password" required minLength={12} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" /></div>
+          <div className="space-y-2"><Label htmlFor="current-password">Current password *</Label><PasswordInput id="current-password" required value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" /></div>
+          <div className="space-y-2"><Label htmlFor="new-password">New password *</Label><PasswordInput id="new-password" required minLength={12} value={newPassword} onChange={setNewPassword} autoComplete="new-password" /><p className="text-xs text-muted-foreground">At least 12 characters.</p></div>
+          <div className="space-y-2"><Label htmlFor="confirm-password">Confirm new password *</Label><PasswordInput id="confirm-password" required minLength={12} value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" /></div>
           <div className="flex items-end"><Button type="submit" disabled={saving || !employeeId}>{saving ? "Saving..." : "Change password"}</Button></div>
-          {message && <p className="text-sm sm:col-span-2" role="status">{message}</p>}
+          {message && <div role={message.tone === "error" ? "alert" : "status"} className={`flex items-start gap-2 rounded-lg border p-3 text-sm sm:col-span-2 ${message.tone === "success" ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200" : "border-destructive/40 bg-destructive/5 text-destructive"}`}>
+            {message.tone === "success" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : <TriangleAlert className="mt-0.5 size-4 shrink-0" />}<span>{message.text}</span>
+          </div>}
         </form>
       </CardContent>
     </Card>
@@ -173,4 +180,15 @@ function SecurityTab({ employeeId, required }: { employeeId: string; required: b
       <CardContent><Button type="button" variant="destructive" disabled={signingOut} onClick={() => void signOut()}><LogOut className="mr-2 size-4" />{signingOut ? "Signing out..." : "Sign out"}</Button></CardContent>
     </Card>
   </>;
+}
+
+function PasswordInput({ id, value, onChange, required, minLength, autoComplete }: { id: string; value: string; onChange: (value: string) => void; required?: boolean; minLength?: number; autoComplete: string }) {
+  const [visible, setVisible] = useState(false);
+  return <div className="relative">
+    <Input id={id} type={visible ? "text" : "password"} required={required} minLength={minLength} value={value} onChange={(event) => onChange(event.target.value)} autoComplete={autoComplete} className="pr-10" />
+    <button type="button" onClick={() => setVisible((shown) => !shown)} aria-label={visible ? "Hide password" : "Show password"} aria-pressed={visible} aria-controls={id}
+      className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground hover:text-foreground">
+      {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+    </button>
+  </div>;
 }
