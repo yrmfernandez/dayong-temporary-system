@@ -45,11 +45,13 @@ export async function buildOperationalReport(from: string, to: string, filters: 
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const collectionLines: ReportLine[] = collections.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted").map((row) => {
     const date = text(row[9]).slice(0, 10), branch = text(row[6]), programId = text(row[5]), person = text(row[31]) || text(row[7]), role = text(row[25]) || text(row[32]) || "MAS", gross = number(row[10]), expected = number(row[26]) || gross;
-    const incentives = Math.max(0, round(gross - expected)), fidelityAmount=role.toLowerCase()==="collector"?0:(fidelityByCollection.get(text(row[0]))??0), penalty=number(row[35]), net=expected;
+    const incentives = Math.max(0, round(gross - expected)), fidelityAmount=fidelityByCollection.get(text(row[0]))??0, penalty=number(row[35]), net=expected;
     return { date, branch, programId, programName: programNames.get(programId) || programId, person, role, encodedBy: text(row[23]), accounts: 1, gross, masCommission: role.toLowerCase() === "collector" ? 0 : incentives, collectorCommission: role.toLowerCase() === "collector" ? incentives : 0, incentives, fidelity: fidelityAmount, penalty, net, expectedRemittance: net };
   }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
   const postedExpenses = expenses.slice(1).filter((row) => text(row[0]) && text(row[11]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[7]) === filters.branch)).reduce((sum, row) => sum + number(row[4]), 0);
-  const approvedRemittances = remittances.slice(1).filter((row) => text(row[0]) && text(row[4]) === "Approved" && inRange(text(row[3]).slice(0, 10)) && (!filters.branch || text(row[1]) === filters.branch)).reduce((sum, row) => sum + number(row[11]), 0);
+  // Fidelity is the employee's own savings: remittances recorded under that rule include it in the cash received, so it is
+  // taken back out here to compare like with like (older remittances never included it).
+  const approvedRemittances = remittances.slice(1).filter((row) => text(row[0]) && text(row[4]) === "Approved" && inRange(text(row[3]).slice(0, 10)) && (!filters.branch || text(row[1]) === filters.branch)).reduce((sum, row) => sum + number(row[11]) - (text(row[22]).includes("(employee's own money)") ? number(row[24]) : 0), 0);
   const deposits = cash.slice(1).filter((row) => text(row[0]) && text(row[2]) === "inflow" && text(row[3]).toLowerCase().includes("deposit") && text(row[10]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[6]) === filters.branch)).reduce((sum, row) => sum + number(row[5]), 0);
   const allLines = [...salesLines, ...collectionLines];
   return {

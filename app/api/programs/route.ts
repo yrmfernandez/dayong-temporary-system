@@ -2,6 +2,7 @@ import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 import { canManageConfiguration } from "@/lib/auth-server";
 import { deleteProgramRecord, updateProgramRecord, type ProgramInput } from "@/lib/master-data-crud";
+import { validateIncentiveTiers } from "@/lib/program-incentive-store";
 
 import {
   createProgram,
@@ -18,6 +19,8 @@ type IncentiveTier = {
   incentiveType: IncentiveType;
   markUp: number;
   incentiveAmount: number;
+  /** Blank = base tier for all branches; otherwise a tier for that branch only. */
+  branchId?: string;
 };
 
 export async function GET() {
@@ -164,6 +167,8 @@ export const POST = withEncoder(async function POST(
           incentiveAmount: Number(
             tier.incentiveAmount,
           ),
+
+          branchId: typeof tier.branchId === "string" ? tier.branchId.trim() : "",
         }),
       );
 
@@ -310,6 +315,7 @@ export const POST = withEncoder(async function POST(
         if (
           first.role ===
             second.role &&
+          (first.branchId ?? "") === (second.branchId ?? "") &&
           first.fromMonth <=
             second.toMonth &&
           second.fromMonth <=
@@ -319,7 +325,7 @@ export const POST = withEncoder(async function POST(
             {
               success: false,
               error:
-                `Incentive tiers for ${first.role} cannot overlap.`,
+                `Incentive tiers for ${first.role} ${first.branchId ? `in branch ${first.branchId}` : "for all branches"} cannot overlap.`,
             },
             {
               status: 400,
@@ -339,6 +345,9 @@ export const POST = withEncoder(async function POST(
         ? description.trim()
         : "";
 
+    try { await validateIncentiveTiers(normalizedTiers, basePay); }
+    catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Invalid incentive tiers." }, { status: 400 }); }
+
     const program =
       await createProgram({
         code: code.trim(),
@@ -347,6 +356,7 @@ export const POST = withEncoder(async function POST(
 
         incentiveTiers:
           normalizedTiers,
+        categoryId: typeof body.categoryId === "string" ? body.categoryId.trim() : "",
 
         description:
           normalizedDescription,
@@ -400,6 +410,7 @@ function programInput(body: Record<string, unknown>): ProgramInput {
     basePay: Number(body.basePay),
     status: body.status === "inactive" ? "inactive" : "active",
     description: typeof body.description === "string" ? body.description.trim() : "",
+    categoryId: typeof body.categoryId === "string" ? body.categoryId.trim() : "",
     registrationFeeRequired: Boolean(body.registrationFeeRequired),
     registrationAmount: Number(body.registrationAmount) || 0,
     payBalanceTotal: Number(body.payBalanceTotal) || 0,
@@ -408,7 +419,7 @@ function programInput(body: Record<string, unknown>): ProgramInput {
     ageRestricted: body.ageRestricted,
     minAge: body.minAge,
     maxAge: body.maxAge,
-    incentiveTiers: tiers.map((value) => { const tier = value as Record<string, unknown>; return { role: tier.role === "Collector" ? "Collector" : "MAS", fromMonth: Number(tier.fromMonth), toMonth: Number(tier.toMonth), incentiveType: tier.incentiveType === "fixed" ? "fixed" : "percentage", markUp: Number(tier.markUp), incentiveAmount: Number(tier.incentiveAmount) }; }),
+    incentiveTiers: tiers.map((value) => { const tier = value as Record<string, unknown>; return { role: tier.role === "Collector" ? "Collector" : "MAS", fromMonth: Number(tier.fromMonth), toMonth: Number(tier.toMonth), incentiveType: tier.incentiveType === "fixed" ? "fixed" : "percentage", markUp: Number(tier.markUp), incentiveAmount: Number(tier.incentiveAmount), branchId: typeof tier.branchId === "string" ? tier.branchId.trim() : "" }; }),
   };
 }
 

@@ -1,13 +1,15 @@
 import { getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { getAttendanceForEmployeeDate, getAttendanceRecordsForDate, updateAttendanceRecord } from "@/lib/attendance-data";
-import { getPhilippineDate } from "@/lib/attendance";
+import { getPhilippineDate, SCHEDULED_TIME_OUT } from "@/lib/attendance";
 import { boardCategory, canAdjustLateness, canViewAttendanceTracking, minutesBetween } from "@/lib/attendance-board";
 import { getEmployees } from "@/lib/employees";
 import { getActiveAttendanceEmployees, getBranches } from "@/lib/google-sheets-data";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const MAX_LATE_MINUTES = 24 * 60;
+const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+const hours = (minutes: number) => Number((minutes / 60).toFixed(2));
 
 /** One day's board: every active employee with their record and whether they were on time, late, early, absent, AWOL, or on leave. */
 export async function GET(request: Request) {
@@ -36,7 +38,7 @@ export async function GET(request: Request) {
       };
     });
     return Response.json({
-      success: true, date, today, canAdjustLate: canAdjustLateness(user),
+      success: true, date, today, canAdjustLate: canAdjustLateness(user), canSetClockOut: canAdjustLateness(user),
       closedDay: nonWorkingDay ? `Non-working day: ${nonWorkingDay.notes}` : sunday ? "Sunday is not a working day." : "",
       rows,
     }, { headers: { "Cache-Control": "private, no-store" } });
@@ -45,12 +47,17 @@ export async function GET(request: Request) {
   }
 }
 
-/** Corrects a clocked-in employee's late minutes; the change and its reason are kept in the record's notes. */
+/**
+ * Corrects a clocked-in employee's day: late minutes, or (action "clockOut") the time out for someone who forgot to clock
+ * out or clocked out at the wrong time. Worked hours, overtime and undertime are recalculated exactly as at clock-out.
+ * Every change and its reason are kept in the record's notes.
+ */
 export const PATCH = withEncoder(async (request: Request) => {
   const user = await getSessionUser();
-  if (!user || !canAdjustLateness(user)) return Response.json({ success: false, message: "You are not allowed to adjust late time." }, { status: 403 });
+  if (!user || !canAdjustLateness(user)) return Response.json({ success: false, message: "You are not allowed to correct attendance." }, { status: 403 });
   try {
     const body = await request.json();
+    if (body.action === "clockOut") return Response.json(await setClockOut(body, user.name));
     const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
     const date = typeof body.attendanceDate === "string" ? body.attendanceDate.trim() : "";
     const lateMinutes = Number(body.lateMinutes);
@@ -70,3 +77,29 @@ export const PATCH = withEncoder(async (request: Request) => {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to adjust late time." }, { status: 400 });
   }
 });
+
+async function setClockOut(body: Record<string, unknown>, by: string) {
+  const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
+  const date = typeof body.attendanceDate === "string" ? body.attendanceDate.trim() : "";
+  const timeOut = typeof body.timeOut === "string" ? body.timeOut.trim() : "";
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (!employeeId || !validDate(date)) throw new Error("Choose the employee and date to correct.");
+  if (!validTime(timeOut)) throw new Error("Enter the time out as HH:MM.");
+  if (reason.length < 3) throw new Error("Enter the reason for setting the clock-out.");
+  const { record, rowNumber } = await getAttendanceForEmployeeDate(employeeId, date);
+  if (!record || !rowNumber || !record.timeIn || record.status !== "Present") throw new Error("Only a clocked-in attendance record can have its clock-out set.");
+  const today = getPhilippineDate();
+  const now = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+  if (date === today && timeOut > now) throw new Error("The clock-out cannot be later than the current time.");
+  const toMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+  const timeIn = toMinutes(record.timeIn), out = toMinutes(timeOut), scheduled = toMinutes(record.scheduledTimeOut || SCHEDULED_TIME_OUT);
+  if (out <= timeIn) throw new Error(`The clock-out must be after the time in (${record.timeIn}).`);
+  if (record.timeOut === timeOut) throw new Error("The clock-out is already that time.");
+  const note = `Clock-out ${record.timeOut ? `changed from ${record.timeOut}` : "set"} to ${timeOut} by ${by} on ${today}: ${reason}`;
+  const updated = {
+    ...record, timeOut, workedHours: hours(Math.max(0, out - timeIn)), overtimeHours: hours(Math.max(0, out - scheduled)), undertimeMinutes: Math.max(0, scheduled - out),
+    notes: [record.notes, note].filter(Boolean).join(" | "), updatedAt: new Date().toISOString(),
+  };
+  await updateAttendanceRecord(rowNumber, updated);
+  return { success: true, message: `Clock-out for ${employeeId} set to ${timeOut}. Worked ${updated.workedHours} hours.`, record: updated };
+}

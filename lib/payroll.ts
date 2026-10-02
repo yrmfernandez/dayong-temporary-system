@@ -11,6 +11,7 @@ import {
   type Adjustment, type BaseType, type PayProfile, type PayrollLine, type PayrollSettings,
 } from "@/lib/payroll-calc";
 import { createReadableId } from "@/lib/readable-id";
+import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
 
 /*
  * Sheets (npm run sheets:payroll), business columns then encoder identity:
@@ -303,4 +304,18 @@ export async function voidPayrollRun(runId: string, reason: string) {
   await write(`'Payroll Runs'!E${run.rowNumber}`, [["Void"]]);
   await write(`'Payroll Runs'!V${run.rowNumber}:X${run.rowNumber}`, [[`${text(reason)} (${actor.name})`, run.remarks, actor.encodedAt]]);
   return { id: runId };
+}
+
+/**
+ * Removes a Draft payroll that was made by mistake: its run, every calculated line, and every adjustment are deleted
+ * from the sheets (each deleted row is kept in the Audit Log). Approved payroll is voided instead; Paid payroll is
+ * corrected with a cash transaction.
+ */
+export async function deletePayrollRun(runId: string) {
+  const { run } = await getPayrollRun(runId);
+  if (run.status !== "Draft") throw new Error("Only a Draft payroll can be deleted. Void an Approved payroll instead.");
+  await deleteRowsWhere("Payroll Adjustments", (row) => text(row[1]) === run.id);
+  await deleteRowsWhere("Payroll Lines", (row) => text(row[1]) === run.id);
+  await deleteRowsById("Payroll Runs", [run.id]);
+  return { id: run.id };
 }

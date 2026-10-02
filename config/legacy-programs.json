@@ -1,0 +1,733 @@
+{
+  "note": "Draft. 'aliases' maps each old DAYONG PROGRAM label to a program code; edit it to merge or split programs. base_pay is the most common monthly payment (or the number in the label). Admins finalize programs in the app.",
+  "programs": [
+    {
+      "code": "D-210 HG",
+      "base_pay": 210,
+      "rate_in_label": 210,
+      "most_common_monthly_payment": 210,
+      "payments": 14304,
+      "sales": 0,
+      "variants": {
+        "D-210 HG": 14304
+      }
+    },
+    {
+      "code": "D-300 (BRACKETING)",
+      "base_pay": 300,
+      "rate_in_label": 300,
+      "most_common_monthly_payment": 300,
+      "payments": 7753,
+      "sales": 53,
+      "variants": {
+        "D-300 (BRACKETING)": 7794,
+        "D-300 BRACKETING": 1,
+        "D-300 ( BRACKETING)": 3,
+        "D--300 (BRACKETING)": 2,
+        "D-300(BRACKETING)": 3,
+        "D-300 (BRACKETING )": 1,
+        "D-300( BRACKETING)": 2
+      }
+    },
+    {
+      "code": "D-230",
+      "base_pay": 230,
+      "rate_in_label": 230,
+      "most_common_monthly_payment": 230,
+      "payments": 6358,
+      "sales": 0,
+      "variants": {
+        "D-230": 6358
+      }
+    },
+    {
+      "code": "D-190",
+      "base_pay": 190,
+      "rate_in_label": 190,
+      "most_common_monthly_payment": 190,
+      "payments": 5773,
+      "sales": 0,
+      "variants": {
+        "D-190": 5773
+      }
+    },
+    {
+      "code": "D-350 (5Y)",
+      "base_pay": 350,
+      "rate_in_label": 350,
+      "most_common_monthly_payment": 350,
+      "payments": 3629,
+      "sales": 1779,
+      "variants": {
+        "D-350 (5Y)": 5405,
+        "D-350 5YRS": 1,
+        "D-350( 5 YRS)": 1,
+        "D-350 (5 YRS)": 1
+      }
+    },
+    {
+      "code": "DPB-350",
+      "base_pay": 350,
+      "rate_in_label": 350,
+      "most_common_monthly_payment": 350,
+      "payments": 3500,
+      "sales": 22,
+      "variants": {
+        "DPB-350": 3512,
+        "DBP-350": 1,
+        "DPB- 350": 1,
+        "DPB 350": 8
+      }
+    },
+    {
+      "code": "D-320",
+      "base_pay": 320,
+      "rate_in_label": 320,
+      "most_common_monthly_payment": 320,
+      "payments": 3440,
+      "sales": 0,
+      "variants": {
+        "D-320": 3440
+      }
+    },
+    {
+      "code": "D-280",
+      "base_pay": 280,
+      "rate_in_label": 280,
+      "most_common_monthly_payment": 280,
+      "payments": 3055,
+      "sales": 0,
+      "variants": {
+        "280": 3,
+        "D-280": 3052
+      }
+    },
+    {
+      "code": "D-350",
+      "base_pay": 350,
+      "rate_in_label": 350,
+      "most_common_monthly_payment": 350,
+      "payments": 2243,
+      "sales": 1,
+      "variants": {
+        "D-350": 2244
+      }
+    },
+    {
+      "code": "D-180",
+      "base_pay": 180,
+      "rate_in_label": 180,
+      "most_common_monthly_payment": 180,
+      "payments": 1996,
+      "sales": 0,
+      "variants": {
+        "D-180": 1996
+      }
+    },
+    {
+      "code": "D-270 (300)",
+      "base_pay": 270,
+      "rate_in_label": 270,
+      "most_common_monthly_payment": 270,
+      "payments": 1819,
+      "sales": 0,
+      "variants": {
+        "D-270 (300)": 1819
+      }
+    },
+    {
+      "code": "D-250 FG",
+      "base_pay": 250,
+      "rate_in_label": 250,
+      "most_common_monthly_payment": 250,
+      "payments": 1274,
+      "sales": 0,
+      "variants": {
+        "D-250 FG": 1274
+      }
+    },
+    {
+      "code": "DPB-420",
+      "base_pay": 420,
+      "rate_in_label": 420,
+      "most_common_monthly_payment": 420,
+      "payments": 815,
+      "sales": 31,
+      "variants": {
+        "DPB-420": 845,
+        "DBP-420": 1
+      }
+    },
+    {
+      "code": "D-420",
+      "base_pay": 420,
+      "rate_in_label": 420,
+      "most_common_monthly_payment": 420,
+      "payments": 749,
+      "sales": 2,
+      "variants": {
+        "D-420": 751
+      }
+    },
+    {
+      "code": "DFP-480",
+      "base_pay": 480,
+      "rate_in_label": 480,
+      "most_common_monthly_payment": 480,
+      "payments": 693,
+      "sales": 0,
+      "variants": {
+        "DFP-480": 693
+      }
+    },
+    {
+      "code": "DFP-550",
+      "base_pay": 550,
+      "rate_in_label": 550,
+      "most_common_monthly_payment": 550,
+      "payments": 542,
+      "sales": 0,
+      "variants": {
+        "DFP-550": 541,
+        "DFP 550": 1
+      }
+    },
+    {
+      "code": "DSP-290",
+      "base_pay": 290,
+      "rate_in_label": 290,
+      "most_common_monthly_payment": 290,
+      "payments": 51,
+      "sales": 478,
+      "variants": {
+        "DSP-290": 451,
+        "DSP- 290": 3,
+        "DSP - 290": 27,
+        "DSP 290": 48
+      }
+    },
+    {
+      "code": "D-460 (59B)",
+      "base_pay": 460,
+      "rate_in_label": 460,
+      "most_common_monthly_payment": 460,
+      "payments": 342,
+      "sales": 0,
+      "variants": {
+        "D-460 (59B)": 342
+      }
+    },
+    {
+      "code": "D-460",
+      "base_pay": 460,
+      "rate_in_label": 460,
+      "most_common_monthly_payment": 460,
+      "payments": 316,
+      "sales": 0,
+      "variants": {
+        "D-460": 316
+      }
+    },
+    {
+      "code": "DPB-700",
+      "base_pay": 700,
+      "rate_in_label": 700,
+      "most_common_monthly_payment": 700,
+      "payments": 255,
+      "sales": 27,
+      "variants": {
+        "DPB-700": 257,
+        "DPD-700": 4,
+        "DPB 700": 10,
+        "DPB - 700": 2,
+        "DDPB--700": 1,
+        "DBP-700": 5,
+        "DBP 700": 2,
+        "DPB=700": 1
+      }
+    },
+    {
+      "code": "D-300 (NEW)",
+      "base_pay": 300,
+      "rate_in_label": 300,
+      "most_common_monthly_payment": 300,
+      "payments": 9,
+      "sales": 202,
+      "variants": {
+        "D-300 (NEW)": 173,
+        "D-300(NEW)": 30,
+        "D- 300 (NEW)": 1,
+        "D-300 ( NEW)": 2,
+        "D-300 NEW": 5
+      }
+    },
+    {
+      "code": "DC-300",
+      "base_pay": 300,
+      "rate_in_label": 300,
+      "most_common_monthly_payment": 300,
+      "payments": 195,
+      "sales": 0,
+      "variants": {
+        "DC-300": 195
+      }
+    },
+    {
+      "code": "DFPP-650",
+      "base_pay": 650,
+      "rate_in_label": 650,
+      "most_common_monthly_payment": 650,
+      "payments": 192,
+      "sales": 2,
+      "variants": {
+        "DFPP-650": 191,
+        "DPP-650": 3
+      }
+    },
+    {
+      "code": "DC-260",
+      "base_pay": 260,
+      "rate_in_label": 260,
+      "most_common_monthly_payment": 260,
+      "payments": 181,
+      "sales": 0,
+      "variants": {
+        "DC-260": 181
+      }
+    },
+    {
+      "code": "DFP-650",
+      "base_pay": 650,
+      "rate_in_label": 650,
+      "most_common_monthly_payment": 650,
+      "payments": 159,
+      "sales": 0,
+      "variants": {
+        "DFP-650": 159
+      }
+    },
+    {
+      "code": "DPB-525",
+      "base_pay": 525,
+      "rate_in_label": 525,
+      "most_common_monthly_payment": 525,
+      "payments": 148,
+      "sales": 5,
+      "variants": {
+        "DPB-525": 142,
+        "DPD-525": 1,
+        "DPB - 525": 6,
+        "DPB 525": 4
+      }
+    },
+    {
+      "code": "D-370",
+      "base_pay": 370,
+      "rate_in_label": 370,
+      "most_common_monthly_payment": 370,
+      "payments": 122,
+      "sales": 0,
+      "variants": {
+        "D-370": 122
+      }
+    },
+    {
+      "code": "DC-180",
+      "base_pay": 180,
+      "rate_in_label": 180,
+      "most_common_monthly_payment": 180,
+      "payments": 82,
+      "sales": 0,
+      "variants": {
+        "DC-180": 81,
+        "C-180": 1
+      }
+    },
+    {
+      "code": "D-300",
+      "base_pay": 300,
+      "rate_in_label": 300,
+      "most_common_monthly_payment": 300,
+      "payments": 4,
+      "sales": 69,
+      "variants": {
+        "D-300": 73
+      }
+    },
+    {
+      "code": "DPB-490",
+      "base_pay": 490,
+      "rate_in_label": 490,
+      "most_common_monthly_payment": 490,
+      "payments": 61,
+      "sales": 7,
+      "variants": {
+        "DPB-490": 65,
+        "DPB 490": 1,
+        "DBP-490": 1,
+        "DPB-490 DPB-490": 1
+      }
+    },
+    {
+      "code": "DF-650 (NEW)",
+      "base_pay": 650,
+      "rate_in_label": 650,
+      "most_common_monthly_payment": 650,
+      "payments": 39,
+      "sales": 12,
+      "variants": {
+        "DF-650 (NEW)": 51
+      }
+    },
+    {
+      "code": "D-185",
+      "base_pay": 185,
+      "rate_in_label": 185,
+      "most_common_monthly_payment": 185,
+      "payments": 39,
+      "sales": 0,
+      "variants": {
+        "D-185": 36,
+        "D 185": 3
+      }
+    },
+    {
+      "code": "D-490",
+      "base_pay": 490,
+      "rate_in_label": 490,
+      "most_common_monthly_payment": 490,
+      "payments": 33,
+      "sales": 3,
+      "variants": {
+        "D-490": 35,
+        "D- 490": 1
+      }
+    },
+    {
+      "code": "D-300 (NEW BRACKETING)",
+      "base_pay": 300,
+      "rate_in_label": 300,
+      "most_common_monthly_payment": 0,
+      "payments": 0,
+      "sales": 28,
+      "variants": {
+        "D-300 (NEW BRACKETING)": 22,
+        "D-300 (NEWBRACKETING)": 1,
+        "D-300( NEW BRACKETING)": 1,
+        "D-300 (NEW BRAKETING)": 3,
+        "300 (NEW BRACKETING)": 1
+      }
+    },
+    {
+      "code": "D-540",
+      "base_pay": 540,
+      "rate_in_label": 540,
+      "most_common_monthly_payment": 540,
+      "payments": 16,
+      "sales": 0,
+      "variants": {
+        "D-540": 16
+      }
+    },
+    {
+      "code": "DN-300",
+      "base_pay": 300,
+      "rate_in_label": 300,
+      "most_common_monthly_payment": 0,
+      "payments": 0,
+      "sales": 11,
+      "variants": {
+        "DN-300": 11
+      }
+    },
+    {
+      "code": "D-410",
+      "base_pay": 410,
+      "rate_in_label": 410,
+      "most_common_monthly_payment": 410,
+      "payments": 10,
+      "sales": 0,
+      "variants": {
+        "D-410": 10
+      }
+    },
+    {
+      "code": "DPB-1000",
+      "base_pay": 1000,
+      "rate_in_label": 1000,
+      "most_common_monthly_payment": 1000,
+      "payments": 9,
+      "sales": 0,
+      "variants": {
+        "DPB-1000": 7,
+        "DPB 1000": 2
+      }
+    },
+    {
+      "code": "D-390 (300)",
+      "base_pay": 390,
+      "rate_in_label": 390,
+      "most_common_monthly_payment": 390,
+      "payments": 8,
+      "sales": 0,
+      "variants": {
+        "D-390 (300)": 8
+      }
+    },
+    {
+      "code": "DPB-1200",
+      "base_pay": 1200,
+      "rate_in_label": 1200,
+      "most_common_monthly_payment": 1200,
+      "payments": 7,
+      "sales": 0,
+      "variants": {
+        "DPB-1,200": 2,
+        "DPB-1200": 5
+      }
+    },
+    {
+      "code": "D-290 (500)",
+      "base_pay": 290,
+      "rate_in_label": 290,
+      "most_common_monthly_payment": 290,
+      "payments": 7,
+      "sales": 0,
+      "variants": {
+        "D-290 (500)": 7
+      }
+    },
+    {
+      "code": "D-290",
+      "base_pay": 290,
+      "rate_in_label": 290,
+      "most_common_monthly_payment": 290,
+      "payments": 6,
+      "sales": 0,
+      "variants": {
+        "D-290": 6
+      }
+    },
+    {
+      "code": "DPB-650",
+      "base_pay": 650,
+      "rate_in_label": 650,
+      "most_common_monthly_payment": 650,
+      "payments": 4,
+      "sales": 0,
+      "variants": {
+        "DPB-650": 4
+      }
+    },
+    {
+      "code": "DFP-525",
+      "base_pay": 525,
+      "rate_in_label": 525,
+      "most_common_monthly_payment": 0,
+      "payments": 4,
+      "sales": 0,
+      "variants": {
+        "DFP-525": 4
+      }
+    },
+    {
+      "code": "D-700",
+      "base_pay": 700,
+      "rate_in_label": 700,
+      "most_common_monthly_payment": 700,
+      "payments": 4,
+      "sales": 0,
+      "variants": {
+        "D-700": 4
+      }
+    },
+    {
+      "code": "DPB-350 (6Y)",
+      "base_pay": 350,
+      "rate_in_label": 350,
+      "most_common_monthly_payment": 350,
+      "payments": 2,
+      "sales": 0,
+      "variants": {
+        "DPB-350 (6Y)": 2
+      }
+    },
+    {
+      "code": "D-150",
+      "base_pay": 150,
+      "rate_in_label": 150,
+      "most_common_monthly_payment": 300,
+      "payments": 1,
+      "sales": 0,
+      "variants": {
+        "D-150": 1
+      }
+    },
+    {
+      "code": "DS-430",
+      "base_pay": 430,
+      "rate_in_label": 430,
+      "most_common_monthly_payment": 430,
+      "payments": 1,
+      "sales": 0,
+      "variants": {
+        "DS-430": 1
+      }
+    },
+    {
+      "code": "D-480",
+      "base_pay": 480,
+      "rate_in_label": 480,
+      "most_common_monthly_payment": 480,
+      "payments": 1,
+      "sales": 0,
+      "variants": {
+        "D-480": 1
+      }
+    },
+    {
+      "code": "DPB-420 (5Y)",
+      "base_pay": 420,
+      "rate_in_label": 420,
+      "most_common_monthly_payment": 0,
+      "payments": 0,
+      "sales": 1,
+      "variants": {
+        "DPB-420 (5Y)": 1
+      }
+    },
+    {
+      "code": "D-430",
+      "base_pay": 430,
+      "rate_in_label": 430,
+      "most_common_monthly_payment": 0,
+      "payments": 0,
+      "sales": 1,
+      "variants": {
+        "D-430": 1
+      }
+    },
+    {
+      "code": "DFP-350",
+      "base_pay": 350,
+      "rate_in_label": 350,
+      "most_common_monthly_payment": 350,
+      "payments": 1,
+      "sales": 0,
+      "variants": {
+        "DFP-350": 1
+      }
+    },
+    {
+      "code": "DSP-500",
+      "base_pay": 500,
+      "rate_in_label": 500,
+      "most_common_monthly_payment": 0,
+      "payments": 0,
+      "sales": 1,
+      "variants": {
+        "DSP-500": 1
+      }
+    }
+  ],
+  "aliases": {
+    "280": "D-280",
+    "D-210 HG": "D-210 HG",
+    "D-300 (BRACKETING)": "D-300 (BRACKETING)",
+    "D-300 BRACKETING": "D-300 (BRACKETING)",
+    "D-300 ( BRACKETING)": "D-300 (BRACKETING)",
+    "D--300 (BRACKETING)": "D-300 (BRACKETING)",
+    "D-300(BRACKETING)": "D-300 (BRACKETING)",
+    "D-300 (BRACKETING )": "D-300 (BRACKETING)",
+    "D-300( BRACKETING)": "D-300 (BRACKETING)",
+    "D-230": "D-230",
+    "D-190": "D-190",
+    "D-350 (5Y)": "D-350 (5Y)",
+    "D-350 5YRS": "D-350 (5Y)",
+    "D-350( 5 YRS)": "D-350 (5Y)",
+    "D-350 (5 YRS)": "D-350 (5Y)",
+    "DPB-350": "DPB-350",
+    "DBP-350": "DPB-350",
+    "DPB- 350": "DPB-350",
+    "DPB 350": "DPB-350",
+    "D-320": "D-320",
+    "D-280": "D-280",
+    "D-350": "D-350",
+    "D-180": "D-180",
+    "D-270 (300)": "D-270 (300)",
+    "D-250 FG": "D-250 FG",
+    "DPB-420": "DPB-420",
+    "DBP-420": "DPB-420",
+    "D-420": "D-420",
+    "DFP-480": "DFP-480",
+    "DFP-550": "DFP-550",
+    "DFP 550": "DFP-550",
+    "DSP-290": "DSP-290",
+    "DSP- 290": "DSP-290",
+    "DSP - 290": "DSP-290",
+    "DSP 290": "DSP-290",
+    "D-460 (59B)": "D-460 (59B)",
+    "D-460": "D-460",
+    "DPB-700": "DPB-700",
+    "DPD-700": "DPB-700",
+    "DPB 700": "DPB-700",
+    "DPB - 700": "DPB-700",
+    "DDPB--700": "DPB-700",
+    "DBP-700": "DPB-700",
+    "DBP 700": "DPB-700",
+    "DPB=700": "DPB-700",
+    "D-300 (NEW)": "D-300 (NEW)",
+    "D-300(NEW)": "D-300 (NEW)",
+    "D- 300 (NEW)": "D-300 (NEW)",
+    "D-300 ( NEW)": "D-300 (NEW)",
+    "D-300 NEW": "D-300 (NEW)",
+    "DC-300": "DC-300",
+    "DFPP-650": "DFPP-650",
+    "DPP-650": "DFPP-650",
+    "DC-260": "DC-260",
+    "DFP-650": "DFP-650",
+    "DPB-525": "DPB-525",
+    "DPD-525": "DPB-525",
+    "DPB - 525": "DPB-525",
+    "DPB 525": "DPB-525",
+    "D-370": "D-370",
+    "DC-180": "DC-180",
+    "C-180": "DC-180",
+    "D-300": "D-300",
+    "DPB-490": "DPB-490",
+    "DPB 490": "DPB-490",
+    "DBP-490": "DPB-490",
+    "DPB-490 DPB-490": "DPB-490",
+    "DF-650 (NEW)": "DF-650 (NEW)",
+    "D-185": "D-185",
+    "D 185": "D-185",
+    "D-490": "D-490",
+    "D- 490": "D-490",
+    "D-300 (NEW BRACKETING)": "D-300 (NEW BRACKETING)",
+    "D-300 (NEWBRACKETING)": "D-300 (NEW BRACKETING)",
+    "D-300( NEW BRACKETING)": "D-300 (NEW BRACKETING)",
+    "D-300 (NEW BRAKETING)": "D-300 (NEW BRACKETING)",
+    "300 (NEW BRACKETING)": "D-300 (NEW BRACKETING)",
+    "D-540": "D-540",
+    "DN-300": "DN-300",
+    "D-410": "D-410",
+    "DPB-1000": "DPB-1000",
+    "DPB 1000": "DPB-1000",
+    "D-390 (300)": "D-390 (300)",
+    "DPB-1,200": "DPB-1200",
+    "DPB-1200": "DPB-1200",
+    "D-290 (500)": "D-290 (500)",
+    "D-290": "D-290",
+    "DPB-650": "DPB-650",
+    "DFP-525": "DFP-525",
+    "D-700": "D-700",
+    "DPB-350 (6Y)": "DPB-350 (6Y)",
+    "D-150": "D-150",
+    "DS-430": "DS-430",
+    "D-480": "D-480",
+    "DPB-420 (5Y)": "DPB-420 (5Y)",
+    "D-430": "D-430",
+    "DFP-350": "DFP-350",
+    "DSP-500": "DSP-500"
+  }
+}

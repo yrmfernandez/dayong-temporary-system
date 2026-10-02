@@ -41,5 +41,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+.claudecodeignore
+
 # local sheet migration backups
 /backups
+
+# old member/collection spreadsheets for the one-time legacy migration (real member data: never commit)
+/legacy-data

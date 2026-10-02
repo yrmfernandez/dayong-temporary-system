@@ -6,7 +6,22 @@ export type IncentiveTier = {
   incentiveType: "fixed" | "percentage";
   markUp: number;
   incentiveAmount: number;
+  /** Blank = the program's base tier for every branch; otherwise the tier applies to that branch only. */
+  branchId?: string;
 };
+
+/**
+ * The tiers that apply in one branch: for each role, the branch's own tiers when it has any, else the base tiers.
+ * A branch can therefore override MAS rates, Collector rates, or both.
+ */
+export function tiersForBranch<T extends { role: string; branchId?: string }>(tiers: T[], branchId: string): T[] {
+  const branch = (branchId ?? "").trim();
+  return (["MAS", "Collector"] as const).flatMap((role) => {
+    const forRole = tiers.filter((tier) => tier.role === role);
+    const own = branch ? forRole.filter((tier) => (tier.branchId ?? "").trim() === branch) : [];
+    return own.length ? own : forRole.filter((tier) => !(tier.branchId ?? "").trim());
+  });
+}
 
 /** A program's New Sale incentive for registration-fee programs (Programs Q type, R amount). Blank type = none. */
 export type SaleIncentiveSetting = { saleIncentiveType: "fixed" | "percentage" | ""; saleIncentiveAmount: number };

@@ -6,6 +6,7 @@ import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
 import { loadUsers, userCell } from "@/lib/users-sheet";
 import { ageRestrictionCells, normalizeAgeRestriction } from "@/lib/program-age";
 import { normalizeSaleIncentive } from "@/lib/remittance";
+import { type StoredTier, validateIncentiveTiers, writeProgramIncentives } from "@/lib/program-incentive-store";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -20,7 +21,7 @@ function findRow(data: unknown[][], id: string) {
 }
 
 
-export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: Array<{ role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number }> };
+export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; categoryId?: string; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: StoredTier[] };
 
 export async function updateProgramRecord(id: string, input: ProgramInput) {
   const programs = await rows("Programs!A:F");
@@ -30,15 +31,10 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
   if (input.registrationFeeRequired && input.registrationAmount <= 0) throw new Error("Enter the required registration amount.");
   const ageRestriction = normalizeAgeRestriction(input);
   const saleIncentive = normalizeSaleIncentive(input);
-  for (const tier of input.incentiveTiers) {
-    if (!Number.isInteger(tier.fromMonth) || !Number.isInteger(tier.toMonth) || tier.fromMonth < 1 || tier.toMonth < tier.fromMonth) throw new Error("Enter valid whole-month incentive ranges.");
-    if (!Number.isFinite(tier.markUp) || tier.markUp < 0 || tier.markUp > input.basePay || !Number.isFinite(tier.incentiveAmount) || tier.incentiveAmount < 0 || (tier.incentiveType === "percentage" && tier.incentiveAmount > 100)) throw new Error("Enter valid mark-up and incentive amounts.");
-  }
-  if (input.incentiveTiers.some((tier, index) => input.incentiveTiers.some((other, otherIndex) => index !== otherIndex && tier.role === other.role && tier.fromMonth <= other.toMonth && other.fromMonth <= tier.toMonth))) throw new Error("Incentive tiers for the same role cannot overlap.");
+  await validateIncentiveTiers(input.incentiveTiers, input.basePay);
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!A${rowNumber}:F${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[id, input.code, input.name, input.basePay, input.status, input.description]] } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:R${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal, ...ageRestrictionCells(ageRestriction), saleIncentive.saleIncentiveType, saleIncentive.saleIncentiveType ? saleIncentive.saleIncentiveAmount : ""]] } });
-  await deleteRowsWhere("Program Incentives", (row) => text(row[1]) === id);
-  await appendEncodedRows({ range: "'Program Incentives'!A:H", requestBody: { values: input.incentiveTiers.map((tier) => [createReadableId("INC"), id, tier.role, tier.fromMonth, tier.toMonth, tier.incentiveType, tier.markUp, tier.incentiveAmount]) } });
+  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:S${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal, ...ageRestrictionCells(ageRestriction), saleIncentive.saleIncentiveType, saleIncentive.saleIncentiveType ? saleIncentive.saleIncentiveAmount : "", text(input.categoryId)]] } });
+  await writeProgramIncentives(id, input.incentiveTiers);
   return { id };
 }
 

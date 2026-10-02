@@ -5,11 +5,10 @@ import { withWriteLock } from "@/lib/google-sheets";
 import { loadAccountData, commitCollections } from "@/lib/account-data";
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
 import { findActivePaymentMethod } from "@/lib/remittance-methods";
-import { calculateRemittance } from "@/lib/remittance";
+import { calculateRemittance, tiersForBranch } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { createCashRemittance } from "@/lib/remittance-workflow";
-import { FIDELITY_CAP, getFidelityData } from "@/lib/fidelity";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
 
 export async function GET(request: Request) {
@@ -63,10 +62,10 @@ async function saveCollections(request: Request) {
     if (!Number.isFinite(penalty) || penalty < 0) throw new Error("The penalty must be zero or a positive amount.");
     if (penalty > 0 && penaltyNote.length < 3) throw new Error("Explain what the penalty is for (at least 3 characters).");
     if (penaltyNote.length > 300) throw new Error("The penalty note must be 300 characters or fewer.");
-    // MAS Fidelity set aside from this batch's incentives: it lowers the MAS's incentive and is added to the remittance.
+    // Fidelity: the accountable employee's own money handed over with this batch. It has no limit, leaves incentives
+    // untouched, and is added to the batch's total remittance.
     const fidelity = Math.round((Number(body.fidelityAmount) || 0) * 100) / 100;
     if (!Number.isFinite(fidelity) || fidelity < 0) throw new Error("Fidelity must be zero or a positive amount.");
-    if (fidelity > 0 && collectedBy === "Collector") throw new Error("Fidelity comes from the MAS incentive; a Collector batch has none.");
     if (autoApproveRemittance) {
       // Same rule as Remittances: anyone who can encode may confirm full physical cash; other methods are verified there.
       if (!paymentMethod.isCash) throw new Error(`${paymentMethod.name} payments are verified in Remittances before approval.`);
@@ -97,7 +96,7 @@ async function saveCollections(request: Request) {
       if (receipt && batchReceipts.has(receipt)) throw new Error(`OR Number ${input.orNumber} is entered twice in this batch (${batchReceipts.get(receipt)} and ${account.memberNumber}). Each OR Number is used once.`);
       if (receipt) batchReceipts.set(receipt, account.memberNumber);
       validatePayment(account, payments, input);
-      const quote = calculateRemittance(account.basePay, data.incentives.filter((tier) => tier.programId === account.programId), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount);
+      const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), selectedBranch.id), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount);
       // Client totals are only a preview. Persist the authoritative server calculation.
       grossCents += Math.round(quote.gross * 100);
       const id = createReadableId("COL");
@@ -110,15 +109,8 @@ async function saveCollections(request: Request) {
         input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS", paymentMethod.name, paymentReference,
         !rows.length && penalty > 0 ? penalty : "", !rows.length && penalty > 0 ? penaltyNote : "", !rows.length && fidelity > 0 ? fidelity : ""]);
     }
-    if (fidelity > 0) {
-      const incentives = rows.reduce((sum, row) => sum + Math.round((Number(row[10]) - Number(row[22])) * 100), 0) / 100;
-      if (fidelity > incentives) throw new Error(`Fidelity cannot exceed the batch's total incentives of ${incentives.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}.`);
-      const account = (await getFidelityData(accountableEmployeeId, true)).accounts.find((item) => item.masEmployeeId === accountableEmployeeId);
-      const remaining = Math.max(0, Math.round((FIDELITY_CAP - (account?.approved ?? 0) - (account?.pending ?? 0)) * 100) / 100);
-      if (fidelity > remaining) throw new Error(`Fidelity can be at most ${remaining.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} for this MAS (the ${FIDELITY_CAP.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} limit).`);
-    }
-    // Penalty and Fidelity are tracked separately and are not part of the remittance.
-    const expectedRemittance = rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) / 100;
+    // The total remittance is the company's share plus the batch's Fidelity; a penalty is tracked separately.
+    const expectedRemittance = (rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) + Math.round(fidelity * 100)) / 100;
     if (autoApproveRemittance && Math.round(cashReceived * 100) !== Math.round(expectedRemittance * 100)) {
       throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}.`);
     }

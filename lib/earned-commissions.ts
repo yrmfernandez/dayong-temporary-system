@@ -6,9 +6,9 @@ const round = (value: number) => Math.round(value * 100) / 100;
 const isMas = (roles: string) => roles.split(",").some((role) => role.trim().toLowerCase() === "mas");
 
 /**
- * Commission each person actually earned in a period: the incentives they kept on New Sales and Collections, less the
- * MAS Fidelity deducted in their approved remittances. Any employee with sales earns incentives; only people who
- * earned something are listed, MAS first.
+ * Commission each person actually earned in a period: the incentives they kept on New Sales and Collections. Fidelity is
+ * the employee's own money added to their remittances, so it is shown for reference but never deducted. Any employee
+ * with sales earns incentives; only people who earned something are listed, MAS first.
  * `recorded` is what the Commissions register already holds for them in an overlapping period.
  */
 export async function getEarnedCommissions(from: string, to: string) {
@@ -30,7 +30,7 @@ export async function getEarnedCommissions(from: string, to: string) {
     const grossIncentive = round(entry.saleIncentives + entry.collectionIncentives), fidelity = round(entry.fidelity);
     const recorded = employee ? round(records.filter((record) => record.employeeId === employee.id && record.periodFrom <= to && from <= record.periodTo).reduce((sum, record) => sum + record.grossIncentive, 0)) : 0;
     // Any employee with sales earns incentives, so show their actual roles rather than assuming MAS.
-    return { employeeId: employee?.id ?? "", name: employee?.name ?? entry.person, role: employee?.roles.length ? employee.roles.join(", ") : entry.role, saleIncentives: round(entry.saleIncentives), collectionIncentives: round(entry.collectionIncentives), sales: entry.sales, collections: entry.collections, grossIncentive, fidelity, netCommission: round(grossIncentive - fidelity), recorded };
+    return { employeeId: employee?.id ?? "", name: employee?.name ?? entry.person, role: employee?.roles.length ? employee.roles.join(", ") : entry.role, saleIncentives: round(entry.saleIncentives), collectionIncentives: round(entry.collectionIncentives), sales: entry.sales, collections: entry.collections, grossIncentive, fidelity, netCommission: grossIncentive, recorded };
   }).filter((entry) => entry.grossIncentive > 0)
     .sort((a, b) => Number(isMas(b.role)) - Number(isMas(a.role)) || b.netCommission - a.netCommission);
 }

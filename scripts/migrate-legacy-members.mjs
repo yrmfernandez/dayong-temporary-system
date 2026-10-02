@@ -1,0 +1,594 @@
+// Migrates the old database workbook (per-territory "…-NS" New Sales and "…-COLL" Collections tabs) into Members,
+// Member programs, Sales, Beneficiaries, and Collections.
+//
+//   node scripts/migrate-legacy-members.mjs                              dry run of every .xlsx/.csv in legacy-data/ (writes nothing)
+//   node scripts/migrate-legacy-members.mjs --apply                      write; refuses if any account fails review
+//   node scripts/migrate-legacy-members.mjs --apply --skip-invalid       write only the accounts that pass review
+//   add --fix-nop-typos to renumber NOPs in OR-date order where that alone (changing at most 2 payments) passes review
+//   node scripts/migrate-legacy-members.mjs --fix-nop-typos --export-pending   copy every row the database does not have
+//                                       into new "Legacy Pending NS" / "Legacy Pending COLL" tabs in the database
+//   node scripts/migrate-legacy-members.mjs --pending --fix-nop-typos [--apply --skip-invalid]   migrate from those tabs
+//   after staff fix them (rows keep their original source, tab, row, and assigned member, so IDs and members stay stable)
+// Sources can also be named explicitly: .xlsx/.csv files, folders, or Google Sheets URLs shared with the service account.
+// Run scripts/legacy-programs.mjs first: old DAYONG PROGRAM labels are mapped through config/legacy-programs.json.
+//
+// Privacy: the console and the report file identify problems by workbook, tab, and row number only. Member names,
+// addresses, contacts, and birthdates are never printed.
+//
+// How old rows become records:
+// - Each New Sales row is one sale. Rows for the same person (same name ignoring order, middle initials, and suffixes,
+//   or a name missing only the middle name) become one member when their birthdates agree or one is blank.
+//   One enrollment per member and program; DOI = the sale's OR DATE.
+// - Each Collections row is matched by name to a New Sales enrollment of the same program, preferring the same
+//   territory (tab) and branch. Payers with no New Sale (members older than the New Sales log) become members with a
+//   name only, one per name within a territory; their DOI month is worked back from NOP (NOP 1 = DOI month), day 1.
+// - A payment's months come from its NOP and the DOI (MONTH OF rarely has a year); MONTH OF is only checked against it.
+//   A NOP 1 collection on an account with a New Sale repeats that sale and is skipped.
+// - Old payments were already remitted: imported as remittance status "Remitted". STATUS Collector/DTO sets who
+//   collected the payment; Active/Inactive is compared with the status the system computes.
+// - Every account is checked with the system's own rules (lib/account-rules.ts) before anything is written.
+// IDs are derived from the source ("-LEG-"), so a re-run skips what was already imported.
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import nextEnv from "@next/env";
+import { google } from "googleapis";
+import { accountState, monthIndex, monthName, todayInManila } from "../lib/account-rules.ts";
+import { loadLegacySources } from "./legacy-sources.mjs";
+
+nextEnv.loadEnvConfig(process.cwd());
+const args = process.argv.slice(2);
+const apply = args.includes("--apply");
+const skipInvalid = args.includes("--skip-invalid");
+const fixNopTypos = args.includes("--fix-nop-typos");
+const exportPending = args.includes("--export-pending");
+const fromPending = args.includes("--pending");
+const PENDING_PREFIX = "Legacy Pending";
+const sourceArgs = args.filter((a) => !a.startsWith("--"));
+
+const auth = new google.auth.GoogleAuth({ credentials: { client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL, private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n") }, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
+const sheets = google.sheets({ version: "v4", auth });
+const DB = process.env.GOOGLE_SHEET_ID;
+const options = { timeout: 60000, retry: false };
+
+const PROGRAM_FILE = "config/legacy-programs.json";
+if (!existsSync(PROGRAM_FILE)) { console.error(`${PROGRAM_FILE} is missing. Run node scripts/legacy-programs.mjs (and --apply) first.`); process.exit(1); }
+// Optional overrides for old values the database does not recognize: { "branches": { "OLD": "Branch name" }, "agents": { "OLD NAME": "EMPLOYEE-ID" } }.
+const MAP_FILE = "config/legacy-migration-map.json";
+const overrides = existsSync(MAP_FILE) ? JSON.parse(readFileSync(MAP_FILE, "utf8")) : {};
+const override = (group, value) => Object.entries(overrides[group] ?? {}).find(([k]) => norm(k) === norm(value))?.[1];
+
+/* ---------- text, names, dates ---------- */
+// Excel date cells arrive as Dates holding the wall-clock time in UTC fields; Google Sheets sends serial numbers.
+const toSerial = (v) => (v instanceof Date ? (v.getTime() - Date.UTC(1899, 11, 30)) / 86400000 : v);
+const str = (v) => String(v instanceof Date ? v.toISOString().slice(0, 10) : v ?? "").trim();
+const norm = (v) => str(v).toUpperCase().replace(/\s+/g, " ");
+const headerKey = (v) => str(v).toLowerCase().replace(/[^a-z0-9/ ]+/g, " ").replace(/\s+/g, " ").trim();
+const SUFFIXES = new Set(["JR", "SR", "II", "III", "IV", "V"]);
+const tokens = (name) => norm(name).replace(/[^A-ZÑ ]+/g, " ").split(" ").filter(Boolean);
+const exactKey = (name) => tokens(name).join(" ");
+const orderFreeKey = (name) => [...tokens(name)].sort().join(" ");
+const coreTokens = (name) => tokens(name).filter((t) => t.length > 1 && !SUFFIXES.has(t));
+const coreKey = (name) => [...coreTokens(name)].sort().join(" ");
+const subsetMatch = (a, b) => { const x = coreTokens(a), y = new Set(coreTokens(b)); return x.length >= 2 && x.length < y.size && x.every((t) => y.has(t)); };
+const sameish = (a, b) => coreKey(a) === coreKey(b) || subsetMatch(a, b) || subsetMatch(b, a);
+// Name tiers, strictest first: as written, any word order, ignoring initials/suffixes, missing a middle name.
+const NAME_RULES = [(a, b) => exactKey(a) === exactKey(b), (a, b) => orderFreeKey(a) === orderFreeKey(b), (a, b) => coreKey(a) === coreKey(b), sameish];
+// New Sales members indexed by each core name token, so matching only compares names that share a word.
+const nameIndex = new Map();
+const indexName = (name, item) => { for (const t of new Set(coreTokens(name))) { if (!nameIndex.has(t)) nameIndex.set(t, []); nameIndex.get(t).push(item); } };
+const nameCandidates = (name) => [...new Set(coreTokens(name).flatMap((t) => nameIndex.get(t) ?? []))];
+
+const PARTICLES = new Set(["DE", "DEL", "DELA", "DELOS", "DELAS", "LA", "LOS", "SAN", "STA", "STO", "SANTA", "SANTO", "VDA", "DI"]);
+const isInitial = (t) => /^[A-ZÑ]\.?$/.test(t);
+/** Splits an old full name into Members' surname/first/middle/extension. `guessed` marks names without a comma. */
+function parseName(raw) {
+  let text = norm(raw).replace(/\s*,\s*/g, ", ").replace(/(, )+/g, ", ");
+  let nameExtension = "";
+  text = text.replace(/,?\s*\b(JR|SR|II|III|IV)\b\.?/g, (m, s) => { nameExtension = s === "JR" || s === "SR" ? `${s[0]}${s.slice(1).toLowerCase()}.` : s; return ""; }).trim().replace(/,$/, "");
+  const finish = (surname, rest, guessed) => {
+    const parts = rest.split(" ").filter(Boolean);
+    const middleName = parts.length > 1 && isInitial(parts.at(-1)) ? parts.pop().replace(/\.?$/, ".") : "";
+    return { surname: surname.trim(), firstName: parts.join(" "), middleName, nameExtension, guessed };
+  };
+  // "SURNAME, FIRST, MIDDLE" (a second comma) puts the middle name after it.
+  if (text.includes(",")) {
+    const [surname, first, ...more] = text.split(",").map((s) => s.trim());
+    if (more.length) return { surname, firstName: first, middleName: more.join(" "), nameExtension, guessed: false };
+    return finish(surname, first ?? "", false);
+  }
+  const parts = text.split(" ").filter(Boolean);
+  if (parts.length < 2) return { surname: parts[0] ?? "", firstName: "", middleName: "", nameExtension, guessed: true };
+  // "JUAN P. DELA CRUZ": everything after the middle initial is the surname; otherwise the last word plus particles.
+  const initial = parts.findIndex((t, i) => i > 0 && i < parts.length - 1 && isInitial(t));
+  if (initial > 0) return { surname: parts.slice(initial + 1).join(" "), firstName: parts.slice(0, initial).join(" "), middleName: parts[initial].replace(/\.?$/, "."), nameExtension, guessed: true };
+  let start = parts.length - 1;
+  while (start > 1 && PARTICLES.has(parts[start - 1])) start--;
+  return { surname: parts.slice(start).join(" "), firstName: parts.slice(0, start).join(" "), middleName: "", nameExtension, guessed: true };
+}
+
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const pad = (n) => String(n).padStart(2, "0");
+const iso = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? `${y}-${pad(m)}-${pad(d)}` : ""; };
+const fullYear = (y) => (y < 100 ? (y > 50 ? 1900 + y : 2000 + y) : y);
+const serialDate = (n) => new Date(Date.UTC(1899, 11, 30) + Math.floor(n) * 86400000).toISOString().slice(0, 10);
+const monthNumber = (word) => MONTHS.indexOf(String(word).toUpperCase().slice(0, 3)) + 1;
+/** Old cells hold real dates (serial numbers) or typed text. Returns { date, flag } where flag notes a guess. */
+function parseDate(value) {
+  value = toSerial(value);
+  if (typeof value === "number" && value > 0) return { date: serialDate(value) };
+  const s = norm(value).replace(/\.$/, "");
+  if (!s) return { date: "" };
+  let m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return { date: iso(+m[1], +m[2], +m[3]) };
+  if ((m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/))) {
+    const a = +m[1], b = +m[2], y = fullYear(+m[3]);
+    if (a > 12) return { date: iso(y, b, a), flag: "day/month order" };
+    return { date: iso(y, a, b) };
+  }
+  if ((m = s.match(/^([A-Z]+)\.? (\d{1,2}),? (\d{2,4})$/)) && monthNumber(m[1])) return { date: iso(fullYear(+m[3]), monthNumber(m[1]), +m[2]) };
+  if ((m = s.match(/^(\d{1,2})[ -]([A-Z]+)\.?[ -](\d{2,4})$/)) && monthNumber(m[2])) return { date: iso(fullYear(+m[3]), monthNumber(m[2]), +m[1]) };
+  return { date: "" };
+}
+function parseTimestamp(value) {
+  value = toSerial(value);
+  if (typeof value === "number" && value > 0) {
+    // Sheets serials are local (Manila) wall-clock time.
+    return new Date(Date.UTC(1899, 11, 30) + Math.round(value * 86400000) - 8 * 3600000).toISOString();
+  }
+  const { date } = parseDate(str(value).split(" ")[0]);
+  return date ? `${date}T00:00:00.000Z` : "";
+}
+/**
+ * MONTH OF as months of the year in paid order: "JANUARY, DECEMBER" -> [12, 1]; "JANUARY, NOVEMBER, DECEMBER" -> [11, 12, 1].
+ * Years are ignored (the year comes from NOP and DOI). Returns null when unreadable or not consecutive.
+ */
+function parseMonthNames(value) {
+  value = toSerial(value);
+  if (typeof value === "number" && value > 0) return [Number(serialDate(value).slice(5, 7))];
+  const set = new Set([...norm(value).matchAll(/[A-Z]{3,}/g)].map((m) => monthNumber(m[0])).filter((n) => n > 0));
+  if (!set.size) return null;
+  if (set.size === 12) return [...set].sort((a, b) => a - b);
+  const prev = (m) => ((m + 10) % 12) + 1;
+  const starts = [...set].filter((m) => !set.has(prev(m)));
+  if (starts.length !== 1) return null;
+  return Array.from({ length: set.size }, (_, i) => ((starts[0] - 1 + i) % 12) + 1);
+}
+function parseNop(value) {
+  value = toSerial(value);
+  if (typeof value === "number") return Number.isInteger(value) && value > 0 ? { from: value, to: value } : null;
+  const nums = (norm(value).match(/\d+/g) ?? []).map(Number);
+  if (!nums.length || (nums.length > 2 && !/,/.test(str(value)))) return null;
+  const from = Math.min(...nums), to = Math.max(...nums);
+  return from > 0 ? { from, to } : null;
+}
+const parseAmount = (v) => { if (typeof v === "number") return v; const n = Number(str(v).replace(/[^0-9.-]/g, "")); return str(v) && Number.isFinite(n) ? n : NaN; };
+const numberOrBlank = (v) => { const n = parseAmount(v); return Number.isFinite(n) && n > 0 ? n : ""; };
+// "N/A", "-", "--", "A/" and similar placeholders hold no reference number.
+const reference = (v) => (/\d/.test(str(v)) ? str(v) : "");
+const yesNo = (v) => (/^(Y|YES|TRUE|1|✓|✔)$/i.test(str(v)) ? "Yes" : "No");
+const titleCase = (v) => str(v).toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+const hashId = (prefix, ...parts) => `${prefix}-LEG-${createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 10).toUpperCase()}`;
+const mode = (values) => { const counts = new Map(); for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1); const sorted = [...counts].sort((a, b) => b[1] - a[1]); return sorted[0] ? { value: sorted[0][0], share: sorted[0][1] / values.length } : null; };
+
+/* ---------- issue log (row references only) ---------- */
+const issues = new Map();
+const issue = (category, where) => { if (!issues.has(category)) issues.set(category, []); issues.get(category).push(where); };
+
+/* ---------- database lookups ---------- */
+const dbTitles = ["Programs", "Branches", "Employees", "Members", "Member programs", "Sales", "Collections", "Beneficiaries"];
+const dbResponse = await sheets.spreadsheets.values.batchGet({ spreadsheetId: DB, ranges: dbTitles.map((t) => `'${t}'`), valueRenderOption: "UNFORMATTED_VALUE" }, options);
+const db = Object.fromEntries(dbTitles.map((t, i) => [t, dbResponse.data.valueRanges[i].values ?? []]));
+const programs = db.Programs.slice(1).filter((r) => str(r[0])).map((r) => ({ id: str(r[0]), code: str(r[1]), name: str(r[2]), basePay: Number(r[3]), payBalanceTotal: Number(r[12]) || 0 }));
+const branches = db.Branches.slice(1).filter((r) => str(r[0])).map((r) => ({ id: str(r[0]), name: str(r[1]) }));
+const employees = db.Employees.slice(1).filter((r) => str(r[0])).map((r) => ({ id: str(r[0]), name: str(r[1]) }));
+const existingIds = new Set(dbTitles.slice(3).flatMap((t) => db[t].slice(1).map((r) => str(r[0]))));
+const existingMemberNumbers = new Map(db.Members.slice(1).map((r) => [str(r[0]), str(r[1])]));
+const usedMemberNumbers = new Set(db.Members.slice(1).map((r) => str(r[1])));
+
+const programAliases = new Map(Object.entries(JSON.parse(readFileSync(PROGRAM_FILE, "utf8")).aliases).map(([k, v]) => [norm(k), norm(v)]));
+const programCache = new Map();
+const findProgram = (v) => {
+  const key = norm(v);
+  if (!programCache.has(key)) { const code = programAliases.get(key) ?? key; programCache.set(key, programs.find((p) => norm(p.code) === code || norm(p.name) === code)); }
+  return programCache.get(key);
+};
+const findBranch = (v) => { const o = override("branches", v); return branches.find((b) => [b.id, b.name].some((x) => norm(x) === norm(o ?? v))); };
+// Old agents are written "SURNAME, I." : the employee with that surname whose first name starts with the initial.
+const agentCache = new Map();
+function findEmployee(v) {
+  const key = norm(v);
+  if (!key || key === "NONE" || /\bDTO\b/.test(key)) return undefined;
+  if (agentCache.has(key)) return agentCache.get(key);
+  const o = override("agents", v);
+  let hits = o ? employees.filter((e) => e.id === o) : employees.filter((e) => norm(e.name) === key || coreKey(e.name) === coreKey(v));
+  if (!hits.length && key.includes(",")) {
+    const [surname, given = ""] = key.split(",").map((s) => s.trim());
+    const surnameTokens = tokens(surname), initial = tokens(given)[0]?.[0];
+    hits = employees.filter((e) => { const t = tokens(e.name); if (!surnameTokens.every((s) => t.includes(s))) return false; const rest = t.filter((x) => !surnameTokens.includes(x)); return !initial || rest[0]?.startsWith(initial); });
+  }
+  const found = hits.length === 1 ? hits[0] : undefined;
+  agentCache.set(key, found);
+  return found;
+}
+const channelOf = (status) => (/\bCOLLECTOR\b/.test(status) ? "Collector" : /\bDTO\b/.test(status) ? "DTO" : "MAS");
+
+/* ---------- read the old workbook ---------- */
+const saleRows = [];
+const collectionRows = [];
+const col = (keys, ...names) => { for (const n of names) { const i = keys.findIndex((k) => k === n || k.startsWith(n)); if (i >= 0) return i; } return -1; };
+const sources = fromPending
+  ? await loadLegacySources([DB], () => sheets, { tabPrefix: PENDING_PREFIX })
+  : await loadLegacySources(sourceArgs, () => sheets);
+for (const source of sources) {
+  for (const { title: tab, rows: tabRows, firstRow } of source.tabs) {
+    const [headers = [], ...rows] = tabRows;
+    const keys = headers.map(headerKey);
+    const kind = keys.includes("nop") || keys.includes("month of") ? "collections" : keys.includes("type of transaction") || keys.includes("application no") ? "sales" : null;
+    if (!kind) continue;
+    // "M1-COLL" and "M1-NS" are territory M1.
+    const territoryOf = (name) => norm(name).replace(/[\s-]*(COLL\w*|NS|NEW SALES?)$/, "").trim() || norm(name);
+    // Rows copied to the Legacy Pending tabs carry their original source, tab, row, and assigned member.
+    const origin = { source: keys.indexOf("source"), tab: keys.indexOf("source tab"), row: keys.indexOf("source row"), member: keys.indexOf("legacy member id") };
+    const c = {
+      timestamp: col(keys, "timestamp"), branch: col(keys, "branch"), agent: col(keys, "marketing agent"), member: col(keys, "ph/member"),
+      orNumber: col(keys, "or number"), orDate: col(keys, "or date"), amount: col(keys, "amount collected"), dateRemitted: col(keys, "date remitted"),
+      program: col(keys, "dayong program"), status: keys.lastIndexOf("status"),
+      monthOf: col(keys, "month of"), nop: col(keys, "nop"), reactivation: col(keys, "reactivation"), transferred: col(keys, "transferred"), suspended: col(keys, "if suspended"), originalMas: keys.findIndex((k) => k.includes("original mas")),
+      address: col(keys, "address"), civil: col(keys, "civil status"), birthdate: col(keys, "birthdate"), type: col(keys, "type of transaction"),
+      regFee: col(keys, "with regi"), regAmount: col(keys, "registration amount"), applicationNo: col(keys, "application no"),
+    };
+    // New Sales: AGE right after BIRTHDATE is the member's; the first NAME + CONTACT NO is the claimant; then NAME/AGE/RELATIONSHIP groups are beneficiaries.
+    const nameColumns = keys.flatMap((k, i) => (k === "name" ? [i] : []));
+    const claimantName = nameColumns[0] ?? -1;
+    const claimantContact = keys.findIndex((k, i) => i > claimantName && k.startsWith("contact"));
+    const beneficiaryColumns = nameColumns.slice(1).filter((i) => keys[i + 1] === "age" && keys[i + 2] === "relationship");
+    rows.forEach((row, index) => {
+      if (!row.some((v) => str(v))) return;
+      const get = (i) => (i >= 0 ? row[i] : "");
+      const sourceTitle = str(get(origin.source)) || source.title, sourceTab = str(get(origin.tab)) || tab;
+      const rowNumber = Number(get(origin.row)) || firstRow + index + 1; // as shown in Excel
+      const where = `${sourceTitle} › ${sourceTab} row ${rowNumber}`;
+      // Keyed by the source's name (not its path) so re-running from a re-downloaded copy skips imported rows.
+      const ref = `${sourceTitle}|${sourceTab}|${rowNumber}`;
+      const base = { where, ref, kind, territory: territoryOf(sourceTab), raw: row, headers, legacyMemberId: str(get(origin.member)), timestamp: get(c.timestamp), branch: str(get(c.branch)), agent: str(get(c.agent)), member: str(get(c.member)), orNumber: reference(get(c.orNumber)), orDate: get(c.orDate), amount: get(c.amount), dateRemitted: get(c.dateRemitted), program: str(get(c.program)), status: norm(get(c.status)) };
+      if (!base.member) return; // blank or summary rows
+      if (kind === "sales") saleRows.push({ ...base, address: str(get(c.address)), civil: str(get(c.civil)), birthdate: get(c.birthdate), age: numberOrBlank(get(keys[c.birthdate + 1] === "age" ? c.birthdate + 1 : -1)), type: norm(get(c.type)), regFee: get(c.regFee), regAmount: numberOrBlank(get(c.regAmount)), applicationNo: str(get(c.applicationNo)), claimantName: str(get(claimantName)), claimantContact: str(get(claimantContact)), beneficiaries: beneficiaryColumns.map((i) => ({ name: str(row[i]), age: numberOrBlank(row[i + 1]), relationship: str(row[i + 2]) })).filter((b) => b.name && !/^N\/?A$/i.test(b.name)) });
+      else collectionRows.push({ ...base, monthOf: get(c.monthOf), nop: get(c.nop), reactivation: get(c.reactivation), transferred: get(c.transferred), suspended: str(get(c.suspended)), originalMas: norm(get(c.originalMas)) === "NONE" ? "" : str(get(c.originalMas)) });
+    });
+  }
+}
+
+/* ---------- 1. New Sales -> members and enrollments ---------- */
+const members = []; // { id, name, birthdate, territory, parsed, first, enrollments: Map(programId -> enrollment) }
+const enrollments = []; // { id, member, program, sale?, rows: [] }
+const membersById = new Map();
+const newEnrollment = (member, program, sale) => { const e = { id: hashId("ENR", member.id, program.id), member, program, sale, rows: [] }; member.enrollments.set(program.id, e); enrollments.push(e); return e; };
+for (const sale of saleRows) {
+  sale.program$ = findProgram(sale.program);
+  sale.branch$ = findBranch(sale.branch);
+  sale.agent$ = findEmployee(sale.agent);
+  const doi = parseDate(sale.orDate);
+  sale.doi = doi.date;
+  sale.birth = parseDate(sale.birthdate).date;
+  if (doi.flag) issue(`OR DATE read as ${doi.flag}`, sale.where);
+  if (!sale.program$) { issue("DAYONG PROGRAM not in config/legacy-programs.json or Programs", sale.where); continue; }
+  if (!sale.branch$) { issue("BRANCH not found in Branches", sale.where); continue; }
+  if (!sale.doi) { issue("OR DATE (used as DOI) missing or unreadable", sale.where); continue; }
+  if (!sale.agent$) issue("MARKETING AGENT not in Employees (old name kept; no accountable employee)", sale.where);
+  const parsed = parseName(sale.member);
+  if (parsed.guessed) issue("Name has no comma: surname/first name split was guessed", sale.where);
+  if (sale.legacyMemberId) {
+    // Already assigned to a member by the first run.
+    let member = membersById.get(sale.legacyMemberId);
+    if (!member) { member = { id: sale.legacyMemberId, name: sale.member, birthdate: sale.birth, territory: sale.territory, parsed, first: sale, enrollments: new Map() }; members.push(member); membersById.set(member.id, member); indexName(sale.member, member); }
+    sale.memberId = member.id;
+    if (member.enrollments.has(sale.program$.id)) { issue("Same member already bought this program on an earlier row: sale skipped", sale.where); continue; }
+    newEnrollment(member, sale.program$, sale);
+    continue;
+  }
+  // Same person: same core name (or one lacks a middle name) and birthdates that agree or are blank.
+  const nearby = nameCandidates(sale.member);
+  const candidates = nearby.filter((m) => sameish(m.name, sale.member) && (!m.birthdate || !sale.birth || m.birthdate === sale.birth));
+  let member = candidates.length === 1 ? candidates[0] : undefined;
+  if (candidates.length > 1) { const exact = candidates.filter((m) => coreKey(m.name) === coreKey(sale.member)); member = exact.length === 1 ? exact[0] : undefined; if (!member) issue("Name matches more than one earlier member: kept as a separate member", sale.where); }
+  if (!member && nearby.some((m) => sameish(m.name, sale.member))) issue("Same name as another member but different birthdate: kept as a separate member", sale.where);
+  if (!member) {
+    member = { id: hashId("MEM", sale.ref), name: sale.member, birthdate: sale.birth, territory: sale.territory, parsed, first: sale, enrollments: new Map() };
+    members.push(member);
+    membersById.set(member.id, member);
+    indexName(sale.member, member);
+  } else if (!member.birthdate && sale.birth) member.birthdate = sale.birth;
+  sale.memberId = member.id;
+  if (member.enrollments.has(sale.program$.id)) { issue("Same member already bought this program on an earlier row: sale skipped", sale.where); continue; }
+  newEnrollment(member, sale.program$, sale);
+}
+
+/* ---------- 2. Collections -> New Sales enrollments ---------- */
+// Strictest name rule first; among equal matches prefer the same territory, then the same branch.
+function pickByName(pool, name, row, getName) {
+  for (const rule of NAME_RULES) {
+    let hits = pool.filter((item) => rule(getName(item), name));
+    if (!hits.length) continue;
+    for (const narrow of [(i) => i.territory === row.territory, (i) => norm(i.branch) === norm(row.branch)]) {
+      if (hits.length > 1) { const narrowed = hits.filter(narrow); if (narrowed.length) hits = narrowed; }
+    }
+    return hits.length === 1 ? hits[0] : null;
+  }
+  return undefined;
+}
+const pending = [];
+let linkedToSales = 0, nameOnlyMembers = 0;
+for (const row of collectionRows) {
+  row.program$ = findProgram(row.program);
+  if (!row.program$) { issue("DAYONG PROGRAM not in config/legacy-programs.json or Programs", row.where); continue; }
+  if (row.legacyMemberId) {
+    let member = membersById.get(row.legacyMemberId);
+    if (!member) { member = { id: row.legacyMemberId, name: row.member, birthdate: "", territory: row.territory, parsed: parseName(row.member), first: null, enrollments: new Map() }; members.push(member); membersById.set(member.id, member); nameOnlyMembers++; }
+    (member.enrollments.get(row.program$.id) ?? newEnrollment(member, row.program$, null)).rows.push(row);
+    linkedToSales++;
+    continue;
+  }
+  const pool = nameCandidates(row.member).flatMap((m) => { const e = m.enrollments.get(row.program$.id); return e ? [{ e, territory: m.territory, branch: e.sale?.branch ?? "", name: m.name }] : []; });
+  const hit = pickByName(pool, row.member, row, (i) => i.name);
+  if (hit === null) { issue("Payer name matches several New Sales members in this program: not linked", row.where); continue; }
+  if (hit) { hit.e.rows.push(row); linkedToSales++; } else pending.push(row);
+}
+
+/* ---------- 3. Payers with no New Sale -> name-only members ---------- */
+// One group per territory and name; a name lacking only the middle name joins the one fuller name it fits.
+const groups = new Map();
+for (const row of pending) {
+  const key = `${row.territory}|${coreKey(row.member)}`;
+  if (!groups.has(key)) groups.set(key, { key, territory: row.territory, core: coreTokens(row.member), rows: [] });
+  groups.get(key).rows.push(row);
+}
+const groupsByTerritory = Map.groupBy(groups.values(), (g) => g.territory);
+for (const group of groups.values()) {
+  if (group.core.length < 2) continue;
+  const fuller = groupsByTerritory.get(group.territory).filter((g) => g !== group && !g.mergedInto && g.core.length > group.core.length && group.core.every((t) => g.core.includes(t)));
+  if (fuller.length === 1) { group.mergedInto = fuller[0]; fuller[0].rows.push(...group.rows); group.rows = []; }
+}
+for (const group of groups.values()) {
+  if (!group.rows.length) continue;
+  // Reuse a New Sales member with this name in the same territory (a second program bought before the log).
+  const spellings = mode(group.rows.map((r) => norm(r.member))).value;
+  const sameTerritory = nameCandidates(spellings).filter((m) => m.territory === group.territory);
+  let member = pickByName(sameTerritory, spellings, { territory: group.territory, branch: "" }, (m) => m.name);
+  if (!member) {
+    member = { id: hashId("MEM", "COLL", group.key), name: spellings, birthdate: "", territory: group.territory, parsed: parseName(spellings), first: null, enrollments: new Map() };
+    members.push(member);
+    membersById.set(member.id, member);
+    nameOnlyMembers++;
+    if (member.parsed.guessed) issue("Name has no comma: surname/first name split was guessed", group.rows[0].where);
+  }
+  for (const row of group.rows) (member.enrollments.get(row.program$.id) ?? newEnrollment(member, row.program$, null)).rows.push(row);
+}
+
+/* ---------- 4. Payments: months from NOP, then the system's account check ---------- */
+// A failing account whose payments, renumbered consecutively in OR-date order, pass review with at most 2 NOPs changed.
+let typoFixable = 0;
+function nopTypoFix(e, doiIndex, account) {
+  try { accountState(account, e.payments, today); return null; } catch { /* fails as recorded: try renumbering */ }
+  const ordered = [...e.payments].sort((a, b) => a.orDate.localeCompare(b.orDate) || a.nopFrom - b.nopFrom);
+  let next = Math.min(...ordered.map((p) => p.nopFrom));
+  const payments = ordered.map((p) => {
+    const span = p.nopTo - p.nopFrom, from = next;
+    next += span + 1;
+    return from === p.nopFrom ? p : { ...p, nopFrom: from, nopTo: from + span, monthFrom: monthName(doiIndex + from - 1), monthTo: monthName(doiIndex + from + span - 1) };
+  });
+  const changed = payments.filter((p, i) => p !== ordered[i]);
+  if (!changed.length || changed.length > 2) return null;
+  try { accountState(account, payments, today); return { payments, changed }; } catch { return null; }
+}
+// Why a failing account fails, in counts (shown in the report): gap sizes, reactivations, and overlap kinds.
+const diagnosis = new Map();
+const note = (label) => diagnosis.set(label, (diagnosis.get(label) ?? 0) + 1);
+function diagnose(e) {
+  const sorted = [...e.payments].sort((a, b) => a.nopFrom - b.nopFrom || a.orDate.localeCompare(b.orDate));
+  for (let i = 1; i < sorted.length; i++) {
+    const before = sorted[i - 1], after = sorted[i];
+    if (after.nopFrom <= before.nopTo) note(norm(after.orNumber) && norm(after.orNumber) === norm(before.orNumber) ? "overlap: same OR number, different NOP" : after.orDate === before.orDate ? "overlap: same OR date, different OR number" : "overlap: different receipts claim the same NOP");
+    else if (after.nopFrom > before.nopTo + 1) {
+      const missing = after.nopFrom - before.nopTo - 1;
+      note(`gap: ${missing === 1 ? "1 NOP" : missing <= 3 ? "2-3 NOPs" : missing <= 12 ? "4-12 NOPs" : "over 12 NOPs"} missing${yesNo(after.row.reactivation) === "Yes" ? " (next payment marked REACTIVATION)" : ""}`);
+    }
+  }
+}
+const today = todayInManila();
+const statusCounts = new Map();
+let mismatchedInactive = 0;
+for (const e of enrollments) {
+  const parsed = [];
+  for (const row of e.rows) {
+    const orDate = parseDate(row.orDate).date;
+    const nop = parseNop(row.nop);
+    const amount = parseAmount(row.amount);
+    const problems = [!orDate && "OR DATE missing or unreadable", !nop && "NOP unreadable", !(amount > 0) && "AMOUNT COLLECTED missing or not a positive number"].filter(Boolean);
+    if (problems.length) { for (const p of problems) issue(`Collection: ${p}`, row.where); e.unreadable = true; continue; }
+    parsed.push({ row, orDate, nop, amount, monthNames: parseMonthNames(row.monthOf) });
+  }
+  // DOI month: the sale's OR date, or worked back from each payment (its first month nearest its OR date, minus NOP - 1).
+  const estimates = parsed.filter((p) => p.monthNames).map((p) => {
+    const orIndex = monthIndex(p.orDate.slice(0, 7));
+    let first = Math.floor(orIndex / 12) * 12 + p.monthNames[0] - 1;
+    while (first - orIndex > 6) first -= 12;
+    while (orIndex - first > 5) first += 12;
+    return first - (p.nop.from - 1);
+  });
+  const estimate = mode(estimates);
+  if (e.sale) {
+    e.doi = e.sale.doi;
+    if (estimate && estimate.value !== monthIndex(e.doi.slice(0, 7))) issue("New Sale DOI month differs from the month its collection NOPs point to (sale DOI used)", e.sale.where);
+  } else if (estimate) {
+    e.doi = `${monthName(estimate.value)}-01`;
+    if (estimate.share < 0.8) issue("Payments disagree on the DOI month (most common used): review NOP/MONTH OF", e.rows[0].where);
+  } else { e.invalid = "no payment has a readable MONTH OF to work out the DOI"; }
+  if (e.invalid || e.unreadable) { e.invalid ??= "has collection rows that could not be read"; issue(`Account fails review: ${e.invalid}`, (e.sale ?? e.rows[0]).where); continue; }
+
+  const doiIndex = monthIndex(e.doi.slice(0, 7));
+  e.payments = [];
+  // The same receipt entered twice (same NOP and OR number, or same NOP, OR date, and amount without an OR number).
+  const seen = new Set();
+  for (const p of parsed) {
+    const entry = `${p.nop.from}-${p.nop.to}|${norm(p.row.orNumber) || `${p.orDate}|${p.amount}`}`;
+    if (seen.has(entry)) { issue("Same payment entered twice: duplicate skipped", p.row.where); continue; }
+    seen.add(entry);
+    if (e.sale && p.nop.from === 1) { if (p.nop.to === 1) { issue("NOP 1 collection repeats the New Sale: skipped", p.row.where); continue; } p.nop = { ...p.nop, from: 2 }; }
+    const monthFrom = monthName(doiIndex + p.nop.from - 1), monthTo = monthName(doiIndex + p.nop.to - 1);
+    const expected = Array.from({ length: p.nop.to - p.nop.from + 1 }, (_, i) => ((doiIndex + p.nop.from - 1 + i) % 12) + 1);
+    if (!p.monthNames) issue("MONTH OF unreadable (months taken from NOP)", p.row.where);
+    else if (p.monthNames.join() !== expected.join()) issue("MONTH OF differs from the months its NOP points to (NOP used)", p.row.where);
+    const agent = findEmployee(p.row.agent);
+    e.payments.push({ id: hashId("COL", p.row.ref), row: p.row, enrollmentId: e.id, orDate: p.orDate, orNumber: p.row.orNumber, monthFrom, monthTo, nopFrom: p.nop.from, nopTo: p.nop.to, amount: p.amount, dateRemitted: parseDate(p.row.dateRemitted).date, mas: agent?.name ?? p.row.agent, agent, channel: channelOf(p.row.status) });
+  }
+  // Current assignment: the latest payment collected by the MAS (else the latest payment, else the sale).
+  const byDate = [...e.payments].sort((a, b) => a.orDate.localeCompare(b.orDate));
+  const latest = byDate.filter((p) => p.channel === "MAS").at(-1) ?? byDate.at(-1);
+  e.branch = findBranch(latest?.row.branch ?? e.sale?.branch) ?? e.sale?.branch$;
+  const assigned = latest ? (latest.channel === "Collector" && latest.row.originalMas ? latest.row.originalMas : latest.row.agent) : e.sale?.agent;
+  e.mas = findEmployee(assigned)?.name ?? assigned ?? "";
+  if (!e.branch) { e.invalid = "branch not found in Branches"; issue(`Account fails review: ${e.invalid}`, (e.sale ?? e.rows[0]).where); continue; }
+  // Pending rows of an account already in the database were skipped on purpose (duplicates, NOP 1 repeats of a sale):
+  // only whole accounts that failed review are migrated from the Legacy Pending tabs.
+  if (fromPending && existingIds.has(e.id)) { e.invalid = "account is already in the database (row was skipped on purpose)"; issue(`Not migrated: ${e.invalid}`, (e.sale ?? e.rows[0]).where); continue; }
+  const account = { id: e.id, memberId: e.member.id, memberNumber: "", programId: e.program.id, doi: e.doi, branch: "", mas: "", basePay: e.program.basePay, payBalanceTotal: e.program.payBalanceTotal, storedStatus: "" };
+  const renumbered = nopTypoFix(e, doiIndex, account);
+  if (renumbered) {
+    typoFixable++;
+    if (fixNopTypos) { for (const p of renumbered.changed) issue("NOP looked mistyped: renumbered in OR-date order", p.row.where); e.payments = renumbered.payments; }
+  }
+  try {
+    const state = accountState(account, e.payments, today);
+    e.status = state.status;
+    statusCounts.set(state.status, (statusCounts.get(state.status) ?? 0) + 1);
+    if ((byDate.at(-1)?.row.status ?? e.sale?.status) === "INACTIVE" && !["Forfeited", "Paid"].includes(state.status)) mismatchedInactive++;
+  } catch (error) {
+    e.invalid = error.message.replace(/^(Payment|Account) \S+ /, "");
+    issue(`Account fails review: ${e.invalid}`, (e.sale ?? e.rows[0]).where);
+    diagnose(e);
+  }
+}
+
+/* ---------- report ---------- */
+const valid = enrollments.filter((e) => !e.invalid);
+const invalid = enrollments.filter((e) => e.invalid);
+const paymentsIn = (list) => list.reduce((n, e) => n + (e.payments?.length ?? e.rows.length), 0);
+console.log(`Read ${saleRows.length} New Sales rows and ${collectionRows.length} Collections rows from ${sources.length} workbook(s).`);
+console.log(`Members: ${members.length}  (${members.length - nameOnlyMembers} from New Sales, ${nameOnlyMembers} name-only from Collections)`);
+console.log(`Collections: ${linkedToSales} linked to a New Sale, ${pending.length} to a name-only member.`);
+console.log(`Enrollments: ${enrollments.length}  ·  pass review: ${valid.length} (${paymentsIn(valid)} payments)  ·  fail review: ${invalid.length} (${paymentsIn(invalid)} payments)`);
+console.log(`Computed account statuses (passing accounts): ${JSON.stringify(Object.fromEntries([...statusCounts].sort((a, b) => b[1] - a[1])))}`);
+console.log(`Old STATUS "Inactive" but the system computes an open account: ${mismatchedInactive}`);
+console.log(`Accounts that pass if mistyped NOPs are renumbered in OR-date order: ${typoFixable}${fixNopTypos ? " (renumbered)" : " (add --fix-nop-typos to apply)"}`);
+console.log(`\nWhy failing accounts fail (one count per problem spot):`);
+for (const [label, count] of [...diagnosis].sort((a, b) => b[1] - a[1])) console.log(`  ${String(count).padStart(5)} × ${label}`);
+console.log("\nIssues (count · first examples):");
+for (const [category, wheres] of [...issues].sort((a, b) => b[1].length - a[1].length)) console.log(`  ${wheres.length} × ${category}\n      e.g. ${wheres.slice(0, 3).join("; ")}`);
+mkdirSync("backups", { recursive: true });
+const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+const reportFile = `backups/legacy-migration-report-${stamp}.txt`;
+writeFileSync(reportFile, [...issues].map(([category, wheres]) => `## ${category} (${wheres.length})\n${wheres.join("\n")}`).join("\n\n"));
+console.log(`\nFull list of row references: ${reportFile}`);
+
+if (exportPending) await writePendingTabs();
+if (!apply) { console.log("\nDry run only. Nothing was written to Members, Member programs, Sales, Beneficiaries, or Collections."); process.exit(0); }
+if (invalid.length && !skipInvalid) { console.error(`\n${invalid.length} account(s) fail review. Fix them in the old workbook, or re-run with --skip-invalid to import only passing accounts.`); process.exit(1); }
+
+/* ---------- write ---------- */
+const importedAt = new Date().toISOString();
+const identity = ["", "", "Legacy import", importedAt];
+const memberNumberFor = (member) => {
+  if (existingMemberNumbers.has(member.id)) return existingMemberNumbers.get(member.id);
+  // Deterministic PH-######## from the member ID, probing past any number already in use.
+  let n = parseInt(createHash("sha1").update(member.id).digest("hex").slice(0, 12), 16) % 100_000_000;
+  while (usedMemberNumbers.has(`PH-${String(n).padStart(8, "0")}`)) n = (n + 1) % 100_000_000;
+  const number = `PH-${String(n).padStart(8, "0")}`;
+  usedMemberNumbers.add(number);
+  existingMemberNumbers.set(member.id, number);
+  return number;
+};
+const out = { Members: [], "Member programs": [], Sales: [], Beneficiaries: [], Collections: [] };
+const writtenMembers = new Set();
+for (const e of valid) {
+  const m = e.member, s = e.sale, number = memberNumberFor(m);
+  if (!existingIds.has(m.id) && !writtenMembers.has(m.id)) {
+    writtenMembers.add(m.id);
+    const p = m.parsed, f = m.first;
+    out.Members.push([m.id, number, p.surname, p.firstName, p.middleName, p.nameExtension, m.birthdate, "", "", f?.age ?? "", titleCase(f?.civil), "", f?.address ?? "", f?.claimantName ?? "", f?.claimantContact ?? "", "No", "", "Active", ...identity]);
+  }
+  const created = parseTimestamp(s?.timestamp ?? e.payments[0]?.row.timestamp) || importedAt;
+  if (!existingIds.has(e.id)) out["Member programs"].push([e.id, m.id, number, e.program.id, e.doi, e.branch.name, e.mas, "Cash", s ? yesNo(s.regFee) : "", s?.regAmount ?? "", s ? parseAmount(s.amount) || 0 : "", "", "Active", created, ...identity, e.status]);
+  if (s) {
+    const saleId = hashId("SALE", s.ref);
+    if (!existingIds.has(saleId)) {
+      const p = parseName(s.member);
+      out.Sales.push([saleId, created, s.branch$.name, s.agent$?.name ?? s.agent, parseDate(s.dateRemitted).date, number, p.surname, p.firstName, p.middleName, p.nameExtension, s.birth, "", "", s.age, titleCase(s.civil), "", s.address, s.claimantName, s.claimantContact, "No", "", e.program.id, s.doi, "Cash", yesNo(s.regFee), s.regAmount, parseAmount(s.amount) || 0, "", s.applicationNo, s.orNumber, s.doi, ...identity, "Remitted", "", s.agent$?.id ?? "", "", "", "", "", ""]);
+      s.beneficiaries.forEach((b, i) => { const p = parseName(b.name); out.Beneficiaries.push([hashId("BEN", s.ref, i), m.id, saleId, p.surname, p.firstName, p.middleName, "", Number(b.age) || 0, titleCase(b.relationship), ...identity]); });
+    }
+  }
+  for (const pay of e.payments) {
+    if (existingIds.has(pay.id)) continue;
+    const r = pay.row;
+    out.Collections.push([pay.id, hashId("CBT", r.territory, norm(r.branch), norm(r.agent), pay.dateRemitted), e.id, m.id, number, e.program.id, findBranch(r.branch)?.name ?? r.branch, pay.mas,
+      pay.orNumber, pay.orDate, pay.amount, pay.monthFrom, pay.monthTo, pay.nopFrom, pay.nopTo, yesNo(r.reactivation), yesNo(r.transferred), r.suspended, r.originalMas, "Posted", parseTimestamp(r.timestamp) || importedAt,
+      ...identity, pay.channel, "", "", "Remitted", "", pay.agent?.id ?? "", pay.mas, pay.channel === "Collector" ? "Collector" : "MAS", "Cash", "", "", "", ""]);
+  }
+}
+console.log(`\nWriting: ${Object.entries(out).map(([t, rows]) => `${rows.length} ${t}`).join(", ")}.`);
+const meta = await sheets.spreadsheets.get({ spreadsheetId: DB, fields: "sheets.properties" }, options);
+const sheetId = (title) => meta.data.sheets.find((s) => s.properties.title === title).properties.sheetId;
+const cell = (v) => ({ userEnteredValue: typeof v === "number" ? { numberValue: v } : { stringValue: String(v ?? "") } });
+writeFileSync(`backups/legacy-migration-ids-${stamp}.json`, JSON.stringify(Object.fromEntries(Object.entries(out).map(([t, rows]) => [t, rows.map((r) => r[0])])), null, 1));
+// Order matters for a partial failure: members before the rows that point at them. A re-run skips rows already written.
+for (const title of ["Members", "Member programs", "Sales", "Beneficiaries", "Collections"]) {
+  for (let i = 0; i < out[title].length; i += 2000) {
+    const chunk = out[title].slice(i, i + 2000);
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId: DB, requestBody: { requests: [{ appendCells: { sheetId: sheetId(title), rows: chunk.map((r) => ({ values: r.map(cell) })), fields: "userEnteredValue" } }] } }, options);
+  }
+  console.log(`  ${title}: ${out[title].length} row(s) written.`);
+}
+console.log(`Done. Written row IDs are listed in backups/legacy-migration-ids-${stamp}.json (all contain "-LEG-").`);
+
+
+/* ---------- --export-pending: keep every row the database does not have ---------- */
+async function writePendingTabs() {
+  if (fromPending) throw new Error("--export-pending reads the original workbook, not the Legacy Pending tabs.");
+  // Each row's reasons: the issues logged for it, plus its account's review result.
+  const reasons = new Map();
+  const add = (where, reason) => { if (!reasons.has(where)) reasons.set(where, new Set()); reasons.get(where).add(reason); };
+  for (const [category, wheres] of issues) for (const where of wheres) add(where, category);
+  for (const e of enrollments) {
+    for (const row of e.rows) row.memberId = e.member.id;
+    if (e.invalid) for (const row of [e.sale, ...e.rows].filter(Boolean)) add(row.where, `Account fails review: ${e.invalid}`);
+  }
+  const tabs = [
+    { title: `${PENDING_PREFIX} NS`, rows: saleRows.filter((r) => !existingIds.has(hashId("SALE", r.ref))) },
+    { title: `${PENDING_PREFIX} COLL`, rows: collectionRows.filter((r) => !existingIds.has(hashId("COL", r.ref))) },
+  ];
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: DB, fields: "sheets.properties" }, options);
+  const taken = tabs.filter((t) => meta.data.sheets.some((s) => s.properties.title === t.title));
+  if (taken.length) throw new Error(`${taken.map((t) => t.title).join(" and ")} already exist in the database. Rename or delete before exporting again (staff edits there would be overwritten).`);
+  const cellValue = (v) => {
+    if (v instanceof Date) return v.getUTCHours() || v.getUTCMinutes() ? v.toISOString().slice(0, 19).replace("T", " ") : v.toISOString().slice(0, 10);
+    return v ?? "";
+  };
+  // Repeated header names (NAME, AGE, RELATIONSHIP) are told apart by occurrence; blank headers are dropped.
+  const slots = (headers) => { const seen = new Map(); return headers.map((h) => { const k = headerKey(h); if (!k) return null; const n = (seen.get(k) ?? 0) + 1; seen.set(k, n); return { key: `${k}#${n}`, label: str(h) }; }); };
+  for (const tab of tabs) {
+    // One header for every source tab of this kind: original columns in first-seen order.
+    const standard = [], position = new Map();
+    for (const row of tab.rows) for (const slot of slots(row.headers)) if (slot && !position.has(slot.key)) { position.set(slot.key, standard.length); standard.push(slot.label); }
+    const values = [["SOURCE", "SOURCE TAB", "SOURCE ROW", "REASON NOT MIGRATED", "LEGACY MEMBER ID", ...standard]];
+    for (const row of tab.rows) {
+      const [sourceTitle, sourceTab, sourceRow] = row.ref.split("|");
+      const cells = Array(standard.length).fill("");
+      slots(row.headers).forEach((slot, i) => { if (slot) cells[position.get(slot.key)] = cellValue(row.raw[i]); });
+      values.push([sourceTitle, sourceTab, Number(sourceRow), [...(reasons.get(row.where) ?? ["Not migrated"])].join("; "), row.memberId ?? "", ...cells]);
+    }
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId: DB, requestBody: { requests: [{ addSheet: { properties: { title: tab.title, gridProperties: { rowCount: values.length + 100, columnCount: values[0].length, frozenRowCount: 1 } } } }] } }, options);
+    for (let i = 0; i < values.length; i += 2000) {
+      await sheets.spreadsheets.values.update({ spreadsheetId: DB, range: `'${tab.title}'!A${i + 1}`, valueInputOption: "RAW", requestBody: { values: values.slice(i, i + 2000) } }, options);
+    }
+    console.log(`Exported ${values.length - 1} row(s) to the "${tab.title}" tab.`);
+  }
+}

@@ -1,4 +1,5 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
+import { writeProgramIncentives } from "@/lib/program-incentive-store";
 import { getEmployees } from "@/lib/employees";
 import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
@@ -748,6 +749,7 @@ export async function createBranch(data: {
 export type ProgramIncentiveSheetData = {
   id: string;
   programId: string;
+  branchId?: string;
   role: "MAS" | "Collector";
   fromMonth: number;
   toMonth: number;
@@ -759,6 +761,8 @@ export type ProgramIncentiveSheetData = {
 };
 
 export type CreateProgramData = {
+  /** Programs!S: the program's category (Program Categories). Blank = uncategorized. */
+  categoryId?: string;
   saleIncentiveType?: unknown;
   saleIncentiveAmount?: unknown;
   code: string;
@@ -774,6 +778,7 @@ export type CreateProgramData = {
       | "percentage";
     markUp: number;
     incentiveAmount: number;
+    branchId?: string;
   }>;
 
   description: string;
@@ -794,7 +799,7 @@ export type CreateProgramData = {
 export async function getPrograms() {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [`${PROGRAMS_SHEET}!A:R`, `${PROGRAM_INCENTIVES_SHEET}!A:H`],
+    ranges: [`${PROGRAMS_SHEET}!A:S`, `${PROGRAM_INCENTIVES_SHEET}!A:M`],
   });
   const rows = response.data.valueRanges?.[0]?.values ?? [];
   if (rows.length <= 1) {
@@ -834,6 +839,7 @@ export async function getPrograms() {
       // New Sale incentive for programs with a registration fee (Programs Q type, R amount).
       saleIncentiveType: (["fixed", "percentage"].includes(String(row[16] ?? "").trim()) ? String(row[16]).trim() : "") as "fixed" | "percentage" | "",
       saleIncentiveAmount: Number(row[17] ?? 0) || 0,
+      categoryId: String(row[18] ?? "").trim(),
     }));
 
   const incentives =
@@ -1005,9 +1011,9 @@ export async function createProgram(
   const rowNumber = programRows.findIndex((row) => String(row[0] ?? "").trim() === programId) + 1;
   if (rowNumber > 1) await sheets.spreadsheets.values.update({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${PROGRAMS_SHEET}!K${rowNumber}:R${rowNumber}`,
+    range: `${PROGRAMS_SHEET}!K${rowNumber}:S${rowNumber}`,
     valueInputOption: "RAW",
-    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal, ...ageRestrictionCells(program), ...saleIncentiveCells(data)]] },
+    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal, ...ageRestrictionCells(program), ...saleIncentiveCells(data), (data.categoryId ?? "").trim()]] },
   });
 
   /*
@@ -1021,30 +1027,8 @@ export async function createProgram(
    * Mark Up is stored separately
    * from the incentive amount.
    */
-  for (const tier of data.incentiveTiers) {
-    await addProgramIncentive({
-      id: createReadableId("INC"),
-
-      programId: program.id,
-
-      role: tier.role,
-
-      fromMonth:
-        Number(tier.fromMonth),
-
-      toMonth:
-        Number(tier.toMonth),
-
-      incentiveType:
-        tier.incentiveType,
-
-      markUp:
-        Number(tier.markUp) || 0,
-
-      incentiveAmount:
-        Number(tier.incentiveAmount),
-    });
-  }
+  // Base tiers (blank branch) and branch-specific tiers, with the branch in Program Incentives!M.
+  await writeProgramIncentives(program.id, data.incentiveTiers);
 
   /*
    * Return the program together with
@@ -1077,6 +1061,7 @@ export async function createProgram(
             Number(
               tier.incentiveAmount,
             ) || 0,
+          branchId: (tier.branchId ?? "").trim(),
         }),
       ),
   };
@@ -1105,7 +1090,7 @@ export async function getProgramIncentives(
    */
   const rows = preloadedRows ?? (await sheets.spreadsheets.values.get({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${PROGRAM_INCENTIVES_SHEET}!A:H`,
+    range: `${PROGRAM_INCENTIVES_SHEET}!A:M`,
   })).data.values ?? [];
 
   if (rows.length <= 1) {
@@ -1193,6 +1178,9 @@ export async function getProgramIncentives(
             )
               ? incentiveAmount
               : 0,
+
+          // Column M: blank for the base tiers, else the branch the tier is for.
+          branchId: String(row[12] ?? "").trim(),
         };
       });
 
@@ -1326,7 +1314,7 @@ export async function addProgramIncentive(
   const response =
     await appendEncodedRows({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${PROGRAM_INCENTIVES_SHEET}!A:H`,
+      range: `${PROGRAM_INCENTIVES_SHEET}!A:M`,
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: {

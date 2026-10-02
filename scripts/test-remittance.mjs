@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calculateRemittance, calculateSaleIncentive, normalizeSaleIncentive } from "../lib/remittance.ts";
+import { calculateRemittance, calculateSaleIncentive, normalizeSaleIncentive, tiersForBranch } from "../lib/remittance.ts";
 // Remittance = ((base pay - mark-up) - incentive) + mark-up; incentive = fixed amount or % of (base pay - mark-up).
 const tier = { id: "T1", role: "MAS", fromMonth: 1, toMonth: 6, incentiveType: "percentage", markUp: 50, incentiveAmount: 50 };
 
@@ -72,4 +72,13 @@ test("New Sale incentive settings are validated", () => {
   assert.deepEqual(normalizeSaleIncentive({ registrationFeeRequired: true, registrationAmount: 500, saleIncentiveType: "percentage", saleIncentiveAmount: "25" }), { saleIncentiveType: "percentage", saleIncentiveAmount: 25 });
   assert.throws(() => normalizeSaleIncentive({ registrationFeeRequired: true, registrationAmount: 500, saleIncentiveType: "percentage", saleIncentiveAmount: 120 }), /100%/);
   assert.throws(() => normalizeSaleIncentive({ registrationFeeRequired: true, registrationAmount: 100, saleIncentiveType: "fixed", saleIncentiveAmount: 150 }), /registration amount/);
+});
+
+test("a branch's own tiers replace the base tiers for that role only", () => {
+  const base = [{ role: "MAS", fromMonth: 1, toMonth: 60, branchId: "" }, { role: "Collector", fromMonth: 1, toMonth: 60, branchId: "" }];
+  const tagum = [{ role: "MAS", fromMonth: 1, toMonth: 60, branchId: "BR-7" }];
+  const tiers = [...base, ...tagum];
+  assert.deepEqual(tiersForBranch(tiers, "BR-7"), [tagum[0], base[1]], "own MAS rates, base Collector rates");
+  assert.deepEqual(tiersForBranch(tiers, "BR-1"), base, "other branches use the base rates");
+  assert.deepEqual(tiersForBranch(tiers, ""), base, "no branch means base rates");
 });

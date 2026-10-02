@@ -18,6 +18,7 @@
     { "sheet": "Remittance Collections", "table": "remittance_collections", "primaryKey": "remittance_collection_id", "firstHeader": "remittance_collection_id", "compositeKey": ["remittance_id", "collection_id"] },
     { "sheet": "Collections", "table": "collections", "primaryKey": "collection_id", "firstHeader": "collection_id" },
     { "sheet": "Programs", "table": "programs", "primaryKey": "program_id", "firstHeader": "program_id" },
+    { "sheet": "Program Categories", "table": "program_categories", "primaryKey": "category_id", "firstHeader": "category_id" },
     { "sheet": "Program Incentives", "table": "program_incentives", "primaryKey": "incentive_id", "firstHeader": "incentive_id" },
     { "sheet": "Branches", "table": "branches", "primaryKey": "branch_id", "firstHeader": "branch_id" },
     { "sheet": "Users", "table": "users", "primaryKey": "user_id", "firstHeader": "user_id" },

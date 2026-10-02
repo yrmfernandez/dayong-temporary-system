@@ -37,7 +37,7 @@ export async function loadAccountData() {
   const sales = tables.Sales.slice(1).map((r) => ({ memberNumber: str(r[5]), programId: str(r[21]), applicationNumber: str(r[28]), registrationFee: Number(r[25]) || 0 }));
   const incentives = tables["Program Incentives"].slice(1).filter((r) => str(r[0])).map((r) => ({
     id: str(r[0]), programId: str(r[1]), role: str(r[2]) as IncentiveTier["role"], fromMonth: Number(r[3]), toMonth: Number(r[4]),
-    incentiveType: str(r[5]) as IncentiveTier["incentiveType"], markUp: Number(r[6]), incentiveAmount: Number(r[7]),
+    incentiveType: str(r[5]) as IncentiveTier["incentiveType"], markUp: Number(r[6]), incentiveAmount: Number(r[7]), branchId: str(r[12]),
   }));
   return { accounts, payments, sales, incentives };
 }

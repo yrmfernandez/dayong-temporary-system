@@ -1,5 +1,5 @@
 import { getSessionUser } from "@/lib/auth-server";
-import { claimFidelity, getFidelityData } from "@/lib/fidelity";
+import { getFidelityData, withdrawFidelity } from "@/lib/fidelity";
 import { withEncoder } from "@/lib/encoder-context";
 
 // ?scope=me always returns only the signed-in employee's own Fidelity (the "My Fidelity" page),
@@ -23,13 +23,15 @@ export async function GET(request: Request) {
   }
 }
 
+/** Finance or an Administrator records money paid out: an excess withdrawal, or the full release when an employee leaves. */
 export const PATCH = withEncoder(async (request: Request) => {
   const user = await getSessionUser(), roles = user?.roleNames.map((role) => role.trim().toLowerCase()) ?? [];
-  if (!user || !roles.some((role) => ["administrator", "admin", "finance"].includes(role))) return Response.json({ success: false, message: "Finance or Administrator access is required to record a claim." }, { status: 403 });
+  if (!user || !roles.some((role) => ["administrator", "admin", "finance"].includes(role))) return Response.json({ success: false, message: "Finance or Administrator access is required to record a Fidelity withdrawal." }, { status: 403 });
   try {
-    const body = await request.json(), result = await claimFidelity(String(body.masEmployeeId ?? ""), String(body.notes ?? ""));
-    return Response.json({ success: true, message: `${result.amount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} Fidelity claim recorded. The MAS balance is reset to zero.` });
+    const body = await request.json();
+    const result = await withdrawFidelity(String(body.masEmployeeId ?? ""), String(body.kind ?? ""), Number(body.amount), String(body.notes ?? ""));
+    return Response.json({ success: true, message: `${result.type} of ${result.amount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} recorded for ${result.masName}.` });
   } catch (error) {
-    return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to record Fidelity claim." }, { status: 400 });
+    return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to record the Fidelity withdrawal." }, { status: 400 });
   }
 });

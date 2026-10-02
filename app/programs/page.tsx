@@ -29,6 +29,7 @@ SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { describeAgeRestriction } from "@/lib/program-age";
+import { ProgramCategoriesManager, type ProgramCategory } from "./program-categories";
 
 type IncentiveType = "percentage" | "fixed";
 
@@ -45,9 +46,12 @@ toMonth: number;
 incentiveType: IncentiveType;
 markUp: number;
 incentiveAmount: number;
+/** Blank = base rates for every branch; otherwise rates for that branch only. */
+branchId?: string;
 };
 
 type IncentiveTierForm = {
+branchId: string;
 fromValue: string;
 fromUnit: PeriodUnit;
 
@@ -79,9 +83,11 @@ ageRestricted: boolean;
 minAge: number | null;
 maxAge: number | null;
 incentiveTiers: IncentiveTier[];
+categoryId?: string;
 };
 
 type ProgramForm = {
+categoryId: string;
 code: string;
 name: string;
 basePay: string;
@@ -100,6 +106,7 @@ incentiveTiers: IncentiveTierForm[];
 
 function createEmptyTier(): IncentiveTierForm {
 return {
+branchId: "",
 fromValue: "1",
 fromUnit: "month",
 
@@ -119,6 +126,7 @@ collectorIncentive: "20",
 
 function createEmptyForm(): ProgramForm {
 return {
+categoryId: "",
 code: "",
 name: "",
 basePay: "",
@@ -301,6 +309,28 @@ useState(false);
 const [showForm, setShowForm] =
 useState(false);
 const [canManage, setCanManage] = useState(false);
+// Branches for branch-specific incentive rates, and the editable program categories.
+const [branchOptions, setBranchOptions] = useState<Array<{ id: string; name: string; territory: string; status: string }>>([]);
+const [categories, setCategories] = useState<ProgramCategory[]>([]);
+const branchName = (id: string) => { const found = branchOptions.find((item) => item.id === id); return found ? `${found.name}${found.territory ? ` · ${found.territory}` : ""}` : id; };
+const categoryName = (id: string) => categories.find((item) => item.id === id)?.name ?? id;
+async function loadReference() {
+  try {
+    const [branchResponse, categoryResponse] = await Promise.all([fetch("/api/branches", { cache: "no-store" }), fetch("/api/program-categories", { cache: "no-store" })]);
+    const branchData = await branchResponse.json(), categoryData = await categoryResponse.json();
+    if (Array.isArray(branchData.branches)) setBranchOptions(branchData.branches);
+    if (Array.isArray(categoryData.categories)) setCategories(categoryData.categories);
+  } catch { /* the form still works with base rates and no category */ }
+}
+// Copies the base (all-branch) periods to a branch so its own rates can be edited from there.
+function copyBaseRatesToBranch(branchId: string) {
+  if (!branchId) return;
+  setForm((current) => {
+    if (current.incentiveTiers.some((tier) => tier.branchId === branchId)) { alert(`${branchName(branchId)} already has its own periods.`); return current; }
+    const base = current.incentiveTiers.filter((tier) => !tier.branchId);
+    return { ...current, incentiveTiers: [...current.incentiveTiers, ...(base.length ? base : [createEmptyTier()]).map((tier) => ({ ...tier, branchId }))] };
+  });
+}
 
 const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
 
@@ -372,6 +402,7 @@ useEffect(() => {
 // Loading begins after the component is mounted and synchronizes with the API.
 // eslint-disable-next-line react-hooks/set-state-in-effect
 loadPrograms();
+void loadReference();
 }, []);
 
 function resetForm() {
@@ -463,9 +494,15 @@ alert(
 }
 
 const normalizedPeriods: {
+  branch: string;
   from: number;
   to: number;
 }[] = [];
+
+if (!form.incentiveTiers.some((tier) => !tier.branchId)) {
+  alert("Add at least one period for All branches (base rates). Branch periods only replace the base rates in that branch.");
+  return false;
+}
 
 for (
   let index = 0;
@@ -634,13 +671,14 @@ for (
   }
 
   normalizedPeriods.push({
+    branch: tier.branchId,
     from: fromMonth,
     to: toMonth,
   });
 }
 
 normalizedPeriods.sort(
-  (a, b) => a.from - b.from,
+  (a, b) => a.branch.localeCompare(b.branch) || a.from - b.from,
 );
 
 for (
@@ -656,11 +694,12 @@ for (
     normalizedPeriods[index];
 
   if (
+    current.branch === previous.branch &&
     current.from <=
     previous.to
   ) {
     alert(
-      "Incentive periods cannot overlap. Please adjust the ranges.",
+      "Incentive periods for the same branch cannot overlap. Please adjust the ranges.",
     );
 
     return false;
@@ -789,7 +828,11 @@ try {
 
     basePay,
 
-    incentiveTiers,
+    // Each form period becomes a MAS and a Collector tier, both for the period\'s branch.
+
+    incentiveTiers: incentiveTiers.map((item, position) => ({ ...item, branchId: form.incentiveTiers[Math.floor(position / 2)]?.branchId ?? "" })),
+
+    categoryId: form.categoryId,
 
     description:
       form.description.trim(),
@@ -904,6 +947,7 @@ existingTiers.forEach(
       tier.toMonth,
       tier.incentiveType,
       tier.markUp,
+      tier.branchId ?? "",
     ].join("|");
 
     const existing =
@@ -945,6 +989,7 @@ existingTiers.forEach(
     }
 
     grouped.set(key, {
+      branchId: tier.branchId ?? "",
       fromValue: String(
         tier.fromMonth ?? 1,
       ),
@@ -995,6 +1040,7 @@ const combinedTiers =
   );
 
 setForm({
+  categoryId: program.categoryId ?? "",
   code: program.code ?? "",
 
   name: program.name ?? "",
@@ -1171,6 +1217,19 @@ return (
       >
         <Trash2 className="size-4" />
       </Button>
+    </div>
+
+    {/* BRANCH */}
+    <div className="mb-4 space-y-2">
+      <Label>Branch</Label>
+      <Select value={tier.branchId || "all"} onValueChange={(value) => updateTier(index, "branchId", !value || value === "all" ? "" : value)}>
+        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All branches (base rates)</SelectItem>
+          {branchOptions.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.territory ? ` · ${item.territory}` : ""}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">Base rates apply in every branch. A branch with its own periods uses only those for that role, so give it every period it needs.</p>
     </div>
 
     {/* PERIOD */}
@@ -1845,6 +1904,28 @@ const programForm = (
           </div>
 
           <div className="space-y-2">
+
+            <Label>Category</Label>
+
+            <Select value={form.categoryId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, categoryId: !value || value === "none" ? "" : value }))}>
+
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+
+              <SelectContent>
+
+                <SelectItem value="none">No category</SelectItem>
+
+                {categories.filter((item) => item.status === "active" || item.id === form.categoryId).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.status === "inactive" ? " (inactive)" : ""}</SelectItem>)}
+
+              </SelectContent>
+
+            </Select>
+
+            <p className="text-xs text-muted-foreground">Categories are edited under Program Categories on this page.</p>
+
+          </div>
+
+          <div className="space-y-2">
             <Label>
               Status
             </Label>
@@ -1944,6 +2025,10 @@ const programForm = (
             <Plus className="mr-2 size-4" />
             Add Period
           </Button>
+          <Select value="" onValueChange={(value) => copyBaseRatesToBranch(value ?? "")}>
+            <SelectTrigger className="h-8 w-56"><SelectValue placeholder="Add rates for a branch" /></SelectTrigger>
+            <SelectContent>{branchOptions.filter((item) => item.status !== "inactive").map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.territory ? ` · ${item.territory}` : ""}</SelectItem>)}</SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-4">
@@ -2043,6 +2128,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
   </Card>
   )}
 
+  {canManage && <ProgramCategoriesManager categories={categories} onChanged={loadReference} />}
+
   {/* PROGRAM LIST */}
   <Card>
     <CardHeader>
@@ -2083,12 +2170,13 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           tier.toMonth,
                           tier.incentiveType,
                           tier.markUp,
+                          tier.branchId ?? "",
                         ].join("|"),
                         tier,
                       ],
                     ),
                   ).values(),
-                );
+                ).sort((a, b) => Number(Boolean(a.branchId)) - Number(Boolean(b.branchId)) || (a.branchId ?? "").localeCompare(b.branchId ?? "") || a.fromMonth - b.fromMonth);
 
               return (
                 <div
@@ -2124,6 +2212,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                               program.status
                             }
                           </span>
+                          {program.categoryId && <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">{categoryName(program.categoryId)}</span>}
                         </div>
 
                         <p className="text-sm text-muted-foreground">
@@ -2245,7 +2334,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                                   tier.incentiveType ===
                                     baseTier.incentiveType &&
                                   tier.markUp ===
-                                    baseTier.markUp,
+                                    baseTier.markUp &&
+                                    (tier.branchId ?? "") === (baseTier.branchId ?? ""),
                               );
 
                             const collectorTier =
@@ -2262,7 +2352,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                                   tier.incentiveType ===
                                     baseTier.incentiveType &&
                                   tier.markUp ===
-                                    baseTier.markUp,
+                                    baseTier.markUp &&
+                                    (tier.branchId ?? "") === (baseTier.branchId ?? ""),
                               );
 
                             const masAmount =
@@ -2293,6 +2384,7 @@ const collectorRemittance = calculateRemittanceFor(program.basePay, baseTier.mar
                                 key={`${program.id}-${index}`}
                                 className="rounded-lg border bg-muted/20 p-4"
                               >
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">{baseTier.branchId ? `Branch rates: ${branchName(baseTier.branchId)}` : "All branches (base rates)"}</p>
                                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                   <div>
                                     <p className="font-semibold">

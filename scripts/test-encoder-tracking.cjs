@@ -409,9 +409,7 @@ test('collection batch is encoded atomically without creating a remittance', asy
   // A remittance penalty needs a note saying what it is for.
   assert.match((await (await route.POST(request({ ...batch, penalty: 50, penaltyNote: '' }))).json()).message, /what the penalty is for/);
   assert.match((await (await route.POST(request({ ...batch, penalty: -5, penaltyNote: 'x' }))).json()).message, /zero or a positive/);
-  // Fidelity comes out of the MAS incentive: not on a Collector batch, and never more than the batch's incentives.
-  assert.match((await (await route.POST(request({ ...batch, collectedBy: 'Collector', fidelityAmount: 10 }))).json()).message, /Collector batch has none/);
-  assert.match((await (await route.POST(request({ ...batch, fidelityAmount: 999 }))).json()).message, /cannot exceed the batch's total incentives/);
+  // Fidelity is the employee's own money: no limit and any batch (covered by the Fidelity tests below).
   assert.equal(h.writes.length, 0);
   const response = await route.POST(request({ ...batch, collectedBy: 'Collector', originalMasOfficerName: 'ignored', penalty: 50, penaltyNote: 'Late turnover' }));
   const result = await response.json();
@@ -1176,7 +1174,6 @@ test('new sales are remitted on their own slip, separate from collections', asyn
   assert.deepEqual(dashboard.outstanding.map((item) => [item.kind, item.id, item.remittanceAmount, item.penalty]), [['Collections', 'COL-1', 270, 0], ['New Sales', 'SAL-1', 500, 25]]);
   const post = async (body) => { const response = await route.POST(request({ actualAmount: 500, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
   assert.match((await post({ collectionIds: ['COL-1', 'SAL-1'] })).body.error, /separate slips/);
-  assert.match((await post({ collectionIds: ['SAL-1'], fidelityAmount: 10 })).body.error, /cannot exceed the MAS incentive of ₱0\.00/, 'a sale saved before incentives existed has none to save from');
   const created = await post({ collectionIds: ['SAL-1'], actualAmount: 500 });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.remittance.type, 'New Sales');
@@ -1189,7 +1186,7 @@ test('new sales are remitted on their own slip, separate from collections', asyn
   assert.deepEqual(saleStatus.rows[0].values.map((value) => value.userEnteredValue.stringValue), ['Pending Remittance Approval', created.body.remittance.id]);
 });
 
-test('New Sales Fidelity comes out of the sale incentive and is shown on its remittance', async () => {
+test('New Sales Fidelity is the MAS own money: incentives stay whole and the remittance expects it', async () => {
   const h = harness();
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
   h.rows.Employees = [[], ['DPE-0002', 'Maria', 'BR-1', 'MAS', 'active']];
@@ -1199,15 +1196,13 @@ test('New Sales Fidelity comes out of the sale incentive and is shown on its rem
   h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
   const sales = h.load('app/api/sales/route.ts');
   const body = (fidelityAmount) => ({ branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', fidelityAmount, sales: [{ existingMember: false, memberNumber: '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-9', addressHouse: 'Address', beneficiaries: [] }] });
-  const tooMuch = await sales.POST(request(body(200)));
-  assert.equal(tooMuch.status, 400);
-  assert.match((await tooMuch.json()).message, /cannot exceed the batch's total incentives of ₱150\.00/);
-  const saved = await sales.POST(request(body(50)));
+  // No limit: more than the batch's ₱150 incentive is accepted.
+  const saved = await sales.POST(request(body(500)));
   assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
   const saleRow = h.writes.find((write) => write.range.startsWith("'Sales'!")).requestBody.values[0];
-  assert.deepEqual(saleRow.slice(40), [150, 200, 50], 'incentive, company share, and the batch Fidelity');
+  assert.deepEqual(saleRow.slice(40), [150, 200, 500], 'the incentive is untouched; company share and the batch Fidelity');
 
-  // Its remittance expects the company share plus the Fidelity, and says the Fidelity came out of the incentives.
+  // Its remittance expects the company share plus the Fidelity.
   const h2 = harness();
   const sale = Array(43).fill(''); sale[0] = 'SAL-9'; sale[1] = '2026-09-25T02:00:00.000Z'; sale[2] = 'BR-1'; sale[3] = 'Maria'; sale[21] = 'DP-1'; sale[26] = 350; sale[35] = 'Outstanding'; sale[37] = 'DPE-0002'; sale[40] = 150; sale[41] = 200; sale[42] = 50;
   const collectionsHeader = Array(37).fill(''); collectionsHeader[28] = 'Remittance Status';
@@ -1217,16 +1212,17 @@ test('New Sales Fidelity comes out of the sale incentive and is shown on its rem
   const remittances = h2.load('app/api/remittances/route.ts');
   const outstanding = (await (await remittances.GET()).json()).outstanding;
   assert.deepEqual(outstanding.map((item) => [item.id, item.remittanceAmount, item.fidelity]), [['SAL-9', 200, 50]]);
-  const created = await remittances.POST(request({ collectionIds: ['SAL-9'], actualAmount: 200, remittanceDate: '2026-09-26' }));
+  const created = await remittances.POST(request({ collectionIds: ['SAL-9'], actualAmount: 250, remittanceDate: '2026-09-26' }));
   const result = await created.json();
   assert.equal(created.status, 201, JSON.stringify(result));
-  assert.equal(result.remittance.expectedAmount, 200, 'Fidelity is independent of the remittance');
+  assert.equal(result.remittance.expectedAmount, 250, 'company share 200 + Fidelity 50');
+  assert.equal(result.remittance.difference, 0);
   assert.equal(result.remittance.fidelityAmount, 50);
   const row = h2.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.match(row[22], /MAS Fidelity ₱50\.00 \(separate from remittance\), deducted from the MAS's incentives/);
+  assert.match(row[22], /Fidelity ₱50\.00 \(employee's own money\), included in the expected amount/);
 });
 
-test('fidelity entered with a Collections batch is used by its remittance and lowers the incentives', async () => {
+test('fidelity entered with a Collections batch is added to its remittance, not taken from incentives', async () => {
   const h = harness();
   const collectionsHeader = Array(38).fill(''); collectionsHeader[28] = 'Remittance Status';
   const collection = Array(38).fill(''); collection[0] = 'COL-9'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-9'; collection[9] = '2026-09-25'; collection[10] = 320; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 270; collection[28] = 'Outstanding'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS'; collection[37] = 20;
@@ -1236,12 +1232,13 @@ test('fidelity entered with a Collections batch is used by its remittance and lo
   h.rows.Remittances = [remittancesHeader];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
   const route = h.load('app/api/remittances/route.ts');
-  const post = async (body) => { const response = await route.POST(request({ collectionIds: ['COL-9'], actualAmount: 270, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
+  const post = async (body) => { const response = await route.POST(request({ collectionIds: ['COL-9'], actualAmount: 290, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
   assert.match((await post({ fidelityAmount: 5 })).body.error, /already recorded/);
   const created = await post({});
   assert.equal(created.status, 201, JSON.stringify(created.body));
-  // Collected 320: remittance 270 expected (Fidelity 20 is separate); the MAS keeps 50 - 20 = 30.
-  assert.equal(created.body.remittance.expectedAmount, 270);
+  // Collected 320: company share 270 + the MAS's own Fidelity 20 = 290 expected; the MAS keeps the full 50 incentive.
+  assert.equal(created.body.remittance.expectedAmount, 290);
+  assert.equal(created.body.remittance.difference, 0);
   assert.equal(created.body.remittance.fidelityAmount, 20);
   const remittance = h.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
   assert.equal(remittance[24], 20, 'the Fidelity is recorded on the remittance, where the Fidelity page reads it');

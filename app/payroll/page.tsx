@@ -102,7 +102,7 @@ export default function PayrollPage() {
     {overview && tab === "runs" && !detail && <RunsList overview={overview} busy={busy} onOpen={(id) => void openRun(id).catch((failure) => setError(failure.message))}
       onCreate={(body) => act({ action: "create", ...body }, "Payroll draft created.", async (result) => { await openRun(String(result.id)); })} />}
     {overview && tab === "runs" && detail && <RunDetail overview={overview} detail={detail} busy={busy} error={error} onBack={() => setDetail(null)}
-      act={(body, success) => act({ runId: detail.run.id, ...body }, success, async () => { await openRun(detail.run.id); })} />}
+      act={(body, success) => act({ runId: detail.run.id, ...body }, success, async () => { if (body.action === "delete") setDetail(null); else await openRun(detail.run.id); })} />}
     {overview && tab === "rates" && <PayRates overview={overview} busy={busy} onSave={(body) => act({ action: "saveProfile", ...body }, "Pay setup saved.")} />}
   </section>;
 }
@@ -327,7 +327,11 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
           <div className="space-y-2"><Label>Reference</Label><Input maxLength={100} placeholder="Bank batch / voucher no." value={payment.paymentReference} onChange={(event) => setPayment({ ...payment, paymentReference: event.target.value })} /></div>
           <div className="sm:col-span-2 lg:col-span-4"><Button type="submit" disabled={busy}>Record payment ({money(totals.net)})</Button></div>
         </form>}
-        <div className="border-t pt-4"><Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={() => { const reason = window.prompt("Reason for voiding this payroll (required):"); if (reason?.trim()) void act({ action: "void", reason }, "Payroll voided. Its commissions are available to a new payroll."); }}>Void payroll</Button></div>
+        <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+          <Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={() => { const reason = window.prompt("Reason for voiding this payroll (required):"); if (reason?.trim()) void act({ action: "void", reason }, "Payroll voided. Its commissions are available to a new payroll."); }}>Void payroll</Button>
+          {run.status === "Draft" && <Button type="button" variant="destructive" disabled={busy} onClick={() => { if (window.confirm(`Delete this Draft payroll (${run.periodFrom} to ${run.periodTo})? Its lines and adjustments are removed from the database. This cannot be undone.`)) void act({ action: "delete" }, "Draft payroll deleted."); }}>Delete draft</Button>}
+          <p className="w-full text-xs text-muted-foreground">Void keeps the payroll on record with a reason. {run.status === "Draft" ? "Delete removes a Draft made by mistake from the database entirely." : "Only a Draft can be deleted."}</p>
+        </div>
       </CardContent>
     </Card>}
 

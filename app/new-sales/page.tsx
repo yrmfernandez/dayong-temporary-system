@@ -29,7 +29,7 @@ import { todayInManila } from "@/lib/account-rules";
 import type { ProgramStanding } from "@/lib/account-data";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { RemittanceSummary } from "@/components/remittance-summary";
-import { calculateSaleIncentive } from "@/lib/remittance";
+import { calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
 import {
   Select,
   SelectContent,
@@ -258,7 +258,7 @@ export default function NewSalesPage() {
   const [penaltyNote, setPenaltyNote] = useState("");
   const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
   const totalPaid = sales.reduce((sum, sale) => sum + Math.round((Number(sale.program.amountPaid) || 0) * 100), 0) / 100;
-  // MAS Fidelity for this batch: what the MAS asks to save, taken out of the batch's New Sale incentives. Zero is allowed.
+  // Fidelity for this batch: the MAS's own money handed over to save, added to the remittance. No limit; zero is allowed.
   const [fidelity, setFidelity] = useState("");
   const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
 
@@ -282,12 +282,18 @@ export default function NewSalesPage() {
     Program[]
   >([]);
 
+  const [branches, setBranches] = useState<
+    NonNullable<BranchApiResponse["branches"]>
+  >([]);
+
   // Each sale's MAS incentive and company share, by the same rule the server saves (lib/remittance.ts).
+  // A branch's own incentive tiers replace the program's base tiers there.
+  const branchId = branches.find((item) => item.name === branch)?.id ?? "";
   const saleQuotes = sales.map((sale) => {
     const program = programs.find((item) => item.code === sale.program.programCode);
     if (!program) return null;
     try {
-      return calculateSaleIncentive({ basePay: program.basePay, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: program.incentiveTiers ?? [] }, Number(sale.program.amountPaid) || 0);
+      return calculateSaleIncentive({ basePay: program.basePay, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, Number(sale.program.amountPaid) || 0);
     } catch (error) {
       return { incentive: 0, remittance: 0, rule: "", error: error instanceof Error ? error.message : "The incentive could not be calculated." };
     }
@@ -295,11 +301,6 @@ export default function NewSalesPage() {
   const quoteProblem = saleQuotes.find((quote) => quote && "error" in quote) as { error: string } | undefined;
   const quotesReady = saleQuotes.every(Boolean) && !quoteProblem;
   const totalSaleRemittance = quotesReady ? saleQuotes.reduce((sum, quote) => sum + Math.round((quote?.remittance ?? 0) * 100), 0) / 100 : null;
-  const totalSaleIncentives = Math.round((totalPaid - (totalSaleRemittance ?? totalPaid)) * 100) / 100;
-
-  const [branches, setBranches] = useState<
-    NonNullable<BranchApiResponse["branches"]>
-  >([]);
 
   const [programLoading, setProgramLoading] =
     useState(true);
@@ -978,8 +979,8 @@ export default function NewSalesPage() {
       return;
     }
 
-    if (Number(fidelity) < 0 || fidelityAmount > totalSaleIncentives) {
-      setSaveMessage("Fidelity must be zero or more, and no more than the batch's incentives.");
+    if (Number(fidelity) < 0) {
+      setSaveMessage("Fidelity must be zero or a positive amount.");
       return;
     }
 
@@ -2669,15 +2670,14 @@ export default function NewSalesPage() {
             <p className="text-xs text-muted-foreground">Charged to the MAS, paid from their own money, and added to this batch&apos;s New Sales remittance. Members are not charged.</p>
           </fieldset>
           <fieldset className={`space-y-2 rounded-lg border p-3 ${fidelityAmount > 0 ? "border-emerald-300 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20" : ""}`}>
-            <legend className="px-1 text-sm font-medium">MAS Fidelity</legend>
+            <legend className="px-1 text-sm font-medium">Fidelity</legend>
             <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
               <div className="space-y-1">
                 <Label htmlFor="sales-fidelity-amount">Fidelity amount</Label>
-                <Input id="sales-fidelity-amount" type="number" min="0" max={totalSaleIncentives} step="0.01" value={fidelity} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setFidelity(event.target.value)} />
+                <Input id="sales-fidelity-amount" type="number" min="0" step="0.01" value={fidelity} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setFidelity(event.target.value)} />
               </div>
-              <p className="text-xs text-muted-foreground">The amount the MAS asks to save; zero is allowed. It comes out of this batch&apos;s New Sale incentives ({new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(totalSaleIncentives)} available) and is added to the remittance.</p>
+              <p className="text-xs text-muted-foreground">The MAS&apos;s own money handed over for their Fidelity savings; zero is allowed. It is added to this batch&apos;s remittance and does not reduce incentives. There is no limit; the first ₱10,000 of savings is released only when the employee leaves, and anything above it can be withdrawn any time.</p>
             </div>
-            {fidelityAmount > totalSaleIncentives && <p role="alert" className="text-xs font-medium text-destructive">Fidelity cannot be more than the batch&apos;s incentives.</p>}
           </fieldset>
           {quoteProblem && <p role="alert" className="text-sm text-destructive">{quoteProblem.error}</p>}
           <RemittanceSummary collected={totalPaid} remittance={totalSaleRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} incentiveNote="From each program's New Sale incentive, or its month-1 MAS tier when there is no registration fee." />

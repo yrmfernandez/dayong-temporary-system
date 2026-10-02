@@ -17,6 +17,7 @@ export const encoderSheets = [
   { title: "Collections", columns: 21 },
   { title: "Programs", columns: 6 },
   { title: "Program Incentives", columns: 8 },
+  { title: "Program Categories", columns: 4 },
   { title: "Branches", columns: 13 },
   { title: "Users", columns: 7 },
   { title: "User Roles", columns: 2 },
@@ -37,6 +38,9 @@ export const encoderSheets = [
   { title: "Payroll Lines", columns: 24 },
   { title: "Payroll Adjustments", columns: 8 },
   { title: "Daily Audits", columns: 13 },
+  { title: "Weekly Audits", columns: 13 },
+  { title: "Monthly Audits", columns: 13 },
+  { title: "Yearly Audits", columns: 13 },
   { title: "Member Transfers", columns: 10 },
   // Created by the app the first time a target is saved, so migrations skip it until it exists.
   { title: "Company Targets", columns: 5, optional: true },

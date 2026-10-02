@@ -34,7 +34,9 @@
     "sheets:batch-extras": "node scripts/migrate-batch-extras.mjs",
     "sheets:audit-transfers": "node scripts/migrate-audit-transfers.mjs",
     "sheets:expense-fields": "node scripts/migrate-expense-fields.mjs",
-    "sheets:sale-incentives": "node scripts/migrate-sale-incentives.mjs"
+    "sheets:sale-incentives": "node scripts/migrate-sale-incentives.mjs",
+    "sheets:program-categories": "node scripts/migrate-program-categories.mjs",
+    "sheets:period-audits": "node scripts/migrate-period-audits.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -57,6 +59,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "exceljs": "^4.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

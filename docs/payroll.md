@@ -9,7 +9,7 @@ Every employee who should be paid needs a pay setup. Active employees without on
 | Field | Meaning |
 | --- | --- |
 | Base pay | **Daily rate**, **Monthly salary**, or **No base** (commission only, typical for MAS) |
-| Earns commissions | Adds the employee's pending Commissions records (already net of Fidelity) |
+| Earns commissions | Adds the employee's pending Commissions records (Fidelity is the employee's own money and is not deducted) |
 | Hours per day | Converts the daily rate to an hourly rate for overtime, late, and undertime (default 8) |
 | Overtime multiplier | Default 1.25 (regular-day overtime) |
 
@@ -48,7 +48,8 @@ Net pay = base + overtime + commission + additions − late − undertime − ab
 1. **Draft**: calculated from pay setups, attendance, and commissions. Recalculate any time; old lines are kept as `replaced`.
 2. **Approved**: amounts lock. A second Finance user or an Administrator must approve a payroll someone prepared.
 3. **Paid**: records the pay date, cash account, branch, and reference; posts **one Payroll outflow** to Cash Transactions for the net total; marks the included commissions Paid with the payroll ID as reference.
-4. **Void**: Draft or Approved only, with a reason. Its commissions become available to a new payroll. Paid payroll is corrected with a cash transaction instead.
+4. **Void**: Draft or Approved only, with a reason. The payroll stays on record as Void and its commissions become available to a new payroll. Paid payroll is corrected with a cash transaction instead.
+5. **Delete draft**: a Draft made by mistake can be deleted. Its run, lines and adjustments are removed from the sheets (each deleted row is kept in the Audit Log). Approved and Paid payroll cannot be deleted.
 
 Payroll periods cannot overlap a non-void payroll. Each employee line has a printable **payslip**.
 

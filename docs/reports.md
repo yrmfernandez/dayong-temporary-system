@@ -13,7 +13,7 @@ The Reports workspace provides daily, weekly, monthly, and yearly views. Each vi
 | Expenses | Posted `Expenses` | `expense_date` |
 | Deposits | Posted deposit inflows in `Cash Transactions` | `transaction_date` |
 
-Collection incentive is the gross amount received less the saved remittance amount. The report assigns that incentive to the stored accountable role, either MAS or Collector. The manually recorded Fidelity amount from an approved MAS Remittance is shown separately and is not part of net or the expected remittance. A remittance penalty charged to the MAS/Collector is likewise independent: it is shown as "Penalties (separate)" when present but is not added to net. Expected remittance is net less posted expenses. Difference is expected remittance less actual approved remittance, so a positive value indicates a shortage and a negative value indicates an overage.
+Collection incentive is the gross amount received less the saved remittance amount. The report assigns that incentive to the stored accountable role, either MAS or Collector. Fidelity from an approved Remittance (the employee's own money, added to that remittance) is shown separately and is not part of net or the expected remittance; it is taken back out of the approved cash when comparing actual with expected. A remittance penalty charged to the MAS/Collector is likewise independent: it is shown as "Penalties (separate)" when present but is not added to net. Expected remittance is net less posted expenses. Difference is expected remittance less actual approved remittance, so a positive value indicates a shortage and a negative value indicates an overage.
 
 Filters for branch, program, and MAS/Collector apply to Sales and Collections. Branch also filters Expenses, Remittances, and Deposits. Program and person filters cannot be applied to those finance records because their current schemas do not contain those dimensions.
 
@@ -28,6 +28,6 @@ Every report records the signed-in employee's name and generation timestamp in t
 
 ## Current schema limits
 
-Fidelity is manually entered by the Entry Clerk on each MAS Remittance and may be zero. Approved amounts accumulate toward the ₱10,000 cap. New Sales incentives remain zero because no approved Sales incentive rule is stored.
+Fidelity is entered by the Entry Clerk with each batch (or Remittance) and may be zero; see [Fidelity](fidelity.md). New Sales incentives remain zero because no approved Sales incentive rule is stored.
 
 Reports do not currently persist an Open, Ready for Review, or Verified state. A verified report requires a defined reviewer, approval workflow, and immutable snapshot policy; displaying that state without stored approval evidence would be misleading.

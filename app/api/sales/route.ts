@@ -20,13 +20,11 @@ import {
 import { getEmployees } from "@/lib/employees";
 import { ageRestrictionError } from "@/lib/program-age";
 import { todayInManila } from "@/lib/account-rules";
-import { FIDELITY_CAP, getFidelityData } from "@/lib/fidelity";
 import { GOOGLE_SHEET_ID, readingFresh, sheets, withWriteLock } from "@/lib/google-sheets";
-import { calculateSaleIncentive } from "@/lib/remittance";
+import { calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
 import { headerMatches } from "@/lib/sheet-headers";
 import { newSalesDoubleEntry, personKey } from "@/lib/duplicate-entries";
 
-const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
 
 type SalePayload = {
   branch: string;
@@ -36,7 +34,7 @@ type SalePayload = {
   /** Optional remittance penalty on the batch, charged to the MAS, with what it is for. */
   penalty?: number;
   penaltyNote?: string;
-  /** MAS Fidelity for this batch; it comes out of the batch's New Sale incentives. Zero is allowed. */
+  /** Fidelity for this batch: the MAS's own money, added to the total remittance. No limit; zero is allowed. */
   fidelityAmount?: number;
 };
 
@@ -530,22 +528,16 @@ async function saveSales(request: Request) {
 
     /*
      * What the MAS keeps from each sale and what the company is owed (lib/remittance.ts calculateSaleIncentive).
-     * The batch's Fidelity comes out of these incentives; it is tracked separately from the remittance.
+     * The batch's Fidelity is the MAS's own money: it leaves these incentives untouched and is added to the remittance.
      */
     const quotes: Array<{ incentive: number; remittance: number }> = [];
     for (const [index, prepared] of preparedSales.entries()) {
       const program = programs.find((item) => item.id === prepared.sale.programId?.trim());
       const amountPaid = Number(prepared.sale.amountPaid);
       if (!program || !Number.isFinite(amountPaid) || amountPaid < 0) return NextResponse.json({ success: false, message: `Sale #${index + 1}: Enter a valid amount paid.` }, { status: 400 });
-      try { quotes.push(calculateSaleIncentive(program, amountPaid)); }
+      // A branch's own incentive tiers replace the program's base tiers there.
+      try { quotes.push(calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, selectedBranch?.id ?? "") }, amountPaid)); }
       catch (error) { return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${error instanceof Error ? error.message : "The incentive could not be calculated."}` }, { status: 400 }); }
-    }
-    if (fidelity > 0) {
-      const incentives = Math.round(quotes.reduce((sum, quote) => sum + Math.round(quote.incentive * 100), 0)) / 100;
-      if (fidelity > incentives) return NextResponse.json({ success: false, message: `Fidelity cannot exceed the batch's total incentives of ${peso(incentives)}.` }, { status: 400 });
-      const account = (await getFidelityData(selectedStaff.id, true)).accounts.find((item) => item.masEmployeeId === selectedStaff.id);
-      const remaining = Math.max(0, Math.round((FIDELITY_CAP - (account?.approved ?? 0) - (account?.pending ?? 0)) * 100) / 100);
-      if (fidelity > remaining) return NextResponse.json({ success: false, message: `Fidelity can be at most ${peso(remaining)} for this MAS (the ${peso(FIDELITY_CAP)} limit).` }, { status: 400 });
     }
     const salesHeader = (await readingFresh(() => sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Sales!AO1:AQ1" }))).data.values?.[0] ?? [];
     if (["mas_incentive", "remittance_amount", "fidelity_amount"].some((name, index) => !headerMatches(salesHeader[index], name))) {

@@ -15,17 +15,23 @@ type Figures = {
   accounts: number; gross: number; incentives: number; fidelity: number; penalty: number; expectedRemittance: number;
   sales: Array<{ program: string; branch: string; accounts: number; gross: number }>;
   collections: Array<{ program: string; branch: string; accounts: number; gross: number; expectedRemittance: number }>;
+  dailyAudits?: { approved: number; balanced: number; withFindings: number; drafts: number };
 };
+type Period = "daily" | "weekly" | "monthly" | "yearly";
+const PERIODS: Array<[Period, string, string]> = [["daily", "Daily", "day"], ["weekly", "Weekly", "week"], ["monthly", "Monthly", "month"], ["yearly", "Yearly", "year"]];
 type Audit = { id: string; status: string; findings: string; result: string; approvedByName: string; approvedAt: string; reopenReason: string; updatedAt: string; preparedBy: string };
 type Row = { employeeId: string; employeeName: string; branch: string; status: "Not started" | "Draft" | "Approved"; audit: Audit | null; figures: Figures };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
 const when = (value: string) => (value ? value.replace("T", " ").slice(0, 16) : "");
 
-/** HR, Finance, and Administrators audit each Entry Clerk's Daily Report; only an Administrator approves. */
+/** HR, Finance, and Administrators audit each Entry Clerk's report by day, week, month, or year; only an Administrator approves. */
 export default function DailyAuditPage() {
-  const [tab, setTab] = useState<"daily" | "summary">("daily");
+  const [tab, setTab] = useState<Period | "summary">("daily");
+  const period: Period = tab === "summary" ? "daily" : tab;
+  const unit = PERIODS.find(([id]) => id === period)?.[2] ?? "day";
   const [date, setDate] = useState(todayInManila());
+  const [span, setSpan] = useState({ from: "", to: "" });
   const [rows, setRows] = useState<Row[]>([]);
   const [canApprove, setCanApprove] = useState(false);
   const [busy, setBusy] = useState(true);
@@ -34,22 +40,22 @@ export default function DailyAuditPage() {
   const [draft, setDraft] = useState({ findings: "", result: "Balanced", reason: "" });
   const [message, setMessage] = useState("");
 
-  const load = useCallback(async (day: string) => {
+  const load = useCallback(async (day: string, which: Period) => {
     setBusy(true); setError("");
     try {
-      const response = await fetch(`/api/audit?date=${encodeURIComponent(day)}`, { cache: "no-store" });
+      const response = await fetch(`/api/audit?date=${encodeURIComponent(day)}&period=${which}`, { cache: "no-store" });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load audits.");
-      setRows(result.audits); setCanApprove(Boolean(result.canApprove));
+      setRows(result.audits); setCanApprove(Boolean(result.canApprove)); setSpan({ from: result.from, to: result.to });
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to load audits."); }
     finally { setBusy(false); }
   }, []);
 
   useEffect(() => {
-    // Loading the chosen day's audits owns the busy state.
+    // Loading the chosen period's audits owns the busy state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load(date);
-  }, [date, load]);
+    if (tab !== "summary") void load(date, period);
+  }, [date, period, tab, load]);
 
   function toggle(row: Row) {
     setMessage("");
@@ -61,10 +67,10 @@ export default function DailyAuditPage() {
   async function send(method: "POST" | "PATCH", body: Record<string, unknown>, done: string) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch("/api/audit", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, ...body }) });
+      const response = await fetch("/api/audit", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, period, ...body }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to update the audit.");
-      setMessage(done); await load(date);
+      setMessage(done); await load(date, period);
     } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to update the audit."); setBusy(false); }
   }
 
@@ -75,21 +81,25 @@ export default function DailyAuditPage() {
         <div className="flex items-center gap-4">
           <div className="tone-soft tone-brand rounded-2xl p-3"><ClipboardCheck className="size-8" /></div>
           <div>
-            <h1 className="text-2xl font-bold">Daily Audit</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Check each Entry Clerk&apos;s Daily Report for the day. HR and Finance prepare the audit; an Administrator approves it, which locks it.</p>
+            <h1 className="text-2xl font-bold">Audits</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Check each Entry Clerk&apos;s report for the day, week, month or year. HR and Finance prepare the audit; an Administrator approves it, which locks it.</p>
           </div>
         </div>
-        {tab === "daily" && <label className="text-sm">Report date<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { setOpen(""); setDate(event.target.value); }} /></label>}
+        {tab === "daily" && <label className="text-sm">Report date<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(event.target.value); } }} /></label>}
+        {tab === "weekly" && <label className="text-sm">Any day in the week<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(event.target.value); } }} /></label>}
+        {tab === "monthly" && <label className="text-sm">Month<Input type="month" className="mt-1 h-9" max={todayInManila().slice(0, 7)} value={date.slice(0, 7)} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(`${event.target.value}-01`); } }} /></label>}
+        {tab === "yearly" && <label className="text-sm">Year<Input type="number" className="mt-1 h-9 w-28" min={2019} max={Number(todayInManila().slice(0, 4))} value={date.slice(0, 4)} onChange={(event) => { const year = event.target.value; if (/^\d{4}$/.test(year)) { setOpen(""); setDate(`${year}-01-01`); } }} /></label>}
       </div>
     </header>
 
-    <div role="tablist" aria-label="Daily Audit views" className="flex w-fit gap-1 rounded-xl border bg-muted/40 p-1 print:hidden">
-      {([["daily", "Daily audit"], ["summary", "Summary"]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === id ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
+    <div role="tablist" aria-label="Audit views" className="flex w-fit flex-wrap gap-1 rounded-xl border bg-muted/40 p-1 print:hidden">
+      {([...PERIODS.map(([id, label]) => [id, label] as const), ["summary", "Daily summary"] as const]).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => { setOpen(""); setMessage(""); setTab(id); }} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === id ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
     </div>
 
     {tab === "summary" ? <AuditSummary /> : <>
 
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+    {span.from && period !== "daily" && <p className="text-sm text-muted-foreground">Auditing the {unit} from <strong>{span.from}</strong> to <strong>{span.to}</strong>: each Entry Clerk&apos;s report totals for the whole {unit}, with how their daily audits stand.</p>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <MetricTile tone="brand" label="Entry Clerks to audit" value={String(rows.length)} detail="Active Entry Clerks" />
       <MetricTile tone="warning" label="Not started" value={String(count("Not started"))} />
@@ -116,6 +126,10 @@ export default function DailyAuditPage() {
                   {[["Accounts", String(row.figures.accounts)], ["Amount collected", money(row.figures.gross)], ["Incentives", money(row.figures.incentives)], ["Fidelity", money(row.figures.fidelity)], ["Penalties", money(row.figures.penalty)], ["Expected remittance", money(row.figures.expectedRemittance)]].map(([label, value]) =>
                     <div key={label} className="rounded-lg border bg-background p-2"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold tabular-nums">{value}</p></div>)}
                 </div>
+                {row.figures.dailyAudits && <div className="grid gap-3 text-sm sm:grid-cols-4">
+                  {[["Daily audits approved", row.figures.dailyAudits.approved], ["Balanced days", row.figures.dailyAudits.balanced], ["Days with findings", row.figures.dailyAudits.withFindings], ["Daily audits not yet approved", row.figures.dailyAudits.drafts]].map(([label, value]) =>
+                    <div key={String(label)} className="rounded-lg border bg-background p-2"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold tabular-nums">{value}</p></div>)}
+                </div>}
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div><p className="mb-1 text-sm font-semibold">New Sales ({row.figures.sales.length})</p>
                     {row.figures.sales.length ? <ul className="divide-y rounded-lg border bg-background text-sm">{row.figures.sales.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s)</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>

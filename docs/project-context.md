@@ -88,7 +88,7 @@ Members supports ascending/descending sorting by name, PH number, city, province
 
 The application-managed tabs now have a canonical database schema in `config/sheet-database-schema.json` and a read-only audit available through `npm run sheets:audit`. The audit checks stable primary keys, duplicate IDs, merged cells, blank rows inside tables, canonical lowercase headers, and known column types. The original 15 application-managed sheets were migrated to lowercase `snake_case` headers, and the two Finance sheets were created with canonical headers. Runtime header checks accept canonicalized names while continuing to guard numeric column positions.
 
-Fidelity Savings is recorded by the Entry Clerk as a manual amount on each MAS Remittance, including zero. Approved amounts accumulate toward a ₱10,000 lifetime cap; the Fidelity page lists each MAS balance, pending amounts, remaining cap, and remittance history. See `docs/fidelity.md`.
+Fidelity Savings (rule changed 2026-10-02) is the employee's own money handed over with a batch: it is added to the total remittance, never deducted from incentives, and has no limit. The first ₱10,000 of the balance is locked until the employee leaves; anything above it can be withdrawn any time. See `docs/fidelity.md`.
 
 Every active employee may be assigned member accounts through the fields historically labelled MAS. New Sales and Collections therefore search the complete active employee directory. Every role receives the shared employee workspaces: My Members, My Fidelity, MAM, Attendance, Leave Requests, Master Data, and Settings; role-specific operational and administrative modules remain additional navigation.
 
@@ -185,3 +185,17 @@ Cards, the sidebar, the floating rounded top bar, and page headers are frosted g
 ## Program age restrictions
 
 Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_age`). When restricted, a minimum age is required and the maximum may be blank for no upper limit. New Sales rejects an enrollment when the member's age today is outside the range, using the stored birthdate for existing members. Rules live in `lib/program-age.ts`; headers were added with `npm run sheets:program-age`.
+
+## Program categories and branch incentives (2026-10-02)
+
+- Programs have a **category** (Programs S `category_id`) from the editable **Program Categories** sheet, seeded with Pay the Balance, Funeral Services and Cash Assistance. Administrators and IT add, rename, deactivate or delete categories on the Programs page; a category in use cannot be deleted, only made inactive.
+- Program Incentives M `branch_id` makes a tier branch-specific. Blank tiers are the program's **base rates** for every branch. A branch with its own tiers for a role uses only those for that role there (`tiersForBranch` in `lib/remittance.ts`); Collections, the New Sale incentive (month-1 tier), and both previews apply it. Each program still needs base tiers.
+- Migration: `npm run sheets:program-categories -- --apply` (applied 2026-10-02).
+
+## Attendance corrections
+
+Administrators, HR, the CEO and President (and anyone with manage-attendance) can correct a clocked-in day on the Attendance Tracking daily board: **Adjust late**, and **Set clock-out / Fix clock-out** for an employee who forgot to clock out or clocked out at the wrong time. Worked hours, overtime and undertime are recalculated exactly as at clock-out, and the change, who made it and the reason are appended to the attendance notes. Past days list anyone who did not clock out.
+
+## Audits (daily, weekly, monthly, yearly)
+
+The Audits page (`/audit`, formerly Daily Audit) audits each Entry Clerk's report by day, week (Monday to Sunday), month or year, with the same workflow: HR/Finance prepare, only an Administrator approves (which locks the figures) or reopens with a reason. Weekly, monthly and yearly audits use the report totals for the whole period plus how the clerk's daily audits in that period stand. They are stored in Weekly Audits, Monthly Audits and Yearly Audits, laid out like Daily Audits with report_date = the period's first day (`npm run sheets:period-audits -- --apply`, applied 2026-10-02). The Daily summary tab still summarizes approved daily audits.

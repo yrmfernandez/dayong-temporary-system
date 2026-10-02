@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 
 import type { Member } from "@/lib/types";
-import { calculateRemittance, type IncentiveTier } from "@/lib/remittance";
+import { calculateRemittance, tiersForBranch, type IncentiveTier } from "@/lib/remittance";
 
 type CollectionChannel = "MAS" | "Collector" | "DTO";
 type PaymentMethodOption = { id: string; name: string; isCash: boolean; requiresReference: boolean };
@@ -251,7 +251,7 @@ export default function CollectionsPage() {
   // Remittance penalty: charged to the accountable MAS/Collector (their own money), added once to the batch's remittance.
   const [penalty, setPenalty] = useState("");
   const [penaltyNote, setPenaltyNote] = useState("");
-  // MAS Fidelity set aside from this batch's incentives (not for Collector batches).
+  // Fidelity: the accountable employee's own money handed over with this batch, added to its total remittance.
   const [fidelity, setFidelity] = useState("");
 
   // The unsaved batch survives leaving the page and coming back (member search results included, so picks still show).
@@ -409,17 +409,16 @@ export default function CollectionsPage() {
       const selected = programs.find((p) => p.id === entry.programId);
       const count = getMonthDifference(entry.monthFrom, entry.monthTo);
       if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
-      return { ...calculateRemittance(selected.basePay, selected.incentiveTiers ?? [], incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected)), error: "" };
+      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected)), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
   }
   const quotes = collections.map(quoteEntry);
   const totalCollected = collections.reduce((sum, entry) => sum + Math.round(Number(entry.amountCollected || 0) * 100), 0) / 100;
   const totalRemittance = quotes.every((q) => "remittance" in q) ? quotes.reduce((sum, q) => sum + Math.round(("remittance" in q ? q.remittance : 0) * 100), 0) / 100 : null;
   const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
-  const fidelityAmount = collectedBy === "Collector" ? 0 : Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
-  const batchIncentives = totalRemittance === null ? 0 : Math.round((totalCollected - totalRemittance) * 100) / 100;
-  // Penalty and Fidelity are independent of the remittance, so the cash due is the company remittance alone.
-  const totalDue = totalRemittance === null ? null : Math.round(totalRemittance * 100) / 100;
+  const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
+  // The cash due is the company remittance plus Fidelity; a penalty is tracked separately.
+  const totalDue = totalRemittance === null ? null : Math.round((totalRemittance + fidelityAmount) * 100) / 100;
 
   function updateCollection(
     id: string,
@@ -724,11 +723,6 @@ export default function CollectionsPage() {
       return;
     }
 
-    if (fidelityAmount > batchIncentives) {
-      setSaveMessage(`Fidelity cannot exceed the batch's total incentives of ${formatCurrency(batchIncentives)}.`);
-      return;
-    }
-
     if (penaltyAmount > 0 && penaltyNote.trim().length < 3) {
       setSaveMessage("Explain what the penalty is for.");
       return;
@@ -935,13 +929,13 @@ export default function CollectionsPage() {
             </fieldset>
 
             <fieldset className="space-y-2 rounded-lg border p-3 md:col-span-3">
-              <legend className="px-1 text-sm font-medium">MAS Fidelity (optional)</legend>
+              <legend className="px-1 text-sm font-medium">Fidelity (optional)</legend>
               <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
                 <div className="space-y-1">
                   <Label htmlFor="fidelity-amount">Fidelity amount</Label>
-                  <Input id="fidelity-amount" type="number" min="0" step="0.01" max={batchIncentives || undefined} value={collectedBy === "Collector" ? "" : fidelity} disabled={collectedBy === "Collector"} placeholder="0.00" onChange={(event) => { setFidelity(event.target.value); setAutoApproveRemittance(false); }} />
+                  <Input id="fidelity-amount" type="number" min="0" step="0.01" value={fidelity} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => { setFidelity(event.target.value); setAutoApproveRemittance(false); }} />
                 </div>
-                <p className="text-xs text-muted-foreground">{collectedBy === "Collector" ? "Not available: a Collector batch's incentive belongs to the Collector." : `Set aside from the MAS's incentives as savings (up to ${formatCurrency(batchIncentives)} in this batch; ₱10,000 lifetime limit). It lowers the incentives and is added to the remittance.`}</p>
+                <p className="text-xs text-muted-foreground">The {collectedBy === "Collector" ? "Collector" : "MAS"}&apos;s own money handed over for their Fidelity savings. It is added to this batch&apos;s total remittance and does not reduce incentives. There is no limit; the first ₱10,000 of savings is released only when the employee leaves, and anything above it can be withdrawn any time.</p>
               </div>
             </fieldset>
           </div>
