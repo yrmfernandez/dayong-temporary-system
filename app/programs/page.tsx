@@ -1970,7 +1970,7 @@ const programForm = (
             Registration fee required
           </label>
           <div className="space-y-2"><Label>Registration amount</Label><Input type="number" min="0" step="0.01" disabled={!form.registrationFeeRequired} value={form.registrationAmount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("registrationAmount", event.target.value)} /></div>
-          <div className="space-y-2"><Label>Pay-the-balance total</Label><Input type="number" min="0" step="0.01" value={form.payBalanceTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("payBalanceTotal", event.target.value)} /><p className="text-xs text-muted-foreground">Set to 0 when the program has no fixed payoff total.</p></div>
+          <div className="space-y-2"><Label>Total amount payable</Label><Input type="number" min="0" step="0.01" value={form.payBalanceTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("payBalanceTotal", event.target.value)} /><p className="text-xs text-muted-foreground">The full amount a member pays to complete the program. Set to 0 when there is no fixed total.</p></div>
         </div>
         <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-3">
           <div className="md:col-span-3"><h4 className="text-sm font-semibold">New Sale MAS incentive</h4><p className="text-xs text-muted-foreground">{form.registrationFeeRequired ? "What the MAS keeps from the registration paid on a new sale. MAS Fidelity on a New Sales batch comes out of this." : "Without a registration fee, a new sale pays the first month, so the month-1 MAS incentive tier below applies to the base pay."}</p></div>
@@ -2220,6 +2220,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           {formatPeso(
                             program.basePay,
                           )}
+                          {" · "}Total amount payable:{" "}
+                          {program.payBalanceTotal > 0 ? formatPeso(program.payBalanceTotal) : "No fixed total"}
                         </p>
 
                       </div>

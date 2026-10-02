@@ -78,7 +78,8 @@ export default function AttendanceReviewsPage() {
       const response = await fetch("/api/attendance-reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "non-working-day", attendanceDate, notes: nonWorkingReason }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to save non-working day.");
-      setMessage(result.message); setIsNonWorkingDay(true);
+      // Reload so clock-ins the server just cancelled show their new status.
+      await loadReview(); setMessage(result.message);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save non-working day."); }
     finally { setUpdatingId(""); }
   };

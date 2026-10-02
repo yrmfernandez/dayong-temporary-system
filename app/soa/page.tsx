@@ -128,7 +128,7 @@ function StatementContent() {
 
       <dl className="ml-auto max-w-sm space-y-1.5 border-t pt-4">
         <Row label="Total paid" value={money(s.totalPaid)} />
-        {s.remainingBalance !== null && <Row label={`Remaining to pay-the-balance (${money(statement.account.payBalanceTotal)})`} value={money(s.remainingBalance)} />}
+        {s.remainingBalance !== null && <Row label={`Remaining of total amount payable (${money(statement.account.payBalanceTotal)})`} value={money(s.remainingBalance)} />}
         <Row label="Months behind" value={String(s.unpaidMonths)} />
         <Row label="Amount due now" value={s.amountDue === null ? "Forfeited" : money(s.amountDue)} strong />
       </dl>

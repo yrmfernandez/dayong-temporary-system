@@ -84,6 +84,8 @@ export default function AttendancePage() {
   // The branch on the employee's record; attendance never asks for one.
   const [branch, setBranch] = useState("");
   const [assignedBranches, setAssignedBranches] = useState<string[]>([]);
+  // The administrator's reason when today is marked as a non-working day; clocking is closed while set.
+  const [closedReason, setClosedReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
@@ -101,6 +103,7 @@ export default function AttendancePage() {
       setRecord(result.record ?? null);
       setBranch(result.record?.branch || result.assignedBranch || "");
       setAssignedBranches(result.assignedBranches ?? []);
+      setClosedReason(result.nonWorkingDay ? result.nonWorkingDay.notes || "Non-working day" : "");
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to load attendance.",
@@ -235,7 +238,9 @@ export default function AttendancePage() {
                     ? "Currently Clocked In"
                     : isComplete
                       ? "Attendance Complete"
-                      : "Ready to Clock In"}
+                      : closedReason
+                        ? "Attendance Closed"
+                        : "Ready to Clock In"}
                 </Badge>
 
                 <div className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-40">
@@ -266,6 +271,13 @@ export default function AttendancePage() {
             </div>
 
             <div className="space-y-4">
+              {closedReason && !isComplete && (
+                <div className="flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <span>Attendance is closed today: {closedReason}</span>
+                </div>
+              )}
+
               {!record?.timeIn && (
                 <div className="space-y-2 rounded-2xl border border-violet-90 bg-violet-95/40 p-4">
                   <p className="flex items-center gap-2 text-sm font-bold text-violet-10">
@@ -285,7 +297,7 @@ export default function AttendancePage() {
                   type="button"
                   size="lg"
                   className="h-14 w-full rounded-2xl text-base font-extrabold shadow-[0_10px_25px_-5px_rgb(105_51_255_/_0.35)]"
-                  disabled={submitting || loading || !branch}
+                  disabled={submitting || loading || !branch || Boolean(closedReason)}
                   onClick={() => void submitAttendance("time-in")}
                 >
                   <LogIn className="size-5" />

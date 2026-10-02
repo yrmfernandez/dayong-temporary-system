@@ -124,7 +124,7 @@ export const POST = withEncoder(async function POST(
     const normalizedRegistrationAmount = Number(registrationAmount) || 0;
     const normalizedPayBalanceTotal = Number(payBalanceTotal) || 0;
     if (normalizedRegistrationAmount < 0 || normalizedPayBalanceTotal < 0 || (registrationFeeRequired && normalizedRegistrationAmount <= 0)) {
-      return NextResponse.json({ success: false, error: "Enter valid registration and pay-the-balance amounts." }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Enter a valid registration amount and total amount payable." }, { status: 400 });
     }
 
     if (!Array.isArray(incentiveTiers)) {

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import {
   addAttendanceRecord,
+  cancelClockInsForNonWorkingDay,
   getAttendanceForEmployeeDate,
   getAttendanceRecordsForDate,
   type AttendanceRecord,
@@ -13,7 +14,7 @@ import {
   SCHEDULED_TIME_IN,
   SCHEDULED_TIME_OUT,
 } from "@/lib/attendance";
-import { canManageAttendance } from "@/lib/auth-server";
+import { canManageAttendance, getSessionUser } from "@/lib/auth-server";
 import { getActiveAttendanceEmployees } from "@/lib/google-sheets-data";
 
 function isWorkingDate(date: string) {
@@ -134,7 +135,8 @@ export const POST = withEncoder(async function POST(request: Request) {
       const timestamp = new Date().toISOString();
       const record: AttendanceRecord = { id: existing.record?.id || `NWD-${attendanceDate.replaceAll("-", "")}`, employeeId: "SYSTEM", attendanceDate, branch: "All branches", scheduledTimeIn: "", scheduledTimeOut: "", timeIn: "", timeOut: "", workedHours: 0, overtimeHours: 0, status: "Non-working Day", lateMinutes: 0, undertimeMinutes: 0, leaveType: "", leaveApprovalStatus: "", notes, createdAt: existing.record?.createdAt || timestamp, updatedAt: timestamp };
       if (existing.rowNumber) await updateAttendanceRecord(existing.rowNumber, record); else await addAttendanceRecord(record);
-      return NextResponse.json({ success: true, message: "Non-working day saved.", record });
+      const cancelled = await cancelClockInsForNonWorkingDay(attendanceDate, notes, (await getSessionUser())?.name || "an administrator");
+      return NextResponse.json({ success: true, message: `Non-working day saved.${cancelled ? ` ${cancelled} clock-in${cancelled === 1 ? "" : "s"} cancelled.` : ""}`, record });
     }
 
     const employees = await getActiveAttendanceEmployees();

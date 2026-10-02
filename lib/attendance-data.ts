@@ -61,7 +61,7 @@ export function sheetTimeText(value: unknown) {
 
 const statusOf = (value: unknown): AttendanceStatus => {
   const status = String(value ?? "").trim();
-  return status === "Leave" || status === "Absent" || status === "AWOL" ? status : "Present";
+  return status === "Leave" || status === "Absent" || status === "AWOL" || status === "Non-working Day" ? status : "Present";
 };
 
 function readAttendanceRow(row: unknown[]): AttendanceRecord {
@@ -157,6 +157,27 @@ export async function getAttendanceRecordsForDate(
   attendanceDate: string,
 ): Promise<AttendanceRecord[]> {
   return (await attendanceRows()).slice(1).map(readAttendanceRow).filter((record) => record.attendanceDate === attendanceDate);
+}
+
+/**
+ * Cancels every clock-in already recorded on a day the administrator declares non-working: the record becomes a
+ * Non-working Day with no hours, and the original times are kept in its notes. Returns how many were cancelled.
+ */
+export async function cancelClockInsForNonWorkingDay(attendanceDate: string, reason: string, by: string) {
+  const rows = await attendanceRows();
+  const timestamp = new Date().toISOString();
+  let cancelled = 0;
+  for (let index = 1; index < rows.length; index++) {
+    const record = readAttendanceRow(rows[index]);
+    if (record.employeeId === "SYSTEM" || record.attendanceDate !== attendanceDate || record.status !== "Present" || !record.timeIn) continue;
+    const note = `Clock-in ${record.timeIn}${record.timeOut ? `-${record.timeOut}` : ""} cancelled by ${by}: non-working day (${reason})`;
+    await updateAttendanceRecord(index + 1, {
+      ...record, timeIn: "", timeOut: "", workedHours: 0, overtimeHours: 0, status: "Non-working Day", lateMinutes: 0, undertimeMinutes: 0,
+      notes: [record.notes, note].filter(Boolean).join(" | "), updatedAt: timestamp,
+    });
+    cancelled++;
+  }
+  return cancelled;
 }
 
 export async function getAttendanceRecordsForRange(

@@ -27,7 +27,7 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
   const programs = await rows("Programs!A:F");
   const rowNumber = findRow(programs, id);
   if (!input.code || !input.name || !Number.isFinite(input.basePay) || input.basePay <= 0 || !input.incentiveTiers.length) throw new Error("Complete the program and incentive details.");
-  if (!Number.isFinite(input.registrationAmount) || input.registrationAmount < 0 || !Number.isFinite(input.payBalanceTotal) || input.payBalanceTotal < 0) throw new Error("Registration and pay-the-balance amounts cannot be negative.");
+  if (!Number.isFinite(input.registrationAmount) || input.registrationAmount < 0 || !Number.isFinite(input.payBalanceTotal) || input.payBalanceTotal < 0) throw new Error("Registration and total amount payable cannot be negative.");
   if (input.registrationFeeRequired && input.registrationAmount <= 0) throw new Error("Enter the required registration amount.");
   const ageRestriction = normalizeAgeRestriction(input);
   const saleIncentive = normalizeSaleIncentive(input);
