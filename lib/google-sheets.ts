@@ -115,9 +115,10 @@ function writtenSheets(params: { range?: string | null; requestBody?: object | n
 // Only data from the sheets a save touched is dropped, so other users keep their cached reads. Structural changes
 // (adding sheets, deleting rows) pass no sheet names and clear everything.
 async function write<T>(tags: string[] | undefined, operation: () => Promise<T>) {
-  const clear = () => cache.invalidate(tags ? [...tags, AUDIT_SHEET] : undefined);
-  clear();
-  try { return await operation(); } finally { clear(); }
+  const clear = (warm: boolean) => cache.invalidate(tags ? [...tags, AUDIT_SHEET] : undefined, { warm });
+  clear(false);
+  // Once written, reload the touched sheets that pages were using, so the next page does not wait for Google.
+  try { return await operation(); } finally { clear(true); }
 }
 // Edits and deletes are recorded in the Audit Log sheet (lib/audit-log.ts); appends are creations and are not.
 const actor = () => currentEncoder();

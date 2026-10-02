@@ -79,3 +79,39 @@ test('quota exhaustion pauses uncached reads without retry storms; cached reads 
   now = 60_001;
   assert.equal(await cache.read('bad', async () => 'recovered'), 'recovered');
 });
+
+test('an expired copy is served at once and refreshed in the background; a save still clears it', async () => {
+  let now = 0, version = 1;
+  const cache = new SheetsReadCache(60, () => now);
+  const load = async () => ({ version });
+  assert.equal((await cache.read('collections', load, false, ['Collections'])).version, 1);
+  version = 2; now = 61;
+  assert.equal((await cache.read('collections', load, false, ['Collections'])).version, 1, 'stale copy, no waiting');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal((await cache.read('collections', load, false, ['Collections'])).version, 2, 'refreshed in the background');
+  version = 3; cache.invalidate(['Collections']);
+  assert.equal((await cache.read('collections', load, false, ['Collections'])).version, 3, 'a save is never served stale');
+  const many = await cache.readMany([{ key: 'collections', tags: ['Collections'] }], async () => [{ version }]);
+  assert.equal(many[0].version, 3);
+  version = 4; now = 200;
+  assert.equal((await cache.readMany([{ key: 'collections', tags: ['Collections'] }], async () => [{ version }]))[0].version, 3, 'batch reads serve stale too');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal((await cache.readMany([{ key: 'collections', tags: ['Collections'] }], async () => [{ version }]))[0].version, 4);
+});
+
+test('after a save, recently read ranges of the written sheets are reloaded in the background', async () => {
+  let version = 1, calls = 0;
+  const cache = new SheetsReadCache(60, () => 0);
+  const load = async () => { calls++; return { version }; };
+  await cache.read('collections', load, false, ['Collections']);
+  await cache.read('programs', async () => ({ version: 'p' }), false, ['Programs']);
+  version = 2;
+  cache.invalidate(['collections'], { warm: true });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(calls, 2, 'the cleared range was fetched again without anyone asking');
+  assert.equal((await cache.read('collections', load, false, ['Collections'])).version, 2);
+  assert.equal(calls, 2, 'and the next page uses the warmed copy');
+  cache.invalidate(['Collections']);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(calls, 2, 'a clear before writing does not warm');
+});

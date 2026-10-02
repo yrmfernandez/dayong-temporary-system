@@ -1,5 +1,5 @@
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
-import { accountState, monthIndex, monthName, type Account, type AccountPayment, todayInManila } from "@/lib/account-rules";
+import { accountState, monthIndex, monthName, paymentsByEnrollment, type Account, type AccountPayment, todayInManila } from "@/lib/account-rules";
 import { getEncoder } from "@/lib/encoder-context";
 import { encoderHeaders } from "@/lib/encoder-schema";
 import type { IncentiveTier } from "@/lib/remittance";
@@ -45,10 +45,14 @@ export async function loadAccountData() {
 export async function accountReport() {
   const data = await loadAccountData();
   const today = todayInManila();
+  // Look payments and sales up per account instead of scanning every row for every account.
+  const byEnrollment = paymentsByEnrollment(data.payments);
+  const salesByAccount = new Map<string, (typeof data.sales)[number]>();
+  for (const sale of data.sales) if (!salesByAccount.has(`${sale.memberNumber}\u0000${sale.programId}`)) salesByAccount.set(`${sale.memberNumber}\u0000${sale.programId}`, sale);
   const rows = data.accounts.filter((a) => !a.doi || a.doi <= today).map((account) => {
     try {
-      const state = accountState(account, data.payments, today);
-      const sale = data.sales.find((s) => s.memberNumber === account.memberNumber && s.programId === account.programId);
+      const state = accountState(account, byEnrollment.get(account.id) ?? [], today);
+      const sale = salesByAccount.get(`${account.memberNumber}\u0000${account.programId}`);
       return { ...account, ...state, applicationNumber: sale?.applicationNumber ?? "", registrationFee: sale?.registrationFee ?? 0, error: "" };
     } catch (error) { return { ...account, error: error instanceof Error ? error.message : "Review account data." }; }
   });
@@ -81,7 +85,8 @@ export async function memberMam(memberId: string) {
   const current = monthIndex(today.slice(0, 7));
   const earliest = Math.min(current, ...accounts.filter((account) => account.doi).map((account) => monthIndex(account.doi.slice(0, 7))));
   const from = monthName(Math.max(earliest, current - 35));
-  return buildMamReport({ ...data, accounts, payments: data.payments.filter((payment) => accounts.some((account) => account.id === payment.enrollmentId)) }, from, today.slice(0, 7), today);
+  const ids = new Set(accounts.map((account) => account.id));
+  return buildMamReport({ ...data, accounts, payments: data.payments.filter((payment) => ids.has(payment.enrollmentId)) }, from, today.slice(0, 7), today);
 }
 
 export async function syncAccountStatuses() {
@@ -102,11 +107,12 @@ export async function commitCollections(collectionRows: (string | number)[][], a
     return found;
   };
   const cell = (value: string | number) => ({ userEnteredValue: typeof value === "number" ? { numberValue: value } : { stringValue: value } });
+  const byEnrollment = paymentsByEnrollment(payments);
   const requests = [
     { appendCells: { sheetId: id("Collections"), rows: collectionRows.map((r) => ({ values: [...r.slice(0, 21), ...identity, ...r.slice(21)].map(cell) })), fields: "userEnteredValue" } },
     ...accounts.map((account) => ({ updateCells: {
       range: { sheetId: id("Member programs"), startRowIndex: account.rowNumber - 1, endRowIndex: account.rowNumber, startColumnIndex: 18, endColumnIndex: 19 },
-      rows: [{ values: [cell(accountState(account, payments).status)] }], fields: "userEnteredValue",
+      rows: [{ values: [cell(accountState(account, byEnrollment.get(account.id) ?? []).status)] }], fields: "userEnteredValue",
     } })),
   ];
   // Commit collections and resulting member-account statuses atomically.

@@ -1,4 +1,4 @@
-import { accountState, dateInMonth, monthCount, monthIndex, monthName, validMonth, type Account, type AccountPayment } from "@/lib/account-rules";
+import { accountState, dateInMonth, monthCount, monthIndex, monthName, paymentsByEnrollment, validMonth, type Account, type AccountPayment } from "@/lib/account-rules";
 
 export type MamAccount = Account & { memberName: string; programName: string; rowNumber: number };
 export function monitoringMonths(from: string, to: string) {
@@ -8,9 +8,13 @@ export function monitoringMonths(from: string, to: string) {
 
 export function buildMamReport(data: { accounts: MamAccount[]; payments: AccountPayment[]; sales: { memberNumber: string; programId: string; applicationNumber: string; registrationFee: number }[] }, from: string, to: string, today: string) {
   const months = monitoringMonths(from, to);
+  // Grouped once, so each account looks up its own payments and sale instead of scanning every row.
+  const byEnrollment = paymentsByEnrollment(data.payments);
+  const salesByAccount = new Map<string, (typeof data.sales)[number]>();
+  for (const sale of data.sales) if (!salesByAccount.has(`${sale.memberNumber}\u0000${sale.programId}`)) salesByAccount.set(`${sale.memberNumber}\u0000${sale.programId}`, sale);
   const rows = data.accounts.filter((a) => !a.doi || a.doi.slice(0, 7) <= to).map((account) => {
-    const history = data.payments.filter((p) => p.enrollmentId === account.id).sort((a, b) => a.orDate.localeCompare(b.orDate));
-    const sale = data.sales.find((s) => s.memberNumber === account.memberNumber && s.programId === account.programId);
+    const history = [...(byEnrollment.get(account.id) ?? [])].sort((a, b) => a.orDate.localeCompare(b.orDate));
+    const sale = salesByAccount.get(`${account.memberNumber}\u0000${account.programId}`);
     const periods = months.map((month) => {
       const projected = month > today.slice(0, 7);
       const end = month === today.slice(0, 7) ? today : dateInMonth(month, 31);

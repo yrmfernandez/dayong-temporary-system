@@ -146,7 +146,8 @@ export async function getPayrollRun(runId: string) {
 
 /** Earned incentive reference: gross less company remittance on remitted collections, by accountable employee. */
 async function earnedIncentives(from: string, to: string) {
-  const collections = await rows("'Collections'!A:AE");
+  // Same range as Reports, so both share one cached copy of this large sheet.
+  const collections = await rows("'Collections'!A:AK");
   const byEmployee = new Map<string, number>();
   for (const row of collections.slice(1)) {
     const orDate = text(row[9]).slice(0, 10);

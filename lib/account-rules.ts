@@ -51,6 +51,19 @@ export function allocations(payments: AccountPayment[], basePay?: number) {
   return result;
 }
 
+/**
+ * Payments grouped by enrollment. Reports over every account must look payments up here instead of passing the whole
+ * payment list to accountState for each account: that is accounts × payments work (tens of seconds at 10k × 50k).
+ */
+export function paymentsByEnrollment<T extends { enrollmentId: string }>(payments: T[]) {
+  const grouped = new Map<string, T[]>();
+  for (const payment of payments) {
+    const list = grouped.get(payment.enrollmentId);
+    if (list) list.push(payment); else grouped.set(payment.enrollmentId, [payment]);
+  }
+  return grouped;
+}
+
 export function accountState(account: Account, allPayments: AccountPayment[], today = todayInManila()) {
   if (!validDate(account.doi) || !validDate(today) || !Number.isFinite(account.basePay) || account.basePay <= 0) throw new Error(`Account ${account.id} needs a valid DOI and monthly program rate.`);
   const payments = allPayments.filter((p) => p.enrollmentId === account.id && p.orDate <= today);

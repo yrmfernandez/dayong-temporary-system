@@ -34,8 +34,9 @@ export async function getStatementOfAccount(enrollmentId: string) {
   const member = members.slice(1).find((row) => text(row[0]) === account.memberId) ?? [];
   const sale = sales.slice(1).find((row) => text(row[5]) === account.memberNumber && text(row[21]) === account.programId);
   const today = todayInManila();
-  const state = accountState(account, data.payments, today);
-  const payments = data.payments.filter((payment) => payment.enrollmentId === account.id).sort((a, b) => a.nopFrom - b.nopFrom || a.orDate.localeCompare(b.orDate));
+  const own = data.payments.filter((payment) => payment.enrollmentId === account.id);
+  const state = accountState(account, own, today);
+  const payments = [...own].sort((a, b) => a.nopFrom - b.nopFrom || a.orDate.localeCompare(b.orDate));
   let running = 0;
   const history = payments.map((payment) => {
     running = round(running + payment.amount);
