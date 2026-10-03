@@ -44,7 +44,7 @@ export function SystemHealthDashboard({ data, employeeName }: { data: SystemHeal
         <p className="mt-3 text-xs text-muted-foreground">Changes to roles apply the next time affected users sign in. <Link href="/roles" className="text-primary hover:underline">Manage roles</Link></p>
       </Panel>
       <div className="space-y-6">
-        <Panel title="Deployment Configuration">
+        <Panel title="Deployment Configuration" subtitle="Server settings the app needs to reach Google Sheets; each must show a check.">
           <ul className="space-y-2 text-sm">{data.config.map((item) => <li key={item.label} className="flex items-start justify-between gap-4"><span className="flex items-center gap-2">{item.ok ? <CheckCircle2 className="size-4 text-emerald-600" /> : <XCircle className="size-4 text-destructive" />}{item.label}</span><span className="text-right text-muted-foreground">{item.detail}</span></li>)}</ul>
         </Panel>
         <Panel title="Google API Usage" subtitle={`This server instance, last ${count(r.uptimeMinutes)} minutes`}>
@@ -66,7 +66,7 @@ export function SystemHealthDashboard({ data, employeeName }: { data: SystemHeal
       </Panel>
     </div>
 
-    <Panel title="Quick Actions"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{[["User Accounts", "/user-accounts"], ["Roles", "/roles"], ["Employees", "/employees"], ["Branches & Programs", "/branches"], ["Audit Log", "/history"]].map(([label, href]) => <Link key={href} href={href} className="rounded-xl border bg-card px-4 py-3 text-sm font-semibold shadow-sm transition-colors hover:border-primary hover:text-primary">{label}</Link>)}</div></Panel>
+    <Panel title="Quick Actions" subtitle="Shortcuts to the pages IT uses most."><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{[["User Accounts", "/user-accounts"], ["Roles", "/roles"], ["Employees", "/employees"], ["Branches & Programs", "/branches"], ["Audit Log", "/history"]].map(([label, href]) => <Link key={href} href={href} className="rounded-xl border bg-card px-4 py-3 text-sm font-semibold shadow-sm transition-colors hover:border-primary hover:text-primary">{label}</Link>)}</div></Panel>
     <p className="text-xs text-muted-foreground">Checked {stamp(data.checkedAt)}. <Gauge className="inline size-3" /> Reload the page to run the checks again.</p>
   </section>;
 }

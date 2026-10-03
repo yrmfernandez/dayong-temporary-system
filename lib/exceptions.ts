@@ -1,4 +1,5 @@
 import type { CorrectableEntry } from "@/components/entry-correction-form";
+import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 import { monthCount } from "@/lib/account-rules";
 import { entryKey, personKey } from "@/lib/duplicate-entries";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
@@ -49,7 +50,7 @@ const LIMIT = 300;
 export async function findExceptions({ includeLegacy = false } = {}) {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: ["'Collections'!A:AN", "'Sales'!A:AS", "'Programs'!A:U", "'Members'!A:R"],
+    ranges: [COLLECTIONS_RANGE, SALES_RANGE, PROGRAMS_RANGE, MEMBERS_RANGE],
     valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING",
   });
   const [collections, sales, programs, members] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];

@@ -9,6 +9,7 @@ import { buildOperationalReport } from "@/lib/reports";
 import { getRemittanceDashboard } from "@/lib/remittance-workflow";
 import { getTodayMode, TODAY_MODE_LABELS } from "@/lib/system-settings";
 import { getEntriesForDay } from "@/lib/todays-entries";
+import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const date = (value: unknown) => text(value).slice(0, 10);
@@ -24,12 +25,27 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const today = todayInManila();
   const from = `${today.slice(0, 7)}-01`;
   const needsSales = ["admin", "entry", "mas", "collector"].includes(kind);
-  const ranges = ["'Employees'!A:M", ...(kind === "admin" ? [USERS_RANGE, "'Branches'!A:Q", "'Members'!A:V"] : []), ...(needsSales ? ["'Programs'!A:J", "'Member programs'!A:S", "'Sales'!A:AI", "'Collections'!A:AG", "'Members'!A:V"] : [])];
+  // Large sheets use the shared ranges (lib/sheet-ranges.ts), so the report, remittances and today's counts below reuse
+  // this read instead of fetching Collections again. Member programs is only needed for the MAS portfolio.
+  const ranges = ["'Employees'!A:M", ...(kind === "admin" ? [USERS_RANGE, "'Branches'!A:Q", MEMBERS_RANGE] : []), ...(needsSales ? [PROGRAMS_RANGE, SALES_RANGE, COLLECTIONS_RANGE, MEMBERS_RANGE] : []), ...(kind === "mas" ? ["'Member programs'!A:S"] : [])];
   const unique = [...new Set(ranges)];
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: unique, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
+  const read = (list: string[]) => sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: list, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
+  // Start everything that does not depend on who the user is at once, instead of one step after another.
+  const mainRead = read(unique);
+  const todayModeRead = needsSales ? getTodayMode() : Promise.resolve("remittance" as const);
+  const remittanceRead = needsSales && (kind === "admin" || kind === "entry") ? getRemittanceDashboard() : Promise.resolve(null);
+  // Their errors surface in the Promise.all below; this only stops an early failure from leaving them unhandled.
+  for (const pending of [mainRead, todayModeRead, remittanceRead]) pending.catch(() => undefined);
+  // MAS and Collector dashboards are scoped to the person, so their name comes first (a small, cached read).
+  const employeeRows = (await read(["'Employees'!A:M"])).data.valueRanges?.[0]?.values ?? [];
+  const personName = text(employeeRows.slice(1).find((row) => text(row[0]) === user.employeeId)?.[1]) || user.name;
+  const scope = kind === "mas" || kind === "collector" ? { person: personName } : {};
+  const reportRead = needsSales ? buildOperationalReport(from, today, scope) : Promise.resolve(null);
+  const entriesRead = needsSales ? todayModeRead.then((mode) => getEntriesForDay(today, mode, "person" in scope ? scope.person : "")) : Promise.resolve(null);
+  const [response, todayMode, monthReport, remittance, todayEntries] = await Promise.all([mainRead, todayModeRead, reportRead, remittanceRead, entriesRead]);
   const byRange = new Map(unique.map((range, index) => [range, response.data.valueRanges?.[index]?.values ?? []]));
   const sheet = (range: string) => byRange.get(range) ?? [];
-  const employees = sheet("'Employees'!A:M"), members = sheet("'Members'!A:V"), programs = sheet("'Programs'!A:J"), enrollments = sheet("'Member programs'!A:S"), sales = sheet("'Sales'!A:AI"), collections = sheet("'Collections'!A:AG");
+  const employees = sheet("'Employees'!A:M"), members = sheet(MEMBERS_RANGE), programs = sheet(PROGRAMS_RANGE), enrollments = sheet("'Member programs'!A:S"), sales = sheet(SALES_RANGE), collections = sheet(COLLECTIONS_RANGE);
 
   const employee = employees.slice(1).find((row) => text(row[0]) === user.employeeId);
   const employeeName = text(employee?.[1]) || user.name;
@@ -39,11 +55,8 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const branchStats = [...new Set(activeEmployees.map((row) => text(row[2])).filter(Boolean))].sort().map((branch) => { const staff = activeEmployees.filter((row) => text(row[2]) === branch); return { branch, employees: staff.length, mas: staff.filter((row) => hasRole(row, "mas")).length, collectors: staff.filter((row) => hasRole(row, "collector")).length }; });
   const counts = { employees: employees.slice(1).filter((row) => text(row[0])).length, activeEmployees: activeEmployees.length, mas: activeEmployees.filter((row) => hasRole(row, "mas")).length, collectors: activeEmployees.filter((row) => hasRole(row, "collector")).length, users: kind === "admin" ? readUserRows(sheet(USERS_RANGE)).users.filter((row) => row.status === "active").length : 0, branches: sheet("'Branches'!A:Q").slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active").length, members: members.slice(1).filter((row) => text(row[0])).length, programs: programs.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() === "active").length, portfolio: 0 };
 
-  // Sales and collection activity, scoped to the person for MAS and Collector dashboards.
-  const scope = kind === "mas" ? { person: employeeName } : kind === "collector" ? { person: employeeName } : {};
-  // "Today" follows the company setting (remittance date unless an administrator chose encoded or OR date).
-  const todayMode = needsSales ? await getTodayMode() : "remittance";
-  const [monthReport, remittance, todayEntries] = needsSales ? await Promise.all([buildOperationalReport(from, today, scope), kind === "admin" || kind === "entry" ? getRemittanceDashboard() : Promise.resolve(null), getEntriesForDay(today, todayMode, scope.person ?? "")]) : [null, null, null];
+  // Sales and collection activity above is scoped to the person for MAS and Collector dashboards. "Today" follows the
+  // company setting (remittance date unless an administrator chose encoded or OR date).
   const todayActivity = { salesAccounts: todayEntries?.sales.count ?? 0, salesGross: todayEntries?.sales.amount ?? 0, collectionAccounts: todayEntries?.collections.count ?? 0, collectionGross: todayEntries?.collections.amount ?? 0, basis: TODAY_MODE_LABELS[todayMode] };
 
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));

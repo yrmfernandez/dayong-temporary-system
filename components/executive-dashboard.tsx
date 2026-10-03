@@ -26,19 +26,19 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
     </div>
     <p className="hidden text-xs print:block">Printed {new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {employeeName}</p>
 
-    <KpiGroup title="Sales">
+    <KpiGroup title="Sales" description="Money received this period from New Sales and Collections, compared with the previous period.">
       <Kpi label="Gross Sales" value={money(k.grossSales.value)} change={k.grossSales.change} note="All money received: New Sales + Collections" icon={PhilippinePeso} tone="brand" />
       <Kpi label="Net Sales" value={money(k.netSales.value)} change={k.netSales.change} note={`After ${money(f.commissions)} agent commissions`} icon={Wallet} tone="brand" />
       <Kpi label="New Sales" value={money(k.salesGross.value)} change={k.salesGross.change} note={`${k.newAccounts.value.toLocaleString("en-PH")} new accounts`} icon={FilePlus2} tone="orange" />
       <Kpi label="Collections" value={money(k.collectionGross.value)} change={k.collectionGross.change} note={`${k.collectionCount.toLocaleString("en-PH")} posted payments`} icon={Receipt} tone="teal" />
     </KpiGroup>
-    <KpiGroup title="Profitability & cash">
+    <KpiGroup title="Profitability & cash" description="What is left after costs, and how long the cash on hand would last.">
       <Kpi label="EBITDA" value={money(f.ebitda)} note="Net Sales less payroll, expenses and vendor bills" icon={Landmark} tone={f.ebitda < 0 ? "danger" : "success"} />
       <Kpi label="Net Profit Margin" value={f.margin === null ? "—" : `${f.margin.toFixed(1)}%`} note="Of Gross Sales, before interest and tax" icon={Percent} tone={f.margin === null ? "neutral" : f.margin < 0 ? "danger" : f.margin < 10 ? "warning" : "success"} />
       <Kpi label="Cash on Hand" value={money(c.onHand)} note="All cash accounts, from the cash ledger" icon={Wallet} tone="teal" />
       <Kpi label="Cash Runway" value={runway} note={`Burn ${money(c.monthlyOutflow)}/month · net ${c.netBurn > 0 ? `–${money(c.netBurn)}` : `+${money(-c.netBurn)}`}`} icon={Flame} tone={c.runwayMonths === null ? "success" : c.runwayMonths < 3 ? "danger" : c.runwayMonths < 6 ? "warning" : "success"} />
     </KpiGroup>
-    <KpiGroup title="Growth & portfolio">
+    <KpiGroup title="Growth & portfolio" description="New accounts, recurring dues, and how many active accounts are paying on time.">
       <Kpi label="Recurring Dues (ARR)" value={money(data.recurring.annual)} note={`${money(data.recurring.monthly)}/month from ${data.recurring.accounts.toLocaleString("en-PH")} paying accounts`} icon={Repeat} tone="info" />
       <Kpi label="New Accounts" value={k.newAccounts.value.toLocaleString("en-PH")} change={k.newAccounts.change} note="Enrollments sold" icon={Users} tone="info" />
       <Kpi label="Average Sale" value={money(k.averageSale.value)} change={k.averageSale.change} note="Per new account" icon={TrendingUp} tone="orange" />
@@ -114,8 +114,8 @@ function Highlights({ data, className = "" }: { data: ExecutiveAnalytics; classN
   return <Card className={className}><CardHeader><CardTitle className="flex items-center gap-2"><Lightbulb className="size-4 text-primary" />Highlights</CardTitle></CardHeader><CardContent><ul className="grid gap-3 md:grid-cols-2">{items.map((item, index) => <li key={index} className={`tone-${item.tone} flex items-start gap-3 rounded-xl border p-3 text-sm`}><span className="tone-soft flex size-8 shrink-0 items-center justify-center rounded-lg"><item.icon className="size-4" /></span><span className="pt-1.5">{item.text}</span></li>)}</ul></CardContent></Card>;
 }
 
-function KpiGroup({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div className="space-y-2"><h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{children}</div></div>;
+function KpiGroup({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return <div className="space-y-2"><div><h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2><p className="text-sm text-muted-foreground">{description}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{children}</div></div>;
 }
 
 function Kpi({ label, value, change, note, icon: Icon, tone }: { label: string; value: string; change?: number | null; note: string; icon: LucideIcon; tone: Tone }) {

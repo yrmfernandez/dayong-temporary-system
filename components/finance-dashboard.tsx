@@ -32,25 +32,25 @@ export function FinanceDashboard({ employeeName, today, analytics, remittance, p
     </div>
 
     <div className="grid gap-6 xl:grid-cols-2">
-      <Panel title="Remittances Requiring Action" action={<Link href="/remittances" className="text-sm font-medium text-primary hover:underline">Open Remittances</Link>}>
+      <Panel title="Remittances Requiring Action" description="Slips waiting for approval, or where the cash received differs from what was expected." action={<Link href="/remittances" className="text-sm font-medium text-primary hover:underline">Open Remittances</Link>}>
         <Table headers={["Person", "Branch", "Expected", "Actual", "Difference", "Status"]} rows={actionable.slice(0, 8).map((row) => [row.accountableName, row.branch, money(row.expectedAmount), money(row.actualAmount), money(row.difference), <StatusBadge key="s" status={row.status} />])} empty="Nothing waiting for approval." />
       </Panel>
-      <Panel title="Month to Date">
+      <Panel title="Month to Date" description="Income and costs from the 1st of this month to today.">
         <Rows rows={[["Gross Sales", money(f.grossSales)], ["Agent commissions", `– ${money(f.commissions)}`], ["Net Sales", money(f.netSales), true], ["Payroll", `– ${money(f.payroll)}`], ["Expenses", `– ${money(f.expenses)}`], ["Vendor bills", `– ${money(f.vendorBills)}`], ["Operating profit", money(f.ebitda), true], ["Expected / actual remittance", `${money(f.expectedRemittance)} / ${money(f.actualRemittance)}`], ["Remittance gap", money(f.gap), true]]} />
       </Panel>
     </div>
 
     <div className="grid gap-6 xl:grid-cols-2">
-      <Panel title="Cash With Staff" action={<Link href="/remittances" className="text-sm font-medium text-primary hover:underline">Collect</Link>}>
+      <Panel title="Cash With Staff" description="Collections and New Sales not yet remitted, by the person holding the cash, largest first." action={<Link href="/remittances" className="text-sm font-medium text-primary hover:underline">Collect</Link>}>
         <Table headers={["Person", "Role", "Branch", "Collections", "Amount due"]} rows={[...remittance.accountability].sort((a, b) => b.outstandingAmount - a.outstandingAmount).slice(0, 8).map((row) => [row.name, row.role, row.branch, String(row.collectionCount), money(row.outstandingAmount)])} empty="All collected cash has been remitted." />
       </Panel>
-      <Panel title="Vendor Bills Due" action={<Link href="/vendor-payables" className="text-sm font-medium text-primary hover:underline">Open Payables</Link>}>
+      <Panel title="Vendor Bills Due" description="Unpaid supplier bills, earliest due date first." action={<Link href="/vendor-payables" className="text-sm font-medium text-primary hover:underline">Open Payables</Link>}>
         <Table headers={["Vendor", "Due", "Balance", "Status"]} rows={[...open].sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0, 8).map((bill) => [bill.vendor, bill.dueDate || "—", money(bill.balance), <StatusBadge key="s" status={bill.dueDate && bill.dueDate < today ? "Overdue" : bill.status} />])} empty="No unpaid bills." />
       </Panel>
     </div>
   </section>;
 }
 
-function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) { return <Card><CardHeader className="flex flex-row items-center justify-between gap-3"><CardTitle>{title}</CardTitle>{action}</CardHeader><CardContent>{children}</CardContent></Card>; }
+function Panel({ title, description, action, children }: { title: string; description: string; action?: React.ReactNode; children: React.ReactNode }) { return <Card><CardHeader className="flex flex-row items-start justify-between gap-3"><div className="space-y-1"><CardTitle>{title}</CardTitle><p className="text-sm text-muted-foreground">{description}</p></div>{action}</CardHeader><CardContent>{children}</CardContent></Card>; }
 function Rows({ rows }: { rows: Array<[string, string, boolean?]> }) { return <dl className="space-y-2 text-sm">{rows.map(([label, value, strong]) => <div key={label} className="flex justify-between gap-4"><dt className={strong ? "font-semibold" : "text-muted-foreground"}>{label}</dt><dd className={`tabular-nums ${strong ? "font-bold" : "font-medium"}`}>{value}</dd></div>)}</dl>; }
 function Table({ headers, rows, empty }: { headers: string[]; rows: React.ReactNode[][]; empty: string }) { return <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead><tr className="border-b">{headers.map((header) => <th key={header} className="pb-3 pr-4 font-medium text-muted-foreground">{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index} className="border-b last:border-0">{row.map((cell, i) => <td key={i} className="py-2.5 pr-4">{cell || "—"}</td>)}</tr>)}{!rows.length && <tr><td colSpan={headers.length} className="py-8 text-center text-muted-foreground">{empty}</td></tr>}</tbody></table></div>; }

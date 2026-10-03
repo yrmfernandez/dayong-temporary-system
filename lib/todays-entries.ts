@@ -1,4 +1,5 @@
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 import { incentiveDeadline, manilaDateOf } from "@/lib/remittance-deadline";
 import type { TodayMode } from "@/lib/today-mode";
 
@@ -49,7 +50,7 @@ export type DayEntry = {
 export async function getEntriesForDay(date: string, mode: TodayMode, person = "") {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: ["'Sales'!A:AR", "'Collections'!A:AM", "'Remittances'!A:AA", "'Programs'!A:C", "'Members'!A:D"],
+    ranges: [SALES_RANGE, COLLECTIONS_RANGE, REMITTANCES_RANGE, PROGRAMS_RANGE, MEMBERS_RANGE],
     valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING",
   });
   const [sales, collections, remittances, programs, members] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];

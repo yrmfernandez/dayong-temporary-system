@@ -1,4 +1,5 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
+import { COLLECTIONS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 import { getEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
@@ -6,6 +7,8 @@ import { incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime }
 import { cashCountProblem } from "@/lib/cash-count";
 
 const titles = ["Collections", "Remittances", "Remittance Collections", "Sales"] as const;
+// The same ranges the dashboards and reports read, so one cached copy of each sheet serves them all.
+const ledgerRanges = { Collections: COLLECTIONS_RANGE, Remittances: REMITTANCES_RANGE, "Remittance Collections": REMITTANCE_LINKS_RANGE, Sales: SALES_RANGE } as const;
 
 /**
  * A MAS turns over Collections and New Sales on separate remittance slips, so every remittance is one kind. Both are
@@ -97,7 +100,7 @@ export type CashRemittance = {
 async function loadLedger() {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: titles.map((title) => `'${title}'`),
+    ranges: titles.map((title) => ledgerRanges[title]),
     valueRenderOption: "UNFORMATTED_VALUE",
     dateTimeRenderOption: "FORMATTED_STRING",
   });

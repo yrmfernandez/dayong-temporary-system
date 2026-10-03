@@ -1,4 +1,5 @@
 import { addMonths, todayInManila } from "@/lib/account-rules";
+import { COLLECTIONS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 import { getCompanyTargets } from "@/lib/company-targets";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 
@@ -58,7 +59,7 @@ export async function getExecutiveAnalytics(period: ExecutivePeriod) {
   const today = todayInManila();
   const range = periodRange(period, today);
   const [response, targets] = await Promise.all([
-    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Sales'!A:AQ", "'Collections'!A:AK", "'Programs'!A:F", "'Member programs'!A:S", "'Branches'!A:M", "'Expenses'!A:Q", "'Remittances'!A:Y", "'Members'!A:A", "'Cash Transactions'!A:P", "'Cash Accounts'!A:E", "'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Vendor Payables'!A:O"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [SALES_RANGE, COLLECTIONS_RANGE, PROGRAMS_RANGE, "'Member programs'!A:S", "'Branches'!A:M", "'Expenses'!A:Q", REMITTANCES_RANGE, "'Members'!A:A", "'Cash Transactions'!A:P", "'Cash Accounts'!A:E", "'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Vendor Payables'!A:O"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
     getCompanyTargets(),
   ]);
   const [salesRows, collectionRows, programRows, enrollmentRows, branchRows, expenseRows, remittanceRows, memberRows, cashRows, cashAccountRows, payrollRunRows, payrollLineRows, payableRows] = response.data.valueRanges?.map((item) => item.values ?? []) ?? [];
