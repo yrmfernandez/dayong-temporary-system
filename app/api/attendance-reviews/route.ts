@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 
 import {
   addAttendanceRecord,
-  cancelClockInsForNonWorkingDay,
   getAttendanceForEmployeeDate,
   getAttendanceRecordsForDate,
   type AttendanceRecord,
@@ -14,7 +13,8 @@ import {
   SCHEDULED_TIME_IN,
   SCHEDULED_TIME_OUT,
 } from "@/lib/attendance";
-import { canManageAttendance, getSessionUser } from "@/lib/auth-server";
+import { closureCovers, employeeAttendanceBranches, getClosures } from "@/lib/attendance-calendar";
+import { canManageAttendance } from "@/lib/auth-server";
 import { getActiveAttendanceEmployees } from "@/lib/google-sheets-data";
 
 function isWorkingDate(date: string) {
@@ -57,10 +57,13 @@ export async function GET(request: Request) {
       );
     }
 
-    const [employees, records] = await Promise.all([
+    const [employees, records, closures, branches] = await Promise.all([
       getActiveAttendanceEmployees(),
       getAttendanceRecordsForDate(attendanceDate),
+      getClosures(attendanceDate, attendanceDate),
+      employeeAttendanceBranches(),
     ]);
+    const closure = closures[0] ?? null;
     const recordsByEmployee = new Map(
       records.map((record) => [record.employeeId, record]),
     );
@@ -68,11 +71,16 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       attendanceDate,
-      nonWorkingDay: records.find((record) => record.employeeId === "SYSTEM" && record.status === "Non-working Day") ?? null,
-      employees: employees.map((employee) => ({
-        ...employee,
-        record: recordsByEmployee.get(employee.employeeId) ?? null,
-      })),
+      nonWorkingDay: closure,
+      employees: employees.map((employee) => {
+        const branch = branches.get(employee.employeeId) ?? "";
+        return {
+          ...employee,
+          branch,
+          closed: Boolean(closure && closureCovers(closure, branch)),
+          record: recordsByEmployee.get(employee.employeeId) ?? null,
+        };
+      }),
     });
   } catch (error) {
     console.error("Load attendance review error:", error);
@@ -100,7 +108,6 @@ export const POST = withEncoder(async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const nonWorkingDay = body.action === "non-working-day";
     const employeeId =
       typeof body.employeeId === "string"
         ? body.employeeId.trim()
@@ -118,7 +125,7 @@ export const POST = withEncoder(async function POST(request: Request) {
     const notes =
       typeof body.notes === "string" ? body.notes.trim() : "";
 
-    if (!isWorkingDate(attendanceDate) || (!nonWorkingDay && (!employeeId || !status))) {
+    if (!isWorkingDate(attendanceDate) || !employeeId || !status) {
       return NextResponse.json(
         {
           success: false,
@@ -127,16 +134,6 @@ export const POST = withEncoder(async function POST(request: Request) {
         },
         { status: 400 },
       );
-    }
-
-    if (nonWorkingDay) {
-      if (!notes) return NextResponse.json({ success: false, message: "Enter the reason for the non-working day." }, { status: 400 });
-      const existing = await getAttendanceForEmployeeDate("SYSTEM", attendanceDate);
-      const timestamp = new Date().toISOString();
-      const record: AttendanceRecord = { id: existing.record?.id || `NWD-${attendanceDate.replaceAll("-", "")}`, employeeId: "SYSTEM", attendanceDate, branch: "All branches", scheduledTimeIn: "", scheduledTimeOut: "", timeIn: "", timeOut: "", workedHours: 0, overtimeHours: 0, status: "Non-working Day", lateMinutes: 0, undertimeMinutes: 0, leaveType: "", leaveApprovalStatus: "", notes, createdAt: existing.record?.createdAt || timestamp, updatedAt: timestamp };
-      if (existing.rowNumber) await updateAttendanceRecord(existing.rowNumber, record); else await addAttendanceRecord(record);
-      const cancelled = await cancelClockInsForNonWorkingDay(attendanceDate, notes, (await getSessionUser())?.name || "an administrator");
-      return NextResponse.json({ success: true, message: `Non-working day saved.${cancelled ? ` ${cancelled} clock-in${cancelled === 1 ? "" : "s"} cancelled.` : ""}`, record });
     }
 
     const employees = await getActiveAttendanceEmployees();
@@ -148,6 +145,17 @@ export const POST = withEncoder(async function POST(request: Request) {
           message: "Employee was not found or is inactive.",
         },
         { status: 404 },
+      );
+    }
+
+    const [closure] = await getClosures(attendanceDate, attendanceDate);
+    if (closure && closureCovers(closure, (await employeeAttendanceBranches()).get(employeeId) ?? "")) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "This employee's branch is closed on that date (non-working day).",
+        },
+        { status: 409 },
       );
     }
 

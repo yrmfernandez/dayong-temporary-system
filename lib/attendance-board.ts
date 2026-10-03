@@ -2,7 +2,7 @@ import type { SessionUser } from "@/lib/auth";
 import type { AttendanceRecord } from "@/lib/attendance-data";
 
 /** Where an employee stands on one day. Present covers On time, Late, and Early. */
-export type BoardCategory = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Not clocked in";
+export type BoardCategory = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Not clocked in" | "Non-working day";
 
 const roleNames = (user: Pick<SessionUser, "roleNames">) => user.roleNames.map((role) => role.trim().toLowerCase());
 

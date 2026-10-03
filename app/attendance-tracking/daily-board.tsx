@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 
-type Category = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Not clocked in";
+type Category = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Not clocked in" | "Non-working day";
 type BoardRecord = { timeIn: string; timeOut: string; scheduledTimeIn: string; lateMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string; branch: string };
 type Row = { employeeId: string; name: string; roles: string[]; branches: string[]; category: Category; earlyMinutes: number; record: BoardRecord | null };
 type Board = { date: string; today: string; canAdjustLate: boolean; canSetClockOut: boolean; closedDay: string; rows: Row[] };
@@ -22,6 +22,7 @@ const sections: Array<{ category: Category; title: string; tone: string }> = [
   { category: "AWOL", title: "AWOL", tone: "text-red-800" },
   { category: "On leave", title: "On leave", tone: "text-sky-700" },
   { category: "Not clocked in", title: "Not clocked in yet", tone: "text-muted-foreground" },
+  { category: "Non-working day", title: "Branch closed (non-working day)", tone: "text-violet-700" },
 ];
 const presentCategories: Category[] = ["On time", "Late", "Early"];
 
@@ -85,6 +86,7 @@ export function DailyBoard() {
     { key: "AWOL", label: "AWOL", value: count("AWOL"), tone: "text-red-800" },
     { key: "On leave", label: "On leave", value: count("On leave"), tone: "text-sky-700" },
     ...(board && board.date === board.today ? [{ key: "Not clocked in" as const, label: "Not clocked in", value: count("Not clocked in"), tone: "text-muted-foreground" }] : []),
+    ...(count("Non-working day") ? [{ key: "Non-working day" as const, label: "Branch closed", value: count("Non-working day"), tone: "text-violet-700" }] : []),
   ];
 
   return <div className="space-y-4">

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { AttendanceCalendar } from "@/components/attendance-calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -103,7 +104,7 @@ export default function AttendancePage() {
       setRecord(result.record ?? null);
       setBranch(result.record?.branch || result.assignedBranch || "");
       setAssignedBranches(result.assignedBranches ?? []);
-      setClosedReason(result.nonWorkingDay ? result.nonWorkingDay.notes || "Non-working day" : "");
+      setClosedReason(result.nonWorkingDay ? result.nonWorkingDay.reason || "Non-working day" : "");
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to load attendance.",
@@ -443,6 +444,8 @@ export default function AttendancePage() {
           </div>
         )}
       </section>
+
+      <AttendanceCalendar />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
+import { closureCovers, closureLabel, getClosures } from "@/lib/attendance-calendar";
 import { getAttendanceForEmployeeDate, getAttendanceRecordsForDate, updateAttendanceRecord } from "@/lib/attendance-data";
 import { getPhilippineDate, SCHEDULED_TIME_OUT } from "@/lib/attendance";
 import { boardCategory, canAdjustLateness, canViewAttendanceTracking, minutesBetween } from "@/lib/attendance-board";
@@ -20,26 +21,29 @@ export async function GET(request: Request) {
   const today = getPhilippineDate();
   if (!validDate(date) || date > today) return Response.json({ success: false, message: "Choose a valid date, today or earlier." }, { status: 400 });
   try {
-    const [active, employees, branches, records] = await Promise.all([getActiveAttendanceEmployees(), getEmployees(), getBranches(), getAttendanceRecordsForDate(date)]);
+    const [active, employees, branches, records, closures] = await Promise.all([getActiveAttendanceEmployees(), getEmployees(), getBranches(), getAttendanceRecordsForDate(date), getClosures(date, date)]);
     const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
     const details = new Map(employees.map((employee) => [employee.id, employee]));
     const byEmployee = new Map(records.map((record) => [record.employeeId, record]));
-    const nonWorkingDay = records.find((record) => record.employeeId === "SYSTEM" && record.status === "Non-working Day");
+    const nonWorkingDay = closures[0] ?? null;
     const sunday = new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
     const rows = active.map((employee) => {
       const record = byEmployee.get(employee.employeeId) ?? null;
       const detail = details.get(employee.employeeId);
+      // Clock-ins cancelled by the closure keep their branch; otherwise the branch they would clock in at.
+      const attendanceBranch = record?.branch || detail?.branch || branchNames.get(detail?.branchIds[0] ?? "") || "";
+      const closed = Boolean(nonWorkingDay && closureCovers(nonWorkingDay, attendanceBranch)) && !record?.timeIn;
       return {
         employeeId: employee.employeeId, name: employee.fullName, roles: detail?.roles ?? [],
         branches: (detail?.branchIds ?? []).map((id) => branchNames.get(id) ?? id),
-        category: boardCategory(record, date, today),
+        category: closed ? "Non-working day" as const : boardCategory(record, date, today),
         earlyMinutes: record?.timeIn && record.scheduledTimeIn ? Math.max(0, minutesBetween(record.timeIn, record.scheduledTimeIn)) : 0,
         record,
       };
     });
     return Response.json({
       success: true, date, today, canAdjustLate: canAdjustLateness(user), canSetClockOut: canAdjustLateness(user),
-      closedDay: nonWorkingDay ? `Non-working day: ${nonWorkingDay.notes}` : sunday ? "Sunday is not a working day." : "",
+      closedDay: nonWorkingDay ? `Non-working day (${closureLabel(nonWorkingDay)}): ${nonWorkingDay.reason}` : sunday ? "Sunday is not a working day." : "",
       rows,
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

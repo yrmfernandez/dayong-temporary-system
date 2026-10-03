@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { AttendanceCalendar } from "@/components/attendance-calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,8 +23,13 @@ type AttendanceRecord = {
 type EmployeeAttendance = {
   employeeId: string;
   fullName: string;
+  branch: string;
+  // The employee's branch is closed by the date's non-working day.
+  closed: boolean;
   record: AttendanceRecord | null;
 };
+
+type NonWorkingDay = { reason: string; allBranches: boolean; branchNames: string[] };
 
 function todayInPhilippines() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -39,8 +45,7 @@ export default function AttendanceReviewsPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState("");
   const [message, setMessage] = useState("");
-  const [nonWorkingReason, setNonWorkingReason] = useState("");
-  const [isNonWorkingDay, setIsNonWorkingDay] = useState(false);
+  const [nonWorkingDay, setNonWorkingDay] = useState<NonWorkingDay | null>(null);
 
   const loadReview = async () => {
     setLoading(true);
@@ -58,8 +63,7 @@ export default function AttendanceReviewsPage() {
       }
 
       setEmployees(result.employees ?? []);
-      setIsNonWorkingDay(Boolean(result.nonWorkingDay));
-      setNonWorkingReason(result.nonWorkingDay?.notes ?? "");
+      setNonWorkingDay(result.nonWorkingDay ?? null);
     } catch (error) {
       setEmployees([]);
       setMessage(
@@ -70,18 +74,6 @@ export default function AttendanceReviewsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const markNonWorkingDay = async () => {
-    setUpdatingId("SYSTEM"); setMessage("");
-    try {
-      const response = await fetch("/api/attendance-reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "non-working-day", attendanceDate, notes: nonWorkingReason }) });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.message || "Unable to save non-working day.");
-      // Reload so clock-ins the server just cancelled show their new status.
-      await loadReview(); setMessage(result.message);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save non-working day."); }
-    finally { setUpdatingId(""); }
   };
 
   useEffect(() => {
@@ -152,7 +144,11 @@ export default function AttendanceReviewsPage() {
             </Button>
           </div>
 
-          <div className="rounded-xl border bg-muted/30 p-4"><div className="flex flex-col gap-3 md:flex-row md:items-end"><div className="flex-1 space-y-2"><Label htmlFor="non-working-reason">Non-working day reason</Label><Input id="non-working-reason" value={nonWorkingReason} onChange={(event) => setNonWorkingReason(event.target.value)} placeholder="Holiday, emergency closure, company event..." /></div><Button type="button" variant="outline" disabled={updatingId === "SYSTEM" || !nonWorkingReason.trim()} onClick={() => void markNonWorkingDay()}>{isNonWorkingDay ? "Update Closure" : "Mark Non-working Day"}</Button></div>{isNonWorkingDay && <p className="mt-2 text-sm text-amber-700">Attendance clocking is closed for this date.</p>}</div>
+          {nonWorkingDay && (
+            <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              Non-working day for {nonWorkingDay.allBranches ? "all branches" : nonWorkingDay.branchNames.join(", ")}: {nonWorkingDay.reason}. Manage it in the calendar below.
+            </p>
+          )}
 
           {message && (
             <p className="text-sm text-muted-foreground">{message}</p>
@@ -162,11 +158,12 @@ export default function AttendanceReviewsPage() {
             <p className="text-sm text-muted-foreground">No active employee accounts found.</p>
           )}
 
-          {!loading && !isNonWorkingDay && employees.length > 0 && (
+          {!loading && !nonWorkingDay?.allBranches && employees.length > 0 && (
             <div className="divide-y rounded-lg border">
               {employees.map((employee) => {
                 const locked = Boolean(
-                  employee.record?.timeIn ||
+                  employee.closed ||
+                    employee.record?.timeIn ||
                     employee.record?.timeOut ||
                     employee.record?.status === "Leave",
                 );
@@ -178,11 +175,11 @@ export default function AttendanceReviewsPage() {
                   >
                     <div>
                       <p className="font-medium">{employee.fullName || employee.employeeId}</p>
-                      <p className="text-sm text-muted-foreground">{employee.employeeId}</p>
+                      <p className="text-sm text-muted-foreground">{employee.employeeId}{employee.branch ? ` · ${employee.branch}` : ""}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={employee.record?.status === "Present" ? "default" : "secondary"}>
-                        {employee.record?.status || "No record"}
+                        {employee.closed ? "Branch closed" : employee.record?.status || "No record"}
                       </Badge>
                       {!locked && (
                         <>
@@ -214,6 +211,8 @@ export default function AttendanceReviewsPage() {
           )}
         </CardContent>
       </Card>
+
+      <AttendanceCalendar onClosuresChanged={() => void loadReview()} />
     </div>
   );
 }

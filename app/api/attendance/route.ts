@@ -7,6 +7,7 @@ import {
   type AttendanceRecord,
   updateAttendanceRecord,
 } from "@/lib/attendance-data";
+import { closureForBranch } from "@/lib/attendance-calendar";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 
@@ -61,12 +62,12 @@ export async function GET() {
 
     const attendanceDate = getPhilippineDate();
 
-    const nonWorkingDay = await getAttendanceForEmployeeDate("SYSTEM", attendanceDate);
-
     const [{ record }, branches] = await Promise.all([
       getAttendanceForEmployeeDate(user.employeeId, attendanceDate),
       employeeBranches(user.employeeId),
     ]);
+    // Closed when today is declared non-working for every branch or for the employee's branch.
+    const nonWorkingDay = await closureForBranch(attendanceDate, branches.primary);
 
     return NextResponse.json({
       success: true,
@@ -74,7 +75,7 @@ export async function GET() {
       record,
       assignedBranch: branches.primary,
       assignedBranches: branches.all,
-      nonWorkingDay: nonWorkingDay.record?.status === "Non-working Day" ? nonWorkingDay.record : null,
+      nonWorkingDay,
     });
   } catch (error) {
     console.error("Load attendance error:", error);
@@ -123,8 +124,8 @@ export const POST = withEncoder(async function POST(request: Request) {
 
 
     const attendanceDate = getPhilippineDate();
-    const nonWorkingDay = await getAttendanceForEmployeeDate("SYSTEM", attendanceDate);
-    if (nonWorkingDay.record?.status === "Non-working Day") return NextResponse.json({ success: false, message: `Attendance is closed today: ${nonWorkingDay.record.notes}` }, { status: 400 });
+    const nonWorkingDay = await closureForBranch(attendanceDate, await assignedBranch(user.employeeId));
+    if (nonWorkingDay) return NextResponse.json({ success: false, message: `Attendance is closed today: ${nonWorkingDay.reason}` }, { status: 400 });
     const currentTime = getPhilippineTime();
     const timestamp = new Date().toISOString();
 

@@ -159,17 +159,26 @@ export async function getAttendanceRecordsForDate(
   return (await attendanceRows()).slice(1).map(readAttendanceRow).filter((record) => record.attendanceDate === attendanceDate);
 }
 
+/** The administrator's non-working day declarations (SYSTEM control rows) dated within the range, oldest first. */
+export async function getNonWorkingDayRecords(dateFrom: string, dateTo: string): Promise<AttendanceRecord[]> {
+  return (await attendanceRows()).slice(1).map(readAttendanceRow)
+    .filter((record) => record.employeeId === "SYSTEM" && record.status === "Non-working Day" && record.attendanceDate >= dateFrom && record.attendanceDate <= dateTo)
+    .sort((first, second) => first.attendanceDate.localeCompare(second.attendanceDate));
+}
+
 /**
  * Cancels every clock-in already recorded on a day the administrator declares non-working: the record becomes a
- * Non-working Day with no hours, and the original times are kept in its notes. Returns how many were cancelled.
+ * Non-working Day with no hours, and the original times are kept in its notes. `branches` limits it to clock-ins
+ * recorded at those branch names; null covers every branch. Returns how many were cancelled.
  */
-export async function cancelClockInsForNonWorkingDay(attendanceDate: string, reason: string, by: string) {
+export async function cancelClockInsForNonWorkingDay(attendanceDate: string, reason: string, by: string, branches: Set<string> | null = null) {
   const rows = await attendanceRows();
   const timestamp = new Date().toISOString();
   let cancelled = 0;
   for (let index = 1; index < rows.length; index++) {
     const record = readAttendanceRow(rows[index]);
     if (record.employeeId === "SYSTEM" || record.attendanceDate !== attendanceDate || record.status !== "Present" || !record.timeIn) continue;
+    if (branches && !branches.has(record.branch)) continue;
     const note = `Clock-in ${record.timeIn}${record.timeOut ? `-${record.timeOut}` : ""} cancelled by ${by}: non-working day (${reason})`;
     await updateAttendanceRecord(index + 1, {
       ...record, timeIn: "", timeOut: "", workedHours: 0, overtimeHours: 0, status: "Non-working Day", lateMinutes: 0, undertimeMinutes: 0,

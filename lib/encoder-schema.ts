@@ -44,6 +44,8 @@ export const encoderSheets = [
   { title: "Member Transfers", columns: 10 },
   // Created by the app the first time a target is saved, so migrations skip it until it exists.
   { title: "Company Targets", columns: 5, optional: true },
+  // Created by the app the first time a holiday is added in the attendance calendar.
+  { title: "Holidays", columns: 5, optional: true },
 ];
 
 export function columnName(index: number): string {
