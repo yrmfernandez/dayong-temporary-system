@@ -1,7 +1,7 @@
 import {
   BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
   ClipboardList, CreditCard, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
-  LayoutDashboard, Banknote, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
+  LayoutDashboard, Banknote, Camera, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -51,6 +51,7 @@ const page = {
   auditLog: { name: "Audit Log", href: "/history", icon: History },
   todaysEntries: { name: "Today's Entries", href: "/todays-entries", icon: ReceiptText },
   exceptions: { name: "Exceptions", href: "/exceptions", icon: TriangleAlert },
+  myEntries: { name: "My Entries", href: "/my-entries", icon: Camera },
 } satisfies Record<string, NavItem>;
 
 // Personal self-service. MAS lists My Fidelity under My Portfolio instead.
@@ -65,7 +66,7 @@ const masHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveR
 const workspaces: Record<string, NavSection[]> = {
   administrator: [
     { title: "Overview", items: [page.dashboard, page.todaysEntries, page.exceptions] },
-    { title: "Operations", items: [page.newSales, page.collections, page.remittances, page.mam] },
+    { title: "Operations", items: [page.newSales, page.collections, page.myEntries, page.remittances, page.mam] },
     { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.payroll, page.fidelity] },
     { title: "Reports", items: [page.reports, page.soa, page.dailyAudit, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
@@ -90,7 +91,7 @@ const workspaces: Record<string, NavSection[]> = {
   ],
   "entry clerk": [
     { title: "Overview", items: [page.dashboard, page.todaysEntries] },
-    { title: "Encoding", items: [page.newSales, page.collections, page.remittances] },
+    { title: "Encoding", items: [page.newSales, page.collections, page.myEntries, page.remittances] },
     { title: "Reports", items: [page.reports] },
     { title: "Lookup", items: [page.members, page.programs, page.branches] },
     myHr,

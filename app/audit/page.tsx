@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { ClipboardCheck, Printer } from "lucide-react";
 
 import { InlineRow } from "@/components/inline-panel";
+import { ClerkReport } from "@/components/clerk-report";
 import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -138,6 +139,11 @@ export default function DailyAuditPage() {
                     {row.figures.collections.length ? <ul className="divide-y rounded-lg border bg-background text-sm">{row.figures.collections.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s) · remit {money(line.expectedRemittance)}</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>
                       : <p className="text-sm text-muted-foreground">No collections encoded.</p>}</div>
                 </div>
+                <details className="rounded-lg border bg-background p-3">
+                  <summary className="cursor-pointer text-sm font-semibold">Open {row.employeeName}&apos;s report and every entry</summary>
+                  <p className="mt-1 text-xs text-muted-foreground">Check each entry from its dates (OR, remitted, encoded) to its numbers and receipt photo before deciding Balanced or With findings.</p>
+                  <div className="mt-3"><ClerkReport kind={period} review employeeId={row.employeeId} date={span.from || date} /></div>
+                </details>
                 {row.audit?.reopenReason && row.status === "Draft" && <p className="text-xs text-amber-700">Reopened: {row.audit.reopenReason}</p>}
                 {row.status === "Approved" ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
                   <p><strong>{row.audit?.result}</strong> · approved by {row.audit?.approvedByName} on {when(row.audit?.approvedAt ?? "")}. Figures are locked as approved.</p>

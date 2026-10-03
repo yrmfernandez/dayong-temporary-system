@@ -2,6 +2,7 @@
 export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; label: string }> }> = [
   { group: "Operations", pages: [
     { href: "/todays-entries", label: "Today's Entries" },
+    { href: "/my-entries", label: "My Entries (receipt photos)" },
     { href: "/new-sales", label: "New Sales" },
     { href: "/collections", label: "Collections" },
     { href: "/remittances", label: "Remittances" },

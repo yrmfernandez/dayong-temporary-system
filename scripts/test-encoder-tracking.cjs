@@ -22,7 +22,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
   const writes = [];
   const rows = {};
   let missingHeaders = false;
-  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales', 'Beneficiaries', 'Branches', 'Employees', 'Employee Branches', 'Users', 'User Roles', 'Roles', 'Program Incentives'];
+  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales', 'Beneficiaries', 'Branches', 'Employees', 'Employee Branches', 'Users', 'User Roles', 'Roles', 'Program Incentives', 'Receipt Photos'];
   const sheets = { spreadsheets: {
     get: async () => ({ data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId } })) } }),
     batchUpdate: async (params) => { writes.push(params); return { data: {} }; },
@@ -37,6 +37,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       if (/^'?Roles'?!A:[GL]$/.test(range)) return { data: { values: rows.Roles ?? [[]] } };
       if (/^'?Users'?!A:(?:B|G|H|Z)$/.test(range)) return { data: { values: rows.Users ?? [[]] } };
       if (range === "'Audit Log'!A:J") return { data: { values: rows['Audit Log'] ?? [[]] } };
+      if (range.startsWith("'Receipt Photos'")) return { data: { values: rows['Receipt Photos'] ?? [[]] } };
       if (range === 'Expenses!V1:W1' || range === 'Sales!AO1:AQ1') return { data: { values: rows[range] ?? [[]] } };
       if (/!A:ZZ$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
@@ -523,7 +524,11 @@ test('administrator who is also an Entry Clerk may approve own remittance', asyn
   h.rows.Remittances = [remittanceHeader, remittance];
   h.rows['Remittance Collections'] = [['Remittance Collection ID'], ['RCL-1', 'REM-1', 'COL-1', 350]];
   deadlineHeaders(h);
-  const response = await h.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: 'REM-1', decision: 'approve' }));
+  const route = h.load('app/api/remittances/route.ts');
+  assert.match((await (await route.PATCH(request({ remittanceId: 'REM-1', decision: 'approve' }))).json()).error, /Attach the receipt photo before approval .*COL-1/, 'no approval without the receipt photo');
+  h.rows['Receipt Photos'] = [[], ['RCP-1', 'COL-1']];
+  h.clearCache?.();
+  const response = await route.PATCH(request({ remittanceId: 'REM-1', decision: 'approve' }));
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
 });
 
@@ -537,6 +542,7 @@ test('any Remittances user can create an approved remittance when full cash is c
   h.rows['Remittance Collections'] = [['Remittance Collection ID']];
   deadlineHeaders(h);
   const route = h.load('app/api/remittances/route.ts');
+  h.rows['Receipt Photos'] = [[], ['RCP-1', 'COL-1']];
   const short = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 299, remittanceDate: '2026-09-28', remittanceTime: '09:00', cashConfirmed: true }));
   assert.equal(short.status, 400);
   const response = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 300, remittanceDate: '2026-09-28', remittanceTime: '09:00', cashConfirmed: true }));
@@ -1610,4 +1616,44 @@ test('a MAS sees only their own members; oversight roles see everyone', async ()
   assert.equal(isOwnAccount(' maria santos ', 'Maria Santos'), true);
   assert.equal(isOwnAccount('Jose Cruz', 'Maria Santos'), false);
   assert.equal(isOwnAccount('', await ownMembersScope({ roleNames: ['MAS'], employeeId: 'NOBODY', name: '' })), false, 'no name matches nothing');
+});
+
+test('an Entry Clerk report counts only what that clerk encoded, grouped like the paper report', async () => {
+  const h = harness();
+  const collection = (id, encoder, encodedAt, amount, share, fidelity = '') => { const row = Array(41).fill(''); Object.assign(row, { 0: id, 5: 'DP-1', 6: 'AGDAO', 7: 'Maria', 8: `OR-${id}`, 9: encodedAt.slice(0, 10), 10: amount, 19: 'Posted', 20: encodedAt, 22: encoder, 23: 'Clerk', 24: encodedAt, 26: share, 28: 'Outstanding', 31: 'Maria', 37: fidelity }); return row; };
+  h.rows.Collections = [[],
+    collection('COL-1', 'DPE-7', '2026-06-15T02:00:00.000Z', 350, 300, 20),
+    collection('COL-2', 'DPE-7', '2026-06-16T02:00:00.000Z', 700, 600),
+    collection('COL-3', 'DPE-9', '2026-06-16T02:00:00.000Z', 999, 999),
+  ];
+  const sale = Array(44).fill(''); Object.assign(sale, { 0: 'SAL-1', 1: '2026-06-15T03:00:00.000Z', 2: 'AGDAO', 3: 'Maria', 21: 'DP-1', 26: 500, 30: '2026-06-15', 32: 'DPE-7', 33: 'Clerk', 34: '2026-06-15T03:00:00.000Z', 35: 'Outstanding', 41: 450 });
+  h.rows.Sales = [[], sale];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program']];
+  const expense = Array(21).fill(''); Object.assign(expense, { 0: 'EXP-1', 1: '2026-06-16', 2: 'Fare', 4: 100, 11: 'Posted', 18: 'DPE-7' });
+  h.rows.Expenses = [[], expense];
+  const { buildClerkReport } = h.load('lib/clerk-report.ts');
+  const report = await buildClerkReport('weekly', '2026-06-17', { employeeId: 'DPE-7', name: 'Clerk' });
+  assert.equal(report.title, 'THIRD WEEK REPORT FOR JUNE 2026');
+  assert.equal(report.weekAndDate, 'WEEK 25 / June 15-21, 2026');
+  assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity]), [['06/15/2026', 1, 350, 50, 300, 20], ['06/16/2026', 1, 700, 100, 600, 0]], 'by date; the other clerk\'s COL-3 is not counted');
+  assert.deepEqual([report.newSales.total.accounts, report.newSales.total.gross, report.newSales.total.incentives], [1, 500, 50]);
+  assert.deepEqual(report.summary, { accounts: 3, gross: 1550, incentives: 200, net: 1350, fidelity: 20, netRemittance: 1370, expenses: 100, totalCash: 1270 });
+  assert.equal(report.checks.withPhoto, 0);
+  const daily = await buildClerkReport('daily', '2026-06-15', { employeeId: 'DPE-7', name: 'Clerk' });
+  assert.deepEqual(daily.collection.rows.map((row) => row.label), ['Maria'], 'a day is grouped by MAS');
+});
+
+test('receipt photos must be small compressed images and may cover several entries', async () => {
+  const h = harness();
+  const { saveReceiptPhoto, MAX_PHOTO_BYTES } = h.load('lib/receipt-photos.ts');
+  await assert.rejects(() => h.load('lib/encoder-context.ts').runAsSystem(() => saveReceiptPhoto({ entryIds: ['COL-1'], dataUrl: 'data:image/png;base64,AAAA', width: 10, height: 10 })), /WebP or JPEG/);
+  const big = 'A'.repeat(Math.ceil((MAX_PHOTO_BYTES + 1000) * 4 / 3));
+  await assert.rejects(() => h.load('lib/encoder-context.ts').runAsSystem(() => saveReceiptPhoto({ entryIds: ['COL-1'], dataUrl: `data:image/webp;base64,${big}`, width: 10, height: 10 })), /limit is 80 KB/);
+  const data = 'A'.repeat(60000);
+  const saved = await h.load('lib/encoder-context.ts').runAsSystem(() => saveReceiptPhoto({ entryIds: ['COL-1', 'COL-2', 'COL-1'], dataUrl: `data:image/webp;base64,${data}`, width: 800, height: 1000 }));
+  assert.deepEqual(saved.entryIds, ['COL-1', 'COL-2']);
+  const row = h.writes.find((write) => String(write.range).startsWith("'Receipt Photos'!A:N")).requestBody.values[0];
+  assert.equal(row[1], 'COL-1,COL-2');
+  assert.equal(row[9], 2, 'split into two cells under the 50,000-character limit');
+  assert.equal(row[10].length + row[11].length, 60000);
 });

@@ -5,6 +5,7 @@ import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
 import { incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime } from "@/lib/remittance-deadline";
 import { cashCountProblem } from "@/lib/cash-count";
+import { photosByEntry } from "@/lib/receipt-photos";
 
 const titles = ["Collections", "Remittances", "Remittance Collections", "Sales"] as const;
 // The same ranges the dashboards and reports read, so one cached copy of each sheet serves them all.
@@ -45,6 +46,8 @@ export type CashCollection = {
   forfeitedIncentive: number;
   /** When the cash must be received to keep the incentive ("YYYY-MM-DD HH:MM", Manila); blank without a valid OR date. */
   incentiveDeadline: string;
+  /** The receipt photo attached to this item; every item needs one before its remittance is approved. */
+  photoId: string;
   /** Remittance penalty charged to the accountable MAS/Collector; set on the batch's first Collection only. */
   penalty: number;
   penaltyNote: string;
@@ -95,6 +98,9 @@ export type CashRemittance = {
   /** Penalties charged on the linked items, with what each was for; tracked separately and not part of the expected amount. */
   penaltyAmount: number;
   penaltyNotes: string[];
+  /** Receipt photos of the linked items, and the items still without one (approval needs none missing). */
+  photoIds: string[];
+  missingPhotos: string[];
 };
 
 async function loadLedger() {
@@ -115,7 +121,7 @@ async function loadLedger() {
     id: text(row[0]), remittanceId: text(row[1]), collectionId: text(row[2]), amount: number(row[3]), linkedAt: text(row[4]),
   }));
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
-    kind: "Collections" as const, id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
+    kind: "Collections" as const, photoId: "", id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), forfeitedIncentive: number(row[FORFEIT_COLUMN.Collections]), incentiveDeadline: incentiveDeadline(text(row[9])), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
     collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]), fidelity: number(row[37]),
@@ -127,7 +133,7 @@ async function loadLedger() {
   // A New Sale has no OR; its date is the Manila date it was created (date_created is a UTC stamp).
   const saleDate = (row: unknown[]) => text(row[30]) || manilaDateOf(text(row[1]));
   const sales: CashCollection[] = rows.Sales.slice(1).map((row, index) => ({
-    kind: "New Sales" as const, id: text(row[0]), batchId: "", rowNumber: index + 2, memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
+    kind: "New Sales" as const, photoId: "", id: text(row[0]), batchId: "", rowNumber: index + 2, memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
     accountableEmployeeId: text(row[37]), accountableName: text(row[3]), accountableRole: "MAS",
     orNumber: text(row[29]) || (text(row[28]) ? `App ${text(row[28])}` : ""), orDate: saleDate(row), amount: number(row[26]), remittanceAmount: text(row[41]) === "" ? number(row[26]) : number(row[41]),
     forfeitedIncentive: number(row[FORFEIT_COLUMN["New Sales"]]), incentiveDeadline: incentiveDeadline(saleDate(row)),
@@ -136,12 +142,14 @@ async function loadLedger() {
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${saleDate(row)}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((sale) => sale.id);
   collections.push(...sales);
+  const photos = await photosByEntry();
+  for (const item of collections) item.photoId = photos.get(item.id)?.photoId ?? "";
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
     id: text(row[0]), rowNumber: index + 2, branch: text(row[1]), accountableName: text(row[2]), remittanceDate: text(row[3]), remittanceTime: text(row[REMITTANCE_TIME_COLUMN]), cashCount: text(row[CASH_COUNT_COLUMN]), status: text(row[4]) || "Legacy",
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByName: text(row[20]), decisionAt: text(row[21]),
-    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : "Collections") as RemittanceKind, collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [],
+    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : "Collections") as RemittanceKind, collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [], photoIds: [], missingPhotos: [],
   })).filter((remittance) => remittance.id);
   const byId = new Map(collections.map((collection) => [collection.id, collection]));
   for (const remittance of remittances) {
@@ -150,6 +158,8 @@ async function loadLedger() {
     remittance.paymentReferences = [...new Set(linked.map((item) => item.paymentReference).filter(Boolean))];
     remittance.penaltyAmount = Math.round(linked.reduce((sum, item) => sum + item.penalty, 0) * 100) / 100;
     remittance.penaltyNotes = linked.filter((item) => item.penalty > 0).map((item) => item.penaltyNote);
+    remittance.photoIds = [...new Set(linked.map((item) => item.photoId).filter(Boolean))];
+    remittance.missingPhotos = linked.filter((item) => !item.photoId).map((item) => item.id);
   }
   return { collections, remittances, mappings };
 }
@@ -232,6 +242,12 @@ function forfeitUpdate(sheet: Awaited<ReturnType<typeof sheetIds>>, item: CashCo
     ];
 }
 
+/** Approval needs a receipt photo for every item, so the approver can check the cash against the receipts. */
+function requirePhotos(items: CashCollection[]) {
+  const missing = items.filter((item) => !item.photoId).map((item) => item.id);
+  if (missing.length) throw new Error(`Attach the receipt photo${missing.length === 1 ? "" : "s"} before approval (My Entries): ${missing.join(", ")}.`);
+}
+
 export const CASH_IN_FULL_NOTE = "Cash received in full and confirmed during encoding.";
 
 export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; fidelityAmount: number; remittanceDate: string; remittanceTime: string; cashCount?: string; remarks?: string; cashConfirmed?: boolean }) {
@@ -279,6 +295,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   // Confirmed full cash is created and approved in one atomic write by whoever received it.
   if (input.cashConfirmed && difference !== 0) throw new Error("Cash received in full requires the actual amount to equal the expected amount.");
   const approved = Boolean(input.cashConfirmed);
+  if (approved) requirePhotos(collections);
   // The Remittances sheet itself shows any penalty and Fidelity on the batch. Fidelity is part of the expected amount; a penalty is not.
   const penalized = collections.filter((collection) => collection.penalty > 0);
   const penaltyText = penalized.map((collection) => `Penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (separate from remittance): ${collection.penaltyNote}`).join("; ");
@@ -317,6 +334,7 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   if (decision === "approve" && linked.some((collection) => collection?.linkedRemittanceId !== remittance.id || collection.remittanceStatus !== "Pending Remittance Approval")) {
     throw new Error(`A linked ${remittance.type === "New Sales" ? "New Sale" : "Collection"} changed before approval. Refresh and investigate it.`);
   }
+  if (decision === "approve") requirePhotos(linked as CashCollection[]);
   const sheet = await sheetIds();
   const timestamp = actor.encodedAt;
   const status = decision === "approve" ? "Approved" : "Rejected";

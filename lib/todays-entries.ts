@@ -2,6 +2,7 @@ import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-deadline";
 import { dateWarnings } from "@/lib/date-checks";
+import { photosByEntry } from "@/lib/receipt-photos";
 import type { TodayMode } from "@/lib/today-mode";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -50,6 +51,14 @@ export type DayEntry = {
   warnings: string[];
   /** Everything worth knowing about the entry, as label and value, for the View panel. Blank values are left out. */
   details: Array<[string, string]>;
+  /** Who encoded it (blank on imported rows). */
+  encodedByEmployeeId: string;
+  /** Figures for reports: company share, Fidelity and penalty on this entry. */
+  remittanceAmount: number;
+  fidelity: number;
+  penalty: number;
+  /** The receipt photo attached to this entry, if any. */
+  photoId: string;
 };
 
 /**
@@ -57,12 +66,21 @@ export type DayEntry = {
  * the office received the cash on a remittance slip (rejected slips are unlinked, so they do not count).
  */
 export async function getEntriesForDay(date: string, mode: TodayMode, person = "") {
+  return getEntriesForRange(date, date, mode, { person });
+}
+
+/**
+ * New Sales and posted Collections whose day (by `mode`) falls from `from` to `to`, optionally only one MAS/Collector's
+ * (`person`) or only what one employee encoded (`encodedBy`, an Employee ID).
+ */
+export async function getEntriesForRange(from: string, to: string, mode: TodayMode, { person = "", encodedBy = "" }: { person?: string; encodedBy?: string } = {}) {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
     ranges: [SALES_RANGE, COLLECTIONS_RANGE, REMITTANCES_RANGE, PROGRAMS_RANGE, MEMBERS_RANGE],
     valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING",
   });
   const [sales, collections, remittances, programs, members] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  const photos = await photosByEntry();
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const memberNames = new Map(members.slice(1).map((row) => [text(row[0]), `${text(row[3])} ${text(row[2])}`.trim()]));
   const slipRows = new Map(remittances.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), row]));
@@ -71,7 +89,7 @@ export async function getEntriesForDay(date: string, mode: TodayMode, person = "
   const money = (value: unknown) => (text(value) === "" ? "" : peso(number(value)));
   const today = manilaNow().date;
 
-  type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings">;
+  type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings" | "photoId">;
   const entry = (values: Base): DayEntry => {
     const slipDate = text(slipRows.get(values.remittanceId)?.[3]).slice(0, 10);
     return {
@@ -82,6 +100,7 @@ export async function getEntriesForDay(date: string, mode: TodayMode, person = "
       incentiveDeadline: incentiveDeadline(values.orDate),
       warnings: dateWarnings({ receiptDate: values.orDate, receiptLabel: values.kind === "New Sale" ? "application date" : "OR date", dateRemitted: values.dateRemitted, slipDate, recordedOn: values.recordedOn, today }),
       details: values.details.filter(([, value]) => value !== ""),
+      photoId: photos.get(values.id)?.photoId ?? "",
     };
   };
   const all: DayEntry[] = [
@@ -95,7 +114,7 @@ export async function getEntriesForDay(date: string, mode: TodayMode, person = "
         orNumber: text(row[29]), orDate, applicationNumber: text(row[28]), notes: text(row[27]),
         amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[43]),
         remittanceStatus: text(row[35]), remittanceId: text(row[36]), encodedBy: text(row[33]), encodedAt: manilaTime(text(row[34]) || text(row[1])),
-        dateRemitted, recordedOn,
+        dateRemitted, recordedOn, encodedByEmployeeId: text(row[32]), remittanceAmount: remittance, fidelity: number(row[42]), penalty: number(row[38]),
         details: [
           ["Sale ID", text(row[0])], ["Member", [memberName, text(row[5])].filter(Boolean).join(" · ")],
           ["Program", programNames.get(text(row[21])) || text(row[21])], ["Branch", text(row[2])], ["MAS", text(row[3])],
@@ -125,7 +144,7 @@ export async function getEntriesForDay(date: string, mode: TodayMode, person = "
         orNumber: text(row[8]), orDate, applicationNumber: "", notes: "",
         amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[38]),
         remittanceStatus: text(row[28]), remittanceId: text(row[29]), encodedBy: text(row[23]), encodedAt: manilaTime(text(row[24]) || text(row[20])),
-        dateRemitted, recordedOn,
+        dateRemitted, recordedOn, encodedByEmployeeId: text(row[22]), remittanceAmount: remittance, fidelity: number(row[37]), penalty: number(row[35]),
         details: [
           ["Collection ID", text(row[0])], ["Batch", text(row[1])], ["Member", [memberName, text(row[4])].filter(Boolean).join(" · ")],
           ["Program", programNames.get(text(row[5])) || text(row[5])], ["Branch", text(row[6])], ["MAS", text(row[7])],
@@ -146,7 +165,7 @@ export async function getEntriesForDay(date: string, mode: TodayMode, person = "
     }),
   ];
   const dayOf = (item: DayEntry) => (mode === "encoded" ? item.encodedAt : mode === "or" ? item.orDate : item.remittedAt).slice(0, 10);
-  const entries = all.filter((item) => dayOf(item) === date && (!person || item.person.toLowerCase() === person.toLowerCase()))
+  const entries = all.filter((item) => dayOf(item) >= from && dayOf(item) <= to && (!person || item.person.toLowerCase() === person.toLowerCase()) && (!encodedBy || item.encodedByEmployeeId === encodedBy))
     .sort((first, second) => second.encodedAt.localeCompare(first.encodedAt));
   const total = (kind: DayEntry["kind"]) => {
     const items = entries.filter((item) => item.kind === kind);

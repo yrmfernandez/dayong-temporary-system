@@ -1,7 +1,6 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
-import { keepsIncentive, manilaNow, validTime } from "@/lib/remittance-deadline";
+import { manilaNow } from "@/lib/remittance-deadline";
 import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
-import { cashCountProblem } from "@/lib/cash-count";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { withEncoder } from "@/lib/encoder-context";
 import { userWithPageAccess } from "@/lib/auth-server";
@@ -12,7 +11,6 @@ import { findActivePaymentMethod } from "@/lib/remittance-methods";
 import { calculateRemittance, tiersForBranch } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
-import { createCashRemittance } from "@/lib/remittance-workflow";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
 
 export async function GET(request: Request) {
@@ -43,10 +41,7 @@ async function saveCollections(request: Request) {
     const mas = String(body.mas ?? "").trim();
     const accountableEmployeeId = String(body.accountableEmployeeId ?? "").trim();
     const dateRemitted = String(body.dateRemitted ?? "");
-    // Time the cash was handed over when it is confirmed in full here; it decides whether incentives are kept.
-    const timeRemitted = validTime(String(body.timeRemitted ?? "")) ? String(body.timeRemitted) : manilaNow().time;
     const autoApproveRemittance = body.autoApproveRemittance === true;
-    const cashReceived = Number(body.cashReceived);
     if (!branch || !mas || !accountableEmployeeId || !validDate(dateRemitted) || !Array.isArray(body.collections) || !body.collections.length) throw new Error("Branch, accountable Collector/MAS, Date Remitted, and collections are required.");
     const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
     const selectedBranch = branches.find((item) => item.name === branch && item.status === "active");
@@ -78,9 +73,9 @@ async function saveCollections(request: Request) {
     if (autoApproveRemittance) {
       // Same rule as Remittances: anyone who can encode may confirm full physical cash; other methods are verified there.
       if (!paymentMethod.isCash) throw new Error(`${paymentMethod.name} payments are verified in Remittances before approval.`);
-      if (!Number.isFinite(cashReceived) || cashReceived < 0) throw new Error("Enter the complete cash amount received.");
-      const countProblem = cashCountProblem(String(body.cashCount ?? ""), cashReceived);
-      if (countProblem) throw new Error(countProblem);
+      // Approval needs a receipt photo, which can only be attached once the collections exist. The Collections form saves
+      // the batch, attaches the photo, then approves through Remittances, so approving here would fail after saving.
+      throw new Error("Receipt photos are required before a remittance is approved. Save the batch, attach the receipt photo, then approve it.");
     }
     const [data, recordedReceipts] = await Promise.all([loadAccountData(), recordedOrNumbers()]);
     const payments = [...data.payments];
@@ -127,20 +122,8 @@ async function saveCollections(request: Request) {
         // AO date_remitted, the batch's Date Remitted, so the dates can be checked against each other later.
         "", backdateReason, dateRemitted]);
     }
-    // The total remittance is the company's share plus the batch's Fidelity; a penalty is tracked separately. Cash
-    // confirmed here after the incentive deadline carries no incentive, so the full amount is due.
-    const receivedAt = `${dateRemitted} ${timeRemitted}`;
-    const dueNow = (row: (string | number)[]) => autoApproveRemittance && Number(row[10]) > Number(row[22]) && !keepsIncentive(String(row[9]), receivedAt) ? Number(row[10]) : Number(row[22]);
-    const expectedRemittance = (rows.reduce((sum, row) => sum + Math.round(dueNow(row) * 100), 0) + Math.round(fidelity * 100)) / 100;
-    if (autoApproveRemittance && Math.round(cashReceived * 100) !== Math.round(expectedRemittance * 100)) {
-      throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}.`);
-    }
     writing = true;
     await commitCollections(rows, [...touched.values()], payments);
-    if (autoApproveRemittance) {
-      const remittance = await createCashRemittance({ collectionIds: rows.map((row) => String(row[0])), actualAmount: cashReceived, fidelityAmount: 0, remittanceDate: dateRemitted, remittanceTime: timeRemitted, cashCount: String(body.cashCount ?? ""), remarks: "Cash received in full during collection encoding.", cashConfirmed: true });
-      return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, remittanceId: remittance.id, message: `${rows.length} collection(s) saved and Remittance ${remittance.id} approved.` }, { status: 201 });
-    }
     return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, message: `${rows.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save collections." }, { status: writing ? 500 : 400 }); }
 }

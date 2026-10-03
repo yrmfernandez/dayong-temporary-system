@@ -4,7 +4,7 @@ import { getEmployees } from "@/lib/employees";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { getBranches } from "@/lib/google-sheets-data";
 import { createReadableId } from "@/lib/readable-id";
-import { buildOperationalReport } from "@/lib/reports";
+import { buildClerkReport } from "@/lib/clerk-report";
 
 /**
  * Audits of each Entry Clerk's report: one per clerk per day, week (Monday to Sunday), month, or year (Entry Clerks only;
@@ -80,20 +80,20 @@ export async function auditedEmployees() {
 }
 
 /**
- * The employee's report for the period: what they encoded, as the Daily to Yearly Reports show it with the Encoder filter.
- * Longer periods also count the clerk's daily audits inside the period.
+ * The clerk's own report for the period (lib/clerk-report.ts): what they encoded, exactly as they and Report Review see
+ * it. Longer periods also count the clerk's daily audits inside the period.
  */
 async function figuresFor(period: AuditPeriod, date: string, employee: { name: string; employeeId: string }): Promise<AuditFigures> {
   const { start, end } = periodSpan(period, date);
-  const [report, dailyRows] = await Promise.all([buildOperationalReport(start, end, { encoder: employee.name }), period === "daily" ? Promise.resolve([]) : auditRows("daily")]);
+  const [report, dailyRows] = await Promise.all([buildClerkReport(period, start, employee), period === "daily" ? Promise.resolve([]) : auditRows("daily")]);
   const daily = dailyRows.slice(1).map(readAudit).filter((audit) => audit.id && audit.employeeId === employee.employeeId && audit.date >= start && audit.date <= end);
   const approved = daily.filter((audit) => audit.status === "Approved");
   return {
     ...(period === "daily" ? {} : { dailyAudits: { approved: approved.length, balanced: approved.filter((audit) => audit.result === "Balanced").length, withFindings: approved.filter((audit) => audit.result === "With findings").length, drafts: daily.length - approved.length } }),
     accounts: report.summary.accounts, gross: report.summary.gross, incentives: report.summary.incentives, fidelity: report.summary.fidelity,
-    penalty: report.summary.penalty, expectedRemittance: report.summary.net,
-    sales: report.sales.map((line) => ({ program: line.programName, branch: line.branch, accounts: line.accounts, gross: line.gross })),
-    collections: report.collections.map((line) => ({ program: line.programName, branch: line.branch, accounts: line.accounts, gross: line.gross, expectedRemittance: line.expectedRemittance })),
+    penalty: report.checks.penalties, expectedRemittance: report.summary.net,
+    sales: report.byProgram.sales.map((line) => ({ program: line.program, branch: line.branch, accounts: line.accounts, gross: line.gross })),
+    collections: report.byProgram.collections,
   };
 }
 

@@ -22,7 +22,8 @@ const MAX_JSON = 45000; // Google Sheets allows 50,000 characters per cell.
 const text = (value: unknown) => String(value ?? "");
 const key = ({ title, row }: RowKey) => `${title}\u0000${row}`;
 const quoted = (title: string) => `'${title.replace(/'/g, "''")}'`;
-const hidden = (header: string) => /password|hash/i.test(header);
+// Passwords and receipt photo data are never copied into the log.
+const hidden = (header: string) => /password|hash|photo_data/i.test(header);
 
 /** "'Sheet'!B5:E7" → sheet and 1-based rows; null when the range has no row numbers (whole columns). */
 export function parseRange(range: string, rowCount = 1): { title: string; startRow: number; endRow: number } | null {
