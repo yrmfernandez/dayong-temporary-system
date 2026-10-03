@@ -22,6 +22,14 @@ export function withEncoder(handler: (request: Request) => Promise<Response>) {
   };
 }
 
+/**
+ * Runs work the system does on its own (no user clicked save) as the encoder "System", so every row it writes still
+ * carries who wrote it and when.
+ */
+export function runAsSystem<T>(work: () => Promise<T>) {
+  return storage.run({ userId: "system", employeeId: "", name: "System", encodedAt: new Date().toISOString() }, work);
+}
+
 export function getEncoder() {
   const encoder = storage.getStore();
   if (!encoder) throw new Error("A verified encoder is required before saving entries.");

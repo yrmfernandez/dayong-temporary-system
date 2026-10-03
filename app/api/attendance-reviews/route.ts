@@ -1,4 +1,5 @@
 import { withEncoder } from "@/lib/encoder-context";
+import { closeFinishedAttendanceDaysQuietly, isSystemAbsence } from "@/lib/auto-absence";
 import { NextResponse } from "next/server";
 
 import {
@@ -57,6 +58,7 @@ export async function GET(request: Request) {
       );
     }
 
+    await closeFinishedAttendanceDaysQuietly();
     const [employees, records, closures, branches] = await Promise.all([
       getActiveAttendanceEmployees(),
       getAttendanceRecordsForDate(attendanceDate),
@@ -78,6 +80,8 @@ export async function GET(request: Request) {
           ...employee,
           branch,
           closed: Boolean(closure && closureCovers(closure, branch)),
+          // Recorded Absent by the system at the end of the day because nobody marked the employee.
+          systemAbsent: isSystemAbsence(recordsByEmployee.get(employee.employeeId)),
           record: recordsByEmployee.get(employee.employeeId) ?? null,
         };
       }),

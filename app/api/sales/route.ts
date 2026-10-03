@@ -1,6 +1,8 @@
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
+import { blockingDateProblem } from "@/lib/date-checks";
+import { manilaNow } from "@/lib/remittance-deadline";
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
@@ -540,6 +542,8 @@ async function saveSales(request: Request) {
     const controlProblem = controlTotalProblem(body.controlTotal, preparedSales.map((prepared) => Number(prepared.sale.amountPaid) || 0));
     if (controlProblem) return NextResponse.json({ success: false, message: controlProblem }, { status: 400 });
     for (const [index, prepared] of preparedSales.entries()) {
+      const dateProblem = blockingDateProblem({ receiptDate: String(prepared.sale.orDate ?? "").trim(), receiptLabel: "application date", dateRemitted: String(body.dateRemitted ?? "").trim(), today: manilaNow().date });
+      if (dateProblem) return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${dateProblem}` }, { status: 400 });
       try { checkBackdate(String(prepared.sale.orDate ?? "").trim(), String(prepared.sale.backdateReason ?? ""), `Sale #${index + 1}`); }
       catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Enter the reason for the late date." }, { status: 400 }); }
     }

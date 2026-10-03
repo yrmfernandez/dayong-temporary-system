@@ -32,7 +32,7 @@ const page = {
       { name: "Yearly", href: "/reports/yearly", icon: BarChart3 },
     ],
   },
-  userReports: { name: "User Report Review", href: "/admin-reports", icon: FileSearch },
+  userReports: { name: "Report Review", href: "/admin-reports", icon: FileSearch },
   soa: { name: "Statement of Account", href: "/soa", icon: ScrollText },
   dailyAudit: { name: "Audits", href: "/audit", icon: ClipboardCheck },
   members: { name: "Members", href: "/members", icon: Users },

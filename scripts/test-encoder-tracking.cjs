@@ -274,7 +274,8 @@ test('member directory requires Members page access, joins accounts once, and fi
   assert.equal((await route.GET()).status, 403);
   h.setUser({ userId: 'U2', roleNames: ['HR Officer'], permissions: {}, rolePages: { 'hr officer': ['/employees'] } });
   assert.equal((await route.GET()).status, 403, 'a role without the Members page cannot pull the directory');
-  h.setUser({ userId: 'U1', roleNames: ['MAS'], permissions: {} });
+  // Finance sees every member but does not encode; a MAS sees only their own (tested separately).
+  h.setUser({ userId: 'U1', roleNames: ['Finance'], permissions: {} });
   const member = ['M1', 'PH-001', 'Santos', 'Ana'];
   member[12] = 'Blk 12, Mintal, Davao City'; member[13] = 'Pedro Santos'; member[15] = 'TRUE'; member[17] = 'Active';
   h.rows.Members = [[], member, ['M2', 'PH-002', 'Cruz', 'Ben']];
@@ -1565,4 +1566,48 @@ test('exceptions find bad dates, wrong amounts, duplicates, incomplete members, 
   const fix = result.categories.find((item) => item.category === 'dates').items[0].entry;
   assert.deepEqual([fix.kind, fix.orNumber, fix.onRemittance], ['Collection', 'OR-COL-A', true], 'the correction form gets what it needs');
   assert.deepEqual((await findExceptions({ includeLegacy: true })).categories.find((item) => item.category === 'dates').items.map((item) => item.recordId).sort(), ['COL-A', 'COL-LEG-1']);
+});
+
+test('date checks flag dates that are out of order or far apart, and block the impossible ones', () => {
+  const { dateWarnings, blockingDateProblem } = harness().load('lib/date-checks.ts');
+  // The imported collection: OR dated 2026-10-03 but recorded on 2026-09-18.
+  const legacy = dateWarnings({ receiptDate: '2026-10-03', recordedOn: '2026-09-18', today: '2026-10-03' });
+  assert.equal(legacy.length, 1);
+  assert.match(legacy[0], /15 days after the entry was recorded \(2026-09-18\)/);
+  assert.deepEqual(dateWarnings({ receiptDate: '2026-10-01', dateRemitted: '2026-10-02', recordedOn: '2026-10-02', today: '2026-10-03' }), [], 'a normal entry has no warnings');
+  assert.match(dateWarnings({ receiptDate: '2026-10-03', dateRemitted: '2026-09-18', today: '2026-10-03' })[0], /Remitted on 2026-09-18, 15 days before the OR date/);
+  assert.match(dateWarnings({ receiptDate: '2026-09-01', dateRemitted: '2026-09-20', today: '2026-10-03' })[0], /Remitted 19 days after the OR date/);
+  assert.match(dateWarnings({ receiptDate: '2026-08-01', recordedOn: '2026-10-03', today: '2026-10-03' })[0], /Encoded 63 days after/);
+  assert.match(dateWarnings({ receiptDate: '2026-09-01', dateRemitted: '2026-09-02', slipDate: '2026-09-10', today: '2026-10-03' })[0], /slip is dated 2026-09-10/);
+  assert.match(blockingDateProblem({ receiptDate: '2026-10-03', dateRemitted: '2026-09-18', today: '2026-10-03' }), /cannot be before the OR date/);
+  assert.match(blockingDateProblem({ receiptDate: '2026-10-03', dateRemitted: '2026-10-09', today: '2026-10-03' }), /cannot be in the future/);
+  assert.equal(blockingDateProblem({ receiptDate: '2026-10-01', dateRemitted: '2026-10-02', today: '2026-10-03' }), '');
+});
+
+test('after the day ends, unmarked employees are recorded absent by the system, except on closed days', () => {
+  const { systemAbsences, isSystemAbsence, SYSTEM_ABSENCE_NOTE } = harness().load('lib/auto-absence.ts');
+  const employees = [{ employeeId: 'E1' }, { employeeId: 'E2' }, { employeeId: 'E3' }];
+  const branches = new Map([['E1', 'MATINA'], ['E2', 'TORIL'], ['E3', 'MATINA']]);
+  // Sat 2026-10-03 to Mon 2026-10-05: E1 clocked in Saturday, E2 was marked AWOL Monday, TORIL closed Saturday.
+  const records = [{ employeeId: 'E1', attendanceDate: '2026-10-03' }, { employeeId: 'E2', attendanceDate: '2026-10-05' }];
+  const closures = [{ date: '2026-10-03', reason: 'Fiesta', allBranches: false, branchIds: ['BR-2'], branchNames: ['TORIL'], updatedAt: '' }];
+  const absences = systemAbsences({ from: '2026-10-03', to: '2026-10-05', employees, branches, records, closures, timestamp: 'now' });
+  assert.deepEqual(absences.map((item) => `${item.employeeId} ${item.attendanceDate}`), ['E3 2026-10-03', 'E1 2026-10-05', 'E3 2026-10-05'], 'Sunday skipped; recorded and closed days left alone');
+  assert.equal(absences[0].status, 'Absent');
+  assert.equal(absences[0].notes, SYSTEM_ABSENCE_NOTE);
+  assert.equal(isSystemAbsence(absences[0]), true);
+  assert.equal(isSystemAbsence({ status: 'Absent', notes: 'Marked by HR' }), false, 'an absence marked by management is not the system');
+});
+
+test('a MAS sees only their own members; oversight roles see everyone', async () => {
+  const h = harness();
+  h.rows.Employees = [[], ['DPE-0002', 'Maria Santos', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  const { ownMembersScope, isOwnAccount } = h.load('lib/member-scope.ts');
+  assert.equal(await ownMembersScope({ roleNames: ['MAS'], employeeId: 'DPE-0002', name: 'maria' }), 'Maria Santos', 'the name on the employee record, as on enrollments');
+  assert.equal(await ownMembersScope({ roleNames: ['MAS', 'Administrator'], employeeId: 'DPE-0002', name: 'Maria Santos' }), null);
+  assert.equal(await ownMembersScope({ roleNames: ['Finance'], employeeId: 'DPE-9', name: 'Fin' }), null);
+  assert.equal(isOwnAccount(' maria santos ', 'Maria Santos'), true);
+  assert.equal(isOwnAccount('Jose Cruz', 'Maria Santos'), false);
+  assert.equal(isOwnAccount('', await ownMembersScope({ roleNames: ['MAS'], employeeId: 'NOBODY', name: '' })), false, 'no name matches nothing');
 });

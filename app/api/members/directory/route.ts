@@ -1,4 +1,5 @@
 import { canAccessPath } from "@/lib/access-control";
+import { isOwnAccount, ownMembersScope } from "@/lib/member-scope";
 import { canManageUsers, userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { deleteMemberRecord, updateMemberRecord } from "@/lib/master-data-crud";
@@ -17,7 +18,12 @@ export async function GET() {
       valueRenderOption: "FORMATTED_VALUE",
     });
     const tables = response.data.valueRanges ?? [];
-    const members = buildMemberDirectory(...[0, 1, 2, 3].map((index) => (tables[index]?.values ?? []).slice(1)) as [unknown[][], unknown[][], unknown[][], unknown[][]]);
+    const everyone = buildMemberDirectory(...[0, 1, 2, 3].map((index) => (tables[index]?.values ?? []).slice(1)) as [unknown[][], unknown[][], unknown[][], unknown[][]]);
+    // A MAS sees only members they handle, and only those programs.
+    const scope = await ownMembersScope(user);
+    const members = scope === null ? everyone : everyone
+      .map((member) => ({ ...member, enrollments: member.enrollments.filter((enrollment) => isOwnAccount(enrollment.mas, scope)) }))
+      .filter((member) => member.enrollments.length > 0);
     let statusWarning = "";
     try {
       const report = await accountReport();

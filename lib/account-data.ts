@@ -32,7 +32,7 @@ export async function loadAccountData() {
   if (new Set(accounts.map((a) => a.id)).size !== accounts.length) throw new Error("Duplicate enrollment IDs need review.");
   const payments: AccountPayment[] = tables.Collections.slice(1).filter((r) => str(r[0]) && str(r[19]).toLowerCase() === "posted").map((r) => ({
     id: str(r[0]), enrollmentId: str(r[2]), orDate: sheetDate(r[9]), orNumber: str(r[8]), monthFrom: sheetDate(r[11]).slice(0, 7), monthTo: sheetDate(r[12]).slice(0, 7),
-    nopFrom: Number(r[13]), nopTo: Number(r[14]), amount: Number(r[10]), dateRemitted: sheetDate(r[9]), mas: str(r[7]),
+    nopFrom: Number(r[13]), nopTo: Number(r[14]), amount: Number(r[10]), dateRemitted: sheetDate(r[40]) || sheetDate(r[9]), mas: str(r[7]),
   }));
   const sales = tables.Sales.slice(1).map((r) => ({ memberNumber: str(r[5]), programId: str(r[21]), applicationNumber: str(r[28]), registrationFee: Number(r[25]) || 0 }));
   const incentives = tables["Program Incentives"].slice(1).filter((r) => str(r[0])).map((r) => ({
@@ -72,15 +72,23 @@ export async function memberStanding(memberId: string): Promise<ProgramStanding[
   });
 }
 
-export async function mamReport(from?: string, to?: string) {
+/** `onlyMas` limits the report to that MAS's own accounts (lib/member-scope.ts). */
+export async function mamReport(from?: string, to?: string, onlyMas: string | null = null) {
   const today = todayInManila();
-  return buildMamReport(await loadAccountData(), from || today.slice(0, 7), to || today.slice(0, 7), today);
+  return buildMamReport(scopeToMas(await loadAccountData(), onlyMas), from || today.slice(0, 7), to || today.slice(0, 7), today);
+}
+
+function scopeToMas<T extends { accounts: Array<{ id: string; mas: string }>; payments: Array<{ enrollmentId: string }> }>(data: T, onlyMas: string | null): T {
+  if (onlyMas === null) return data;
+  const accounts = data.accounts.filter((account) => account.mas.trim().toLowerCase() === onlyMas.toLowerCase());
+  const ids = new Set(accounts.map((account) => account.id));
+  return { ...data, accounts, payments: data.payments.filter((payment) => ids.has(payment.enrollmentId)) };
 }
 
 /** One member's MAM: each of their program accounts, month by month, from enrollment (at most the last 36 months) to today. */
-export async function memberMam(memberId: string) {
+export async function memberMam(memberId: string, onlyMas: string | null = null) {
   const today = todayInManila();
-  const data = await loadAccountData();
+  const data = scopeToMas(await loadAccountData(), onlyMas);
   const accounts = data.accounts.filter((account) => account.memberId === memberId);
   const current = monthIndex(today.slice(0, 7));
   const earliest = Math.min(current, ...accounts.filter((account) => account.doi).map((account) => monthIndex(account.doi.slice(0, 7))));

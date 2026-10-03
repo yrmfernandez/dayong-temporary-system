@@ -1,4 +1,5 @@
 import { withEncoder } from "@/lib/encoder-context";
+import { closeFinishedAttendanceDaysQuietly } from "@/lib/auto-absence";
 import { NextResponse } from "next/server";
 
 import {
@@ -61,6 +62,8 @@ export async function GET() {
     }
 
     const attendanceDate = getPhilippineDate();
+    // The first visit after midnight records the system absences for the day that just ended.
+    await closeFinishedAttendanceDaysQuietly();
 
     const [{ record }, branches] = await Promise.all([
       getAttendanceForEmployeeDate(user.employeeId, attendanceDate),

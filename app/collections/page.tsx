@@ -22,6 +22,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { formatDeadline, incentiveDeadline, keepsIncentive, manilaNow } from "@/lib/remittance-deadline";
 import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
+import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { CashCountInput } from "@/components/cash-count-input";
 import { cashCountTotal, formatCashCount, type CashCount } from "@/lib/cash-count";
 import { RemittanceSummary } from "@/components/remittance-summary";
@@ -645,6 +646,9 @@ export default function CollectionsPage() {
     if (!entry.orDate) {
       return "OR Date is required.";
     }
+
+    const dateProblem = blockingDateProblem({ receiptDate: entry.orDate, dateRemitted, today: manilaNow().date });
+    if (dateProblem) return dateProblem;
 
     if (needsBackdateReason(entry.orDate) && (entry.backdateReason ?? "").trim().length < BACKDATE_REASON_MIN) {
       return "The OR date is more than a day old. Enter the reason it is being encoded late.";
@@ -1502,6 +1506,7 @@ export default function CollectionsPage() {
                                     )
                                   }
                                 />
+                                {dateWarnings({ receiptDate: entry.orDate, dateRemitted, today: manilaNow().date }).map((warning) => <p key={warning} className="text-xs font-medium text-amber-800">⚠ {warning}</p>)}
                                 {needsBackdateReason(entry.orDate) && (
                                   <div className="space-y-1">
                                     <Label className="text-xs text-amber-800">Reason for the late entry *</Label>

@@ -27,13 +27,13 @@ function aggregate(lines: ReportLine[], key: (line: ReportLine) => string) {
   return [...groups.values()].map((line) => Object.fromEntries(Object.entries(line).map(([key, value]) => [key, typeof value === "number" ? round(value) : value])) as ReportLine);
 }
 
-export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; encoder?: string } = {}) {
+export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; encoder?: string; encoders?: string[] } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error("Choose a valid report date range.");
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [SALES_RANGE, COLLECTIONS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, "'Expenses'!A:Q", "'Cash Transactions'!A:P", REMITTANCE_LINKS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
   const [sales, collections, programs, remittances, expenses, cash, remittanceCollections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const inRange = (date: string) => date >= from && date <= to;
-  const matches = (branch: string, programId: string, person: string, encoder: string) => (!filters.branch || branch === filters.branch) && (!filters.programId || programId === filters.programId) && (!filters.person || person === filters.person) && (!filters.encoder || encoder === filters.encoder);
+  const matches = (branch: string, programId: string, person: string, encoder: string) => (!filters.branch || branch === filters.branch) && (!filters.programId || programId === filters.programId) && (!filters.person || person === filters.person) && (!filters.encoder || encoder === filters.encoder) && (!filters.encoders || filters.encoders.includes(encoder));
   const approvedFidelity=new Map(remittances.slice(1).filter(row=>text(row[4])==="Approved"&&number(row[24])>0).map(row=>[text(row[0]),number(row[24])]));
   const fidelityByCollection=new Map<string,number>(),assigned=new Set<string>();
   for(const row of remittanceCollections.slice(1)){const remittanceId=text(row[1]);if(!assigned.has(remittanceId)&&approvedFidelity.has(remittanceId)){fidelityByCollection.set(text(row[2]),approvedFidelity.get(remittanceId)??0);assigned.add(remittanceId)}}

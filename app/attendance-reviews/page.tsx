@@ -26,6 +26,8 @@ type EmployeeAttendance = {
   branch: string;
   // The employee's branch is closed by the date's non-working day.
   closed: boolean;
+  // Recorded Absent by the system at the end of the day because management did not mark it.
+  systemAbsent: boolean;
   record: AttendanceRecord | null;
 };
 
@@ -120,7 +122,7 @@ export default function AttendanceReviewsPage() {
           Attendance Review
         </h1>
         <p className="text-sm text-muted-foreground">
-          Mark a missing attendance as Absent or AWOL. Clocked attendance and approved leave cannot be changed here.
+          Mark a missing attendance as Absent or AWOL. Clocked attendance and approved leave cannot be changed here. Anyone still unmarked after 11:59 PM is recorded Absent by the system and shown as &quot;Absent · by system&quot;; marking them here replaces it.
         </p>
       </div>
 
@@ -179,7 +181,7 @@ export default function AttendanceReviewsPage() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={employee.record?.status === "Present" ? "default" : "secondary"}>
-                        {employee.closed ? "Branch closed" : employee.record?.status || "No record"}
+                        {employee.closed ? "Branch closed" : employee.systemAbsent ? "Absent · by system" : employee.record?.status || "No record"}
                       </Badge>
                       {!locked && (
                         <>

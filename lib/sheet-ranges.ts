@@ -4,7 +4,7 @@
  * rows, about five seconds per read) is fetched once and shared instead of once per module. Read them with
  * valueRenderOption UNFORMATTED_VALUE and dateTimeRenderOption FORMATTED_STRING so the cache entries match too.
  */
-export const COLLECTIONS_RANGE = "'Collections'!A:AN";
+export const COLLECTIONS_RANGE = "'Collections'!A:AO";
 export const SALES_RANGE = "'Sales'!A:AS";
 export const REMITTANCES_RANGE = "'Remittances'!A:AB";
 export const REMITTANCE_LINKS_RANGE = "'Remittance Collections'!A:I";

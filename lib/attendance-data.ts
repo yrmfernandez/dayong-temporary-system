@@ -139,6 +139,23 @@ export async function addAttendanceRecord(
   });
 }
 
+/** Appends several records in one request (the system's end-of-day absences). */
+export async function addAttendanceRecords(records: AttendanceRecord[]) {
+  if (!records.length) return;
+  await appendEncodedRows({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${ATTENDANCE_SHEET}!A:R`,
+    valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: records.map(attendanceValues) },
+  });
+}
+
+/** Every record dated within the range, SYSTEM rows included. */
+export async function getAllAttendanceForRange(dateFrom: string, dateTo: string) {
+  return (await attendanceRows()).slice(1).map(readAttendanceRow).filter((record) => record.attendanceDate >= dateFrom && record.attendanceDate <= dateTo);
+}
+
 export async function updateAttendanceRecord(
   rowNumber: number,
   record: AttendanceRecord,
@@ -193,9 +210,15 @@ export async function getAttendanceRecordsForRange(
   dateFrom: string,
   dateTo: string,
 ): Promise<AttendanceRecord[]> {
-  return (await attendanceRows()).slice(1).map(readAttendanceRow)
-    .filter((record) => record.employeeId && record.employeeId !== "SYSTEM" && record.attendanceDate >= dateFrom && record.attendanceDate <= dateTo)
-    .sort((first, second) => second.attendanceDate.localeCompare(first.attendanceDate));
+  // One record per employee per day: if two servers ever closed the same day at once, a repeated system absence must
+  // not be counted twice. A record anyone else wrote wins over a system absence.
+  const byDay = new Map<string, AttendanceRecord>();
+  for (const record of (await attendanceRows()).slice(1).map(readAttendanceRow)) {
+    if (!record.employeeId || record.employeeId === "SYSTEM" || record.attendanceDate < dateFrom || record.attendanceDate > dateTo) continue;
+    const key = `${record.employeeId}|${record.attendanceDate}`, kept = byDay.get(key);
+    if (!kept || (kept.notes.startsWith("Absent by system") && !record.notes.startsWith("Absent by system"))) byDay.set(key, record);
+  }
+  return [...byDay.values()].sort((first, second) => second.attendanceDate.localeCompare(first.attendanceDate));
 }
 
 function getWorkingDatesInRange(

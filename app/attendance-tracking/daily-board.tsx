@@ -10,7 +10,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 
 type Category = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Not clocked in" | "Non-working day";
 type BoardRecord = { timeIn: string; timeOut: string; scheduledTimeIn: string; lateMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string; branch: string };
-type Row = { employeeId: string; name: string; roles: string[]; branches: string[]; category: Category; earlyMinutes: number; record: BoardRecord | null };
+type Row = { employeeId: string; name: string; roles: string[]; branches: string[]; category: Category; earlyMinutes: number; systemAbsent: boolean; record: BoardRecord | null };
 type Board = { date: string; today: string; canAdjustLate: boolean; canSetClockOut: boolean; closedDay: string; rows: Row[] };
 
 // Present covers On time, Late, and Early; the rest are listed in this order on screen and on paper.
@@ -114,7 +114,7 @@ export function DailyBoard() {
         <thead className="bg-muted/50 text-left"><tr><th className="p-2.5">Employee</th><th className="p-2.5">Branch</th>{clocked && <><th className="p-2.5">Time in</th><th className="p-2.5">Time out</th></>}{showLate && <th className="p-2.5">Late by</th>}{showEarly && <th className="p-2.5">Early by</th>}<th className="p-2.5">Notes</th>{clocked && canCorrect && <th className="p-2.5 print:hidden" />}</tr></thead>
         <tbody>{list.map((row) => { const record = row.record; const isEditing = editing?.employeeId === row.employeeId; return [
           <tr key={row.employeeId} className="border-t align-top">
-            <td className="p-2.5"><strong>{row.name}</strong><div className="text-xs text-muted-foreground">{row.employeeId}{row.roles.length ? ` · ${row.roles.join(", ")}` : ""}</div></td>
+            <td className="p-2.5"><strong>{row.name}</strong><div className="text-xs text-muted-foreground">{row.employeeId}{row.roles.length ? ` · ${row.roles.join(", ")}` : ""}</div>{row.systemAbsent && <div className="mt-1 inline-block rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-900" title="No clock-in by 11:59 PM and nobody marked Absent or AWOL, so the system recorded Absent. Confirm or change it in Attendance Review.">Marked absent by the system</div>}</td>
             <td className="p-2.5">{record?.branch || row.branches.join(", ") || "—"}</td>
             {clocked && <><td className="p-2.5 tabular-nums">{record?.timeIn || "—"}</td><td className="p-2.5 tabular-nums">{record?.timeOut || (record?.timeIn && board && date < board.today ? <span className="font-semibold text-amber-700">Not clocked out</span> : "—")}</td></>}
             {showLate && <td className="p-2.5 font-semibold text-amber-700 tabular-nums">{duration(record?.lateMinutes ?? 0)}</td>}

@@ -1,11 +1,12 @@
 import type { CorrectableEntry } from "@/components/entry-correction-form";
-import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
+import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 import { monthCount } from "@/lib/account-rules";
 import { entryKey, personKey } from "@/lib/duplicate-entries";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { isoDate } from "@/lib/program-age";
 import { fixedNewSaleAmount, isTrue } from "@/lib/program-amount-lock";
 import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-deadline";
+import { dateWarnings } from "@/lib/date-checks";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
@@ -17,6 +18,7 @@ const isLegacy = (id: string) => id.includes("-LEG-");
 
 export const EXCEPTION_CATEGORIES = {
   dates: "Impossible or future dates",
+  sequence: "Dates out of order",
   amounts: "Amounts that do not match the program",
   duplicates: "Possible duplicates",
   members: "Members with missing details",
@@ -50,10 +52,10 @@ const LIMIT = 300;
 export async function findExceptions({ includeLegacy = false } = {}) {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [COLLECTIONS_RANGE, SALES_RANGE, PROGRAMS_RANGE, MEMBERS_RANGE],
+    ranges: [COLLECTIONS_RANGE, SALES_RANGE, PROGRAMS_RANGE, MEMBERS_RANGE, REMITTANCES_RANGE],
     valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING",
   });
-  const [collections, sales, programs, members] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  const [collections, sales, programs, members, remittances] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const now = manilaNow(), today = now.date, nowStamp = `${now.date} ${now.time}`;
   const programById = new Map(programs.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), {
     name: text(row[2]) || text(row[1]), basePay: number(row[3]), registrationFeeRequired: /^yes$/i.test(text(row[10])) || row[10] === true,
@@ -82,6 +84,20 @@ export async function findExceptions({ includeLegacy = false } = {}) {
   for (const row of sales.slice(1).filter((item) => text(item[0]))) {
     const date = text(row[30]).slice(0, 10);
     if (date && (!validDay(date) || date > today || date < "2000-01-01")) add({ category: "dates", key: `dates-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: `Application date "${text(row[30])}" is ${!validDay(date) ? "not a valid date" : date > today ? "in the future" : "too far in the past"}.`, date, legacy: isLegacy(text(row[0])), entry: saleEntry(row) });
+  }
+
+  // Dates that are each possible but do not fit together: a receipt dated after it was recorded, cash remitted before
+  // the receipt or long after it, a slip dated differently from the entry. Invalid and future receipt dates are listed
+  // above under dates, so they are not repeated here.
+  const slipDates = new Map(remittances.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), text(row[3]).slice(0, 10)]));
+  const inSequence = (warning: string) => !/^The (OR|application) date .* (is in the future|is not a valid date)/.test(warning);
+  for (const row of posted) {
+    const warnings = dateWarnings({ receiptDate: text(row[9]).slice(0, 10), dateRemitted: text(row[40]).slice(0, 10), slipDate: slipDates.get(text(row[29])), recordedOn: manilaDateOf(text(row[20]) || text(row[24])), today }).filter(inSequence);
+    if (warnings.length) add({ category: "sequence", key: `sequence-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: warnings.join(" "), date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: collectionEntry(row) });
+  }
+  for (const row of sales.slice(1).filter((item) => text(item[0]))) {
+    const warnings = dateWarnings({ receiptDate: text(row[30]).slice(0, 10), receiptLabel: "application date", dateRemitted: text(row[4]).slice(0, 10), slipDate: slipDates.get(text(row[36])), recordedOn: manilaDateOf(text(row[1])), today }).filter(inSequence);
+    if (warnings.length) add({ category: "sequence", key: `sequence-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: warnings.join(" "), date: text(row[30]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: saleEntry(row) });
   }
 
   // Amounts: a collection must be whole installments, or more only when it pays the program off exactly.

@@ -1,4 +1,5 @@
 import { getSessionUser } from "@/lib/auth-server";
+import { closeFinishedAttendanceDaysQuietly, isSystemAbsence } from "@/lib/auto-absence";
 import { withEncoder } from "@/lib/encoder-context";
 import { closureCovers, closureLabel, getClosures } from "@/lib/attendance-calendar";
 import { getAttendanceForEmployeeDate, getAttendanceRecordsForDate, updateAttendanceRecord } from "@/lib/attendance-data";
@@ -21,6 +22,7 @@ export async function GET(request: Request) {
   const today = getPhilippineDate();
   if (!validDate(date) || date > today) return Response.json({ success: false, message: "Choose a valid date, today or earlier." }, { status: 400 });
   try {
+    await closeFinishedAttendanceDaysQuietly();
     const [active, employees, branches, records, closures] = await Promise.all([getActiveAttendanceEmployees(), getEmployees(), getBranches(), getAttendanceRecordsForDate(date), getClosures(date, date)]);
     const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
     const details = new Map(employees.map((employee) => [employee.id, employee]));
@@ -37,6 +39,7 @@ export async function GET(request: Request) {
         employeeId: employee.employeeId, name: employee.fullName, roles: detail?.roles ?? [],
         branches: (detail?.branchIds ?? []).map((id) => branchNames.get(id) ?? id),
         category: closed ? "Non-working day" as const : boardCategory(record, date, today),
+        systemAbsent: isSystemAbsence(record),
         earlyMinutes: record?.timeIn && record.scheduledTimeIn ? Math.max(0, minutesBetween(record.timeIn, record.scheduledTimeIn)) : 0,
         record,
       };

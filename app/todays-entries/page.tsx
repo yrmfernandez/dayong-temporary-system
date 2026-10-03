@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, RefreshCw } from "lucide-react";
+import { AlertTriangle, Eye, Pencil, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { MetricTile } from "@/components/metric-tile";
@@ -141,7 +141,9 @@ export default function TodaysEntriesPage() {
 function EntryTable({ title, entries, canEdit, editing, setEditing, onSaved }: {
   title: string; entries: DayEntry[]; canEdit: boolean; editing: string; setEditing: (id: string) => void; onSaved: (message: string) => void;
 }) {
-  const columns = 8 + (canEdit ? 1 : 0);
+  // `editing` holds "view:<id>" or "edit:<id>" for the row whose panel is open.
+  const columns = 9;
+  const toggle = (panel: string) => setEditing(editing === panel ? "" : panel);
   return (
     <Card>
       <CardHeader><CardTitle>{title} <span className="font-normal text-muted-foreground">({entries.length})</span></CardTitle></CardHeader>
@@ -149,17 +151,17 @@ function EntryTable({ title, entries, canEdit, editing, setEditing, onSaved }: {
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[960px] text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-              <tr><th className="p-3">Entry</th><th className="p-3">Member</th><th className="p-3">Program · Branch</th><th className="p-3">MAS / Collector</th><th className="p-3">OR</th><th className="p-3 text-right">Amount</th><th className="p-3">Incentive</th><th className="p-3">Remittance</th>{canEdit && <th className="p-3" />}</tr>
+              <tr><th className="p-3">Entry</th><th className="p-3">Member</th><th className="p-3">Program · Branch</th><th className="p-3">MAS / Collector</th><th className="p-3">OR</th><th className="p-3 text-right">Amount</th><th className="p-3">Incentive</th><th className="p-3">Remittance</th><th className="p-3" /></tr>
             </thead>
             <tbody>
               {entries.map((entry) => (
                 <Fragment key={entry.id}>
                   <tr className="border-t align-top">
-                    <td className="p-3"><span className="block font-mono text-xs">{entry.id}</span><span className="block text-xs text-muted-foreground">{entry.encodedAt} · {entry.encodedBy || "Not recorded"}</span></td>
+                    <td className="p-3"><span className="block font-mono text-xs">{entry.id}</span><span className="block text-xs text-muted-foreground">{entry.encodedAt} · {entry.encodedBy || "Not recorded"}</span>{entry.warnings.length > 0 && <button type="button" onClick={() => setEditing(`view:${entry.id}`)} className="mt-1 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200"><AlertTriangle className="size-3" />Check dates ({entry.warnings.length})</button>}</td>
                     <td className="p-3"><span className="block">{entry.memberName || "—"}</span><span className="block text-xs text-muted-foreground">{entry.memberNumber}</span></td>
                     <td className="p-3"><span className="block">{entry.program}</span><span className="block text-xs text-muted-foreground">{entry.branch}</span></td>
                     <td className="p-3">{entry.person}</td>
-                    <td className="p-3"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{entry.orDate}</span></td>
+                    <td className="p-3"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{entry.orDate}</span>{entry.dateRemitted && <span className="block text-xs text-muted-foreground">Remitted {entry.dateRemitted}</span>}</td>
                     <td className="p-3 text-right font-medium">{money(entry.amount)}</td>
                     <td className="p-3">
                       {entry.forfeitedIncentive > 0
@@ -169,9 +171,13 @@ function EntryTable({ title, entries, canEdit, editing, setEditing, onSaved }: {
                           : <span className="text-xs text-muted-foreground">None</span>}
                     </td>
                     <td className="p-3"><StatusBadge status={entry.remittanceStatus || "Not set"} />{entry.remittedAt && <span className="block text-xs text-muted-foreground">Received {entry.remittedAt}</span>}{entry.remittanceId && <span className="block font-mono text-[11px] text-muted-foreground">{entry.remittanceId}</span>}</td>
-                    {canEdit && <td className="p-3"><Button type="button" size="sm" variant="outline" onClick={() => setEditing(editing === entry.id ? "" : entry.id)}><Pencil className="size-3.5" />Edit</Button></td>}
+                    <td className="p-3"><div className="flex gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => toggle(`view:${entry.id}`)}><Eye className="size-3.5" />View</Button>
+                      {canEdit && <Button type="button" size="sm" variant="outline" onClick={() => toggle(`edit:${entry.id}`)}><Pencil className="size-3.5" />Edit</Button>}
+                    </div></td>
                   </tr>
-                  {canEdit && editing === entry.id && <tr className="border-t bg-muted/20"><td colSpan={columns} className="p-3"><EntryCorrectionForm entry={entry} endpoint="/api/todays-entries" onCancel={() => setEditing("")} onSaved={onSaved} /></td></tr>}
+                  {editing === `view:${entry.id}` && <tr className="border-t bg-muted/20"><td colSpan={columns} className="p-3"><EntryDetails entry={entry} onClose={() => setEditing("")} /></td></tr>}
+                  {canEdit && editing === `edit:${entry.id}` && <tr className="border-t bg-muted/20"><td colSpan={columns} className="p-3"><EntryCorrectionForm entry={entry} endpoint="/api/todays-entries" onCancel={() => setEditing("")} onSaved={onSaved} /></td></tr>}
                 </Fragment>
               ))}
               {!entries.length && <tr><td colSpan={columns} className="p-8 text-center text-muted-foreground">No {title} for this day.</td></tr>}
@@ -180,5 +186,31 @@ function EntryTable({ title, entries, canEdit, editing, setEditing, onSaved }: {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Everything recorded about one entry, with any date warnings first. */
+function EntryDetails({ entry, onClose }: { entry: DayEntry; onClose: () => void }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-semibold">{entry.kind} {entry.id}</p>
+        <Button type="button" size="sm" variant="ghost" onClick={onClose}>Close</Button>
+      </div>
+      {entry.warnings.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          <p className="flex items-center gap-1.5 font-semibold"><AlertTriangle className="size-4" />Dates to check</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">{entry.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+        </div>
+      )}
+      <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        {entry.details.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className={`break-words ${label === "Date remitted" ? "font-semibold" : ""}`}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }

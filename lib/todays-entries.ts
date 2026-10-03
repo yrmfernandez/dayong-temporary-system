@@ -1,6 +1,7 @@
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
-import { incentiveDeadline, manilaDateOf } from "@/lib/remittance-deadline";
+import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-deadline";
+import { dateWarnings } from "@/lib/date-checks";
 import type { TodayMode } from "@/lib/today-mode";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -41,6 +42,14 @@ export type DayEntry = {
   encodedAt: string;
   /** Amounts can only be corrected before the item is on a remittance slip. */
   onRemittance: boolean;
+  /** The Date Remitted on the entry (Collections AO, Sales E); blank when not recorded. */
+  dateRemitted: string;
+  /** Date the entry was recorded (created), Manila. */
+  recordedOn: string;
+  /** Dates that are out of order or far apart (lib/date-checks.ts). */
+  warnings: string[];
+  /** Everything worth knowing about the entry, as label and value, for the View panel. Blank values are left out. */
+  details: Array<[string, string]>;
 };
 
 /**
@@ -56,30 +65,83 @@ export async function getEntriesForDay(date: string, mode: TodayMode, person = "
   const [sales, collections, remittances, programs, members] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const memberNames = new Map(members.slice(1).map((row) => [text(row[0]), `${text(row[3])} ${text(row[2])}`.trim()]));
-  const slips = new Map(remittances.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), text(row[26]) ? `${text(row[3])} ${text(row[26])}` : text(row[3])]));
+  const slipRows = new Map(remittances.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), row]));
+  const slipStamp = (id: string) => { const row = slipRows.get(id); return row ? `${text(row[3])}${text(row[26]) ? ` ${text(row[26])}` : ""}` : ""; };
+  const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+  const money = (value: unknown) => (text(value) === "" ? "" : peso(number(value)));
+  const today = manilaNow().date;
 
-  const entry = (values: Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline">): DayEntry => ({
-    ...values, remittedAt: slips.get(values.remittanceId) ?? "", onRemittance: !["", "Outstanding"].includes(values.remittanceStatus), incentiveDeadline: incentiveDeadline(values.orDate),
-  });
+  type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings">;
+  const entry = (values: Base): DayEntry => {
+    const slipDate = text(slipRows.get(values.remittanceId)?.[3]).slice(0, 10);
+    return {
+      ...values,
+      // The office received the cash on the remittance slip's date; without a slip, the Date Remitted on the entry.
+      remittedAt: slipStamp(values.remittanceId) || values.dateRemitted,
+      onRemittance: !["", "Outstanding"].includes(values.remittanceStatus),
+      incentiveDeadline: incentiveDeadline(values.orDate),
+      warnings: dateWarnings({ receiptDate: values.orDate, receiptLabel: values.kind === "New Sale" ? "application date" : "OR date", dateRemitted: values.dateRemitted, slipDate, recordedOn: values.recordedOn, today }),
+      details: values.details.filter(([, value]) => value !== ""),
+    };
+  };
   const all: DayEntry[] = [
     ...sales.slice(1).filter((row) => text(row[0])).map((row) => {
       const amount = number(row[26]), remittance = text(row[41]) === "" ? amount : number(row[41]);
+      const memberName = `${text(row[7])} ${text(row[6])}`.trim(), orDate = text(row[30]).slice(0, 10) || manilaDateOf(text(row[1]));
+      const dateRemitted = text(row[4]).slice(0, 10), recordedOn = manilaDateOf(text(row[1]));
       return entry({
-        kind: "New Sale", id: text(row[0]), memberNumber: text(row[5]), memberName: `${text(row[7])} ${text(row[6])}`.trim(),
+        kind: "New Sale", id: text(row[0]), memberNumber: text(row[5]), memberName,
         program: programNames.get(text(row[21])) || text(row[21]), branch: text(row[2]), person: text(row[3]),
-        orNumber: text(row[29]), orDate: text(row[30]).slice(0, 10) || manilaDateOf(text(row[1])), applicationNumber: text(row[28]), notes: text(row[27]),
+        orNumber: text(row[29]), orDate, applicationNumber: text(row[28]), notes: text(row[27]),
         amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[43]),
         remittanceStatus: text(row[35]), remittanceId: text(row[36]), encodedBy: text(row[33]), encodedAt: manilaTime(text(row[34]) || text(row[1])),
+        dateRemitted, recordedOn,
+        details: [
+          ["Sale ID", text(row[0])], ["Member", [memberName, text(row[5])].filter(Boolean).join(" · ")],
+          ["Program", programNames.get(text(row[21])) || text(row[21])], ["Branch", text(row[2])], ["MAS", text(row[3])],
+          ["Application no.", text(row[28])], ["Application date", orDate], ["DOI", text(row[22]).slice(0, 10)],
+          ["Date remitted", dateRemitted], ["Payment method", text(row[23])],
+          ["Registration fee", /^yes$/i.test(text(row[24])) ? money(row[25]) : ""], ["Amount paid", peso(amount)],
+          ["MAS incentive", peso(Math.max(0, round(amount - remittance)))], ["Company share (to remit)", peso(remittance)],
+          ["Forfeited incentive", number(row[43]) ? peso(number(row[43])) : ""],
+          ["Penalty", number(row[38]) ? `${peso(number(row[38]))}${text(row[39]) ? ` · ${text(row[39])}` : ""}` : ""],
+          ["Fidelity", number(row[42]) ? peso(number(row[42])) : ""],
+          ["Remittance status", text(row[35])], ["Remittance slip", text(row[36]) ? `${text(row[36])} · received ${slipStamp(text(row[36]))}` : ""],
+          ["Notes", text(row[27])], ["Late-entry reason", text(row[44])],
+          ["Recorded on", recordedOn], ["Encoded by", `${text(row[33]) || "Not recorded"} · ${manilaTime(text(row[34]) || text(row[1]))}`],
+        ],
       });
     }),
     ...collections.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted").map((row) => {
-      const amount = number(row[10]);
+      // A blank company share (imported rows) means no incentive was recorded, not that all of it was incentive.
+      const amount = number(row[10]), remittance = text(row[26]) === "" ? amount : number(row[26]);
+      const memberName = memberNames.get(text(row[3])) ?? "", orDate = text(row[9]).slice(0, 10);
+      const dateRemitted = text(row[40]).slice(0, 10), recordedOn = manilaDateOf(text(row[20]) || text(row[24]));
+      const months = text(row[11]) === text(row[12]) ? text(row[11]) : `${text(row[11])} to ${text(row[12])}`;
+      const nop = text(row[13]) === text(row[14]) ? text(row[13]) : `${text(row[13])} to ${text(row[14])}`;
       return entry({
-        kind: "Collection", id: text(row[0]), memberNumber: text(row[4]), memberName: memberNames.get(text(row[3])) ?? "",
+        kind: "Collection", id: text(row[0]), memberNumber: text(row[4]), memberName,
         program: programNames.get(text(row[5])) || text(row[5]), branch: text(row[6]), person: text(row[31]) || text(row[7]),
-        orNumber: text(row[8]), orDate: text(row[9]).slice(0, 10), applicationNumber: "", notes: "",
-        amount, incentive: Math.max(0, round(amount - number(row[26]))), forfeitedIncentive: number(row[38]),
+        orNumber: text(row[8]), orDate, applicationNumber: "", notes: "",
+        amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[38]),
         remittanceStatus: text(row[28]), remittanceId: text(row[29]), encodedBy: text(row[23]), encodedAt: manilaTime(text(row[24]) || text(row[20])),
+        dateRemitted, recordedOn,
+        details: [
+          ["Collection ID", text(row[0])], ["Batch", text(row[1])], ["Member", [memberName, text(row[4])].filter(Boolean).join(" · ")],
+          ["Program", programNames.get(text(row[5])) || text(row[5])], ["Branch", text(row[6])], ["MAS", text(row[7])],
+          ["Accountable for the cash", [text(row[31]), text(row[32])].filter(Boolean).join(" · ")], ["Collected by", text(row[25])],
+          ["OR number", text(row[8])], ["OR date", orDate], ["Date remitted", dateRemitted || "Not recorded"],
+          ["Months covered", months], ["NOP", nop], ["Amount collected", peso(amount)],
+          ["Company share (to remit)", peso(remittance)], ["Incentive", peso(Math.max(0, round(amount - remittance)))],
+          ["Forfeited incentive", number(row[38]) ? peso(number(row[38])) : ""],
+          ["Penalty", number(row[35]) ? `${peso(number(row[35]))}${text(row[36]) ? ` · ${text(row[36])}` : ""}` : ""],
+          ["Fidelity", number(row[37]) ? peso(number(row[37])) : ""],
+          ["Payment method", [text(row[33]), text(row[34]) && `ref ${text(row[34])}`].filter(Boolean).join(" · ")],
+          ["Remittance status", text(row[28])], ["Remittance slip", text(row[29]) ? `${text(row[29])} · received ${slipStamp(text(row[29]))}` : ""],
+          ["Reactivation", text(row[15]) === "Yes" ? "Yes" : ""], ["Transferred", text(row[16]) === "Yes" ? "Yes" : ""],
+          ["If suspended", text(row[17])], ["Original MAS", text(row[18])], ["Late-entry reason", text(row[39])],
+          ["Recorded on", recordedOn], ["Encoded by", `${text(row[23]) || "Not recorded"} · ${manilaTime(text(row[24]) || text(row[20]))}`],
+        ],
       });
     }),
   ];

@@ -15,6 +15,7 @@ type Result = { success: boolean; message?: string; categories: Category[]; limi
 
 const HELP: Record<ExceptionCategory, string> = {
   dates: "OR or application dates that are not real dates, are in the future, or are before 2000. Usually a typo in the year.",
+  sequence: "Dates that do not fit together: a receipt dated after the entry was recorded, cash remitted before the receipt or more than 7 days after it, entries encoded more than 30 days late, or a remittance slip dated differently from the entry.",
   amounts: "Collections that are not whole installments (more is allowed only when it pays the program off exactly), and New Sales on locked programs that differ from the fixed amount.",
   duplicates: "The same OR number or application number on two entries, or two member records with the same name and birthdate.",
   members: "Active members without a birthdate, contact number, or address.",

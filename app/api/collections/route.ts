@@ -2,6 +2,7 @@
 import { keepsIncentive, manilaNow, validTime } from "@/lib/remittance-deadline";
 import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
 import { cashCountProblem } from "@/lib/cash-count";
+import { blockingDateProblem } from "@/lib/date-checks";
 import { withEncoder } from "@/lib/encoder-context";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { withWriteLock } from "@/lib/google-sheets";
@@ -102,6 +103,8 @@ async function saveCollections(request: Request) {
       };
       const backdateReason = String(entry.backdateReason ?? "").trim().slice(0, 300);
       checkBackdate(input.orDate, backdateReason, `Collection for ${account.memberNumber}`);
+      const dateProblem = blockingDateProblem({ receiptDate: input.orDate, dateRemitted, today: manilaNow().date });
+      if (dateProblem) throw new Error(`Collection for ${account.memberNumber}: ${dateProblem}`);
       const receipt = entryKey(input.orNumber);
       const recorded = recordedReceipts.get(receipt);
       if (recorded) throw new Error(`OR Number ${input.orNumber} is already recorded (collection ${recorded.collectionId}${recorded.memberNumber ? ` for member ${recorded.memberNumber}` : ""}). Each OR Number is used once.`);
@@ -120,8 +123,9 @@ async function saveCollections(request: Request) {
         entry.reactivation === "Yes" ? "Yes" : "No", entry.transferred === "Yes" ? "Yes" : "No", input.waiver, input.originalMas, "Posted", timestamp,
         input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS", paymentMethod.name, paymentReference,
         !rows.length && penalty > 0 ? penalty : "", !rows.length && penalty > 0 ? penaltyNote : "", !rows.length && fidelity > 0 ? fidelity : "",
-        // AM forfeited_incentive is set at remittance; AN backdate_reason only when the OR date is more than a day old.
-        ...(backdateReason ? ["", backdateReason] : [])]);
+        // AM forfeited_incentive is set at remittance; AN backdate_reason when the OR date is more than a day old;
+        // AO date_remitted, the batch's Date Remitted, so the dates can be checked against each other later.
+        "", backdateReason, dateRemitted]);
     }
     // The total remittance is the company's share plus the batch's Fidelity; a penalty is tracked separately. Cash
     // confirmed here after the incentive deadline carries no incentive, so the full amount is due.

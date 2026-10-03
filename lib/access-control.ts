@@ -14,7 +14,7 @@ export type AccessContext = {
 const roleRoutes: Record<string, string[]> = {
   administrator: ["*"],
   admin: ["*"],
-  // The executive workspace is the analytics dashboard, User Report Review, MAM, Statements of Account, Members, and attendance; it does not receive the shared employee pages.
+  // The executive workspace is the analytics dashboard, Report Review, MAM, Statements of Account, Members, and attendance; it does not receive the shared employee pages.
   ceo: ["/", "/admin-reports", "/mam", "/soa", "/members", "/attendance-tracking", "/attendance", "/settings"],
   president: ["/", "/admin-reports", "/mam", "/soa", "/members", "/attendance-tracking", "/attendance", "/settings"],
   "hr officer": ["/", "/todays-entries", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],

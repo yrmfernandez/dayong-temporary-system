@@ -2,7 +2,7 @@
 //   npm run sheets:remittance-deadline              dry run
 //   npm run sheets:remittance-deadline -- --apply   add the headers
 // Additive only:
-//   Collections AM forfeited_incentive, AN backdate_reason
+//   Collections AM forfeited_incentive, AN backdate_reason, AO date_remitted (the batch's Date Remitted)
 //   Sales       AR forfeited_incentive, AS backdate_reason
 //   Remittances AA time_remitted, AB cash_count (bills and coins counted, e.g. "1000x3, 500x1")
 // forfeited_incentive is the incentive moved into the remittance because the cash came in after the deadline.
@@ -24,6 +24,7 @@ const sheets = google.sheets({ version: "v4", auth });
 const changes = [
   { title: "Collections", index: 38, name: "forfeited_incentive", after: "fidelity_amount" },
   { title: "Collections", index: 39, name: "backdate_reason", after: "forfeited_incentive" },
+  { title: "Collections", index: 40, name: "date_remitted", after: "backdate_reason" },
   { title: "Sales", index: 43, name: "forfeited_incentive", after: "fidelity_amount" },
   { title: "Sales", index: 44, name: "backdate_reason", after: "forfeited_incentive" },
   { title: "Remittances", index: 26, name: "time_remitted", after: "remittance_type" },

@@ -22,7 +22,12 @@ async function readSettings() {
   }
 }
 
-async function saveSetting(key: string, value: string, by: string) {
+/** One company setting, or "" when it has never been saved. */
+export async function getSetting(key: string) {
+  return (await readSettings()).get(key) ?? "";
+}
+
+export async function saveSetting(key: string, value: string, by: string) {
   const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties.title" });
   if (!metadata.data.sheets?.some((sheet) => sheet.properties?.title === SHEET)) {
     await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [{ addSheet: { properties: { title: SHEET, gridProperties: { frozenRowCount: 1 } } } }] } });

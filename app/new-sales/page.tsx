@@ -29,6 +29,8 @@ import { todayInManila } from "@/lib/account-rules";
 import type { ProgramStanding } from "@/lib/account-data";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
+import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
+import { manilaNow } from "@/lib/remittance-deadline";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import { calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
@@ -969,6 +971,12 @@ export default function NewSalesPage() {
     const repeated = sales.findIndex((sale, index) => sales.findIndex((other) => applicationKey(other.applicationNumber) === applicationKey(sale.applicationNumber)) !== index);
     if (repeated >= 0) {
       setSaveMessage(`Sale #${repeated + 1}: Application Number ${sales[repeated].applicationNumber.trim()} is already used in this batch.`);
+      return;
+    }
+
+    const impossible = sales.findIndex((sale) => blockingDateProblem({ receiptDate: sale.orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date }));
+    if (impossible >= 0) {
+      setSaveMessage(`Sale #${impossible + 1}: ${blockingDateProblem({ receiptDate: sales[impossible].orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date })}`);
       return;
     }
 
@@ -2642,6 +2650,7 @@ export default function NewSalesPage() {
                               )
                             }
                           />
+                          {dateWarnings({ receiptDate: sale.orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date }).map((warning) => <p key={warning} className="text-xs font-medium text-amber-800">⚠ {warning}</p>)}
                           {needsBackdateReason(sale.orDate) && (
                             <div className="space-y-1">
                               <Label className="text-xs text-amber-800">Reason for the late entry *</Label>
