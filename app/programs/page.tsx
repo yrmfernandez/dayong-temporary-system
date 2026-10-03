@@ -84,10 +84,14 @@ minAge: number | null;
 maxAge: number | null;
 incentiveTiers: IncentiveTier[];
 categoryId?: string;
+newSaleAmountEditable?: boolean;
+collectionAmountEditable?: boolean;
 };
 
 type ProgramForm = {
 categoryId: string;
+newSaleAmountEditable: boolean;
+collectionAmountEditable: boolean;
 code: string;
 name: string;
 basePay: string;
@@ -127,6 +131,8 @@ collectorIncentive: "20",
 function createEmptyForm(): ProgramForm {
 return {
 categoryId: "",
+newSaleAmountEditable: false,
+collectionAmountEditable: false,
 code: "",
 name: "",
 basePay: "",
@@ -838,6 +844,8 @@ try {
       form.description.trim(),
 
     registrationFeeRequired: form.registrationFeeRequired,
+    newSaleAmountEditable: form.newSaleAmountEditable,
+    collectionAmountEditable: form.collectionAmountEditable,
     registrationAmount: Number(form.registrationAmount) || 0,
     payBalanceTotal: Number(form.payBalanceTotal) || 0,
     saleIncentiveType: form.registrationFeeRequired ? form.saleIncentiveType : "",
@@ -1053,6 +1061,8 @@ setForm({
     program.description ?? "",
 
   registrationFeeRequired: Boolean(program.registrationFeeRequired),
+  newSaleAmountEditable: Boolean(program.newSaleAmountEditable),
+  collectionAmountEditable: Boolean(program.collectionAmountEditable),
   registrationAmount: String(program.registrationAmount ?? 0),
   payBalanceTotal: String(program.payBalanceTotal ?? 0),
   saleIncentiveType: program.saleIncentiveType ?? "",
@@ -1971,6 +1981,24 @@ const programForm = (
           </label>
           <div className="space-y-2"><Label>Registration amount</Label><Input type="number" min="0" step="0.01" disabled={!form.registrationFeeRequired} value={form.registrationAmount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("registrationAmount", event.target.value)} /></div>
           <div className="space-y-2"><Label>Total amount payable</Label><Input type="number" min="0" step="0.01" value={form.payBalanceTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("payBalanceTotal", event.target.value)} /><p className="text-xs text-muted-foreground">The full amount a member pays to complete the program. Set to 0 when there is no fixed total.</p></div>
+        </div>
+        <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="new-sale-amount-editable">New Sales: amount paid can be edited</Label>
+            <select id="new-sale-amount-editable" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={form.newSaleAmountEditable ? "true" : "false"} onChange={(event) => setForm((current) => ({ ...current, newSaleAmountEditable: event.target.value === "true" }))}>
+              <option value="false">False (locked)</option>
+              <option value="true">True (editable)</option>
+            </select>
+            <p className="text-xs text-muted-foreground">False fixes the amount to the registration amount, or one month&apos;s base pay when there is no registration fee.</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="collection-amount-editable">Collections: amount collected can be edited</Label>
+            <select id="collection-amount-editable" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={form.collectionAmountEditable ? "true" : "false"} onChange={(event) => setForm((current) => ({ ...current, collectionAmountEditable: event.target.value === "true" }))}>
+              <option value="false">False (locked)</option>
+              <option value="true">True (editable)</option>
+            </select>
+            <p className="text-xs text-muted-foreground">False fixes the amount to covered months × base pay; the exact remaining payoff is offered as a button.</p>
+          </div>
         </div>
         <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-3">
           <div className="md:col-span-3"><h4 className="text-sm font-semibold">New Sale MAS incentive</h4><p className="text-xs text-muted-foreground">{form.registrationFeeRequired ? "What the MAS keeps from the registration paid on a new sale. MAS Fidelity on a New Sales batch comes out of this." : "Without a registration fee, a new sale pays the first month, so the month-1 MAS incentive tier below applies to the base pay."}</p></div>

@@ -1,7 +1,7 @@
 import {
   BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
   ClipboardList, CreditCard, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
-  LayoutDashboard, Banknote, PiggyBank, Receipt, ScrollText, ShieldCheck, UserCog, Users, Wallet,
+  LayoutDashboard, Banknote, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -49,6 +49,8 @@ const page = {
   userAccounts: { name: "User Accounts", href: "/user-accounts", icon: UserCog },
   roles: { name: "Roles", href: "/roles", icon: ShieldCheck },
   auditLog: { name: "Audit Log", href: "/history", icon: History },
+  todaysEntries: { name: "Today's Entries", href: "/todays-entries", icon: ReceiptText },
+  exceptions: { name: "Exceptions", href: "/exceptions", icon: TriangleAlert },
 } satisfies Record<string, NavItem>;
 
 // Personal self-service. MAS lists My Fidelity under My Portfolio instead.
@@ -62,7 +64,7 @@ const masHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveR
  */
 const workspaces: Record<string, NavSection[]> = {
   administrator: [
-    { title: "Overview", items: [page.dashboard] },
+    { title: "Overview", items: [page.dashboard, page.todaysEntries, page.exceptions] },
     { title: "Operations", items: [page.newSales, page.collections, page.remittances, page.mam] },
     { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.payroll, page.fidelity] },
     { title: "Reports", items: [page.reports, page.soa, page.dailyAudit, page.userReports] },
@@ -87,14 +89,14 @@ const workspaces: Record<string, NavSection[]> = {
     myHr,
   ],
   "entry clerk": [
-    { title: "Overview", items: [page.dashboard] },
+    { title: "Overview", items: [page.dashboard, page.todaysEntries] },
     { title: "Encoding", items: [page.newSales, page.collections, page.remittances] },
     { title: "Reports", items: [page.reports] },
     { title: "Lookup", items: [page.members, page.programs, page.branches] },
     myHr,
   ],
   hr: [
-    { title: "Overview", items: [page.dashboard] },
+    { title: "Overview", items: [page.dashboard, page.todaysEntries] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
     { title: "Audit", items: [page.dailyAudit] },
     { title: "Directory", items: [page.branches] },

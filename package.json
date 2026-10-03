@@ -36,7 +36,9 @@
     "sheets:expense-fields": "node scripts/migrate-expense-fields.mjs",
     "sheets:sale-incentives": "node scripts/migrate-sale-incentives.mjs",
     "sheets:program-categories": "node scripts/migrate-program-categories.mjs",
-    "sheets:period-audits": "node scripts/migrate-period-audits.mjs"
+    "sheets:period-audits": "node scripts/migrate-period-audits.mjs",
+    "sheets:remittance-deadline": "node scripts/migrate-remittance-deadline.mjs",
+    "sheets:program-amount-lock": "node scripts/migrate-program-amount-lock.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

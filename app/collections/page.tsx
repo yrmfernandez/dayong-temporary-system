@@ -20,6 +20,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useFormDraft } from "@/lib/use-form-draft";
+import { formatDeadline, incentiveDeadline, keepsIncentive, manilaNow } from "@/lib/remittance-deadline";
+import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
+import { CashCountInput } from "@/components/cash-count-input";
+import { cashCountTotal, formatCashCount, type CashCount } from "@/lib/cash-count";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import {
   Select,
@@ -48,6 +52,8 @@ type ProgramOption = {
   name: string;
   basePay: number;
   payBalanceTotal?: number;
+  /** Programs U: false (the default) locks the amount to covered months × base pay. */
+  collectionAmountEditable?: boolean;
   incentiveTiers?: IncentiveTier[];
 };
 
@@ -85,6 +91,8 @@ type CollectionEntry = {
 
   orNumber: string;
   orDate: string;
+  /** Why an OR date more than a day old is encoded late. */
+  backdateReason: string;
 
   reactivation: string;
   transferred: string;
@@ -119,6 +127,7 @@ function createEmptyCollection(id: string): CollectionEntry {
 
     orNumber: "",
     orDate: "",
+    backdateReason: "",
 
     reactivation: "No",
     transferred: "No",
@@ -243,6 +252,12 @@ export default function CollectionsPage() {
   const [saving, setSaving] = useState(false);
   const [autoApproveRemittance, setAutoApproveRemittance] = useState(false);
   const [cashReceived, setCashReceived] = useState("");
+  // The total written on the MAS's turnover sheet; the batch saves only when the entries add up to it.
+  const [controlTotal, setControlTotal] = useState("");
+  // Bills and coins counted when cash is received in full here; "Cash received" is their total.
+  const [cashCount, setCashCount] = useState<CashCount>({});
+  // When the cash confirmed in full was handed over; incentives are kept only by 10:00 AM the day after the OR date.
+  const [timeReceived, setTimeReceived] = useState("");
   // Batch-level: who brought these payments in, and how the MAS remitted them to the office.
   const [collectedBy, setCollectedBy] = useState<CollectionChannel>("MAS");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
@@ -419,6 +434,13 @@ export default function CollectionsPage() {
   const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
   // The cash due is the company remittance plus Fidelity; a penalty is tracked separately.
   const totalDue = totalRemittance === null ? null : Math.round((totalRemittance + fidelityAmount) * 100) / 100;
+  // Cash confirmed in full after an entry's incentive deadline remits that entry's full amount.
+  const receivedAt = dateRemitted && timeReceived ? `${dateRemitted} ${timeReceived}` : "";
+  const lateIncentive = autoApproveRemittance && receivedAt ? collections.reduce((sum, entry, index) => {
+    const quote = quotes[index], amount = Number(entry.amountCollected) || 0;
+    return "remittance" in quote && amount > quote.remittance && !keepsIncentive(entry.orDate, receivedAt) ? sum + Math.round((amount - quote.remittance) * 100) : sum;
+  }, 0) / 100 : 0;
+  const cashDue = totalDue === null ? null : Math.round((totalDue + lateIncentive) * 100) / 100;
 
   function updateCollection(
     id: string,
@@ -624,6 +646,10 @@ export default function CollectionsPage() {
       return "OR Date is required.";
     }
 
+    if (needsBackdateReason(entry.orDate) && (entry.backdateReason ?? "").trim().length < BACKDATE_REASON_MIN) {
+      return "The OR date is more than a day old. Enter the reason it is being encoded late.";
+    }
+
     return null;
   }
 
@@ -764,6 +790,12 @@ export default function CollectionsPage() {
       }
     }
 
+    const controlProblem = controlTotalProblem(controlTotal, collections.map((entry) => Number(entry.amountCollected) || 0));
+    if (controlProblem) {
+      setSaveMessage(controlProblem);
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -780,6 +812,9 @@ export default function CollectionsPage() {
           paymentReference: selectedPaymentMethod?.requiresReference ? paymentReference.trim() : "",
           autoApproveRemittance: autoApproveRemittance && isCashPayment,
           cashReceived: Number(cashReceived),
+          timeRemitted: timeReceived,
+          cashCount: autoApproveRemittance && isCashPayment ? formatCashCount(cashCount) : "",
+          controlTotal: Number(controlTotal),
           penalty: penaltyAmount,
           penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "",
           fidelityAmount,
@@ -823,6 +858,9 @@ export default function CollectionsPage() {
     setShowPreview(false);
     setAutoApproveRemittance(false);
     setCashReceived("");
+    setControlTotal("");
+    setTimeReceived("");
+    setCashCount({});
     setPenalty("");
     setPenaltyNote("");
     setFidelity("");
@@ -1203,6 +1241,17 @@ export default function CollectionsPage() {
                                         entryMember.contactNumber
                                       }
                                     </p>
+
+                                    {/* Details to check against the receipt so the payment goes to the right person. */}
+                                    <p className="text-sm text-muted-foreground">
+                                      Born: {entryMember.birthdate || "not recorded"}{entryMember.age !== null && entryMember.age !== undefined ? ` (age ${entryMember.age})` : ""}
+                                      {entryMember.address?.houseBlockLot ? ` · ${entryMember.address.houseBlockLot}` : ""}
+                                    </p>
+
+                                    {(() => {
+                                      const last = (histories[entry.id] ?? [])[0];
+                                      return last ? <p className="text-sm text-muted-foreground">Last payment: OR {last.orNumber || "—"} on {last.orDate} · {formatCurrency(Number(last.amountCollected) || 0)} · NOP {last.nop}</p> : entry.programId && !entry.accountLoading ? <p className="text-sm text-muted-foreground">No payment recorded yet for this program.</p> : null;
+                                    })()}
                                   </div>
                                 </div>
 
@@ -1210,6 +1259,16 @@ export default function CollectionsPage() {
                                   Member Selected
                                 </Badge>
                               </div>
+                              {(() => {
+                                // Another member with the same name is the usual way a payment lands on the wrong person.
+                                const nameKey = (member: Member) => `${member.name.firstName} ${member.name.surname}`.trim().toLowerCase().replace(/\s+/g, " ");
+                                const twins = members.filter((member) => member.id !== entryMember.id && nameKey(member) === nameKey(entryMember));
+                                return twins.length ? (
+                                  <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+                                    {twins.length + 1} members are named {getMemberFullName(entryMember)}. Check the member number and birthdate against the receipt: the other {twins.length === 1 ? "is" : "are"} {twins.map((member) => `${member.phMemberNumber || "no number"} (born ${member.birthdate || "?"})`).join(", ")}.
+                                  </p>
+                                ) : null;
+                              })()}
                             </div>
                           )}
 
@@ -1362,8 +1421,23 @@ export default function CollectionsPage() {
                           {/* AMOUNT */}
                           <div className="space-y-2">
                             <Label>Amount Collected</Label>
-                            <Input type="number" min="0" step="0.01" value={entry.amountCollected} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateCollection(entry.id, { amountCollected: event.target.value })} placeholder="0.00" />
-                            <p className="text-xs text-muted-foreground">Starts with covered months × monthly amount. Edit only when the receipt pays the program&apos;s exact remaining payoff balance.</p>
+                            {(() => {
+                              const program = programs.find((item) => item.id === entry.programId);
+                              const locked = Boolean(program && !program.collectionAmountEditable);
+                              // The exact remaining payoff, offered as a button so a locked amount is never typed.
+                              const paid = (histories[entry.id] ?? []).reduce((sum, item) => sum + Math.round((Number(item.amountCollected) || 0) * 100), 0);
+                              const payoff = program?.payBalanceTotal ? Math.max(0, Math.round(program.payBalanceTotal * 100) - paid) / 100 : 0;
+                              const monthly = Math.round((program?.basePay ?? 0) * 100) * getMonthDifference(entry.monthFrom, entry.monthTo) / 100;
+                              return <>
+                                <Input type="number" min="0" step="0.01" readOnly={locked} className={locked ? "bg-muted/50" : undefined} value={entry.amountCollected} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateCollection(entry.id, { amountCollected: event.target.value })} placeholder="0.00" />
+                                <p className="text-xs text-muted-foreground">{locked ? "Fixed by the program: covered months × monthly amount. An administrator can allow editing in Programs." : "Starts with covered months × monthly amount. Edit only when the receipt pays the program's exact remaining payoff balance."}</p>
+                                {locked && payoff > monthly && monthly > 0 && (
+                                  Number(entry.amountCollected) === payoff
+                                    ? <button type="button" className="text-xs text-primary underline" onClick={() => updateCollection(entry.id, { amountCollected: monthly.toFixed(2) })}>Back to {formatCurrency(monthly)} (covered months)</button>
+                                    : <button type="button" className="text-xs text-primary underline" onClick={() => updateCollection(entry.id, { amountCollected: payoff.toFixed(2) })}>Receipt pays the full remaining balance: use {formatCurrency(payoff)}</button>
+                                )}
+                              </>;
+                            })()}
                             <div className="rounded border p-3 text-sm">
                               <strong>Incentive reference: {(() => { const quote = quoteEntry(entry); return "remittance" in quote ? formatCurrency(quote.remittance) : "Pending"; })()}</strong>
                               {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
@@ -1428,6 +1502,13 @@ export default function CollectionsPage() {
                                     )
                                   }
                                 />
+                                {needsBackdateReason(entry.orDate) && (
+                                  <div className="space-y-1">
+                                    <Label className="text-xs text-amber-800">Reason for the late entry *</Label>
+                                    <Input value={entry.backdateReason ?? ""} onChange={(event) => updateCollection(entry.id, { backdateReason: event.target.value })} placeholder="e.g. Receipt turned over late by the MAS" />
+                                    <p className="text-xs text-muted-foreground">The OR date is more than a day old. Administrators review late entries.</p>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1624,6 +1705,16 @@ export default function CollectionsPage() {
                 },
               )}
 
+              {/* CONTROL TOTAL: typed from the MAS's turnover sheet before saving */}
+              <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px] sm:items-center">
+                <div>
+                  <Label htmlFor="control-total">Control total from the turnover sheet *</Label>
+                  <p className="text-xs text-muted-foreground">Type the total the MAS wrote on the turnover sheet, not the total shown here. The batch saves only when they match.</p>
+                  {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, collections.map((entry) => Number(entry.amountCollected) || 0)); return <p className={`mt-1 text-sm ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the entries."}</p>; })()}
+                </div>
+                <Input id="control-total" type="number" min="0" step="0.01" value={controlTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setControlTotal(event.target.value)} placeholder="0.00" />
+              </div>
+
               {/* TOTALS: amount collected, incentives (less Fidelity), penalty, total remittance */}
               <RemittanceSummary collected={totalCollected} remittance={totalRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} />
 
@@ -1636,15 +1727,33 @@ export default function CollectionsPage() {
                     disabled={totalDue === null || !isCashPayment}
                     onChange={(event) => {
                       setAutoApproveRemittance(event.target.checked);
-                      if (event.target.checked && totalDue !== null) setCashReceived(totalDue.toFixed(2));
+                      if (event.target.checked) setCashReceived(String(cashCountTotal(cashCount)));
+                      if (event.target.checked && !timeReceived) setTimeReceived(manilaNow().time);
                     }}
                   />
                   <span><strong>Cash received in full</strong><span className="block text-xs text-muted-foreground">{isCashPayment ? "Create and immediately approve the Remittance when the cash handed over equals the calculated amount." : `${paymentMethod || "Non-cash"} payments go to Remittances so Finance can verify the reference before approval.`}</span></span>
                 </label>
                 <div className="space-y-1">
                   <Label>Cash received</Label>
-                  <Input type="number" min="0" step="0.01" value={cashReceived} disabled={!autoApproveRemittance || !isCashPayment}onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setCashReceived(event.target.value)} placeholder="0.00" />
+                  <Input type="number" min="0" step="0.01" value={cashReceived} readOnly className="bg-muted/50" disabled={!autoApproveRemittance || !isCashPayment} placeholder="0.00" />
+                  <p className="text-xs text-muted-foreground">Calculated from the cash count.</p>
+                  <Label className="pt-1">Time received</Label>
+                  <Input type="time" value={timeReceived} disabled={!autoApproveRemittance || !isCashPayment} onChange={(event) => setTimeReceived(event.target.value)} />
                 </div>
+                {autoApproveRemittance && isCashPayment && (
+                  <div className="sm:col-span-2">
+                    <Label>Cash count</Label>
+                    <CashCountInput value={cashCount} onChange={(value) => { setCashCount(value); setCashReceived(String(cashCountTotal(value))); }} />
+                    {cashDue !== null && <p className={`mt-1 text-sm ${Math.round(cashCountTotal(cashCount) * 100) === Math.round(cashDue * 100) ? "text-emerald-700" : "text-muted-foreground"}`}>Cash due: {formatCurrency(cashDue)}</p>}
+                  </div>
+                )}
+                {autoApproveRemittance && isCashPayment && lateIncentive > 0 && cashDue !== null && (
+                  <p className="text-sm text-red-700 sm:col-span-2">
+                    Incentive of {formatCurrency(lateIncentive)} is forfeited: the cash came in after 10:00 AM the day after the OR date
+                    {collections[0]?.orDate ? ` (deadline ${formatDeadline(incentiveDeadline(collections[0].orDate))})` : ""}. Cash due is {formatCurrency(cashDue)}.
+
+                  </p>
+                )}
               </div>
 
               {/* SAVE / RESET */}

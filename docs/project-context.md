@@ -102,6 +102,26 @@ Collections member search is scoped by the selected Branch and MAS through activ
 
 New Sales uses Application Number as its required transaction reference. It does not ask for or require an OR Number; the legacy Sales `or_number` column remains blank for new rows so existing column positions and historical data remain intact.
 
+## Editable amounts per program (2026-10-03)
+
+Programs T `new_sale_amount_editable` and U `collection_amount_editable` hold TRUE or FALSE; blank reads as FALSE. FALSE, the default and the value set on every program on 2026-10-03 (`npm run sheets:program-amount-lock`), locks the amount so it cannot be mistyped. A New Sale is then fixed to the registration amount, or one month's base pay without a registration fee, and the server rejects any other amount. A Collection is fixed to covered months × base pay, and the exact remaining payoff is offered as a button. The server already accepts only full installments or that exact payoff. Administrators change the flags in Programs.
+
+## Incentive deadline and Today's Entries (2026-10-03)
+
+- **Deadline:** an OR has a date only, so the countdown starts at the 10:00 AM remittance cutoff on the OR date. A MAS or Collector keeps the incentive on a Collection or New Sale only when the cash is received by **10:00 AM the next day** (`lib/remittance-deadline.ts`). New Sales count from their Application Date (Sales AE), or the Manila date the sale was created when it is blank.
+- **Time received:** remittance slips record the date and time the cash was handed over (Remittances D `date_remitted`, AA `time_remitted`), not when the slip was encoded, so a clerk encoding late does not cost the MAS the incentive. The encoded time stays in the slip's identity columns, so backdated times can be compared.
+- **Forfeiting:** when a slip is created after the deadline, the item's full amount is due. Its company share (Collections AA, Sales AP) becomes the full amount, Sales AO `mas_incentive` becomes 0, and the incentive taken back is kept in `forfeited_incentive` (Collections AM, Sales AR). Reports, commissions and payroll read incentive as amount less company share, so they follow automatically. A rejected slip gives the incentive back; the next slip decides again. Columns are added by `npm run sheets:remittance-deadline -- --apply`.
+- **Today's Entries** (`/todays-entries`; Entry Clerk, HR, Administrator): New Sales and Collections for a day, counted by remittance date (default), date encoded, or OR date. Administrators set the company default in the page (stored in the `System Settings` sheet, key `today_mode`), and the dashboards' "today" tiles use the same setting. Administrators can correct entries there with a reason (Record Corrections). OR number and OR date can always be fixed, including legacy rows; amounts only before the item is on a remittance slip.
+
+## Data-entry controls (2026-10-03)
+
+- **Control total:** before saving a New Sales or Collections batch, the clerk types the total from the MAS's turnover sheet. The batch saves only when the entries add up to it exactly (`lib/entry-controls.ts`, checked by the form and the server).
+- **Late entries:** an OR or application date older than yesterday needs a reason, kept in Collections AN / Sales AS `backdate_reason` and listed in Exceptions for 30 days.
+- **Cash count:** cash remittances, and cash received in full on Collections, are counted by bill and coin (₱1000 to ₱1). The amount received is the counted total, and the count is kept in Remittances AB `cash_count` (e.g. `1000x3, 500x1`). The server checks that a submitted count adds up to the amount.
+- **Member check:** Collections shows the selected member's birthdate, address and last payment, and warns when another member has the same name.
+- **Exceptions** (`/exceptions`, administrators): impossible dates, amounts that do not match the program, duplicate OR/application numbers and members, active members missing birthdate/contact/address, cash past the incentive deadline, and late entries. Imported (`-LEG-`) records are hidden unless included. Sales and Collections are fixed in place with the correction form; members open in the Members directory.
+- Columns AN, AS and AB are added by `npm run sheets:remittance-deadline -- --apply`.
+
 ## Rules still requiring business decisions
 
 Further business decisions remain for complete transfer/history workflows, special incentive cases, detailed role permissions, attendance policy changes, dashboard KPIs, and future report layouts. The current defaults and remittance formula are described in the implementation document. Use the confirmed whole-installment payment rule and MAM meanings above rather than treating them as unresolved. Existing code describes current behavior but does not establish an unconfirmed business policy.

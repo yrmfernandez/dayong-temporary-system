@@ -6,6 +6,7 @@ import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
 import { loadUsers, userCell } from "@/lib/users-sheet";
 import { ageRestrictionCells, normalizeAgeRestriction } from "@/lib/program-age";
 import { normalizeSaleIncentive } from "@/lib/remittance";
+import { amountEditableCells } from "@/lib/program-amount-lock";
 import { type StoredTier, validateIncentiveTiers, writeProgramIncentives } from "@/lib/program-incentive-store";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -21,7 +22,7 @@ function findRow(data: unknown[][], id: string) {
 }
 
 
-export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; categoryId?: string; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: StoredTier[] };
+export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; categoryId?: string; newSaleAmountEditable?: boolean; collectionAmountEditable?: boolean; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: StoredTier[] };
 
 export async function updateProgramRecord(id: string, input: ProgramInput) {
   const programs = await rows("Programs!A:F");
@@ -33,7 +34,7 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
   const saleIncentive = normalizeSaleIncentive(input);
   await validateIncentiveTiers(input.incentiveTiers, input.basePay);
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!A${rowNumber}:F${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[id, input.code, input.name, input.basePay, input.status, input.description]] } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:S${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal, ...ageRestrictionCells(ageRestriction), saleIncentive.saleIncentiveType, saleIncentive.saleIncentiveType ? saleIncentive.saleIncentiveAmount : "", text(input.categoryId)]] } });
+  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:U${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal, ...ageRestrictionCells(ageRestriction), saleIncentive.saleIncentiveType, saleIncentive.saleIncentiveType ? saleIncentive.saleIncentiveAmount : "", text(input.categoryId), ...amountEditableCells(input)]] } });
   await writeProgramIncentives(id, input.incentiveTiers);
   return { id };
 }

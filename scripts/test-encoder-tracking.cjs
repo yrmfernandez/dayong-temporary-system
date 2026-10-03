@@ -8,6 +8,15 @@ const ts = require('typescript');
 // Execute the actual TS routes/data helpers with an in-memory Sheets transport.
 // No credentials, network calls, or production rows are used by these tests.
 process.env.AUTH_SECRET ||= 'test-secret-for-session-tokens-only';
+// Headers added by npm run sheets:remittance-deadline, which Remittances requires.
+function deadlineHeaders(h) {
+  for (const [title, index, name] of [['Collections', 38, 'forfeited_incentive'], ['Sales', 43, 'forfeited_incentive'], ['Remittances', 26, 'time_remitted'], ['Remittances', 27, 'cash_count']]) {
+    const rows = h.rows[title] ?? (h.rows[title] = [[]]);
+    rows[0] = [...(rows[0] ?? [])];
+    rows[0][index] = name;
+  }
+}
+
 function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encoder', roleNames: ['Entry Clerk'], permissions: {} }) {
   const cache = new Map();
   const writes = [];
@@ -334,7 +343,7 @@ for (const existingMember of [false, true]) {
     h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
     if (existingMember) h.rows.Members = [[], ['MEM-1', 'PH-1']];
     const response = await h.load('app/api/sales/route.ts').POST(request({
-      branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25',
+      branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 350,
       encodedBy: 'attacker', userId: 'attacker',
       sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', encodedBy: 'attacker', beneficiaries: existingMember ? [] : [{ surname: 'Santos', firstName: 'Ben', middleName: '', birthdate: '2000-01-02', age: 26, relationship: 'Child' }] }],
     }));
@@ -402,7 +411,7 @@ test('collection batch is encoded atomically without creating a remittance', asy
   // The New Sale is NOP 1 (DOI month), so the first collection is NOP 2 for the following month.
   const afterNext = h.load('lib/account-rules.ts').monthName(h.load('lib/account-rules.ts').monthIndex(month) + 2);
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: 'OR-1', orDate: today };
-  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: 'OR-2' }] };
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', controlTotal: 700, collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: 'OR-2' }] };
   const route = h.load('app/api/collections/route.ts');
   assert.match((await (await route.POST(request({ ...batch, paymentReference: '' }))).json()).message, /GCash reference number/);
   assert.match((await (await route.POST(request({ ...batch, autoApproveRemittance: true, cashReceived: 400 }))).json()).message, /verified in Remittances/);
@@ -467,7 +476,8 @@ test('physical remittance links exact outstanding collections and records a disc
   h.rows.Collections = [collectionsHeader, collection];
   h.rows.Remittances = [remittancesHeader];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
-  const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 340, remittanceDate: '2026-09-26', receivedByName: 'Cashier' }));
+  deadlineHeaders(h);
+  const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 340, remittanceDate: '2026-09-26', remittanceTime: '09:00', receivedByName: 'Cashier' }));
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
   assert.equal(result.remittance.status, 'Discrepancy');
@@ -494,6 +504,7 @@ test('pending approval does not clear cash accountability', async () => {
   h.rows.Collections = [collectionsHeader, collection];
   h.rows.Remittances = [remittancesHeader, remittance];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At'], ['RCL-1', 'REM-1', 'COL-1', 350]];
+  deadlineHeaders(h);
   const dashboard = await h.load('lib/remittance-workflow.ts').getRemittanceDashboard();
   assert.equal(dashboard.summary.outstandingAmount, 200);
   assert.equal(dashboard.summary.pendingAmount, 350);
@@ -510,6 +521,7 @@ test('administrator who is also an Entry Clerk may approve own remittance', asyn
   h.rows.Collections = [collectionHeader, collection];
   h.rows.Remittances = [remittanceHeader, remittance];
   h.rows['Remittance Collections'] = [['Remittance Collection ID'], ['RCL-1', 'REM-1', 'COL-1', 350]];
+  deadlineHeaders(h);
   const response = await h.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: 'REM-1', decision: 'approve' }));
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
 });
@@ -522,10 +534,11 @@ test('any Remittances user can create an approved remittance when full cash is c
   h.rows.Collections = [collectionHeader, collection];
   h.rows.Remittances = [remittanceHeader];
   h.rows['Remittance Collections'] = [['Remittance Collection ID']];
+  deadlineHeaders(h);
   const route = h.load('app/api/remittances/route.ts');
-  const short = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 299, remittanceDate: '2026-09-28', cashConfirmed: true }));
+  const short = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 299, remittanceDate: '2026-09-28', remittanceTime: '09:00', cashConfirmed: true }));
   assert.equal(short.status, 400);
-  const response = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 300, remittanceDate: '2026-09-28', cashConfirmed: true }));
+  const response = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 300, remittanceDate: '2026-09-28', remittanceTime: '09:00', cashConfirmed: true }));
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
   assert.equal(result.remittance.status, 'Approved');
@@ -709,13 +722,13 @@ test('a new member enrolled in two programs in one batch is registered once', as
   h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
   const sale = (programId, applicationNo) => ({ existingMember: false, surname: 'Reyes', firstName: 'Ben', birthdate: '1991-02-03', programId, amountPaid: '350', applicationNo, addressHouse: 'Complete Address' });
   const route = h.load('app/api/sales/route.ts');
-  const response = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', sales: [sale('DP-1', 'APP-1'), sale('DP-2', 'APP-2')] }));
+  const response = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 700, sales: [sale('DP-1', 'APP-1'), sale('DP-2', 'APP-2')] }));
   const result = await response.json();
   assert.equal(response.status, 200, JSON.stringify(result));
   assert.equal(h.writes.filter((write) => write.range.startsWith("'Members'!")).length, 1, 'one member record');
   assert.equal(h.writes.filter((write) => write.range.startsWith("'Member programs'!")).length, 2, 'two program enrollments');
   assert.equal(result.savedSales[0].memberNumber, result.savedSales[1].memberNumber);
-  const repeat = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', sales: [sale('DP-1', 'APP-3'), sale('DP-1', 'APP-4')] }));
+  const repeat = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 700, sales: [sale('DP-1', 'APP-3'), sale('DP-1', 'APP-4')] }));
   assert.match((await repeat.json()).message, /Sale #2: This member is already enrolled in this program earlier in this batch/);
 });
 
@@ -1069,13 +1082,15 @@ test('a remittance penalty is noted on the remittance but kept out of the expect
   h.rows.Remittances = [remittancesHeader];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
   collection.length = 37; collection[35] = 50; collection[36] = 'Late turnover: held 5 days';
-  const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 200, remittanceDate: '2026-09-26', receivedByName: 'Cashier' }));
+  deadlineHeaders(h);
+  const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 200, remittanceDate: '2026-09-26', remittanceTime: '09:00', receivedByName: 'Cashier' }));
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
   assert.equal(result.remittance.expectedAmount, 200, 'the penalty is independent of the remittance');
   assert.equal(result.remittance.difference, 0);
   const remittance = h.writes[0].requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
   assert.match(remittance[22], /Penalty ₱50\.00 \(separate from remittance\): Late turnover: held 5 days/);
+  deadlineHeaders(h);
   const dashboard = await h.load('lib/remittance-workflow.ts').getRemittanceDashboard();
   assert.ok(dashboard.remittances.every((item) => item.penaltyAmount === 0 || item.penaltyNotes.length), 'penalties carry their notes');
 });
@@ -1169,10 +1184,11 @@ test('new sales are remitted on their own slip, separate from collections', asyn
   h.rows.Sales = [Array(38).fill(''), sale];
   h.rows.Remittances = [remittancesHeader];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  deadlineHeaders(h);
   const route = h.load('app/api/remittances/route.ts');
   const dashboard = await (await route.GET()).json();
   assert.deepEqual(dashboard.outstanding.map((item) => [item.kind, item.id, item.remittanceAmount, item.penalty]), [['Collections', 'COL-1', 270, 0], ['New Sales', 'SAL-1', 500, 25]]);
-  const post = async (body) => { const response = await route.POST(request({ actualAmount: 500, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
+  const post = async (body) => { const response = await route.POST(request({ actualAmount: 500, remittanceDate: '2026-09-26', remittanceTime: '09:00', ...body })); return { status: response.status, body: await response.json() }; };
   assert.match((await post({ collectionIds: ['COL-1', 'SAL-1'] })).body.error, /separate slips/);
   const created = await post({ collectionIds: ['SAL-1'], actualAmount: 500 });
   assert.equal(created.status, 201, JSON.stringify(created.body));
@@ -1195,7 +1211,7 @@ test('New Sales Fidelity is the MAS own money: incentives stay whole and the rem
   h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
   h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
   const sales = h.load('app/api/sales/route.ts');
-  const body = (fidelityAmount) => ({ branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', fidelityAmount, sales: [{ existingMember: false, memberNumber: '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-9', addressHouse: 'Address', beneficiaries: [] }] });
+  const body = (fidelityAmount) => ({ branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', fidelityAmount, controlTotal: 350, sales: [{ existingMember: false, memberNumber: '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-9', addressHouse: 'Address', beneficiaries: [] }] });
   // No limit: more than the batch's ₱150 incentive is accepted.
   const saved = await sales.POST(request(body(500)));
   assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
@@ -1209,10 +1225,11 @@ test('New Sales Fidelity is the MAS own money: incentives stay whole and the rem
   const remittancesHeader = Array(26).fill(''); remittancesHeader[12] = 'Difference';
   h2.rows.Collections = [collectionsHeader]; h2.rows.Sales = [Array(43).fill(''), sale]; h2.rows.Remittances = [remittancesHeader];
   h2.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  deadlineHeaders(h2);
   const remittances = h2.load('app/api/remittances/route.ts');
   const outstanding = (await (await remittances.GET()).json()).outstanding;
   assert.deepEqual(outstanding.map((item) => [item.id, item.remittanceAmount, item.fidelity]), [['SAL-9', 200, 50]]);
-  const created = await remittances.POST(request({ collectionIds: ['SAL-9'], actualAmount: 250, remittanceDate: '2026-09-26' }));
+  const created = await remittances.POST(request({ collectionIds: ['SAL-9'], actualAmount: 250, remittanceDate: '2026-09-26', remittanceTime: '09:00' }));
   const result = await created.json();
   assert.equal(created.status, 201, JSON.stringify(result));
   assert.equal(result.remittance.expectedAmount, 250, 'company share 200 + Fidelity 50');
@@ -1231,8 +1248,9 @@ test('fidelity entered with a Collections batch is added to its remittance, not 
   h.rows.Sales = [Array(40).fill('')];
   h.rows.Remittances = [remittancesHeader];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  deadlineHeaders(h);
   const route = h.load('app/api/remittances/route.ts');
-  const post = async (body) => { const response = await route.POST(request({ collectionIds: ['COL-9'], actualAmount: 290, remittanceDate: '2026-09-26', ...body })); return { status: response.status, body: await response.json() }; };
+  const post = async (body) => { const response = await route.POST(request({ collectionIds: ['COL-9'], actualAmount: 290, remittanceDate: '2026-09-26', remittanceTime: '09:00', ...body })); return { status: response.status, body: await response.json() }; };
   assert.match((await post({ fidelityAmount: 5 })).body.error, /already recorded/);
   const created = await post({});
   assert.equal(created.status, 201, JSON.stringify(created.body));
@@ -1375,4 +1393,176 @@ test('member directory: Collector per program, deceased members, and the standin
   assert.equal(ids('forfeited'), 'M3');
   assert.equal(filterMemberDirectory(members, { ...emptyDirectoryFilters, mas: 'Jun Collector' }).map((item) => item.id).join(','), 'M1', 'the MAS / Collector filter finds Collectors');
   assert.equal(filterMemberDirectory(members, { ...emptyDirectoryFilters, search: 'matina' }).length, 3, 'search covers the address');
+});
+
+test('incentives are kept until 10:00 AM the day after the OR date, then the full amount is remitted', async () => {
+  const setup = () => {
+    const h = harness();
+    const collection = Array(39).fill(''); collection[0] = 'COL-5'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-5'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 270; collection[28] = 'Outstanding'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS';
+    const collectionsHeader = Array(39).fill(''); collectionsHeader[28] = 'Remittance Status';
+    const remittancesHeader = Array(27).fill(''); remittancesHeader[12] = 'Difference';
+    h.rows.Collections = [collectionsHeader, collection]; h.rows.Remittances = [remittancesHeader];
+    h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+    deadlineHeaders(h);
+    return h;
+  };
+  const post = async (h, remittanceTime, actualAmount) => { const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-5'], actualAmount, remittanceDate: '2026-09-26', remittanceTime })); return { status: response.status, body: await response.json() }; };
+
+  const onTime = setup();
+  const kept = await post(onTime, '10:00', 270);
+  assert.equal(kept.status, 201, JSON.stringify(kept.body));
+  assert.equal(kept.body.remittance.expectedAmount, 270, '10:00 exactly is within 24 hours of the cutoff');
+  assert.equal(kept.body.remittance.forfeitedCount, 0);
+  const keptRow = onTime.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.equal(keptRow[26], '10:00', 'the time received is stored on the slip');
+
+  const late = setup();
+  const forfeited = await post(late, '10:01', 350);
+  assert.equal(forfeited.status, 201, JSON.stringify(forfeited.body));
+  assert.equal(forfeited.body.remittance.expectedAmount, 350, 'the whole collection goes to the remittance');
+  assert.equal(forfeited.body.remittance.forfeitedAmount, 80);
+  const requests = late.writes.at(-1).requestBody.requests;
+  const remarks = requests[0].appendCells.rows[0].values[22].userEnteredValue.stringValue;
+  assert.match(remarks, /Incentive forfeited on 1 item \(₱80\.00\)/);
+  assert.equal(requests[1].appendCells.rows[0].values[3].userEnteredValue.numberValue, 350, 'the link records the amount actually due');
+  const cells = requests.filter((item) => item.updateCells).map((item) => [item.updateCells.range.startColumnIndex, item.updateCells.rows[0].values[0].userEnteredValue.numberValue]);
+  assert.deepEqual(cells.filter(([column]) => column === 26 || column === 38), [[26, 350], [38, 80]], 'remittance_amount becomes the full amount and the forfeit is recorded');
+
+  const future = await post(setup(), '23:59', 350);
+  assert.equal(future.status, 201, 'a past date with a late time is fine');
+  const tomorrow = setup();
+  const ahead = await tomorrow.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-5'], actualAmount: 350, remittanceDate: '2099-01-01', remittanceTime: '09:00' }));
+  assert.match((await ahead.json()).error, /cannot be in the future/);
+});
+
+test('a late New Sale moves its MAS incentive into the remittance, and a rejected slip gives it back', async () => {
+  const h = harness();
+  const sale = Array(44).fill(''); sale[0] = 'SAL-5'; sale[1] = '2026-09-25T02:00:00.000Z'; sale[2] = 'BR-1'; sale[3] = 'Maria'; sale[26] = 350; sale[30] = '2026-09-25'; sale[35] = 'Outstanding'; sale[37] = 'DPE-2'; sale[40] = 150; sale[41] = 200;
+  const remittancesHeader = Array(27).fill(''); remittancesHeader[12] = 'Difference';
+  const collectionsHeader = Array(39).fill(''); collectionsHeader[28] = 'Remittance Status';
+  h.rows.Collections = [collectionsHeader]; h.rows.Sales = [Array(44).fill(''), sale]; h.rows.Remittances = [remittancesHeader];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  deadlineHeaders(h);
+  const created = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['SAL-5'], actualAmount: 350, remittanceDate: '2026-09-27', remittanceTime: '08:00' }));
+  const result = await created.json();
+  assert.equal(created.status, 201, JSON.stringify(result));
+  assert.equal(result.remittance.expectedAmount, 350);
+  const updates = h.writes.at(-1).requestBody.requests.filter((item) => item.updateCells && item.updateCells.range.startColumnIndex >= 40)
+    .map((item) => [item.updateCells.range.startColumnIndex, ...item.updateCells.rows[0].values.map((value) => value.userEnteredValue.numberValue)]);
+  assert.deepEqual(updates, [[40, 0, 350], [43, 150]], 'mas_incentive 0, remittance_amount 350, forfeited 150');
+
+  // The slip is rejected: the sale is outstanding again with its incentive restored.
+  const admin = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const pendingSale = [...sale]; pendingSale[35] = 'Pending Remittance Approval'; pendingSale[36] = 'REM-5'; pendingSale[40] = 0; pendingSale[41] = 350; pendingSale[43] = 150;
+  const slip = Array(27).fill(''); slip[0] = 'REM-5'; slip[4] = 'Pending Approval'; slip[6] = 'USR-1'; slip[10] = 350; slip[11] = 350; slip[25] = 'New Sales'; slip[26] = '08:00';
+  admin.rows.Collections = [collectionsHeader]; admin.rows.Sales = [Array(44).fill(''), pendingSale]; admin.rows.Remittances = [remittancesHeader, slip];
+  admin.rows['Remittance Collections'] = [['Remittance Collection ID'], ['RCL-5', 'REM-5', 'SAL-5', 350]];
+  deadlineHeaders(admin);
+  const rejected = await admin.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: 'REM-5', decision: 'reject', reason: 'Recount needed' }));
+  assert.equal(rejected.status, 200, JSON.stringify(await rejected.clone().json()));
+  const restored = admin.writes.at(-1).requestBody.requests.filter((item) => item.updateCells && item.updateCells.range.startColumnIndex >= 40)
+    .map((item) => [item.updateCells.range.startColumnIndex, ...item.updateCells.rows[0].values.map((value) => value.userEnteredValue.numberValue ?? value.userEnteredValue.stringValue)]);
+  assert.deepEqual(restored, [[40, 150, 200], [43, '']]);
+});
+
+test('a program locks the New Sale amount unless it allows editing', async () => {
+  const setup = (editable) => {
+    const h = harness();
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+    const program = ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0, '', '', '', '', '', '', editable, 'FALSE'];
+    h.rows.Programs = [[], program];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+    h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
+    return h;
+  };
+  const post = async (h, amountPaid) => {
+    const sale = { existingMember: false, programId: 'DP-1', amountPaid, applicationNo: 'APP-1', addressHouse: 'Complete Address', beneficiaries: [] };
+    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: Number(amountPaid), sales: [sale] }));
+    return { status: response.status, body: await response.json() };
+  };
+  const locked = setup('FALSE');
+  const typo = await post(locked, '3500');
+  assert.equal(typo.status, 400);
+  assert.match(typo.body.message, /fixed amount of ₱350\.00/, 'no registration fee: the first month\'s base pay');
+  assert.equal(locked.writes.length, 0, 'nothing is saved');
+  const blank = setup('');
+  assert.equal((await post(blank, '300')).status, 400, 'a blank cell is FALSE, the default');
+  const editable = setup('TRUE');
+  const different = await post(editable, '700');
+  assert.equal(different.status, 200, JSON.stringify(different.body));
+});
+
+test('a New Sales batch must match the turnover sheet total, and a late application date needs a reason', async () => {
+  const h = harness();
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+  h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
+  const post = async (body) => {
+    const sale = { existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', beneficiaries: [], ...body.sale };
+    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: body.controlTotal, sales: [sale] }));
+    return { status: response.status, body: await response.json() };
+  };
+  assert.match((await post({ controlTotal: 3500 })).body.message, /add up to ₱350\.00 but the turnover sheet says ₱3,500\.00 \(short by ₱3,150\.00\)/);
+  assert.match((await post({})).body.message, /Enter the control total/);
+  const late = await post({ controlTotal: 350, sale: { orDate: '2026-01-05' } });
+  assert.match(late.body.message, /more than a day old/);
+  assert.equal(h.writes.length, 0, 'nothing is saved');
+  const explained = await post({ controlTotal: 350, sale: { orDate: '2026-01-05', backdateReason: 'MAS turned in the form late' } });
+  assert.equal(explained.status, 200, JSON.stringify(explained.body));
+  const saleRow = h.writes.find((write) => write.range.startsWith("'Sales'!")).requestBody.values[0];
+  assert.equal(saleRow.at(-1), 'MAS turned in the form late', 'the reason is kept in Sales AS');
+});
+
+test('a counted cash remittance must add up to the amount received, and the count is kept on the slip', async () => {
+  const h = harness();
+  const collection = Array(39).fill(''); collection[0] = 'COL-7'; collection[6] = 'BR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 270; collection[28] = 'Outstanding'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS';
+  const collectionsHeader = Array(39).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const remittancesHeader = Array(28).fill(''); remittancesHeader[12] = 'Difference';
+  h.rows.Collections = [collectionsHeader, collection]; h.rows.Remittances = [remittancesHeader];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  deadlineHeaders(h);
+  const route = h.load('app/api/remittances/route.ts');
+  const post = async (cashCount) => { const response = await route.POST(request({ collectionIds: ['COL-7'], actualAmount: 270, remittanceDate: '2026-09-26', remittanceTime: '09:00', cashCount })); return { status: response.status, body: await response.json() }; };
+  assert.match((await post('200x1, 50x1')).body.error, /counted cash adds up to ₱250/);
+  assert.match((await post('300x1')).body.error, /could not be read/);
+  const counted = await post('200x1, 50x1, 20x1');
+  assert.equal(counted.status, 201, JSON.stringify(counted.body));
+  const row = h.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.equal(row[27], '200x1, 50x1, 20x1');
+});
+
+test('exceptions find bad dates, wrong amounts, duplicates, incomplete members, overdue cash and late entries', async () => {
+  const h = harness();
+  const collection = (id, values) => { const row = Array(40).fill(''); Object.assign(row, { 0: id, 2: 'ENR-1', 4: 'PH-1', 5: 'DP-1', 7: 'Maria', 8: `OR-${id}`, 9: '2026-09-01', 10: 350, 11: '2026-09', 12: '2026-09', 13: 2, 19: 'Posted', 24: '2026-09-01T02:00:00.000Z', 28: 'Remitted' }, values); return row; };
+  h.rows.Collections = [[],
+    collection('COL-A', { 9: '206-07-21' }),
+    collection('COL-B', { 10: 300, 13: 3 }),
+    collection('COL-C', { 8: 'OR-COL-A', 13: 4 }),
+    collection('COL-D', { 9: '2026-09-02', 13: 5, 28: 'Outstanding' }),
+    collection('COL-E', { 13: 6, 39: 'Receipt turned in late', 24: new Date().toISOString() }),
+    collection('COL-LEG-1', { 9: '2099-01-01', 13: 7 }),
+  ];
+  const sale = Array(45).fill(''); Object.assign(sale, { 0: 'SAL-1', 1: '2026-09-01T02:00:00.000Z', 21: 'DP-1', 26: 400, 28: 'APP-1', 30: '2026-09-01', 35: 'Remitted' });
+  h.rows.Sales = [[], sale];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0, '', '', '', '', '', '', 'FALSE', 'FALSE']];
+  const member = (id, birthdate, contact, address) => { const row = Array(18).fill(''); Object.assign(row, { 0: id, 1: id, 2: 'Cruz', 3: 'Ana', 6: birthdate, 11: contact, 12: address, 17: 'Active' }); return row; };
+  h.rows.Members = [[], member('M-1', '1990-01-01', '0917', 'Matina'), member('M-2', '1990-01-01', '0918', 'Toril'), member('M-3', '', '', 'Calinan')];
+  const { findExceptions } = h.load('lib/exceptions.ts');
+  const result = await findExceptions();
+  const ids = (category) => result.categories.find((item) => item.category === category).items.map((item) => item.recordId);
+  assert.deepEqual(ids('dates'), ['COL-A'], 'year 206; the legacy row is hidden by default');
+  assert.deepEqual(ids('amounts').sort(), ['COL-B', 'SAL-1'], '₱300 for one month, and ₱400 on a program fixed at ₱350');
+  assert.deepEqual(ids('duplicates').sort(), ['COL-C', 'M-2'], 'a reused OR number and a member registered twice');
+  assert.deepEqual(ids('members'), ['M-3']);
+  assert.match(result.categories.find((item) => item.category === 'members').items[0].problem, /birthdate, contact number/);
+  assert.deepEqual(ids('overdue'), ['COL-D']);
+  assert.deepEqual(ids('backdated'), ['COL-E']);
+  const fix = result.categories.find((item) => item.category === 'dates').items[0].entry;
+  assert.deepEqual([fix.kind, fix.orNumber, fix.onRemittance], ['Collection', 'OR-COL-A', true], 'the correction form gets what it needs');
+  assert.deepEqual((await findExceptions({ includeLegacy: true })).categories.find((item) => item.category === 'dates').items.map((item) => item.recordId).sort(), ['COL-A', 'COL-LEG-1']);
 });

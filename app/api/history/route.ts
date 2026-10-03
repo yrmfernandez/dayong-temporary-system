@@ -1,7 +1,7 @@
 ﻿import { canManageAccounts, canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { recordCorrection } from "@/lib/record-corrections";
+import { correctSaleOrCollection } from "@/lib/entry-corrections";
 import { columnName, encoderSheets, quotedSheet, trackingHeaders } from "@/lib/encoder-schema";
 import { AUDIT_SHEET, type AuditChanges } from "@/lib/audit-log";
 
@@ -109,24 +109,7 @@ export async function GET() {
 export const PATCH = withEncoder(async (request: Request) => {
   if (!(await canManageUsers())) return Response.json({ success: false, message: "Administrator access is required." }, { status: 403 });
   try {
-    const body = await request.json(); const id = String(body.id ?? "").trim(), moduleName = String(body.module ?? ""), reason = String(body.reason ?? "").trim();
-    if (!id || !reason) throw new Error("Record and correction reason are required.");
-    const isSale = moduleName === "New Sales", sheet = isSale ? "Sales" : moduleName === "Collections" ? "Collections" : "";
-    if (!sheet) throw new Error("Only New Sales and Collections can be corrected here.");
-    const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${sheet}'!A:AL`, valueRenderOption: "UNFORMATTED_VALUE" });
-    const rows = response.data.values ?? [], index = rows.slice(1).findIndex((row) => String(row[0] ?? "").trim() === id);
-    if (index < 0) throw new Error("Record not found."); const rowNumber = index + 2, row = rows[index + 1];
-    // Money already on a remittance slip (Collections AC, Sales AJ) is corrected through reconciliation, not here.
-    if (!["", "Outstanding"].includes(String(row[isSale ? 35 : 28] ?? ""))) throw new Error(`A ${isSale ? "New Sale" : "Collection"} linked to a Remittance must be corrected through reconciliation, not direct editing.`);
-    const before = isSale ? { applicationNumber: row[28], amountPaid: row[26], notes: row[27] } : { orNumber: row[8], orDate: row[9], amountCollected: row[10] };
-    const amount = Number(isSale ? body.amountPaid : body.amountCollected); if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid amount greater than zero.");
-    const after = isSale ? { applicationNumber: String(body.applicationNumber ?? "").trim(), amountPaid: amount, notes: String(body.notes ?? "").trim() } : { orNumber: String(body.orNumber ?? "").trim(), orDate: String(body.orDate ?? "").trim(), amountCollected: amount };
-    if (isSale && !after.applicationNumber) throw new Error("Application number is required.");
-    if (!isSale && (!after.orNumber || !/^\d{4}-\d{2}-\d{2}$/.test(after.orDate))) throw new Error("Valid OR number and OR date are required.");
-    const data = isSale ? [{ range: `'Sales'!AA${rowNumber}:AC${rowNumber}`, values: [[after.amountPaid, after.notes, after.applicationNumber]] }] : [{ range: `'Collections'!I${rowNumber}:K${rowNumber}`, values: [[after.orNumber, after.orDate, after.amountCollected]] }];
-    await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data } });
-    await recordCorrection(moduleName, id, reason, before, after);
-    return Response.json({ success: true, message: `${moduleName} record corrected and audited.` });
+    return Response.json({ success: true, ...(await correctSaleOrCollection(await request.json())) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to correct record." }, { status: 400 }); }
 });
 

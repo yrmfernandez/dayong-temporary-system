@@ -27,6 +27,8 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { todayInManila } from "@/lib/account-rules";
 import type { ProgramStanding } from "@/lib/account-data";
+import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import { calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
@@ -255,9 +257,14 @@ export default function NewSalesPage() {
 
   // Remittance penalty on this New Sales batch: charged to the MAS (their own money), added to the remittance.
   const [penalty, setPenalty] = useState("");
+  // The total written on the MAS's turnover sheet; the batch saves only when the sales add up to it.
+  const [controlTotal, setControlTotal] = useState("");
   const [penaltyNote, setPenaltyNote] = useState("");
   const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
-  const totalPaid = sales.reduce((sum, sale) => sum + Math.round((Number(sale.program.amountPaid) || 0) * 100), 0) / 100;
+  // A program whose New Sale amount is locked always charges its fixed amount, whatever a saved draft holds.
+  const lockedProgram = (code: string) => { const program = programs.find((item) => item.code === code); return program && !program.newSaleAmountEditable ? program : null; };
+  const amountPaidOf = (sale: (typeof sales)[number]) => { const locked = lockedProgram(sale.program.programCode); return locked ? fixedNewSaleAmount(locked) : Number(sale.program.amountPaid) || 0; };
+  const totalPaid = sales.reduce((sum, sale) => sum + Math.round(amountPaidOf(sale) * 100), 0) / 100;
   // Fidelity for this batch: the MAS's own money handed over to save, added to the remittance. No limit; zero is allowed.
   const [fidelity, setFidelity] = useState("");
   const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
@@ -293,7 +300,7 @@ export default function NewSalesPage() {
     const program = programs.find((item) => item.code === sale.program.programCode);
     if (!program) return null;
     try {
-      return calculateSaleIncentive({ basePay: program.basePay, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, Number(sale.program.amountPaid) || 0);
+      return calculateSaleIncentive({ basePay: program.basePay, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, amountPaidOf(sale));
     } catch (error) {
       return { incentive: 0, remittance: 0, rule: "", error: error instanceof Error ? error.message : "The incentive could not be calculated." };
     }
@@ -964,6 +971,18 @@ export default function NewSalesPage() {
       return;
     }
 
+    const late = sales.findIndex((sale) => needsBackdateReason(sale.orDate) && (sale.backdateReason ?? "").trim().length < BACKDATE_REASON_MIN);
+    if (late >= 0) {
+      setSaveMessage(`Sale #${late + 1}: the application date is more than a day old. Enter the reason it is being encoded late.`);
+      return;
+    }
+
+    const controlProblem = controlTotalProblem(controlTotal, sales.map(amountPaidOf));
+    if (controlProblem) {
+      setSaveMessage(controlProblem);
+      return;
+    }
+
     if (Number(penalty) < 0) {
       setSaveMessage("The penalty must be zero or a positive amount.");
       return;
@@ -1014,10 +1033,11 @@ export default function NewSalesPage() {
             applicationNo: sale.applicationNumber,
             orNumber: "",
             orDate: sale.orDate,
+            backdateReason: sale.backdateReason ?? "",
             paymentMethod: sale.program.modeOfPayment,
             registrationFee: sale.program.withRegistrationFee ? "Yes" : "No",
             registrationAmount: String(sale.program.registrationAmount),
-            amountPaid: String(sale.program.amountPaid),
+            amountPaid: String(amountPaidOf(sale)),
             doi: sale.program.dateEnrolled,
             programId: selectedProgram?.id ?? "",
             programTerms: sale.program.programTerms,
@@ -1044,6 +1064,7 @@ export default function NewSalesPage() {
             penalty: penaltyAmount,
             penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "",
             fidelityAmount,
+            controlTotal: Number(controlTotal),
           }),
         },
       );
@@ -1071,6 +1092,7 @@ export default function NewSalesPage() {
 
       resetForm();
       setPenalty("");
+      setControlTotal("");
       setPenaltyNote("");
       setFidelity("");
     } catch (error: unknown) {
@@ -1273,7 +1295,7 @@ export default function NewSalesPage() {
                       {sale.member.id && (
                         <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
                           <p>
-                            <span className="font-semibold">Existing member {sale.member.phMemberNumber}.</span>{" "}
+                            <span className="font-semibold">Existing member {sale.member.phMemberNumber}{sale.member.birthdate ? `, born ${sale.member.birthdate}` : ""}.</span>{" "}
                             Details below come from their record. Any change you make here updates the member&apos;s record when this batch is saved.
                           </p>
                           <Button type="button" size="sm" variant="outline" onClick={() => unlinkExistingMember(sale.id)}>
@@ -2250,7 +2272,7 @@ export default function NewSalesPage() {
                                   programCode: chosen?.code ?? "",
                                   withRegistrationFee: Boolean(chosen?.registrationFeeRequired),
                                   registrationAmount: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
-                                  amountPaid: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
+                                  amountPaid: chosen && !chosen.newSaleAmountEditable ? fixedNewSaleAmount(chosen) : chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
                                 },
                               }));
                             }}
@@ -2494,9 +2516,10 @@ export default function NewSalesPage() {
                         <Input
                           type="number"
                           min="0"
+                          readOnly={Boolean(lockedProgram(sale.program.programCode))}
+                          className={lockedProgram(sale.program.programCode) ? "bg-muted/50" : undefined}
                           value={
-                            sale.program
-                              .amountPaid ||
+                            amountPaidOf(sale) ||
                             ""
                           }
                           onWheel={(event) => event.currentTarget.blur()}
@@ -2521,6 +2544,7 @@ export default function NewSalesPage() {
                           }
                           placeholder="0.00"
                         />
+                        {lockedProgram(sale.program.programCode) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale.program.programCode)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
                       </div>
 
                       {/* NOTES */}
@@ -2617,6 +2641,13 @@ export default function NewSalesPage() {
                               )
                             }
                           />
+                          {needsBackdateReason(sale.orDate) && (
+                            <div className="space-y-1">
+                              <Label className="text-xs text-amber-800">Reason for the late entry *</Label>
+                              <Input value={sale.backdateReason ?? ""} onChange={(event) => updateSale(sale.id, (current) => ({ ...current, backdateReason: event.target.value }))} placeholder="e.g. Application turned over late by the MAS" />
+                              <p className="text-xs text-muted-foreground">The application date is more than a day old. Administrators review late entries.</p>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -2680,6 +2711,14 @@ export default function NewSalesPage() {
             </div>
           </fieldset>
           {quoteProblem && <p role="alert" className="text-sm text-destructive">{quoteProblem.error}</p>}
+          <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px] sm:items-center">
+            <div>
+              <Label htmlFor="sales-control-total">Control total from the turnover sheet *</Label>
+              <p className="text-xs text-muted-foreground">Type the total the MAS wrote on the turnover sheet, not the total shown here. The batch saves only when they match.</p>
+              {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, sales.map(amountPaidOf)); return <p className={`mt-1 text-sm ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the sales."}</p>; })()}
+            </div>
+            <Input id="sales-control-total" type="number" min="0" step="0.01" value={controlTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setControlTotal(event.target.value)} placeholder="0.00" />
+          </div>
           <RemittanceSummary collected={totalPaid} remittance={totalSaleRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} incentiveNote="From each program's New Sale incentive, or its month-1 MAS tier when there is no registration fee." />
         </CardContent>
       </Card>
@@ -2712,7 +2751,7 @@ export default function NewSalesPage() {
             )}
           </div>
 
-          {showPreview && <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.amountPaid)}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div></div>}
+          {showPreview && <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div></div>}
 
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button

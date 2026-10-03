@@ -1,6 +1,7 @@
 // Pages an administrator can grant to a role in Roles → Page access. Dashboard and Settings are always allowed.
 export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; label: string }> }> = [
   { group: "Operations", pages: [
+    { href: "/todays-entries", label: "Today's Entries" },
     { href: "/new-sales", label: "New Sales" },
     { href: "/collections", label: "Collections" },
     { href: "/remittances", label: "Remittances" },
@@ -20,6 +21,7 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
     { href: "/audit", label: "Audits" },
     { href: "/admin-reports", label: "User Report Review" },
     { href: "/history", label: "Audit Log" },
+    { href: "/exceptions", label: "Exceptions (administrators)" },
   ] },
   { group: "People", pages: [
     { href: "/employees", label: "Employees" },

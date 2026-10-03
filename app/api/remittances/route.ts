@@ -21,7 +21,7 @@ export const POST = withEncoder(async (request: Request) => {
     const body = await request.json();
     const result = await createCashRemittance({
       collectionIds: Array.isArray(body.collectionIds) ? body.collectionIds : [],
-      actualAmount: Number(body.actualAmount), fidelityAmount: Number(body.fidelityAmount ?? 0), remittanceDate: String(body.remittanceDate ?? ""),
+      actualAmount: Number(body.actualAmount), fidelityAmount: Number(body.fidelityAmount ?? 0), remittanceDate: String(body.remittanceDate ?? ""), remittanceTime: String(body.remittanceTime ?? ""), cashCount: String(body.cashCount ?? ""),
       remarks: String(body.remarks ?? ""), cashConfirmed: body.cashConfirmed === true,
     });
     return Response.json({ success: true, remittance: result }, { status: 201 });

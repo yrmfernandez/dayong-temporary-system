@@ -18,6 +18,12 @@ const pageSize = 25;
 export default function MembersPage() {
   const [members, setMembers] = useState<DirectoryMember[]>([]);
   const [filters, setFilters] = useState({ ...emptyDirectoryFilters });
+  // Links such as Exceptions open the directory already searched (?search=PH-123).
+  useEffect(() => {
+    const search = new URLSearchParams(window.location.search).get("search");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the URL after mount
+    if (search) setFilters((current) => ({ ...current, search }));
+  }, []);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState("name");
   const [descending, setDescending] = useState(false);

@@ -64,6 +64,9 @@ export type Program = {
   /** New Sale incentive for programs with a registration fee (Programs Q:R). */
   saleIncentiveType?: "fixed" | "percentage" | "";
   saleIncentiveAmount?: number;
+  /** Programs T:U: whether encoders may type the New Sale / Collection amount. False (the default) locks it. */
+  newSaleAmountEditable?: boolean;
+  collectionAmountEditable?: boolean;
   /** MAS and Collector incentive tiers by month; month 1 applies to a New Sale without a registration fee. */
   incentiveTiers?: Array<{ role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number }>;
 };
@@ -101,6 +104,8 @@ export type NewSale = {
 
   applicationNumber: string;
   orDate: string;
+  /** Why an application date more than a day old is encoded late. */
+  backdateReason?: string;
 
   dateRemitted: string;
 };

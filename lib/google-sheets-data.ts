@@ -1,4 +1,5 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
+import { amountEditableCells, isTrue } from "@/lib/program-amount-lock";
 import { writeProgramIncentives } from "@/lib/program-incentive-store";
 import { getEmployees } from "@/lib/employees";
 import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
@@ -461,6 +462,8 @@ export type SaleSheetData = {
   applicationNo: string;
   orNumber: string;
   orDate: string;
+  /** Sales AS: why an application date more than a day old was encoded late. */
+  backdateReason?: string;
 };
 
 /**
@@ -529,7 +532,9 @@ export async function addSale(
       requestBody: {
         values: [values],
       },
-    }, [["Outstanding", "", accountableEmployeeId, penalty.amount > 0 ? penalty.amount : "", penalty.amount > 0 ? penalty.note : "", quote.incentive, quote.remittance, quote.fidelity > 0 ? quote.fidelity : ""]]);
+    }, [["Outstanding", "", accountableEmployeeId, penalty.amount > 0 ? penalty.amount : "", penalty.amount > 0 ? penalty.note : "", quote.incentive, quote.remittance, quote.fidelity > 0 ? quote.fidelity : "",
+      // AR forfeited_incentive is set at remittance; AS backdate_reason only for a late application date.
+      ...(sale.backdateReason ? ["", sale.backdateReason] : [])]]);
 
   return response.data;
 }
@@ -763,6 +768,9 @@ export type ProgramIncentiveSheetData = {
 export type CreateProgramData = {
   /** Programs!S: the program's category (Program Categories). Blank = uncategorized. */
   categoryId?: string;
+  /** Programs!T and U: whether encoders may type the amount on a New Sale / a Collection. False locks it to the program's amount. */
+  newSaleAmountEditable?: boolean;
+  collectionAmountEditable?: boolean;
   saleIncentiveType?: unknown;
   saleIncentiveAmount?: unknown;
   code: string;
@@ -799,7 +807,7 @@ export type CreateProgramData = {
 export async function getPrograms() {
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [`${PROGRAMS_SHEET}!A:S`, `${PROGRAM_INCENTIVES_SHEET}!A:M`],
+    ranges: [`${PROGRAMS_SHEET}!A:U`, `${PROGRAM_INCENTIVES_SHEET}!A:M`],
   });
   const rows = response.data.valueRanges?.[0]?.values ?? [];
   if (rows.length <= 1) {
@@ -840,6 +848,9 @@ export async function getPrograms() {
       saleIncentiveType: (["fixed", "percentage"].includes(String(row[16] ?? "").trim()) ? String(row[16]).trim() : "") as "fixed" | "percentage" | "",
       saleIncentiveAmount: Number(row[17] ?? 0) || 0,
       categoryId: String(row[18] ?? "").trim(),
+      // Programs T new_sale_amount_editable, U collection_amount_editable: blank or FALSE locks the amount.
+      newSaleAmountEditable: isTrue(row[19]),
+      collectionAmountEditable: isTrue(row[20]),
     }));
 
   const incentives =
@@ -1011,9 +1022,9 @@ export async function createProgram(
   const rowNumber = programRows.findIndex((row) => String(row[0] ?? "").trim() === programId) + 1;
   if (rowNumber > 1) await sheets.spreadsheets.values.update({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${PROGRAMS_SHEET}!K${rowNumber}:S${rowNumber}`,
+    range: `${PROGRAMS_SHEET}!K${rowNumber}:U${rowNumber}`,
     valueInputOption: "RAW",
-    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal, ...ageRestrictionCells(program), ...saleIncentiveCells(data), (data.categoryId ?? "").trim()]] },
+    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal, ...ageRestrictionCells(program), ...saleIncentiveCells(data), (data.categoryId ?? "").trim(), ...amountEditableCells(data)]] },
   });
 
   /*

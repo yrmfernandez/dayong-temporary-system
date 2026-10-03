@@ -7,6 +7,8 @@ import { getAllLeaveRequests } from "@/lib/leave-data";
 import { readUserRows, USERS_RANGE } from "@/lib/users-sheet";
 import { buildOperationalReport } from "@/lib/reports";
 import { getRemittanceDashboard } from "@/lib/remittance-workflow";
+import { getTodayMode, TODAY_MODE_LABELS } from "@/lib/system-settings";
+import { getEntriesForDay } from "@/lib/todays-entries";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const date = (value: unknown) => text(value).slice(0, 10);
@@ -39,9 +41,10 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
 
   // Sales and collection activity, scoped to the person for MAS and Collector dashboards.
   const scope = kind === "mas" ? { person: employeeName } : kind === "collector" ? { person: employeeName } : {};
-  const [monthReport, remittance] = needsSales ? await Promise.all([buildOperationalReport(from, today, scope), kind === "admin" || kind === "entry" ? getRemittanceDashboard() : Promise.resolve(null)]) : [null, null];
-  const todaySales = monthReport?.sales.filter((row) => row.date === today) ?? [], todayCollections = monthReport?.collections.filter((row) => row.date === today) ?? [];
-  const todayActivity = { salesAccounts: todaySales.reduce((sum, row) => sum + row.accounts, 0), salesGross: todaySales.reduce((sum, row) => sum + row.gross, 0), collectionAccounts: todayCollections.reduce((sum, row) => sum + row.accounts, 0), collectionGross: todayCollections.reduce((sum, row) => sum + row.gross, 0) };
+  // "Today" follows the company setting (remittance date unless an administrator chose encoded or OR date).
+  const todayMode = needsSales ? await getTodayMode() : "remittance";
+  const [monthReport, remittance, todayEntries] = needsSales ? await Promise.all([buildOperationalReport(from, today, scope), kind === "admin" || kind === "entry" ? getRemittanceDashboard() : Promise.resolve(null), getEntriesForDay(today, todayMode, scope.person ?? "")]) : [null, null, null];
+  const todayActivity = { salesAccounts: todayEntries?.sales.count ?? 0, salesGross: todayEntries?.sales.amount ?? 0, collectionAccounts: todayEntries?.collections.count ?? 0, collectionGross: todayEntries?.collections.amount ?? 0, basis: TODAY_MODE_LABELS[todayMode] };
 
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const memberNames = new Map(members.slice(1).map((row) => [text(row[0]), `${text(row[3])} ${text(row[2])}`.trim()]));

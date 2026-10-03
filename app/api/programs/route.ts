@@ -357,6 +357,8 @@ export const POST = withEncoder(async function POST(
         incentiveTiers:
           normalizedTiers,
         categoryId: typeof body.categoryId === "string" ? body.categoryId.trim() : "",
+        newSaleAmountEditable: body.newSaleAmountEditable === true,
+        collectionAmountEditable: body.collectionAmountEditable === true,
 
         description:
           normalizedDescription,
@@ -411,6 +413,8 @@ function programInput(body: Record<string, unknown>): ProgramInput {
     status: body.status === "inactive" ? "inactive" : "active",
     description: typeof body.description === "string" ? body.description.trim() : "",
     categoryId: typeof body.categoryId === "string" ? body.categoryId.trim() : "",
+    newSaleAmountEditable: body.newSaleAmountEditable === true,
+    collectionAmountEditable: body.collectionAmountEditable === true,
     registrationFeeRequired: Boolean(body.registrationFeeRequired),
     registrationAmount: Number(body.registrationAmount) || 0,
     payBalanceTotal: Number(body.payBalanceTotal) || 0,

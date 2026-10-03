@@ -1,4 +1,6 @@
 import { userWithPageAccess } from "@/lib/auth-server";
+import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
@@ -31,6 +33,8 @@ type SalePayload = {
   mas: string;
   dateRemitted: string;
   sales: SalePayloadItem[];
+  /** The total written on the MAS's turnover sheet; the batch must add up to it exactly. */
+  controlTotal?: number | string;
   /** Optional remittance penalty on the batch, charged to the MAS, with what it is for. */
   penalty?: number;
   penaltyNote?: string;
@@ -63,6 +67,8 @@ type SalePayloadItem = {
 
   applicationNo: string;
   orDate: string;
+  /** Required when the application date is more than a day old (lib/entry-controls.ts). */
+  backdateReason?: string;
 
   paymentMethod: string;
   registrationFee: string;
@@ -530,11 +536,22 @@ async function saveSales(request: Request) {
      * What the MAS keeps from each sale and what the company is owed (lib/remittance.ts calculateSaleIncentive).
      * The batch's Fidelity is the MAS's own money: it leaves these incentives untouched and is added to the remittance.
      */
+    // The batch must add up to the total on the MAS's turnover sheet, and late application dates need a reason.
+    const controlProblem = controlTotalProblem(body.controlTotal, preparedSales.map((prepared) => Number(prepared.sale.amountPaid) || 0));
+    if (controlProblem) return NextResponse.json({ success: false, message: controlProblem }, { status: 400 });
+    for (const [index, prepared] of preparedSales.entries()) {
+      try { checkBackdate(String(prepared.sale.orDate ?? "").trim(), String(prepared.sale.backdateReason ?? ""), `Sale #${index + 1}`); }
+      catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Enter the reason for the late date." }, { status: 400 }); }
+    }
     const quotes: Array<{ incentive: number; remittance: number }> = [];
     for (const [index, prepared] of preparedSales.entries()) {
       const program = programs.find((item) => item.id === prepared.sale.programId?.trim());
       const amountPaid = Number(prepared.sale.amountPaid);
       if (!program || !Number.isFinite(amountPaid) || amountPaid < 0) return NextResponse.json({ success: false, message: `Sale #${index + 1}: Enter a valid amount paid.` }, { status: 400 });
+      // Programs whose New Sale amount is locked accept only their fixed amount.
+      if (!program.newSaleAmountEditable && Math.round(amountPaid * 100) !== Math.round(fixedNewSaleAmount(program) * 100)) {
+        return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}. Ask an administrator to allow editing in Programs if this receipt is different.` }, { status: 400 });
+      }
       // A branch's own incentive tiers replace the program's base tiers there.
       try { quotes.push(calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, selectedBranch?.id ?? "") }, amountPaid)); }
       catch (error) { return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${error instanceof Error ? error.message : "The incentive could not be calculated."}` }, { status: 400 }); }
@@ -742,6 +759,7 @@ async function saveSales(request: Request) {
         orNumber: "",
         orDate:
           sale.orDate,
+        backdateReason: String(sale.backdateReason ?? "").trim().slice(0, 300),
       };
 
       const quote = quotes[savedSales.length];

@@ -1,4 +1,7 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
+import { keepsIncentive, manilaNow, validTime } from "@/lib/remittance-deadline";
+import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
+import { cashCountProblem } from "@/lib/cash-count";
 import { withEncoder } from "@/lib/encoder-context";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { withWriteLock } from "@/lib/google-sheets";
@@ -39,6 +42,8 @@ async function saveCollections(request: Request) {
     const mas = String(body.mas ?? "").trim();
     const accountableEmployeeId = String(body.accountableEmployeeId ?? "").trim();
     const dateRemitted = String(body.dateRemitted ?? "");
+    // Time the cash was handed over when it is confirmed in full here; it decides whether incentives are kept.
+    const timeRemitted = validTime(String(body.timeRemitted ?? "")) ? String(body.timeRemitted) : manilaNow().time;
     const autoApproveRemittance = body.autoApproveRemittance === true;
     const cashReceived = Number(body.cashReceived);
     if (!branch || !mas || !accountableEmployeeId || !validDate(dateRemitted) || !Array.isArray(body.collections) || !body.collections.length) throw new Error("Branch, accountable Collector/MAS, Date Remitted, and collections are required.");
@@ -66,10 +71,15 @@ async function saveCollections(request: Request) {
     // untouched, and is added to the batch's total remittance.
     const fidelity = Math.round((Number(body.fidelityAmount) || 0) * 100) / 100;
     if (!Number.isFinite(fidelity) || fidelity < 0) throw new Error("Fidelity must be zero or a positive amount.");
+    // The batch must add up to the total the MAS wrote on the turnover sheet.
+    const controlProblem = controlTotalProblem(body.controlTotal, body.collections.map((entry: Record<string, unknown>) => Number(entry.amountCollected) || 0));
+    if (controlProblem) throw new Error(controlProblem);
     if (autoApproveRemittance) {
       // Same rule as Remittances: anyone who can encode may confirm full physical cash; other methods are verified there.
       if (!paymentMethod.isCash) throw new Error(`${paymentMethod.name} payments are verified in Remittances before approval.`);
       if (!Number.isFinite(cashReceived) || cashReceived < 0) throw new Error("Enter the complete cash amount received.");
+      const countProblem = cashCountProblem(String(body.cashCount ?? ""), cashReceived);
+      if (countProblem) throw new Error(countProblem);
     }
     const [data, recordedReceipts] = await Promise.all([loadAccountData(), recordedOrNumbers()]);
     const payments = [...data.payments];
@@ -90,6 +100,8 @@ async function saveCollections(request: Request) {
         orDate: String(entry.orDate ?? ""), orNumber: String(entry.orNumber ?? "").trim(), waiver: String(entry.ifSuspended ?? ""),
         collectedByRole: collectedBy, originalMas,
       };
+      const backdateReason = String(entry.backdateReason ?? "").trim().slice(0, 300);
+      checkBackdate(input.orDate, backdateReason, `Collection for ${account.memberNumber}`);
       const receipt = entryKey(input.orNumber);
       const recorded = recordedReceipts.get(receipt);
       if (recorded) throw new Error(`OR Number ${input.orNumber} is already recorded (collection ${recorded.collectionId}${recorded.memberNumber ? ` for member ${recorded.memberNumber}` : ""}). Each OR Number is used once.`);
@@ -107,17 +119,22 @@ async function saveCollections(request: Request) {
         input.orNumber, input.orDate, input.amount, input.monthFrom, input.monthTo, input.nopFrom, input.nopTo,
         entry.reactivation === "Yes" ? "Yes" : "No", entry.transferred === "Yes" ? "Yes" : "No", input.waiver, input.originalMas, "Posted", timestamp,
         input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS", paymentMethod.name, paymentReference,
-        !rows.length && penalty > 0 ? penalty : "", !rows.length && penalty > 0 ? penaltyNote : "", !rows.length && fidelity > 0 ? fidelity : ""]);
+        !rows.length && penalty > 0 ? penalty : "", !rows.length && penalty > 0 ? penaltyNote : "", !rows.length && fidelity > 0 ? fidelity : "",
+        // AM forfeited_incentive is set at remittance; AN backdate_reason only when the OR date is more than a day old.
+        ...(backdateReason ? ["", backdateReason] : [])]);
     }
-    // The total remittance is the company's share plus the batch's Fidelity; a penalty is tracked separately.
-    const expectedRemittance = (rows.reduce((sum, row) => sum + Math.round(Number(row[22]) * 100), 0) + Math.round(fidelity * 100)) / 100;
+    // The total remittance is the company's share plus the batch's Fidelity; a penalty is tracked separately. Cash
+    // confirmed here after the incentive deadline carries no incentive, so the full amount is due.
+    const receivedAt = `${dateRemitted} ${timeRemitted}`;
+    const dueNow = (row: (string | number)[]) => autoApproveRemittance && Number(row[10]) > Number(row[22]) && !keepsIncentive(String(row[9]), receivedAt) ? Number(row[10]) : Number(row[22]);
+    const expectedRemittance = (rows.reduce((sum, row) => sum + Math.round(dueNow(row) * 100), 0) + Math.round(fidelity * 100)) / 100;
     if (autoApproveRemittance && Math.round(cashReceived * 100) !== Math.round(expectedRemittance * 100)) {
       throw new Error(`Cash received must equal the calculated remittance of ${expectedRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}.`);
     }
     writing = true;
     await commitCollections(rows, [...touched.values()], payments);
     if (autoApproveRemittance) {
-      const remittance = await createCashRemittance({ collectionIds: rows.map((row) => String(row[0])), actualAmount: cashReceived, fidelityAmount: 0, remittanceDate: dateRemitted, remarks: "Cash received in full during collection encoding.", cashConfirmed: true });
+      const remittance = await createCashRemittance({ collectionIds: rows.map((row) => String(row[0])), actualAmount: cashReceived, fidelityAmount: 0, remittanceDate: dateRemitted, remittanceTime: timeRemitted, cashCount: String(body.cashCount ?? ""), remarks: "Cash received in full during collection encoding.", cashConfirmed: true });
       return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, remittanceId: remittance.id, message: `${rows.length} collection(s) saved and Remittance ${remittance.id} approved.` }, { status: 201 });
     }
     return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, message: `${rows.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
