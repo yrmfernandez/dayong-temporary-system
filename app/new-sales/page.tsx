@@ -261,10 +261,6 @@ export default function NewSalesPage() {
   const [controlTotal, setControlTotal] = useState("");
   const [penaltyNote, setPenaltyNote] = useState("");
   const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
-  // A program whose New Sale amount is locked always charges its fixed amount, whatever a saved draft holds.
-  const lockedProgram = (code: string) => { const program = programs.find((item) => item.code === code); return program && !program.newSaleAmountEditable ? program : null; };
-  const amountPaidOf = (sale: (typeof sales)[number]) => { const locked = lockedProgram(sale.program.programCode); return locked ? fixedNewSaleAmount(locked) : Number(sale.program.amountPaid) || 0; };
-  const totalPaid = sales.reduce((sum, sale) => sum + Math.round(amountPaidOf(sale) * 100), 0) / 100;
   // Fidelity for this batch: the MAS's own money handed over to save, added to the remittance. No limit; zero is allowed.
   const [fidelity, setFidelity] = useState("");
   const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
@@ -288,6 +284,11 @@ export default function NewSalesPage() {
   const [programs, setPrograms] = useState<
     Program[]
   >([]);
+
+  // A program whose New Sale amount is locked always charges its fixed amount, whatever a saved draft holds.
+  const lockedProgram = (code: string) => { const program = programs.find((item) => item.code === code); return program && !program.newSaleAmountEditable ? program : null; };
+  const amountPaidOf = (sale: (typeof sales)[number]) => { const locked = lockedProgram(sale.program.programCode); return locked ? fixedNewSaleAmount(locked) : Number(sale.program.amountPaid) || 0; };
+  const totalPaid = sales.reduce((sum, sale) => sum + Math.round(amountPaidOf(sale) * 100), 0) / 100;
 
   const [branches, setBranches] = useState<
     NonNullable<BranchApiResponse["branches"]>
