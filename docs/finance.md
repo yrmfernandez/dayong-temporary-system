@@ -21,6 +21,10 @@ Payee, payment method, payment reference and "Paid from" are optional payment de
 
 Each expense also keeps a stable ID, status, creation timestamp, encoder identity, and void history.
 
+Entry Clerks can also add an expense from their own report (Reports, under "Add expense / other cash out"). It is saved here as an ordinary expense for the clerk's primary branch, paid from Cash on Hand, so it appears in the cash ledger and Finance can void it. The clerk's report lists the expenses they encoded under Expenses/Other Cash Out.
+
+Cash a clerk forwards to the bank is recorded on their report in the separate `Bank Deposits` sheet (voided with a reason, never deleted). It feeds only the clerk report's Cash Flow section and Remaining Cash on Hand; it is **not** a Cash Transaction and does not change the cash ledger. Record the company's own bank deposit in Cash Transactions as before.
+
 ## Cash records
 
 Each manual cash record has a stable ID, date, inflow/outflow direction, category, description, amount, branch, cash account, reference type and ID, status, remarks, creation timestamp, encoder identity, and void history.

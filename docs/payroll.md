@@ -30,7 +30,7 @@ Each payroll line stores the rate it used, so changing a pay setup never changes
 
 Settings can be changed on a Draft and recalculated; they lock at approval.
 
-**Earned ref.** shows incentives earned on remitted collections in the period for comparison. It is not paid automatically. If it is higher than the commission, a Commissions record may be missing.
+**Earned ref.** shows incentives earned on remitted collections in the period for comparison. It is not paid automatically. If it is higher than the commission, a Commissions record may be missing. Imported (old-data) collections have no saved company share, so they count as no incentive rather than the whole amount.
 
 ## Adjustments (bonuses and deductions)
 

@@ -1,0 +1,155 @@
+# Supabase migration plan
+
+Drafted October 4, 2026. Status: **approved, not started** (decisions recorded October 4, 2026). Moves the operational database from Google Sheets to PostgreSQL on Supabase.
+
+## Why
+
+Measured on the live spreadsheet on October 4, 2026:
+
+| Measure | Value |
+| --- | --- |
+| Tabs | 45 (28 registered in `config/sheet-database-schema.json`) |
+| Data rows | about 90,000; Collections alone 59,947 |
+| Cells used against Google's 10 million limit | 4.06 million |
+| One full read of Collections | about 22 MB, about 3 seconds |
+| Full Collections reads per Collections save | 2 (account data, then the OR-number check), plus Members and Member programs |
+
+The Sheets API cannot run a query such as "only this member's rows", so every lookup downloads the whole tab. Saves skip the cache on purpose, so validation always sees current data. The cache is per Vercel instance and is empty after a cold start. Tuning can roughly halve the save cost, but the cost still grows with the ledger. PostgreSQL answers indexed lookups in milliseconds whatever the size.
+
+PostgreSQL also fixes two correctness gaps that Sheets cannot close:
+
+- **Write locks.** `withWriteLock` serializes saves only inside one server instance. Two Vercel instances can still both accept the same OR number at the same moment. In PostgreSQL a unique index plus a transaction rejects the second one, on every instance.
+- **Cache freshness.** Another instance can serve data up to about a minute old. Without a large cache there is nothing to invalidate.
+
+## Target setup
+
+| Piece | Choice | Reason |
+| --- | --- | --- |
+| Database | Supabase PostgreSQL, region **Southeast Asia (Singapore)** | Closest to Manila. The free tier has 500 MB; current data needs an estimated 50–100 MB with indexes. |
+| App hosting | Vercel as now, function region **`sin1`** (Singapore) | Keeps every query on a short network hop. |
+| Connection | Supabase pooler (Supavisor), transaction mode, port 6543 | Serverless functions open many short connections; the pooler shares them. |
+| Query layer | **Drizzle ORM** with `drizzle-kit` migrations | Typed TypeScript schema, plain SQL migration files kept in git, no heavy runtime. |
+| Sign-in | **Keep the current system** (bcrypt passwords, signed session cookie, `proxy.ts`) | It works and is tested. Supabase Auth would change every login and is not needed. |
+| Receipt photos | Supabase Storage, private bucket `receipts`, short-lived signed URLs | Photos stay out of the database. The 1 GB free storage holds about 12,000 photos at 80 KB. |
+| Staging | A second free Supabase project | Every schema change and the cutover are rehearsed there first. |
+
+**Security rule:** Supabase publishes a public REST API for tables in the `public` schema. The app reads the database only from the server, so **every table gets row-level security switched on with no policies**, which blocks the public API completely. The server connects with the database password, kept only in Vercel environment variables.
+
+## Phases
+
+Estimates assume one developer working with Claude Code. **New feature work is paused from phase 1 until cutover**, so everything moves in one switchover (decision 1).
+
+### Phase 0: Preparation (1–2 days)
+
+1. Create the production and staging Supabase projects in Singapore. Set Vercel's function region to `sin1`.
+2. Add environment variables: `DATABASE_URL` (pooler), `DIRECT_DATABASE_URL` (migrations), `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (Storage only).
+3. Run `npm run sheets:audit` and clear every error and type warning that would block import.
+4. Register the 17 tabs missing from `config/sheet-database-schema.json`: Remittance Methods, Pay Profiles, Payroll Runs, Payroll Lines, Payroll Adjustments, Audit Log, Daily/Weekly/Monthly/Yearly Audits, Member Transfers, Program Categories, System Settings, Receipt Photos, Report Notes, Bank Deposits, Legacy Repairs.
+
+### Phase 1: Schema (2–3 days)
+
+1. Write the Drizzle schema for every table, generated from the sheet schema file and checked by hand.
+2. Types: IDs and phone numbers as `text` (keeps leading zeroes), money as `numeric(12,2)`, calendar dates as `date`, moments as `timestamptz`, breakdowns and snapshots as `jsonb`.
+3. Foreign keys between parent and child tables (member → enrollment → collection, remittance → remittance link, user → user role, and so on).
+4. Indexes for the lookups that are slow today: collections by enrollment, member, encoder, OR date, remittance status, and created time; sales by encoder and application number.
+5. Rules that the code enforces by hand today become constraints:
+   - OR number unique among posted collections (partial unique index).
+   - Application number unique.
+   - Amounts greater than zero.
+6. **Audit Log as a database trigger.** Every update and delete writes the old and new row and the acting user into `audit_log`. The app sets the actor per transaction (`set_config('app.actor', …)`), replacing `withEncoder` and `runAsSystem` plumbing for audit purposes. No write can skip the audit.
+
+### Phase 2: Data access layer (3–5 weeks, the main work)
+
+47 files call Google Sheets directly, about 150 call sites, mostly reading rows by column position (`row[28]`). Each module is rewritten to typed queries **behind the same exported function names**, so pages and API routes barely change.
+
+Order, by how slow each part is today:
+
+1. `lib/account-data.ts`, `lib/duplicate-entries.ts`, Collections API
+2. Sales, `lib/remittance-workflow.ts`, `lib/remittance.ts`, receipt photos
+3. Members, member directory, member transfers, `lib/member-scope.ts`
+4. Today's Entries, My Entries, clerk reports, `lib/clerk-cash.ts`, exceptions, date checks
+5. MAM, statement of account, executive dashboard, `lib/reports.ts`
+6. Users, roles, sessions, employees, Employee ID changes (the cascade becomes `ON UPDATE CASCADE` foreign keys)
+7. Attendance, calendar, leave, payroll, finance, fidelity, audits, settings
+
+Each save becomes one transaction, which replaces `withWriteLock`. `SheetsReadCache` is removed except for a small cache for rarely changing lists (Programs, Branches, System Settings).
+
+Work happens on a `supabase` branch, merged once at cutover. **No dual writing to Sheets and the database:** keeping two stores in step is where data gets lost.
+
+### Phase 3: Copy script (2–3 days)
+
+`scripts/copy-sheets-to-postgres.mjs`:
+
+1. Reads each tab, converts values with the schema types, and inserts parents before children.
+2. Can be rerun: it empties the target tables first, so it serves for rehearsals and for the final copy.
+3. Checks itself. For every table it compares row counts, and for every money table it compares totals between the sheet and the database, and stops on any difference.
+4. Decodes each receipt photo from the `Receipt Photos` cells, uploads it to Storage, and stores the file path.
+5. Prints counts and totals only, never member names or details.
+
+Legacy Pending NS, Legacy Pending COLL and Legacy Repairs are not copied (decision 2). The app never reads them; only the legacy scripts do. At cutover they move to their own working spreadsheet, **Dayong Legacy Pending**, so the frozen archive stays untouched. `scripts/migrate-legacy-members.mjs` and `scripts/merge-legacy-mas.mjs` are rewritten to read that spreadsheet and write resolved rows into the database, still deleting each imported row from its pending tab.
+
+### Phase 4: Testing (1 week)
+
+1. Run the existing test suite against the staging database.
+2. **Report comparison:** for several past periods, produce the clerk reports, MAM, statements of account, and remittance totals from Sheets and from staging, and diff them. Any difference is a bug in phase 2.
+3. Have one Entry Clerk and one approver use staging for a day with copied data.
+4. Rehearse the full cutover on staging twice and time it.
+
+### Phase 5: Cutover (one evening or weekend)
+
+1. Announce the window. Put the app in maintenance mode (read-only).
+2. Copy the three legacy tabs to the Dayong Legacy Pending spreadsheet and check row counts. Then make the main spreadsheet view-only for the service account and rename it with a "frozen" date. Keep it for one year (decision 3).
+3. Run the final copy and confirm every count and total check passes.
+4. Deploy the `supabase` branch. Smoke test: sign in, save a collection, attach a photo, approve a remittance, open a report.
+5. **Go/no-go point:** if anything fails before users start saving, deploy the previous version. The frozen sheet is unchanged, so nothing is lost. After users save new data in the database, roll forward with fixes instead.
+
+### Phase 6: After cutover (2–3 days)
+
+1. Remove the Sheets wrapper, cache, write locks, and the Sheets-only migration scripts.
+2. **Backups:** schedule a nightly `pg_dump` with GitHub Actions to private storage, and keep 30 days. Confirm what the current Supabase plan includes, since full backups and point-in-time restore are paid features.
+3. **Nightly Sheets export** (decision 4): a scheduled job copies every table into a separate export spreadsheet. It is a view-only copy shared only with the owner and the administrator. Edits made there never flow back; all changes go through the app.
+4. Update the system guide, code reference, and this document.
+
+**Total: about 6–9 weeks.**
+
+## Costs
+
+| Stage | Plan | Notes |
+| --- | --- | --- |
+| Start | Free | 500 MB database, 1 GB storage. A free project pauses after a week without use, which daily use prevents. Up to 2 free projects, enough for production and staging. |
+| When needed | Pro, about USD 25/month | Upgrade in place, no data move. Triggers: database near 500 MB, photos near 1 GB, or wanting automatic daily backups. |
+
+Prices are as of the 2026 drafting and should be checked on supabase.com/pricing before deciding. At current volumes the database itself should stay under 500 MB for a long time; photo storage will likely be the first reason to upgrade.
+
+## Changing the database later (adding or removing columns)
+
+Yes, and it is safer than in Sheets. Today a new column shifts positions such as `row[28]`, which is why the AO column needed its own migration. In PostgreSQL the code uses column names, so a new column never moves another.
+
+Every change is a migration file in git:
+
+1. Change the Drizzle schema, for example add `receipt_checked boolean not null default false` to `collections`.
+2. `npx drizzle-kit generate` writes the SQL file (`ALTER TABLE collections ADD COLUMN …`). Review it.
+3. Apply to staging, test, then apply to production with `npx drizzle-kit migrate`.
+
+| Change | How | Notes |
+| --- | --- | --- |
+| Add a column | `ADD COLUMN`, with a default if old rows need a value | Instant even with millions of rows. Apply the database change **before** deploying code that uses it. |
+| Remove a column | Deploy code that no longer uses it, **then** `DROP COLUMN` | The reverse order breaks the running app. Take a backup first; the data is gone after the drop. |
+| Rename a column | `RENAME COLUMN` with a matching code deploy | Or add the new name, copy data, switch code, drop the old name, to avoid any downtime. |
+| Change a type | `ALTER COLUMN … TYPE … USING …` | PostgreSQL rejects the change if any value cannot convert, so bad data never slips in. |
+| Add a table | `CREATE TABLE` | Same as adding a tab today. |
+
+Migration files keep a full history of every schema change, and staging catches mistakes before production does.
+
+## Decisions (October 4, 2026)
+
+1. **One switchover.** Everything moves at once. Feature work pauses until cutover, and there is no period where some modules use Sheets and others use the database.
+2. **Legacy Pending tabs stay in Google Sheets** until every account is resolved, in the separate Dayong Legacy Pending spreadsheet. Resolved rows are imported into the database.
+3. **The frozen spreadsheet is kept for one year** after cutover as a read-only archive, then deleted after a final download.
+4. **Nightly Sheets export** for the owner and the administrator only.
+
+## What the owner provides before phase 0
+
+1. Two Supabase projects (production and staging) in Southeast Asia (Singapore), created under the company's account.
+2. Their connection strings and service keys, added to Vercel and `.env.local`, never committed.
+3. A date for the cutover evening, after the feature freeze starts.

@@ -48,15 +48,15 @@ Workspaces are defined once in `lib/navigation.ts`. Each role's sidebar lists th
 
 | Role | Sidebar sections |
 | --- | --- |
-| Administrator | Overview · Operations (New Sales, Collections, Remittances, MAM) · Finance (Cash Transactions, Expenses, Vendor Payables, Commissions, Fidelity) · Reports (Reports, Statement of Account, Daily Audit, Report Review) · People · Master Data · Administration (User Accounts, Roles, Audit Log) · My HR |
+| Administrator | Overview (Dashboard, Today's Entries, Exceptions) · Operations (New Sales, Collections, My Entries, Remittances, MAM) · Finance (Cash Transactions, Expenses, Vendor Payables, Commissions, Fidelity) · Reports (Reports, Statement of Account, Daily Audit, Report Review) · People · Master Data · Administration (User Accounts, Roles, Audit Log) · My HR |
 | CEO / President | Overview (Dashboard) · Reports (Report Review, MAM) · Directory (Members) · People (Attendance Tracking, including the printable daily board and late-time adjustment) · My HR (My Attendance). The dashboard is the executive analytics view (`lib/executive-analytics.ts`). Executive roles do not receive the shared employee pages, and a user whose only roles are CEO / President is not offered the MAS workspace. |
 | Finance | Overview · Cash (Remittances, Cash Transactions) · Payables (Payroll, Commissions, Expenses, Vendor Payables) · Monitoring (MAM, Fidelity, Audits, Attendance Tracking, Audit Log) · Directory (Members, Programs) · My HR |
-| Entry Clerk | Overview · Encoding (New Sales, Collections, Remittances) · Reports · Lookup (Members, Programs, Branches) · My HR |
-| HR Officer | Overview · People (Employees, Attendance Review, Attendance Tracking, Leave Approvals) · Directory (Branches) · My HR |
+| Entry Clerk | Overview (Dashboard, Today's Entries) · Encoding (New Sales, Collections, My Entries, Remittances) · Reports · Lookup (Members, Programs, Branches) · My HR |
+| HR Officer | Overview (Dashboard, Today's Entries) · People (Employees, Attendance Review, Attendance Tracking, Leave Approvals) · Audit (Audits) · Directory (Branches) · My HR |
 | IT Clerk | System (System Health dashboard) · Access Control (User Accounts, Roles, Employees) · Configuration (Branches, Programs, Master Data) · Monitoring (Audit Log) · My HR. IT does not need the `manage_users` flag; see Job permissions. |
 | MAS | Overview · My Portfolio (My Members, MAM, My Fidelity) · Reference (Programs, Branches, Master Data) · My HR |
 
-Reports shows its Daily, Weekly, Monthly, and Yearly pages as nested links.
+Reports is one sidebar link; Daily, Weekly, Monthly, and Yearly are tabs on that page (`/reports?tab=…`). The old `/reports/daily`…`/reports/yearly` addresses redirect to their tab.
 
 New Sales, Collections, and Reports (daily to yearly) are the Entry Clerk's daily operations: no other role receives them by default, and their APIs check the same page access. Administrator keeps every page. An administrator can still grant them to another role in Roles → Page access. The Members page shows Add Member (which opens New Sales) only to users who can open New Sales.
 
@@ -64,9 +64,13 @@ Users with several roles choose an active role at the top of the sidebar. This c
 
 Every signed-in employee also receives a MAS workspace option in the role switcher because every employee may manage members. This is a navigation workspace and does not add a duplicate `User Roles` database row. Administrator, HR, Finance, and users with attendance-report permission can open Attendance Tracking to select an employee and review a date range, daily records, worked and overtime hours, lateness, undertime, leave, absence, and AWOL information.
 
-Administrators also have Report Review: the reports of Entry Clerks (New Sales and Collections they encoded), filtered by Entry Clerk, period, branch, program, and MAS / Collector.
+An Entry Clerk's Reports show only what they encoded. Administrators, the CEO, and the President also have Report Review: the same report tabs for any Entry Clerk they choose, read-only, with the entry checklist and reviewer remarks. HR and administrators open the same report from each clerk's audit.
 
-Existing action permissions remain authoritative. `manage_users` protects account management and finance voids; `manage_attendance` protects attendance and leave review; remittance approval requires the existing management permission and prevents self-approval.
+Remittances is scoped the same way: a user without approval rights (`manage_users`) sees only the entries they encoded and the slips containing them; approvers see everyone, filter by Entry Clerk, and approve or reject one, selected, or all slips. Entry Clerks do not create or approve slips: entries go to Pending Approval on their own once their receipt photos are attached. My Entries is an Entry Clerk (and administrator) page; receipt photos can also be added from Today's Entries to entries the user encoded.
+
+Only administrators may change an Employee ID (Employees → Edit), because it is also the sign-in ID; the change is applied to every record that uses it.
+
+Existing action permissions remain authoritative. `manage_users` protects account management and finance voids; `manage_attendance` protects attendance and leave review; remittance approval requires the existing management permission and prevents self-approval (automatic slips are submitted by "System").
 
 The Administrator/Admin role always receives master-data management actions even if the legacy `manage_users` cell is blank or false. This prevents the navigation role and action controls from contradicting each other. Other roles still require their explicit action permission.
 

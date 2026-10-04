@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-38 page routes, 52 API handlers, 89 library files, 36 component files; 277 scanned source/configuration/public-text files in total.
+38 page routes, 52 API handlers, 91 library files, 35 component files; 280 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -19,7 +19,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/audit` | [app/audit/page.tsx](../app/audit/page.tsx) | `@/components/inline-panel`, `@/components/clerk-report`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/account-rules` |
 | `/branches` | [app/branches/page.tsx](../app/branches/page.tsx) | `@/components/ui/badge`, `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select` |
 | `/cash-transactions` | [app/cash-transactions/page.tsx](../app/cash-transactions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
-| `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/cash-count-input`, `@/components/receipt-photo`, `@/lib/cash-count`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance` |
+| `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/receipt-photo`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance` |
 | `/commissions` | [app/commissions/page.tsx](../app/commissions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
 | `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password` |
 | `/exceptions` | [app/exceptions/page.tsx](../app/exceptions/page.tsx) | `@/components/entry-correction-form`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/api-response`, `@/lib/exceptions` |
@@ -38,7 +38,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/` | [app/page.tsx](../app/page.tsx) | `@/components/executive-dashboard`, `@/components/finance-dashboard`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/system-health-dashboard`, `@/components/ui/card`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auth-server`, `@/lib/dashboard-data`, `@/lib/employees`, `@/lib/executive-analytics`, `@/lib/finance-operations`, `@/lib/remittance-workflow`, `@/lib/system-health`, `@/lib/ui-preferences` |
 | `/payroll` | [app/payroll/page.tsx](../app/payroll/page.tsx) | `@/components/inline-panel`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/payroll-calc`, `@/lib/payslip` |
 | `/programs` | [app/programs/page.tsx](../app/programs/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/program-age` |
-| `/remittances` | [app/remittances/page.tsx](../app/remittances/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/components/metric-tile`, `@/components/status-badge`, `@/lib/remittance-deadline`, `@/components/cash-count-input`, `@/components/receipt-photo`, `@/lib/cash-count` |
+| `/remittances` | [app/remittances/page.tsx](../app/remittances/page.tsx) | `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response` |
 | `/reports/daily` | [app/reports/daily/page.tsx](../app/reports/daily/page.tsx) |  |
 | `/reports/monthly` | [app/reports/monthly/page.tsx](../app/reports/monthly/page.tsx) |  |
 | `/reports` | [app/reports/page.tsx](../app/reports/page.tsx) | `@/components/report-tabs` |
@@ -47,7 +47,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/roles` | [app/roles/page.tsx](../app/roles/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/lib/access-control`, `@/lib/page-catalog` |
 | `/settings` | [app/settings/page.tsx](../app/settings/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/finance-settings`, `@/components/profile`, `@/components/theme-toggle`, `@/components/remittance-method-settings`, `@/lib/ui-preferences`, `@/lib/use-form-draft` |
 | `/soa` | [app/soa/page.tsx](../app/soa/page.tsx) | `@/components/brand-logo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/statement-of-account` |
-| `/todays-entries` | [app/todays-entries/page.tsx](../app/todays-entries/page.tsx) | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/remittance-deadline`, `@/lib/today-mode`, `@/lib/todays-entries`, `@/components/entry-correction-form`, `@/components/entry-details` |
+| `/todays-entries` | [app/todays-entries/page.tsx](../app/todays-entries/page.tsx) | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/remittance-deadline`, `@/lib/today-mode`, `@/lib/todays-entries`, `@/components/entry-correction-form`, `@/components/entry-details`, `@/components/receipt-photo` |
 | `/user-accounts` | [app/user-accounts/page.tsx](../app/user-accounts/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/one-time-password` |
 | `/vendor-payables` | [app/vendor-payables/page.tsx](../app/vendor-payables/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
 
@@ -69,7 +69,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/auth/session` | GET | [app/api/auth/session/route.ts](../app/api/auth/session/route.ts) |
 | `/api/branches` | GET, POST, PUT, DELETE | [app/api/branches/route.ts](../app/api/branches/route.ts) |
 | `/api/cash-transactions` | GET, POST, PATCH | [app/api/cash-transactions/route.ts](../app/api/cash-transactions/route.ts) |
-| `/api/clerk-report` | GET | [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) |
+| `/api/clerk-report` | GET, POST | [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) |
 | `/api/collections` | GET, POST | [app/api/collections/route.ts](../app/api/collections/route.ts) |
 | `/api/commissions` | GET, POST, PATCH | [app/api/commissions/route.ts](../app/api/commissions/route.ts) |
 | `/api/company-targets` | POST | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) |
@@ -90,7 +90,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/members` | GET | [app/api/members/route.ts](../app/api/members/route.ts) |
 | `/api/members/standing` | GET | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) |
 | `/api/members/transfer` | GET, POST | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) |
-| `/api/my-entries` | GET | [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) |
+| `/api/my-entries` | GET, POST | [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) |
 | `/api/payroll` | GET, POST | [app/api/payroll/route.ts](../app/api/payroll/route.ts) |
 | `/api/profile` | GET | [app/api/profile/route.ts](../app/api/profile/route.ts) |
 | `/api/program-categories` | GET, POST, PUT, DELETE | [app/api/program-categories/route.ts](../app/api/program-categories/route.ts) |
@@ -128,7 +128,8 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/auto-absence.ts](../lib/auto-absence.ts) | `SYSTEM_ABSENCE_NOTE`, `isSystemAbsence`, `systemAbsences`, `closeFinishedAttendanceDays`, `closeFinishedAttendanceDaysQuietly` | `@/lib/attendance-calendar`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/system-settings` |
 | [lib/calculations.ts](../lib/calculations.ts) | `CollectionStatus`, `calculateTMD`, `calculateBalance`, `getNextNOP`, `getProgramBasePay`, `calculateCollectionTMD` | `./types` |
 | [lib/cash-count.ts](../lib/cash-count.ts) | `DENOMINATIONS`, `CashCount`, `cashCountTotal`, `formatCashCount`, `parseCashCount`, `cashCountProblem` | — |
-| [lib/clerk-report.ts](../lib/clerk-report.ts) | `COMPANY_NAME`, `ReportLine`, `buildClerkReport`, `ClerkReport` | `@/lib/daily-audit`, `@/lib/google-sheets`, `@/lib/todays-entries` |
+| [lib/clerk-cash.ts](../lib/clerk-cash.ts) | `BankDeposit`, `getDeposits`, `addDeposit`, `voidDeposit`, `ReportNotes`, `getReportNotes`, `saveReportNotes` | `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/readable-id` |
+| [lib/clerk-report.ts](../lib/clerk-report.ts) | `COMPANY`, `weekOfMonth`, `ReportLine`, `ExpenseRow`, `buildClerkReport`, `ClerkReport` | `@/lib/clerk-cash`, `@/lib/daily-audit`, `@/lib/google-sheets`, `@/lib/todays-entries` |
 | [lib/company-targets.ts](../lib/company-targets.ts) | `CompanyTarget`, `periodType`, `getCompanyTargets`, `saveCompanyTarget` | `@/lib/encoder-sheets`, `@/lib/encoder-schema`, `@/lib/encoder-context`, `@/lib/google-sheets` |
 | [lib/daily-audit.ts](../lib/daily-audit.ts) | `AUDIT_PERIODS`, `AuditPeriod`, `asAuditPeriod`, `AUDIT_RESULTS`, `AuditStatus`, `periodSpan`, `AuditFigures`, `DailyAudit`, `auditedEmployees`, `getDailyAudits`, `saveDailyAudit`, `decideDailyAudit`, `AuditSummaryFilters`, `getAuditSummary` | `@/lib/encoder-context`, `@/lib/encoder-sheets`, `@/lib/employees`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/clerk-report` |
 | [lib/dashboard-data.ts](../lib/dashboard-data.ts) | `dashboardKind`, `DashboardKind`, `getDashboardData`, `DashboardData` | `@/lib/auth`, `@/lib/account-rules`, `@/lib/access-control`, `@/lib/attendance-data`, `@/lib/google-sheets`, `@/lib/leave-data`, `@/lib/users-sheet`, `@/lib/reports`, `@/lib/remittance-workflow`, `@/lib/system-settings`, `@/lib/todays-entries`, `@/lib/sheet-ranges` |
@@ -138,6 +139,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/duplicate-entries.ts](../lib/duplicate-entries.ts) | `entryKey`, `personKey`, `recordedApplicationNumbers`, `recordedOrNumbers`, `recordedMembersByPerson`, `newSalesDoubleEntry` | `@/lib/google-sheets`, `@/lib/program-age` |
 | [lib/earned-commissions.ts](../lib/earned-commissions.ts) | `getEarnedCommissions`, `EarnedCommission` | `@/lib/employees`, `@/lib/finance-operations`, `@/lib/reports` |
 | [lib/employee-accounts.ts](../lib/employee-accounts.ts) | `accountRoleIdsFor`, `createDefaultAccount` | `@/lib/google-sheets-data`, `@/lib/passwords` |
+| [lib/employee-id-change.ts](../lib/employee-id-change.ts) | `changeEmployeeId` | `@/lib/employee-id`, `@/lib/google-sheets`, `@/lib/record-corrections` |
 | [lib/employee-id.ts](../lib/employee-id.ts) | `EMPLOYEE_ID_PATTERN`, `EMPLOYEE_ID_INPUT_PATTERN`, `EMPLOYEE_ID_EXAMPLE`, `EMPLOYEE_ID_FORMAT_MESSAGE`, `normalizeEmployeeId`, `isEmployeeIdFormat` | — |
 | [lib/employees.ts](../lib/employees.ts) | `employmentStatuses`, `EmploymentStatus`, `getEmployees`, `suggestEmployeeId`, `getNextEmployeeId`, `registerEmployee`, `updateEmployee`, `setEmployeeRoles`, `updateEmployeeStatus`, `deleteEmployee` | `@/lib/google-sheets`, `@/lib/encoder-sheets`, `@/lib/sheet-rows`, `@/lib/employee-id` |
 | [lib/encoder-context.ts](../lib/encoder-context.ts) | `isEncodingRequest`, `withEncoder`, `runAsSystem`, `getEncoder`, `currentEncoder`, `encoderValues` | `@/lib/auth-server` |
@@ -181,7 +183,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/record-corrections.ts](../lib/record-corrections.ts) | `ensureCorrectionsSheet`, `recordCorrection` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/remittance-deadline.ts](../lib/remittance-deadline.ts) | `REMITTANCE_CUTOFF`, `validTime`, `incentiveDeadline`, `keepsIncentive`, `manilaNow`, `manilaDateOf`, `formatDeadline` | — |
 | [lib/remittance-methods.ts](../lib/remittance-methods.ts) | `PaymentMethod`, `getPaymentMethods`, `findActivePaymentMethod`, `savePaymentMethod` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
-| [lib/remittance-workflow.ts](../lib/remittance-workflow.ts) | `RemittanceKind`, `CashCollection`, `CashRemittance`, `forfeitsIncentive`, `amountDue`, `getRemittanceDashboard`, `CASH_IN_FULL_NOTE`, `createCashRemittance`, `decideCashRemittance` | `@/lib/readable-id`, `@/lib/sheet-ranges`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/remittance-deadline`, `@/lib/cash-count`, `@/lib/receipt-photos` |
+| [lib/remittance-workflow.ts](../lib/remittance-workflow.ts) | `RemittanceKind`, `CashCollection`, `CashRemittance`, `forfeitsIncentive`, `amountDue`, `getRemittanceDashboard`, `CASH_IN_FULL_NOTE`, `createCashRemittance`, `decideCashRemittance`, `submitReadyEntries`, `resubmitReturned` | `@/lib/readable-id`, `@/lib/sheet-ranges`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/remittance-deadline`, `@/lib/cash-count`, `@/lib/receipt-photos` |
 | [lib/remittance.ts](../lib/remittance.ts) | `IncentiveTier`, `tiersForBranch`, `SaleIncentiveSetting`, `SaleProgram`, `normalizeSaleIncentive`, `calculateSaleIncentive`, `calculateRemittance` | — |
 | [lib/report-remarks.ts](../lib/report-remarks.ts) | `getReportRemarks`, `addReportRemark` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/google-sheets`, `@/lib/sheet-ranges` |
@@ -211,8 +213,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/ui-preferences` |
 | [components/attendance-calendar.tsx](../components/attendance-calendar.tsx) | `AttendanceCalendar` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/philippine-holidays` |
 | [components/brand-logo.tsx](../components/brand-logo.tsx) | `BrandLogo` | — |
-| [components/cash-count-input.tsx](../components/cash-count-input.tsx) | `CashCountInput` | `@/components/ui/input`, `@/lib/cash-count` |
-| [components/clerk-report.tsx](../components/clerk-report.tsx) | `ClerkReport` | `@/components/entry-details`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/lib/clerk-report` |
+| [components/clerk-report.tsx](../components/clerk-report.tsx) | `ClerkReport` | `@/components/brand-logo`, `@/components/entry-details`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/clerk-report`, `@/lib/expense-options` |
 | [components/company-targets.tsx](../components/company-targets.tsx) | `CompanyTargets` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label` |
 | [components/entry-correction-form.tsx](../components/entry-correction-form.tsx) | `CorrectableEntry`, `EntryCorrectionForm` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response` |
 | [components/entry-details.tsx](../components/entry-details.tsx) | `EntryDetails` | `@/components/receipt-photo`, `@/components/ui/button`, `@/lib/todays-entries` |
@@ -261,11 +262,11 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/auth/session/route.ts](../app/api/auth/session/route.ts) | `GET` | `@/lib/auth-server` |
 | [app/api/branches/route.ts](../app/api/branches/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/google-sheets-data` |
 | [app/api/cash-transactions/route.ts](../app/api/cash-transactions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data` |
-| [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clerk-report`, `@/lib/daily-audit`, `@/lib/employees`, `@/lib/remittance-deadline`, `@/lib/report-remarks` |
+| [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clerk-report`, `@/lib/daily-audit`, `@/lib/employees`, `@/lib/remittance-deadline`, `@/lib/report-remarks`, `@/lib/clerk-cash`, `@/lib/encoder-context`, `@/lib/finance-data` |
 | [app/api/collections/route.ts](../app/api/collections/route.ts) | `GET`, `POST` | `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/google-sheets`, `@/lib/account-data`, `@/lib/account-rules`, `@/lib/remittance-methods`, `@/lib/remittance`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/duplicate-entries` |
 | [app/api/commissions/route.ts](../app/api/commissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/earned-commissions`, `@/lib/encoder-context`, `@/lib/finance-operations` |
 | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/company-targets`, `@/lib/encoder-context` |
-| [app/api/employees/route.ts](../app/api/employees/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/master-data-crud`, `@/lib/employee-accounts`, `@/lib/privilege-guard` |
+| [app/api/employees/route.ts](../app/api/employees/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/auth-server`, `@/lib/employee-id-change`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/master-data-crud`, `@/lib/employee-accounts`, `@/lib/privilege-guard` |
 | [app/api/exceptions/route.ts](../app/api/exceptions/route.ts) | `GET`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/exceptions` |
 | [app/api/expenses/route.ts](../app/api/expenses/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data` |
 | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) | `GET`, `PATCH` | `@/lib/auth-server`, `@/lib/fidelity`, `@/lib/encoder-context` |
@@ -282,13 +283,13 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/members/route.ts](../app/api/members/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/google-sheets-data` |
 | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/account-data` |
 | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/member-transfer` |
-| [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/daily-audit`, `@/lib/remittance-deadline`, `@/lib/todays-entries` |
+| [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/daily-audit`, `@/lib/remittance-deadline`, `@/lib/todays-entries`, `@/lib/encoder-context`, `@/lib/remittance-workflow` |
 | [app/api/payroll/route.ts](../app/api/payroll/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/access-control`, `@/lib/encoder-context`, `@/lib/payroll` |
 | [app/api/profile/route.ts](../app/api/profile/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/users-sheet` |
 | [app/api/program-categories/route.ts](../app/api/program-categories/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-categories` |
 | [app/api/program-incentives/route.ts](../app/api/program-incentives/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
 | [app/api/programs/route.ts](../app/api/programs/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/program-incentive-store`, `@/lib/google-sheets-data` |
-| [app/api/receipt-photos/route.ts](../app/api/receipt-photos/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/receipt-photos`, `@/lib/sheet-ranges` |
+| [app/api/receipt-photos/route.ts](../app/api/receipt-photos/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/receipt-photos`, `@/lib/sheet-ranges` |
 | [app/api/remittance-methods/route.ts](../app/api/remittance-methods/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-methods` |
 | [app/api/remittances/route.ts](../app/api/remittances/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-workflow`, `@/lib/access-control` |
 | [app/api/reports/route.ts](../app/api/reports/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/employees`, `@/lib/access-control`, `@/lib/reports`, `@/lib/encoder-context`, `@/lib/report-remarks` |
@@ -336,6 +337,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/inspect-sheet-headers.mjs](../scripts/inspect-sheet-headers.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/legacy-programs.mjs](../scripts/legacy-programs.mjs) | `node:fs`, `@next/env`, `googleapis`, `./legacy-sources.mjs` | Yes; read source for semantics |
 | [scripts/legacy-sources.mjs](../scripts/legacy-sources.mjs) | `node:fs`, `node:path` | No flag detected; read source before running |
+| [scripts/merge-legacy-mas.mjs](../scripts/merge-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-account-status.mjs](../scripts/migrate-account-status.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-audit-transfers.mjs](../scripts/migrate-audit-transfers.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-batch-extras.mjs](../scripts/migrate-batch-extras.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
@@ -364,6 +366,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/migrate-sale-incentives.mjs](../scripts/migrate-sale-incentives.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-sales-remittance.mjs](../scripts/migrate-sales-remittance.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-single-address.mjs](../scripts/migrate-single-address.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
+| [scripts/register-legacy-mas.mjs](../scripts/register-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/remove-blank-rows.mjs](../scripts/remove-blank-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/repair-branch-ids.mjs](../scripts/repair-branch-ids.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/repair-sheet-rows.mjs](../scripts/repair-sheet-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |

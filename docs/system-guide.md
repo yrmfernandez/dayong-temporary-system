@@ -41,7 +41,7 @@ The system manages member enrollments and payments, employees and attendance, ca
 | MAM | Member Account Monitoring, derived from enrollments and posted Collections. |
 | OR date | Actual receipt date, used for Collections account timing and the incentive deadline. |
 | Covered month | Month whose installment a Collection pays. Different from receipt date, remittance date, or encoding date. |
-| Remittance | A slip recording the company's expected share, actual cash received, and decision. |
+| Remittance | A slip recording the company's expected share, actual cash received, and decision. Created automatically once an entry's receipt photos are attached. |
 | Fidelity | Employee's own savings handed over with a remittance; separate from member payments and incentives. |
 
 ```mermaid
@@ -72,7 +72,7 @@ flowchart TD
 
 Three questions have different answers: **what has the member paid**, **what cash does an employee still owe the office**, and **what cash does the company hold**. A posted Collection updates the member's account immediately, but its cash remains outstanding until an approved remittance covers it. Do not record the same money again as a manual cash inflow.
 
-There are also separate statuses: Member status, enrollment Active/Inactive status, calculated account NS/U/ADV/etc., Collection Posted status, and remittance Outstanding/Pending/Remitted status. Updating one does not automatically mean the others have changed.
+There are also separate statuses: Member status, enrollment Active/Inactive status, calculated account NS/U/ADV/etc., Collection Posted status, and remittance Outstanding/Pending/Returned/Remitted status. Updating one does not automatically mean the others have changed.
 
 ## 2. Feature and page directory
 
@@ -83,14 +83,14 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/` | Role-specific dashboard: administration, executive, HR, Finance, Entry Clerk, IT, MAS, or Collector. Workspace selection affects the dashboard. |
 | `/new-sales` | Register a new person or add a program to an existing member; save multiple sales in a batch. |
 | `/collections` | Batch monthly payments for the selected branch and MAS, with covered months, calculated NOP, role, waiver, and remittance preview. |
-| `/todays-entries` | Review New Sales and Collections for a selected day, inspect receipt evidence/date warnings, and make authorized corrections. |
-| `/my-entries` | Review your encoded entries and attach receipt photos. |
-| `/remittances` | Outstanding cash, accountable-person totals, slips, discrepancies, and approvals/rejections. |
+| `/todays-entries` | Review New Sales and Collections for a selected day, inspect receipt evidence/date warnings, make authorized corrections, and add receipt photos (to your own entries; administrators to any). |
+| `/my-entries` | Your encoded entries by day, week, month or chosen dates: attach receipt photos (one photo can cover several entries), see entries an approver Returned and why, and resubmit them. |
+| `/remittances` | Dashboard, Pending Approval, and Reports. Entry Clerks see only what they encoded; approvers see everyone, filter by Entry Clerk, search, and approve or reject one, selected, or all slips. |
 | `/members` | Searchable member directory, enrollments and calculated standing, details, and authorized transfers/updates. |
 | `/mam` | Month-by-month account monitoring with branch/program/MAS filters and current-status synchronization. |
 | `/soa` | Printable Statement of Account for one enrollment. |
-| `/reports`, `/reports/daily`, `/reports/weekly`, `/reports/monthly`, `/reports/yearly` | Entry Clerk reports for entries they encoded in the selected period. |
-| `/admin-reports` | Report Review: select an Entry Clerk and inspect their encoded report by period. |
+| `/reports` | The signed-in Entry Clerk's own reports as Daily, Weekly, Monthly, and Yearly tabs (`?tab=weekly` keeps the open tab), in the company report layout. The clerk also records expenses, bank deposits, and report notes there. The old `/reports/daily`…`/reports/yearly` addresses redirect to the matching tab. |
+| `/admin-reports` | Report Review: the same tabs, read-only, for a chosen Entry Clerk, with the entry checklist and reviewer remarks. |
 | `/audit` | Daily, weekly, monthly, yearly Entry Clerk report audits and audit summaries. |
 | `/history` | Creation history, logged edits/deletions, and authorized transaction corrections. |
 | `/exceptions` | Administrator review of dates, amounts, duplicate entries, missing member details, overdue cash, and backdating. |
@@ -100,7 +100,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/commissions` | Earned incentive comparison and the commission register; create and mark commissions Paid. |
 | `/fidelity`, `/fidelity/me` | Staff savings, contributions, pending amounts, locked balance, withdrawals, and separation releases. |
 | `/payroll` | Pay profiles, Draft runs, adjustments, approval, payment, printable payslips. |
-| `/employees` | Staff register, employment status, operational roles, multiple branches, and primary branch. |
+| `/employees` | Staff register, employment status, operational roles, multiple branches, and primary branch. Administrators can change an Employee ID; every reference follows (section 11). |
 | `/attendance` | Your current-day time-in/time-out and attendance calendar. |
 | `/attendance-reviews` | Management records Absent or AWOL where appropriate. |
 | `/attendance-tracking` | Staff totals and daily board, with authorized lateness/time-out corrections. |
@@ -168,7 +168,7 @@ Sources: [remittance formulas](../lib/remittance.ts), [tier validation/storage](
 4. Add more sales if needed. The same new person can enroll in several programs in one batch: the person row is created once, with separate enrollments and Sales rows.
 5. Enter the **control total from the turnover sheet**, plus any batch Fidelity or separately tracked penalty.
 6. Save. Existing member details confirmed in this form become their current member record. New member, enrollment, sale, and beneficiary records are written as needed, with encoder metadata.
-7. Attach receipt evidence and handle cash turnover in Remittances. Saving a sale does not itself make the cash an approved company inflow.
+7. Attach the receipt photo in My Entries or Today's Entries. Once it is attached, the sale goes to Pending Approval on its own (section 6). Saving a sale does not itself make the cash an approved company inflow.
 
 Duplicate protections normalize application numbers by removing spaces/dashes/punctuation and ignoring case. A number is used only once system-wide. The person duplicate check uses normalized surname, first name, and birthdate; middle name is ignored. Existing members cannot enroll in the same program again, including within the batch.
 
@@ -201,7 +201,9 @@ Server validation checks stored history **and earlier payments pending in this b
 
 Months and NOP cannot overlap. One month's PHP 350 installment cannot be paid as PHP 100. Paying one of two overdue months is allowed; it leaves another month overdue. Continuous coverage permits catching up and then paying ahead in the same transaction.
 
-The Collections save appends all rows and updates affected account statuses in one Sheets `batchUpdate`. Each save has a batch ID, and its remittance must include all outstanding cards from that batch. The payment's posted status and outstanding cash status are stored separately.
+The Collections save appends all rows and updates affected account statuses in one Sheets `batchUpdate`, first widening the sheet's grid if a row has more columns than the sheet. Each save has a batch ID, and its remittance must include all outstanding cards from that batch. The batch's Date Remitted is stored on every row (Collections AO). The payment's posted status and outstanding cash status are stored separately.
+
+The form takes an optional receipt photo for the batch. When one is chosen, it is attached to every Collection of the batch right after saving, which sends the batch to Pending Approval. Without it, the clerk attaches it later in My Entries or Today's Entries. The form no longer offers Cash received in full: Entry Clerks do not approve their own cash.
 
 ### NOP, TMD, and coverage
 
@@ -255,7 +257,7 @@ Sources: [account rules](../lib/account-rules.ts), [Collections API](../app/api/
 
 ## 6. Remittances and staff accountability
 
-New Sales and Collections enter the cash workflow as **Outstanding**. Legacy entries that cannot be mapped reliably can appear as **Needs Historical Review**. Outstanding and Pending Remittance Approval entries both remain in accountability totals.
+New Sales and Collections enter the cash workflow as **Outstanding**. Legacy entries that cannot be mapped reliably can appear as **Needs Historical Review**. Outstanding, Pending Remittance Approval, and **Returned** entries all remain in accountability totals.
 
 ### Expected cash and deadlines
 
@@ -276,23 +278,24 @@ Penalty and Fidelity are saved once on a batch's first entry to avoid repetition
 
 ### Slip workflow
 
-1. Select outstanding entries for one kind: Collections and New Sales cannot share a slip. Entries must belong to one accountable employee/name and branch. A saved Collections batch is remitted in full.
-2. Enter actual received amount, Fidelity if not already encoded, date/time received, remarks, and optional cash denomination count. Date/time cannot be future or before a linked receipt date.
-3. The system calculates expected and difference. Exact cash creates **Pending Approval**; a difference creates **Discrepancy**. Entries become **Pending Remittance Approval**.
-4. Approval requires every linked entry to have a receipt photo. Approval changes the slip to **Approved**, entries to **Remitted**, and the actual received amount becomes a finance ledger inflow.
-5. Rejection needs a reason, marks the slip **Rejected**, and returns entries to **Outstanding**, clearing the link. Incentives forfeited on the rejected slip are restored; a new slip evaluates its own time received again.
+Entry Clerks no longer build slips. Entries reach approval on their own (`submitReadyEntries` in [remittance-workflow.ts](../lib/remittance-workflow.ts)):
+
+1. **Encode.** Saved entries are Outstanding; My Entries shows them as *Needs receipt photo*.
+2. **Attach receipt photos.** Each upload (Collections form, My Entries, or Today's Entries) submits whatever is ready: a Collections batch as one slip once **every** Collection in it has a photo, New Sales one by one. The slip is created by "System" (so any approver may decide it), expects exactly the entries' cash due plus any batch Fidelity, and records actual = expected. Its date is the batch's Date Remitted; its time is the encoding time when encoded that day, otherwise 23:59. Entries become **Pending Remittance Approval**.
+3. **Approve.** Approvers check each slip against its receipt photos and approve one, the selected slips, or all. Only slips whose items all have photos can be approved. Approval changes the slip to **Approved**, entries to **Remitted**, and the actual received amount becomes a finance ledger inflow.
+4. **Reject.** One reason covers every slip rejected together. The slip becomes **Rejected** and its entries **Returned**, keeping the link so My Entries shows the reason. Incentives forfeited on the rejected slip are restored. The clerk fixes the entries (Returned amounts may be corrected) and resubmits; replacing a photo also resubmits. Resubmitting reopens the whole returned batch, which then goes back through step 2.
 
 Late slips update saved company share to the full member amount and record forfeited incentive. Reports and incentive comparisons then see zero retained incentive for that item.
 
-There is a **cash received in full** path that creates and approves a slip together; actual must equal expected and photos must already exist. The form saves entries, uploads evidence, then creates that approved slip. Direct approval inside the Collections save is refused because evidence cannot yet reference saved entries.
+Remittances has three tabs: Dashboard (cash to account for by Collector/MAS, entries waiting for a receipt photo, returned entries), Pending Approval, and Reports (outstanding cash aging and approved/rejected records). An Entry Clerk sees only entries they encoded and slips containing them; approvers see everyone and may filter by Entry Clerk (`?clerk=`) and search.
 
-Ordinary PATCH approval/rejection requires `canManageUsers`. The submitting user normally cannot decide their own slip; the explicit exception is a user holding both Administrator/Admin and Entry Clerk roles. The full-cash creation path is a separate authorization path available through remittance page access.
+Ordinary PATCH approval/rejection requires `canManageUsers` and accepts a list of slip IDs; each is decided separately and failures are reported per slip. The submitting user normally cannot decide their own slip; automatic slips are submitted by "System", and the explicit exception remains a user holding both Administrator/Admin and Entry Clerk roles. Creating a slip already approved (**cash received in full**) is limited to approvers and does not wait for receipt photos; the manual slip screen was removed from the UI.
 
-Cash count uses PHP 1,000, 500, 200, 100, 50, 20, 10, 5, and 1 denominations. Total is `sum(denomination × whole count)`. If a count is supplied it must equal actual cash. The count cannot represent centavos with the current denomination list.
+Cash count uses PHP 1,000, 500, 200, 100, 50, 20, 10, 5, and 1 denominations. If a slip supplies a count, it must equal actual cash. No current screen collects a count, since slips are created automatically.
 
 ### Receipt evidence
 
-Photos are compressed in the browser to grayscale WebP/JPEG, at most 1280 pixels and 80,000 bytes. The server stores base64 in `Receipt Photos`, split into up to four 45,000-character chunks. One photo can cover multiple entries; the latest linked photo is shown. Old uploads are retained. There is no external image-storage service in this workflow.
+Photos are optional when saving and can be added any time from My Entries or Today's Entries; adding one is what sends ready entries to approval. Photos are compressed in the browser to grayscale WebP/JPEG, at most 1280 pixels and 80,000 bytes. The server stores base64 in `Receipt Photos`, split into up to four 45,000-character chunks. One photo can cover multiple entries; the latest linked photo is shown. Old uploads are retained. There is no external image-storage service in this workflow.
 
 Sources: [cash workflow](../lib/remittance-workflow.ts), [deadline](../lib/remittance-deadline.ts), [Remittances API](../app/api/remittances/route.ts), [photos](../lib/receipt-photos.ts), [denominations](../lib/cash-count.ts).
 
@@ -468,19 +471,30 @@ An entry encoded today with an older OR date and cash handed over tomorrow can a
 
 Today's Entries combines New Sales and posted Collections, with amount, incentive, photos, encoder, remittance link/status, forfeiture and date warnings. Administrators can save the company-wide default date mode; selecting a view does not rewrite transaction dates.
 
-The current `/reports` UI renders **the signed-in Entry Clerk's encoded report**, through `clerk-report.ts`. Daily groups by MAS, weekly by encoded day, monthly by calendar weeks, yearly by month. Weekly periods run Monday–Sunday.
+`/reports` renders **the signed-in Entry Clerk's encoded report** through [clerk-report.ts](../lib/clerk-report.ts), as Daily, Weekly, Monthly, and Yearly tabs, in the company's report layout:
+
+- **Header:** company name, address, SEC Reg No., logo, report name, Branch, Entry Clerk, and Date + Week (daily `Wednesday, September 30, 2026 · 5TH WEEK`; weekly `WEEK 3 JUNE 15-21, 2026`; monthly the month end and `WHOLE MONTH`). Weeks start Monday; week of the month counts from the 1st.
+- **New Sales and Collections sections** side by side, with Accts, Gross, Inc, Net, and Fid/bond. Rows are by MAS (daily), date (weekly), week of the month (monthly), or month (yearly).
+- **Expenses/Other Cash Out:** posted expenses the clerk encoded in the period (expense date, encoder Employee ID).
+- **Cash Flow Transaction and Other Cash Ins:** cash the clerk forwarded to the bank (`Bank Deposits` sheet; voided deposits excluded).
+- **Cash summary** and the **Specific Rmks, Pending Transactions, and Other Comments** boxes (`Report Notes` sheet).
+- **Summary sheet** for weekly, monthly, and yearly: New Member and Collection by Marketing Account Staff (CVE columns are shown but not yet defined).
 
 ```text
-Clerk net            = gross member payments − incentives
-Clerk net remittance = net + encoded Fidelity
-Clerk total cash     = net remittance − this clerk's posted period expenses
+Sales Net / Collection Net = gross member payments − incentives (each section)
+Total Cash In   = Cash Beg + Sales Net + Collection Net + Fidelity Bond + Pending cash to be encoded
+Total Cash Out  = Expenses + Cash forwarded to bank
+Remaining Cash on Hand = Total Cash In − Total Cash Out
+Cash Beg        = the clerk's (net + Fidelity) before the period − their expenses and deposits before the period
 ```
 
-Expense selection uses the expense date and encoder Employee ID. Checks show penalties separately, forfeited incentives, remitted/not-yet-remitted shares, photos, and date warnings. Detailed entries cap at 1,000; totals still use all entries. Monthly clerk grouping differs from the fixed seven-day bands in operational summaries.
+Pending cash is counted only in its own report; it is not carried into the next Cash Beg because those entries are encoded later. Cash Beg starts at zero from the clerk's first encoded entry.
+
+On their own report a clerk records: expenses (saved to Expenses for their primary branch, paid from Cash on Hand, so Finance sees and can void them), cash forwarded to the bank (date, bank account name, amount, type of transfer, MAS, remarks; voided with a reason, never deleted), and the report notes. Checks show remitted/not-yet-remitted shares, penalties, forfeited incentives, receipt photos, and date warnings. Detailed entries cap at 1,000; totals still use all entries.
 
 ### Operational summaries and Report Review
 
-The current Report Review page renders the same clerk report component with an Entry Clerk picker. A separate `/api/reports` builder also exists and feeds business analytics such as the earned-commission comparison; it aggregates Sales and posted Collections by day, branch, program, person and role. That API can limit operational lines to Entry Clerk encoder names. Names and IDs are not interchangeable: this operational scope uses encoder names, while individual clerk reports use Employee ID. Its formulas below describe the backend builder, not additional tabs in the current Report Review UI.
+The current Report Review page renders the same clerk report tabs, read-only, with an Entry Clerk picker, the entry checklist, and reviewer remarks. Audits open the same report for the audited clerk and period. A separate `/api/reports` builder also exists and feeds business analytics such as the earned-commission comparison; it aggregates Sales and posted Collections by day, branch, program, person and role. That API can limit operational lines to Entry Clerk encoder names. Names and IDs are not interchangeable: this operational scope uses encoder names, while individual clerk reports use Employee ID. Its formulas below describe the backend builder, not additional tabs in the current Report Review UI.
 
 ```text
 Entry incentive = max(0, gross − saved company share)
@@ -550,9 +564,13 @@ Sources: [daily entry model](../lib/todays-entries.ts), [clerk report](../lib/cl
 
 ## 11. Employees, accounts, roles, and permissions
 
-Employees and login accounts are separate records. An employee has a stable DPE ID, name, employment status, contact, operational roles, branch assignments, and primary branch. `Employee Branches` stores many-to-many assignments by stable branch ID; primary branch determines personal attendance. An account adds password, active status, and one or more login roles through `User Roles`.
+Employees and login accounts are separate records. An employee has an Employee ID in the company format (`PREFIX-YYYY-NNNN`), name, employment status, contact, operational roles, branch assignments, and primary branch. `Employee Branches` stores many-to-many assignments by stable branch ID; primary branch determines personal attendance. An account adds password, active status, and one or more login roles through `User Roles`.
 
 New employee registration attempts to create a login account immediately using matching role names. Account managers receive the one-time password; HR-only registration does not expose it, so IT must issue/reset it for handover. If account creation or privilege checks fail, the employee can still be registered with a message to finish the account in User Accounts. Updating employee roles synchronizes account roles only when the actor can manage accounts; an HR-only role change can leave a mismatch for IT to settle. Updating a User Account's roles also updates employee operational roles through the account-management workflow.
+
+Administrators can change an Employee ID in Employees → Edit ([employee-id-change.ts](../lib/employee-id-change.ts)). Every column whose header ends in `employee_id` / `Employee ID`, in every tab except the Audit Log and the Legacy Pending tabs, is rewritten from the old ID to the new one, including Users (so the person signs in with the new ID) and Report Notes keys. The change refuses an ID already in use, writes the Employees row first, logs each edited row in the Audit Log, and summarizes the change in Record Corrections. Record IDs that only contain the old ID as text (`EBA-…`, `ATT-…`) are left as they are.
+
+Old-data MAS who were not employees were registered with temporary IDs `LEG-2026-NNNN`, no sign-in account, role MAS, and every branch where they have accounts; spelling variants of the same person were merged. Replace a LEG ID with the real one through the ID change above.
 
 ### Access rules
 
@@ -573,7 +591,7 @@ Nonexecutive roles using defaults also receive shared employee pages: Programs, 
 
 Management rights are separated: IT/account managers maintain login accounts and roles; HR/IT/employee managers maintain employees; IT/configuration managers maintain programs and branches. `manage_users` remains broad and also controls remittance decisions, corrections and finance voiding. Privilege guards protect administrator and elevated role changes; page visibility alone does not bypass those guards.
 
-MAS-only member scope restricts directory/MAM to enrollments assigned to that employee's name. An oversight role (Admin, Finance, CEO/President, Entry Clerk, HR) removes that restriction. This is not a global ownership filter on every API; for example Remittances dashboard GET currently loads the full ledger for an allowed viewer.
+MAS-only member scope restricts directory/MAM to enrollments assigned to that employee's name. An oversight role (Admin, Finance, CEO/President, Entry Clerk, HR) removes that restriction. Remittances has its own scope: anyone without approval rights sees only the entries they encoded and the slips containing them. Other APIs are not globally ownership-filtered.
 
 ### Sign-in and passwords
 
@@ -584,7 +602,7 @@ MAS-only member scope restricts directory/MAM to enrollments assigned to that em
 - Approximately every five minutes, the account/password stamp and roles are rechecked. Deactivation/deletion or password change/reset invalidates other sessions on recheck. Rechecking does not extend the original expiry.
 - Nonpublic API routes require a session in `proxy.ts`; handlers then enforce their own page/action checks. Cross-origin writes are rejected. Login includes process-local rate limiting.
 
-Sources: [access rules](../lib/access-control.ts), [member scope](../lib/member-scope.ts), [privilege guards](../lib/privilege-guard.ts), [employees](../lib/employees.ts), [auth](../lib/auth.ts), [session checks](../lib/session-account.ts), [passwords](../lib/passwords.ts), [proxy](../proxy.ts).
+Sources: [access rules](../lib/access-control.ts), [member scope](../lib/member-scope.ts), [Employee ID change](../lib/employee-id-change.ts), [privilege guards](../lib/privilege-guard.ts), [employees](../lib/employees.ts), [auth](../lib/auth.ts), [session checks](../lib/session-account.ts), [passwords](../lib/passwords.ts), [proxy](../proxy.ts).
 
 ## 12. Corrections, history, audits, and exceptions
 
@@ -663,7 +681,8 @@ Next.js App Router and React implement pages and components; Tailwind and shared
 | Plans | Programs; Program Categories; Program Incentives → program ID and optional branch ID; Branches. |
 | Member accounts | Members; Member programs → member ID/program ID; Sales → member number/program; Beneficiaries → member/sale; Member Transfers → enrollment. |
 | Payments | Collections → enrollment/member/program; Remittances; Remittance Collections → slip and transaction ID, for both sale and collection kinds. |
-| Evidence and controls | Receipt Photos → entry IDs; Record Corrections; Report Remarks; Audit Log; four period Audit tabs. |
+| Evidence and controls | Receipt Photos → entry IDs; Record Corrections; Report Remarks; Audit Log; four period Audit tabs; Legacy Repairs → imported Collection IDs. |
+| Clerk reports | Bank Deposits → employee ID; Report Notes → employee ID, period kind, period start. Both are created on first use and feed only the clerk report. |
 | Attendance | Attendance → employee; Leave Requests → employee; Holidays; non-working declarations stored through attendance records. |
 | Finance | Expenses; Cash Transactions; Cash Accounts; Vendor Payables; Commissions; Fidelity. |
 | Payroll | Pay Profiles → employee; Payroll Runs; Payroll Lines → run/employee; Payroll Adjustments → run/employee. |
@@ -724,6 +743,8 @@ The `npm test` list is explicitly defined in package.json; it is not comprehensi
 
 Use the [complete script index](code-reference.md#maintenance-scripts) and [package scripts](../package.json) to find schema tools. They cover encoder tracking, account status, cash-remittance workflow/methods/deadline/penalty, employee branch/primary branch/login/roles, program rules/age/categories/amount locks/incentives, finance/payroll, address consolidation, audits/transfers, legacy import, and readable IDs.
 
+Old-data tools: `migrate-legacy-members.mjs --pending` imports fixed rows from the Legacy Pending tabs; `--repair` applies the company's repair rules (unreadable amount = program rate × months; unreadable OR date = Date Remitted; same OR number twice keeps one; NOP gaps/overlaps renumbered in OR-date order; no usable DOI = first OR date; every payment must be a whole number of monthly payments, otherwise the account is listed and not imported), listing each change in `Legacy Repairs`; `--drop-existing` removes pending rows of accounts already imported; imported rows leave the pending tabs. `register-legacy-mas.mjs` registers MAS named on accounts who are not employees; `merge-legacy-mas.mjs` merges an employee registered under two spellings. See [project context](project-context.md) for the decisions behind them.
+
 Inspect helpers include sheet-header inspection, database audit, legacy inspection, and collection checks. Repairs include row/header/branch-ID/employee-ID correction and blank-row removal. They are **maintenance operations**, not startup tasks to run indiscriminately. Many scripts support dry-run then `--apply`; some do not. Read the selected script before running it against a real workbook, back up the affected data, and verify headers/record counts afterward.
 
 ### Common symptoms
@@ -735,10 +756,11 @@ Inspect helpers include sheet-header inspection, database audit, legacy inspecti
 | Cannot clock in | Sunday/declared closure, missing primary branch, existing day's attendance/leave, active account. |
 | Staff not selectable for a branch | Active employee, assigned branch ID, active branch; login role alone is insufficient. |
 | Unique enrollment not found | Member number/program/branch/MAS consistency and duplicate enrollments. |
-| Collection save fails | Next month/NOP, full installments, OR uniqueness/date, waiver/forfeiture, tier coverage, batch control total. |
+| Collection save fails | Next month/NOP, full installments, OR uniqueness/date, waiver/forfeiture, tier coverage, batch control total. "Attempting to write column … beyond the last requested column" means a migration column is missing: run `npm run sheets:remittance-deadline -- --apply`. |
+| Entry not in Pending Approval | Receipt photo missing, another Collection of the same batch still without a photo, or the entry was Returned (resubmit in My Entries). |
 | Tier missing for NOP | Role and NOP range; branch overrides replace the role's entire base tier set. |
 | Amount field locked | Program editability flag and server fixed/full-installment rules. |
-| Approval refuses | Receipt photo for every entry, complete slip links, reason for discrepancy, decision permission/self-decision rule. |
+| Approval refuses | Receipt photo for every entry, complete slip links, reason for discrepancy, decision permission/self-decision rule. Bulk decisions report each slip that was not done. |
 | Incentive disappears | Time received after next-day 10:00 cutoff and saved forfeiture/company-share update. |
 | Fidelity contribution not available | Remittance must be Approved; pending/discrepancy is not withdrawable. |
 | Payroll omits employee or commission | Active pay profile/employee, eligible flag, Pending commission period end, existing live payroll reservation. |
@@ -762,8 +784,9 @@ These are observed behaviors to keep in mind when reviewing the system; they are
 9. **Google Sheets has storage/concurrency limits.** Cached views may lag external edits; locks are process-local; sequential writes can partially succeed; sheet columns must retain their order. Receipt images add workbook cell/storage usage.
 10. **Audits have defined limits.** Application logging is best-effort and does not capture every external workbook mutation. Approved period audit figures are snapshots, not immutable source transactions.
 11. **Automation is triggered by use.** No background scheduler is configured for account-status synchronization or end-of-day absences. Some read workflows can create system absence/settings records.
-12. **Limited tests and result caps exist.** Existing tests cover selected business helpers, not every integration. Member directory paginates 25 on the client, MAM range caps at 120 months, member MAM at 36 months, exception display at 300 findings, and clerk entry detail at 1,000 rows with full totals.
+12. **Automatic slips approximate the time received.** They use the batch's Date Remitted with the encoding time (23:59 when encoded on another day), and record actual = expected. The approver confirms the cash against the receipt photos; there is no cash count on automatic slips.
+13. **Limited tests and result caps exist.** Existing tests cover selected business helpers, not every integration. Member directory paginates 25 on the client, MAM range caps at 120 months, member MAM at 36 months, exception display at 300 findings, and clerk entry detail at 1,000 rows with full totals.
 
-For a daily review: compare turnover control totals with saved entries, verify receipt photos and dates, review outstanding cash/deadlines and slips, check missing/late attendance, and resolve Exceptions. For a period review: reconcile operational and cash reports using the same dates/scope, approve clerk audits, verify Fidelity against approved slips and releases, inspect commission records before payroll, and sync account statuses before relying on executive health.
+For a daily review: compare turnover control totals with saved entries, verify receipt photos and dates, clear Pending Approval and check Returned entries, review outstanding cash/deadlines, check missing/late attendance, and resolve Exceptions. For a period review: reconcile operational and cash reports using the same dates/scope, approve clerk audits, verify Fidelity against approved slips and releases, inspect commission records before payroll, and sync account statuses before relying on executive health.
 
 For a deeper code review, open the [code reference](code-reference.md) and follow exported symbols/dependencies. Keep this guide's formulas and limits updated whenever the corresponding source rules change.
