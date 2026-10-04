@@ -22,7 +22,8 @@ export async function correctSaleOrCollection(body: Record<string, unknown>) {
   const rows = response.data.values ?? [], index = rows.slice(1).findIndex((row) => text(row[0]) === id);
   if (index < 0) throw new Error("Record not found.");
   const rowNumber = index + 2, row = rows[index + 1];
-  const onRemittance = !["", "Outstanding"].includes(text(row[isSale ? 35 : 28]));
+  // Returned entries are back with the clerk, so their amount can be corrected before they are resubmitted.
+  const onRemittance = !["", "Outstanding", "Returned"].includes(text(row[isSale ? 35 : 28]));
   const today = manilaNow().date;
 
   const amount = Number(isSale ? body.amountPaid : body.amountCollected);

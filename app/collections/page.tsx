@@ -20,12 +20,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useFormDraft } from "@/lib/use-form-draft";
-import { formatDeadline, incentiveDeadline, keepsIncentive, manilaNow } from "@/lib/remittance-deadline";
+import { manilaNow } from "@/lib/remittance-deadline";
 import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
-import { CashCountInput } from "@/components/cash-count-input";
 import { compressReceiptPhoto } from "@/components/receipt-photo";
-import { cashCountTotal, formatCashCount, type CashCount } from "@/lib/cash-count";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import {
   Select,
@@ -252,17 +250,11 @@ export default function CollectionsPage() {
   const [saveMessage, setSaveMessage] = useState("");
 
   const [saving, setSaving] = useState(false);
-  const [autoApproveRemittance, setAutoApproveRemittance] = useState(false);
-  const [cashReceived, setCashReceived] = useState("");
   // The total written on the MAS's turnover sheet; the batch saves only when the entries add up to it.
   const [controlTotal, setControlTotal] = useState("");
-  // Bills and coins counted when cash is received in full here; "Cash received" is their total.
-  const [cashCount, setCashCount] = useState<CashCount>({});
-  // Cash received in full approves at once, and approval needs the receipt photo, so it is taken before saving.
+  // The batch's receipt photo, optional: attached right after saving, which sends the batch for approval.
   const [receiptPhoto, setReceiptPhoto] = useState<{ dataUrl: string; width: number; height: number; bytes: number } | null>(null);
   const [photoError, setPhotoError] = useState("");
-  // When the cash confirmed in full was handed over; incentives are kept only by 10:00 AM the day after the OR date.
-  const [timeReceived, setTimeReceived] = useState("");
   // Batch-level: who brought these payments in, and how the MAS remitted them to the office.
   const [collectedBy, setCollectedBy] = useState<CollectionChannel>("MAS");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
@@ -439,13 +431,6 @@ export default function CollectionsPage() {
   const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
   // The cash due is the company remittance plus Fidelity; a penalty is tracked separately.
   const totalDue = totalRemittance === null ? null : Math.round((totalRemittance + fidelityAmount) * 100) / 100;
-  // Cash confirmed in full after an entry's incentive deadline remits that entry's full amount.
-  const receivedAt = dateRemitted && timeReceived ? `${dateRemitted} ${timeReceived}` : "";
-  const lateIncentive = autoApproveRemittance && receivedAt ? collections.reduce((sum, entry, index) => {
-    const quote = quotes[index], amount = Number(entry.amountCollected) || 0;
-    return "remittance" in quote && amount > quote.remittance && !keepsIncentive(entry.orDate, receivedAt) ? sum + Math.round((amount - quote.remittance) * 100) : sum;
-  }, 0) / 100 : 0;
-  const cashDue = totalDue === null ? null : Math.round((totalDue + lateIncentive) * 100) / 100;
 
   function updateCollection(
     id: string,
@@ -804,11 +789,6 @@ export default function CollectionsPage() {
       return;
     }
 
-    const approveNow = autoApproveRemittance && isCashPayment;
-    if (approveNow && cashDue !== null && Math.round(cashCountTotal(cashCount) * 100) !== Math.round(cashDue * 100)) {
-      setSaveMessage(`The counted cash must equal the cash due of ${formatCurrency(cashDue)}.`);
-      return;
-    }
 
     setSaving(true);
 
@@ -844,28 +824,13 @@ export default function CollectionsPage() {
         throw new Error(result.message || "Unable to save collections.");
       }
 
-      if (approveNow) {
-        // Saved: attach the receipt photo if one was taken (it can also be added later), then approve the remittance.
+      if (receiptPhoto) {
+        // Attaching the photo sends the batch to Pending Approval.
         const ids: string[] = result.collectionIds ?? [];
-        const finish = async () => {
-          if (receiptPhoto) {
-            const photo = await fetch("/api/receipt-photos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryIds: ids, dataUrl: receiptPhoto.dataUrl, width: receiptPhoto.width, height: receiptPhoto.height }) });
-            const photoResult = await photo.json();
-            if (!photo.ok || !photoResult.success) throw new Error(photoResult.message || "The receipt photo could not be saved.");
-          }
-          const remittance = await fetch("/api/remittances", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ collectionIds: ids, actualAmount: cashCountTotal(cashCount), fidelityAmount: 0, remittanceDate: dateRemitted, remittanceTime: timeReceived, cashCount: formatCashCount(cashCount), remarks: "Cash received in full during collection encoding.", cashConfirmed: true }) });
-          const remittanceResult = await remittance.json();
-          if (!remittance.ok) throw new Error(remittanceResult.error || "The remittance could not be approved.");
-          return remittanceResult.remittance?.id as string;
-        };
-        try {
-          const remittanceId = await finish();
-          resetForm();
-          setSaveMessage(`${ids.length} collection(s) saved and Remittance ${remittanceId} approved.${receiptPhoto ? " Receipt photo attached." : " Add the receipt photo later in Today's Entries or My Entries."}`);
-        } catch (followUp) {
-          resetForm();
-          setSaveMessage(`${ids.length} collection(s) saved, but ${followUp instanceof Error ? followUp.message : "the remittance could not be approved"} Finish it in My Entries and Remittances.`);
-        }
+        const photo = await fetch("/api/receipt-photos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryIds: ids, dataUrl: receiptPhoto.dataUrl, width: receiptPhoto.width, height: receiptPhoto.height }) });
+        const photoResult = await photo.json();
+        resetForm();
+        setSaveMessage(photo.ok && photoResult.success ? `${ids.length} collection(s) saved. ${photoResult.message}` : `${ids.length} collection(s) saved, but the receipt photo was not: ${photoResult.message || "try again"} Add it in Today's Entries or My Entries.`);
         return;
       }
 
@@ -893,11 +858,7 @@ export default function CollectionsPage() {
     setShowMoreDetails(false);
     setSaveMessage("");
     setShowPreview(false);
-    setAutoApproveRemittance(false);
-    setCashReceived("");
     setControlTotal("");
-    setTimeReceived("");
-    setCashCount({});
     setReceiptPhoto(null);
     setPhotoError("");
     setPenalty("");
@@ -986,7 +947,7 @@ export default function CollectionsPage() {
               </div>
             ) : (
               <div className="flex items-center rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-                {isCashPayment ? "Physical cash: count it on turnover. You can approve immediately below when it matches." : "No reference needed for this method."}
+                {isCashPayment ? "Physical cash: an approver checks it against the receipt photo." : "No reference needed for this method."}
               </div>
             )}
 
@@ -995,7 +956,7 @@ export default function CollectionsPage() {
               <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
                 <div className="space-y-1">
                   <Label htmlFor="penalty-amount">Penalty amount</Label>
-                  <Input id="penalty-amount" type="number" min="0" step="0.01" value={penalty} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => { setPenalty(event.target.value); setAutoApproveRemittance(false); }} />
+                  <Input id="penalty-amount" type="number" min="0" step="0.01" value={penalty} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => { setPenalty(event.target.value); }} />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="penalty-note">What is the penalty for?{penaltyAmount > 0 ? " *" : ""}</Label>
@@ -1010,7 +971,7 @@ export default function CollectionsPage() {
               <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
                 <div className="space-y-1">
                   <Label htmlFor="fidelity-amount">Fidelity amount</Label>
-                  <Input id="fidelity-amount" type="number" min="0" step="0.01" value={fidelity} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => { setFidelity(event.target.value); setAutoApproveRemittance(false); }} />
+                  <Input id="fidelity-amount" type="number" min="0" step="0.01" value={fidelity} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => { setFidelity(event.target.value); }} />
                 </div>
                 <p className="text-xs text-muted-foreground">The {collectedBy === "Collector" ? "Collector" : "MAS"}&apos;s own money handed over for their Fidelity savings. It is added to this batch&apos;s total remittance and does not reduce incentives. There is no limit; the first ₱10,000 of savings is released only when the employee leaves, and anything above it can be withdrawn any time.</p>
               </div>
@@ -1758,48 +1719,12 @@ export default function CollectionsPage() {
               {/* TOTALS: amount collected, incentives (less Fidelity), penalty, total remittance */}
               <RemittanceSummary collected={totalCollected} remittance={totalRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} />
 
-              <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px]">
-                <label className="flex items-start gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={autoApproveRemittance && isCashPayment}
-                    disabled={totalDue === null || !isCashPayment}
-                    onChange={(event) => {
-                      setAutoApproveRemittance(event.target.checked);
-                      if (event.target.checked) setCashReceived(String(cashCountTotal(cashCount)));
-                      if (event.target.checked && !timeReceived) setTimeReceived(manilaNow().time);
-                    }}
-                  />
-                  <span><strong>Cash received in full</strong><span className="block text-xs text-muted-foreground">{isCashPayment ? "Create and immediately approve the Remittance when the cash handed over equals the calculated amount." : `${paymentMethod || "Non-cash"} payments go to Remittances so Finance can verify the reference before approval.`}</span></span>
-                </label>
-                <div className="space-y-1">
-                  <Label>Cash received</Label>
-                  <Input type="number" min="0" step="0.01" value={cashReceived} readOnly className="bg-muted/50" disabled={!autoApproveRemittance || !isCashPayment} placeholder="0.00" />
-                  <p className="text-xs text-muted-foreground">Calculated from the cash count.</p>
-                  <Label className="pt-1">Time received</Label>
-                  <Input type="time" value={timeReceived} disabled={!autoApproveRemittance || !isCashPayment} onChange={(event) => setTimeReceived(event.target.value)} />
-                </div>
-                {autoApproveRemittance && isCashPayment && (
-                  <div className="sm:col-span-2">
-                    <Label>Cash count</Label>
-                    <CashCountInput value={cashCount} onChange={(value) => { setCashCount(value); setCashReceived(String(cashCountTotal(value))); }} />
-                    <div className="mt-3 space-y-1">
-                      <Label>Receipt photo for this batch (optional)</Label>
-                      <input type="file" accept="image/*" capture="environment" className="block text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setPhotoError(""); try { setReceiptPhoto(await compressReceiptPhoto(file)); } catch (error) { setReceiptPhoto(null); setPhotoError(error instanceof Error ? error.message : "Unable to read the photo."); } }} />
-                      <p className="text-xs text-muted-foreground">{receiptPhoto ? `Photo ready (${Math.round(receiptPhoto.bytes / 1000)} KB). It is attached to every collection in this batch.` : "You can add it now or later in Today's Entries or My Entries. It is shrunk to under 80 KB."}</p>
-                      {photoError && <p className="text-xs text-red-700">{photoError}</p>}
-                    </div>
-                    {cashDue !== null && <p className={`mt-1 text-sm ${Math.round(cashCountTotal(cashCount) * 100) === Math.round(cashDue * 100) ? "text-emerald-700" : "text-muted-foreground"}`}>Cash due: {formatCurrency(cashDue)}</p>}
-                  </div>
-                )}
-                {autoApproveRemittance && isCashPayment && lateIncentive > 0 && cashDue !== null && (
-                  <p className="text-sm text-red-700 sm:col-span-2">
-                    Incentive of {formatCurrency(lateIncentive)} is forfeited: the cash came in after 10:00 AM the day after the OR date
-                    {collections[0]?.orDate ? ` (deadline ${formatDeadline(incentiveDeadline(collections[0].orDate))})` : ""}. Cash due is {formatCurrency(cashDue)}.
-
-                  </p>
-                )}
+              {/* RECEIPT PHOTO: optional now; it can be added later in Today's Entries or My Entries. */}
+              <div className="space-y-1 rounded-xl border bg-muted/20 p-4">
+                <Label>Receipt photo for this batch (optional)</Label>
+                <input type="file" accept="image/*" capture="environment" className="block text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setPhotoError(""); try { setReceiptPhoto(await compressReceiptPhoto(file)); } catch (error) { setReceiptPhoto(null); setPhotoError(error instanceof Error ? error.message : "Unable to read the photo."); } }} />
+                <p className="text-xs text-muted-foreground">{receiptPhoto ? `Photo ready (${Math.round(receiptPhoto.bytes / 1000)} KB). It is attached to every collection in this batch, and the batch goes to Pending Approval.` : "With the photo, the batch goes to Pending Approval right after saving. Without it, add it later in Today's Entries or My Entries."}</p>
+                {photoError && <p className="text-xs text-red-700">{photoError}</p>}
               </div>
 
               {/* SAVE / RESET */}

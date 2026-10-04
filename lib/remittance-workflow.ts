@@ -1,6 +1,6 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
 import { COLLECTIONS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
-import { getEncoder } from "@/lib/encoder-context";
+import { getEncoder, runAsSystem } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
 import { incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime } from "@/lib/remittance-deadline";
@@ -24,6 +24,8 @@ const REMITTANCE_TIME_COLUMN = 26;
 // Remittances AB: the bills and coins counted, e.g. "1000x3, 500x1" (lib/cash-count.ts).
 const CASH_COUNT_COLUMN = 27;
 const text = (value: unknown) => String(value ?? "").trim();
+/** A UTC ISO stamp as Manila "YYYY-MM-DD HH:MM" ("" when blank or not a stamp). */
+const manilaStamp = (value: string) => { if (!/T\d{2}:/.test(value) || Number.isNaN(Date.parse(value))) return ""; const now = manilaNow(new Date(value)); return `${now.date} ${now.time}`; };
 const number = (value: unknown) => Number(value ?? 0) || 0;
 
 export type CashCollection = {
@@ -48,6 +50,12 @@ export type CashCollection = {
   incentiveDeadline: string;
   /** The receipt photo attached to this item; every item needs one before its remittance is approved. */
   photoId: string;
+  /** The Entry Clerk who encoded it, and when (Manila "YYYY-MM-DD HH:MM"); blank on imported rows. */
+  encodedByEmployeeId: string;
+  encodedByName: string;
+  encodedAt: string;
+  /** The date the cash was remitted, as entered with the batch (Collections AO, Sales E). */
+  dateRemitted: string;
   /** Remittance penalty charged to the accountable MAS/Collector; set on the batch's first Collection only. */
   penalty: number;
   penaltyNote: string;
@@ -101,6 +109,9 @@ export type CashRemittance = {
   /** Receipt photos of the linked items, and the items still without one (approval needs none missing). */
   photoIds: string[];
   missingPhotos: string[];
+  /** Employee IDs and names of the Entry Clerks who encoded the slip's items (for filtering by clerk). */
+  clerkIds: string[];
+  clerkNames: string[];
 };
 
 async function loadLedger() {
@@ -121,7 +132,7 @@ async function loadLedger() {
     id: text(row[0]), remittanceId: text(row[1]), collectionId: text(row[2]), amount: number(row[3]), linkedAt: text(row[4]),
   }));
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
-    kind: "Collections" as const, photoId: "", id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
+    kind: "Collections" as const, photoId: "", encodedByEmployeeId: text(row[22]), encodedByName: text(row[23]), encodedAt: manilaStamp(text(row[24])), dateRemitted: text(row[40]).slice(0, 10), id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), forfeitedIncentive: number(row[FORFEIT_COLUMN.Collections]), incentiveDeadline: incentiveDeadline(text(row[9])), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
     collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]), fidelity: number(row[37]),
@@ -133,7 +144,7 @@ async function loadLedger() {
   // A New Sale has no OR; its date is the Manila date it was created (date_created is a UTC stamp).
   const saleDate = (row: unknown[]) => text(row[30]) || manilaDateOf(text(row[1]));
   const sales: CashCollection[] = rows.Sales.slice(1).map((row, index) => ({
-    kind: "New Sales" as const, photoId: "", id: text(row[0]), batchId: "", rowNumber: index + 2, memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
+    kind: "New Sales" as const, photoId: "", encodedByEmployeeId: text(row[32]), encodedByName: text(row[33]), encodedAt: manilaStamp(text(row[34]) || text(row[1])), dateRemitted: text(row[4]).slice(0, 10), id: text(row[0]), batchId: "", rowNumber: index + 2, memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
     accountableEmployeeId: text(row[37]), accountableName: text(row[3]), accountableRole: "MAS",
     orNumber: text(row[29]) || (text(row[28]) ? `App ${text(row[28])}` : ""), orDate: saleDate(row), amount: number(row[26]), remittanceAmount: text(row[41]) === "" ? number(row[26]) : number(row[41]),
     forfeitedIncentive: number(row[FORFEIT_COLUMN["New Sales"]]), incentiveDeadline: incentiveDeadline(saleDate(row)),
@@ -149,7 +160,7 @@ async function loadLedger() {
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByName: text(row[20]), decisionAt: text(row[21]),
-    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : "Collections") as RemittanceKind, collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [], photoIds: [], missingPhotos: [],
+    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : "Collections") as RemittanceKind, collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [], photoIds: [], missingPhotos: [], clerkIds: [], clerkNames: [],
   })).filter((remittance) => remittance.id);
   const byId = new Map(collections.map((collection) => [collection.id, collection]));
   for (const remittance of remittances) {
@@ -160,6 +171,8 @@ async function loadLedger() {
     remittance.penaltyNotes = linked.filter((item) => item.penalty > 0).map((item) => item.penaltyNote);
     remittance.photoIds = [...new Set(linked.map((item) => item.photoId).filter(Boolean))];
     remittance.missingPhotos = linked.filter((item) => !item.photoId).map((item) => item.id);
+    remittance.clerkIds = [...new Set(linked.map((item) => item.encodedByEmployeeId).filter(Boolean))];
+    remittance.clerkNames = [...new Set(linked.map((item) => item.encodedByName).filter(Boolean))];
   }
   return { collections, remittances, mappings };
 }
@@ -177,13 +190,22 @@ export const forfeitsIncentive = (item: Pick<CashCollection, "amount" | "remitta
 export const amountDue = (collection: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate">, receivedAt = "") =>
   receivedAt && forfeitsIncentive(collection, receivedAt) ? collection.amount : collection.remittanceAmount;
 
-export async function getRemittanceDashboard() {
-  const ledger = await loadLedger();
+/**
+ * Remittance figures. `clerkId` limits everything to what one Entry Clerk encoded (an Entry Clerk sees only theirs).
+ * Items still waiting for receipt photos are Outstanding; items whose slip was rejected are Returned to the clerk.
+ */
+export async function getRemittanceDashboard(clerkId = "") {
+  const all = await loadLedger();
+  const ledger = clerkId
+    ? { ...all, collections: all.collections.filter((item) => item.encodedByEmployeeId === clerkId), remittances: all.remittances.filter((remittance) => remittance.clerkIds.includes(clerkId)) }
+    : all;
   const now = manilaNow(), today = now.date, at = `${now.date} ${now.time}`;
-  const available = ledger.collections.filter((collection) => collection.remittanceStatus === "Outstanding");
-  const accountable = ledger.collections.filter((collection) => ["Outstanding", "Pending Remittance Approval"].includes(collection.remittanceStatus));
+  const available = ledger.collections.filter((collection) => ["Outstanding", "Returned"].includes(collection.remittanceStatus));
+  const accountable = ledger.collections.filter((collection) => ["Outstanding", "Returned", "Pending Remittance Approval"].includes(collection.remittanceStatus));
   const pending = ledger.remittances.filter((remittance) => ["Pending Approval", "Discrepancy"].includes(remittance.status));
   const approvedToday = ledger.remittances.filter((remittance) => remittance.status === "Approved" && remittance.decisionAt.slice(0, 10) === today);
+  // Entry Clerks with encoded items, for the approvers' filter.
+  const clerks = [...new Map(all.collections.filter((item) => item.encodedByEmployeeId).map((item) => [item.encodedByEmployeeId, item.encodedByName] as const)).entries()].map(([employeeId, name]) => ({ employeeId, name })).sort((a, b) => a.name.localeCompare(b.name));
   const accountability = [...new Set(accountable.map((collection) => `${collection.accountableEmployeeId}\u0000${collection.accountableName}\u0000${collection.accountableRole}\u0000${collection.branch}`))].map((key) => {
     const [employeeId, name, role, branch] = key.split("\u0000");
     const owned = accountable.filter((collection) => collection.accountableEmployeeId === employeeId && collection.accountableName === name && collection.branch === branch);
@@ -200,6 +222,7 @@ export async function getRemittanceDashboard() {
     accountability,
     outstanding: available,
     remittances: ledger.remittances,
+    clerks,
   };
 }
 
@@ -254,7 +277,7 @@ function requirePhotos(items: CashCollection[]) {
 
 export const CASH_IN_FULL_NOTE = "Cash received in full and confirmed during encoding.";
 
-export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; fidelityAmount: number; remittanceDate: string; remittanceTime: string; cashCount?: string; remarks?: string; cashConfirmed?: boolean }) {
+export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; fidelityAmount: number; remittanceDate: string; remittanceTime: string; cashCount?: string; remarks?: string; cashConfirmed?: boolean; actualIsExpected?: boolean }) {
   const actor = getEncoder();
   const ledger = await loadLedger();
   const ids = [...new Set(input.collectionIds.map(text).filter(Boolean))];
@@ -279,7 +302,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const now = manilaNow(), receivedAt = `${input.remittanceDate} ${input.remittanceTime}`;
   if (receivedAt > `${now.date} ${now.time}`) throw new Error("The time received cannot be in the future.");
   if (collections.some((collection) => /^\d{4}-\d{2}-\d{2}/.test(collection.orDate) && input.remittanceDate < collection.orDate.slice(0, 10))) throw new Error("The remittance date cannot be before the OR date.");
-  if (!Number.isFinite(input.actualAmount) || input.actualAmount < 0) throw new Error("Enter the actual amount received.");
+  if (!input.actualIsExpected && (!Number.isFinite(input.actualAmount) || input.actualAmount < 0)) throw new Error("Enter the actual amount received.");
   if (!Number.isFinite(input.fidelityAmount) || input.fidelityAmount < 0) throw new Error("Fidelity must be zero or a positive amount.");
   const encodedFidelity = Math.round(collections.reduce((sum, item) => sum + item.fidelity, 0) * 100) / 100;
   if (encodedFidelity > 0 && input.fidelityAmount > 0 && Math.round(input.fidelityAmount * 100) !== Math.round(encodedFidelity * 100)) throw new Error("Fidelity for this batch was entered when it was encoded and is already recorded.");
@@ -291,7 +314,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const forfeitedTotal = Math.round(forfeits.reduce((sum, collection) => sum + incentiveOf(collection), 0) * 100) / 100;
   const due = new Map(collections.map((collection) => [collection.id, amountDue(collection, receivedAt)]));
   const expected = Math.round((collections.reduce((sum, collection) => sum + (due.get(collection.id) ?? 0), 0) + fidelityAmount) * 100) / 100;
-  const actual = Math.round(input.actualAmount * 100) / 100;
+  const actual = input.actualIsExpected ? expected : Math.round(input.actualAmount * 100) / 100;
   const cashCount = text(input.cashCount);
   const countProblem = cashCountProblem(cashCount, actual);
   if (countProblem) throw new Error(countProblem);
@@ -344,10 +367,67 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   const requests = [
     { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 4, endColumnIndex: 5 }, rows: [{ values: [cell(status)] }], fields: "userEnteredValue" } },
     { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 18, endColumnIndex: 24 }, rows: [{ values: [actor.userId, actor.employeeId, actor.name, timestamp, remittance.remarks, text(reason)].map(cell) }], fields: "userEnteredValue" } },
-    ...linked.map((collection) => statusUpdate(sheet, collection!, decision === "approve" ? "Remitted" : "Outstanding", decision === "approve" ? remittance.id : "")),
+    // Rejected items are Returned to the clerk with the slip still linked, so My Entries shows the reason.
+    ...linked.map((collection) => statusUpdate(sheet, collection!, decision === "approve" ? "Remitted" : "Returned", remittance.id)),
     // A rejected slip gives forfeited incentives back; the next slip decides again from its own time received.
     ...(decision === "reject" ? linked.filter((collection) => collection!.forfeitedIncentive > 0).flatMap((collection) => forfeitUpdate(sheet, collection!, Math.round((collection!.amount - collection!.forfeitedIncentive) * 100) / 100, 0)) : []),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
   return { id: remittance.id, status };
+}
+
+/** When the cash for an item was received: its Date Remitted at the time it was encoded (23:59 when encoded on another day). */
+function receivedAtOf(items: CashCollection[]) {
+  const date = items.map((item) => item.dateRemitted).find(Boolean) || items.map((item) => item.encodedAt.slice(0, 10)).find(Boolean) || manilaNow().date;
+  const encoded = items.map((item) => item.encodedAt).filter(Boolean).sort().at(-1) ?? "";
+  return { date, time: encoded.slice(0, 10) === date ? encoded.slice(11, 16) : "23:59" };
+}
+
+/**
+ * Sends ready entries for approval on their own: an Outstanding item with its receipt photo goes to Pending Approval.
+ * Collections go as their saved batch once every Collection in it has a photo (one batch, one remittance); New Sales go
+ * one by one. The slip expects exactly the company share (plus any Fidelity); the approver checks it against the
+ * receipts. Slips are created by "System", so any approver may decide them. Returns the slips created.
+ */
+export async function submitReadyEntries(entryIds: string[]) {
+  return runAsSystem(async () => {
+    const ledger = await loadLedger();
+    const wanted = new Set(entryIds);
+    const ready = (item: CashCollection) => item.remittanceStatus === "Outstanding" && !item.linkedRemittanceId && Boolean(item.photoId);
+    const groups: CashCollection[][] = [];
+    const batches = new Set<string>();
+    for (const item of ledger.collections.filter((entry) => wanted.has(entry.id))) {
+      if (item.batchId) {
+        if (batches.has(item.batchId)) continue;
+        batches.add(item.batchId);
+        const batch = ledger.collections.filter((entry) => entry.batchId === item.batchId && ["Outstanding", "Returned", "Pending Remittance Approval"].includes(entry.remittanceStatus));
+        if (batch.length && batch.every(ready)) groups.push(batch);
+      } else if (ready(item)) groups.push([item]);
+    }
+    const created: string[] = [];
+    for (const group of groups) {
+      const { date, time } = receivedAtOf(group);
+      const clerk = group[0].encodedByName ? ` encoded by ${group[0].encodedByName}` : "";
+      const slip = await createCashRemittance({ collectionIds: group.map((item) => item.id), actualAmount: 0, actualIsExpected: true, fidelityAmount: 0, remittanceDate: date, remittanceTime: time, remarks: `Submitted automatically when the receipt photos were attached${clerk}.` });
+      created.push(slip.id);
+    }
+    return created;
+  });
+}
+
+/**
+ * The clerk resubmits Returned entries after fixing them: they become Outstanding again and go back to Pending Approval
+ * if their receipt photos are attached. Only the clerk who encoded them or an administrator may do this.
+ */
+export async function resubmitReturned(entryIds: string[], by: { employeeId: string; isAdmin: boolean }) {
+  const ledger = await loadLedger();
+  const items = ledger.collections.filter((item) => entryIds.includes(item.id) && item.remittanceStatus === "Returned");
+  if (!items.length) throw new Error("Choose returned entries to resubmit.");
+  if (!by.isAdmin && items.some((item) => item.encodedByEmployeeId !== by.employeeId)) throw new Error("You can resubmit only entries you encoded.");
+  // A Collection batch goes back together, so the whole returned batch is reopened.
+  const batchIds = new Set(items.map((item) => item.batchId).filter(Boolean));
+  const reopen = ledger.collections.filter((item) => item.remittanceStatus === "Returned" && (items.includes(item) || (item.batchId && batchIds.has(item.batchId))));
+  const sheet = await sheetIds();
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: reopen.map((item) => statusUpdate(sheet, item, "Outstanding", "")) } });
+  return submitReadyEntries(reopen.map((item) => item.id));
 }

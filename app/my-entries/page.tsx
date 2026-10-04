@@ -61,12 +61,19 @@ export default function MyEntriesPage() {
   const saved = (text: string) => { setMessage(text); setSelected([]); void load(from, to, employeeId); };
   const entries = data?.entries ?? [];
   const missing = entries.filter((entry) => !entry.photoId);
+  const returned = entries.filter((entry) => entry.remittanceStatus === "Returned");
+  const resubmit = async (entryIds: string[]) => {
+    setMessage("");
+    const response = await fetch("/api/my-entries", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryIds }) });
+    const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
+    saved(result.message ?? (response.ok ? "Resubmitted." : "Unable to resubmit."));
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">My Entries</h1>
-        <p className="text-sm text-muted-foreground">The New Sales and Collections you encoded, by the date you encoded them. Attach a photo of each receipt; a remittance cannot be approved until every item on it has one. One photo can cover several entries: tick them and use Attach one photo.</p>
+        <p className="text-sm text-muted-foreground">The New Sales and Collections you encoded, by the date you encoded them. Attach a photo of each receipt: once an entry has everything it needs, it goes to Pending Approval on its own (a Collections batch goes together). One photo can cover several entries: tick them and use Attach one photo. Entries the approver returns show the reason; fix them and resubmit.</p>
       </div>
 
       <Card>
@@ -116,6 +123,7 @@ export default function MyEntriesPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {missing.length > 0 && <Button type="button" size="sm" variant="ghost" onClick={() => setSelected(missing.map((entry) => entry.id))}>Select all without a photo</Button>}
+            {returned.length > 0 && <Button type="button" size="sm" variant="outline" onClick={() => void resubmit(returned.map((entry) => entry.id))}>Resubmit all returned ({returned.length})</Button>}
             {selected.length > 0 && <ReceiptPhotoUpload entryIds={selected} label={`Attach one photo to ${selected.length} selected`} onSaved={saved} />}
           </div>
         </CardHeader>
@@ -140,7 +148,11 @@ export default function MyEntriesPage() {
                       <td className="p-3">{entry.person}<span className="block text-xs text-muted-foreground">{entry.branch}</span></td>
                       <td className="p-3"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{entry.orDate}</span>{entry.dateRemitted && <span className="block text-xs text-muted-foreground">Remitted {entry.dateRemitted}</span>}</td>
                       <td className="p-3 text-right font-medium">{money(entry.amount)}</td>
-                      <td className="p-3"><StatusBadge status={entry.remittanceStatus || "Not set"} /></td>
+                      <td className="p-3">
+                        <StatusBadge status={entry.remittanceStatus === "Outstanding" ? (entry.photoId ? "Outstanding" : "Needs receipt photo") : entry.remittanceStatus === "Pending Remittance Approval" ? "Pending approval" : entry.remittanceStatus || "Not set"} />
+                        {entry.returnReason && <span className="mt-1 block max-w-[14rem] text-xs text-red-700">Returned: {entry.returnReason}</span>}
+                        {entry.remittanceStatus === "Returned" && <Button type="button" size="sm" variant="ghost" className="mt-1" onClick={() => void resubmit([entry.id])}>Resubmit</Button>}
+                      </td>
                       <td className="p-3">
                         <div className="flex flex-wrap items-center gap-2">
                           {entry.photoId ? <><StatusBadge status="Attached" tone="success" /><ReceiptPhotoView photoId={entry.photoId} label="View" /></> : <StatusBadge status="Missing" tone="warning" />}

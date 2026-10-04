@@ -59,6 +59,8 @@ export type DayEntry = {
   penalty: number;
   /** The receipt photo attached to this entry, if any. */
   photoId: string;
+  /** Why the approver returned it (rejected its remittance); blank unless Returned. */
+  returnReason: string;
 };
 
 /**
@@ -89,14 +91,15 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
   const money = (value: unknown) => (text(value) === "" ? "" : peso(number(value)));
   const today = manilaNow().date;
 
-  type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings" | "photoId">;
+  type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings" | "photoId" | "returnReason">;
   const entry = (values: Base): DayEntry => {
     const slipDate = text(slipRows.get(values.remittanceId)?.[3]).slice(0, 10);
     return {
       ...values,
       // The office received the cash on the remittance slip's date; without a slip, the Date Remitted on the entry.
-      remittedAt: slipStamp(values.remittanceId) || values.dateRemitted,
-      onRemittance: !["", "Outstanding"].includes(values.remittanceStatus),
+      remittedAt: values.remittanceStatus === "Returned" ? "" : slipStamp(values.remittanceId) || values.dateRemitted,
+      onRemittance: !["", "Outstanding", "Returned"].includes(values.remittanceStatus),
+      returnReason: values.remittanceStatus === "Returned" ? text(slipRows.get(values.remittanceId)?.[23]) : "",
       incentiveDeadline: incentiveDeadline(values.orDate),
       warnings: dateWarnings({ receiptDate: values.orDate, receiptLabel: values.kind === "New Sale" ? "application date" : "OR date", dateRemitted: values.dateRemitted, slipDate, recordedOn: values.recordedOn, today }),
       details: values.details.filter(([, value]) => value !== ""),

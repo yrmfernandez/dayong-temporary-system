@@ -3,6 +3,8 @@ import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { auditedEmployees } from "@/lib/daily-audit";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { getEntriesForRange } from "@/lib/todays-entries";
+import { withEncoder } from "@/lib/encoder-context";
+import { resubmitReturned } from "@/lib/remittance-workflow";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 
@@ -30,3 +32,17 @@ export async function GET(request: Request) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load your entries." }, { status: 400 });
   }
 }
+
+/** The clerk resubmits Returned entries after fixing them (they go back to Pending Approval once photos are attached). */
+export const POST = withEncoder(async (request: Request) => {
+  const user = await getSessionUser();
+  if (!user || !canAccessPath(user, "/my-entries")) return Response.json({ success: false, message: "You do not have access to My Entries." }, { status: 403 });
+  try {
+    const body = await request.json() as Record<string, unknown>;
+    const entryIds = Array.isArray(body.entryIds) ? body.entryIds.map((id) => String(id ?? "").trim()).filter(Boolean) : [];
+    const slips = await resubmitReturned(entryIds, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+    return Response.json({ success: true, message: slips.length ? `Resubmitted for approval: ${slips.join(", ")}.` : "Reopened. They go to approval once every receipt photo is attached." });
+  } catch (error) {
+    return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to resubmit." }, { status: 400 });
+  }
+});

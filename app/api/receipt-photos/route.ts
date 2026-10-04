@@ -1,4 +1,5 @@
 import { canAccessPath } from "@/lib/access-control";
+import { resubmitReturned, submitReadyEntries } from "@/lib/remittance-workflow";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
@@ -39,7 +40,18 @@ export const POST = withEncoder(async (request: Request) => {
     if (unknown.length) throw new Error(`Entry not found: ${unknown.join(", ")}.`);
     if (!(await canManageUsers()) && entryIds.some((id) => encoders.get(id) !== user.employeeId)) throw new Error("You can add receipt photos only to entries you encoded.");
     const saved = await saveReceiptPhoto({ entryIds, dataUrl: text(body.dataUrl), width: Number(body.width), height: Number(body.height) });
-    return Response.json({ success: true, ...saved, message: `Receipt photo saved for ${saved.entryIds.length} entr${saved.entryIds.length === 1 ? "y" : "ies"} (${Math.round(saved.sizeBytes / 1000)} KB).` });
+    // With the photo attached, entries that now have everything go to Pending Approval on their own; a Returned entry
+    // given a new photo is resubmitted.
+    const statuses = new Map([...sales.slice(1).map((row) => [text(row[0]), text(row[35])] as const), ...collections.slice(1).map((row) => [text(row[0]), text(row[28])] as const)]);
+    const returned = entryIds.filter((id) => statuses.get(id) === "Returned");
+    let slips: string[] = [];
+    try {
+      if (returned.length) slips = await resubmitReturned(returned, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+      slips = [...slips, ...(await submitReadyEntries(entryIds.filter((id) => !returned.includes(id))))];
+    } catch (error) {
+      console.error("Receipt photo saved, but the entries could not be submitted for approval.", error);
+    }
+    return Response.json({ success: true, ...saved, slips, message: `Receipt photo saved for ${saved.entryIds.length} entr${saved.entryIds.length === 1 ? "y" : "ies"} (${Math.round(saved.sizeBytes / 1000)} KB).${slips.length ? ` Sent for approval: ${slips.join(", ")}.` : ""}` });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save the photo." }, { status: 400 });
   }

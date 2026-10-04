@@ -534,7 +534,7 @@ test('administrator who is also an Entry Clerk may approve own remittance', asyn
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
 });
 
-test('any Remittances user can create an approved remittance when full cash is confirmed', async () => {
+test('only an approver can approve cash received in full, and it does not wait for receipt photos', async () => {
   const h = harness({ userId: 'USR-7', employeeId: 'MD-2099-0102', name: 'Test Clerk', roleNames: ['Entry Clerk'], permissions: {} });
   const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[6] = 'MINTAL'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 300; collection[28] = 'Outstanding'; collection[30] = 'EMP-1'; collection[31] = 'Ana'; collection[32] = 'Collector';
   const collectionHeader = Array(33).fill(''); collectionHeader[28] = 'Remittance Status';
@@ -544,6 +544,9 @@ test('any Remittances user can create an approved remittance when full cash is c
   h.rows['Remittance Collections'] = [['Remittance Collection ID']];
   deadlineHeaders(h);
   const route = h.load('app/api/remittances/route.ts');
+  // An Entry Clerk's entries reach approval on their own; approving cash at once is for approvers.
+  assert.equal((await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 300, remittanceDate: '2026-09-28', remittanceTime: '09:00', cashConfirmed: true }))).status, 403);
+  h.setUser({ userId: 'USR-7', employeeId: 'MD-2099-0102', name: 'Test Clerk', roleNames: ['Administrator', 'Entry Clerk'], permissions: { manageUsers: true } });
   // No receipt photo yet: cash received in full is approved at once, and the photo is attached later.
   const short = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 299, remittanceDate: '2026-09-28', remittanceTime: '09:00', cashConfirmed: true }));
   assert.equal(short.status, 400);
@@ -1184,7 +1187,8 @@ test('clock-in uses the branch on the employee record, never one sent by the pag
 });
 
 test('new sales are remitted on their own slip, separate from collections', async () => {
-  const h = harness();
+  // An approver sees every entry (an Entry Clerk sees only what they encoded).
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Approver', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   const collectionsHeader = Array(37).fill(''); collectionsHeader[28] = 'Remittance Status';
   const collection = Array(37).fill(''); collection[0] = 'COL-1'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 270; collection[28] = 'Outstanding'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS';
   const sale = Array(38).fill(''); sale[0] = 'SAL-1'; sale[1] = '2026-09-25T02:00:00.000Z'; sale[2] = 'BR-1'; sale[3] = 'Maria'; sale[5] = 'PH-2'; sale[21] = 'DP-1'; sale[23] = 'Cash'; sale[26] = 500; sale[28] = 'APP-7'; sale[35] = 'Outstanding'; sale[37] = 'DPE-2'; sale.push(25, 'Late turnover of new sales');
@@ -1228,7 +1232,7 @@ test('New Sales Fidelity is the MAS own money: incentives stay whole and the rem
   assert.deepEqual(saleRow.slice(40), [150, 200, 500], 'the incentive is untouched; company share and the batch Fidelity');
 
   // Its remittance expects the company share plus the Fidelity.
-  const h2 = harness();
+  const h2 = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Approver', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   const sale = Array(43).fill(''); sale[0] = 'SAL-9'; sale[1] = '2026-09-25T02:00:00.000Z'; sale[2] = 'BR-1'; sale[3] = 'Maria'; sale[21] = 'DP-1'; sale[26] = 350; sale[35] = 'Outstanding'; sale[37] = 'DPE-0002'; sale[40] = 150; sale[41] = 200; sale[42] = 50;
   const collectionsHeader = Array(37).fill(''); collectionsHeader[28] = 'Remittance Status';
   const remittancesHeader = Array(26).fill(''); remittancesHeader[12] = 'Difference';
@@ -1706,4 +1710,40 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
   const ranges = h.writes.filter((write) => write.requestBody?.data).flatMap((write) => write.requestBody.data.map((item) => `${item.range}=${item.values[0][0]}`));
   assert.equal(ranges[0], "'Employees'!A2=MD-2026-0042", 'the Employees row is written first');
   assert.deepEqual([...ranges].sort(), ["'Collections'!AE2=MD-2026-0042", "'Collections'!AE3=MD-2026-0042", "'Collections'!W3=MD-2026-0042", "'Employees'!A2=MD-2026-0042", "'Report Notes'!A2=MD-2026-0042|daily|2026-10-01", "'Users'!B2=MD-2026-0042"], 'every reference, and nothing of the other employee');
+});
+
+test('entries go to Pending Approval on their own once every receipt photo is attached, and clerks see only theirs', async () => {
+  const setup = (photos) => {
+    const h = harness({ userId: 'USR-7', employeeId: 'DPE-7', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+    const collection = (id, encoder) => { const row = Array(41).fill(''); Object.assign(row, { 0: id, 1: 'CBT-1', 6: 'BR-1', 7: 'Maria', 9: '2026-09-25', 10: 350, 19: 'Posted', 22: encoder, 23: encoder === 'DPE-7' ? 'Clerk' : 'Other', 24: '2026-09-25T02:00:00.000Z', 26: 300, 28: 'Outstanding', 30: 'DPE-2', 31: 'Maria', 32: 'MAS', 40: '2026-09-25' }); return row; };
+    const other = collection('COL-X', 'DPE-8'); other[1] = 'CBT-2';
+    const collectionsHeader = Array(41).fill(''); collectionsHeader[28] = 'Remittance Status';
+    const remittancesHeader = Array(28).fill(''); remittancesHeader[12] = 'Difference';
+    h.rows.Collections = [collectionsHeader, collection('COL-A', 'DPE-7'), collection('COL-B', 'DPE-7'), other];
+    h.rows.Remittances = [remittancesHeader];
+    h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+    h.rows['Receipt Photos'] = [[], ...photos.map((ids, index) => [`RCP-${index}`, ids])];
+    deadlineHeaders(h);
+    return h;
+  };
+  // One of the batch's two Collections has no photo yet: nothing is sent.
+  const partial = setup(['COL-A']);
+  assert.deepEqual(await partial.load('lib/remittance-workflow.ts').submitReadyEntries(['COL-A']), []);
+  assert.equal(partial.writes.length, 0);
+  // With both photos the batch goes as one slip, expecting exactly the company share.
+  const ready = setup(['COL-A,COL-B']);
+  const slips = await ready.load('lib/remittance-workflow.ts').submitReadyEntries(['COL-A']);
+  assert.equal(slips.length, 1);
+  const requests = ready.writes.at(-1).requestBody.requests;
+  const row = requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.deepEqual([row[4], row[10], row[11], row[12], row[8]], ['Pending Approval', 600, 600, 0, 'System']);
+  assert.match(row[22], /Submitted automatically .* encoded by Clerk/);
+  // The clerk's Remittances page shows only what they encoded; an approver sees everyone and can filter.
+  const own = await (await ready.load('app/api/remittances/route.ts').GET()).json();
+  assert.deepEqual(own.outstanding.map((item) => item.id).sort(), ['COL-A', 'COL-B']);
+  assert.equal(own.canApprove, false);
+  ready.setUser({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Approver', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const all = await (await ready.load('app/api/remittances/route.ts').GET()).json();
+  assert.deepEqual(all.outstanding.map((item) => item.id).sort(), ['COL-A', 'COL-B', 'COL-X']);
+  assert.deepEqual(all.clerks.map((item) => item.employeeId), ['DPE-7', 'DPE-8']);
 });
