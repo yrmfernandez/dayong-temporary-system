@@ -150,6 +150,6 @@ Migration files keep a full history of every schema change, and staging catches 
 
 ## What the owner provides before phase 0
 
-1. Two Supabase projects (production and staging) in Southeast Asia (Singapore), created under the company's account.
+1. Two Supabase projects (production and staging) in Southeast Asia (Singapore), in a **Dayong** organization created with the owner's work email and two-factor authentication. A second Owner (company or administrator email) is invited to the organization when one is available, so access never depends on one person.
 2. Their connection strings and service keys, added to Vercel and `.env.local`, never committed.
 3. A date for the cutover evening, after the feature freeze starts.
