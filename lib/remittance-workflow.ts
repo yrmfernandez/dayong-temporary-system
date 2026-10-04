@@ -242,7 +242,11 @@ function forfeitUpdate(sheet: Awaited<ReturnType<typeof sheetIds>>, item: CashCo
     ];
 }
 
-/** Approval needs a receipt photo for every item, so the approver can check the cash against the receipts. */
+/**
+ * An administrator's approval of a submitted slip needs a receipt photo for every item, so the approver can check the
+ * cash against the receipts. Cash received in full (approved at once by whoever received it) does not wait for photos:
+ * the clerk attaches them later in Today's Entries or My Entries.
+ */
 function requirePhotos(items: CashCollection[]) {
   const missing = items.filter((item) => !item.photoId).map((item) => item.id);
   if (missing.length) throw new Error(`Attach the receipt photo${missing.length === 1 ? "" : "s"} before approval (My Entries): ${missing.join(", ")}.`);
@@ -295,7 +299,6 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   // Confirmed full cash is created and approved in one atomic write by whoever received it.
   if (input.cashConfirmed && difference !== 0) throw new Error("Cash received in full requires the actual amount to equal the expected amount.");
   const approved = Boolean(input.cashConfirmed);
-  if (approved) requirePhotos(collections);
   // The Remittances sheet itself shows any penalty and Fidelity on the batch. Fidelity is part of the expected amount; a penalty is not.
   const penalized = collections.filter((collection) => collection.penalty > 0);
   const penaltyText = penalized.map((collection) => `Penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (separate from remittance): ${collection.penaltyNote}`).join("; ");

@@ -9,6 +9,20 @@
 //                                       into new "Legacy Pending NS" / "Legacy Pending COLL" tabs in the database
 //   node scripts/migrate-legacy-members.mjs --pending --fix-nop-typos [--apply --skip-invalid]   migrate from those tabs
 //   after staff fix them (rows keep their original source, tab, row, and assigned member, so IDs and members stay stable)
+//   add --repair to fix failing accounts by rule (company decision 2026-10-04), each change listed in "Legacy Repairs":
+//     - AMOUNT COLLECTED unreadable: the program's monthly rate x the months covered (or the usual monthly amount paid
+//       for that program when it has no rate);  OR DATE unreadable: the DATE REMITTED;
+//     - the same OR number twice on one account: one kept;
+//     - missing NOPs, and receipts claiming the same NOP or month: every payment renumbered consecutively in OR-date
+//       order (DATE REMITTED, then the written NOP, break ties), from NOP 2 after a New Sale or from the account's
+//       first NOP (NOP 1 when the DOI came from the first OR date); a payment covers exactly the months its amount pays
+//       at the program's monthly rate. An amount that is not a whole number of monthly payments is not imported: the
+//       account is listed under "Not imported: payment is not a whole number of monthly payments" for review;
+//     - no usable DOI: the account's first OR date is the DOI.
+//     Only accounts that fail review as recorded are repaired. With --pending --apply, imported rows are removed from
+//     the Legacy Pending tabs.
+//   node scripts/migrate-legacy-members.mjs --pending --drop-existing [--apply]   remove the pending rows of accounts
+//     already in the database (rows left out on purpose as duplicates of what was imported); a dry run lists the count.
 // Sources can also be named explicitly: .xlsx/.csv files, folders, or Google Sheets URLs shared with the service account.
 // Run scripts/legacy-programs.mjs first: old DAYONG PROGRAM labels are mapped through config/legacy-programs.json.
 //
@@ -42,6 +56,8 @@ const skipInvalid = args.includes("--skip-invalid");
 const fixNopTypos = args.includes("--fix-nop-typos");
 const exportPending = args.includes("--export-pending");
 const fromPending = args.includes("--pending");
+const repair = args.includes("--repair");
+const dropExisting = args.includes("--drop-existing");
 const PENDING_PREFIX = "Legacy Pending";
 const sourceArgs = args.filter((a) => !a.startsWith("--"));
 
@@ -173,6 +189,9 @@ const mode = (values) => { const counts = new Map(); for (const v of values) cou
 /* ---------- issue log (row references only) ---------- */
 const issues = new Map();
 const issue = (category, where) => { if (!issues.has(category)) issues.set(category, []); issues.get(category).push(where); };
+// --repair: every change made to a row, written to the "Legacy Repairs" tab for the imported accounts.
+const repairs = [];
+const repaired = (row, change, before, after) => { repairs.push({ ref: row.ref, where: row.where, change, before: String(before ?? ""), after: String(after ?? "") }); issue(`Repaired: ${change}`, row.where); };
 
 /* ---------- database lookups ---------- */
 const dbTitles = ["Programs", "Branches", "Employees", "Members", "Member programs", "Sales", "Collections", "Beneficiaries"];
@@ -365,6 +384,39 @@ for (const group of groups.values()) {
 }
 
 /* ---------- 4. Payments: months from NOP, then the system's account check ---------- */
+// The program's monthly rate; without one, the most common amount paid per month for that program in these rows.
+const usualRate = new Map();
+for (const e of enrollments) for (const row of e.rows) {
+  const nop = parseNop(row.nop), amount = parseAmount(row.amount);
+  if (!nop || !(amount > 0)) continue;
+  const perMonth = Math.round(amount / (nop.to - nop.from + 1) * 100) / 100;
+  const counts = usualRate.get(e.program.id) ?? new Map();
+  counts.set(perMonth, (counts.get(perMonth) ?? 0) + 1);
+  usualRate.set(e.program.id, counts);
+}
+const rateFor = (program) => program.basePay > 0 ? program.basePay : [...(usualRate.get(program.id) ?? new Map())].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
+// --repair: payments renumbered consecutively in OR-date order, each covering the months its amount pays.
+function renumberAll(e, doiIndex) {
+  const rate = rateFor(e.program);
+  const ordered = [...e.payments].sort((a, b) => a.orDate.localeCompare(b.orDate) || (a.dateRemitted || "").localeCompare(b.dateRemitted || "") || (a.nopFrom || Infinity) - (b.nopFrom || Infinity));
+  const written = ordered.filter((p) => p.nopFrom > 0).map((p) => p.nopFrom);
+  let next = e.sale ? 2 : e.doiFromFirstOr || !written.length ? 1 : Math.min(...written);
+  const rateCents = Math.round(rate * 100);
+  // Every payment must be exactly a whole number of monthly payments; otherwise the account is left for review.
+  const inexact = ordered.filter((p) => !(rateCents > 0 && Math.round(p.amount * 100) % rateCents === 0 && Math.round(p.amount * 100) >= rateCents));
+  if (inexact.length) {
+    e.inexact = inexact.map((p) => `${p.row.where}: ₱${p.amount} at ₱${rate}/month`);
+    return null;
+  }
+  return ordered.map((p) => {
+    const count = Math.round(p.amount * 100) / rateCents;
+    const from = next;
+    next += count;
+    if (from === p.nopFrom && from + count - 1 === p.nopTo) return p;
+    repaired(p.row, "NOP renumbered in OR-date order", p.nopFrom > 0 ? `NOP ${p.nopFrom}-${p.nopTo}` : "NOP unreadable", `NOP ${from}-${from + count - 1}`);
+    return { ...p, nopFrom: from, nopTo: from + count - 1, monthFrom: monthName(doiIndex + from - 1), monthTo: monthName(doiIndex + from + count - 2) };
+  });
+}
 // A failing account whose payments, renumbered consecutively in OR-date order, pass review with at most 2 NOPs changed.
 let typoFixable = 0;
 function nopTypoFix(e, doiIndex, account) {
@@ -400,15 +452,22 @@ let mismatchedInactive = 0;
 for (const e of enrollments) {
   const parsed = [];
   for (const row of e.rows) {
-    const orDate = parseDate(row.orDate).date;
-    const nop = parseNop(row.nop);
-    const amount = parseAmount(row.amount);
+    let orDate = parseDate(row.orDate).date;
+    let nop = parseNop(row.nop);
+    let amount = parseAmount(row.amount);
+    if (repair) {
+      const rate = rateFor(e.program);
+      if (!orDate && parseDate(row.dateRemitted).date) { orDate = parseDate(row.dateRemitted).date; repaired(row, "OR DATE unreadable: DATE REMITTED used", row.orDate, orDate); }
+      if (!(amount > 0) && rate > 0) { amount = Math.round(rate * (nop ? nop.to - nop.from + 1 : 1) * 100) / 100; repaired(row, "AMOUNT COLLECTED unreadable: program rate used", row.amount, amount); }
+      // An unreadable NOP is numbered with the others in OR-date order below.
+      if (!nop && amount > 0) nop = { from: 0, to: 0, unknown: true };
+    }
     const problems = [!orDate && "OR DATE missing or unreadable", !nop && "NOP unreadable", !(amount > 0) && "AMOUNT COLLECTED missing or not a positive number"].filter(Boolean);
     if (problems.length) { for (const p of problems) issue(`Collection: ${p}`, row.where); e.unreadable = true; continue; }
     parsed.push({ row, orDate, nop, amount, monthNames: parseMonthNames(row.monthOf) });
   }
   // DOI month: the sale's OR date, or worked back from each payment (its first month nearest its OR date, minus NOP - 1).
-  const estimates = parsed.filter((p) => p.monthNames).map((p) => {
+  const estimates = parsed.filter((p) => p.monthNames && !p.nop.unknown).map((p) => {
     const orIndex = monthIndex(p.orDate.slice(0, 7));
     let first = Math.floor(orIndex / 12) * 12 + p.monthNames[0] - 1;
     while (first - orIndex > 6) first -= 12;
@@ -422,17 +481,37 @@ for (const e of enrollments) {
   } else if (estimate) {
     e.doi = `${monthName(estimate.value)}-01`;
     if (estimate.share < 0.8) issue("Payments disagree on the DOI month (most common used): review NOP/MONTH OF", e.rows[0].where);
+  } else if (repair && parsed.length) {
+    e.doi = [...parsed].sort((a, b) => a.orDate.localeCompare(b.orDate))[0].orDate;
+    e.doiFromFirstOr = true;
+    repaired(parsed[0].row, "No usable DOI: first OR date used", "", e.doi);
   } else { e.invalid = "no payment has a readable MONTH OF to work out the DOI"; }
+  // A New Sale without a valid DOI: the first OR date, when repairing.
+  if (repair && e.sale && !/^\d{4}-\d{2}-\d{2}$/.test(e.doi ?? "") && parsed.length) {
+    e.doi = [...parsed].sort((a, b) => a.orDate.localeCompare(b.orDate))[0].orDate;
+    e.doiFromFirstOr = true;
+    repaired(e.sale, "New Sale DOI invalid: first OR date used", "", e.doi);
+  }
   if (e.invalid || e.unreadable) { e.invalid ??= "has collection rows that could not be read"; issue(`Account fails review: ${e.invalid}`, (e.sale ?? e.rows[0]).where); continue; }
 
   const doiIndex = monthIndex(e.doi.slice(0, 7));
   e.payments = [];
   // The same receipt entered twice (same NOP and OR number, or same NOP, OR date, and amount without an OR number).
-  const seen = new Set();
+  const seen = new Set(), seenReceipts = new Set();
   for (const p of parsed) {
     const entry = `${p.nop.from}-${p.nop.to}|${norm(p.row.orNumber) || `${p.orDate}|${p.amount}`}`;
     if (seen.has(entry)) { issue("Same payment entered twice: duplicate skipped", p.row.where); continue; }
     seen.add(entry);
+    // --repair: one OR number is one receipt; a second row with it is the same payment entered again.
+    if (repair && norm(p.row.orNumber)) {
+      if (seenReceipts.has(norm(p.row.orNumber))) { repaired(p.row, "Same OR number twice on the account: one kept", p.row.orNumber, "not imported"); continue; }
+      seenReceipts.add(norm(p.row.orNumber));
+    }
+    if (p.nop.unknown) {
+      const agent = findEmployee(p.row.agent);
+      e.payments.push({ id: hashId("COL", p.row.ref), row: p.row, enrollmentId: e.id, orDate: p.orDate, orNumber: p.row.orNumber, monthFrom: "", monthTo: "", nopFrom: 0, nopTo: 0, amount: p.amount, dateRemitted: parseDate(p.row.dateRemitted).date, mas: agent?.name ?? p.row.agent, agent, channel: channelOf(p.row.status) });
+      continue;
+    }
     if (e.sale && p.nop.from === 1) { if (p.nop.to === 1) { issue("NOP 1 collection repeats the New Sale: skipped", p.row.where); continue; } p.nop = { ...p.nop, from: 2 }; }
     const monthFrom = monthName(doiIndex + p.nop.from - 1), monthTo = monthName(doiIndex + p.nop.to - 1);
     const expected = Array.from({ length: p.nop.to - p.nop.from + 1 }, (_, i) => ((doiIndex + p.nop.from - 1 + i) % 12) + 1);
@@ -450,9 +529,19 @@ for (const e of enrollments) {
   if (!e.branch) { e.invalid = "branch not found in Branches"; issue(`Account fails review: ${e.invalid}`, (e.sale ?? e.rows[0]).where); continue; }
   // Pending rows of an account already in the database were skipped on purpose (duplicates, NOP 1 repeats of a sale):
   // only whole accounts that failed review are migrated from the Legacy Pending tabs.
-  if (fromPending && existingIds.has(e.id)) { e.invalid = "account is already in the database (row was skipped on purpose)"; issue(`Not migrated: ${e.invalid}`, (e.sale ?? e.rows[0]).where); continue; }
+  if (fromPending && existingIds.has(e.id)) { e.alreadyImported = true; e.invalid = "account is already in the database (row was skipped on purpose)"; issue(`Not migrated: ${e.invalid}`, (e.sale ?? e.rows[0]).where); continue; }
   const account = { id: e.id, memberId: e.member.id, memberNumber: "", programId: e.program.id, doi: e.doi, branch: "", mas: "", basePay: e.program.basePay, payBalanceTotal: e.program.payBalanceTotal, storedStatus: "" };
-  const renumbered = nopTypoFix(e, doiIndex, account);
+  // --repair: an account that fails as recorded (or has an unreadable NOP) is renumbered by rule.
+  if (repair) {
+    let passes = !e.payments.some((p) => p.nopFrom === 0);
+    if (passes) { try { accountState(account, e.payments, today); } catch { passes = false; } }
+    if (!passes) {
+      const renumberedAll = renumberAll(e, doiIndex);
+      if (!renumberedAll) { e.invalid = "payment is not a whole number of monthly payments"; issue(`Not imported: ${e.invalid}`, (e.sale ?? e.rows[0]).where); continue; }
+      e.payments = renumberedAll;
+    }
+  }
+  const renumbered = repair ? null : nopTypoFix(e, doiIndex, account);
   if (renumbered) {
     typoFixable++;
     if (fixNopTypos) { for (const p of renumbered.changed) issue("NOP looked mistyped: renumbered in OR-date order", p.row.where); e.payments = renumbered.payments; }
@@ -484,6 +573,11 @@ console.log(`\nWhy failing accounts fail (one count per problem spot):`);
 for (const [label, count] of [...diagnosis].sort((a, b) => b[1] - a[1])) console.log(`  ${String(count).padStart(5)} × ${label}`);
 console.log("\nIssues (count · first examples):");
 for (const [category, wheres] of [...issues].sort((a, b) => b[1].length - a[1].length)) console.log(`  ${wheres.length} × ${category}\n      e.g. ${wheres.slice(0, 3).join("; ")}`);
+const inexactAccounts = enrollments.filter((e) => e.inexact);
+if (inexactAccounts.length) {
+  console.log(`\nPayments that are not a whole number of monthly payments (${inexactAccounts.length} account(s) not imported):`);
+  for (const e of inexactAccounts) console.log(`  ${e.program.code}: ${e.inexact.join("; ")}`);
+}
 mkdirSync("backups", { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const reportFile = `backups/legacy-migration-report-${stamp}.txt`;
@@ -491,6 +585,14 @@ writeFileSync(reportFile, [...issues].map(([category, wheres]) => `## ${category
 console.log(`\nFull list of row references: ${reportFile}`);
 
 if (exportPending) await writePendingTabs();
+if (dropExisting) {
+  if (!fromPending) throw new Error("--drop-existing works on the Legacy Pending tabs; add --pending.");
+  const refs = new Set(enrollments.filter((e) => e.alreadyImported).flatMap((e) => [e.sale?.ref, ...e.rows.map((row) => row.ref)].filter(Boolean)));
+  const removed = await removePendingRows(refs, !apply);
+  console.log(`
+${apply ? "Removed" : "Would remove"} ${removed.ns} New Sales and ${removed.coll} Collections row(s) of ${enrollments.filter((e) => e.alreadyImported).length} account(s) already in the database.`);
+  process.exit(0);
+}
 if (!apply) { console.log("\nDry run only. Nothing was written to Members, Member programs, Sales, Beneficiaries, or Collections."); process.exit(0); }
 if (invalid.length && !skipInvalid) { console.error(`\n${invalid.length} account(s) fail review. Fix them in the old workbook, or re-run with --skip-invalid to import only passing accounts.`); process.exit(1); }
 
@@ -549,6 +651,40 @@ for (const title of ["Members", "Member programs", "Sales", "Beneficiaries", "Co
 }
 console.log(`Done. Written row IDs are listed in backups/legacy-migration-ids-${stamp}.json (all contain "-LEG-").`);
 
+// What --repair changed on the imported accounts, for staff to review (row references and values only).
+const importedRefs = new Set(valid.flatMap((e) => [e.sale?.ref, ...e.rows.map((row) => row.ref)].filter(Boolean)));
+const repairRows = repairs.filter((item) => importedRefs.has(item.ref)).map((item) => [hashId("REP", item.ref, item.change), item.where, hashId("COL", item.ref), item.change, item.before, item.after, importedAt]);
+if (repairRows.length) {
+  const title = "Legacy Repairs";
+  if (!meta.data.sheets.some((sheet) => sheet.properties.title === title)) {
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId: DB, requestBody: { requests: [{ addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } } }] } }, options);
+    await sheets.spreadsheets.values.update({ spreadsheetId: DB, range: `'${title}'!A1:G1`, valueInputOption: "RAW", requestBody: { values: [["repair_id", "source_row", "collection_id", "change", "before", "after", "repaired_at"]] } }, options);
+  }
+  await sheets.spreadsheets.values.append({ spreadsheetId: DB, range: `'${title}'!A:G`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values: repairRows } }, options);
+  console.log(`  Legacy Repairs: ${repairRows.length} change(s) listed.`);
+}
+
+// Imported rows leave the Legacy Pending tabs (matched by their original source tab and row).
+if (fromPending && importedRefs.size) {
+  const removed = await removePendingRows(importedRefs, false);
+  console.log(`  Removed ${removed.ns} New Sales and ${removed.coll} Collections row(s) from the Legacy Pending tabs.`);
+}
+
+/** Deletes the Legacy Pending rows whose original source, tab and row are in `refs` (or only counts them). */
+async function removePendingRows(refs, countOnly) {
+  const fresh = await sheets.spreadsheets.get({ spreadsheetId: DB, fields: "sheets.properties" }, options);
+  const targets = [];
+  for (const suffix of ["NS", "COLL"]) {
+    const title = `${PENDING_PREFIX} ${suffix}`;
+    const properties = fresh.data.sheets.find((sheet) => sheet.properties.title === title)?.properties;
+    if (!properties) continue;
+    const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: DB, range: `'${title}'!A:C` }, options)).data.values ?? [];
+    rows.forEach((row, index) => { if (index > 0 && refs.has(`${str(row[0])}|${str(row[1])}|${Number(row[2])}`)) targets.push({ index, sheetId: properties.sheetId, suffix }); });
+  }
+  targets.sort((a, b) => a.sheetId - b.sheetId || b.index - a.index);
+  if (!countOnly && targets.length) await sheets.spreadsheets.batchUpdate({ spreadsheetId: DB, requestBody: { requests: targets.map((item) => ({ deleteDimension: { range: { sheetId: item.sheetId, dimension: "ROWS", startIndex: item.index, endIndex: item.index + 1 } } })) } }, options);
+  return { ns: targets.filter((item) => item.suffix === "NS").length, coll: targets.filter((item) => item.suffix === "COLL").length };
+}
 
 /* ---------- --export-pending: keep every row the database does not have ---------- */
 async function writePendingTabs() {

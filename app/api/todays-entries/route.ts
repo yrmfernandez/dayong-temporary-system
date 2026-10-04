@@ -15,7 +15,8 @@ async function allowedUser() {
 
 /** New Sales and Collections for one day, counted by the requested mode or the company default. */
 export async function GET(request: Request) {
-  if (!(await allowedUser())) return Response.json({ success: false, message: "You do not have access to Today's Entries." }, { status: 403 });
+  const user = await allowedUser();
+  if (!user) return Response.json({ success: false, message: "You do not have access to Today's Entries." }, { status: 403 });
   try {
     const params = new URL(request.url).searchParams;
     const today = manilaNow().date;
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
     const requested = params.get("mode");
     const mode = isTodayMode(requested) ? requested : defaultMode;
     const result = await getEntriesForDay(date, mode);
-    return Response.json({ success: true, date, today, mode, defaultMode, canEdit: await canManageUsers(), ...result }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, date, today, mode, defaultMode, canEdit: await canManageUsers(), employeeId: user.employeeId, ...result }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load today's entries." }, { status: 400 });
   }

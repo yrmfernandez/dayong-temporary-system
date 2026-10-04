@@ -27,7 +27,7 @@ export async function GET(request: Request) {
  */
 export const POST = withEncoder(async (request: Request) => {
   const user = await getSessionUser();
-  if (!user || !canAccessPath(user, "/my-entries")) return Response.json({ success: false, message: "You do not have access to add receipt photos." }, { status: 403 });
+  if (!user || !["/my-entries", "/todays-entries"].some((path) => canAccessPath(user, path))) return Response.json({ success: false, message: "You do not have access to add receipt photos." }, { status: 403 });
   try {
     const body = await request.json() as Record<string, unknown>;
     const entryIds = Array.isArray(body.entryIds) ? body.entryIds.map(text).filter(Boolean) : [];

@@ -15,9 +15,10 @@ import { TODAY_MODE_LABELS, TODAY_MODES, type TodayMode } from "@/lib/today-mode
 import type { DayEntry } from "@/lib/todays-entries";
 import { EntryCorrectionForm } from "@/components/entry-correction-form";
 import { EntryDetails } from "@/components/entry-details";
+import { ReceiptPhotoUpload, ReceiptPhotoView } from "@/components/receipt-photo";
 
 type Totals = { count: number; amount: number; incentives: number; forfeited: number };
-type Result = { success: boolean; message?: string; date: string; today: string; mode: TodayMode; defaultMode: TodayMode; canEdit: boolean; entries: DayEntry[]; sales: Totals; collections: Totals };
+type Result = { success: boolean; message?: string; date: string; today: string; mode: TodayMode; defaultMode: TodayMode; canEdit: boolean; employeeId: string; entries: DayEntry[]; sales: Totals; collections: Totals };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const MODE_HELP: Record<TodayMode, string> = {
@@ -131,16 +132,16 @@ export default function TodaysEntriesPage() {
 
       {data && (
         <>
-          <EntryTable title="New Sales" entries={sales} canEdit={data.canEdit} editing={editing} setEditing={setEditing} onSaved={(text) => { setMessage(text); setEditing(""); void load(date, mode); }} />
-          <EntryTable title="Collections" entries={collections} canEdit={data.canEdit} editing={editing} setEditing={setEditing} onSaved={(text) => { setMessage(text); setEditing(""); void load(date, mode); }} />
+          <EntryTable title="New Sales" entries={sales} canEdit={data.canEdit} me={data.employeeId} editing={editing} setEditing={setEditing} onSaved={(text) => { setMessage(text); setEditing(""); void load(date, mode); }} />
+          <EntryTable title="Collections" entries={collections} canEdit={data.canEdit} me={data.employeeId} editing={editing} setEditing={setEditing} onSaved={(text) => { setMessage(text); setEditing(""); void load(date, mode); }} />
         </>
       )}
     </div>
   );
 }
 
-function EntryTable({ title, entries, canEdit, editing, setEditing, onSaved }: {
-  title: string; entries: DayEntry[]; canEdit: boolean; editing: string; setEditing: (id: string) => void; onSaved: (message: string) => void;
+function EntryTable({ title, entries, canEdit, me, editing, setEditing, onSaved }: {
+  title: string; entries: DayEntry[]; canEdit: boolean; me: string; editing: string; setEditing: (id: string) => void; onSaved: (message: string) => void;
 }) {
   // `editing` holds "view:<id>" or "edit:<id>" for the row whose panel is open.
   const columns = 9;
@@ -175,6 +176,11 @@ function EntryTable({ title, entries, canEdit, editing, setEditing, onSaved }: {
                     <td className="p-3"><div className="flex gap-2">
                       <Button type="button" size="sm" variant="outline" onClick={() => toggle(`view:${entry.id}`)}><Eye className="size-3.5" />View</Button>
                       {canEdit && <Button type="button" size="sm" variant="outline" onClick={() => toggle(`edit:${entry.id}`)}><Pencil className="size-3.5" />Edit</Button>}
+                    </div>
+                    {/* Receipt photo: the clerk who encoded it, or an administrator, can add it any time. */}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {entry.photoId ? <ReceiptPhotoView photoId={entry.photoId} label="Receipt" /> : <span className="text-xs font-medium text-amber-800">No receipt photo</span>}
+                      {(canEdit || entry.encodedByEmployeeId === me) && <ReceiptPhotoUpload entryIds={[entry.id]} replace={Boolean(entry.photoId)} onSaved={onSaved} />}
                     </div></td>
                   </tr>
                   {editing === `view:${entry.id}` && <tr className="border-t bg-muted/20"><td colSpan={columns} className="p-3"><EntryDetails entry={entry} onClose={() => setEditing("")} /></td></tr>}

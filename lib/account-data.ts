@@ -116,7 +116,11 @@ export async function commitCollections(collectionRows: (string | number)[][], a
   };
   const cell = (value: string | number) => ({ userEnteredValue: typeof value === "number" ? { numberValue: value } : { stringValue: value } });
   const byEnrollment = paymentsByEnrollment(payments);
+  // appendCells cannot write past the sheet's last column, so widen the grid first when a row is wider (new columns).
+  const collectionsGrid = metadata.data.sheets?.find((sheet) => sheet.properties?.title === "Collections")?.properties?.gridProperties?.columnCount ?? 0;
+  const widest = Math.max(0, ...collectionRows.map((r) => r.length + identity.length));
   const requests = [
+    ...(collectionsGrid && widest > collectionsGrid ? [{ appendDimension: { sheetId: id("Collections"), dimension: "COLUMNS", length: widest - collectionsGrid } }] : []),
     { appendCells: { sheetId: id("Collections"), rows: collectionRows.map((r) => ({ values: [...r.slice(0, 21), ...identity, ...r.slice(21)].map(cell) })), fields: "userEnteredValue" } },
     ...accounts.map((account) => ({ updateCells: {
       range: { sheetId: id("Member programs"), startRowIndex: account.rowNumber - 1, endRowIndex: account.rowNumber, startColumnIndex: 18, endColumnIndex: 19 },

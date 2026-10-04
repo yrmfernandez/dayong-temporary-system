@@ -544,7 +544,7 @@ test('any Remittances user can create an approved remittance when full cash is c
   h.rows['Remittance Collections'] = [['Remittance Collection ID']];
   deadlineHeaders(h);
   const route = h.load('app/api/remittances/route.ts');
-  h.rows['Receipt Photos'] = [[], ['RCP-1', 'COL-1']];
+  // No receipt photo yet: cash received in full is approved at once, and the photo is attached later.
   const short = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 299, remittanceDate: '2026-09-28', remittanceTime: '09:00', cashConfirmed: true }));
   assert.equal(short.status, 400);
   const response = await route.POST(request({ collectionIds: ['COL-1'], actualAmount: 300, remittanceDate: '2026-09-28', remittanceTime: '09:00', cashConfirmed: true }));

@@ -805,10 +805,6 @@ export default function CollectionsPage() {
     }
 
     const approveNow = autoApproveRemittance && isCashPayment;
-    if (approveNow && !receiptPhoto) {
-      setSaveMessage("Cash received in full needs the receipt photo first. Take it under Cash count.");
-      return;
-    }
     if (approveNow && cashDue !== null && Math.round(cashCountTotal(cashCount) * 100) !== Math.round(cashDue * 100)) {
       setSaveMessage(`The counted cash must equal the cash due of ${formatCurrency(cashDue)}.`);
       return;
@@ -848,13 +844,15 @@ export default function CollectionsPage() {
         throw new Error(result.message || "Unable to save collections.");
       }
 
-      if (approveNow && receiptPhoto) {
-        // Saved: attach the receipt photo to the whole batch, then create and approve its remittance.
+      if (approveNow) {
+        // Saved: attach the receipt photo if one was taken (it can also be added later), then approve the remittance.
         const ids: string[] = result.collectionIds ?? [];
         const finish = async () => {
-          const photo = await fetch("/api/receipt-photos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryIds: ids, dataUrl: receiptPhoto.dataUrl, width: receiptPhoto.width, height: receiptPhoto.height }) });
-          const photoResult = await photo.json();
-          if (!photo.ok || !photoResult.success) throw new Error(photoResult.message || "The receipt photo could not be saved.");
+          if (receiptPhoto) {
+            const photo = await fetch("/api/receipt-photos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryIds: ids, dataUrl: receiptPhoto.dataUrl, width: receiptPhoto.width, height: receiptPhoto.height }) });
+            const photoResult = await photo.json();
+            if (!photo.ok || !photoResult.success) throw new Error(photoResult.message || "The receipt photo could not be saved.");
+          }
           const remittance = await fetch("/api/remittances", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ collectionIds: ids, actualAmount: cashCountTotal(cashCount), fidelityAmount: 0, remittanceDate: dateRemitted, remittanceTime: timeReceived, cashCount: formatCashCount(cashCount), remarks: "Cash received in full during collection encoding.", cashConfirmed: true }) });
           const remittanceResult = await remittance.json();
           if (!remittance.ok) throw new Error(remittanceResult.error || "The remittance could not be approved.");
@@ -863,7 +861,7 @@ export default function CollectionsPage() {
         try {
           const remittanceId = await finish();
           resetForm();
-          setSaveMessage(`${ids.length} collection(s) saved, receipt photo attached, and Remittance ${remittanceId} approved.`);
+          setSaveMessage(`${ids.length} collection(s) saved and Remittance ${remittanceId} approved.${receiptPhoto ? " Receipt photo attached." : " Add the receipt photo later in Today's Entries or My Entries."}`);
         } catch (followUp) {
           resetForm();
           setSaveMessage(`${ids.length} collection(s) saved, but ${followUp instanceof Error ? followUp.message : "the remittance could not be approved"} Finish it in My Entries and Remittances.`);
@@ -1787,9 +1785,9 @@ export default function CollectionsPage() {
                     <Label>Cash count</Label>
                     <CashCountInput value={cashCount} onChange={(value) => { setCashCount(value); setCashReceived(String(cashCountTotal(value))); }} />
                     <div className="mt-3 space-y-1">
-                      <Label>Receipt photo for this batch *</Label>
+                      <Label>Receipt photo for this batch (optional)</Label>
                       <input type="file" accept="image/*" capture="environment" className="block text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setPhotoError(""); try { setReceiptPhoto(await compressReceiptPhoto(file)); } catch (error) { setReceiptPhoto(null); setPhotoError(error instanceof Error ? error.message : "Unable to read the photo."); } }} />
-                      <p className="text-xs text-muted-foreground">{receiptPhoto ? `Photo ready (${Math.round(receiptPhoto.bytes / 1000)} KB). It is attached to every collection in this batch.` : "Approval needs a receipt photo; it is shrunk to under 80 KB before saving."}</p>
+                      <p className="text-xs text-muted-foreground">{receiptPhoto ? `Photo ready (${Math.round(receiptPhoto.bytes / 1000)} KB). It is attached to every collection in this batch.` : "You can add it now or later in Today's Entries or My Entries. It is shrunk to under 80 KB."}</p>
                       {photoError && <p className="text-xs text-red-700">{photoError}</p>}
                     </div>
                     {cashDue !== null && <p className={`mt-1 text-sm ${Math.round(cashCountTotal(cashCount) * 100) === Math.round(cashDue * 100) ? "text-emerald-700" : "text-muted-foreground"}`}>Cash due: {formatCurrency(cashDue)}</p>}
