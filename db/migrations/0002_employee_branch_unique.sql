@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "employee_branches_employee_branch_key" ON "employee_branches" USING btree ("employee_id","branch_id");

@@ -148,6 +148,8 @@ Migration files keep a full history of every schema change, and staging catches 
 | Oct 4, 2026 | Phase 0: Supabase projects (production, staging) in Singapore; staging in `.env.local` | Connections and secret key checked |
 | Oct 4, 2026 | Phase 0: `npm run sheets:audit` | 0 errors; 16,901 type warnings, all handled by the copy (see below) |
 | Oct 4, 2026 | Phase 1: `db/schema.ts`, migrations `0000_initial_schema`, `0001_audit_trigger`, applied to staging | 42 tables with row-level security, 41 audit triggers, no API-role access; rules checked in a rolled-back test |
+| Oct 4, 2026 | Phase 1: migrations `0002_employee_branch_unique`, `0003_copy_exceptions` | One branch assignment per employee and branch; table for cells the copy could not convert |
+| Oct 4, 2026 | Phase 3: `scripts/copy-sheets-to-postgres.mjs` first full load into staging | 32 s; row counts and money totals match for every table; database 51 MB. Sample lookups 66–137 ms from Manila, including the network trip (one Collections read from Sheets: about 3 s) |
 
 Phase 1 also replaced step 4 of phase 0: the Drizzle schema in `db/schema.ts` now describes every table, so the 17 unregistered tabs were not added to `config/sheet-database-schema.json`.
 
@@ -156,9 +158,10 @@ Phase 1 also replaced step 4 of phase 0: the Drizzle schema in `db/schema.ts` no
 Counts only; no member data was read out.
 
 - **OR numbers** are text such as `12345 A`, `12345A` or `0123`. They are stored exactly as typed; `or_key` holds the spaceless upper-case form the duplicate rule compares (`lib/duplicate-entries.ts` `entryKey`).
-- **Existing duplicates:** 735 Collections rows repeat an earlier OR number (729 receipts, created March to September 2026), and 19 application numbers appear twice in Sales. Decision: copy them unchanged, set `legacy_duplicate` on the second and later copies so the unique rule skips them, and list them on the Exceptions page. New entries can never reuse those numbers.
-- **Employee Branches:** 25 rows point to employee ID DPE-0007, which is not in Employees. The owner will supply the correct ID; the copy holds these rows until then.
+- **Existing duplicates:** 735 Collections rows repeat an earlier OR number (729 receipts, created March to September 2026), and 61 Sales rows repeat an application number (18 numbers used twice, and one placeholder-like number used 44 times). Decision: copy them unchanged, set `legacy_duplicate` on the second and later copies so the unique rule skips them, and list them on the Exceptions page. New entries can never reuse those numbers.
+- **Old employee IDs** (confirmed by the owner): DPE-0001 is MD-2026-0001 and DPE-0007 is MD-2026-0004. The copy rewrites DPE-0001 to MD-2026-0001 in the 28 `encoded_by_employee_id` cells where it appears. The 25 Employee Branches rows for DPE-0007 repeat MD-2026-0004's 25 branch assignments exactly, so they are left out rather than renamed. An employee can now hold each branch once (`employee_branches_employee_branch_key`); no other duplicate pairs exist.
 - **Links:** every other reference (enrollment, member, program, employee, branch, role) points to an existing row.
+- **Unreadable dates:** 30 cells have a 3-digit year (8 member birthdates, repeated on the same people's 8 Sales rows, and 14 Collections OR dates). Decision: copy them as blank and keep the original text in `copy_exceptions` for correction later. Phase 2 lists open copy exceptions on the Exceptions page with a way to correct the record and mark it resolved.
 - **Volume:** about 6,600 Collections a month. Receipt photos at up to 80 KB each would reach the 1 GB free storage in a few months if most entries get a photo, so plan for Pro (100 GB) once photo use is steady.
 
 ## Decisions (October 4, 2026)
@@ -168,6 +171,7 @@ Counts only; no member data was read out.
 3. **The frozen spreadsheet is kept for one year** after cutover as a read-only archive, then deleted after a final download.
 4. **Nightly Sheets export** for the owner and the administrator only.
 5. **Old duplicate OR and application numbers** are kept, flagged and listed for review rather than fixed before cutover.
+6. **Unreadable dates** are copied as blank, with the original text kept for review.
 
 ## What the owner provides before phase 0
 

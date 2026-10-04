@@ -15,6 +15,20 @@
       "when": 1791120094506,
       "tag": "0001_audit_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791120670588,
+      "tag": "0002_employee_branch_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791121145534,
+      "tag": "0003_copy_exceptions",
+      "breakpoints": true
     }
   ]
 }

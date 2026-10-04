@@ -61,7 +61,10 @@ export const employee_branches = pgTable("employee_branches", {
   employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
   branch_id: text().notNull().references(() => branches.branch_id, { onUpdate: "cascade" }),
   ...encoder(),
-}, (t) => [index("employee_branches_employee_idx").on(t.employee_id)]).enableRLS();
+}, (t) => [
+  index("employee_branches_employee_idx").on(t.employee_id),
+  uniqueIndex("employee_branches_employee_branch_key").on(t.employee_id, t.branch_id),
+]).enableRLS();
 
 export const roles = pgTable("roles", {
   role_id: text().primaryKey(),
@@ -716,6 +719,23 @@ export const record_corrections = pgTable("record_corrections", {
   corrected_at: moment("corrected_at"),
   ...encoder(),
 }, (t) => [index("record_corrections_record_idx").on(t.record_id)]).enableRLS();
+
+/**
+ * Cells the sheet-to-database copy could not convert, such as a date typed with a 3-digit year. The field is left blank
+ * in its table and the original text is kept here until someone corrects the record and marks it resolved.
+ */
+export const copy_exceptions = pgTable("copy_exceptions", {
+  exception_id: text().primaryKey(),
+  table_name: text().notNull(),
+  record_id: text().notNull(),
+  column_name: text().notNull(),
+  original_text: text(),
+  reason: text().notNull(),
+  copied_at: moment("copied_at").notNull().defaultNow(),
+  resolved_at: moment("resolved_at"),
+  resolved_by_employee_id: text(),
+  resolved_by_name: text(),
+}, (t) => [index("copy_exceptions_open_idx").on(t.table_name, t.record_id).where(sql`${t.resolved_at} is null`)]).enableRLS();
 
 /**
  * Written by the audit trigger (db/migrations, audit_row_change) on every update and delete of the tables above, with
