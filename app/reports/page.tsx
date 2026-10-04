@@ -1,4 +1,14 @@
-import Link from "next/link";
-import { CalendarDays, CalendarRange, ChartNoAxesColumnIncreasing, Calendar } from "lucide-react";
-const reports = [{ href: "/reports/daily", title: "Daily Report", text: "What you encoded today, by MAS: New Sales, Collections, net remittance and total cash.", icon: CalendarDays }, { href: "/reports/weekly", title: "Weekly Report", text: "Your week, Monday to Sunday, by date.", icon: CalendarRange }, { href: "/reports/monthly", title: "Monthly Report", text: "Your month, by week.", icon: Calendar }, { href: "/reports/yearly", title: "Yearly Report", text: "Your year, by month.", icon: ChartNoAxesColumnIncreasing }];
-export default function ReportsPage() { return <section className="space-y-6"><div><h1 className="text-2xl font-bold">Reports</h1><p className="text-sm text-muted-foreground">Your own reports: the New Sales and Collections you encoded, in the company report layout. Reviewers see them in Report Review and Audits.</p></div><div className="grid gap-4 sm:grid-cols-2">{reports.map(({ href, title, text, icon: Icon }) => <Link key={href} href={href} className="rounded-xl border bg-background p-6 transition hover:border-primary hover:shadow-sm"><Icon className="size-6 text-primary"/><h2 className="mt-4 font-semibold">{title}</h2><p className="mt-1 text-sm text-muted-foreground">{text}</p></Link>)}</div><div className="rounded-xl border bg-muted/20 p-5"><h2 className="font-semibold">Single source of truth</h2><p className="mt-2 text-sm text-muted-foreground">Reports are generated from verified operational records. They do not create or modify financial transactions.</p></div></section>; }
+import { ReportTabs } from "@/components/report-tabs";
+
+/** The signed-in Entry Clerk's own reports, one tab per period. */
+export default function ReportsPage() {
+  return (
+    <section className="space-y-4">
+      <div className="print:hidden">
+        <h1 className="text-2xl font-bold">Reports</h1>
+        <p className="text-sm text-muted-foreground">Your New Sales and Collections encoded in the period, as the company report. Only you and the reviewers see it.</p>
+      </div>
+      <ReportTabs />
+    </section>
+  );
+}

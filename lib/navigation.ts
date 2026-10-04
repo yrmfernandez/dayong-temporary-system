@@ -24,14 +24,8 @@ const page = {
   payroll: { name: "Payroll", href: "/payroll", icon: Banknote },
   fidelity: { name: "Fidelity", href: "/fidelity", icon: PiggyBank },
   myFidelity: { name: "My Fidelity", href: "/fidelity/me", icon: PiggyBank },
-  reports: {
-    name: "Reports", href: "/reports", icon: ChartNoAxesColumnIncreasing, children: [
-      { name: "Daily", href: "/reports/daily", icon: FileText },
-      { name: "Weekly", href: "/reports/weekly", icon: FileText },
-      { name: "Monthly", href: "/reports/monthly", icon: BarChart3 },
-      { name: "Yearly", href: "/reports/yearly", icon: BarChart3 },
-    ],
-  },
+  // Daily, Weekly, Monthly and Yearly are tabs on the Reports page.
+  reports: { name: "Reports", href: "/reports", icon: ChartNoAxesColumnIncreasing },
   userReports: { name: "Report Review", href: "/admin-reports", icon: FileSearch },
   soa: { name: "Statement of Account", href: "/soa", icon: ScrollText },
   dailyAudit: { name: "Audits", href: "/audit", icon: ClipboardCheck },
