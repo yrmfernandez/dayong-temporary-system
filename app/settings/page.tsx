@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useSyncExternalStore } from "react";
 import { Building, CheckCircle2, Eye, EyeOff, LogOut, ShieldCheck, TriangleAlert, SlidersHorizontal, UserRound } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -12,7 +12,7 @@ import { FinanceSettings } from "@/components/finance-settings";
 import { Avatar, ProfileDetails, useProfile } from "@/components/profile";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RemittanceMethodSettings } from "@/components/remittance-method-settings";
-import { preferenceKeys, readDensity, readIndicator, removePreference, writePreference, type IndicatorStyle } from "@/lib/ui-preferences";
+import { onPreferencesChange, preferenceKeys, readDensity, readIndicator, removePreference, writePreference } from "@/lib/ui-preferences";
 import { clearFormDrafts } from "@/lib/use-form-draft";
 
 type SessionUser = { employeeId: string; name: string; roleNames: string[]; permissions: Record<string, boolean> };
@@ -89,8 +89,9 @@ function SettingsContent() {
 }
 
 function PreferencesTab() {
-  const [compactTables, setCompactTables] = useState(() => typeof window !== "undefined" && readDensity() === "compact");
-  const [indicator, setIndicator] = useState<IndicatorStyle>(() => (typeof window !== "undefined" ? readIndicator() : "pill"));
+  // Read from this device's storage after hydration (the server has no saved preference), and follow changes made elsewhere.
+  const compactTables = useSyncExternalStore(onPreferencesChange, () => readDensity() === "compact", () => false);
+  const indicator = useSyncExternalStore(onPreferencesChange, readIndicator, () => "pill" as const);
   const row = "flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4";
   return <Card>
     <CardHeader><CardTitle>Workspace preferences</CardTitle><CardDescription>Saved on this device only.</CardDescription></CardHeader>
@@ -102,15 +103,15 @@ function PreferencesTab() {
       <div className={row}>
         <div><p className="text-sm font-medium">Sidebar active page style</p><p className="text-sm text-muted-foreground">Highlight the current page with a filled pill or a side line.</p></div>
         <div className="grid shrink-0 grid-cols-2 rounded-lg bg-muted p-1 text-xs" role="radiogroup" aria-label="Sidebar active page style">
-          {(["pill", "line"] as const).map((style) => <button key={style} type="button" role="radio" aria-checked={indicator === style} onClick={() => { setIndicator(style); writePreference(preferenceKeys.indicator, style); }}
+          {(["pill", "line"] as const).map((style) => <button key={style} type="button" role="radio" aria-checked={indicator === style} onClick={() => writePreference(preferenceKeys.indicator, style)}
             className={`rounded-md px-3 py-1.5 capitalize ${indicator === style ? "bg-card font-semibold text-primary shadow-sm" : "text-muted-foreground"}`}>{style}</button>)}
         </div>
       </div>
       <div className={row}>
         <div><p className="text-sm font-medium">Compact tables</p><p className="text-sm text-muted-foreground">Use tighter spacing in tables and directory lists.</p></div>
-        <button type="button" role="switch" aria-checked={compactTables} onClick={() => { const next = !compactTables; setCompactTables(next); writePreference(preferenceKeys.density, next ? "compact" : "comfortable"); }}
+        <button type="button" role="switch" aria-checked={compactTables} onClick={() => writePreference(preferenceKeys.density, compactTables ? "comfortable" : "compact")}
           className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${compactTables ? "bg-primary" : "bg-muted-foreground/30"}`}>
-          <span className={`absolute top-1 size-4 rounded-full bg-white transition-transform ${compactTables ? "translate-x-6" : "translate-x-1"}`} />
+          <span aria-hidden="true" className={`absolute left-0 top-1 size-4 rounded-full bg-white shadow-sm transition-transform ${compactTables ? "translate-x-6" : "translate-x-1"}`} />
           <span className="sr-only">Toggle compact tables</span>
         </button>
       </div>

@@ -16,17 +16,22 @@ export function writeActiveRoleCookie(role: string) {
   try { document.cookie = `${ACTIVE_ROLE_COOKIE}=${encodeURIComponent(role)}; path=/; max-age=31536000; samesite=lax`; } catch { /* cookies blocked */ }
 }
 
-// Storage can throw in private windows or when site data is blocked; preferences are conveniences only.
+// Storage can throw in private windows or when site data is blocked; preferences are conveniences only. The in-memory
+// copy keeps a choice working for the rest of the visit when it cannot be stored.
+const memory = new Map<string, string>();
+
 export function readPreference(key: string, fallback = "") {
-  try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+  try { return localStorage.getItem(key) ?? memory.get(key) ?? fallback; } catch { return memory.get(key) ?? fallback; }
 }
 
 export function writePreference(key: string, value: string) {
-  try { localStorage.setItem(key, value); } catch { /* keep the in-memory value */ }
+  memory.set(key, value);
+  try { localStorage.setItem(key, value); } catch { /* the in-memory copy is used */ }
   window.dispatchEvent(new Event(changeEvent));
 }
 
 export function removePreference(key: string) {
+  memory.delete(key);
   try { localStorage.removeItem(key); } catch { /* nothing stored */ }
 }
 

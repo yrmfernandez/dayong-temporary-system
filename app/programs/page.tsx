@@ -1460,7 +1460,7 @@ return (
               tier.incentiveType ===
               "percentage"
                 ? "pr-8"
-                : "pl-8"
+                : "pl-12"
             }
             placeholder={
               tier.incentiveType ===
@@ -1518,7 +1518,7 @@ return (
             onWheel={(event) => {
               event.currentTarget.blur();
             }}
-            className="pl-8"
+            className="pl-12"
             placeholder="50"
           />
         </div>
@@ -1600,7 +1600,7 @@ return (
                 tier.incentiveType ===
                 "percentage"
                   ? "pr-8"
-                  : "pl-8"
+                  : "pl-12"
               }
               placeholder={
                 tier.incentiveType ===
@@ -1660,7 +1660,7 @@ return (
                 tier.incentiveType ===
                 "percentage"
                   ? "pr-8"
-                  : "pl-8"
+                  : "pl-12"
               }
               placeholder={
                 tier.incentiveType ===
@@ -1902,7 +1902,7 @@ const programForm = (
                 onWheel={(event) => {
                   event.currentTarget.blur();
                 }}
-                className="pl-8"
+                className="pl-12"
                 placeholder="350"
               />
             </div>
