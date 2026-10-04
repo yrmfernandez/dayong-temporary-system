@@ -90,8 +90,8 @@ async function figuresFor(period: AuditPeriod, date: string, employee: { name: s
   const approved = daily.filter((audit) => audit.status === "Approved");
   return {
     ...(period === "daily" ? {} : { dailyAudits: { approved: approved.length, balanced: approved.filter((audit) => audit.result === "Balanced").length, withFindings: approved.filter((audit) => audit.result === "With findings").length, drafts: daily.length - approved.length } }),
-    accounts: report.summary.accounts, gross: report.summary.gross, incentives: report.summary.incentives, fidelity: report.summary.fidelity,
-    penalty: report.checks.penalties, expectedRemittance: report.summary.net,
+    accounts: report.totals.accounts, gross: report.totals.gross, incentives: report.totals.incentives, fidelity: report.totals.fidelity,
+    penalty: report.checks.penalties, expectedRemittance: report.totals.net,
     sales: report.byProgram.sales.map((line) => ({ program: line.program, branch: line.branch, accounts: line.accounts, gross: line.gross })),
     collections: report.byProgram.collections,
   };

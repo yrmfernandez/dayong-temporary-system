@@ -22,7 +22,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
   const writes = [];
   const rows = {};
   let missingHeaders = false;
-  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales', 'Beneficiaries', 'Branches', 'Employees', 'Employee Branches', 'Users', 'User Roles', 'Roles', 'Program Incentives', 'Receipt Photos'];
+  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales', 'Beneficiaries', 'Branches', 'Employees', 'Employee Branches', 'Users', 'User Roles', 'Roles', 'Program Incentives', 'Receipt Photos', 'Bank Deposits', 'Report Notes'];
   const sheets = { spreadsheets: {
     get: async () => ({ data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId } })) } }),
     batchUpdate: async (params) => { writes.push(params); return { data: {} }; },
@@ -38,6 +38,8 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       if (/^'?Users'?!A:(?:B|G|H|Z)$/.test(range)) return { data: { values: rows.Users ?? [[]] } };
       if (range === "'Audit Log'!A:J") return { data: { values: rows['Audit Log'] ?? [[]] } };
       if (range.startsWith("'Receipt Photos'")) return { data: { values: rows['Receipt Photos'] ?? [[]] } };
+      if (range.startsWith("'Bank Deposits'")) return { data: { values: rows['Bank Deposits'] ?? [[]] } };
+      if (range.startsWith("'Report Notes'")) return { data: { values: rows['Report Notes'] ?? [[]] } };
       if (range === 'Expenses!V1:W1' || range === 'Sales!AO1:AQ1') return { data: { values: rows[range] ?? [[]] } };
       if (/!A:ZZ$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
@@ -1633,11 +1635,17 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   h.rows.Expenses = [[], expense];
   const { buildClerkReport } = h.load('lib/clerk-report.ts');
   const report = await buildClerkReport('weekly', '2026-06-17', { employeeId: 'DPE-7', name: 'Clerk' });
-  assert.equal(report.title, 'THIRD WEEK REPORT FOR JUNE 2026');
-  assert.equal(report.weekAndDate, 'WEEK 25 / June 15-21, 2026');
-  assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity]), [['06/15/2026', 1, 350, 50, 300, 20], ['06/16/2026', 1, 700, 100, 600, 0]], 'by date; the other clerk\'s COL-3 is not counted');
+  assert.equal(report.reportName, 'WEEKLY REPORT');
+  assert.equal(report.dateLine, 'WEEK 3 JUNE 15-21, 2026');
+  assert.equal(report.summaryLabel, '3RD WEEKLY REPORT');
+  assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity]), [['6/15/2026', 1, 350, 50, 300, 20], ['6/16/2026', 1, 700, 100, 600, 0]], 'by date; the other clerk\'s COL-3 is not counted');
   assert.deepEqual([report.newSales.total.accounts, report.newSales.total.gross, report.newSales.total.incentives], [1, 500, 50]);
-  assert.deepEqual(report.summary, { accounts: 3, gross: 1550, incentives: 200, net: 1350, fidelity: 20, netRemittance: 1370, expenses: 100, totalCash: 1270 });
+  assert.deepEqual(report.cash, { cashBeg: 0, salesNet: 450, collectionNet: 900, fidelity: 20, pendingCash: 0, totalCashIn: 1370, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1270, totals: 1370 });
+  assert.deepEqual(report.masSummary.rows.map((row) => [row.name, row.sales.accounts, row.collections.accounts, row.collections.gross]), [['Maria', 1, 2, 1050]]);
+  // The next week starts with what was left: Cash Beg carries the remaining cash on hand.
+  const next = await buildClerkReport('weekly', '2026-06-24', { employeeId: 'DPE-7', name: 'Clerk' });
+  assert.equal(next.cash.cashBeg, 1270);
+  assert.equal(next.cash.remainingCashOnHand, 1270);
   assert.equal(report.checks.withPhoto, 0);
   const daily = await buildClerkReport('daily', '2026-06-15', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.deepEqual(daily.collection.rows.map((row) => row.label), ['Maria'], 'a day is grouped by MAS');
@@ -1656,4 +1664,23 @@ test('receipt photos must be small compressed images and may cover several entri
   assert.equal(row[1], 'COL-1,COL-2');
   assert.equal(row[9], 2, 'split into two cells under the 50,000-character limit');
   assert.equal(row[10].length + row[11].length, 60000);
+});
+
+test('bank deposits count as cash out, pending cash counts only in its own report, and remaining cash carries over', async () => {
+  const h = harness();
+  const collection = Array(41).fill(''); Object.assign(collection, { 0: 'COL-1', 5: 'DP-1', 7: 'Maria', 9: '2026-09-03', 10: 1000, 19: 'Posted', 20: '2026-09-03T02:00:00.000Z', 22: 'DPE-7', 24: '2026-09-03T02:00:00.000Z', 26: 900, 28: 'Outstanding', 31: 'Maria' });
+  h.rows.Collections = [[], collection];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program']];
+  h.rows['Bank Deposits'] = [[],
+    ['DEP-1', '2026-09-03', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 700, 'RCBC', 'Maria', '', 'Posted', '', ''],
+    ['DEP-2', '2026-09-03', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 50, 'RCBC', '', '', 'Voided', 'Typed twice', ''],
+  ];
+  h.rows['Report Notes'] = [[], ['DPE-7|daily|2026-09-03', 'DPE-7', 'daily', '2026-09-03', 120, 'Penalty paid', '', '220 - COH', '', '']];
+  const { buildClerkReport } = h.load('lib/clerk-report.ts');
+  const day = await buildClerkReport('daily', '2026-09-03', { employeeId: 'DPE-7', name: 'Clerk' });
+  assert.deepEqual(day.deposits.map((item) => [item.id, item.amount, item.transferType]), [['DEP-1', 700, 'RCBC']], 'a voided deposit is left out');
+  assert.deepEqual([day.cash.collectionNet, day.cash.pendingCash, day.cash.totalCashIn, day.cash.forwardedToBank, day.cash.remainingCashOnHand], [900, 120, 1020, 700, 320]);
+  assert.equal(day.notes.specificRemarks, 'Penalty paid');
+  const nextDay = await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' });
+  assert.equal(nextDay.cash.cashBeg, 200, 'carried: 900 in less 700 deposited; pending cash is not carried because it is encoded later');
 });

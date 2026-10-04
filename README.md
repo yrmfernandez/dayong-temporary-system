@@ -1,5 +1,7 @@
 # Dayong System
 
+Start with the [system guide](docs/system-guide.md) for a code-based explanation of all features, workflows, formulas, data connections, permissions, and known implementation limits. Use the [documentation directory](docs/README.md) to choose a topic, or the [code reference](docs/code-reference.md) to find every page, API, library, component, and maintenance script.
+
 See [project context](docs/project-context.md) for the core business rules and implementation status, [role-based access](docs/access-control.md) for the current navigation matrix, [CRUD policy](docs/crud-policy.md) for record lifecycle rules, [finance](docs/finance.md) for ledger behavior, [operational reports](docs/reports.md) for report calculations, and the [full supplied specification](docs/dayong-system-specification.md) for the historical reference.
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
