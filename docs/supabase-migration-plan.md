@@ -1,6 +1,6 @@
 # Supabase migration plan
 
-Drafted October 4, 2026. Status: **approved, not started** (decisions recorded October 4, 2026). Moves the operational database from Google Sheets to PostgreSQL on Supabase.
+Drafted October 4, 2026. Status: **phase 1 in progress** on the `supabase` branch. See [Progress](#progress). Moves the operational database from Google Sheets to PostgreSQL on Supabase.
 
 ## Why
 
@@ -127,9 +127,9 @@ Yes, and it is safer than in Sheets. Today a new column shifts positions such as
 
 Every change is a migration file in git:
 
-1. Change the Drizzle schema, for example add `receipt_checked boolean not null default false` to `collections`.
-2. `npx drizzle-kit generate` writes the SQL file (`ALTER TABLE collections ADD COLUMN …`). Review it.
-3. Apply to staging, test, then apply to production with `npx drizzle-kit migrate`.
+1. Change the Drizzle schema in `db/schema.ts`, for example add `receipt_checked boolean not null default false` to `collections`.
+2. `npm run db:generate` writes the SQL file (`ALTER TABLE collections ADD COLUMN …`). Review it.
+3. Apply to staging with `npm run db:migrate`, test, then apply to production the same way with production's `DIRECT_DATABASE_URL`. A migration that adds a table ends with `SELECT attach_audit_triggers();` so the new table is audited too.
 
 | Change | How | Notes |
 | --- | --- | --- |
@@ -141,12 +141,33 @@ Every change is a migration file in git:
 
 Migration files keep a full history of every schema change, and staging catches mistakes before production does.
 
+## Progress
+
+| Date | Step | Result |
+| --- | --- | --- |
+| Oct 4, 2026 | Phase 0: Supabase projects (production, staging) in Singapore; staging in `.env.local` | Connections and secret key checked |
+| Oct 4, 2026 | Phase 0: `npm run sheets:audit` | 0 errors; 16,901 type warnings, all handled by the copy (see below) |
+| Oct 4, 2026 | Phase 1: `db/schema.ts`, migrations `0000_initial_schema`, `0001_audit_trigger`, applied to staging | 42 tables with row-level security, 41 audit triggers, no API-role access; rules checked in a rolled-back test |
+
+Phase 1 also replaced step 4 of phase 0: the Drizzle schema in `db/schema.ts` now describes every table, so the 17 unregistered tabs were not added to `config/sheet-database-schema.json`.
+
+### Data findings (October 4, 2026)
+
+Counts only; no member data was read out.
+
+- **OR numbers** are text such as `12345 A`, `12345A` or `0123`. They are stored exactly as typed; `or_key` holds the spaceless upper-case form the duplicate rule compares (`lib/duplicate-entries.ts` `entryKey`).
+- **Existing duplicates:** 735 Collections rows repeat an earlier OR number (729 receipts, created March to September 2026), and 19 application numbers appear twice in Sales. Decision: copy them unchanged, set `legacy_duplicate` on the second and later copies so the unique rule skips them, and list them on the Exceptions page. New entries can never reuse those numbers.
+- **Employee Branches:** 25 rows point to employee ID DPE-0007, which is not in Employees. The owner will supply the correct ID; the copy holds these rows until then.
+- **Links:** every other reference (enrollment, member, program, employee, branch, role) points to an existing row.
+- **Volume:** about 6,600 Collections a month. Receipt photos at up to 80 KB each would reach the 1 GB free storage in a few months if most entries get a photo, so plan for Pro (100 GB) once photo use is steady.
+
 ## Decisions (October 4, 2026)
 
 1. **One switchover.** Everything moves at once. Feature work pauses until cutover, and there is no period where some modules use Sheets and others use the database.
 2. **Legacy Pending tabs stay in Google Sheets** until every account is resolved, in the separate Dayong Legacy Pending spreadsheet. Resolved rows are imported into the database.
 3. **The frozen spreadsheet is kept for one year** after cutover as a read-only archive, then deleted after a final download.
 4. **Nightly Sheets export** for the owner and the administrator only.
+5. **Old duplicate OR and application numbers** are kept, flagged and listed for review rather than fixed before cutover.
 
 ## What the owner provides before phase 0
 
