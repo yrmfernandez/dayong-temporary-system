@@ -1684,3 +1684,26 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   const nextDay = await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.equal(nextDay.cash.cashBeg, 200, 'carried: 900 in less 700 deposited; pending cash is not carried because it is encoded later');
 });
+
+test('changing an Employee ID rewrites every Employee ID column and refuses an ID already in use', async () => {
+  const h = harness();
+  h.rows.Employees = [['employee_id', 'full_name'], ['LEG-2026-0001', 'Solon, K.'], ['MD-2026-0009', 'Other']];
+  h.rows["'Employees'!A:A"] = [['employee_id'], ['LEG-2026-0001'], ['MD-2026-0009']];
+  h.rows.Users = [['user_id', 'employee_id'], ['USR-1', 'LEG-2026-0001']];
+  h.rows["'Users'!B:B"] = [['employee_id'], ['LEG-2026-0001']];
+  const collectionsHeader = Array(31).fill(''); collectionsHeader[22] = 'encoded_by_employee_id'; collectionsHeader[30] = 'accountable_employee_id';
+  h.rows.Collections = [collectionsHeader];
+  h.rows["'Collections'!W:W"] = [['encoded_by_employee_id'], ['MD-2026-0009'], ['LEG-2026-0001']];
+  h.rows["'Collections'!AE:AE"] = [['accountable_employee_id'], ['LEG-2026-0001'], ['LEG-2026-0001'], ['']];
+  h.rows['Report Notes'] = [['note_key'], ['LEG-2026-0001|daily|2026-10-01'], ['MD-2026-0009|daily|2026-10-01']];
+  const { changeEmployeeId } = h.load('lib/employee-id-change.ts');
+  const run = (next) => h.load('lib/encoder-context.ts').runAsSystem(() => changeEmployeeId('LEG-2026-0001', next, 'Real ID assigned'));
+  await assert.rejects(() => run('MD-2026-0009'), /already used/);
+  await assert.rejects(() => run('bad-id'), /company format/);
+  const result = await run('md-2026-0042');
+  assert.equal(result.newId, 'MD-2026-0042');
+  assert.deepEqual(result.bySheet, { Employees: 1, Users: 1, Collections: 3, 'Report Notes': 1 });
+  const ranges = h.writes.filter((write) => write.requestBody?.data).flatMap((write) => write.requestBody.data.map((item) => `${item.range}=${item.values[0][0]}`));
+  assert.equal(ranges[0], "'Employees'!A2=MD-2026-0042", 'the Employees row is written first');
+  assert.deepEqual([...ranges].sort(), ["'Collections'!AE2=MD-2026-0042", "'Collections'!AE3=MD-2026-0042", "'Collections'!W3=MD-2026-0042", "'Employees'!A2=MD-2026-0042", "'Report Notes'!A2=MD-2026-0042|daily|2026-10-01", "'Users'!B2=MD-2026-0042"], 'every reference, and nothing of the other employee');
+});
