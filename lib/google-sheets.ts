@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { google, type sheets_v4 } from "googleapis";
 import { KeyedLock, SheetsReadCache } from "@/lib/sheets-read-cache";
-import { AUDIT_SHEET, auditedWrite, planBatchUpdate, planValuesBatchUpdate, planValuesUpdate } from "@/lib/audit-log";
-import { currentEncoder, isEncodingRequest } from "@/lib/encoder-context";
+import { isEncodingRequest } from "@/lib/encoder-context";
+import { isDatabaseSheet, sheetsOnDb } from "@/lib/sheets-on-db";
 import {
   getGooglePrivateKey,
   getGoogleSheetId,
@@ -51,8 +51,11 @@ function getClient() {
 
 // Shared across route bundles and hot reloads. The key is versioned: an object from older code (with other methods)
 // that survives a reload must never be reused. Bump it when the cache or lock classes change shape.
-const shared = globalThis as typeof globalThis & { dayongSheetsCacheV2?: SheetsReadCache; dayongWriteLockV1?: KeyedLock; dayongSheetsStats?: SheetsStats };
-const cache = shared.dayongSheetsCacheV2 ??= new SheetsReadCache();
+const shared = globalThis as typeof globalThis & { dayongSheetsCacheV3?: SheetsReadCache; dayongWriteLockV1?: KeyedLock; dayongSheetsStats?: SheetsStats };
+// The tabs live in the database now (lib/sheets-on-db.ts), which is fast, and modules already rewritten for it write
+// to it directly. So reads are cached only briefly (10 s, never served stale), mainly to share one read between the
+// calls of a single page load.
+const cache = shared.dayongSheetsCacheV3 ??= new SheetsReadCache(10_000, () => Date.now(), { staleFor: 0 });
 const locks = shared.dayongWriteLockV1 ??= new KeyedLock();
 type SheetsStats = { since: string; reads: number; writes: number; retries: number; failures: number; lastFailure: string };
 const stats = shared.dayongSheetsStats ??= { since: new Date().toISOString(), reads: 0, writes: 0, retries: 0, failures: 0, lastFailure: "" };
@@ -115,16 +118,17 @@ function writtenSheets(params: { range?: string | null; requestBody?: object | n
 // Only data from the sheets a save touched is dropped, so other users keep their cached reads. Structural changes
 // (adding sheets, deleting rows) pass no sheet names and clear everything.
 async function write<T>(tags: string[] | undefined, operation: () => Promise<T>) {
-  const clear = (warm: boolean) => cache.invalidate(tags ? [...tags, AUDIT_SHEET] : undefined, { warm });
+  const clear = (warm: boolean) => cache.invalidate(tags ? [...tags, "Audit Log"] : undefined, { warm });
   clear(false);
   // Once written, reload the touched sheets that pages were using, so the next page does not wait for Google.
   try { return await operation(); } finally { clear(true); }
 }
-// Edits and deletes are recorded in the Audit Log sheet (lib/audit-log.ts); appends are creations and are not.
-const actor = () => currentEncoder();
-function audited<T>(spreadsheetId: string | null | undefined, tags: string[] | undefined, plan: Parameters<typeof auditedWrite>[2], operation: () => Promise<T>) {
-  return write(tags, () => auditedWrite(getClient(), spreadsheetId ?? GOOGLE_SHEET_ID, plan, actor, () => withRetry(operation, "write")));
-}
+/**
+ * Which backend holds a tab: the database for every application tab (lib/sheets-on-db.ts), Google Sheets for the rest
+ * (the Legacy Pending tabs). Edits and deletes in the database are recorded by its audit trigger.
+ */
+type Client = Pick<sheets_v4.Sheets, "spreadsheets">;
+const clientFor = (range: string | null | undefined): Client => (isDatabaseSheet(sheetOfRange(range ?? "")) ? (sheetsOnDb as unknown as Client) : getClient());
 
 type ValueRange = sheets_v4.Schema$ValueRange;
 /** Cached per range: two pages that both need Programs share one copy, and a batch only fetches what is missing. */
@@ -133,24 +137,34 @@ async function readRanges(params: sheets_v4.Params$Resource$Spreadsheets$Values$
   const options = [params.spreadsheetId, params.valueRenderOption ?? "", params.dateTimeRenderOption ?? "", params.majorDimension ?? ""];
   const items = ranges.map((range) => ({ key: JSON.stringify(["range", ...options, range]), tags: [sheetOfRange(range)] }));
   return cache.readMany<ValueRange>(items, async (missing) => {
-    const response = await withRetry(() => getClient().spreadsheets.values.batchGet({ ...params, ranges: missing.map((index) => ranges[index]) }, { retry: false }), "read");
-    return response.data.valueRanges ?? [];
+    // Database and Google ranges are fetched from their own backend and put back in order.
+    const wanted = missing.map((index) => ranges[index]);
+    const results: ValueRange[] = new Array(wanted.length);
+    for (const onDatabase of [true, false]) {
+      const positions = wanted.map((range, position) => (isDatabaseSheet(sheetOfRange(range)) === onDatabase ? position : -1)).filter((position) => position >= 0);
+      if (!positions.length) continue;
+      const client = onDatabase ? (sheetsOnDb as unknown as Client) : getClient();
+      const response = await withRetry(() => client.spreadsheets.values.batchGet({ ...params, ranges: positions.map((position) => wanted[position]) }, { retry: false }), "read");
+      positions.forEach((position, index) => { results[position] = response.data.valueRanges?.[index] ?? { range: wanted[position], values: [] }; });
+    }
+    return results;
   }, fresh());
 }
 
 export const sheets = {
   spreadsheets: {
-    get: async (params: sheets_v4.Params$Resource$Spreadsheets$Get) => ({ data: await cache.read(JSON.stringify(["metadata", params]), async () => (await withRetry(() => getClient().spreadsheets.get(params, { retry: false }), "read")).data, isEncodingRequest(), ["__metadata"]) }),
-    batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Batchupdate) => audited(params.spreadsheetId, undefined, planBatchUpdate(getClient(), params), () => getClient().spreadsheets.batchUpdate(params)),
+    // Tab list and sheet IDs of the database tabs (sheet IDs are only used with batchUpdate, which goes there too).
+    get: async (params: sheets_v4.Params$Resource$Spreadsheets$Get) => ({ data: (await (sheetsOnDb as unknown as Client).spreadsheets.get(params)).data }),
+    batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Batchupdate) => write(undefined, () => (sheetsOnDb as unknown as Client).spreadsheets.batchUpdate(params)),
     values: {
       get: async (params: sheets_v4.Params$Resource$Spreadsheets$Values$Get) => {
         const [data] = await readRanges({ spreadsheetId: params.spreadsheetId, ranges: [params.range ?? ""], valueRenderOption: params.valueRenderOption, dateTimeRenderOption: params.dateTimeRenderOption, majorDimension: params.majorDimension });
         return { data: data ?? { range: params.range, values: [] } };
       },
       batchGet: async (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchget) => ({ data: { spreadsheetId: params.spreadsheetId, valueRanges: await readRanges(params) } }),
-      append: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Append) => write(writtenSheets(params), () => withRetry(() => getClient().spreadsheets.values.append(params), "write")),
-      update: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Update) => audited(params.spreadsheetId, writtenSheets(params), planValuesUpdate(params), () => getClient().spreadsheets.values.update(params)),
-      batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchupdate) => audited(params.spreadsheetId, writtenSheets(params), planValuesBatchUpdate(params), () => getClient().spreadsheets.values.batchUpdate(params)),
+      append: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Append) => write(writtenSheets(params), () => withRetry(() => clientFor(params.range).spreadsheets.values.append(params), "write")),
+      update: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Update) => write(writtenSheets(params), () => withRetry(() => clientFor(params.range).spreadsheets.values.update(params), "write")),
+      batchUpdate: (params: sheets_v4.Params$Resource$Spreadsheets$Values$Batchupdate) => write(writtenSheets(params), () => withRetry(() => clientFor(params.requestBody?.data?.[0]?.range).spreadsheets.values.batchUpdate(params), "write")),
     },
   },
 };

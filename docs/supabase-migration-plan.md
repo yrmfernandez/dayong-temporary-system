@@ -2,7 +2,7 @@
 
 Drafted October 4, 2026; updated October 5, 2026. Moves the operational database from Google Sheets to PostgreSQL on Supabase.
 
-**Status: phase 2 in progress** on the `supabase` branch. The live system (`main`) still runs entirely on Google Sheets. See [Status by module](#status-by-module) for what is done, partly done, and still to do, and [Progress](#progress) for the dated log.
+**Status: every page runs on the database on the `supabase` branch (October 5, 2026); ready for cutover** (see [Cutover](#cutover-steps)). The live system (`main`) runs on Google Sheets until the branch is merged. See [Status by module](#status-by-module) for what is done, partly done, and still to do, and [Progress](#progress) for the dated log.
 
 ## Why
 
@@ -143,6 +143,18 @@ Every change is a migration file in git:
 
 Migration files keep a full history of every schema change, and staging catches mistakes before production does.
 
+## How the remaining pages moved (October 5, 2026)
+
+To go live quickly, the pages not yet rewritten were moved with a compatibility layer instead of module by module: `lib/sheets-on-db.ts` answers the Google Sheets API calls (`values.get`, `batchGet`, `append`, `update`, `batchUpdate`, `spreadsheets.get`, row deletes) from the database, and `lib/google-sheets.ts` sends every application tab there. This works because each table has the same columns in the same order as its tab (checked October 5, 2026), and `row_seq` (migration `0005`) keeps rows in the order they were added, so "row 5 of Remittances" means the same row. Only the Legacy Pending tabs still go to Google Sheets.
+
+- Remittances, Today's Entries, My Entries, Exceptions, receipt photos, record corrections, Entry Clerk reports, Report Review, Audits, dashboards, sign-in and accounts, roles, attendance, leave, payroll, fidelity, finance and settings all read and save in the database through this layer, unchanged.
+- Writes run in one transaction that names the signed-in user, so the database audit trigger records every edit and delete (the old sheet-based audit writer is no longer used).
+- Reads are cached for 10 seconds per server and cleared after every database save.
+- Reads never join a transaction (only the layer's own writes use one, passed explicitly), and the database client sends one query at a time per connection (`max_pipeline: 1` in `lib/db.ts`): with pipelining, Supabase's transaction pooler left concurrent reads waiting forever (found October 5, 2026 when Attendance and Payroll never loaded).
+- Absence close-out and other multi-row appends insert in one statement.
+- Receipt photos are kept in the database (four base64 chunks per photo, as in the sheet). Moving them to Supabase Storage is a later improvement; watch the database size (free plan: 500 MB).
+- These pages still read whole tables (now from the database, in Singapore, instead of Google Sheets). Rewriting them module by module with targeted queries, like Collections and New Sales, is the follow-up for speed.
+
 ## Status by module
 
 Updated with every change on the `supabase` branch. "Done" means the module reads and saves through `lib/db.ts` and its tests run on PGlite; it still waits for cutover like everything else.
@@ -180,6 +192,9 @@ Updated with every change on the `supabase` branch. "Done" means the module read
 
 ### To do, in order
 
+Steps 1 to 7 below are covered for going live by the compatibility layer above; they remain as follow-ups for speed (targeted queries instead of whole-table reads). Step 8 waits until those rewrites are done.
+
+
 1. **Rest of master data**: system settings and holidays (`lib/system-settings.ts`, `lib/attendance-calendar.ts`). Branches, employees, programs, categories and remittance methods are done (October 5, 2026).
 2. **Sign-in, users and roles**: Users, Roles, User Roles (`lib/users-sheet.ts`, `lib/roles.ts`, the account functions in `lib/google-sheets-data.ts` and `lib/master-data-crud.ts`), `app/api/auth/login`, `lib/session-account.ts`, `app/api/settings` (password change).
 3. **Receipt photos** to Supabase Storage: `lib/receipt-photos.ts`, `app/api/receipt-photos`.
@@ -208,6 +223,25 @@ Pages that still read Sheets keep their old speed until their step: **Remittance
 - Remittances, Today's Entries, My Entries, reports and dashboards still read Sheets, so they do not show Collections or New Sales saved on this branch.
 - The system guide and topic docs still describe the live system on Google Sheets. They are rewritten for the database in phase 6, at cutover.
 
+## Cutover steps
+
+The system is not in daily use yet, so cutover needs no quiet window. The owner runs steps 1 to 3, so the production password never leaves their computer.
+
+1. **Prepare the production database** (PowerShell in the project folder, production values from the password manager; they override `.env.local` only in this window):
+   ```powershell
+   $env:DATABASE_URL = "<production transaction pooler, :6543>"
+   $env:DIRECT_DATABASE_URL = "<production session pooler, :5432>"
+   $env:SUPABASE_URL = "<production project URL>"
+   npm run db:migrate
+   node scripts/copy-sheets-to-postgres.mjs
+   node scripts/copy-sheets-to-postgres.mjs --apply --yes
+   ```
+   The dry run must report no problems before `--apply`. The load checks row counts and money totals for every table and undoes itself on any difference. Close the window afterwards so `.env.local` (staging) applies again.
+2. **Vercel → Settings → Environment Variables**: add `DATABASE_URL` with the production transaction pooler value, environment **Production** only. Keep the Google variables: the Legacy Pending tabs and the legacy scripts still use them.
+3. **Merge** `supabase` into `main` (GitHub pull request, or `git switch main`, `git merge supabase`, `git push`). Vercel deploys production with the database.
+4. **Smoke test** on the live site: sign in, open Members, MAM, Collections (save a test batch), New Sales, Remittances, Today's Entries, an Entry Clerk report, Report Review, Audits and the dashboard. Delete test entries afterwards.
+5. **From then on**, nobody edits the application tabs in the Google Sheet; they are an archive (decision 3). The Legacy Pending tabs stay in use there.
+
 ## Progress
 
 | Date | Step | Result |
@@ -223,6 +257,7 @@ Pages that still read Sheets keep their old speed until their step: **Remittance
 | Oct 5, 2026 | Collections member list: every member of the chosen Branch and MAS, searchable; speed findings recorded | 121 tests pass |
 | Oct 5, 2026 | Master data: branches, employees and assignments, programs and tiers, categories, remittance methods, Employee ID change; Members page filters and pages on the server; Function Region change to Singapore handed to the owner | Tests read master data from h.rows and copy it into PGlite before each route call (`syncMasterData` in the harness); 121 tests pass |
 | Oct 5, 2026 | Fix: the Collections member list gave every member every program of the branch and MAS (a Drizzle subquery compared the enrollment with itself), so no program was auto-selected. Each member now gets only their own programs (one is selected automatically; several are chosen by the clerk). Collections panels contain their own scrolling and the account summary stays pinned above the history. MAM rebuilt as branch → MAS / employee → member, loading only that slice | Regression test added; checked against staging; 121 tests pass |
+| Oct 5, 2026 | Compatibility layer `lib/sheets-on-db.ts`; migration `0005_row_order_and_photo_data` (row_seq on every table, receipt photo data columns); `lib/google-sheets.ts` sends every application tab to the database; copy script includes receipt photos | Every page reads and saves in the database; new test for reads, appends, updates, deletes and the audit trigger; 122 tests pass |
 
 Phase 1 also replaced step 4 of phase 0: the Drizzle schema in `db/schema.ts` now describes every table, so the 17 unregistered tabs were not added to `config/sheet-database-schema.json`.
 

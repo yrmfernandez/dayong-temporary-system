@@ -27,7 +27,9 @@ export function getDb(): Database {
   if (!shared.dayongDb) {
     const url = readServerVariable("DATABASE_URL");
     if (!url) throw new ServerConfigurationError(["DATABASE_URL"]);
-    const client = postgres(url, { prepare: false, max: 5, idle_timeout: 20, connect_timeout: 10 });
+    // max_pipeline 1: Supabase's transaction pooler can stall when several queries are pipelined on one connection
+    // (seen October 5, 2026: concurrent reads never returned). One query at a time per connection avoids it.
+    const client = postgres(url, { prepare: false, max: 10, max_pipeline: 1, idle_timeout: 20, connect_timeout: 10 });
     shared.dayongDb = drizzle(client, { schema }) as unknown as Database;
   }
   return shared.dayongDb;
@@ -50,6 +52,9 @@ export function inTransaction<T>(work: (tx: Transaction) => Promise<T>): Promise
   return getDb().transaction(async (tx) => {
     if (actor) await tx.execute(sql`select set_config('app.user_id', ${actor.userId}, true), set_config('app.employee_id', ${actor.employeeId}, true), set_config('app.user_name', ${actor.name}, true)`);
     return activeTransaction.run(tx, () => work(tx));
+  }).finally(() => {
+    // Pages that still read through the Sheets layer (lib/google-sheets.ts) see this save at once.
+    (globalThis as { dayongSheetsCacheV3?: { invalidate: () => void } }).dayongSheetsCacheV3?.invalidate();
   });
 }
 

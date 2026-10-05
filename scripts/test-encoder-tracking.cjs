@@ -1871,3 +1871,34 @@ test('entries go to Pending Approval on their own once every receipt photo is at
   assert.deepEqual(all.outstanding.map((item) => item.id).sort(), ['COL-A', 'COL-B', 'COL-X']);
   assert.deepEqual(all.clerks.map((item) => item.employeeId), ['DPE-7', 'DPE-8']);
 });
+
+test('the Sheets API answered from the database reads, appends, updates and deletes like a sheet tab', async () => {
+  const h = harness();
+  const { sheetsOnDb, parseA1 } = h.load('lib/sheets-on-db.ts');
+  assert.deepEqual(parseA1("'Member programs'!S5"), { title: 'Member programs', c1: 18, c2: 18, r1: 5, r2: 5 });
+  assert.deepEqual(parseA1('Collections!A:AO'), { title: 'Collections', c1: 0, c2: 40, r1: 1, r2: Infinity });
+  assert.deepEqual(parseA1("'Users'!1:1"), { title: 'Users', c1: 0, c2: Infinity, r1: 1, r2: 1 });
+  const { values } = sheetsOnDb.spreadsheets;
+  await seed('programs', [{ program_id: 'DP-1', program_name: 'Plan', base_pay: 350, registration_fee_required: true }]);
+  // Header row and typed values, as Sheets returns them.
+  const read = (await values.get({ range: "'Programs'!A:L", valueRenderOption: 'UNFORMATTED_VALUE' })).data.values;
+  assert.deepEqual(read[0].slice(0, 4), ['program_id', 'program_code', 'program_name', 'base_pay']);
+  assert.deepEqual([read[1][0], read[1][2], read[1][3], read[1][10]], ['DP-1', 'Plan', 350, true]);
+  assert.equal((await values.get({ range: "'Programs'!K2" })).data.values[0][0], 'TRUE', 'formatted booleans read TRUE/FALSE');
+  // Append in sheet column order; text written with a leading apostrophe is literal; dates and numbers are typed.
+  await h.load('lib/encoder-context.ts').runAsSystem(async () => {
+    await values.append({ range: "'Holidays'!A:E", valueInputOption: 'USER_ENTERED', requestBody: { values: [['HOL-1', '2026-12-25', "'=Christmas", 'Regular', ''], ['HOL-2', '12/30/2026', 'Rizal Day', 'Regular', 'note']] } });
+    assert.deepEqual((await values.get({ range: "'Holidays'!A2:D3" })).data.values, [['HOL-1', '2026-12-25', '=Christmas', 'Regular'], ['HOL-2', '2026-12-30', 'Rizal Day', 'Regular']]);
+    // Row numbers follow the order rows were added, as in the sheet.
+    await values.update({ range: "'Holidays'!C3", valueInputOption: 'RAW', requestBody: { values: [['Rizal Day (observed)']] } });
+    await values.batchUpdate({ requestBody: { valueInputOption: 'RAW', data: [{ range: "'Holidays'!E2", values: [['moved']] }] } });
+    assert.deepEqual((await query('select holiday_id, name, notes from holidays order by row_seq')), [{ holiday_id: 'HOL-1', name: '=Christmas', notes: 'moved' }, { holiday_id: 'HOL-2', name: 'Rizal Day (observed)', notes: 'note' }]);
+    // The edit is in the Audit Log with the acting user (System here).
+    assert.ok((await query("select user_name from audit_log where table_name = 'holidays'")).every((row) => row.user_name === 'System'));
+    // Deleting sheet row 2 (index 1) removes the first data row.
+    const tabs = (await sheetsOnDb.spreadsheets.get()).data.sheets;
+    const sheetId = tabs.find((tab) => tab.properties.title === 'Holidays').properties.sheetId;
+    await sheetsOnDb.spreadsheets.batchUpdate({ requestBody: { requests: [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 } } }] } });
+    assert.deepEqual((await query('select holiday_id from holidays')).map((row) => row.holiday_id), ['HOL-2']);
+  });
+});

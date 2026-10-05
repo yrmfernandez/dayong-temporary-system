@@ -36,8 +36,8 @@ const LOAD_ORDER = [
 ];
 /** Tables the copy fills itself rather than from a tab. */
 const NOT_FROM_TABS = new Set(["copy_exceptions"]);
-/** Sheet columns with no table column: the photo itself moves to Supabase Storage. */
-const IGNORED_SHEET_COLUMNS = new Set(["receipt_photos.chunk_count", "receipt_photos.photo_data_1", "receipt_photos.photo_data_2", "receipt_photos.photo_data_3", "receipt_photos.photo_data_4"]);
+/** Sheet columns with no table column. */
+const IGNORED_SHEET_COLUMNS = new Set();
 /** Columns the copy fills itself or the database computes. */
 const DERIVED = new Set(["collections.or_key", "collections.legacy_duplicate", "sales.application_key", "sales.legacy_duplicate", "receipt_photos.storage_path"]);
 
@@ -124,7 +124,7 @@ const sql = postgres(process.env.DIRECT_DATABASE_URL, { max: 1, onnotice: () => 
 const projectRef = /^https:\/\/([a-z0-9]+)\.supabase\.co/.exec(process.env.SUPABASE_URL ?? "")?.[1] ?? "unknown";
 
 const columnRows = await sql`
-  select table_name, column_name, data_type, is_nullable = 'YES' as nullable, is_generated = 'ALWAYS' as generated
+  select table_name, column_name, data_type, is_nullable = 'YES' as nullable, (is_generated = 'ALWAYS' or is_identity = 'YES') as generated
   from information_schema.columns where table_schema = 'public' order by table_name, ordinal_position`;
 const tables = new Map();
 for (const row of columnRows) {
@@ -234,9 +234,6 @@ for (const item of exceptions) {
 }
 for (const [key, rowNumbers] of exceptionGroups) notes.push(`${key}; left blank, original kept in copy_exceptions (${rowNumbers.length}: sheet rows ${rowNumbers.join(", ")})`);
 
-const photos = loads.get("receipt_photos");
-if (photos?.rows.length) problem("receipt_photos", `${photos.rows.length} photos need uploading to Storage; photo upload is not written yet`);
-if (photos) { photos.columns.push("storage_path"); for (const record of photos.rows) record.storage_path = ""; }
 
 const cents = (value) => Math.round(Number(value) * 100);
 const expected = new Map([...loads].map(([table, load]) => [table, {

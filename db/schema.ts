@@ -8,7 +8,7 @@
  * Supabase's public API can never reach it; the app connects as the database owner from the server only.
  */
 import { sql } from "drizzle-orm";
-import { boolean, date, doublePrecision, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, date, doublePrecision, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const money = (name: string) => numeric(name, { precision: 12, scale: 2, mode: "number" });
 const day = (name: string) => date(name, { mode: "string" });
@@ -23,10 +23,16 @@ const encoder = () => ({
 /** Receipt and application numbers compare without spaces or punctuation, ignoring case (lib/duplicate-entries.ts entryKey). */
 const entryKey = (column: string) => sql.raw(`upper(regexp_replace(coalesce(${column}, ''), '[^A-Za-z0-9]', '', 'g'))`);
 const employeeRef = { onUpdate: "cascade" as const };
+/**
+ * Every table keeps its rows in the order they were added (row_seq), like rows in a sheet tab. lib/sheets-on-db.ts
+ * uses it so code written for Google Sheets ("row 5 of Remittances") reads and writes the same rows here.
+ */
+const rowSeq = () => ({ row_seq: bigint("row_seq", { mode: "number" }).generatedAlwaysAsIdentity() });
 
 // ---------------------------------------------------------------- organization
 
 export const branches = pgTable("branches", {
+  ...rowSeq(),
   branch_id: text().primaryKey(),
   branch_name_code: text().notNull(),
   territory: text(),
@@ -44,6 +50,7 @@ export const branches = pgTable("branches", {
 }, (t) => [uniqueIndex("branches_name_code_key").on(t.branch_name_code)]).enableRLS();
 
 export const employees = pgTable("employees", {
+  ...rowSeq(),
   employee_id: text().primaryKey(),
   full_name: text().notNull(),
   primary_branch: text(),
@@ -57,6 +64,7 @@ export const employees = pgTable("employees", {
 }, (t) => [index("employees_full_name_idx").on(sql`lower(${t.full_name})`)]).enableRLS();
 
 export const employee_branches = pgTable("employee_branches", {
+  ...rowSeq(),
   assignment_id: text().primaryKey(),
   employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
   branch_id: text().notNull().references(() => branches.branch_id, { onUpdate: "cascade" }),
@@ -67,6 +75,7 @@ export const employee_branches = pgTable("employee_branches", {
 ]).enableRLS();
 
 export const roles = pgTable("roles", {
+  ...rowSeq(),
   role_id: text().primaryKey(),
   role_name: text().notNull(),
   description: text(),
@@ -79,6 +88,7 @@ export const roles = pgTable("roles", {
 }).enableRLS();
 
 export const users = pgTable("users", {
+  ...rowSeq(),
   user_id: text().primaryKey(),
   employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
   full_name: text(),
@@ -90,12 +100,14 @@ export const users = pgTable("users", {
 }, (t) => [uniqueIndex("users_employee_id_key").on(t.employee_id)]).enableRLS();
 
 export const user_roles = pgTable("user_roles", {
+  ...rowSeq(),
   user_id: text().notNull().references(() => users.user_id, { onDelete: "cascade" }),
   role_id: text().notNull().references(() => roles.role_id),
   ...encoder(),
 }, (t) => [primaryKey({ columns: [t.user_id, t.role_id] })]).enableRLS();
 
 export const system_settings = pgTable("system_settings", {
+  ...rowSeq(),
   setting_key: text().primaryKey(),
   value: text(),
   updated_at: moment("updated_at"),
@@ -103,6 +115,7 @@ export const system_settings = pgTable("system_settings", {
 }).enableRLS();
 
 export const holidays = pgTable("holidays", {
+  ...rowSeq(),
   holiday_id: text().primaryKey(),
   holiday_date: day("holiday_date").notNull(),
   name: text().notNull(),
@@ -112,6 +125,7 @@ export const holidays = pgTable("holidays", {
 }, (t) => [index("holidays_date_idx").on(t.holiday_date)]).enableRLS();
 
 export const remittance_methods = pgTable("remittance_methods", {
+  ...rowSeq(),
   remittance_method_id: text().primaryKey(),
   method_name: text().notNull(),
   is_cash: boolean().notNull().default(false),
@@ -123,6 +137,7 @@ export const remittance_methods = pgTable("remittance_methods", {
 // ---------------------------------------------------------------- programs
 
 export const program_categories = pgTable("program_categories", {
+  ...rowSeq(),
   category_id: text().primaryKey(),
   category_name: text().notNull(),
   status: text(),
@@ -131,6 +146,7 @@ export const program_categories = pgTable("program_categories", {
 }).enableRLS();
 
 export const programs = pgTable("programs", {
+  ...rowSeq(),
   program_id: text().primaryKey(),
   program_code: text(),
   program_name: text().notNull(),
@@ -152,6 +168,7 @@ export const programs = pgTable("programs", {
 }).enableRLS();
 
 export const program_incentives = pgTable("program_incentives", {
+  ...rowSeq(),
   incentive_id: text().primaryKey(),
   program_id: text().notNull().references(() => programs.program_id),
   role: text(),
@@ -167,6 +184,7 @@ export const program_incentives = pgTable("program_incentives", {
 // ---------------------------------------------------------------- members
 
 export const members = pgTable("members", {
+  ...rowSeq(),
   member_id: text().primaryKey(),
   member_number: text().notNull(),
   surname: text().notNull(),
@@ -192,6 +210,7 @@ export const members = pgTable("members", {
 ]).enableRLS();
 
 export const member_programs = pgTable("member_programs", {
+  ...rowSeq(),
   enrollment_id: text().primaryKey(),
   member_id: text().notNull().references(() => members.member_id),
   member_number: text(),
@@ -218,6 +237,7 @@ export const member_programs = pgTable("member_programs", {
 ]).enableRLS();
 
 export const member_transfers = pgTable("member_transfers", {
+  ...rowSeq(),
   transfer_id: text().primaryKey(),
   enrollment_id: text().references(() => member_programs.enrollment_id),
   member_id: text().references(() => members.member_id),
@@ -234,6 +254,7 @@ export const member_transfers = pgTable("member_transfers", {
 // ---------------------------------------------------------------- remittances (parent of sales and collections links)
 
 export const remittances = pgTable("remittances", {
+  ...rowSeq(),
   remittance_id: text().primaryKey(),
   branch: text(),
   mas: text(),
@@ -268,6 +289,7 @@ export const remittances = pgTable("remittances", {
 // ---------------------------------------------------------------- new sales
 
 export const sales = pgTable("sales", {
+  ...rowSeq(),
   sale_id: text().primaryKey(),
   date_created: moment("date_created"),
   branch: text(),
@@ -323,6 +345,7 @@ export const sales = pgTable("sales", {
 ]).enableRLS();
 
 export const beneficiaries = pgTable("beneficiaries", {
+  ...rowSeq(),
   beneficiary_id: text().primaryKey(),
   member_id: text().notNull().references(() => members.member_id),
   sale_id: text().references(() => sales.sale_id),
@@ -338,6 +361,7 @@ export const beneficiaries = pgTable("beneficiaries", {
 // ---------------------------------------------------------------- collections
 
 export const collections = pgTable("collections", {
+  ...rowSeq(),
   collection_id: text().primaryKey(),
   collection_batch_id: text().notNull(),
   enrollment_id: text().notNull().references(() => member_programs.enrollment_id),
@@ -395,6 +419,7 @@ export const collections = pgTable("collections", {
 ]).enableRLS();
 
 export const remittance_collections = pgTable("remittance_collections", {
+  ...rowSeq(),
   remittance_collection_id: text().primaryKey(),
   remittance_id: text().notNull().references(() => remittances.remittance_id),
   collection_id: text().notNull(),
@@ -406,8 +431,9 @@ export const remittance_collections = pgTable("remittance_collections", {
   index("remittance_collections_collection_idx").on(t.collection_id),
 ]).enableRLS();
 
-/** Photo files live in Supabase Storage (bucket "receipts"); this row records which entries a photo covers. */
+/** Receipt photos: which entries a photo covers, and the compressed photo itself in up to four base64 chunks. */
 export const receipt_photos = pgTable("receipt_photos", {
+  ...rowSeq(),
   photo_id: text().primaryKey(),
   entry_ids: text().notNull(),
   mime_type: text(),
@@ -417,12 +443,19 @@ export const receipt_photos = pgTable("receipt_photos", {
   uploaded_at: moment("uploaded_at"),
   uploaded_by_employee_id: text(),
   uploaded_by_name: text(),
-  storage_path: text().notNull(),
+  /** For a later move of the photo files to Supabase Storage (bucket "receipts"); blank while the data is below. */
+  storage_path: text(),
+  chunk_count: integer(),
+  photo_data_1: text(),
+  photo_data_2: text(),
+  photo_data_3: text(),
+  photo_data_4: text(),
 }).enableRLS();
 
 // ---------------------------------------------------------------- finance
 
 export const cash_accounts = pgTable("cash_accounts", {
+  ...rowSeq(),
   cash_account_id: text().primaryKey(),
   account_name: text().notNull(),
   account_type: text(),
@@ -432,6 +465,7 @@ export const cash_accounts = pgTable("cash_accounts", {
 }).enableRLS();
 
 export const expenses = pgTable("expenses", {
+  ...rowSeq(),
   expense_id: text().primaryKey(),
   expense_date: day("expense_date"),
   category: text(),
@@ -455,6 +489,7 @@ export const expenses = pgTable("expenses", {
 }, (t) => [index("expenses_date_idx").on(t.expense_date)]).enableRLS();
 
 export const cash_transactions = pgTable("cash_transactions", {
+  ...rowSeq(),
   transaction_id: text().primaryKey(),
   transaction_date: day("transaction_date"),
   direction: text(),
@@ -475,6 +510,7 @@ export const cash_transactions = pgTable("cash_transactions", {
 }, (t) => [index("cash_transactions_date_idx").on(t.transaction_date)]).enableRLS();
 
 export const vendor_payables = pgTable("vendor_payables", {
+  ...rowSeq(),
   payable_id: text().primaryKey(),
   invoice_date: day("invoice_date"),
   due_date: day("due_date"),
@@ -494,6 +530,7 @@ export const vendor_payables = pgTable("vendor_payables", {
 }).enableRLS();
 
 export const bank_deposits = pgTable("bank_deposits", {
+  ...rowSeq(),
   deposit_id: text().primaryKey(),
   deposit_date: day("deposit_date"),
   employee_id: text().references(() => employees.employee_id, employeeRef),
@@ -510,6 +547,7 @@ export const bank_deposits = pgTable("bank_deposits", {
 }, (t) => [index("bank_deposits_employee_idx").on(t.employee_id, t.deposit_date)]).enableRLS();
 
 export const fidelity = pgTable("fidelity", {
+  ...rowSeq(),
   fidelity_id: text().primaryKey(),
   mas_employee_id: text().references(() => employees.employee_id, employeeRef),
   mas_name: text(),
@@ -525,6 +563,7 @@ export const fidelity = pgTable("fidelity", {
 }, (t) => [index("fidelity_employee_idx").on(t.mas_employee_id)]).enableRLS();
 
 export const commissions = pgTable("commissions", {
+  ...rowSeq(),
   commission_id: text().primaryKey(),
   employee_id: text().references(() => employees.employee_id, employeeRef),
   employee_name: text(),
@@ -543,6 +582,7 @@ export const commissions = pgTable("commissions", {
 // ---------------------------------------------------------------- attendance and payroll
 
 export const attendance = pgTable("attendance", {
+  ...rowSeq(),
   attendance_id: text().primaryKey(),
   employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
   attendance_date: day("attendance_date").notNull(),
@@ -568,6 +608,7 @@ export const attendance = pgTable("attendance", {
 }, (t) => [index("attendance_employee_date_idx").on(t.employee_id, t.attendance_date)]).enableRLS();
 
 export const leave_requests = pgTable("leave_requests", {
+  ...rowSeq(),
   leave_request_id: text().primaryKey(),
   employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
   leave_type: text(),
@@ -583,6 +624,7 @@ export const leave_requests = pgTable("leave_requests", {
 }, (t) => [index("leave_requests_employee_idx").on(t.employee_id)]).enableRLS();
 
 export const pay_profiles = pgTable("pay_profiles", {
+  ...rowSeq(),
   employee_id: text().primaryKey().references(() => employees.employee_id, employeeRef),
   base_type: text(),
   base_rate: money("base_rate"),
@@ -596,6 +638,7 @@ export const pay_profiles = pgTable("pay_profiles", {
 }).enableRLS();
 
 export const payroll_runs = pgTable("payroll_runs", {
+  ...rowSeq(),
   payroll_id: text().primaryKey(),
   period_from: day("period_from"),
   period_to: day("period_to"),
@@ -624,6 +667,7 @@ export const payroll_runs = pgTable("payroll_runs", {
 }).enableRLS();
 
 export const payroll_lines = pgTable("payroll_lines", {
+  ...rowSeq(),
   payroll_line_id: text().primaryKey(),
   payroll_id: text().notNull().references(() => payroll_runs.payroll_id),
   employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
@@ -652,6 +696,7 @@ export const payroll_lines = pgTable("payroll_lines", {
 }, (t) => [index("payroll_lines_payroll_idx").on(t.payroll_id)]).enableRLS();
 
 export const payroll_adjustments = pgTable("payroll_adjustments", {
+  ...rowSeq(),
   adjustment_id: text().primaryKey(),
   payroll_id: text().notNull().references(() => payroll_runs.payroll_id),
   employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
@@ -666,6 +711,7 @@ export const payroll_adjustments = pgTable("payroll_adjustments", {
 // ---------------------------------------------------------------- reports, audits, corrections
 
 export const report_remarks = pgTable("report_remarks", {
+  ...rowSeq(),
   remark_id: text().primaryKey(),
   date_from: day("date_from"),
   date_to: day("date_to"),
@@ -677,6 +723,7 @@ export const report_remarks = pgTable("report_remarks", {
 }).enableRLS();
 
 export const report_notes = pgTable("report_notes", {
+  ...rowSeq(),
   note_key: text().primaryKey(),
   employee_id: text().references(() => employees.employee_id, employeeRef),
   period_kind: text(),
@@ -691,6 +738,7 @@ export const report_notes = pgTable("report_notes", {
 
 /** Daily, Weekly, Monthly and Yearly Audits share one layout. */
 const periodAudit = (name: string) => pgTable(name, {
+  ...rowSeq(),
   audit_id: text().primaryKey(),
   report_date: day("report_date"),
   employee_id: text().references(() => employees.employee_id, employeeRef),
@@ -712,6 +760,7 @@ export const monthly_audits = periodAudit("monthly_audits");
 export const yearly_audits = periodAudit("yearly_audits");
 
 export const record_corrections = pgTable("record_corrections", {
+  ...rowSeq(),
   correction_id: text().primaryKey(),
   module: text(),
   record_id: text(),
@@ -727,6 +776,7 @@ export const record_corrections = pgTable("record_corrections", {
  * in its table and the original text is kept here until someone corrects the record and marks it resolved.
  */
 export const copy_exceptions = pgTable("copy_exceptions", {
+  ...rowSeq(),
   exception_id: text().primaryKey(),
   table_name: text().notNull(),
   record_id: text().notNull(),
@@ -744,6 +794,7 @@ export const copy_exceptions = pgTable("copy_exceptions", {
  * the user the app named for the transaction. Rows copied from the old Audit Log sheet keep their original fields.
  */
 export const audit_log = pgTable("audit_log", {
+  ...rowSeq(),
   audit_id: text().primaryKey().default(sql`gen_random_uuid()::text`),
   logged_at: moment("logged_at").notNull().defaultNow(),
   action: text().notNull(),

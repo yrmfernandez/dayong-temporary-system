@@ -36,6 +36,13 @@
       "when": 1791123766405,
       "tag": "0004_member_program_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791169833820,
+      "tag": "0005_row_order_and_photo_data",
+      "breakpoints": true
     }
   ]
 }

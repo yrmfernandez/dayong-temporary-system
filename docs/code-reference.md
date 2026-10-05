@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-38 page routes, 52 API handlers, 94 library files, 35 component files; 284 scanned source/configuration/public-text files in total.
+38 page routes, 52 API handlers, 95 library files, 35 component files; 285 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -156,13 +156,13 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/finance-data.ts](../lib/finance-data.ts) | `EXPENSE_EXTRA_HEADERS`, `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `createCashTransaction`, `voidFinanceRecord` | `@/lib/readable-id`, `@/lib/encoder-sheets`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/expense-options` |
 | [lib/finance-operations.ts](../lib/finance-operations.ts) | `getCashAccounts`, `saveCashAccount`, `getVendorPayables`, `createVendorPayable`, `payVendorPayable`, `getCommissions`, `createCommission`, `payCommission` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/google-sheets-data.ts](../lib/google-sheets-data.ts) | `ProgramSheetData`, `BranchSheetData`, `getBranches`, `createBranch`, `ProgramIncentiveSheetData`, `CreateProgramData`, `getProgramIncentives`, `addProgramIncentive`, `getPrograms`, `programColumns`, `createProgram`, `LoginRole`, `LoginUserData`, `AttendanceEmployee`, `getLoginUserByEmployeeId`, `AccountRole`, `CreateEmployeeAccountData`, `getActiveAccountRoles`, `createEmployeeAccount`, `getActiveAttendanceEmployees` | `@/lib/db`, `@/lib/program-amount-lock`, `@/lib/program-incentive-store`, `@/lib/employees`, `@/lib/employee-id`, `@/lib/encoder-sheets`, `@/lib/roles`, `@/lib/program-age`, `@/lib/remittance`, `@/lib/users-sheet`, `@/lib/google-sheets` |
-| [lib/google-sheets.ts](../lib/google-sheets.ts) | `GOOGLE_SHEET_ID`, `sheetsStats`, `withWriteLock`, `sheetOfRange`, `readingFresh`, `sheets` | `@/lib/sheets-read-cache`, `@/lib/audit-log`, `@/lib/encoder-context`, `@/lib/server-environment` |
+| [lib/google-sheets.ts](../lib/google-sheets.ts) | `GOOGLE_SHEET_ID`, `sheetsStats`, `withWriteLock`, `sheetOfRange`, `readingFresh`, `sheets` | `@/lib/sheets-read-cache`, `@/lib/encoder-context`, `@/lib/sheets-on-db`, `@/lib/server-environment` |
 | [lib/leave-data.ts](../lib/leave-data.ts) | `LeaveApprovalStatus`, `LeaveRequest`, `getLeaveRequestsForEmployee`, `addLeaveRequest`, `getAllLeaveRequests`, `updateLeaveRequestReview` | `@/lib/encoder-sheets`, `@/lib/google-sheets` |
 | [lib/mam-report.ts](../lib/mam-report.ts) | `MamAccount`, `monitoringMonths`, `buildMamReport` | `@/lib/account-rules` |
 | [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `ProgramInput`, `updateProgramRecord`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/encoder-sheets`, `@/lib/sheet-rows`, `@/lib/users-sheet`, `@/lib/program-incentive-store` |
 | [lib/member-directory-data.ts](../lib/member-directory-data.ts) | `loadMemberDirectory`, `DirectoryQuery`, `queryMemberDirectory` | `@/lib/db`, `@/lib/account-data`, `@/lib/member-directory`, `@/lib/member-scope` |
 | [lib/member-directory.ts](../lib/member-directory.ts) | `DirectoryEnrollment`, `DirectoryMember`, `DECEASED_STATUS`, `MEMBER_STATUSES`, `STANDING_FILTERS`, `Standing`, `matchesStanding`, `DirectoryFilters`, `emptyDirectoryFilters`, `MemberRecord`, `EnrollmentRecord`, `CollectorRecord`, `buildMemberDirectory`, `filterMemberDirectory` | — |
-| [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
+| [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
 | [lib/member-scope.ts](../lib/member-scope.ts) | `ownMembersScope`, `isOwnAccount` | `@/lib/auth`, `@/lib/access-control`, `@/lib/employees` |
 | [lib/member-transfer.ts](../lib/member-transfer.ts) | `canTransferMembers`, `transferCandidates`, `transferEnrollment`, `getTransferHistory` | `@/lib/auth-server`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/readable-id` |
 | [lib/members.ts](../lib/members.ts) | `getMemberPrograms`, `getProgram`, `getMember` | `./types` |
@@ -196,6 +196,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/sheet-headers.ts](../lib/sheet-headers.ts) | `canonicalHeader`, `headerMatches` | — |
 | [lib/sheet-ranges.ts](../lib/sheet-ranges.ts) | `COLLECTIONS_RANGE`, `SALES_RANGE`, `REMITTANCES_RANGE`, `REMITTANCE_LINKS_RANGE`, `PROGRAMS_RANGE`, `MEMBERS_RANGE` | — |
 | [lib/sheet-rows.ts](../lib/sheet-rows.ts) | `deleteRowsWhere`, `deleteRowsById` | `@/lib/google-sheets` |
+| [lib/sheets-on-db.ts](../lib/sheets-on-db.ts) | `SHEET_TITLES`, `tableOf`, `isDatabaseSheet`, `columnLetters`, `parseA1`, `sheetsOnDb` | `@/lib/db` |
 | [lib/sheets-read-cache.ts](../lib/sheets-read-cache.ts) | `SheetsReadCache`, `KeyedLock` | — |
 | [lib/statement-of-account.ts](../lib/statement-of-account.ts) | `listStatementAccounts`, `getStatementOfAccount`, `StatementOfAccount` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db` |
 | [lib/system-health.ts](../lib/system-health.ts) | `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/lib/audit-log`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment` |
@@ -279,7 +280,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/leave-approvals/route.ts](../app/api/leave-approvals/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data`, `@/lib/attendance-data` |
 | [app/api/leave-requests/route.ts](../app/api/leave-requests/route.ts) | `GET`, `POST` | `@/lib/readable-id`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data` |
 | [app/api/mam/member/route.ts](../app/api/mam/member/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/account-data` |
-| [app/api/mam/route.ts](../app/api/mam/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/encoder-context`, `@/lib/account-data`, `@/lib/mam-report`, `@/lib/account-rules` |
+| [app/api/mam/route.ts](../app/api/mam/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/encoder-context`, `@/lib/account-data`, `@/lib/mam-report`, `@/lib/account-rules`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/member-records` |
 | [app/api/mas/route.ts](../app/api/mas/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees` |
 | [app/api/member-programs/check/route.ts](../app/api/member-programs/check/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-records` |
 | [app/api/members/directory/route.ts](../app/api/members/directory/route.ts) | `GET`, `PATCH`, `DELETE` | `@/lib/access-control`, `@/lib/member-scope`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/master-data-crud`, `@/lib/member-directory-data`, `@/lib/member-directory`, `@/lib/member-transfer` |
