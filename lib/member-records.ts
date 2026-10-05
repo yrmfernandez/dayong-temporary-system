@@ -103,10 +103,21 @@ export async function findMemberByNumber(memberNumber: string) {
  * enrollments and returns those programs; New Sales searches every member (no branch or MAS given).
  */
 export async function searchMembersByName(search: string, branch: string, mas: string) {
+  if (!text(search)) return [];
+  return findMembers(search, branch, mas, 5);
+}
+
+/** Every member with an active enrollment under this branch and MAS, for the Collections member list (at most 1,000). */
+export async function listMembersForMas(branch: string, mas: string) {
+  if (!text(branch) || !text(mas)) return [];
+  return findMembers("", branch, mas, 1000);
+}
+
+async function findMembers(search: string, branch: string, mas: string, limit: number) {
   const term = text(search).toLowerCase();
   const normalizedBranch = text(branch).toLowerCase(), normalizedMas = text(mas).toLowerCase();
   const scoped = Boolean(normalizedBranch || normalizedMas);
-  if (!term || (scoped && (!normalizedBranch || !normalizedMas))) return [];
+  if ((!term && !scoped) || (scoped && (!normalizedBranch || !normalizedMas))) return [];
   const eligible = scoped
     ? sql`lower(trim(${memberPrograms.branch})) = ${normalizedBranch} and lower(trim(${memberPrograms.mas})) = ${normalizedMas} and (coalesce(trim(${memberPrograms.status}), '') = '' or lower(trim(${memberPrograms.status})) = 'active')`
     : sql`true`;
@@ -115,11 +126,11 @@ export async function searchMembersByName(search: string, branch: string, mas: s
   const programIds = sql<string[]>`coalesce((select array_agg(${memberPrograms.program_id} order by ${memberPrograms.program_id}) from ${memberPrograms} where ${memberPrograms.member_id} = ${members.member_id} and ${eligible}), '{}')`;
   const rows = await currentDb().select({ member: members, programIds }).from(members)
     .where(and(
-      sql`(${fullName} like ${pattern} or lower(${members.member_number}) like ${pattern})`,
+      term ? sql`(${fullName} like ${pattern} or lower(${members.member_number}) like ${pattern})` : undefined,
       scoped ? sql`exists (select 1 from ${memberPrograms} where ${memberPrograms.member_id} = ${members.member_id} and ${eligible})` : undefined,
     ))
     .orderBy(asc(members.surname), asc(members.first_name), asc(members.member_number))
-    .limit(5);
+    .limit(limit);
   return rows.map(({ member: row, programIds: ids }) => ({
     id: row.member_id,
     phMemberNumber: row.member_number,

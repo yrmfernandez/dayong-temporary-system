@@ -1,11 +1,10 @@
-import { appendEncodedRows } from "@/lib/encoder-sheets";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { asc, eq } from "drizzle-orm";
+
+import { currentDb, encodedBy, schema } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
 
-// 'Remittance Methods'!A:E business columns, then encoder identity.
-const RANGE = "'Remittance Methods'!A:E";
 const text = (value: unknown) => String(value ?? "").trim();
-const bool = (value: unknown) => ["true", "yes", "1"].includes(text(value).toLowerCase());
+const methods = schema.remittance_methods;
 
 export type PaymentMethod = {
   id: string;
@@ -16,19 +15,14 @@ export type PaymentMethod = {
   status: "active" | "inactive";
 };
 
-async function rows() {
-  return (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: RANGE })).data.values ?? [];
-}
-
 export async function getPaymentMethods(): Promise<PaymentMethod[]> {
-  let data: unknown[][];
-  try { data = await rows(); } catch { throw new Error("Run npm run sheets:remittance-methods -- --apply to create the Remittance Methods sheet."); }
-  return data.slice(1).filter((row) => text(row[0])).map((row) => ({
-    id: text(row[0]),
-    name: text(row[1]),
-    isCash: bool(row[2]),
-    requiresReference: bool(row[3]),
-    status: text(row[4]).toLowerCase() === "inactive" ? "inactive" : "active",
+  const rows = await currentDb().select().from(methods).orderBy(asc(methods.remittance_method_id));
+  return rows.map((row) => ({
+    id: row.remittance_method_id,
+    name: text(row.method_name),
+    isCash: row.is_cash,
+    requiresReference: row.requires_reference,
+    status: text(row.status).toLowerCase() === "inactive" ? "inactive" : "active",
   }));
 }
 
@@ -45,14 +39,13 @@ export async function savePaymentMethod(input: Record<string, unknown>) {
   if (!name || name.length > 60) throw new Error("Enter a remittance method name of up to 60 characters.");
   const existing = await getPaymentMethods();
   if (existing.some((method) => method.name.toLowerCase() === name.toLowerCase() && method.id !== id)) throw new Error("That remittance method already exists.");
-  const values = [name, isCash, requiresReference, status];
+  const values = { method_name: name, is_cash: isCash, requires_reference: requiresReference, status };
   if (id) {
-    const index = (await rows()).slice(1).findIndex((row) => text(row[0]) === id);
-    if (index < 0) throw new Error("Remittance method not found.");
-    await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'Remittance Methods'!B${index + 2}:E${index + 2}`, valueInputOption: "RAW", requestBody: { values: [values] } });
+    const updated = await currentDb().update(methods).set(values).where(eq(methods.remittance_method_id, id)).returning({ id: methods.remittance_method_id });
+    if (!updated.length) throw new Error("Remittance method not found.");
     return { id, name, isCash, requiresReference, status };
   }
   const created = createReadableId("PMT");
-  await appendEncodedRows({ range: RANGE, requestBody: { values: [[created, ...values]] } });
+  await currentDb().insert(methods).values({ remittance_method_id: created, ...values, ...encodedBy() });
   return { id: created, name, isCash, requiresReference, status };
 }

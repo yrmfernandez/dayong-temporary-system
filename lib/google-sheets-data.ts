@@ -1,33 +1,19 @@
-﻿import { createReadableId } from "@/lib/readable-id";
-import { amountEditableCells, isTrue } from "@/lib/program-amount-lock";
+import { asc, eq } from "drizzle-orm";
+
+import { currentDb, encodedBy, inTransaction, schema } from "@/lib/db";
+import { isTrue } from "@/lib/program-amount-lock";
 import { writeProgramIncentives } from "@/lib/program-incentive-store";
 import { getEmployees } from "@/lib/employees";
 import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
-import { getEncoder } from "@/lib/encoder-context";
-import { encoderHeaders } from "@/lib/encoder-schema";
 import { parsePageAccess } from "@/lib/roles";
-import { ageRestrictionCells, normalizeAgeRestriction, readAgeRestriction, type AgeRestriction } from "@/lib/program-age";
+import { normalizeAgeRestriction, type AgeRestriction } from "@/lib/program-age";
 import { normalizeSaleIncentive } from "@/lib/remittance";
-
-/** Programs!Q:R cells for the New Sale incentive (blank unless the program has a registration fee). */
-const saleIncentiveCells = (data: { registrationFeeRequired?: unknown; registrationAmount?: unknown; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown }) => {
-  const setting = normalizeSaleIncentive(data);
-  return [setting.saleIncentiveType, setting.saleIncentiveType ? setting.saleIncentiveAmount : ""];
-};
 import { assertUsernameColumnRemoved, loadUsers, readUserRows, USERS_RANGE } from "@/lib/users-sheet";
-import {
-  GOOGLE_SHEET_ID,
-  sheets,
-} from "@/lib/google-sheets";
+import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 
-const PROGRAMS_SHEET = "Programs";
-const BRANCHES_SHEET = "Branches";
-const PROGRAM_INCENTIVES_SHEET =
-  "Program Incentives";
-const REMITTANCES_SHEET = "Remittances";
-const COLLECTIONS_SHEET = "Collections";
-
+// Branches, programs and incentive tiers are in the database. Sign-in accounts (Users, Roles, User Roles) are still
+// read from Google Sheets here until they move (docs/supabase-migration-plan.md, status by module).
 // Members, enrollments, New Sales and beneficiaries moved to the database: lib/member-records.ts.
 
 /* =========================================================
@@ -62,117 +48,29 @@ export type BranchSheetData = {
   status: "active" | "inactive";
 };
 
-async function ensureBranchesSheet() {
-  try {
-    await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${BRANCHES_SHEET}!A:M`,
-    });
-  } catch (error: unknown) {
-    const status =
-      typeof error === "object" && error !== null && "code" in error
-        ? Number(error.code)
-        : 0;
+const { branches: branchTable, programs: programTable, program_incentives: incentiveTable } = schema;
+const clean = (value: string | null | undefined) => (value ?? "").trim();
 
-    if (status !== 400) {
-      throw error;
-    }
-
-    getEncoder();
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      requestBody: {
-        requests: [
-          {
-            addSheet: {
-              properties: { title: BRANCHES_SHEET },
-            },
-          },
-        ],
-      },
-    });
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${BRANCHES_SHEET}!A:P`,
-      valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [[
-          "Branch ID",
-          "Branch Name / Code",
-          "Territory",
-          "Barangay",
-          "City / Municipality",
-          "Province",
-          "Country",
-          "Postal Code",
-          "Contact Number",
-          "Email",
-          "Date Opened",
-          "Date Closed",
-          "Status",
-          ...encoderHeaders,
-        ]],
-      },
-    });
-  }
+/** Highest number already used after `prefix-` among the IDs, plus one, padded to 4 digits: BR-0027, DP-0055. */
+function nextId(prefix: string, ids: string[]) {
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
+  const highest = ids.reduce((max, id) => { const match = pattern.exec(id); return match ? Math.max(max, Number(match[1])) : max; }, 0);
+  return `${prefix}-${String(highest + 1).padStart(4, "0")}`;
 }
 
+/* =========================================================
+   BRANCHES
+========================================================= */
+
+const toBranch = (row: typeof branchTable.$inferSelect): BranchSheetData => ({
+  id: row.branch_id, name: clean(row.branch_name_code), territory: clean(row.territory), barangay: clean(row.barangay),
+  cityMunicipality: clean(row.city_municipality), province: clean(row.province), country: clean(row.country), postalCode: clean(row.postal_code),
+  contactNumber: clean(row.contact_number), email: clean(row.email), dateOpened: row.date_opened ?? "", dateClosed: row.date_closed ?? "",
+  status: clean(row.status).toLowerCase() === "inactive" ? "inactive" : "active",
+});
+
 export async function getBranches(): Promise<BranchSheetData[]> {
-  await ensureBranchesSheet();
-
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${BRANCHES_SHEET}!A:M`,
-  });
-
-  return (response.data.values ?? [])
-    .slice(1)
-    .filter((row) => String(row[0] ?? "").trim() !== "")
-    .map((row) => {
-      const hasFullBranchColumns = row.length >= 13;
-
-      return {
-        id: String(row[0] ?? "").trim(),
-        name: String(row[1] ?? "").trim(),
-        territory: String(row[2] ?? "").trim(),
-        barangay: hasFullBranchColumns
-          ? String(row[3] ?? "").trim()
-          : "",
-        cityMunicipality: hasFullBranchColumns
-          ? String(row[4] ?? "").trim()
-          : "",
-        province: hasFullBranchColumns
-          ? String(row[5] ?? "").trim()
-          : "",
-        country: hasFullBranchColumns
-          ? String(row[6] ?? "").trim()
-          : "",
-        postalCode: hasFullBranchColumns
-          ? String(row[7] ?? "").trim()
-          : "",
-        contactNumber: hasFullBranchColumns
-          ? String(row[8] ?? "").trim()
-          : "",
-        email: hasFullBranchColumns
-          ? String(row[9] ?? "").trim()
-          : "",
-        dateOpened: hasFullBranchColumns
-          ? String(row[10] ?? "").trim()
-          : "",
-        dateClosed: hasFullBranchColumns
-          ? String(row[11] ?? "").trim()
-          : "",
-        status:
-          String(
-            row[hasFullBranchColumns ? 12 : 2] ?? "",
-          )
-            .trim()
-            .toLowerCase() === "inactive"
-            ? ("inactive" as const)
-            : ("active" as const),
-      };
-    });
+  return (await currentDb().select().from(branchTable).orderBy(asc(branchTable.branch_id))).map(toBranch);
 }
 
 export async function createBranch(data: {
@@ -189,53 +87,15 @@ export async function createBranch(data: {
   dateClosed: string;
   status: "active" | "inactive";
 }): Promise<BranchSheetData> {
-  const branches = await getBranches();
-  const highestId = branches.reduce((highest, branch) => {
-    const match = /^BR-(\d+)$/.exec(branch.id);
-    return match ? Math.max(highest, Number(match[1])) : highest;
-  }, 0);
-
-  const branch: BranchSheetData = {
-    id: `BR-${String(highestId + 1).padStart(4, "0")}`,
-    name: data.name.trim(),
-    territory: data.territory.trim(),
-    barangay: data.barangay.trim(),
-    cityMunicipality: data.cityMunicipality.trim(),
-    province: data.province.trim(),
-    country: data.country.trim(),
-    postalCode: data.postalCode.trim(),
-    contactNumber: data.contactNumber.trim(),
-    email: data.email.trim(),
-    dateOpened: data.dateOpened.trim(),
-    dateClosed: data.dateClosed.trim(),
-    status: data.status === "inactive" ? "inactive" : "active",
-  };
-
-  await appendEncodedRows({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${BRANCHES_SHEET}!A:M`,
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: [[
-        branch.id,
-        branch.name,
-        branch.territory,
-        branch.barangay,
-        branch.cityMunicipality,
-        branch.province,
-        branch.country,
-        branch.postalCode,
-        branch.contactNumber,
-        branch.email,
-        branch.dateOpened,
-        branch.dateClosed,
-        branch.status,
-      ]],
-    },
-  });
-
-  return branch;
+  const ids = (await currentDb().select({ id: branchTable.branch_id }).from(branchTable)).map((row) => row.id);
+  const [row] = await currentDb().insert(branchTable).values({
+    branch_id: nextId("BR", ids), branch_name_code: data.name.trim(), territory: data.territory.trim() || null, barangay: data.barangay.trim() || null,
+    city_municipality: data.cityMunicipality.trim() || null, province: data.province.trim() || null, country: data.country.trim() || null,
+    postal_code: data.postalCode.trim() || null, contact_number: data.contactNumber.trim() || null, email: data.email.trim() || null,
+    date_opened: data.dateOpened.trim() || null, date_closed: data.dateClosed.trim() || null, status: data.status === "inactive" ? "inactive" : "active",
+    ...encodedBy(),
+  }).returning();
+  return toBranch(row);
 }
 
 /* =========================================================
@@ -257,9 +117,9 @@ export type ProgramIncentiveSheetData = {
 };
 
 export type CreateProgramData = {
-  /** Programs!S: the program's category (Program Categories). Blank = uncategorized. */
+  /** The program's category (Program Categories). Blank = uncategorized. */
   categoryId?: string;
-  /** Programs!T and U: whether encoders may type the amount on a New Sale / a Collection. False locks it to the program's amount. */
+  /** Whether encoders may type the amount on a New Sale / a Collection. False locks it to the program's amount. */
   newSaleAmountEditable?: boolean;
   collectionAmountEditable?: boolean;
   saleIncentiveType?: unknown;
@@ -291,574 +151,101 @@ export type CreateProgramData = {
   maxAge?: unknown;
 };
 
+const toIncentive = (row: typeof incentiveTable.$inferSelect) => ({
+  id: row.incentive_id,
+  programId: row.program_id,
+  role: clean(row.role).toLowerCase() === "collector" ? ("Collector" as const) : ("MAS" as const),
+  fromMonth: row.from_month !== null && row.from_month >= 1 ? row.from_month : 1,
+  toMonth: row.to_month !== null && row.to_month >= 1 ? row.to_month : 1,
+  incentiveType: clean(row.incentive_type).toLowerCase() === "fixed" ? ("fixed" as const) : ("percentage" as const),
+  // 0 is a valid mark-up and a valid incentive.
+  markUp: row.mark_up ?? 0,
+  incentiveAmount: row.incentive_amount ?? 0,
+  // Blank for the base tiers, else the branch the tier is for.
+  branchId: clean(row.branch_id),
+});
+
+/** Incentive tiers of one program, or of every program. */
+export async function getProgramIncentives(programId?: string) {
+  const id = clean(programId);
+  const rows = await currentDb().select().from(incentiveTable).where(id ? eq(incentiveTable.program_id, id) : undefined).orderBy(asc(incentiveTable.from_month));
+  return rows.map(toIncentive);
+}
+
+export async function addProgramIncentive(incentive: ProgramIncentiveSheetData) {
+  const fromMonth = Number(incentive.fromMonth), toMonth = Number(incentive.toMonth), markUp = Number(incentive.markUp), incentiveAmount = Number(incentive.incentiveAmount);
+  await currentDb().insert(incentiveTable).values({
+    incentive_id: incentive.id, program_id: incentive.programId, role: incentive.role,
+    from_month: Number.isFinite(fromMonth) && fromMonth >= 1 ? fromMonth : 1,
+    to_month: Number.isFinite(toMonth) && toMonth >= 1 ? toMonth : 999999,
+    incentive_type: incentive.incentiveType, mark_up: Number.isFinite(markUp) ? markUp : 0, incentive_amount: Number.isFinite(incentiveAmount) ? incentiveAmount : 0,
+    branch_id: clean(incentive.branchId) || null, ...encodedBy(),
+  });
+}
+
 /* =========================================================
-   GET PROGRAMS
+   PROGRAMS
 ========================================================= */
 
+const toProgram = (row: typeof programTable.$inferSelect) => {
+  const ageRestricted = row.age_restricted;
+  const saleIncentiveType = clean(row.new_sale_incentive_type);
+  return {
+    id: row.program_id,
+    code: clean(row.program_code),
+    name: clean(row.program_name),
+    basePay: row.base_pay ?? 0,
+    status: clean(row.status).toLowerCase() === "inactive" ? ("inactive" as const) : ("active" as const),
+    description: row.description ?? "",
+    registrationFeeRequired: row.registration_fee_required,
+    registrationAmount: row.registration_amount ?? 0,
+    payBalanceTotal: row.pay_balance_total ?? 0,
+    ageRestricted,
+    minAge: ageRestricted ? row.min_age : null,
+    maxAge: ageRestricted ? row.max_age : null,
+    // New Sale incentive for programs with a registration fee.
+    saleIncentiveType: (["fixed", "percentage"].includes(saleIncentiveType) ? saleIncentiveType : "") as "fixed" | "percentage" | "",
+    saleIncentiveAmount: row.new_sale_incentive_amount ?? 0,
+    categoryId: clean(row.category_id),
+    // False locks the amount to the program's own (lib/program-amount-lock.ts).
+    newSaleAmountEditable: row.new_sale_amount_editable,
+    collectionAmountEditable: row.collection_amount_editable,
+  };
+};
+
 export async function getPrograms() {
-  const response = await sheets.spreadsheets.values.batchGet({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [`${PROGRAMS_SHEET}!A:U`, `${PROGRAM_INCENTIVES_SHEET}!A:M`],
-  });
-  const rows = response.data.valueRanges?.[0]?.values ?? [];
-  if (rows.length <= 1) {
-    return [];
-  }
-
-  const programs = rows
-    .slice(1)
-    .filter((row) => {
-      return (
-        String(row[0] ?? "").trim() !== ""
-      );
-    })
-    .map((row) => ({
-      id: String(row[0] ?? "").trim(),
-
-      code: String(row[1] ?? "").trim(),
-
-      name: String(row[2] ?? "").trim(),
-
-      basePay:
-        Number(row[3] ?? 0) || 0,
-
-      status:
-        String(row[4] ?? "")
-          .trim()
-          .toLowerCase() === "inactive"
-          ? ("inactive" as const)
-          : ("active" as const),
-
-      description:
-        String(row[5] ?? ""),
-      registrationFeeRequired: String(row[10] ?? "").trim().toLowerCase() === "yes" || row[10] === true,
-      registrationAmount: Number(row[11] ?? 0) || 0,
-      payBalanceTotal: Number(row[12] ?? 0) || 0,
-      ...readAgeRestriction(row),
-      // New Sale incentive for programs with a registration fee (Programs Q type, R amount).
-      saleIncentiveType: (["fixed", "percentage"].includes(String(row[16] ?? "").trim()) ? String(row[16]).trim() : "") as "fixed" | "percentage" | "",
-      saleIncentiveAmount: Number(row[17] ?? 0) || 0,
-      categoryId: String(row[18] ?? "").trim(),
-      // Programs T new_sale_amount_editable, U collection_amount_editable: blank or FALSE locks the amount.
-      newSaleAmountEditable: isTrue(row[19]),
-      collectionAmountEditable: isTrue(row[20]),
-    }));
-
-  const incentives =
-    await getProgramIncentives(undefined, response.data.valueRanges?.[1]?.values ?? []);
-
-  return programs.map((program) => ({
-    ...program,
-
-    incentiveTiers:
-      incentives
-        .filter(
-          (incentive) =>
-            incentive.programId ===
-            program.id,
-        )
-        .sort(
-          (a, b) =>
-            a.fromMonth -
-            b.fromMonth,
-        ),
+  const [programRows, incentives] = await Promise.all([
+    currentDb().select().from(programTable).orderBy(asc(programTable.program_id)),
+    getProgramIncentives(),
+  ]);
+  return programRows.map((row) => ({
+    ...toProgram(row),
+    incentiveTiers: incentives.filter((incentive) => incentive.programId === row.program_id).sort((a, b) => a.fromMonth - b.fromMonth),
   }));
 }
 
-/* =========================================================
-   GET PROGRAM BY ID
-========================================================= */
-
-export async function getProgramById(
-  programId: string,
-) {
-  const normalizedProgramId =
-    programId.trim();
-
-  if (!normalizedProgramId) {
-    return null;
-  }
-
-  const programs =
-    await getPrograms();
-
-  return (
-    programs.find(
-      (program) =>
-        program.id ===
-        normalizedProgramId,
-    ) ?? null
-  );
-}
-
-/* =========================================================
-   GENERATE PROGRAM ID
-   DP-0001
-   DP-0002
-   DP-0003
-========================================================= */
-
-export async function generateProgramId() {
-  const response =
-    await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${PROGRAMS_SHEET}!A:A`,
-    });
-
-  const rows =
-    response.data.values ?? [];
-
-  let highestNumber = 0;
-
-  for (const row of rows.slice(1)) {
-    const value =
-      String(row[0] ?? "").trim();
-
-    const match =
-      /^DP-(\d+)$/.exec(value);
-
-    if (!match) {
-      continue;
-    }
-
-    const number =
-      Number(match[1]);
-
-    if (
-      Number.isFinite(number) &&
-      number > highestNumber
-    ) {
-      highestNumber = number;
-    }
-  }
-
-  const nextNumber =
-    highestNumber + 1;
-
-  return `DP-${String(
-    nextNumber,
-  ).padStart(4, "0")}`;
-}
-
-/* =========================================================
-   ADD PROGRAM
-========================================================= */
-
-export async function addProgram(
-  program: ProgramSheetData,
-) {
-  const values = [
-    program.id,
-    program.code,
-    program.name,
-    program.basePay,
-    program.status,
-    program.description,
-  ];
-
-  const response =
-    await appendEncodedRows({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${PROGRAMS_SHEET}!A:F`,
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: {
-        values: [values],
-      },
-    });
-
-  return response.data;
-}
-
-/* =========================================================
-   CREATE PROGRAM
-========================================================= */
-
-export async function createProgram(
-  data: CreateProgramData,
-) {
-  const programId =
-    await generateProgramId();
-
-  const program: ProgramSheetData = {
-    id: programId,
-
-    code: data.code.trim(),
-
-    name: data.name.trim(),
-
-    basePay:
-      Number(data.basePay) || 0,
-
-    status:
-      data.status === "inactive"
-        ? "inactive"
-        : "active",
-
-    description:
-      data.description.trim(),
-
-    registrationFeeRequired: Boolean(data.registrationFeeRequired),
-    registrationAmount: Number(data.registrationAmount) || 0,
-    payBalanceTotal: Number(data.payBalanceTotal) || 0,
-    ...normalizeAgeRestriction(data),
+/** The program columns a create or an edit writes (everything but the ID and encoder). */
+export function programColumns(data: Pick<CreateProgramData, "code" | "name" | "basePay" | "status" | "description" | "registrationFeeRequired" | "registrationAmount" | "payBalanceTotal" | "categoryId" | "newSaleAmountEditable" | "collectionAmountEditable" | "saleIncentiveType" | "saleIncentiveAmount" | "ageRestricted" | "minAge" | "maxAge">) {
+  const age = normalizeAgeRestriction(data);
+  const saleIncentive = normalizeSaleIncentive(data);
+  return {
+    program_code: data.code.trim(), program_name: data.name.trim(), base_pay: Number(data.basePay) || 0, status: data.status === "inactive" ? "inactive" : "active",
+    description: data.description.trim() || null, registration_fee_required: Boolean(data.registrationFeeRequired), registration_amount: Number(data.registrationAmount) || 0,
+    pay_balance_total: Number(data.payBalanceTotal) || 0, age_restricted: age.ageRestricted, min_age: age.minAge, max_age: age.maxAge,
+    new_sale_incentive_type: saleIncentive.saleIncentiveType || null, new_sale_incentive_amount: saleIncentive.saleIncentiveType ? saleIncentive.saleIncentiveAmount : null,
+    category_id: clean(data.categoryId) || null, new_sale_amount_editable: isTrue(data.newSaleAmountEditable), collection_amount_editable: isTrue(data.collectionAmountEditable),
   };
+}
 
-  /*
-   * Save the main program.
-   */
-  await addProgram(program);
-
-  const programRows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${PROGRAMS_SHEET}!A:A` })).data.values ?? [];
-  const rowNumber = programRows.findIndex((row) => String(row[0] ?? "").trim() === programId) + 1;
-  if (rowNumber > 1) await sheets.spreadsheets.values.update({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${PROGRAMS_SHEET}!K${rowNumber}:U${rowNumber}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [[data.registrationFeeRequired ? "Yes" : "No", data.registrationAmount, data.payBalanceTotal, ...ageRestrictionCells(program), ...saleIncentiveCells(data), (data.categoryId ?? "").trim(), ...amountEditableCells(data)]] },
+/** Saves a new program (DP-0001, DP-0002, …) and its incentive tiers in one transaction. */
+export async function createProgram(data: CreateProgramData) {
+  return inTransaction(async (tx) => {
+    const ids = (await tx.select({ id: programTable.program_id }).from(programTable)).map((row) => row.id);
+    const [row] = await tx.insert(programTable).values({ program_id: nextId("DP", ids), ...programColumns(data), ...encodedBy() }).returning();
+    // Base tiers (blank branch) and branch-specific tiers.
+    await writeProgramIncentives(row.program_id, data.incentiveTiers);
+    return { ...toProgram(row), incentiveTiers: await getProgramIncentives(row.program_id) };
   });
-
-  /*
-   * Save all incentive tiers.
-   *
-   * Each tier belongs to either:
-   * MAS
-   * or
-   * Collector
-   *
-   * Mark Up is stored separately
-   * from the incentive amount.
-   */
-  // Base tiers (blank branch) and branch-specific tiers, with the branch in Program Incentives!M.
-  await writeProgramIncentives(program.id, data.incentiveTiers);
-
-  /*
-   * Return the program together with
-   * its incentive tiers.
-   */
-  return {
-    ...program,
-
-    incentiveTiers:
-      data.incentiveTiers.map(
-        (tier) => ({
-          id: createReadableId("INC"),
-          programId: program.id,
-
-          role: tier.role,
-
-          fromMonth:
-            Number(tier.fromMonth),
-
-          toMonth:
-            Number(tier.toMonth),
-
-          incentiveType:
-            tier.incentiveType,
-
-          markUp:
-            Number(tier.markUp) || 0,
-
-          incentiveAmount:
-            Number(
-              tier.incentiveAmount,
-            ) || 0,
-          branchId: (tier.branchId ?? "").trim(),
-        }),
-      ),
-  };
-}
-
-/* =========================================================
-   GET PROGRAM INCENTIVES
-========================================================= */
-
-export async function getProgramIncentives(
-  programId?: string,
-  preloadedRows?: unknown[][],
-) {
-  /*
-   * Program Incentives now uses
-   * columns A:H:
-   *
-   * A Incentive ID
-   * B Program ID
-   * C Role
-   * D From Month
-   * E To Month
-   * F Incentive Type
-   * G Mark Up
-   * H Incentive Amount
-   */
-  const rows = preloadedRows ?? (await sheets.spreadsheets.values.get({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${PROGRAM_INCENTIVES_SHEET}!A:M`,
-  })).data.values ?? [];
-
-  if (rows.length <= 1) {
-    return [];
-  }
-
-  const incentives =
-    rows
-      .slice(1)
-      .filter((row) => {
-        return (
-          String(row[0] ?? "").trim() !==
-          ""
-        );
-      })
-      .map((row) => {
-        const fromMonth =
-          Number(row[3] ?? 1);
-
-        const toMonth =
-          Number(row[4] ?? 1);
-
-        const markUp =
-          Number(row[6] ?? 0);
-
-        const incentiveAmount =
-          Number(row[7] ?? 0);
-
-        return {
-          id: String(
-            row[0] ?? "",
-          ).trim(),
-
-          programId: String(
-            row[1] ?? "",
-          ).trim(),
-
-          role:
-            String(row[2] ?? "")
-              .trim()
-              .toLowerCase() ===
-            "collector"
-              ? ("Collector" as const)
-              : ("MAS" as const),
-
-          fromMonth:
-            Number.isFinite(fromMonth) &&
-            fromMonth >= 1
-              ? fromMonth
-              : 1,
-
-          toMonth:
-            Number.isFinite(toMonth) &&
-            toMonth >= 1
-              ? toMonth
-              : 1,
-
-          incentiveType:
-            String(row[5] ?? "")
-              .trim()
-              .toLowerCase() ===
-            "fixed"
-              ? ("fixed" as const)
-              : ("percentage" as const),
-
-          /*
-           * Mark Up is stored in column G.
-           *
-           * 0 is a valid Mark Up.
-           */
-          markUp:
-            Number.isFinite(markUp)
-              ? markUp
-              : 0,
-
-          /*
-           * Incentive Amount is stored
-           * in column H.
-           *
-           * 0 is a valid incentive.
-           */
-          incentiveAmount:
-            Number.isFinite(
-              incentiveAmount,
-            )
-              ? incentiveAmount
-              : 0,
-
-          // Column M: blank for the base tiers, else the branch the tier is for.
-          branchId: String(row[12] ?? "").trim(),
-        };
-      });
-
-  if (!programId) {
-    return incentives;
-  }
-
-  const normalizedProgramId =
-    programId.trim();
-
-  return incentives.filter(
-    (incentive) =>
-      incentive.programId ===
-      normalizedProgramId,
-  );
-}
-
-/* =========================================================
-   GET INCENTIVE FOR PROGRAM + ROLE + MONTH
-========================================================= */
-
-export async function getProgramIncentiveForMonth(
-  programId: string,
-  role: "MAS" | "Collector",
-  month: number,
-) {
-  const normalizedProgramId =
-    programId.trim();
-
-  const normalizedMonth =
-    Number(month);
-
-  if (
-    !normalizedProgramId ||
-    !Number.isFinite(
-      normalizedMonth,
-    ) ||
-    normalizedMonth < 1
-  ) {
-    return null;
-  }
-
-  const incentives =
-    await getProgramIncentives(
-      normalizedProgramId,
-    );
-
-  const matchingIncentives =
-    incentives
-      .filter(
-        (incentive) =>
-          incentive.role === role &&
-          normalizedMonth >=
-            incentive.fromMonth &&
-          normalizedMonth <=
-            incentive.toMonth,
-      )
-      .sort(
-        (a, b) =>
-          b.fromMonth -
-          a.fromMonth,
-      );
-
-  return (
-    matchingIncentives[0] ?? null
-  );
-}
-
-/* =========================================================
-   ADD PROGRAM INCENTIVE
-========================================================= */
-
-export async function addProgramIncentive(
-  incentive: ProgramIncentiveSheetData,
-) {
-  const fromMonth =
-    Number(incentive.fromMonth);
-
-  const toMonth =
-    Number(incentive.toMonth);
-
-  const markUp =
-    Number(incentive.markUp);
-
-  const incentiveAmount =
-    Number(
-      incentive.incentiveAmount,
-    );
-
-  const values = [
-    incentive.id,
-
-    incentive.programId,
-
-    incentive.role,
-
-    Number.isFinite(fromMonth) &&
-    fromMonth >= 1
-      ? fromMonth
-      : 1,
-
-    Number.isFinite(toMonth) &&
-    toMonth >= 1
-      ? toMonth
-      : 999999,
-
-    incentive.incentiveType,
-
-    /*
-     * Mark Up is stored in column G.
-     *
-     * 0 is a valid Mark Up.
-     */
-    Number.isFinite(markUp)
-      ? markUp
-      : 0,
-
-    /*
-     * Incentive Amount is stored
-     * in column H.
-     *
-     * 0 is a valid incentive.
-     */
-    Number.isFinite(
-      incentiveAmount,
-    )
-      ? incentiveAmount
-      : 0,
-  ];
-
-  const response =
-    await appendEncodedRows({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${PROGRAM_INCENTIVES_SHEET}!A:M`,
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: {
-        values: [values],
-      },
-    });
-
-  return response.data;
-}
-
-/* =========================================================
-   ADD PROGRAM WITH INCENTIVES
-========================================================= */
-
-export async function addProgramWithIncentives(
-  program: ProgramSheetData,
-  incentives: ProgramIncentiveSheetData[],
-) {
-  /*
-   * Save the program first.
-   */
-  await addProgram(program);
-
-  /*
-   * Then save every incentive tier.
-   *
-   * Mark Up and Incentive Amount
-   * are saved separately.
-   *
-   * 0 is intentionally allowed
-   * for both values.
-   */
-  for (const incentive of incentives) {
-    await addProgramIncentive(
-      incentive,
-    );
-  }
-
-  return {
-    program,
-    incentives,
-  };
 }
 
 export type LoginRole = {
@@ -883,10 +270,6 @@ export type AttendanceEmployee = {
   fullName: string;
 };
 
-export type MasStaff = {
-  employeeId: string;
-  fullName: string;
-};
 
 function isEnabled(value: unknown) {
   return ["true", "yes", "1"].includes(
@@ -1052,153 +435,6 @@ export async function createEmployeeAccount(
   });
 
   return { id: userId, employeeId, fullName, roleIds };
-}
-
-export async function getActiveMasStaff(): Promise<MasStaff[]> {
-  const [usersResponse, rolesResponse, userRolesResponse] =
-    await Promise.all([
-      loadUsers(),
-      sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Roles!A:G" }),
-      sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'User Roles'!A:B" }),
-    ]);
-  const masRoleIds = new Set(
-    (rolesResponse.data.values ?? []).slice(1).filter((row) => {
-      const name = String(row[1] ?? "").trim().toLowerCase();
-      return String(row[6] ?? "").trim().toLowerCase() === "active" &&
-        (name === "mas" || name === "marketing account staff");
-    }).map((row) => String(row[0] ?? "").trim()),
-  );
-  const masUserIds = new Set(
-    (userRolesResponse.data.values ?? []).slice(1).filter((row) =>
-      masRoleIds.has(String(row[1] ?? "").trim()),
-    ).map((row) => String(row[0] ?? "").trim()),
-  );
-  const legacy = usersResponse.users.filter((user) =>
-    masUserIds.has(user.id) && user.status === "active",
-  ).map((user) => ({ employeeId: user.employeeId, fullName: user.fullName }))
-    .filter((staff) => staff.employeeId !== "")
-    .sort((a, b) => a.fullName.localeCompare(b.fullName));
-  const employees = await getEmployees();
-  // Every active employee may own member accounts. "MAS" remains the UI label
-  // for the accountable employee for compatibility with existing sheets.
-  const registered = employees.filter((e) => e.status.toLowerCase() === "active").map((e) => ({ employeeId: e.id, fullName: e.name }));
-  const reviewed = new Set(employees.filter((e) => e.status || e.roles.length).map((e) => e.id));
-  return [...new Map([...legacy.filter((e) => !reviewed.has(e.employeeId)), ...registered].map((e) => [e.employeeId, e])).values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
-
-}
-
-export type CollectionSheetData = {
-  collectionId: string;
-  remittanceId: string;
-  enrollmentId: string;
-  memberId: string;
-  memberNumber: string;
-  programId: string;
-  branch: string;
-  mas: string;
-  orNumber: string;
-  orDate: string;
-  amountCollected: number;
-  monthFrom: string;
-  monthTo: string;
-  nopFrom: number;
-  nopTo: number;
-  reactivation: string;
-  transferred: string;
-  suspended: string;
-  originalMas: string;
-  status: string;
-  createdAt: string;
-};
-
-export async function addRemittance({
-  id,
-  branch,
-  mas,
-  dateRemitted,
-  createdAt,
-}: {
-  id: string;
-  branch: string;
-  mas: string;
-  dateRemitted: string;
-  createdAt: string;
-}) {
-  await appendEncodedRows({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${REMITTANCES_SHEET}!A:F`,
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: [[id, branch, mas, dateRemitted, "Posted", createdAt]],
-    },
-  });
-}
-
-export async function addCollections(
-  collections: CollectionSheetData[],
-) {
-  await appendEncodedRows({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${COLLECTIONS_SHEET}!A:U`,
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: collections.map((collection) => [
-        collection.collectionId,
-        collection.remittanceId,
-        collection.enrollmentId,
-        collection.memberId,
-        collection.memberNumber,
-        collection.programId,
-        collection.branch,
-        collection.mas,
-        collection.orNumber,
-        collection.orDate,
-        collection.amountCollected,
-        collection.monthFrom,
-        collection.monthTo,
-        collection.nopFrom,
-        collection.nopTo,
-        collection.reactivation,
-        collection.transferred,
-        collection.suspended,
-        collection.originalMas,
-        collection.status,
-        collection.createdAt,
-      ]),
-    },
-  });
-}
-
-export async function getCollectionHistory(
-  memberId: string,
-  programId: string,
-) {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${COLLECTIONS_SHEET}!A:U`,
-  });
-
-  return (response.data.values ?? [])
-    .slice(1)
-    .filter(
-      (row) =>
-        String(row[3] ?? "").trim() === memberId &&
-        String(row[5] ?? "").trim() === programId,
-    )
-    .map((row) => ({
-      id: String(row[0] ?? "").trim(),
-      memberId: String(row[3] ?? "").trim(),
-      programId: String(row[5] ?? "").trim(),
-      orNumber: String(row[8] ?? "").trim(),
-      orDate: String(row[9] ?? "").trim(),
-      amountCollected: Number(row[10] ?? 0) || 0,
-      monthOf: String(row[12] ?? "").trim(),
-      nop: Number(row[14] ?? 0) || 0,
-      dateRemitted: "",
-    }))
-    .sort((first, second) => second.nop - first.nop);
 }
 
 export async function getActiveAttendanceEmployees(): Promise<

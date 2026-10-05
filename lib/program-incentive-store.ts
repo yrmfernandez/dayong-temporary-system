@@ -1,12 +1,11 @@
-import { appendEncodedRows } from "@/lib/encoder-sheets";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { eq, inArray } from "drizzle-orm";
+
+import { currentDb, encodedBy, inTransaction, schema } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
-import { deleteRowsWhere } from "@/lib/sheet-rows";
 
 /*
- * Program Incentives: A incentive_id, B program_id, C role, D from_month, E to_month, F incentive_type, G mark_up,
- * H incentive_amount, I:L encoder identity, M branch_id. A blank branch_id is the program's base tier for every branch;
- * a branch's own tiers replace the base tiers for that role in that branch (lib/remittance.ts tiersForBranch).
+ * Program incentive tiers (program_incentives). A blank branch_id is the program's base tier for every branch; a
+ * branch's own tiers replace the base tiers for that role in that branch (lib/remittance.ts tiersForBranch).
  */
 export type StoredTier = { role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number; branchId?: string };
 
@@ -21,7 +20,7 @@ export async function validateIncentiveTiers(tiers: StoredTier[], basePay: numbe
   }
   const branchIds = [...new Set(tiers.map((tier) => text(tier.branchId)).filter(Boolean))];
   if (branchIds.length) {
-    const known = new Set(((await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Branches!A:A" })).data.values ?? []).slice(1).map((row) => text(row[0])));
+    const known = new Set((await currentDb().select({ id: schema.branches.branch_id }).from(schema.branches).where(inArray(schema.branches.branch_id, branchIds))).map((row) => row.id));
     const unknown = branchIds.filter((id) => !known.has(id));
     if (unknown.length) throw new Error(`Unknown branch in the incentive tiers: ${unknown.join(", ")}.`);
   }
@@ -32,12 +31,16 @@ export async function validateIncentiveTiers(tiers: StoredTier[], basePay: numbe
   }));
 }
 
-/** Writes a program's tiers, replacing any it already has. */
+/** Writes a program's tiers, replacing any it already has, in one transaction. */
 export async function writeProgramIncentives(programId: string, tiers: StoredTier[]) {
-  await deleteRowsWhere("Program Incentives", (row) => text(row[1]) === programId);
-  if (!tiers.length) return;
-  await appendEncodedRows(
-    { range: "'Program Incentives'!A:H", requestBody: { values: tiers.map((tier) => [createReadableId("INC"), programId, tier.role, tier.fromMonth, tier.toMonth, tier.incentiveType, Number(tier.markUp) || 0, Number(tier.incentiveAmount) || 0]) } },
-    tiers.map((tier) => [text(tier.branchId)]),
-  );
+  await inTransaction(async (tx) => {
+    await tx.delete(schema.program_incentives).where(eq(schema.program_incentives.program_id, programId));
+    if (!tiers.length) return;
+    const identity = encodedBy();
+    await tx.insert(schema.program_incentives).values(tiers.map((tier) => ({
+      incentive_id: createReadableId("INC"), program_id: programId, role: tier.role, from_month: tier.fromMonth, to_month: tier.toMonth,
+      incentive_type: tier.incentiveType, mark_up: Number(tier.markUp) || 0, incentive_amount: Number(tier.incentiveAmount) || 0,
+      branch_id: text(tier.branchId) || null, ...identity,
+    })));
+  });
 }

@@ -60,3 +60,9 @@ export function isUniqueViolation(error: unknown, indexName?: string) {
   const failure = ((error as { cause?: unknown })?.cause ?? error ?? {}) as { code?: string; constraint_name?: string; constraint?: string };
   return failure.code === UNIQUE_VIOLATION && (!indexName || failure.constraint_name === indexName || failure.constraint === indexName);
 }
+
+/** The encoded_by_* and encoded_at columns for a new row: the signed-in user of this save, or blank outside a save. */
+export function encodedBy() {
+  const actor = currentEncoder();
+  return { encoded_by_user_id: actor?.userId ?? null, encoded_by_employee_id: actor?.employeeId ?? null, encoded_by_name: actor?.name ?? null, encoded_at: actor?.encodedAt ?? new Date().toISOString() };
+}

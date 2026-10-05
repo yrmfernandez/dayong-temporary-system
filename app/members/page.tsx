@@ -9,15 +9,25 @@ import { readApiResponse } from "@/lib/api-response";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { MemberMam } from "@/components/member-mam";
-import { emptyDirectoryFilters, filterMemberDirectory, matchesStanding, MEMBER_STATUSES, STANDING_FILTERS, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
+import { emptyDirectoryFilters, MEMBER_STATUSES, STANDING_FILTERS, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
 
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort();
-const pageSize = 25;
+type DirectoryOptions = { branches: string[]; mas: string[]; programs: [string, string][]; statuses: string[] };
 
 export default function MembersPage() {
+  // One page of members; filtering, sorting and paging run on the server (app/api/members/directory).
   const [members, setMembers] = useState<DirectoryMember[]>([]);
+  const [totals, setTotals] = useState({ total: 0, matched: 0, pages: 1 });
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [choices, setChoices] = useState<DirectoryOptions>({ branches: [], mas: [], programs: [], statuses: [] });
   const [filters, setFilters] = useState({ ...emptyDirectoryFilters });
+  // The search box asks the server once typing pauses, not on every key.
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(filters.search), 350);
+    return () => clearTimeout(timer);
+  }, [filters.search]);
   // Links such as Exceptions open the directory already searched (?search=PH-123).
   useEffect(() => {
     const search = new URLSearchParams(window.location.search).get("search");
@@ -42,41 +52,42 @@ export default function MembersPage() {
   // The member just saved, so the confirmation shows on that row.
   const [savedId, setSavedId] = useState("");
   const [message, setMessage] = useState("");
+  const { branch, mas, program, status, accountStatus, standing } = filters;
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/members/directory", { cache: "no-store", signal: controller.signal }).then(async (response) => {
+    const query = new URLSearchParams({ search, branch, mas, program, status, accountStatus, standing, sort, order: descending ? "desc" : "asc", page: String(page) });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows loading while this page of members arrives
+    setBusy(true);
+    fetch(`/api/members/directory?${query}`, { cache: "no-store", signal: controller.signal }).then(async (response) => {
       const result = await readApiResponse(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load members.");
-      setMembers(result.members); setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanTransfer(Boolean(result.canTransfer)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []);
+      setError(""); setMembers(result.members); setTotals({ total: result.total, matched: result.matched, pages: result.pages }); setCounts(result.counts ?? {}); setChoices(result.options);
+      if (result.page !== page) setPage(result.page);
+      setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanTransfer(Boolean(result.canTransfer)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []);
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
-  }, [revision]);
-  const filtered = filterMemberDirectory(members, filters).sort((a, b) => {
-    const key = sort as "name" | "number" | "status";
-    return (a[key].localeCompare(b[key], undefined, { numeric: true, sensitivity: "base" }) || a.id.localeCompare(b.id)) * (descending ? -1 : 1);
-  });
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, pages);
-  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const enrollments = members.flatMap((member) => member.enrollments);
+  }, [revision, search, branch, mas, program, status, accountStatus, standing, sort, descending, page]);
+  const visible = members;
+  const pages = totals.pages;
+  const currentPage = page;
   function update(key: keyof DirectoryFilters, value: string) {
     setFilters((previous) => ({ ...previous, [key]: value })); setPage(1); setSelected(null);
   }
   const options: { key: Exclude<keyof DirectoryFilters, "search" | "standing">; label: string; values: [string, string][] }[] = [
     { key: "accountStatus", label: "Payment status (today)", values: ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Forfeited", "Suspended", "Needs review", "Not started"].map((v) => [v, v === "U" ? "U - Updated" : v === "ADV" ? "ADV - Advance" : v]) },
-    { key: "branch", label: "Branch", values: unique(enrollments.map((e) => e.branch)).map((v) => [v, v]) },
-    { key: "mas", label: "MAS / Collector", values: unique(enrollments.flatMap((e) => [e.mas, e.collector])).map((v) => [v, v]) },
-    { key: "program", label: "Program", values: [...new Map(enrollments.map((e) => [e.programId, e.programName])).entries()].sort((a, b) => a[1].localeCompare(b[1])) },
-    { key: "status", label: "Member status", values: unique(members.map((m) => m.status)).map((v): [string, string] => [v, v]) },
+    { key: "branch", label: "Branch", values: choices.branches.map((v) => [v, v]) },
+    { key: "mas", label: "MAS / Collector", values: choices.mas.map((v) => [v, v]) },
+    { key: "program", label: "Program", values: choices.programs },
+    { key: "status", label: "Member status", values: choices.statuses.map((v): [string, string] => [v, v]) },
   ];
   return <section className="space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-bold">Members</h1><p className="text-sm text-muted-foreground">Member master data. Each person appears once, with all their program enrollments.</p></div>
-      <div className="flex gap-2">{canAddMember && <Link className={buttonVariants()} href="/new-sales">Add Member</Link>}<Button variant="outline" disabled={busy} onClick={() => { setBusy(true); setError(""); setMembers([]); setSelected(null); setRevision((v) => v + 1); }}>Refresh</Button></div>
+      <div className="flex gap-2">{canAddMember && <Link className={buttonVariants()} href="/new-sales">Add Member</Link>}<Button variant="outline" disabled={busy} onClick={() => { setError(""); setSelected(null); setRevision((v) => v + 1); }}>Refresh</Button></div>
     </div>
     <div role="group" aria-label="Member standing" className="flex flex-wrap gap-2">
-      {[["", "All"] as const, ...STANDING_FILTERS].map(([value, label]) => <Button key={value || "all"} type="button" size="sm" variant={filters.standing === value ? "default" : "outline"} aria-pressed={filters.standing === value} onClick={() => update("standing", value)}>{label}{!busy && <span className="ml-1.5 tabular-nums opacity-70">{value ? members.filter((member) => matchesStanding(member, value)).length : members.length}</span>}</Button>)}
+      {[["", "All"] as const, ...STANDING_FILTERS].map(([value, label]) => <Button key={value || "all"} type="button" size="sm" variant={filters.standing === value ? "default" : "outline"} aria-pressed={filters.standing === value} onClick={() => update("standing", value)}>{label}{counts[value] !== undefined && <span className="ml-1.5 tabular-nums opacity-70">{counts[value]}</span>}</Button>)}
     </div>
     <div className="grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-4">
       <label className="text-sm">Search<input className={fieldClass} value={filters.search} onChange={(e) => update("search", e.target.value)} placeholder="Name, PH number, contact number, address" /></label>
@@ -89,8 +100,8 @@ export default function MembersPage() {
     {statusWarning && <p role="alert" className="text-amber-700">{statusWarning}</p>}
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {message && !savedId && <p role="status" className="text-sm">{message}</p>}
-    {busy ? <p role="status">Loading members...</p> : !error && <>
-      <p className="text-sm" aria-live="polite">{filtered.length} of {members.length} members</p>
+    {busy && !members.length ? <p role="status">Loading members...</p> : !error && <>
+      <p className="text-sm" aria-live="polite">{busy ? "Updating... " : ""}{totals.matched} of {totals.total} members</p>
       <div className="overflow-x-auto rounded-xl border bg-background">
         <table className="w-full text-left text-sm"><thead className="bg-muted"><tr>{["PH number", "Member", "Contact", "Location", "MAS", "Collector", "Member status", "Programs / Payment status", "Details"].map((label) => <th key={label} scope="col" className="whitespace-nowrap p-3">{label}</th>)}</tr></thead>
           <tbody>{visible.map((member) => <Fragment key={member.id}><tr className="border-t">
@@ -111,7 +122,7 @@ export default function MembersPage() {
       <h3 className="font-semibold">All program enrollments</h3>
       <EnrollmentTable enrollments={selected.enrollments} canTransfer={canTransfer} transfers={transfers} onTransferred={(enrollmentId, toMas) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, mas: toMas } : item) }); setRevision((value) => value + 1); }} />
       <MemberMam memberId={selected.id} />
-</section>{editing?.id === member.id && <form className="mt-4 space-y-4 border-t pt-4" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch("/api/members/directory", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, contact: form.get("contact"), status: form.get("status") }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member updated." : result.message || "Unable to update member."); if (response.ok) { setSavedId(editing.id); setEditing(null); setSelected(null); setRevision((value) => value + 1); } }}><div className="flex justify-between"><h2 className="font-semibold">Edit {editing.name}</h2><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Contact number<input name="contact" className={fieldClass} defaultValue={editing.contact}/></label><label className="text-sm">Member status<select name="status" required className={fieldClass} defaultValue={editing.status || "Active"}>{unique([...MEMBER_STATUSES, editing.status]).map((status) => <option key={status} value={status}>{status}</option>)}</select><span className="mt-1 block text-xs text-muted-foreground">Choose Deceased when the member has died.</span></label></div><Button type="submit">Save member</Button></form>}</InlineRow>}</Fragment>)}{!visible.length && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">{members.length ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
+</section>{editing?.id === member.id && <form className="mt-4 space-y-4 border-t pt-4" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch("/api/members/directory", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, contact: form.get("contact"), status: form.get("status") }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member updated." : result.message || "Unable to update member."); if (response.ok) { setSavedId(editing.id); setEditing(null); setSelected(null); setRevision((value) => value + 1); } }}><div className="flex justify-between"><h2 className="font-semibold">Edit {editing.name}</h2><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Contact number<input name="contact" className={fieldClass} defaultValue={editing.contact}/></label><label className="text-sm">Member status<select name="status" required className={fieldClass} defaultValue={editing.status || "Active"}>{unique([...MEMBER_STATUSES, editing.status]).map((status) => <option key={status} value={status}>{status}</option>)}</select><span className="mt-1 block text-xs text-muted-foreground">Choose Deceased when the member has died.</span></label></div><Button type="submit">Save member</Button></form>}</InlineRow>}</Fragment>)}{!visible.length && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">{totals.total ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
         </table>
       </div>
       <div className="flex items-center justify-end gap-3"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-sm">Page {currentPage} of {pages}</span><Button type="button" variant="outline" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>

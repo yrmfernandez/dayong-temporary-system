@@ -158,23 +158,30 @@ Updated with every change on the `supabase` branch. "Done" means the module read
 | Account status, MAM, member MAM, member standing | `lib/account-data.ts`, `lib/mam-report.ts` | Member pages load only that member's accounts; MAS scope filters in the query. |
 | Duplicate checks | `lib/duplicate-entries.ts` | OR number, Application Number and returning person: only the numbers or people being saved. |
 | New Sales save | `app/api/sales/route.ts`, `lib/member-records.ts` | Member, enrollment, sale and beneficiaries in one transaction. |
-| Member search and lookups | `lib/member-records.ts`, `app/api/members`, `app/api/member-programs/check`, `app/api/sales/validate` | |
-| Members directory | `lib/member-directory-data.ts`, `lib/member-directory.ts` | A MAS's request loads only their own accounts and members. |
+| Member search and lookups | `lib/member-records.ts`, `app/api/members`, `app/api/member-programs/check`, `app/api/sales/validate` | Collections lists every member of the chosen Branch and MAS (`/api/members?all=1`); typing narrows the list at once. The MAS list is every active employee assigned to the branch, MAS or not (owner's rule, October 5, 2026). |
+| Members directory | `lib/member-directory-data.ts`, `lib/member-directory.ts`, `app/members/page.tsx` | Filters, sort and paging run on the server; the browser receives 25 members per page, and payment statuses are worked out only for them (or, for the payment-status and Forfeited filters, only for the members the other filters leave). A MAS's request loads only their own accounts and members. |
 | Member transfers | `lib/member-transfer.ts` | MAS change and history saved together; the change is in the Audit Log. |
 | Statement of account | `lib/statement-of-account.ts` | Loads one account, its member and its New Sale. |
 | Member edit and delete | `lib/master-data-crud.ts` | Program and branch delete checks look at enrollments in the database. |
+| Branches | `lib/google-sheets-data.ts` (`getBranches`, `createBranch`), `lib/master-data-crud.ts` | Unique-name check and the in-use check (assignments, enrollments) in the database. |
+| Employees and branch assignments | `lib/employees.ts` | An employee and their assignments save together. Users (sign-in) are still in Sheets, so ID clashes and linked accounts are checked there. |
+| Programs and incentive tiers | `lib/google-sheets-data.ts` (`getPrograms`, `createProgram`, `getProgramIncentives`, `addProgramIncentive`), `lib/program-incentive-store.ts`, `lib/master-data-crud.ts` | A program and its tiers save in one transaction. |
+| Program categories | `lib/program-categories.ts` | |
+| Remittance methods | `lib/remittance-methods.ts` | |
+| Employee ID change | `lib/employee-id-change.ts` | Database part in one transaction (linked tables follow the employee row; every other `*employee_id` column and report note keys rewritten); Users and other tabs still in Sheets are updated as before. |
 
 ### Partly done
 
 | Area | What is left |
 | --- | --- |
-| `lib/master-data-crud.ts` | Programs, program incentives and branches are still edited in Sheets. |
+| `lib/master-data-crud.ts` | User accounts (`getUserAccounts`, `updateUserAccount`, `resetUserPassword`) still use Sheets; they move with sign-in (step 2). |
+| Master data readers in reports | `lib/dashboard-data.ts`, `lib/executive-analytics.ts`, `lib/system-health.ts` and the Audit Log page still read Employees, Branches and Programs from Sheets, so their counts do not include changes made on this branch. They move in steps 5 and 6. |
 | `lib/entry-corrections.ts` | Duplicate checks use the database, but the correction itself still edits the Sales and Collections sheet rows. Must move with Remittances (step 4 below). |
 
 ### To do, in order
 
-1. **Master data**: programs, program incentives, program categories, branches, employees, employee branches, users, roles, user roles, remittance methods, system settings, holidays (`lib/google-sheets-data.ts`, `lib/employees.ts`, `lib/roles.ts`, `lib/users-sheet.ts`, `lib/program-incentive-store.ts`, `lib/program-categories.ts`, `lib/remittance-methods.ts`, `lib/system-settings.ts`). First, because New Sales and Collections still validate against these lists in Sheets while the database links to them.
-2. **Sign-in and sessions**: `app/api/auth/login`, `lib/session-account.ts`, `app/api/settings` (password change), `lib/employee-id-change.ts` (becomes `ON UPDATE CASCADE`).
+1. **Rest of master data**: system settings and holidays (`lib/system-settings.ts`, `lib/attendance-calendar.ts`). Branches, employees, programs, categories and remittance methods are done (October 5, 2026).
+2. **Sign-in, users and roles**: Users, Roles, User Roles (`lib/users-sheet.ts`, `lib/roles.ts`, the account functions in `lib/google-sheets-data.ts` and `lib/master-data-crud.ts`), `app/api/auth/login`, `lib/session-account.ts`, `app/api/settings` (password change).
 3. **Receipt photos** to Supabase Storage: `lib/receipt-photos.ts`, `app/api/receipt-photos`.
 4. **Remittances and corrections**: `lib/remittance-workflow.ts`, `lib/remittance.ts`, `lib/entry-corrections.ts`, `lib/record-corrections.ts`.
 5. **Entry views and checks**: `lib/todays-entries.ts`, My Entries, `lib/exceptions.ts` (also lists open `copy_exceptions` and flagged legacy duplicates), `lib/date-checks.ts`, `app/api/history` (Audit Log page reads `audit_log`).
@@ -183,10 +190,20 @@ Updated with every change on the `supabase` branch. "Done" means the module read
 8. **Remove the Sheets layer**: `lib/google-sheets.ts`, `lib/sheets-read-cache.ts`, `lib/encoder-sheets.ts`, `lib/sheet-rows.ts`, `lib/system-health.ts` Sheets counters, `app/api/google-sheets/test`, and the `sheets:*` scripts.
 9. **Phases 4–6**: report comparison, staging trial, cutover rehearsals, cutover, nightly backups and Sheets export, documentation (system guide, code reference).
 
+### Speed on the branch (October 5, 2026)
+
+Three causes were found; all are addressed on the branch:
+
+1. **Master data came from Google Sheets** on every encoding page (about 3 seconds when the cache was cold). Fixed: branches, employees, programs, incentive tiers, categories and remittance methods are read from the database.
+2. **The Members page loaded everything**: every member, and every payment to work out every account's status (measured from Manila: payments 1.6 s and 16.6 MB, accounts 0.4 s, members 0.4 s). Fixed: the server filters, sorts and pages, and works out statuses only for the 25 members shown. Filtering by payment status or Forfeited still works out statuses for every member the other filters leave, so it is slower without a branch, MAS or program chosen.
+3. **Server region.** The functions ran in Washington, D.C. (`iad1`) while the database is in Singapore. Owner's step (October 5, 2026): set Vercel → Settings → Functions → Function Region to Asia Pacific → Singapore (`sin1`). It applies to the next deployment of the live site as well as previews. The live site still uses Google Sheets, which work from any region.
+
+Pages that still read Sheets (remittances, Today's Entries, reports, dashboards, attendance, payroll, finance) keep their old speed until their step.
+
 ### Known gaps on the branch until cutover
 
 - **Vercel previews of this branch** are kept on purpose (owner's choice, October 5, 2026). Production deploys from `main` only. A preview uses the Preview environment variables: if those include the production Google Sheets settings, saving on a page that still uses Sheets changes the live spreadsheet, so treat previews as live for those pages. On this branch `DATABASE_URL` is a required setting (`lib/server-environment.ts`), so without it in Vercel's Preview environment even sign-in stops with "Missing server environment variable: DATABASE_URL". Use staging's value, never production's, and redeploy the preview after adding it: a variable reaches only deployments built after it is saved.
-- Programs, branches and employees added or edited **in the app on this branch** are saved to Sheets, not the database, until step 1 is done. On staging, a New Sale or Collection for such a program or employee fails (the database has no matching row). Rerun the copy script to refresh staging.
+- Sign-in accounts created **in the app on this branch** (Employees → register) are saved to the Users sheet, while the employee is saved to the database. That is expected until step 2.
 - Remittances, Today's Entries, My Entries, reports and dashboards still read Sheets, so they do not show Collections or New Sales saved on this branch.
 - The system guide and topic docs still describe the live system on Google Sheets. They are rewritten for the database in phase 6, at cutover.
 
@@ -202,6 +219,8 @@ Updated with every change on the `supabase` branch. "Done" means the module read
 | Oct 4, 2026 | Phase 2, step 1: `lib/db.ts`; account data, OR and application-number checks, and the Collections save read and write the database | A Collections batch locks only its accounts and saves in one transaction; tests run on PGlite (in-process PostgreSQL built from the same migrations); 120 pass |
 | Oct 5, 2026 | Phase 2, step 2: New Sales save, member search and lookups (`lib/member-records.ts`), duplicate-person check; migration `0004_member_program_unique` | A New Sales batch saves in one transaction (before, a failure could leave half a batch); database rules on member number, Application Number and one enrollment per member and program stop racing saves; 120 tests pass |
 | Oct 5, 2026 | Phase 2, step 3: Members directory (`lib/member-directory-data.ts`), member transfers, statement of account, member edit and delete | A MAS's directory request loads only their own members; transfers save the MAS change and history together; the SOA loads one account; 121 tests pass |
+| Oct 5, 2026 | Collections member list: every member of the chosen Branch and MAS, searchable; speed findings recorded | 121 tests pass |
+| Oct 5, 2026 | Master data: branches, employees and assignments, programs and tiers, categories, remittance methods, Employee ID change; Members page filters and pages on the server; Function Region change to Singapore handed to the owner | Tests read master data from h.rows and copy it into PGlite before each route call (`syncMasterData` in the harness); 121 tests pass |
 
 Phase 1 also replaced step 4 of phase 0: the Drizzle schema in `db/schema.ts` now describes every table, so the 17 unregistered tabs were not added to `config/sheet-database-schema.json`.
 

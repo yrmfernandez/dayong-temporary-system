@@ -1,15 +1,12 @@
-﻿import { createReadableId } from "@/lib/readable-id";
-import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } from "@/lib/passwords";
-import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { eq, sql } from "drizzle-orm";
 
-import { currentDb, schema } from "@/lib/db";
+import { currentDb, inTransaction, schema } from "@/lib/db";
+import { programColumns } from "@/lib/google-sheets-data";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
+import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } from "@/lib/passwords";
+import { appendEncodedRows } from "@/lib/encoder-sheets";
+import { deleteRowsWhere } from "@/lib/sheet-rows";
 import { loadUsers, userCell } from "@/lib/users-sheet";
-import { ageRestrictionCells, normalizeAgeRestriction } from "@/lib/program-age";
-import { normalizeSaleIncentive } from "@/lib/remittance";
-import { amountEditableCells } from "@/lib/program-amount-lock";
 import { type StoredTier, validateIncentiveTiers, writeProgramIncentives } from "@/lib/program-incentive-store";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -24,57 +21,56 @@ async function hasEnrollments(condition: ReturnType<typeof sql>) {
   return Boolean(row);
 }
 
-function findRow(data: unknown[][], id: string) {
-  const index = data.slice(1).findIndex((row) => text(row[0]) === id);
-  if (index < 0) throw new Error("Record not found.");
-  return index + 2;
-}
-
-
 export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; categoryId?: string; newSaleAmountEditable?: boolean; collectionAmountEditable?: boolean; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: StoredTier[] };
 
 export async function updateProgramRecord(id: string, input: ProgramInput) {
-  const programs = await rows("Programs!A:F");
-  const rowNumber = findRow(programs, id);
   if (!input.code || !input.name || !Number.isFinite(input.basePay) || input.basePay <= 0 || !input.incentiveTiers.length) throw new Error("Complete the program and incentive details.");
   if (!Number.isFinite(input.registrationAmount) || input.registrationAmount < 0 || !Number.isFinite(input.payBalanceTotal) || input.payBalanceTotal < 0) throw new Error("Registration and total amount payable cannot be negative.");
   if (input.registrationFeeRequired && input.registrationAmount <= 0) throw new Error("Enter the required registration amount.");
-  const ageRestriction = normalizeAgeRestriction(input);
-  const saleIncentive = normalizeSaleIncentive(input);
+  const columns = programColumns(input);
   await validateIncentiveTiers(input.incentiveTiers, input.basePay);
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!A${rowNumber}:F${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[id, input.code, input.name, input.basePay, input.status, input.description]] } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Programs!K${rowNumber}:U${rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[input.registrationFeeRequired ? "Yes" : "No", input.registrationAmount, input.payBalanceTotal, ...ageRestrictionCells(ageRestriction), saleIncentive.saleIncentiveType, saleIncentive.saleIncentiveType ? saleIncentive.saleIncentiveAmount : "", text(input.categoryId), ...amountEditableCells(input)]] } });
-  await writeProgramIncentives(id, input.incentiveTiers);
+  // The program and its tiers change together.
+  await inTransaction(async (tx) => {
+    const updated = await tx.update(schema.programs).set(columns).where(eq(schema.programs.program_id, id)).returning({ id: schema.programs.program_id });
+    if (!updated.length) throw new Error("Record not found.");
+    await writeProgramIncentives(id, input.incentiveTiers);
+  });
   return { id };
 }
 
 export async function deleteProgramRecord(id: string) {
-  const [programs, enrolled] = await Promise.all([rows("Programs!A:F"), hasEnrollments(sql`${schema.member_programs.program_id} = ${id}`)]);
-  if (enrolled) throw new Error("This program has member enrollments. Set it to inactive instead of deleting it.");
-  findRow(programs, id);
-  await deleteRowsWhere("Program Incentives", (row) => text(row[1]) === id);
-  await deleteRowsById("Programs", [id]);
+  if (await hasEnrollments(sql`${schema.member_programs.program_id} = ${id}`)) throw new Error("This program has member enrollments. Set it to inactive instead of deleting it.");
+  await inTransaction(async (tx) => {
+    await tx.delete(schema.program_incentives).where(eq(schema.program_incentives.program_id, id));
+    const removed = await tx.delete(schema.programs).where(eq(schema.programs.program_id, id)).returning({ id: schema.programs.program_id });
+    if (!removed.length) throw new Error("Record not found.");
+  });
 }
 
 export type BranchInput = { name: string; territory: string; barangay: string; cityMunicipality: string; province: string; country: string; postalCode: string; contactNumber: string; email: string; dateOpened: string; dateClosed: string; status: "active" | "inactive" };
 
 export async function updateBranchRecord(id: string, input: BranchInput) {
-  const branches = await rows("Branches!A:M");
-  const rowNumber = findRow(branches, id);
   if (!input.name || !input.territory) throw new Error("Branch name and territory are required.");
-  if (branches.slice(1).some((row) => text(row[0]) !== id && text(row[1]).toLowerCase() === input.name.trim().toLowerCase())) {
-    throw new Error(`Another branch is already named "${input.name.trim()}". Branch names must be unique because records store the branch name.`);
-  }
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `Branches!A${rowNumber}:M${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[id, input.name, input.territory, input.barangay, input.cityMunicipality, input.province, input.country, input.postalCode, input.contactNumber, input.email, input.dateOpened, input.dateClosed, input.status]] } });
+  const db = currentDb();
+  const [clash] = await db.select({ id: schema.branches.branch_id }).from(schema.branches).where(sql`${schema.branches.branch_id} <> ${id} and lower(trim(${schema.branches.branch_name_code})) = ${input.name.trim().toLowerCase()}`).limit(1);
+  if (clash) throw new Error(`Another branch is already named "${input.name.trim()}". Branch names must be unique because records store the branch name.`);
+  const optional = (value: string) => value.trim() || null;
+  const updated = await db.update(schema.branches).set({
+    branch_name_code: input.name.trim(), territory: optional(input.territory), barangay: optional(input.barangay), city_municipality: optional(input.cityMunicipality),
+    province: optional(input.province), country: optional(input.country), postal_code: optional(input.postalCode), contact_number: optional(input.contactNumber),
+    email: optional(input.email), date_opened: optional(input.dateOpened), date_closed: optional(input.dateClosed), status: input.status,
+  }).where(eq(schema.branches.branch_id, id)).returning({ id: schema.branches.branch_id });
+  if (!updated.length) throw new Error("Record not found.");
   return { id };
 }
 
 export async function deleteBranchRecord(id: string) {
-  const [branches, assignments] = await Promise.all([rows("Branches!A:M"), rows("'Employee Branches'!A:C")]);
-  const branch = branches[findRow(branches, id) - 1];
-  const name = text(branch[1]);
-  if (assignments.slice(1).some((row) => text(row[2]) === id) || await hasEnrollments(sql`trim(${schema.member_programs.branch}) = ${name}`)) throw new Error("This branch is assigned to employees or member enrollments. Set it to inactive instead of deleting it.");
-  await deleteRowsById("Branches", [id]);
+  const db = currentDb();
+  const [branch] = await db.select().from(schema.branches).where(eq(schema.branches.branch_id, id));
+  if (!branch) throw new Error("Record not found.");
+  const [assigned] = await db.select({ id: schema.employee_branches.assignment_id }).from(schema.employee_branches).where(eq(schema.employee_branches.branch_id, id)).limit(1);
+  if (assigned || await hasEnrollments(sql`trim(${schema.member_programs.branch}) = ${branch.branch_name_code.trim()}`)) throw new Error("This branch is assigned to employees or member enrollments. Set it to inactive instead of deleting it.");
+  await db.delete(schema.branches).where(eq(schema.branches.branch_id, id));
 }
 
 export async function getUserAccounts() {

@@ -38,6 +38,59 @@ async function seedSaleLinks(programs = [['DP-1', 'Program']], employee = ['DPE-
   await seed('employees', [{ employee_id: employee[0], full_name: employee[1] }], { skipExisting: true });
 }
 const count = async (table) => (await query(`select count(*)::int as n from "${table}"`))[0].n;
+
+/*
+ * Master data (branches, employees and their branches, programs, incentive tiers, remittance methods) moved to the
+ * database, but many tests describe it as sheet rows (h.rows). Before each route call the harness copies those rows
+ * into PGlite: only rows that changed since the last copy, so a row the code itself saved or edited is never
+ * overwritten, and rows a test removed from h.rows are removed. A link to an employee, branch or program a test never
+ * set up gets a placeholder row, as the sheets had no such checks.
+ */
+const cell = (row, index) => { const value = row?.[index]; return value === undefined || value === null || String(value).trim() === '' ? null : typeof value === 'string' ? value.trim() : value; };
+const flag = (value) => value === true || /^(true|yes|1)$/i.test(String(value ?? '').trim());
+const number = (value) => { const parsed = Number(value); return value === null || value === undefined || String(value).trim() === '' || !Number.isFinite(parsed) ? null : parsed; };
+const MASTER_TABS = [
+  ['Branches', 'branches', 'branch_id', (r) => ({ branch_id: cell(r, 0), branch_name_code: cell(r, 1) ?? cell(r, 0), territory: cell(r, 2), barangay: cell(r, 3), city_municipality: cell(r, 4), province: cell(r, 5), country: cell(r, 6), postal_code: cell(r, 7), contact_number: cell(r, 8), email: cell(r, 9), status: r.length >= 13 ? (cell(r, 12) ?? 'active') : 'active' })],
+  ['Employees', 'employees', 'employee_id', (r) => ({ employee_id: cell(r, 0), full_name: cell(r, 1) ?? cell(r, 0), primary_branch: cell(r, 2), operational_roles: cell(r, 3), employment_status: cell(r, 4), contact_number: cell(r, 5) === null ? null : String(cell(r, 5)), email: cell(r, 6) })],
+  ['Programs', 'programs', 'program_id', (r) => ({ program_id: cell(r, 0), program_code: cell(r, 1) === null ? null : String(cell(r, 1)), program_name: cell(r, 2) ?? cell(r, 0), base_pay: number(r[3]), status: cell(r, 4), description: cell(r, 5), registration_fee_required: flag(r[10]), registration_amount: number(r[11]), pay_balance_total: number(r[12]), age_restricted: flag(r[13]), min_age: number(r[14]), max_age: number(r[15]), new_sale_incentive_type: cell(r, 16), new_sale_incentive_amount: number(r[17]), category_id: cell(r, 18), new_sale_amount_editable: flag(r[19]), collection_amount_editable: flag(r[20]) })],
+  ['Employee Branches', 'employee_branches', 'assignment_id', (r) => ({ assignment_id: cell(r, 0), employee_id: cell(r, 1), branch_id: cell(r, 2) })],
+  ['Program Incentives', 'program_incentives', 'incentive_id', (r) => ({ incentive_id: cell(r, 0), program_id: cell(r, 1), role: cell(r, 2), from_month: number(r[3]), to_month: number(r[4]), incentive_type: cell(r, 5), mark_up: number(r[6]), incentive_amount: number(r[7]), branch_id: cell(r, 12) })],
+  ['Remittance Methods', 'remittance_methods', 'remittance_method_id', (r) => ({ remittance_method_id: cell(r, 0), method_name: cell(r, 1), is_cash: flag(r[2]), requires_reference: flag(r[3]), status: cell(r, 4) })],
+];
+async function upsert(table, key, row) {
+  const columns = Object.keys(row);
+  const values = columns.map((column) => row[column]);
+  const updates = columns.filter((column) => column !== key).map((column) => `"${column}" = excluded."${column}"`).join(', ');
+  await pglite.query(`insert into "${table}" (${columns.map((column) => `"${column}"`).join(', ')}) values (${columns.map((_, index) => `$${index + 1}`).join(', ')}) on conflict ("${key}") do ${updates ? `update set ${updates}` : 'nothing'}`, values);
+}
+async function placeholder(table, key, id, extra) {
+  if (id) await pglite.query(`insert into "${table}" ("${key}", ${Object.keys(extra).map((column) => `"${column}"`).join(', ')}) values ($1, ${Object.keys(extra).map((_, index) => `$${index + 2}`).join(', ')}) on conflict do nothing`, [id, ...Object.values(extra)]);
+}
+async function syncMasterData(rows, synced) {
+  // Setup data is not an edit by the code under test, so the audit trigger is off while it is copied.
+  await pglite.query("set session_replication_role = replica");
+  try { await copyMasterData(rows, synced); } finally { await pglite.query("set session_replication_role = origin"); }
+}
+async function copyMasterData(rows, synced) {
+  for (const [tab, table, key, convert] of MASTER_TABS) {
+    const current = new Map();
+    for (const raw of (rows[tab] ?? []).slice(1)) { const row = convert(raw); if (row[key]) current.set(String(row[key]), row); }
+    for (const [id, row] of current) {
+      const signature = JSON.stringify(row);
+      if (synced.get(`${table}|${id}`) === signature) continue;
+      if (table === 'employee_branches') { await placeholder('employees', 'employee_id', row.employee_id, { full_name: row.employee_id }); await placeholder('branches', 'branch_id', row.branch_id, { branch_name_code: row.branch_id }); }
+      if (table === 'program_incentives') { await placeholder('programs', 'program_id', row.program_id, { program_name: row.program_id }); await placeholder('branches', 'branch_id', row.branch_id, { branch_name_code: row.branch_id }); }
+      await upsert(table, key, row);
+      synced.set(`${table}|${id}`, signature);
+    }
+    for (const entry of [...synced.keys()].filter((item) => item.startsWith(`${table}|`))) {
+      const id = entry.slice(table.length + 1);
+      if (current.has(id)) continue;
+      synced.delete(entry);
+      await pglite.query(`delete from "${table}" where "${key}" = $1`, [id]).catch(() => undefined);
+    }
+  }
+}
 const query = async (text, params) => (await pglite.query(text, params)).rows;
 /** A member with one program account, the minimum other rows link to. */
 async function seedAccount({ enrollment = 'ENR-1', member = 'MEM-1', memberNumber = 'PH-1', program = 'DP-1', programName = 'Program', basePay = 350, payBalanceTotal = null, doi = null, branch = 'BR-1', mas = 'MAS-2', surname = 'Santos', firstName = 'Ana', accountStatus = null } = {}) {
@@ -120,7 +173,15 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
     new Function('require', 'module', 'exports', source)(localRequire, loadedModule, loadedModule.exports);
     return loadedModule.exports;
   }
-  return { load, rows, writes, setUser: (value) => { user = value; }, missingHeaders: () => { missingHeaders = true; } };
+  const synced = new Map();
+  const sync = () => syncMasterData(rows, synced);
+  // Route handlers (GET, POST, …) copy the master data rows into the database first; lib modules call h.sync() themselves.
+  const loadForTest = (file) => {
+    const loaded = load(file);
+    if (!file.startsWith('app/')) return loaded;
+    return Object.fromEntries(Object.entries(loaded).map(([name, value]) => [name, typeof value === 'function' && /^(GET|POST|PUT|PATCH|DELETE)$/.test(name) ? async (...args) => { await sync(); return value(...args); } : value]));
+  };
+  return { load: loadForTest, sync, rows, writes, setUser: (value) => { user = value; }, missingHeaders: () => { missingHeaders = true; } };
 }
 
 function request(body = {}) {
@@ -143,13 +204,14 @@ test('employee registration is independent of login and records its encoder', as
   assert.equal(response.status, 201);
   const registered = await response.json();
   assert.equal(registered.employee.id, 'MD-2099-0101');
-  // Registration also creates the sign-in account: employee, branch assignment, Users row, User Roles row.
-  assert.equal(h.writes.length, 4);
-  assert.equal(h.writes[0].range, "'Employees'!A:M");
-  const row = h.writes[0].requestBody.values[0];
-  assert.equal(row[1], "'=Staff");
-  assert.equal(row[2], "'South", 'a single assigned branch is the primary branch');
-  assert.equal(row[9], "'U1");
+  // Registration saves the employee and their branch in the database, and creates the sign-in account (Users and
+  // User Roles rows, still in the sheets).
+  const [employee] = await query("select * from employees where employee_id = 'MD-2099-0101'");
+  assert.equal(employee.full_name, '=Staff', 'stored as typed; the database never evaluates formulas');
+  assert.equal(employee.primary_branch, 'South', 'a single assigned branch is the primary branch');
+  assert.deepEqual([employee.encoded_by_user_id, employee.employment_status, employee.operational_roles], ['U1', 'active', 'Collector, MAS']);
+  assert.deepEqual((await query("select branch_id from employee_branches where employee_id = 'MD-2099-0101'")).map((row) => row.branch_id), ['BR-1']);
+  assert.deepEqual(h.writes.map((write) => write.range.split('!')[0]), ["'Users'", "'User Roles'"]);
   // An administrator or IT registering the employee receives the account's one-time password to hand over.
   assert.equal(registered.account.created, true);
   assert.match(registered.account.oneTimePassword, /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
@@ -183,16 +245,19 @@ test('employee status updates and deletion protect linked login accounts', async
   const route = h.load('app/api/employees/route.ts');
   h.rows.Employees = [[], ['DPE-0002', 'Ana', 'North', 'MAS, Collector', 'active']];
   h.rows.Users = [[]];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
   let response = await route.PATCH(request({ employeeId: 'DPE-0002', status: 'resigned' }));
   assert.equal(response.status, 200);
-  assert.equal(h.writes.at(-1).range, "'Employees'!E2");
-  response = await route.DELETE(request({ employeeId: 'DPE-0002' }));
-  assert.equal(response.status, 200);
-  // The whole row is removed (rows below move up), not blanked.
-  assert.deepEqual(h.writes.at(-1).requestBody.requests, [{ deleteDimension: { range: { sheetId: 9, dimension: 'ROWS', startIndex: 1, endIndex: 2 } } }]);
+  assert.equal((await query("select employment_status from employees where employee_id = 'DPE-0002'"))[0].employment_status, 'resigned');
+  // A linked sign-in account blocks the delete.
   h.rows.Users = [[], ['USR-2', 'DPE-0002']];
   response = await route.DELETE(request({ employeeId: 'DPE-0002' }));
   assert.equal(response.status, 400);
+  assert.match((await response.json()).message, /linked user account/);
+  h.rows.Users = [[]];
+  response = await route.DELETE(request({ employeeId: 'DPE-0002' }));
+  assert.equal(response.status, 200);
+  assert.deepEqual([await count('employees'), await count('employee_branches')], [0, 0], 'the employee and their branch assignments are gone');
 });
 
 test('user account edits preserve the primary role and save updated roles', async () => {
@@ -283,7 +348,9 @@ test('master-data CRUD updates programs and blocks deleting referenced records',
   const input = { code: 'P1', name: 'Plan Updated', basePay: 400, status: 'active', description: '', incentiveTiers: [{ role: 'MAS', fromMonth: 1, toMonth: 12, incentiveType: 'percentage', markUp: 50, incentiveAmount: 30 }] };
   const updated = await route.PUT(new Request('http://localhost/api/programs?id=DP-0001', { method: 'PUT', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' } }));
   assert.equal(updated.status, 200);
-  assert.equal(h.writes[0].range, 'Programs!A2:F2');
+  const [program] = await query("select program_name, base_pay from programs where program_id = 'DP-0001'");
+  assert.deepEqual([program.program_name, Number(program.base_pay)], ['Plan Updated', 400]);
+  assert.deepEqual((await query("select role, from_month, to_month from program_incentives where program_id = 'DP-0001'")), [{ role: 'MAS', from_month: 1, to_month: 12 }], 'the tiers are replaced, not added');
   const deleted = await route.DELETE(new Request('http://localhost/api/programs?id=DP-0001', { method: 'DELETE' }));
   assert.equal(deleted.status, 400);
   assert.match((await deleted.json()).error, /member enrollments/i);
@@ -294,16 +361,17 @@ test('master-data CRUD blocks deleting assigned branches', async () => {
   const crud = h.load('lib/master-data-crud.ts');
   h.rows.Branches = [[], ['BR-0001', 'MATINA', 'METRO DAVAO 1']];
   h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-0001']];
-  h.rows['Member programs'] = [[]];
+  await h.sync();
   await assert.rejects(() => crud.deleteBranchRecord('BR-0001'), /assigned/i);
 });
 
 test('member directory requires Members page access, joins accounts once, and filters the same enrollment', async () => {
   const h = harness(null);
   const route = h.load('app/api/members/directory/route.ts');
-  assert.equal((await route.GET()).status, 403);
+  const directory = (query = '') => route.GET(new Request(`http://localhost/api/members/directory${query}`));
+  assert.equal((await directory()).status, 403);
   h.setUser({ userId: 'U2', roleNames: ['HR Officer'], permissions: {}, rolePages: { 'hr officer': ['/employees'] } });
-  assert.equal((await route.GET()).status, 403, 'a role without the Members page cannot pull the directory');
+  assert.equal((await directory()).status, 403, 'a role without the Members page cannot pull the directory');
   // Finance sees every member but does not encode; a MAS sees only their own (tested separately).
   h.setUser({ userId: 'U1', roleNames: ['Finance'], permissions: {} });
   await seed('members', [
@@ -315,9 +383,17 @@ test('member directory requires Members page access, joins accounts once, and fi
     { enrollment_id: 'E1', member_id: 'M1', member_number: 'PH-001', program_id: 'P1', doi: '2026-01-01', branch: 'North', mas: 'MAS1' },
     { enrollment_id: 'E2', member_id: 'M1', member_number: 'PH-001', program_id: 'P2', doi: '2026-02-01', branch: 'South', mas: 'MAS2' },
   ]);
-  const response = await route.GET();
+  const response = await directory();
   assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
-  const { members, canAddMember } = await response.json();
+  const { members, canAddMember, total, matched, pages, counts, options } = await response.json();
+  assert.deepEqual([total, matched, pages, counts[''], counts.active], [2, 2, 1, 2, 1]);
+  assert.deepEqual(options.branches, ['North', 'South']);
+  // The server applies the filters, matching branch, MAS and program on the same enrollment.
+  const ids = async (query) => (await (await directory(query)).json()).members.map((member) => member.id);
+  assert.deepEqual(await ids('?branch=North&program=P2'), []);
+  assert.deepEqual(await ids('?branch=South&mas=MAS2&program=P2'), ['M1']);
+  assert.deepEqual(await ids('?search=ana%20santos'), ['M1']);
+  assert.deepEqual(await ids('?sort=number&order=desc'), ['M2', 'M1']);
   assert.equal(canAddMember, false, 'only encoders are offered Add Member (New Sales)');
   assert.equal(members.length, 2);
   const ana = members.find((m) => m.id === 'M1');
@@ -1105,6 +1181,7 @@ test('branch names stay unique across territories when creating or renaming', as
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   h.rows.Branches = [[], ['BR-0022', 'BUTUAN', 'SURIGAO', '', '', '', '', '', '', '', '', '', 'active'], ['BR-0024', 'TORIL', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
   const crud = h.load('lib/master-data-crud.ts');
+  await h.sync();
   const branch = { name: 'butuan', territory: 'BUTUAN', barangay: '', cityMunicipality: '', province: '', country: '', postalCode: '', contactNumber: '', email: '', dateOpened: '', dateClosed: '', status: 'active' };
   await assert.rejects(() => crud.updateBranchRecord('BR-0024', branch), /already named "butuan"/);
   await crud.updateBranchRecord('BR-0022', { ...branch, name: 'BUTUAN' });
@@ -1315,6 +1392,7 @@ test('daily audit: HR, Finance, and Admin can open it; only Admin approves and a
   h.rows.Employees = [[], ['MD-3', 'Clerk One', 'MATINA', 'Entry Clerk', 'active'], ['MD-4', 'Only MAS', 'MATINA', 'MAS', 'active'], ['MD-8', 'Finance Person', 'TORIL', 'Finance', 'active'], ['MD-9', 'Old Clerk', 'TORIL', 'Entry Clerk', 'resigned']];
   h.rows['Employee Branches'] = [[]];
   h.rows['Daily Audits'] = [[]];
+  await h.sync();
   const audit = h.load('lib/daily-audit.ts');
   assert.deepEqual((await audit.auditedEmployees()).map((item) => item.name), ['Clerk One'], 'only active Entry Clerks are audited');
   await assert.rejects(audit.saveDailyAudit({ date: '2026-09-28', employeeId: 'MD-3', findings: '', result: 'With findings' }), /Describe the findings/);
@@ -1643,6 +1721,7 @@ test('a MAS sees only their own members; oversight roles see everyone', async ()
   const h = harness();
   h.rows.Employees = [[], ['DPE-0002', 'Maria Santos', 'BR-1', 'MAS', 'active']];
   h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  await h.sync();
   const { ownMembersScope, isOwnAccount } = h.load('lib/member-scope.ts');
   assert.equal(await ownMembersScope({ roleNames: ['MAS'], employeeId: 'DPE-0002', name: 'maria' }), 'Maria Santos', 'the name on the employee record, as on enrollments');
   assert.equal(await ownMembersScope({ roleNames: ['MAS', 'Administrator'], employeeId: 'DPE-0002', name: 'Maria Santos' }), null);
@@ -1719,14 +1798,15 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
 
 test('changing an Employee ID rewrites every Employee ID column and refuses an ID already in use', async () => {
   const h = harness();
-  h.rows.Employees = [['employee_id', 'full_name'], ['LEG-2026-0001', 'Solon, K.'], ['MD-2026-0009', 'Other']];
-  h.rows["'Employees'!A:A"] = [['employee_id'], ['LEG-2026-0001'], ['MD-2026-0009']];
+  // In the database: the employees, collections they are accountable for or encoded, and a report note keyed by the ID.
+  await seed('employees', [{ employee_id: 'LEG-2026-0001', full_name: 'Solon, K.' }, { employee_id: 'MD-2026-0009', full_name: 'Other' }]);
+  await seedAccount();
+  const collection = (id, or, encoder, accountable) => ({ collection_id: id, collection_batch_id: 'CBT-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: or, amount_collected: 100, status: 'Posted', encoded_by_employee_id: encoder, accountable_employee_id: accountable });
+  await seed('collections', [collection('COL-1', 'OR-1', 'MD-2026-0009', 'LEG-2026-0001'), collection('COL-2', 'OR-2', 'LEG-2026-0001', 'LEG-2026-0001'), collection('COL-3', 'OR-3', 'MD-2026-0009', 'MD-2026-0009')]);
+  await seed('report_notes', [{ note_key: 'LEG-2026-0001|daily|2026-10-01', employee_id: 'LEG-2026-0001' }, { note_key: 'MD-2026-0009|daily|2026-10-01', employee_id: 'MD-2026-0009' }]);
+  // Still in the sheets: the sign-in account and the clerk's report notes.
   h.rows.Users = [['user_id', 'employee_id'], ['USR-1', 'LEG-2026-0001']];
   h.rows["'Users'!B:B"] = [['employee_id'], ['LEG-2026-0001']];
-  const collectionsHeader = Array(31).fill(''); collectionsHeader[22] = 'encoded_by_employee_id'; collectionsHeader[30] = 'accountable_employee_id';
-  h.rows.Collections = [collectionsHeader];
-  h.rows["'Collections'!W:W"] = [['encoded_by_employee_id'], ['MD-2026-0009'], ['LEG-2026-0001']];
-  h.rows["'Collections'!AE:AE"] = [['accountable_employee_id'], ['LEG-2026-0001'], ['LEG-2026-0001'], ['']];
   h.rows['Report Notes'] = [['note_key'], ['LEG-2026-0001|daily|2026-10-01'], ['MD-2026-0009|daily|2026-10-01']];
   const { changeEmployeeId } = h.load('lib/employee-id-change.ts');
   const run = (next) => h.load('lib/encoder-context.ts').runAsSystem(() => changeEmployeeId('LEG-2026-0001', next, 'Real ID assigned'));
@@ -1734,10 +1814,21 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
   await assert.rejects(() => run('bad-id'), /company format/);
   const result = await run('md-2026-0042');
   assert.equal(result.newId, 'MD-2026-0042');
-  assert.deepEqual(result.bySheet, { Employees: 1, Users: 1, Collections: 3, 'Report Notes': 1 });
+  // Database: the employee row (linked columns follow it), the encoder column, and the report note key.
+  assert.deepEqual(result.bySheet, { employees: 1, collections: 1, report_notes: 1, Users: 1, 'Report Notes': 1 });
+  assert.deepEqual((await query('select employee_id from employees order by employee_id')).map((row) => row.employee_id), ['MD-2026-0009', 'MD-2026-0042']);
+  assert.deepEqual(await query('select collection_id, encoded_by_employee_id, accountable_employee_id from collections order by collection_id'), [
+    { collection_id: 'COL-1', encoded_by_employee_id: 'MD-2026-0009', accountable_employee_id: 'MD-2026-0042' },
+    { collection_id: 'COL-2', encoded_by_employee_id: 'MD-2026-0042', accountable_employee_id: 'MD-2026-0042' },
+    { collection_id: 'COL-3', encoded_by_employee_id: 'MD-2026-0009', accountable_employee_id: 'MD-2026-0009' },
+  ], 'every reference moves, and nothing of the other employee');
+  assert.deepEqual(await query('select note_key, employee_id from report_notes order by note_key'), [
+    { note_key: 'MD-2026-0009|daily|2026-10-01', employee_id: 'MD-2026-0009' },
+    { note_key: 'MD-2026-0042|daily|2026-10-01', employee_id: 'MD-2026-0042' },
+  ]);
+  // Sheets: only the tabs that are still there.
   const ranges = h.writes.filter((write) => write.requestBody?.data).flatMap((write) => write.requestBody.data.map((item) => `${item.range}=${item.values[0][0]}`));
-  assert.equal(ranges[0], "'Employees'!A2=MD-2026-0042", 'the Employees row is written first');
-  assert.deepEqual([...ranges].sort(), ["'Collections'!AE2=MD-2026-0042", "'Collections'!AE3=MD-2026-0042", "'Collections'!W3=MD-2026-0042", "'Employees'!A2=MD-2026-0042", "'Report Notes'!A2=MD-2026-0042|daily|2026-10-01", "'Users'!B2=MD-2026-0042"], 'every reference, and nothing of the other employee');
+  assert.deepEqual([...ranges].sort(), ["'Report Notes'!A2=MD-2026-0042|daily|2026-10-01", "'Users'!B2=MD-2026-0042"]);
 });
 
 test('entries go to Pending Approval on their own once every receipt photo is attached, and clerks see only theirs', async () => {

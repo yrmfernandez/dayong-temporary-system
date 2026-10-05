@@ -1,33 +1,48 @@
+import { asc, eq } from "drizzle-orm";
+
+import { currentDb, encodedBy, inTransaction, schema, type Transaction } from "@/lib/db";
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
-import { appendEncodedRows } from "@/lib/encoder-sheets";
-import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
 import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
+
+// Employees and their branch assignments are in the database. Sign-in accounts (Users) are still in Google Sheets until
+// they move, so Employee ID clashes and linked accounts are checked there too.
 
 export const employmentStatuses = ["active", "inactive", "resigned"] as const;
 export type EmploymentStatus = (typeof employmentStatuses)[number];
 const normalizeRoleName = (role: string) => role === "Admin" ? "Administrator" : role === "HR" ? "HR Officer" : role;
 
 type EmployeeRow = {
-  rowNumber: number; id: string; name: string; branch: string; roles: string[]; status: string;
+  id: string; name: string; branch: string; roles: string[]; status: string;
   contact: string; email: string; dateHired: string; createdAt: string;
 };
 
-type EmployeeBranchAssignment = { rowNumber: number; id: string; employeeId: string; branchId: string };
+const clean = (value: string | null | undefined) => (value ?? "").trim();
+const { employees: employeeTable, employee_branches: assignmentTable } = schema;
 
-async function getEmployeeBranchAssignments(): Promise<EmployeeBranchAssignment[]> {
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Employee Branches'!A:C" });
-  return (response.data.values ?? []).slice(1).map((row, index) => ({ rowNumber: index + 2, id: String(row[0] ?? "").trim(), employeeId: String(row[1] ?? "").trim(), branchId: String(row[2] ?? "").trim() })).filter((row) => row.id && row.employeeId && row.branchId);
+async function getEmployeeBranchAssignments() {
+  const rows = await currentDb().select().from(assignmentTable);
+  return rows.map((row) => ({ id: row.assignment_id, employeeId: row.employee_id, branchId: row.branch_id }));
 }
 
 async function getEmployeeRows(): Promise<EmployeeRow[]> {
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Employees'!A:I" });
-  return (response.data.values ?? []).slice(1).map((r, index) => ({
-    rowNumber: index + 2,
-    id: String(r[0] ?? "").trim(), name: String(r[1] ?? "").trim(), branch: String(r[2] ?? "").trim(),
-    roles: String(r[3] ?? "").split(",").map((s) => normalizeRoleName(s.trim())).filter(Boolean),
-    status: String(r[4] ?? "").trim().toLowerCase(), contact: String(r[5] ?? "").trim(),
-    email: String(r[6] ?? "").trim(), dateHired: String(r[7] ?? "").trim(), createdAt: String(r[8] ?? "").trim(),
-  })).filter((employee) => employee.id);
+  const rows = await currentDb().select().from(employeeTable).orderBy(asc(employeeTable.employee_id));
+  return rows.map((row) => ({
+    id: row.employee_id, name: clean(row.full_name), branch: clean(row.primary_branch),
+    roles: clean(row.operational_roles).split(",").map((role) => normalizeRoleName(role.trim())).filter(Boolean),
+    status: clean(row.employment_status).toLowerCase(), contact: clean(row.contact_number),
+    email: clean(row.email), dateHired: row.date_hired ?? "", createdAt: row.created_at ?? "",
+  }));
+}
+
+/** Replaces an employee's branch assignments (inside the caller's transaction). */
+async function writeAssignments(tx: Transaction, employeeId: string, branchIds: string[]) {
+  await tx.delete(assignmentTable).where(eq(assignmentTable.employee_id, employeeId));
+  if (branchIds.length) await tx.insert(assignmentTable).values(branchIds.map((branchId, index) => ({ assignment_id: `EBA-${employeeId}-${Date.now()}-${index + 1}`, employee_id: employeeId, branch_id: branchId, ...encodedBy() })));
+}
+
+/** Users!B: Employee IDs of sign-in accounts (still in Google Sheets). */
+async function accountEmployeeIds() {
+  return ((await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:B" })).data.values ?? []).slice(1).map((row) => String(row[1] ?? "").trim());
 }
 
 export async function getEmployees() {
@@ -75,8 +90,8 @@ export function suggestEmployeeId(existingIds: string[], year = new Intl.DateTim
 }
 
 export async function getNextEmployeeId() {
-  const [employees, users] = await Promise.all([getEmployeeRows(), sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:B" })]);
-  return suggestEmployeeId([...employees.map((employee) => employee.id), ...(users.data.values ?? []).slice(1).map((row) => String(row[1] ?? ""))]);
+  const [employees, accounts] = await Promise.all([getEmployeeRows(), accountEmployeeIds()]);
+  return suggestEmployeeId([...employees.map((employee) => employee.id), ...accounts]);
 }
 
 export async function registerEmployee(body: Record<string, unknown>, validRoles: string[], branches: Array<{ id: string; name: string }>) {
@@ -89,12 +104,15 @@ export async function registerEmployee(body: Record<string, unknown>, validRoles
   if (roles.some((role) => !validRoles.includes(role))) throw new Error("One or more operational roles are invalid.");
   if (contact.length > 50 || email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error("Check the contact number and email.");
   if (dateHired && (!/^\d{4}-\d{2}-\d{2}$/.test(dateHired) || !Number.isFinite(Date.parse(dateHired)) || new Date(dateHired).toISOString().slice(0, 10) !== dateHired)) throw new Error("Enter a valid date hired.");
-  const [employees, users] = await Promise.all([getEmployees(), sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:B" })]);
-  const ids = [...employees.map((e) => e.id.toUpperCase()), ...(users.data.values ?? []).slice(1).map((r) => String(r[1] ?? "").trim().toUpperCase())];
+  const [employees, accounts] = await Promise.all([getEmployeeRows(), accountEmployeeIds()]);
+  const ids = [...employees.map((e) => e.id.toUpperCase()), ...accounts.map((value) => value.toUpperCase())];
   if(ids.includes(id))throw new Error("This Employee ID already exists.");
   const primaryBranch = readPrimaryBranch(body, branchIds, branches);
-  await appendEncodedRows({ range: "Employees!A:I", requestBody: { values: [[id, name, primaryBranch, roles.join(", "), "active", contact, email, dateHired, new Date().toISOString()].map((v) => `'${v}`)] } });
-  await appendEncodedRows({ range: "'Employee Branches'!A:C", requestBody: { values: branchIds.map((branchId, index) => [`EBA-${id}-${String(index + 1).padStart(2, "0")}`, id, branchId]) } });
+  // The employee and their branch assignments are saved together.
+  await inTransaction(async (tx) => {
+    await tx.insert(employeeTable).values({ employee_id: id, full_name: name, primary_branch: primaryBranch || null, operational_roles: roles.join(", "), employment_status: "active", contact_number: contact || null, email: email || null, date_hired: dateHired || null, created_at: new Date().toISOString(), ...encodedBy() });
+    await writeAssignments(tx, id, branchIds);
+  });
   return { id, name, roles, primaryBranch };
 }
 
@@ -107,46 +125,39 @@ export async function updateEmployee(employeeId: string, body: Record<string, un
   if (!employmentStatuses.includes(status as EmploymentStatus)) throw new Error("Select active, inactive, or resigned.");
   if (!roles.length || roles.some((role) => !validRoles.includes(role))) throw new Error("Select valid operational roles.");
   if (!branchIds.length || branchIds.some((id) => !branches.some((branch) => branch.id === id))) throw new Error("Select valid branch assignments.");
-  const assignments = await getEmployeeBranchAssignments();
-  const old = assignments.filter((assignment) => assignment.employeeId === employeeId);
   const primaryBranch = readPrimaryBranch(body, branchIds, branches);
   const contact = text("contact"), email = text("email"), dateHired = text("dateHired");
   if (contact.length > 50 || email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error("Check the contact number and email.");
   if (dateHired && (!/^\d{4}-\d{2}-\d{2}$/.test(dateHired) || !Number.isFinite(Date.parse(dateHired)))) throw new Error("Enter a valid date hired.");
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'Employees'!A${employee.rowNumber}:I${employee.rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[employee.id, name, primaryBranch, roles.join(", "), status, contact, email, dateHired, employee.createdAt]] } });
-  // Old assignments go before the new ones are added, so only the old rows match.
-  if (old.length) await deleteRowsWhere("Employee Branches", (row) => String(row[1] ?? "").trim() === employeeId);
-  await appendEncodedRows({ range: "'Employee Branches'!A:C", requestBody: { values: branchIds.map((branchId, index) => [`EBA-${employeeId}-${Date.now()}-${index + 1}`, employeeId, branchId]) } });
+  // The details and the branch assignments change together.
+  await inTransaction(async (tx) => {
+    await tx.update(employeeTable).set({ full_name: name, primary_branch: primaryBranch || null, operational_roles: roles.join(", "), employment_status: status, contact_number: contact || null, email: email || null, date_hired: dateHired || null }).where(eq(employeeTable.employee_id, employeeId));
+    await writeAssignments(tx, employeeId, branchIds);
+  });
   return { id: employeeId, name, roles };
 }
 
 /** Rewrites only the register's roles (column D), used to follow a change made to the sign-in account's roles. */
 export async function setEmployeeRoles(employeeId: string, roles: string[]) {
-  const employee = (await getEmployeeRows()).find((item) => item.id === employeeId);
-  if (!employee) return false;
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'Employees'!D${employee.rowNumber}`, valueInputOption: "RAW", requestBody: { values: [[roles.join(", ")]] } });
-  return true;
+  const updated = await currentDb().update(employeeTable).set({ operational_roles: roles.join(", ") }).where(eq(employeeTable.employee_id, employeeId)).returning({ id: employeeTable.employee_id });
+  return updated.length > 0;
 }
 
 export async function updateEmployeeStatus(employeeId: string, status: string) {
   if (!employmentStatuses.includes(status as EmploymentStatus)) throw new Error("Select active, inactive, or resigned.");
-  const employee = (await getEmployeeRows()).find((item) => item.id === employeeId);
-  if (!employee) throw new Error("Employee not found.");
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'Employees'!E${employee.rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [[status]] } });
+  const updated = await currentDb().update(employeeTable).set({ employment_status: status }).where(eq(employeeTable.employee_id, employeeId)).returning({ id: employeeTable.employee_id });
+  if (!updated.length) throw new Error("Employee not found.");
   return { id: employeeId, status };
 }
 
 export async function deleteEmployee(employeeId: string) {
-  const [employeeRows, usersResponse] = await Promise.all([
-    getEmployeeRows(),
-    sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:B" }),
-  ]);
-  const employee = employeeRows.find((item) => item.id === employeeId);
-  if (!employee) throw new Error("Employee not found.");
-  const linkedAccount = (usersResponse.data.values ?? []).slice(1).some((row) => String(row[1] ?? "").trim() === employeeId);
-  if (linkedAccount) throw new Error("This employee has a linked user account. Deactivate or remove that account before deleting the employee.");
-  const assignments = (await getEmployeeBranchAssignments()).filter((assignment) => assignment.employeeId === employeeId);
-  if (assignments.length) await deleteRowsWhere("Employee Branches", (row) => String(row[1] ?? "").trim() === employeeId);
-  await deleteRowsById("Employees", [employeeId]);
+  const [employeeRows, accounts] = await Promise.all([getEmployeeRows(), accountEmployeeIds()]);
+  if (!employeeRows.some((item) => item.id === employeeId)) throw new Error("Employee not found.");
+  if (accounts.includes(employeeId)) throw new Error("This employee has a linked user account. Deactivate or remove that account before deleting the employee.");
+  // Their branch assignments go with them; anything else that names them (accounts, collections) blocks the delete.
+  await inTransaction(async (tx) => {
+    await tx.delete(assignmentTable).where(eq(assignmentTable.employee_id, employeeId));
+    await tx.delete(employeeTable).where(eq(employeeTable.employee_id, employeeId));
+  });
   return { id: employeeId };
 }

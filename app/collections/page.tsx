@@ -334,6 +334,25 @@ export default function CollectionsPage() {
     void loadOptions();
   }, []);
 
+  // Every member under the chosen Branch and MAS, so the member field is a full list that typing narrows at once.
+  const [membersLoading, setMembersLoading] = useState(false);
+  useEffect(() => {
+    if (!branch || !mas) return;
+    const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows loading while this branch and MAS list arrives
+    setMembersLoading(true);
+    fetch(`/api/members?all=1&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(mas)}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.json())
+      .then((result) => {
+        if (!result.success) return;
+        // Keep members already chosen on a restored draft; add the rest of this MAS's list.
+        setMembers((current) => [...new Map([...current, ...(result.members ?? [])].map((member: CollectionMember) => [member.id, member])).values()]);
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!controller.signal.aborted) setMembersLoading(false); });
+    return () => controller.abort();
+  }, [branch, mas]);
+
   useEffect(() => {
     if (!scrollTargetId) return;
 
@@ -344,30 +363,6 @@ export default function CollectionsPage() {
     const frame = requestAnimationFrame(() => setScrollTargetId(""));
     return () => cancelAnimationFrame(frame);
   }, [collections, scrollTargetId]);
-
-  const searchMembers = async (search: string) => {
-    if (!search.trim() || !branch || !mas) return;
-
-    const response = await fetch(
-      `/api/members?search=${encodeURIComponent(search)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(mas)}`,
-      { cache: "no-store" },
-    );
-    const result = await response.json();
-
-    if (response.ok && result.success) {
-      setMembers((current) => {
-        const next = [...current];
-
-        for (const member of result.members ?? []) {
-          if (!next.some((item) => item.id === member.id)) {
-            next.push(member);
-          }
-        }
-
-        return next;
-      });
-    }
-  };
 
   const activeCollection = useMemo(
     () =>
@@ -1188,17 +1183,17 @@ export default function CollectionsPage() {
                           {/* MEMBER SEARCH */}
                           <div className="space-y-2">
                             <Label>
-                              Search Member by Full Name *
+                              Member *
                             </Label>
 
                             <SearchSelect
                               aria-label="Member"
                               value={entry.memberId}
                               disabled={!branch || !mas}
-                              placeholder={branch && mas ? "Type member name or number..." : "Select Branch and MAS first"}
-                              emptyText="No matching member found."
+                              placeholder={!branch || !mas ? "Select Branch and MAS first" : membersLoading ? "Loading this MAS's members..." : "Choose or type member name or number"}
+                              emptyText={membersLoading ? "Loading members..." : "No member of this MAS matches."}
+                              limit={1000}
                               options={members.map((member) => ({ value: member.id, label: getMemberFullName(member), description: [member.phMemberNumber, member.contactNumber].filter(Boolean).join(" · "), keywords: getMemberDisplayName(member) }))}
-                              onSearchChange={(query) => { setActiveCollectionId(entry.id); void searchMembers(query); }}
                               onValueChange={(memberId) => {
                                 if (memberId) { selectMember(entry.id, memberId); return; }
                                 selectionVersions.current[entry.id] = (selectionVersions.current[entry.id] ?? 0) + 1;
