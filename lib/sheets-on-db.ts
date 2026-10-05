@@ -315,6 +315,24 @@ export async function readSheetRows(title: string, where: SQL, { unformatted = t
 }
 
 /**
+ * Like readSheetRows, plus each row's sheet row number (2 = first data row) in the whole tab, counted by the database,
+ * so a caller that saves by position (updateCells) can read only the rows it needs. `where` may name columns unqualified
+ * or as "<table>"."<column>".
+ */
+export async function readSheetRowsNumbered(title: string, where: SQL) {
+  const layout = await layoutOf(title);
+  const numbered = sql`(select *, row_number() over (order by row_seq) + 1 as sheet_row_number from ${ident(layout.table)}) as ${ident(layout.table)}`;
+  const found = rowsOf<Record<string, unknown>>(await getDb().execute(sql`select ${list(layout.columns.map((column) => column.name))}, sheet_row_number from ${numbered} where ${where} order by row_seq`));
+  return {
+    rows: [
+      layout.columns.map((column) => HEADER_NAMES[layout.table]?.[column.name] ?? column.name),
+      ...found.map((row) => layout.columns.map((column) => toCell(row[column.name], column, { unformatted: true }))),
+    ],
+    rowNumbers: found.map((row) => Number(row.sheet_row_number)),
+  };
+}
+
+/**
  * Appends rows in a tab's sheet layout in one transaction (used by the legacy import script). `extras[i]` sets
  * database-only columns of row i, such as legacy_duplicate on a receipt or application number already in use.
  */

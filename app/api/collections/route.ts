@@ -1,5 +1,5 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
-import { manilaNow } from "@/lib/remittance-deadline";
+import { ENTRY_CLOSED_MESSAGE, entryClosed, manilaNow } from "@/lib/remittance-deadline";
 import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { withEncoder } from "@/lib/encoder-context";
@@ -28,6 +28,8 @@ export async function GET(request: Request) {
 
 export const POST = withEncoder(async (request: Request) => {
   if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
+  // Nobody encodes from the 3:00 PM cutoff until midnight.
+  if (entryClosed()) return Response.json({ success: false, message: ENTRY_CLOSED_MESSAGE }, { status: 403 });
   return saveCollections(request);
 });
 

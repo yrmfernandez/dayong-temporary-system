@@ -19,7 +19,7 @@ const HELP: Record<ExceptionCategory, string> = {
   amounts: "Collections that are not whole installments (more is allowed only when it pays the program off exactly), and New Sales on locked programs that differ from the fixed amount.",
   duplicates: "The same OR number or application number on two entries, or two member records with the same name and birthdate.",
   members: "Active members without a birthdate, contact number, or address.",
-  overdue: "Cash still with the MAS or Collector after 10:00 AM the day after the OR date. The incentive is forfeited when it is remitted.",
+  overdue: "Cash still with the MAS or Collector after 3:00 PM the day after the OR date. The incentive is forfeited when it is remitted.",
   backdated: "Entries saved in the last 30 days with a date more than a day old, and the reason the clerk gave.",
   receipts: "OR numbers written without the branch letter (for example \"12345\" instead of \"12345 S\") whose letter could not be worked out with certainty. Check the receipt and correct each one. Listed even for old data.",
 };

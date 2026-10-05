@@ -85,7 +85,7 @@ export default function TodaysEntriesPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">{isToday || !data ? "Today's Entries" : `Entries for ${data.date}`}</h1>
-        <p className="text-sm text-muted-foreground">New Sales and Collections for the day. Incentives are kept only when the cash is received by 10:00 AM the day after the OR date.</p>
+        <p className="text-sm text-muted-foreground">New Sales and Collections for the day. Incentives are kept only when the cash is received by 3:00 PM the day after the OR date. Encoding closes at 3:00 PM.</p>
       </div>
 
       <Card>

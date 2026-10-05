@@ -2,7 +2,7 @@ import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
-import { manilaNow } from "@/lib/remittance-deadline";
+import { ENTRY_CLOSED_MESSAGE, entryClosed, manilaNow } from "@/lib/remittance-deadline";
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
@@ -102,6 +102,8 @@ function phoneKey(value: unknown) {
 
 export const POST = withEncoder(async function POST(request: Request) {
   if (!(await userWithPageAccess("/new-sales"))) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
+  // Nobody encodes from the 3:00 PM cutoff until midnight.
+  if (entryClosed()) return NextResponse.json({ success: false, message: ENTRY_CLOSED_MESSAGE }, { status: 403 });
   return saveSales(request);
 });
 

@@ -32,7 +32,7 @@ export function dateWarnings({ receiptDate, receiptLabel = "OR date", dateRemitt
   if (valid(recordedOn) && days(receipt, recordedOn) > ENCODE_LATE_DAYS) warnings.push(`Encoded ${plural(days(receipt, recordedOn))} after the ${receiptLabel} (${receipt}).`);
   if (valid(dateRemitted)) {
     if (dateRemitted < receipt) warnings.push(`Remitted on ${dateRemitted}, ${plural(days(dateRemitted, receipt))} before the ${receiptLabel} (${receipt}). Cash cannot be remitted before the receipt is issued.`);
-    else if (days(receipt, dateRemitted) > REMIT_LATE_DAYS) warnings.push(`Remitted ${plural(days(receipt, dateRemitted))} after the ${receiptLabel} (${receipt}). Cash is due by 10:00 AM the next day.`);
+    else if (days(receipt, dateRemitted) > REMIT_LATE_DAYS) warnings.push(`Remitted ${plural(days(receipt, dateRemitted))} after the ${receiptLabel} (${receipt}). Cash is due by 3:00 PM the next day.`);
     if (valid(recordedOn) && dateRemitted > recordedOn) warnings.push(`The date remitted ${dateRemitted} is after the entry was recorded (${recordedOn}).`);
     if (valid(today) && dateRemitted > today) warnings.push(`The date remitted ${dateRemitted} is in the future.`);
   }

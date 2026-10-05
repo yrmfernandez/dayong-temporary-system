@@ -26,6 +26,8 @@ beforeEach(async () => {
   const { rows } = await pglite.query("select string_agg(format('%I', tablename), ', ') as names from pg_tables where schemaname = 'public'");
   await pglite.exec(`truncate ${rows[0].names} restart identity cascade`);
   globalThis.dayongTestStorage.clear();
+  // Encoding closes at 3:00 PM Manila: tests run at 9:00 AM Manila unless they set another time.
+  globalThis.dayongTestNow = '2026-10-05T01:00:00Z';
 });
 /** Inserts rows (objects keyed by column name) into a database table. */
 async function seed(table, rows, { skipExisting = false } = {}) {
@@ -511,6 +513,22 @@ for (const existingMember of [false, true]) {
   });
 }
 
+test('nobody saves New Sales or Collections from 3:00 PM until midnight', async () => {
+  const admin = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const deadline = admin.load('lib/remittance-deadline.ts');
+  assert.equal(deadline.entryClosed(new Date('2026-10-05T06:59:00Z')), false, '2:59 PM Manila is open');
+  assert.equal(deadline.entryClosed(new Date('2026-10-05T07:00:00Z')), true, '3:00 PM Manila is closed');
+  assert.equal(deadline.entryClosed(new Date('2026-10-05T15:59:00Z')), true, '11:59 PM Manila is closed');
+  assert.equal(deadline.entryClosed(new Date('2026-10-05T16:00:00Z')), false, 'midnight Manila opens the next day');
+  globalThis.dayongTestNow = '2026-10-05T07:30:00Z';
+  for (const route of ['app/api/sales/route.ts', 'app/api/collections/route.ts']) {
+    const response = await admin.load(route).POST(request({}));
+    assert.equal(response.status, 403, route);
+    assert.match((await response.json()).message, /closed after 3:00 PM/);
+  }
+  assert.equal(admin.writes.length, 0);
+});
+
 test('collection batch is encoded atomically without creating a remittance', async () => {
   const h = harness();
   const today = h.load('lib/account-rules.ts').todayInManila();
@@ -615,6 +633,25 @@ test('physical remittance links exact outstanding collections and records a disc
   assert.equal(mapping[3], 200);
   const status = requests[2].updateCells.rows[0].values.map((value) => value.userEnteredValue.stringValue);
   assert.deepEqual(status, ['Pending Remittance Approval', result.remittance.id]);
+});
+
+test('a remittance save skips old remitted rows but still updates the right row', async () => {
+  const h = harness();
+  const collectionsHeader = Array(33).fill(''); collectionsHeader[28] = 'Remittance Status';
+  // Imported old data: remitted, no encoder, no slip. The ledger does not read these rows.
+  const old = (id) => { const row = Array(33).fill(''); row[0] = id; row[6] = 'BR-1'; row[8] = `OR-${id}`; row[9] = '2026-01-05'; row[10] = 350; row[19] = 'Posted'; row[26] = 200; row[28] = 'Remitted'; return row; };
+  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[4] = 'PH-1'; collection[5] = 'DP-1'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[25] = 'MAS'; collection[26] = 200; collection[28] = 'Outstanding'; collection[30] = 'DPE-0002'; collection[31] = 'Maria'; collection[32] = 'MAS';
+  const remittancesHeader = Array(24).fill(''); remittancesHeader[12] = 'Difference';
+  h.rows.Collections = [collectionsHeader, old('COL-OLD-1'), old('COL-OLD-2'), collection];
+  h.rows.Remittances = [remittancesHeader];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  deadlineHeaders(h);
+  const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 200, remittanceDate: '2026-09-26', remittanceTime: '09:00', receivedByName: 'Cashier' }));
+  assert.equal(response.status, 201, JSON.stringify(await response.clone().json()));
+  const status = h.writes[0].requestBody.requests[2].updateCells;
+  // Sheet row 4 (0-based index 3): the header, the two old rows, then COL-1.
+  assert.equal(status.range.startRowIndex, 3);
+  assert.deepEqual(status.rows[0].values.map((value) => value.userEnteredValue.stringValue)[0], 'Pending Remittance Approval');
 });
 
 test('pending approval does not clear cash accountability', async () => {
@@ -1542,7 +1579,7 @@ test('member directory: Collector per program, deceased members, and the standin
   assert.equal(filterMemberDirectory(members, { ...emptyDirectoryFilters, search: 'matina' }).length, 3, 'search covers the address');
 });
 
-test('incentives are kept until 10:00 AM the day after the OR date, then the full amount is remitted', async () => {
+test('incentives are kept until 3:00 PM the day after the OR date, then the full amount is remitted', async () => {
   const setup = () => {
     const h = harness();
     const collection = Array(39).fill(''); collection[0] = 'COL-5'; collection[6] = 'BR-1'; collection[7] = 'Maria'; collection[8] = 'OR-5'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 270; collection[28] = 'Outstanding'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS';
@@ -1556,15 +1593,15 @@ test('incentives are kept until 10:00 AM the day after the OR date, then the ful
   const post = async (h, remittanceTime, actualAmount) => { const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-5'], actualAmount, remittanceDate: '2026-09-26', remittanceTime })); return { status: response.status, body: await response.json() }; };
 
   const onTime = setup();
-  const kept = await post(onTime, '10:00', 270);
+  const kept = await post(onTime, '15:00', 270);
   assert.equal(kept.status, 201, JSON.stringify(kept.body));
-  assert.equal(kept.body.remittance.expectedAmount, 270, '10:00 exactly is within 24 hours of the cutoff');
+  assert.equal(kept.body.remittance.expectedAmount, 270, '15:00 exactly is still within the deadline');
   assert.equal(kept.body.remittance.forfeitedCount, 0);
   const keptRow = onTime.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.equal(keptRow[26], '10:00', 'the time received is stored on the slip');
+  assert.equal(keptRow[26], '15:00', 'the time received is stored on the slip');
 
   const late = setup();
-  const forfeited = await post(late, '10:01', 350);
+  const forfeited = await post(late, '15:01', 350);
   assert.equal(forfeited.status, 201, JSON.stringify(forfeited.body));
   assert.equal(forfeited.body.remittance.expectedAmount, 350, 'the whole collection goes to the remittance');
   assert.equal(forfeited.body.remittance.forfeitedAmount, 80);

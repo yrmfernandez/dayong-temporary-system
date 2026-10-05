@@ -20,7 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useFormDraft } from "@/lib/use-form-draft";
-import { manilaNow } from "@/lib/remittance-deadline";
+import { ENTRY_CLOSED_MESSAGE, manilaNow } from "@/lib/remittance-deadline";
+import { useEntryClosed } from "@/lib/use-entry-closed";
 import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { compressReceiptPhoto } from "@/components/receipt-photo";
@@ -252,6 +253,7 @@ export default function CollectionsPage() {
   const [saveMessage, setSaveMessage] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const encodingClosed = useEntryClosed();
   // The total written on the MAS's turnover sheet; the batch saves only when the entries add up to it.
   const [controlTotal, setControlTotal] = useState("");
   // The batch's receipt photo, optional: attached right after saving, which sends the batch for approval.
@@ -1735,12 +1737,13 @@ export default function CollectionsPage() {
                   </div>
                 )}
 
+                {encodingClosed && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm font-medium text-destructive">{ENTRY_CLOSED_MESSAGE}</p>}
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Button
                     type="button"
                     className="flex-1"
                     onClick={() => showPreview ? void saveCollections() : setShowPreview(true)}
-                    disabled={saving}
+                    disabled={saving || encodingClosed}
                   >
                     <Save className="mr-2 size-4" />
 

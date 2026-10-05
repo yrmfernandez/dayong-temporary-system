@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 
-import { readSheetRows } from "@/lib/sheets-on-db";
+import { readSheetRowsNumbered } from "@/lib/sheets-on-db";
 ﻿import { createReadableId } from "@/lib/readable-id";
 import { COLLECTIONS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 import { getEncoder, runAsSystem } from "@/lib/encoder-context";
@@ -118,24 +118,26 @@ export type CashRemittance = {
 };
 
 /**
- * The remittance ledger. Saves load every row, because they find a row by its position. A read-only view
- * (`activeOnly`) skips what plays no part in remittances: items already Remitted with no encoder, which are the
- * imported old data (about 59,000 of 60,000 collections), so dashboards stay light. Never save from an activeOnly ledger.
+ * The remittance ledger. Collections and Sales skip what plays no part in remittances: items already Remitted with no
+ * encoder and no slip, which are the imported old data (about 59,000 of 60,000 collections). The database numbers each
+ * row it returns with its position in the whole tab, so saves (which update by position) work from this smaller read.
  */
-async function loadLedger({ activeOnly = false }: { activeOnly?: boolean } = {}) {
+async function loadLedger() {
   const active = sql`(coalesce(remittance_status, '') <> 'Remitted' or coalesce(encoded_by_employee_id, '') <> '' or linked_remittance_id is not null)`;
+  const others = titles.filter((title) => title !== "Collections" && title !== "Sales");
   const [response, activeCollections, activeSales] = await Promise.all([
     sheets.spreadsheets.values.batchGet({
       spreadsheetId: GOOGLE_SHEET_ID,
-      ranges: titles.filter((title) => !activeOnly || (title !== "Collections" && title !== "Sales")).map((title) => ledgerRanges[title]),
+      ranges: others.map((title) => ledgerRanges[title]),
       valueRenderOption: "UNFORMATTED_VALUE",
       dateTimeRenderOption: "FORMATTED_STRING",
     }),
-    activeOnly ? readSheetRows("Collections", active) : Promise.resolve(null),
-    activeOnly ? readSheetRows("Sales", active) : Promise.resolve(null),
+    readSheetRowsNumbered("Collections", active),
+    readSheetRowsNumbered("Sales", active),
   ]);
-  const fetched = titles.filter((title) => !activeOnly || (title !== "Collections" && title !== "Sales"));
-  const rows = Object.fromEntries(titles.map((title) => [title, title === "Collections" && activeCollections ? activeCollections : title === "Sales" && activeSales ? activeSales : response.data.valueRanges?.[fetched.indexOf(title)]?.values ?? []]));
+  const rows: Record<string, unknown[][]> = Object.fromEntries(others.map((title, index) => [title, response.data.valueRanges?.[index]?.values ?? []]));
+  rows.Collections = activeCollections.rows;
+  rows.Sales = activeSales.rows;
   if (!headerMatches(rows.Collections[0]?.[28], "Remittance Status") || !headerMatches(rows.Remittances[0]?.[12], "Difference") || !headerMatches(rows["Remittance Collections"][0]?.[0], "Remittance Collection ID")) {
     throw new Error("Run the remittance workflow sheet migration before using Remittances.");
   }
@@ -146,19 +148,19 @@ async function loadLedger({ activeOnly = false }: { activeOnly?: boolean } = {})
     id: text(row[0]), remittanceId: text(row[1]), collectionId: text(row[2]), amount: number(row[3]), linkedAt: text(row[4]),
   }));
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
-    kind: "Collections" as const, photoId: "", encodedByEmployeeId: text(row[22]), encodedByName: text(row[23]), encodedAt: manilaStamp(text(row[24])), dateRemitted: text(row[40]).slice(0, 10), id: text(row[0]), batchId: text(row[1]), rowNumber: index + 2, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
+    kind: "Collections" as const, photoId: "", encodedByEmployeeId: text(row[22]), encodedByName: text(row[23]), encodedAt: manilaStamp(text(row[24])), dateRemitted: text(row[40]).slice(0, 10), id: text(row[0]), batchId: text(row[1]), rowNumber: activeCollections.rowNumbers[index], memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), forfeitedIncentive: number(row[FORFEIT_COLUMN.Collections]), incentiveDeadline: incentiveDeadline(text(row[9])), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
     collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]), fidelity: number(row[37]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${text(row[9])}T00:00:00Z`).getTime()) / 86400000)) || 0,
-  })).filter((collection) => collection.id && text(rows.Collections[collection.rowNumber - 1]?.[19]).toLowerCase() === "posted");
+  })).filter((collection, index) => collection.id && text(rows.Collections[index + 1]?.[19]).toLowerCase() === "posted");
   // New Sales are owed by the sale's MAS (Sales AJ status, AK linked remittance, AL accountable ID). AP holds the company's
   // share after the MAS's New Sale incentive (AO); sales saved before incentives existed owe the full amount paid.
   // AQ is the batch's MAS Fidelity, on its first sale.
   // A New Sale has no OR; its date is the Manila date it was created (date_created is a UTC stamp).
   const saleDate = (row: unknown[]) => text(row[30]) || manilaDateOf(text(row[1]));
   const sales: CashCollection[] = rows.Sales.slice(1).map((row, index) => ({
-    kind: "New Sales" as const, photoId: "", encodedByEmployeeId: text(row[32]), encodedByName: text(row[33]), encodedAt: manilaStamp(text(row[34]) || text(row[1])), dateRemitted: text(row[4]).slice(0, 10), id: text(row[0]), batchId: "", rowNumber: index + 2, memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
+    kind: "New Sales" as const, photoId: "", encodedByEmployeeId: text(row[32]), encodedByName: text(row[33]), encodedAt: manilaStamp(text(row[34]) || text(row[1])), dateRemitted: text(row[4]).slice(0, 10), id: text(row[0]), batchId: "", rowNumber: activeSales.rowNumbers[index], memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
     accountableEmployeeId: text(row[37]), accountableName: text(row[3]), accountableRole: "MAS",
     orNumber: text(row[29]) || (text(row[28]) ? `App ${text(row[28])}` : ""), orDate: saleDate(row), amount: number(row[26]), remittanceAmount: text(row[41]) === "" ? number(row[26]) : number(row[41]),
     forfeitedIncentive: number(row[FORFEIT_COLUMN["New Sales"]]), incentiveDeadline: incentiveDeadline(saleDate(row)),
@@ -210,7 +212,7 @@ export const amountDue = (collection: Pick<CashCollection, "amount" | "remittanc
  */
 export async function getRemittanceDashboard(clerkId = "") {
   // Read-only: the active part of the ledger is enough for the summary, the queues and the clerk list.
-  const all = await loadLedger({ activeOnly: true });
+  const all = await loadLedger();
   const ledger = clerkId
     ? { ...all, collections: all.collections.filter((item) => item.encodedByEmployeeId === clerkId), remittances: all.remittances.filter((remittance) => remittance.clerkIds.includes(clerkId)) }
     : all;
@@ -341,7 +343,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const penalized = collections.filter((collection) => collection.penalty > 0);
   const penaltyText = penalized.map((collection) => `Penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (separate from remittance): ${collection.penaltyNote}`).join("; ");
   const fidelityText = fidelityAmount > 0 ? `Fidelity ${fidelityAmount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (employee's own money), included in the expected amount` : "";
-  const forfeitText = forfeits.length ? `Incentive forfeited on ${forfeits.length} item${forfeits.length === 1 ? "" : "s"} (${forfeitedTotal.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}): cash received after 10:00 AM the day after the OR date` : "";
+  const forfeitText = forfeits.length ? `Incentive forfeited on ${forfeits.length} item${forfeits.length === 1 ? "" : "s"} (${forfeitedTotal.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}): cash received after 3:00 PM the day after the OR date` : "";
   const remarks = [text(input.remarks), penaltyText, fidelityText, forfeitText].filter(Boolean).join(" | ");
   const status = approved ? "Approved" : difference === 0 ? "Pending Approval" : "Discrepancy";
   const id = createReadableId("REM");
