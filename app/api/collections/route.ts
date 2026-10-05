@@ -4,8 +4,8 @@ import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { withEncoder } from "@/lib/encoder-context";
 import { userWithPageAccess } from "@/lib/auth-server";
-import { withWriteLock } from "@/lib/google-sheets";
-import { loadAccountData, commitCollections } from "@/lib/account-data";
+import { inTransaction, isUniqueViolation } from "@/lib/db";
+import { loadAccountData, commitCollections, type NewCollection } from "@/lib/account-data";
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
 import { findActivePaymentMethod } from "@/lib/remittance-methods";
 import { calculateRemittance, tiersForBranch } from "@/lib/remittance";
@@ -17,8 +17,8 @@ export async function GET(request: Request) {
   if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
   try {
     const { searchParams } = new URL(request.url);
-    const data = await loadAccountData();
-    const matches = data.accounts.filter((a) => a.memberId === searchParams.get("memberId") && a.programId === searchParams.get("programId") && a.branch === searchParams.get("branch") && a.mas === searchParams.get("mas"));
+    const data = await loadAccountData({ memberId: searchParams.get("memberId") ?? "" });
+    const matches = data.accounts.filter((a) => a.programId === searchParams.get("programId") && a.branch === searchParams.get("branch") && a.mas === searchParams.get("mas"));
     if (matches.length !== 1) return Response.json({ success: false, message: "A unique program enrollment was not found." }, { status: 404 });
     const account = matches[0];
     const history = data.payments.filter((p) => p.enrollmentId === account.id).sort((a, b) => b.nopTo - a.nopTo);
@@ -28,9 +28,7 @@ export async function GET(request: Request) {
 
 export const POST = withEncoder(async (request: Request) => {
   if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
-  // One collection batch at a time per server: validation reads the latest payments, so a concurrent batch for the
-  // same account cannot slip in between that check and the write.
-  return withWriteLock("collections", () => saveCollections(request));
+  return saveCollections(request);
 });
 
 async function saveCollections(request: Request) {
@@ -77,53 +75,72 @@ async function saveCollections(request: Request) {
       // the batch, attaches the photo, then approves through Remittances, so approving here would fail after saving.
       throw new Error("Receipt photos are required before a remittance is approved. Save the batch, attach the receipt photo, then approve it.");
     }
-    const [data, recordedReceipts] = await Promise.all([loadAccountData(), recordedOrNumbers()]);
-    const payments = [...data.payments];
-    // Each OR Number is one receipt for one entry: reusing one, here or in an earlier batch, is a double entry.
-    const batchReceipts = new Map<string, string>();
-    const touched = new Map<string, typeof data.accounts[number]>();
-    const rows: (string | number)[][] = [];
-    const timestamp = new Date().toISOString();
-    const batchId = createReadableId("CBT");
-    let grossCents = 0;
-    for (const entry of body.collections) {
-      const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
-      if (matches.length !== 1) throw new Error("A unique program enrollment was not found.");
-      const account = matches[0];
-      if (account.branch !== branch || account.mas !== mas) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch and MAS.`);
-      const input = {
-        monthFrom: String(entry.monthFrom ?? ""), monthTo: String(entry.monthTo ?? ""), nopFrom: Number(entry.nopFrom), nopTo: Number(entry.nopTo), amount: Number(entry.amountCollected),
-        orDate: String(entry.orDate ?? ""), orNumber: String(entry.orNumber ?? "").trim(), waiver: String(entry.ifSuspended ?? ""),
-        collectedByRole: collectedBy, originalMas,
-      };
-      const backdateReason = String(entry.backdateReason ?? "").trim().slice(0, 300);
-      checkBackdate(input.orDate, backdateReason, `Collection for ${account.memberNumber}`);
-      const dateProblem = blockingDateProblem({ receiptDate: input.orDate, dateRemitted, today: manilaNow().date });
-      if (dateProblem) throw new Error(`Collection for ${account.memberNumber}: ${dateProblem}`);
-      const receipt = entryKey(input.orNumber);
-      const recorded = recordedReceipts.get(receipt);
-      if (recorded) throw new Error(`OR Number ${input.orNumber} is already recorded (collection ${recorded.collectionId}${recorded.memberNumber ? ` for member ${recorded.memberNumber}` : ""}). Each OR Number is used once.`);
-      if (receipt && batchReceipts.has(receipt)) throw new Error(`OR Number ${input.orNumber} is entered twice in this batch (${batchReceipts.get(receipt)} and ${account.memberNumber}). Each OR Number is used once.`);
-      if (receipt) batchReceipts.set(receipt, account.memberNumber);
-      validatePayment(account, payments, input);
-      const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), selectedBranch.id), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount);
-      // Client totals are only a preview. Persist the authoritative server calculation.
-      grossCents += Math.round(quote.gross * 100);
-      const id = createReadableId("COL");
-      const payment: AccountPayment = { ...input, id, enrollmentId: account.id, dateRemitted, mas };
-      payments.push(payment);
-      touched.set(account.id, account);
-      rows.push([id, batchId, account.id, account.memberId, account.memberNumber, account.programId, branch, mas,
-        input.orNumber, input.orDate, input.amount, input.monthFrom, input.monthTo, input.nopFrom, input.nopTo,
-        entry.reactivation === "Yes" ? "Yes" : "No", entry.transferred === "Yes" ? "Yes" : "No", input.waiver, input.originalMas, "Posted", timestamp,
-        input.collectedByRole, quote.remittance, JSON.stringify(quote.breakdown), "Outstanding", "", accountableEmployeeId, mas, "MAS", paymentMethod.name, paymentReference,
-        !rows.length && penalty > 0 ? penalty : "", !rows.length && penalty > 0 ? penaltyNote : "", !rows.length && fidelity > 0 ? fidelity : "",
-        // AM forfeited_incentive is set at remittance; AN backdate_reason when the OR date is more than a day old;
-        // AO date_remitted, the batch's Date Remitted, so the dates can be checked against each other later.
-        "", backdateReason, dateRemitted]);
-    }
-    writing = true;
-    await commitCollections(rows, [...touched.values()], payments);
-    return Response.json({ success: true, collectionIds: rows.map((row) => String(row[0])), grossCollection: grossCents / 100, message: `${rows.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
-  } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save collections." }, { status: writing ? 500 : 400 }); }
+    const entries: Array<Record<string, unknown>> = body.collections;
+    const saved = await inTransaction(async (tx) => {
+      // The batch's accounts stay locked until it is saved: a concurrent batch for the same account, on any server, waits
+      // and then validates against this batch's payments.
+      const [data, recordedReceipts] = await Promise.all([
+        loadAccountData({ memberPrograms: entries.map((entry) => ({ memberNumber: String(entry.memberNumber ?? "").trim(), programId: String(entry.programId ?? "") })) }, tx, { lock: true }),
+        recordedOrNumbers(entries.map((entry) => entry.orNumber), tx),
+      ]);
+      const payments = [...data.payments];
+      // Each OR Number is one receipt for one entry: reusing one, here or in an earlier batch, is a double entry.
+      const batchReceipts = new Map<string, string>();
+      const touched = new Map<string, typeof data.accounts[number]>();
+      const rows: NewCollection[] = [];
+      const timestamp = new Date().toISOString();
+      const batchId = createReadableId("CBT");
+      let grossCents = 0;
+      for (const entry of entries) {
+        const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
+        if (matches.length !== 1) throw new Error("A unique program enrollment was not found.");
+        const account = matches[0];
+        if (account.branch !== branch || account.mas !== mas) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch and MAS.`);
+        const input = {
+          monthFrom: String(entry.monthFrom ?? ""), monthTo: String(entry.monthTo ?? ""), nopFrom: Number(entry.nopFrom), nopTo: Number(entry.nopTo), amount: Number(entry.amountCollected),
+          orDate: String(entry.orDate ?? ""), orNumber: String(entry.orNumber ?? "").trim(), waiver: String(entry.ifSuspended ?? ""),
+          collectedByRole: collectedBy, originalMas,
+        };
+        const backdateReason = String(entry.backdateReason ?? "").trim().slice(0, 300);
+        checkBackdate(input.orDate, backdateReason, `Collection for ${account.memberNumber}`);
+        const dateProblem = blockingDateProblem({ receiptDate: input.orDate, dateRemitted, today: manilaNow().date });
+        if (dateProblem) throw new Error(`Collection for ${account.memberNumber}: ${dateProblem}`);
+        const receipt = entryKey(input.orNumber);
+        const recorded = recordedReceipts.get(receipt);
+        if (recorded) throw new Error(`OR Number ${input.orNumber} is already recorded (collection ${recorded.collectionId}${recorded.memberNumber ? ` for member ${recorded.memberNumber}` : ""}). Each OR Number is used once.`);
+        if (receipt && batchReceipts.has(receipt)) throw new Error(`OR Number ${input.orNumber} is entered twice in this batch (${batchReceipts.get(receipt)} and ${account.memberNumber}). Each OR Number is used once.`);
+        if (receipt) batchReceipts.set(receipt, account.memberNumber);
+        validatePayment(account, payments, input);
+        const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), selectedBranch.id), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount);
+        // Client totals are only a preview. Persist the authoritative server calculation.
+        grossCents += Math.round(quote.gross * 100);
+        const id = createReadableId("COL");
+        const payment: AccountPayment = { ...input, id, enrollmentId: account.id, dateRemitted, mas };
+        payments.push(payment);
+        touched.set(account.id, account);
+        // Penalty and Fidelity belong to the batch and are stored on its first row. forfeited_incentive is set at
+        // remittance; backdate_reason when the OR date is more than a day old; date_remitted is the batch's Date Remitted,
+        // so the dates can be checked against each other later.
+        const first = !rows.length;
+        rows.push({
+          collection_id: id, collection_batch_id: batchId, enrollment_id: account.id, member_id: account.memberId, member_number: account.memberNumber, program_id: account.programId,
+          branch, mas, or_number: input.orNumber, or_date: input.orDate, amount_collected: input.amount, month_from: input.monthFrom, month_to: input.monthTo,
+          nop_from: input.nopFrom, nop_to: input.nopTo, reactivation: entry.reactivation === "Yes", transferred: entry.transferred === "Yes",
+          suspended: input.waiver || null, original_mas: input.originalMas || null, status: "Posted", created_at: timestamp,
+          collected_by_role: input.collectedByRole, remittance_amount: quote.remittance, remittance_breakdown: quote.breakdown, remittance_status: "Outstanding",
+          accountable_employee_id: accountableEmployeeId, accountable_name: mas, accountable_role: "MAS", remittance_method: paymentMethod.name, payment_reference: paymentReference || null,
+          penalty_amount: first && penalty > 0 ? penalty : null, penalty_note: first && penalty > 0 ? penaltyNote : null, fidelity_amount: first && fidelity > 0 ? fidelity : null,
+          backdate_reason: backdateReason || null, date_remitted: dateRemitted,
+        });
+      }
+      writing = true;
+      await commitCollections(tx, rows, [...touched.values()], payments);
+      return { ids: rows.map((row) => row.collection_id), grossCents };
+    });
+    return Response.json({ success: true, collectionIds: saved.ids, grossCollection: saved.grossCents / 100, message: `${saved.ids.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
+  } catch (error) {
+    // Another save used the same OR Number at the same moment; the database's unique rule refused this one.
+    if (isUniqueViolation(error, "collections_or_key_unique")) return Response.json({ success: false, message: "One of these OR Numbers was just recorded by another save. Each OR Number is used once; check the receipts and try again." }, { status: 409 });
+    return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save collections." }, { status: writing ? 500 : 400 });
+  }
 }

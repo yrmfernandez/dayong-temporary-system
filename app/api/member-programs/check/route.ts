@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { userWithPageAccess } from "@/lib/auth-server";
 
-import {
-  findMemberByNumber,
-  findMemberProgramEnrollment,
-} from "@/lib/google-sheets-data";
+import { findMemberByNumber, findMemberProgramEnrollment } from "@/lib/member-records";
 
 export async function GET(request: Request) {
   if (!(await userWithPageAccess("/new-sales"))) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });

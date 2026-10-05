@@ -72,7 +72,7 @@ Order, by how slow each part is today:
 6. Users, roles, sessions, employees, Employee ID changes (the cascade becomes `ON UPDATE CASCADE` foreign keys)
 7. Attendance, calendar, leave, payroll, finance, fidelity, audits, settings
 
-Each save becomes one transaction, which replaces `withWriteLock`. `SheetsReadCache` is removed except for a small cache for rarely changing lists (Programs, Branches, System Settings).
+Each save becomes one transaction, which replaces `withWriteLock`. Database code goes through `lib/db.ts`: `getDb()` for reads and `inTransaction()` for saves, which also names the signed-in user for the audit trigger. Tests use PGlite, a real PostgreSQL inside the test process built from `db/migrations`, so no test touches staging. `SheetsReadCache` is removed except for a small cache for rarely changing lists (Programs, Branches, System Settings).
 
 Work happens on a `supabase` branch, merged once at cutover. **No dual writing to Sheets and the database:** keeping two stores in step is where data gets lost.
 
@@ -150,6 +150,8 @@ Migration files keep a full history of every schema change, and staging catches 
 | Oct 4, 2026 | Phase 1: `db/schema.ts`, migrations `0000_initial_schema`, `0001_audit_trigger`, applied to staging | 42 tables with row-level security, 41 audit triggers, no API-role access; rules checked in a rolled-back test |
 | Oct 4, 2026 | Phase 1: migrations `0002_employee_branch_unique`, `0003_copy_exceptions` | One branch assignment per employee and branch; table for cells the copy could not convert |
 | Oct 4, 2026 | Phase 3: `scripts/copy-sheets-to-postgres.mjs` first full load into staging | 32 s; row counts and money totals match for every table; database 51 MB. Sample lookups 66–137 ms from Manila, including the network trip (one Collections read from Sheets: about 3 s) |
+| Oct 4, 2026 | Phase 2, step 1: `lib/db.ts`; account data, OR and application-number checks, and the Collections save read and write the database | A Collections batch locks only its accounts and saves in one transaction; tests run on PGlite (in-process PostgreSQL built from the same migrations); 120 pass |
+| Oct 4, 2026 | Phase 2, step 2: New Sales save, member search and lookups (`lib/member-records.ts`), duplicate-person check; migration `0004_member_program_unique` | A New Sales batch saves in one transaction (before, a failure could leave half a batch); database rules on member number, Application Number and one enrollment per member and program stop racing saves; 120 tests pass |
 
 Phase 1 also replaced step 4 of phase 0: the Drizzle schema in `db/schema.ts` now describes every table, so the 17 unregistered tabs were not added to `config/sheet-database-schema.json`.
 

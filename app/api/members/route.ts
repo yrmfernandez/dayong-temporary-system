@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { userWithPageAccess } from "@/lib/auth-server";
 
-import { searchMembersByName } from "@/lib/google-sheets-data";
+import { searchMembersByName } from "@/lib/member-records";
 
 export async function GET(request: Request) {
   if (!(await userWithPageAccess("/new-sales", "/collections"))) return NextResponse.json({ success: false, message: "You do not have access to member encoding." }, { status: 403 });

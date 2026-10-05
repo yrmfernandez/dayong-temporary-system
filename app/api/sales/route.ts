@@ -6,27 +6,13 @@ import { manilaNow } from "@/lib/remittance-deadline";
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
-import {
-  addBeneficiaries,
-  addMember,
-  addMemberProgram,
-  addSale,
-  findMemberByNumber,
-  findMemberProgramEnrollment,
-  getBranches,
-  getPrograms,
-  updateMemberDetails,
-  type MemberDetails,
-  type MemberSheetData,
-  type MemberProgramSheetData,
-  type SaleSheetData,
-} from "@/lib/google-sheets-data";
+import { getBranches, getPrograms } from "@/lib/google-sheets-data";
+import { addBeneficiaries, addMember, addMemberProgram, addSale, findMemberByNumber, findMemberProgramEnrollment, updateMemberDetails, type MemberDetails, type MemberSheetData, type MemberProgramSheetData, type SaleSheetData } from "@/lib/member-records";
 import { getEmployees } from "@/lib/employees";
 import { ageRestrictionError } from "@/lib/program-age";
 import { todayInManila } from "@/lib/account-rules";
-import { GOOGLE_SHEET_ID, readingFresh, sheets, withWriteLock } from "@/lib/google-sheets";
+import { inTransaction, isUniqueViolation } from "@/lib/db";
 import { calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
-import { headerMatches } from "@/lib/sheet-headers";
 import { newSalesDoubleEntry, personKey } from "@/lib/duplicate-entries";
 
 
@@ -116,8 +102,7 @@ function phoneKey(value: unknown) {
 
 export const POST = withEncoder(async function POST(request: Request) {
   if (!(await userWithPageAccess("/new-sales"))) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
-  // One sale batch at a time per server, so duplicate-member and enrollment checks see each other's saves.
-  return withWriteLock("sales", () => saveSales(request));
+  return saveSales(request);
 });
 
 async function saveSales(request: Request) {
@@ -560,17 +545,15 @@ async function saveSales(request: Request) {
       try { quotes.push(calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, selectedBranch?.id ?? "") }, amountPaid)); }
       catch (error) { return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${error instanceof Error ? error.message : "The incentive could not be calculated."}` }, { status: 400 }); }
     }
-    const salesHeader = (await readingFresh(() => sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Sales!AO1:AQ1" }))).data.values?.[0] ?? [];
-    if (["mas_incentive", "remittance_amount", "fidelity_amount"].some((name, index) => !headerMatches(salesHeader[index], name))) {
-      return NextResponse.json({ success: false, message: "Run npm run sheets:sale-incentives -- --apply to add the New Sales incentive and Fidelity columns before saving." }, { status: 400 });
-    }
 
     /*
      * =====================================================
      * STEP 2: ALL CHECKS PASSED
      * =====================================================
      *
-     * Only now do we start writing data.
+     * Only now do we start writing data, all in one transaction: the batch saves completely or not at all. Unique
+     * rules in the database (member number, Application Number, one enrollment per member and program) stop a racing
+     * save that passed the checks above at the same moment.
      */
 
     const savedSales: Array<{
@@ -580,42 +563,150 @@ async function saveSales(request: Request) {
       saleId: string;
     }> = [];
 
-    for (const prepared of preparedSales) {
-      const {
-        sale,
-        memberId,
-        memberNumber,
-        isNewMember,
-        sharesNewMember,
-      } = prepared;
-
-      const details: MemberDetails = {
-        surname: sale.surname, firstName: sale.firstName, middleName: sale.middleName, nameExtension: sale.nameExtension,
-        birthdate: sale.birthdate, birthplace: sale.birthplace, gender: sale.gender, age: sale.age, civilStatus: sale.civilStatus,
-        contactNumber: sale.contactNumber, addressHouse: sale.addressHouse, claimantName: sale.claimantName, claimantContact: sale.claimantContact,
-        claimantSameAsMember: sale.claimantSameAsMember ? "Yes" : "No", claimantAddressHouse: sale.claimantAddressHouse,
-      };
-      // An existing member's details as confirmed or corrected on this sale become their current record.
-      if (!isNewMember) await updateMemberDetails(memberId, details);
-
-      /*
-       * Create Members row only for a new member, once per person in the batch.
-       */
-      if (isNewMember && !sharesNewMember) {
-        const memberData: MemberSheetData = {
+    await inTransaction(async () => {
+      for (const prepared of preparedSales) {
+        const {
+          sale,
           memberId,
           memberNumber,
+          isNewMember,
+          sharesNewMember,
+        } = prepared;
 
-          surname: sale.surname,
-          firstName: sale.firstName,
-          middleName: sale.middleName,
-          nameExtension: sale.nameExtension,
+        const details: MemberDetails = {
+          surname: sale.surname, firstName: sale.firstName, middleName: sale.middleName, nameExtension: sale.nameExtension,
+          birthdate: sale.birthdate, birthplace: sale.birthplace, gender: sale.gender, age: sale.age, civilStatus: sale.civilStatus,
+          contactNumber: sale.contactNumber, addressHouse: sale.addressHouse, claimantName: sale.claimantName, claimantContact: sale.claimantContact,
+          claimantSameAsMember: sale.claimantSameAsMember ? "Yes" : "No", claimantAddressHouse: sale.claimantAddressHouse,
+        };
+        // An existing member's details as confirmed or corrected on this sale become their current record.
+        if (!isNewMember) await updateMemberDetails(memberId, details);
 
-          birthdate: sale.birthdate,
-          birthplace: sale.birthplace,
-          gender: sale.gender,
-          age: sale.age,
-          civilStatus: sale.civilStatus,
+        /*
+         * Create Members row only for a new member, once per person in the batch.
+         */
+        if (isNewMember && !sharesNewMember) {
+          const memberData: MemberSheetData = {
+            memberId,
+            memberNumber,
+
+            surname: sale.surname,
+            firstName: sale.firstName,
+            middleName: sale.middleName,
+            nameExtension: sale.nameExtension,
+
+            birthdate: sale.birthdate,
+            birthplace: sale.birthplace,
+            gender: sale.gender,
+            age: sale.age,
+            civilStatus: sale.civilStatus,
+            contactNumber:
+              sale.contactNumber,
+
+            addressHouse:
+              sale.addressHouse,
+
+            claimantName:
+              sale.claimantName,
+            claimantContact:
+              sale.claimantContact,
+            claimantSameAsMember:
+              sale.claimantSameAsMember
+                ? "Yes"
+                : "No",
+
+            claimantAddressHouse:
+              sale.claimantAddressHouse,
+
+            status: "Active",
+          };
+
+          await addMember(
+            memberData,
+          );
+        }
+
+        /*
+         * Create Member Programs row.
+         */
+        const enrollmentId =
+          createId("ENR");
+
+        const memberProgramData: MemberProgramSheetData =
+          {
+            enrollmentId,
+            memberId,
+            memberNumber,
+
+            programId:
+              sale.programId,
+            doi: sale.doi,
+
+            branch:
+              body.branch.trim(),
+            mas:
+              body.mas.trim(),
+
+            paymentMethod:
+              sale.paymentMethod,
+            registrationFee:
+              sale.registrationFee,
+            registrationAmount:
+              sale.registrationAmount,
+            amountPaid:
+              sale.amountPaid,
+
+            programTerms:
+              sale.programTerms,
+
+            status: "Active",
+            dateCreated:
+              new Date().toISOString(),
+          };
+
+        await addMemberProgram(
+          memberProgramData,
+        );
+
+        /*
+         * Create Sales row.
+         */
+        const saleId =
+          createId("SALE");
+
+        const saleData: SaleSheetData = {
+          saleId,
+          dateCreated:
+            new Date().toISOString(),
+
+          branch:
+            body.branch.trim(),
+          mas:
+            body.mas.trim(),
+          dateRemitted:
+            body.dateRemitted.trim(),
+
+          memberNumber,
+
+          surname:
+            sale.surname,
+          firstName:
+            sale.firstName,
+          middleName:
+            sale.middleName,
+          nameExtension:
+            sale.nameExtension,
+
+          birthdate:
+            sale.birthdate,
+          birthplace:
+            sale.birthplace,
+          gender:
+            sale.gender,
+          age:
+            sale.age,
+          civilStatus:
+            sale.civilStatus,
           contactNumber:
             sale.contactNumber,
 
@@ -634,34 +725,10 @@ async function saveSales(request: Request) {
           claimantAddressHouse:
             sale.claimantAddressHouse,
 
-          status: "Active",
-        };
-
-        await addMember(
-          memberData,
-        );
-      }
-
-      /*
-       * Create Member Programs row.
-       */
-      const enrollmentId =
-        createId("ENR");
-
-      const memberProgramData: MemberProgramSheetData =
-        {
-          enrollmentId,
-          memberId,
-          memberNumber,
-
           programId:
             sale.programId,
-          doi: sale.doi,
-
-          branch:
-            body.branch.trim(),
-          mas:
-            body.mas.trim(),
+          doi:
+            sale.doi,
 
           paymentMethod:
             sale.paymentMethod,
@@ -675,114 +742,32 @@ async function saveSales(request: Request) {
           programTerms:
             sale.programTerms,
 
-          status: "Active",
-          dateCreated:
-            new Date().toISOString(),
+          applicationNo:
+            sale.applicationNo,
+          orNumber: "",
+          orDate:
+            sale.orDate,
+          backdateReason: String(sale.backdateReason ?? "").trim().slice(0, 300),
         };
 
-      await addMemberProgram(
-        memberProgramData,
-      );
+        const quote = quotes[savedSales.length];
+        await addSale(
+          saleData,
+          selectedStaff.id,
+          savedSales.length === 0 ? { amount: penalty, note: penaltyNote } : undefined,
+          { ...quote, fidelity: savedSales.length === 0 ? fidelity : 0 },
+        );
 
-      /*
-       * Create Sales row.
-       */
-      const saleId =
-        createId("SALE");
+        await addBeneficiaries(memberId, saleId, sale.beneficiaries ?? []);
 
-      const saleData: SaleSheetData = {
-        saleId,
-        dateCreated:
-          new Date().toISOString(),
-
-        branch:
-          body.branch.trim(),
-        mas:
-          body.mas.trim(),
-        dateRemitted:
-          body.dateRemitted.trim(),
-
-        memberNumber,
-
-        surname:
-          sale.surname,
-        firstName:
-          sale.firstName,
-        middleName:
-          sale.middleName,
-        nameExtension:
-          sale.nameExtension,
-
-        birthdate:
-          sale.birthdate,
-        birthplace:
-          sale.birthplace,
-        gender:
-          sale.gender,
-        age:
-          sale.age,
-        civilStatus:
-          sale.civilStatus,
-        contactNumber:
-          sale.contactNumber,
-
-        addressHouse:
-          sale.addressHouse,
-
-        claimantName:
-          sale.claimantName,
-        claimantContact:
-          sale.claimantContact,
-        claimantSameAsMember:
-          sale.claimantSameAsMember
-            ? "Yes"
-            : "No",
-
-        claimantAddressHouse:
-          sale.claimantAddressHouse,
-
-        programId:
-          sale.programId,
-        doi:
-          sale.doi,
-
-        paymentMethod:
-          sale.paymentMethod,
-        registrationFee:
-          sale.registrationFee,
-        registrationAmount:
-          sale.registrationAmount,
-        amountPaid:
-          sale.amountPaid,
-
-        programTerms:
-          sale.programTerms,
-
-        applicationNo:
-          sale.applicationNo,
-        orNumber: "",
-        orDate:
-          sale.orDate,
-        backdateReason: String(sale.backdateReason ?? "").trim().slice(0, 300),
-      };
-
-      const quote = quotes[savedSales.length];
-      await addSale(
-        saleData,
-        selectedStaff.id,
-        savedSales.length === 0 ? { amount: penalty, note: penaltyNote } : undefined,
-        { ...quote, fidelity: savedSales.length === 0 ? fidelity : 0 },
-      );
-
-      await addBeneficiaries(memberId, saleId, sale.beneficiaries ?? []);
-
-      savedSales.push({
-        memberId,
-        memberNumber,
-        enrollmentId,
-        saleId,
-      });
-    }
+        savedSales.push({
+          memberId,
+          memberNumber,
+          enrollmentId,
+          saleId,
+        });
+      }
+    });
 
     return NextResponse.json({
       success: true,
@@ -791,6 +776,11 @@ async function saveSales(request: Request) {
       savedSales,
     });
   } catch (error: unknown) {
+    const conflict = isUniqueViolation(error, "sales_application_key_unique") ? "An Application Number in this batch was just recorded by another save."
+      : isUniqueViolation(error, "members_member_number_key") ? "A member number in this batch was just used by another save."
+      : isUniqueViolation(error, "member_programs_member_program_key") ? "A member in this batch was just enrolled in the same program by another save."
+      : "";
+    if (conflict) return NextResponse.json({ success: false, duplicate: true, message: `${conflict} Nothing was saved; check the batch and try again.` }, { status: 409 });
     console.error(
       "Sales API error:",
       error,

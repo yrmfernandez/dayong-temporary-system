@@ -1,10 +1,13 @@
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
+
+import { currentDb, schema, type Queryable } from "@/lib/db";
 import { isoDate } from "@/lib/program-age";
 
 /**
  * Double-entry guards. Each Application Number (New Sales) and each OR Number (Collections) is used once in the whole
- * system, and a person already on record is never registered again as a new member. Saves run these inside their
- * encoding request, so the reads are fresh rather than cached.
+ * system, and a person already on record is never registered again as a new member. Each check queries the database
+ * for just the numbers or people being saved; unique rules in the database stop two racing saves.
  */
 
 /** Compares receipt and form numbers regardless of case, spaces, or dashes: "or-001 23" matches "OR00123". */
@@ -13,43 +16,55 @@ export const entryKey = (value: unknown) => String(value ?? "").toUpperCase().re
 const nameKey = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
 /** The same person: same surname, first name, and birthdate. Middle names are often abbreviated, so they are ignored. */
-export const personKey = (person: { surname: unknown; firstName: unknown; birthdate: unknown }) => {
+export const personKey = (person: { surname?: unknown; firstName?: unknown; birthdate?: unknown }) => {
   const birthdate = isoDate(person.birthdate);
   return nameKey(person.surname) && nameKey(person.firstName) && birthdate ? `${nameKey(person.surname)}|${nameKey(person.firstName)}|${birthdate}` : "";
 };
 
-/** Application Numbers already on a New Sale (Sales AC), with the sale and member they belong to. */
-export async function recordedApplicationNumbers() {
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Sales!A:AC" });
+/**
+ * Application Numbers already on a New Sale, for the given numbers only, with the sale and member they belong to. The
+ * database's unique rule on sales.application_key is the final guard when two saves race.
+ */
+export async function recordedApplicationNumbers(numbers: unknown[], db: Queryable = currentDb()) {
+  const keys = [...new Set(numbers.map(entryKey).filter(Boolean))];
   const used = new Map<string, { saleId: string; memberNumber: string }>();
-  for (const row of (response.data.values ?? []).slice(1)) {
-    const key = entryKey(row[28]);
-    if (key && !used.has(key)) used.set(key, { saleId: String(row[0] ?? ""), memberNumber: String(row[5] ?? "") });
-  }
+  if (!keys.length) return used;
+  const rows = await db.select({ key: schema.sales.application_key, saleId: schema.sales.sale_id, memberNumber: schema.sales.member_number })
+    .from(schema.sales).where(inArray(schema.sales.application_key, keys)).orderBy(asc(schema.sales.legacy_duplicate));
+  for (const row of rows) if (row.key && !used.has(row.key)) used.set(row.key, { saleId: row.saleId, memberNumber: row.memberNumber ?? "" });
   return used;
 }
 
 /**
- * OR Numbers already on a posted collection (Collections I, status T). A voided collection frees its receipt, so the
- * payment can be encoded again correctly.
+ * OR Numbers already on a posted collection, for the given numbers only. A voided collection frees its receipt, so the
+ * payment can be encoded again correctly. The database's unique rule on collections.or_key is the final guard.
  */
-export async function recordedOrNumbers() {
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Collections!A:T" });
+export async function recordedOrNumbers(numbers: unknown[], db: Queryable = currentDb()) {
+  const keys = [...new Set(numbers.map(entryKey).filter(Boolean))];
   const used = new Map<string, { collectionId: string; memberNumber: string }>();
-  for (const row of (response.data.values ?? []).slice(1)) {
-    const key = entryKey(row[8]);
-    if (key && String(row[19] ?? "").trim().toLowerCase() === "posted" && !used.has(key)) used.set(key, { collectionId: String(row[0] ?? ""), memberNumber: String(row[4] ?? "") });
-  }
+  if (!keys.length) return used;
+  const rows = await db.select({ key: schema.collections.or_key, collectionId: schema.collections.collection_id, memberNumber: schema.collections.member_number })
+    .from(schema.collections).where(and(inArray(schema.collections.or_key, keys), eq(schema.collections.status, "Posted"))).orderBy(asc(schema.collections.legacy_duplicate));
+  for (const row of rows) if (row.key && !used.has(row.key)) used.set(row.key, { collectionId: row.collectionId, memberNumber: row.memberNumber ?? "" });
   return used;
 }
 
-/** Members on record keyed by personKey, to stop a returning member being registered again as new. */
-export async function recordedMembersByPerson() {
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Members!A:R" });
+/**
+ * Members on record keyed by personKey, for the given people only, to stop a returning member being registered again
+ * as new. Names compare trimmed, case-insensitive, with runs of spaces as one.
+ */
+export async function recordedMembersByPerson(people: Array<{ surname?: unknown; firstName?: unknown; birthdate?: unknown }>, db: Queryable = currentDb()) {
   const members = new Map<string, { memberId: string; memberNumber: string; name: string }>();
-  for (const row of (response.data.values ?? []).slice(1)) {
-    const key = personKey({ surname: row[2], firstName: row[3], birthdate: row[6] });
-    if (key && !members.has(key)) members.set(key, { memberId: String(row[0] ?? ""), memberNumber: String(row[1] ?? ""), name: `${String(row[3] ?? "").trim()} ${String(row[2] ?? "").trim()}`.trim() });
+  const wanted = [...new Map(people.map((person) => [personKey(person), person] as const).filter(([key]) => key)).values()];
+  if (!wanted.length) return members;
+  const name = (column: AnyPgColumn) => sql`lower(regexp_replace(trim(${column}), '\\s+', ' ', 'g'))`;
+  const rows = await db.select({ memberId: schema.members.member_id, memberNumber: schema.members.member_number, surname: schema.members.surname, firstName: schema.members.first_name, birthdate: schema.members.birthdate })
+    .from(schema.members)
+    .where(sql`(${name(schema.members.surname)}, ${name(schema.members.first_name)}, ${schema.members.birthdate}) in (${sql.join(wanted.map((person) => sql`(${nameKey(person.surname)}, ${nameKey(person.firstName)}, ${isoDate(person.birthdate)}::date)`), sql`, `)})`)
+    .orderBy(asc(schema.members.member_number));
+  for (const row of rows) {
+    const key = personKey(row);
+    if (key && !members.has(key)) members.set(key, { memberId: row.memberId, memberNumber: row.memberNumber, name: `${row.firstName.trim()} ${row.surname.trim()}`.trim() });
   }
   return members;
 }
@@ -63,7 +78,7 @@ type SaleEntry = { existingMember: boolean; memberNumber?: string; surname?: str
  * sales in one batch (the member is created once; see app/api/sales/route.ts).
  */
 export async function newSalesDoubleEntry(sales: SaleEntry[]) {
-  const [applications, members] = await Promise.all([recordedApplicationNumbers(), recordedMembersByPerson()]);
+  const [applications, members] = await Promise.all([recordedApplicationNumbers(sales.map((sale) => sale.applicationNo)), recordedMembersByPerson(sales.filter((sale) => !sale.existingMember))]);
   const batchApplications = new Map<string, number>();
   for (const [index, sale] of sales.entries()) {
     const label = `Sale #${index + 1}`;

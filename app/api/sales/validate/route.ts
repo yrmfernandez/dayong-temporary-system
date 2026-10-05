@@ -2,10 +2,7 @@ import { NextResponse } from "next/server";
 
 import { userWithPageAccess } from "@/lib/auth-server";
 
-import {
-  findMemberByNumber,
-  findMemberProgramEnrollment,
-} from "@/lib/google-sheets-data";
+import { findMemberByNumber, findMemberProgramEnrollment } from "@/lib/member-records";
 
 type SaleValidationPayload = {
   existingMember: boolean;

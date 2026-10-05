@@ -1,49 +1,93 @@
-import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+
 import { accountState, monthIndex, monthName, paymentsByEnrollment, type Account, type AccountPayment, todayInManila } from "@/lib/account-rules";
+import { currentDb, inTransaction, schema, type Queryable, type Transaction } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
-import { encoderHeaders } from "@/lib/encoder-schema";
 import type { IncentiveTier } from "@/lib/remittance";
 import { buildMamReport } from "@/lib/mam-report";
-import { headerMatches } from "@/lib/sheet-headers";
 
-const titles = ["Member programs", "Members", "Programs", "Collections", "Remittances", "Sales", "Program Incentives"];
-export function sheetDate(value: unknown): string {
-  if (typeof value === "number") return new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86400000).toISOString().slice(0, 10);
-  return String(value ?? "").trim().slice(0, 10);
-}
-const str = (value: unknown) => String(value ?? "").trim();
+const { collections, member_programs: memberPrograms, members, program_incentives: programIncentives, programs, sales } = schema;
 
-export async function loadAccountData() {
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: titles.map((title) => `'${title}'`), valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "SERIAL_NUMBER" });
-  const tables = Object.fromEntries(titles.map((title, i) => [title, response.data.valueRanges?.[i]?.values ?? []]));
-  if (!headerMatches(tables["Member programs"][0]?.[18], "Account Status") || !headerMatches(tables.Collections[0]?.[25], "Collected By Role")) throw new Error("Run the account-status migration before using Collections or MAM.");
-  if (!headerMatches(tables.Collections[0]?.[26], "Remittance Amount") || !headerMatches(tables.Collections[0]?.[27], "Remittance Breakdown") || !headerMatches(tables.Remittances[0]?.[10], "Gross Collection") || !headerMatches(tables.Remittances[0]?.[11], "Total Remittance")) throw new Error("Run the account-status migration to add remittance totals before using Collections or MAM.");
-  for (const [title, offset] of [["Member programs", 14], ["Collections", 21], ["Remittances", 6]] as const) {
-    if (encoderHeaders.some((header, index) => !headerMatches(tables[title][0]?.[offset + index], header))) throw new Error(`${title} encoder headers changed. Review the sheet before saving.`);
+/** Which accounts to load. Empty loads every account (reports); the others load only what a page or save needs. */
+export type AccountScope = {
+  enrollmentIds?: string[];
+  memberId?: string;
+  /** Exact MAS name, case-insensitive (lib/member-scope.ts). */
+  mas?: string;
+  /** Accounts matching any of these member number + program pairs (a Collections batch). */
+  memberPrograms?: Array<{ memberNumber: string; programId: string }>;
+};
+export type LoadedAccount = Account & { memberName: string; programName: string };
+export type AccountData = Awaited<ReturnType<typeof loadAccountData>>;
+
+const text = (value: string | null | undefined) => (value ?? "").trim();
+const memberName = (surname: string | null, firstName: string | null, middleName: string | null) => `${text(surname)}, ${text(firstName)} ${text(middleName)}`.trim();
+
+function scopeCondition(scope: AccountScope): SQL | undefined {
+  const conditions: SQL[] = [];
+  if (scope.enrollmentIds) conditions.push(scope.enrollmentIds.length ? inArray(memberPrograms.enrollment_id, scope.enrollmentIds) : sql`false`);
+  if (scope.memberId !== undefined) conditions.push(eq(memberPrograms.member_id, scope.memberId));
+  if (scope.mas !== undefined) conditions.push(sql`lower(trim(${memberPrograms.mas})) = ${scope.mas.trim().toLowerCase()}`);
+  if (scope.memberPrograms) {
+    const pairs = scope.memberPrograms.filter((pair) => pair.memberNumber && pair.programId);
+    conditions.push(pairs.length ? sql`(${memberPrograms.member_number}, ${memberPrograms.program_id}) in (${sql.join(pairs.map((pair) => sql`(${pair.memberNumber}, ${pair.programId})`), sql`, `)})` : sql`false`);
   }
-  const programs = new Map(tables.Programs.slice(1).map((r) => [str(r[0]), { name: str(r[2]), basePay: Number(r[3]), payBalanceTotal: Number(r[12]) || 0 }]));
-  const members = new Map(tables.Members.slice(1).map((r) => [str(r[0]), `${str(r[2])}, ${str(r[3])} ${str(r[4])}`.trim()]));
-  const accounts = tables["Member programs"].slice(1).map((r, i) => ({
-    id: str(r[0]), memberId: str(r[1]), memberNumber: str(r[2]), programId: str(r[3]), doi: sheetDate(r[4]),
-    branch: str(r[5]), mas: str(r[6]), basePay: programs.get(str(r[3]))?.basePay ?? 0, payBalanceTotal: programs.get(str(r[3]))?.payBalanceTotal ?? 0, storedStatus: str(r[18]), rowNumber: i + 2,
-    memberName: members.get(str(r[1])) ?? str(r[2]), programName: programs.get(str(r[3]))?.name ?? str(r[3]),
-  })).filter((a) => a.id);
-  if (new Set(accounts.map((a) => a.id)).size !== accounts.length) throw new Error("Duplicate enrollment IDs need review.");
-  const payments: AccountPayment[] = tables.Collections.slice(1).filter((r) => str(r[0]) && str(r[19]).toLowerCase() === "posted").map((r) => ({
-    id: str(r[0]), enrollmentId: str(r[2]), orDate: sheetDate(r[9]), orNumber: str(r[8]), monthFrom: sheetDate(r[11]).slice(0, 7), monthTo: sheetDate(r[12]).slice(0, 7),
-    nopFrom: Number(r[13]), nopTo: Number(r[14]), amount: Number(r[10]), dateRemitted: sheetDate(r[40]) || sheetDate(r[9]), mas: str(r[7]),
-  }));
-  const sales = tables.Sales.slice(1).map((r) => ({ memberNumber: str(r[5]), programId: str(r[21]), applicationNumber: str(r[28]), registrationFee: Number(r[25]) || 0 }));
-  const incentives = tables["Program Incentives"].slice(1).filter((r) => str(r[0])).map((r) => ({
-    id: str(r[0]), programId: str(r[1]), role: str(r[2]) as IncentiveTier["role"], fromMonth: Number(r[3]), toMonth: Number(r[4]),
-    incentiveType: str(r[5]) as IncentiveTier["incentiveType"], markUp: Number(r[6]), incentiveAmount: Number(r[7]), branchId: str(r[12]),
-  }));
-  return { accounts, payments, sales, incentives };
+  return conditions.length ? and(...conditions) : undefined;
 }
 
-export async function accountReport() {
-  const data = await loadAccountData();
+/**
+ * Program accounts with their posted payments, the New Sale behind each, and the incentive tiers of their programs.
+ * With `lock`, the accounts stay locked until the transaction ends, so two saves for the same account (on any server)
+ * run one after the other and the second sees the first one's payments.
+ */
+export async function loadAccountData(scope: AccountScope = {}, db: Queryable = currentDb(), { lock = false }: { lock?: boolean } = {}) {
+  const where = scopeCondition(scope);
+  const scoped = Boolean(where);
+  let accountQuery = db.select({
+    id: memberPrograms.enrollment_id, memberId: memberPrograms.member_id, memberNumber: memberPrograms.member_number, programId: memberPrograms.program_id,
+    doi: memberPrograms.doi, branch: memberPrograms.branch, mas: memberPrograms.mas, storedStatus: memberPrograms.account_status,
+    basePay: programs.base_pay, payBalanceTotal: programs.pay_balance_total, programName: programs.program_name,
+    surname: members.surname, firstName: members.first_name, middleName: members.middle_name,
+  }).from(memberPrograms)
+    .innerJoin(programs, eq(programs.program_id, memberPrograms.program_id))
+    .innerJoin(members, eq(members.member_id, memberPrograms.member_id))
+    .where(where).$dynamic();
+  if (lock) accountQuery = accountQuery.for("update", { of: memberPrograms });
+  const accountRows = await accountQuery;
+  const accounts: LoadedAccount[] = accountRows.map((row) => ({
+    id: row.id, memberId: row.memberId, memberNumber: text(row.memberNumber), programId: row.programId, doi: row.doi ?? "",
+    branch: text(row.branch), mas: text(row.mas), basePay: row.basePay ?? 0, payBalanceTotal: row.payBalanceTotal ?? 0, storedStatus: text(row.storedStatus),
+    memberName: memberName(row.surname, row.firstName, row.middleName) || text(row.memberNumber), programName: row.programName,
+  }));
+
+  const ids = accounts.map((account) => account.id);
+  const programIds = [...new Set(accounts.map((account) => account.programId))];
+  const memberNumbers = [...new Set(accounts.map((account) => account.memberNumber))];
+  const [paymentRows, saleRows, tierRows] = await Promise.all([
+    scoped && !ids.length ? [] : db.select({
+      id: collections.collection_id, enrollmentId: collections.enrollment_id, orDate: collections.or_date, orNumber: collections.or_number,
+      monthFrom: collections.month_from, monthTo: collections.month_to, nopFrom: collections.nop_from, nopTo: collections.nop_to,
+      amount: collections.amount_collected, dateRemitted: collections.date_remitted, mas: collections.mas,
+    }).from(collections).where(and(eq(collections.status, "Posted"), scoped ? inArray(collections.enrollment_id, ids) : undefined)),
+    scoped && !memberNumbers.length ? [] : db.select({ memberNumber: sales.member_number, programId: sales.program_id, applicationNumber: sales.application_no, registrationFee: sales.registration_amount })
+      .from(sales).where(scoped ? inArray(sales.member_number, memberNumbers) : undefined),
+    scoped && !programIds.length ? [] : db.select().from(programIncentives).where(scoped ? inArray(programIncentives.program_id, programIds) : undefined),
+  ]);
+  const payments: AccountPayment[] = paymentRows.map((row) => ({
+    id: row.id, enrollmentId: row.enrollmentId, orDate: row.orDate ?? "", orNumber: text(row.orNumber),
+    monthFrom: text(row.monthFrom).slice(0, 7), monthTo: text(row.monthTo).slice(0, 7), nopFrom: row.nopFrom ?? 0, nopTo: row.nopTo ?? 0,
+    amount: row.amount, dateRemitted: row.dateRemitted ?? row.orDate ?? "", mas: text(row.mas),
+  }));
+  const saleList = saleRows.map((row) => ({ memberNumber: text(row.memberNumber), programId: row.programId, applicationNumber: text(row.applicationNumber), registrationFee: row.registrationFee ?? 0 }));
+  const incentives = tierRows.map((row) => ({
+    id: row.incentive_id, programId: row.program_id, role: text(row.role) as IncentiveTier["role"], fromMonth: row.from_month ?? 0, toMonth: row.to_month ?? 0,
+    incentiveType: text(row.incentive_type) as IncentiveTier["incentiveType"], markUp: row.mark_up ?? 0, incentiveAmount: row.incentive_amount ?? 0, branchId: text(row.branch_id),
+  }));
+  return { accounts, payments, sales: saleList, incentives };
+}
+
+export async function accountReport(scope: AccountScope = {}) {
+  const data = await loadAccountData(scope);
   const today = todayInManila();
   // Look payments and sales up per account instead of scanning every row for every account.
   const byEnrollment = paymentsByEnrollment(data.payments);
@@ -63,8 +107,8 @@ export type ProgramStanding = { enrollmentId: string; programName: string; stand
 
 /** A member's program accounts that are temporarily suspended or forfeited today, to warn before new business. */
 export async function memberStanding(memberId: string): Promise<ProgramStanding[]> {
-  const report = await accountReport();
-  return report.rows.filter((row) => row.memberId === memberId).flatMap((row): ProgramStanding[] => {
+  const report = await accountReport({ memberId });
+  return report.rows.flatMap((row): ProgramStanding[] => {
     if (!("status" in row)) return [];
     if (row.status === "Forfeited") return [{ enrollmentId: row.id, programName: row.programName, standing: "Forfeited", since: row.forfeitedAt, amountDue: null }];
     if (row.temporarilySuspended) return [{ enrollmentId: row.id, programName: row.programName, standing: "Temporarily suspended", since: row.suspendedAt, amountDue: row.balance }];
@@ -75,58 +119,40 @@ export async function memberStanding(memberId: string): Promise<ProgramStanding[
 /** `onlyMas` limits the report to that MAS's own accounts (lib/member-scope.ts). */
 export async function mamReport(from?: string, to?: string, onlyMas: string | null = null) {
   const today = todayInManila();
-  return buildMamReport(scopeToMas(await loadAccountData(), onlyMas), from || today.slice(0, 7), to || today.slice(0, 7), today);
-}
-
-function scopeToMas<T extends { accounts: Array<{ id: string; mas: string }>; payments: Array<{ enrollmentId: string }> }>(data: T, onlyMas: string | null): T {
-  if (onlyMas === null) return data;
-  const accounts = data.accounts.filter((account) => account.mas.trim().toLowerCase() === onlyMas.toLowerCase());
-  const ids = new Set(accounts.map((account) => account.id));
-  return { ...data, accounts, payments: data.payments.filter((payment) => ids.has(payment.enrollmentId)) };
+  return buildMamReport(await loadAccountData(onlyMas === null ? {} : { mas: onlyMas }), from || today.slice(0, 7), to || today.slice(0, 7), today);
 }
 
 /** One member's MAM: each of their program accounts, month by month, from enrollment (at most the last 36 months) to today. */
 export async function memberMam(memberId: string, onlyMas: string | null = null) {
   const today = todayInManila();
-  const data = scopeToMas(await loadAccountData(), onlyMas);
-  const accounts = data.accounts.filter((account) => account.memberId === memberId);
+  const data = await loadAccountData(onlyMas === null ? { memberId } : { memberId, mas: onlyMas });
   const current = monthIndex(today.slice(0, 7));
-  const earliest = Math.min(current, ...accounts.filter((account) => account.doi).map((account) => monthIndex(account.doi.slice(0, 7))));
+  const earliest = Math.min(current, ...data.accounts.filter((account) => account.doi).map((account) => monthIndex(account.doi.slice(0, 7))));
   const from = monthName(Math.max(earliest, current - 35));
-  const ids = new Set(accounts.map((account) => account.id));
-  return buildMamReport({ ...data, accounts, payments: data.payments.filter((payment) => ids.has(payment.enrollmentId)) }, from, today.slice(0, 7), today);
+  return buildMamReport(data, from, today.slice(0, 7), today);
 }
 
+/** Stores each account's current status where it differs from the stored one, in one transaction. */
 export async function syncAccountStatuses() {
   getEncoder();
   const report = await accountReport();
-  const data = report.rows.flatMap((row) => "status" in row && row.status !== row.storedStatus ? [{ range: `'Member programs'!S${row.rowNumber}`, values: [[row.status]] }] : []);
-  if (data.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data } });
+  const changed = new Map<string, string[]>();
+  for (const row of report.rows) if ("status" in row && row.status !== row.storedStatus) changed.set(row.status, [...(changed.get(row.status) ?? []), row.id]);
+  if (changed.size) await inTransaction(async (tx) => {
+    for (const [status, ids] of changed) await tx.update(memberPrograms).set({ account_status: status }).where(inArray(memberPrograms.enrollment_id, ids));
+  });
   return report;
 }
 
-export async function commitCollections(collectionRows: (string | number)[][], accounts: (Account & { rowNumber: number })[], payments: AccountPayment[]) {
+export type NewCollection = typeof collections.$inferInsert;
+
+/** Saves a Collections batch and the resulting account statuses inside the caller's transaction. */
+export async function commitCollections(tx: Transaction, rows: NewCollection[], accounts: Account[], payments: AccountPayment[]) {
   const actor = getEncoder();
-  const identity = [actor.userId, actor.employeeId, actor.name, actor.encodedAt];
-  const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties" });
-  const id = (title: string) => {
-    const found = metadata.data.sheets?.find((sheet) => sheet.properties?.title === title)?.properties?.sheetId;
-    if (found === undefined || found === null) throw new Error(`Missing ${title} sheet.`);
-    return found;
-  };
-  const cell = (value: string | number) => ({ userEnteredValue: typeof value === "number" ? { numberValue: value } : { stringValue: value } });
+  await tx.insert(collections).values(rows.map((row) => ({ ...row, encoded_by_user_id: actor.userId, encoded_by_employee_id: actor.employeeId, encoded_by_name: actor.name, encoded_at: actor.encodedAt })));
   const byEnrollment = paymentsByEnrollment(payments);
-  // appendCells cannot write past the sheet's last column, so widen the grid first when a row is wider (new columns).
-  const collectionsGrid = metadata.data.sheets?.find((sheet) => sheet.properties?.title === "Collections")?.properties?.gridProperties?.columnCount ?? 0;
-  const widest = Math.max(0, ...collectionRows.map((r) => r.length + identity.length));
-  const requests = [
-    ...(collectionsGrid && widest > collectionsGrid ? [{ appendDimension: { sheetId: id("Collections"), dimension: "COLUMNS", length: widest - collectionsGrid } }] : []),
-    { appendCells: { sheetId: id("Collections"), rows: collectionRows.map((r) => ({ values: [...r.slice(0, 21), ...identity, ...r.slice(21)].map(cell) })), fields: "userEnteredValue" } },
-    ...accounts.map((account) => ({ updateCells: {
-      range: { sheetId: id("Member programs"), startRowIndex: account.rowNumber - 1, endRowIndex: account.rowNumber, startColumnIndex: 18, endColumnIndex: 19 },
-      rows: [{ values: [cell(accountState(account, byEnrollment.get(account.id) ?? []).status)] }], fields: "userEnteredValue",
-    } })),
-  ];
-  // Commit collections and resulting member-account statuses atomically.
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
+  for (const account of accounts) {
+    const status = accountState(account, byEnrollment.get(account.id) ?? []).status;
+    if (status !== account.storedStatus) await tx.update(memberPrograms).set({ account_status: status }).where(eq(memberPrograms.enrollment_id, account.id));
+  }
 }

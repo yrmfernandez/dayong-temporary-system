@@ -29,6 +29,13 @@
       "when": 1791121145534,
       "tag": "0003_copy_exceptions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791123766405,
+      "tag": "0004_member_program_unique",
+      "breakpoints": true
     }
   ]
 }

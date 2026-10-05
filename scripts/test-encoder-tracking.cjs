@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require('node:assert/strict');
-const { test } = require('node:test');
+const { before, beforeEach, test } = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
@@ -8,6 +8,44 @@ const ts = require('typescript');
 // Execute the actual TS routes/data helpers with an in-memory Sheets transport.
 // No credentials, network calls, or production rows are used by these tests.
 process.env.AUTH_SECRET ||= 'test-secret-for-session-tokens-only';
+// Modules that moved to PostgreSQL run against PGlite: a real PostgreSQL inside this process, built from the same
+// migration files as Supabase and emptied before every test. No network and no staging data.
+let pglite;
+before(async () => {
+  const { PGlite } = require('@electric-sql/pglite');
+  const { drizzle } = require('drizzle-orm/pglite');
+  const { migrate } = require('drizzle-orm/pglite/migrator');
+  pglite = new PGlite();
+  const db = drizzle(pglite);
+  await migrate(db, { migrationsFolder: path.resolve('db/migrations') });
+  globalThis.dayongTestDb = db;
+});
+beforeEach(async () => {
+  const { rows } = await pglite.query("select string_agg(format('%I', tablename), ', ') as names from pg_tables where schemaname = 'public'");
+  await pglite.exec(`truncate ${rows[0].names} restart identity cascade`);
+});
+/** Inserts rows (objects keyed by column name) into a database table. */
+async function seed(table, rows, { skipExisting = false } = {}) {
+  for (const row of rows) {
+    const columns = Object.keys(row);
+    const values = columns.map((column) => row[column] !== null && typeof row[column] === 'object' ? JSON.stringify(row[column]) : row[column]);
+    await pglite.query(`insert into "${table}" (${columns.map((column) => `"${column}"`).join(', ')}) values (${columns.map((_, index) => `$${index + 1}`).join(', ')})${skipExisting ? ' on conflict do nothing' : ''}`, values);
+  }
+}
+/** Programs and the accountable employee a New Sale links to in the database (the sheets still list them for the form). */
+async function seedSaleLinks(programs = [['DP-1', 'Program']], employee = ['DPE-0002', 'MAS']) {
+  await seed('programs', programs.map(([program_id, program_name]) => ({ program_id, program_name, base_pay: 350 })), { skipExisting: true });
+  await seed('employees', [{ employee_id: employee[0], full_name: employee[1] }], { skipExisting: true });
+}
+const count = async (table) => (await query(`select count(*)::int as n from "${table}"`))[0].n;
+const query = async (text, params) => (await pglite.query(text, params)).rows;
+/** A member with one program account, the minimum other rows link to. */
+async function seedAccount({ enrollment = 'ENR-1', member = 'MEM-1', memberNumber = 'PH-1', program = 'DP-1', programName = 'Program', basePay = 350, payBalanceTotal = null, doi = null, branch = 'BR-1', mas = 'MAS-2', surname = 'Santos', firstName = 'Ana', accountStatus = null } = {}) {
+  await seed('members', [{ member_id: member, member_number: memberNumber, surname, first_name: firstName }]);
+  await seed('programs', [{ program_id: program, program_name: programName, base_pay: basePay, pay_balance_total: payBalanceTotal }]);
+  await seed('member_programs', [{ enrollment_id: enrollment, member_id: member, member_number: memberNumber, program_id: program, doi, branch, mas, status: 'Active', account_status: accountStatus }]);
+}
+
 // Headers added by npm run sheets:remittance-deadline, which Remittances requires.
 function deadlineHeaders(h) {
   for (const [title, index, name] of [['Collections', 38, 'forfeited_incentive'], ['Sales', 43, 'forfeited_incentive'], ['Remittances', 26, 'time_remitted'], ['Remittances', 27, 'cash_count']]) {
@@ -197,21 +235,14 @@ test('expense entries follow the company form: account, attachments, approver, a
 
 test('statement of account lists the new sale and every collection with running totals, for administrators only', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
-  const encoder = ['Encoded By User ID', 'Encoded By Employee ID', 'Encoded By Name', 'Encoded At'];
-  const programsHeader = Array(19).fill(''); encoder.forEach((name, i) => { programsHeader[14 + i] = name; }); programsHeader[18] = 'Account Status';
-  const collectionsHeader = Array(29).fill(''); encoder.forEach((name, i) => { collectionsHeader[21 + i] = name; }); collectionsHeader[25] = 'Collected By Role'; collectionsHeader[26] = 'Remittance Amount'; collectionsHeader[27] = 'Remittance Breakdown';
-  const remittancesHeader = Array(12).fill(''); encoder.forEach((name, i) => { remittancesHeader[6 + i] = name; }); remittancesHeader[10] = 'Gross Collection'; remittancesHeader[11] = 'Total Remittance';
-  const enrollment = Array(19).fill(''); Object.assign(enrollment, { 0: 'ENR-1', 1: 'MEM-1', 2: 'PH-1', 3: 'DP-1', 4: '2026-06-15', 5: 'MINTAL', 6: 'Maria', 12: 'Active', 18: 'U' });
-  const payment = Array(29).fill(''); Object.assign(payment, { 0: 'COL-1', 2: 'ENR-1', 7: 'Maria', 8: 'OR-100', 9: '2026-07-10', 10: 640, 11: '2026-07', 12: '2026-08', 13: 2, 14: 3, 19: 'Posted' });
+  await seedAccount({ programName: 'DS-320', basePay: 320, payBalanceTotal: 19200, doi: '2026-06-15', branch: 'MINTAL', mas: 'Maria', accountStatus: 'U' });
+  await seed('collections', [{ collection_id: 'COL-1', collection_batch_id: 'CBT-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', mas: 'Maria', or_number: 'OR-100', or_date: '2026-07-10', amount_collected: 640, month_from: '2026-07', month_to: '2026-08', nop_from: 2, nop_to: 3, status: 'Posted' }]);
+  await seed('sales', [{ sale_id: 'SAL-1', member_number: 'PH-1', program_id: 'DP-1', amount_paid: 320, application_no: 'APP-1', or_date: '2026-06-15' }]);
+  // The SOA still reads member and sale details from the sheets until that module moves.
   const member = Array(18).fill(''); Object.assign(member, { 0: 'MEM-1', 1: 'PH-1', 2: 'Santos', 3: 'Ana', 11: '0917', 12: 'Mintal, Davao City' });
   const sale = Array(31).fill(''); Object.assign(sale, { 0: 'SAL-1', 5: 'PH-1', 21: 'DP-1', 26: 320, 28: 'APP-1', 30: '2026-06-15' });
-  h.rows['Member programs'] = [programsHeader, enrollment];
-  h.rows.Collections = [collectionsHeader, payment];
-  h.rows.Remittances = [remittancesHeader];
   h.rows.Members = [[], member];
   h.rows.Sales = [[], sale];
-  h.rows.Programs = [[], ['DP-1', 'C', 'DS-320', 320, 'active', '', '', '', '', '', 'No', 0, 19200]];
-  h.rows['Program Incentives'] = [[]];
   const route = h.load('app/api/soa/route.ts');
   const list = await (await route.GET(new Request('http://localhost/api/soa'))).json();
   assert.deepEqual(list.accounts.map((item) => [item.id, item.memberName, item.programName]), [['ENR-1', 'Santos, Ana', 'DS-320']]);
@@ -344,49 +375,41 @@ for (const existingMember of [false, true]) {
     h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
     h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
     h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
-    h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
-    if (existingMember) h.rows.Members = [[], ['MEM-1', 'PH-1']];
+    await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+    if (existingMember) await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'Old', first_name: 'Name' }]);
     const response = await h.load('app/api/sales/route.ts').POST(request({
       branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 350,
       encodedBy: 'attacker', userId: 'attacker',
       sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', encodedBy: 'attacker', beneficiaries: existingMember ? [] : [{ surname: 'Santos', firstName: 'Ben', middleName: '', birthdate: '2000-01-02', age: 26, relationship: 'Child' }] }],
     }));
     assert.equal(response.status, 200, JSON.stringify(await response.json()));
+    const [member] = await query('select * from members');
+    assert.equal(await count('members'), 1, 'an existing member is never registered again');
     // An existing member's record takes the details confirmed on the sale; blanks keep what is on record.
-    const memberUpdate = h.writes.find((write) => write.range === 'Members!C2:Q2');
-    assert.equal(Boolean(memberUpdate), existingMember);
-    if (existingMember) assert.equal(memberUpdate.requestBody.values[0][10], 'Complete Address');
-    assert.equal(h.writes.length, existingMember ? 3 : 4);
-    // Encoder identity follows the business columns; Member programs and Sales keep workflow columns after it.
-    const trailing = (range) => range.startsWith("'Member programs'") ? 1 : range.startsWith("'Sales'") ? 8 : 0;
-    const audit = h.writes.filter((write) => write !== memberUpdate).map((write) => { const row = write.requestBody.values[0], extra = trailing(write.range); return row.slice(row.length - 4 - extra, row.length - extra); });
-    for (const values of audit) {
-      assert.deepEqual(values.slice(0, 3), ["'USR-1", "'DPE-0001", "'=encoder"]);
-      assert.equal(values[3], audit[0][3]);
-      assert.ok(!Number.isNaN(Date.parse(values[3])));
+    assert.equal(member.address, 'Complete Address');
+    assert.deepEqual([member.surname, member.first_name], existingMember ? ['Old', 'Name'] : ['', '']);
+    if (existingMember) assert.deepEqual(await query("select action, table_name, record_id, employee_id from audit_log"), [{ action: 'update', table_name: 'members', record_id: 'MEM-1', employee_id: 'DPE-0001' }], 'the correction is in the Audit Log');
+    else assert.equal(member.status, 'Active');
+    // Every row the sale created carries the signed-in encoder and one timestamp, whatever the request body claims.
+    const created = [...await query('select * from member_programs'), ...await query('select * from sales'), ...await query('select * from beneficiaries'), ...(existingMember ? [] : [member])];
+    assert.equal(created.length, existingMember ? 2 : 4);
+    for (const row of created) {
+      assert.deepEqual([row.encoded_by_user_id, row.encoded_by_employee_id, row.encoded_by_name], ['USR-1', 'DPE-0001', '=encoder']);
+      assert.equal(new Date(row.encoded_at).getTime(), new Date(created[0].encoded_at).getTime());
     }
-    assert.ok(!existingMember || h.writes.every((write) => !write.range.startsWith("'Members'!")));
-    // One complete address per person: Sales is A:AE (+4 encoder columns), Members is A:R (+4).
-    const saleRow = h.writes.find((write) => write.range.startsWith("'Sales'!")).requestBody.values[0];
-    assert.equal(saleRow.length, 43);
     // A new sale is cash the MAS owes until a New Sales remittance covers it (no penalty, no Fidelity on this batch).
     // No registration fee: the month-1 MAS tier on the ₱350 base pay (₱50 mark-up, 50%) leaves ₱150 incentive, ₱200 owed.
-    assert.deepEqual(saleRow.slice(35), ['Outstanding', '', 'DPE-0002', '', '', 150, 200, '']);
-    assert.equal(saleRow[16], 'Complete Address');
-    assert.equal(saleRow[21], 'DP-1');
-    assert.equal(saleRow[28], 'APP-1');
+    const [sale] = await query('select * from sales');
+    assert.deepEqual([sale.remittance_status, sale.linked_remittance_id, sale.accountable_employee_id, sale.penalty_amount, sale.penalty_note, Number(sale.mas_incentive), Number(sale.remittance_amount), sale.fidelity_amount],
+      ['Outstanding', null, 'DPE-0002', null, null, 150, 200, null]);
+    assert.deepEqual([sale.address, sale.program_id, sale.application_no], ['Complete Address', 'DP-1', 'APP-1']);
+    assert.equal((await query('select account_status from member_programs'))[0].account_status, 'NS', 'a new account starts as a New Sale');
     if (!existingMember) {
-      const memberRow = h.writes.find((write) => write.range.startsWith("'Members'!")).requestBody.values[0];
-      assert.equal(memberRow.length, 22);
-      assert.equal(memberRow[12], 'Complete Address');
-      assert.equal(memberRow[17], 'Active');
-    }
-    if (!existingMember) {
-      const beneficiary = h.writes.find((write) => write.range === "'Beneficiaries'!A:M").requestBody.values[0];
-      assert.match(beneficiary[0], /^BEN-/);
-      assert.match(beneficiary[1], /^MEM-/);
-      assert.match(beneficiary[2], /^SALE-/);
-      assert.deepEqual(beneficiary.slice(3, 9), ['Santos', 'Ben', '', '2000-01-02', 26, 'Child']);
+      const [beneficiary] = await query('select * from beneficiaries');
+      assert.match(beneficiary.beneficiary_id, /^BEN-/);
+      assert.match(beneficiary.member_id, /^MEM-/);
+      assert.match(beneficiary.sale_id, /^SALE-/);
+      assert.deepEqual([beneficiary.surname, beneficiary.first_name, beneficiary.middle_name, beneficiary.birthdate?.toISOString().slice(0, 10), beneficiary.age, beneficiary.relationship], ['Santos', 'Ben', null, '2000-01-02', 26, 'Child']);
     }
   });
 }
@@ -396,21 +419,15 @@ test('collection batch is encoded atomically without creating a remittance', asy
   const today = h.load('lib/account-rules.ts').todayInManila();
   const month = today.slice(0, 7);
   const next = h.load('lib/account-rules.ts').monthName(h.load('lib/account-rules.ts').monthIndex(month) + 1);
-  h.rows.Members = [[], ['MEM-1', 'PH-1']];
   h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
   h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
-  const header = Array(19).fill(''); header[18] = 'Account Status';
-  h.rows['Member programs'] = [header, ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', month + '-01', 'BR-1', 'MAS-2']];
-  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350]];
-  const colHeader = Array(26).fill(''); colHeader[25] = 'Collected By Role'; colHeader[26] = 'Remittance Amount'; colHeader[27] = 'Remittance Breakdown';
-  h.rows.Collections = [colHeader];
-  const auditHeaders = h.load('lib/encoder-schema.ts').encoderHeaders;
-  auditHeaders.forEach((v, i) => { header[14 + i] = v; colHeader[21 + i] = v; });
-  const remHeader = Array(10).fill(''); auditHeaders.forEach((v, i) => { remHeader[6 + i] = v; });
-  remHeader[10] = 'Gross Collection'; remHeader[11] = 'Total Remittance';
-  h.rows.Remittances = [remHeader];
-  h.rows['Program Incentives'] = [[], ['I1', 'DP-1', 'MAS', 1, 999, 'percentage', 50, 50], ['I2', 'DP-1', 'Collector', 1, 999, 'percentage', 50, 20]];
+  await seedAccount({ doi: month + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('program_incentives', [
+    { incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 },
+    { incentive_id: 'I2', program_id: 'DP-1', role: 'Collector', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 20 },
+  ]);
   h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, true, 'active']];
   // The New Sale is NOP 1 (DOI month), so the first collection is NOP 2 for the following month.
   const afterNext = h.load('lib/account-rules.ts').monthName(h.load('lib/account-rules.ts').monthIndex(month) + 2);
@@ -423,35 +440,34 @@ test('collection batch is encoded atomically without creating a remittance', asy
   assert.match((await (await route.POST(request({ ...batch, penalty: 50, penaltyNote: '' }))).json()).message, /what the penalty is for/);
   assert.match((await (await route.POST(request({ ...batch, penalty: -5, penaltyNote: 'x' }))).json()).message, /zero or a positive/);
   // Fidelity is the employee's own money: no limit and any batch (covered by the Fidelity tests below).
-  assert.equal(h.writes.length, 0);
+  assert.equal((await query('select count(*)::int as n from collections'))[0].n, 0, 'rejected batches save nothing');
   const response = await route.POST(request({ ...batch, collectedBy: 'Collector', originalMasOfficerName: 'ignored', penalty: 50, penaltyNote: 'Late turnover' }));
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
-  assert.equal(h.writes.length, 1);
-  const requests = h.writes[0].requestBody.requests;
-  assert.equal(requests.length, 2);
-  let batchId;
-  const written = requests[0].appendCells.rows.map((row) => row.values.map((v) => v.userEnteredValue.stringValue ?? v.userEnteredValue.numberValue));
+  const written = await query('select * from collections order by or_number');
+  assert.equal(written.length, 2);
+  assert.deepEqual(written.map((row) => row.collection_id).sort(), [...result.collectionIds].sort());
   // The penalty is stored once, on the batch's first row, so a remittance counts it exactly once.
-  assert.deepEqual(written.map((values) => values.slice(35, 37)), [[50, 'Late turnover'], ['', '']]);
+  assert.deepEqual(written.map((row) => [row.penalty_amount === null ? null : Number(row.penalty_amount), row.penalty_note]), [[50, 'Late turnover'], [null, null]]);
   // Collector batches record the batch MAS as the original MAS; no separate field is asked for.
-  assert.deepEqual(written.map((values) => values[18]), ['MAS-2', 'MAS-2']);
-  for (const row of requests[0].appendCells.rows) {
-    const values = row.values.map((v) => v.userEnteredValue.stringValue ?? v.userEnteredValue.numberValue);
-    assert.deepEqual(values.slice(21, 24), ['USR-1', 'DPE-0001', '=encoder']);
-    assert.equal(values[23], '=encoder');
-    batchId ??= values[1];
-    assert.match(batchId, /^CBT-/);
-    assert.equal(values[1], batchId);
-    assert.equal(values[28], 'Outstanding');
-    assert.equal(values[29], '');
-    assert.equal(values[30], 'DPE-0002');
-    assert.equal(values[25], 'Collector');
-    const tiers = [{ role: 'Collector', fromMonth: 1, toMonth: 999, incentiveType: 'percentage', markUp: 50, incentiveAmount: 20 }];
-    assert.equal(values[26], h.load('lib/remittance.ts').calculateRemittance(350, tiers, 'Collector', values[13], values[14], 350).remittance, 'Collector tier applies');
-    assert.deepEqual(values.slice(33, 35), ['GCash', 'GC-778899']);
+  assert.deepEqual(written.map((row) => row.original_mas), ['MAS-2', 'MAS-2']);
+  assert.match(written[0].collection_batch_id, /^CBT-/);
+  const tiers = [{ role: 'Collector', fromMonth: 1, toMonth: 999, incentiveType: 'percentage', markUp: 50, incentiveAmount: 20 }];
+  for (const row of written) {
+    assert.deepEqual([row.encoded_by_user_id, row.encoded_by_employee_id, row.encoded_by_name], ['USR-1', 'DPE-0001', '=encoder'], 'the signed-in encoder, never the request body');
+    assert.equal(row.collection_batch_id, written[0].collection_batch_id);
+    assert.equal(row.remittance_status, 'Outstanding');
+    assert.equal(row.linked_remittance_id, null);
+    assert.equal(row.accountable_employee_id, 'DPE-0002');
+    assert.equal(row.collected_by_role, 'Collector');
+    assert.equal(Number(row.remittance_amount), h.load('lib/remittance.ts').calculateRemittance(350, tiers, 'Collector', row.nop_from, row.nop_to, 350).remittance, 'Collector tier applies');
+    assert.deepEqual([row.remittance_method, row.payment_reference], ['GCash', 'GC-778899']);
   }
-  assert.equal(requests[1].updateCells.rows[0].values[0].userEnteredValue.stringValue, 'ADV');
+  assert.equal((await query("select account_status from member_programs where enrollment_id = 'ENR-1'"))[0].account_status, 'ADV');
+  // The status change is in the Audit Log with the signed-in user, written by the database itself.
+  assert.deepEqual(await query('select action, table_name, record_id, employee_id from audit_log'), [{ action: 'update', table_name: 'member_programs', record_id: 'ENR-1', employee_id: 'DPE-0001' }]);
+  // Paying the same months again is refused against the saved payments.
+  assert.equal((await route.POST(request({ ...batch, collections: [{ ...entry, orNumber: 'OR-3' }], controlTotal: 350 }))).status, 400);
   assert.equal(result.remittanceId, undefined);
   assert.equal(result.grossCollection, 700);
   assert.match(result.message, /₱50.00 penalty/);
@@ -459,14 +475,14 @@ test('collection batch is encoded atomically without creating a remittance', asy
 
 test('collection member search matches branch and MAS and returns eligible programs', async () => {
   const h = harness();
-  h.rows.Members = [[], ['M1', 'PH-001', 'Santos', 'Ana'], ['M2', 'PH-002', 'Santos', 'Ana Two']];
-  h.rows['Member programs'] = [[],
-    ['E1', 'M1', 'PH-001', 'P1', '', 'North', 'MAS One', '', '', '', '', '', 'Active'],
-    ['E2', 'M1', 'PH-001', 'P2', '', 'North', 'MAS One', '', '', '', '', '', 'Active'],
-    ['E3', 'M2', 'PH-002', 'P3', '', 'South', 'MAS One', '', '', '', '', '', 'Active'],
-    ['E4', 'M2', 'PH-002', 'P4', '', 'North', 'MAS Two', '', '', '', '', '', 'Active'],
-  ];
-  const results = await h.load('lib/google-sheets-data.ts').searchMembersByName('ana', 'North', 'MAS One');
+  await seed('members', [{ member_id: 'M1', member_number: 'PH-001', surname: 'Santos', first_name: 'Ana' }, { member_id: 'M2', member_number: 'PH-002', surname: 'Santos', first_name: 'Ana Two' }]);
+  await seed('programs', ['P1', 'P2', 'P3', 'P4'].map((program_id) => ({ program_id, program_name: program_id })));
+  const enrollment = (enrollment_id, member_id, member_number, program_id, branch, mas) => ({ enrollment_id, member_id, member_number, program_id, branch, mas, status: 'Active' });
+  await seed('member_programs', [
+    enrollment('E1', 'M1', 'PH-001', 'P1', 'North', 'MAS One'), enrollment('E2', 'M1', 'PH-001', 'P2', 'North', 'MAS One'),
+    enrollment('E3', 'M2', 'PH-002', 'P3', 'South', 'MAS One'), enrollment('E4', 'M2', 'PH-002', 'P4', 'North', 'MAS Two'),
+  ]);
+  const results = await h.load('lib/member-records.ts').searchMembersByName('ana', 'North', 'MAS One');
   assert.equal(results.length, 1);
   assert.equal(results[0].id, 'M1');
   assert.deepEqual(results[0].programIds, ['P1', 'P2']);
@@ -702,8 +718,9 @@ test('IT resets a forgotten password to a one-time password that expires and mus
 test('New Sales searches every member; Collections stays within its branch and MAS', async () => {
   const h = harness();
   const route = h.load('app/api/members/route.ts');
-  h.rows.Members = [[], ['M1', 'PH-001', 'Santos', 'Ana'], ['M2', 'PH-002', 'Santos', 'Ben']];
-  h.rows['Member programs'] = [[], ['E1', 'M1', 'PH-001', 'P1', '2026-01-01', 'North', 'MAS1']];
+  await seed('members', [{ member_id: 'M1', member_number: 'PH-001', surname: 'Santos', first_name: 'Ana' }, { member_id: 'M2', member_number: 'PH-002', surname: 'Santos', first_name: 'Ben' }]);
+  await seed('programs', [{ program_id: 'P1', program_name: 'P1' }]);
+  await seed('member_programs', [{ enrollment_id: 'E1', member_id: 'M1', member_number: 'PH-001', program_id: 'P1', doi: '2026-01-01', branch: 'North', mas: 'MAS1' }]);
   const search = async (query) => (await (await route.GET(new Request(`http://localhost/api/members?${query}`))).json()).members.map((member) => member.id);
   assert.deepEqual(await search('search=santos'), ['M1', 'M2']);
   assert.deepEqual(await search('search=santos&branch=North&mas=MAS1'), ['M1']);
@@ -712,8 +729,9 @@ test('New Sales searches every member; Collections stays within its branch and M
 
 test('New Sales blocks double entries: repeated Application Numbers and members registered again as new', async () => {
   const h = harness();
-  h.rows['Sales'] = [[], ['SALE-1', '', '', '', '', 'PH-7', ...Array(22).fill(''), 'APP-100']];
-  h.rows.Members = [[], ['MEM-7', 'PH-7', 'Santos', 'Ana', 'Cruz', '', '5/1/1990']];
+  await seed('programs', [{ program_id: 'DP-1', program_name: 'Plan' }]);
+  await seed('sales', [{ sale_id: 'SALE-1', member_number: 'PH-7', program_id: 'DP-1', application_no: 'APP-100' }]);
+  await seed('members', [{ member_id: 'MEM-7', member_number: 'PH-7', surname: 'Santos', first_name: 'Ana', middle_name: 'Cruz', birthdate: '1990-05-01' }]);
   const { newSalesDoubleEntry } = h.load('lib/duplicate-entries.ts');
   const sale = (fields) => ({ existingMember: false, surname: 'Reyes', firstName: 'Ben', birthdate: '1991-02-03', applicationNo: 'APP-200', ...fields });
   assert.equal(await newSalesDoubleEntry([sale({})]), '');
@@ -731,27 +749,36 @@ test('a new member enrolled in two programs in one batch is registered once', as
   h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
   h.rows.Programs = [[], ['DP-1', 'A', 'Plan A', 350, 'active', '', '', '', '', '', 'No', 0, 0], ['DP-2', 'B', 'Plan B', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
   h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50], ['INC-2', 'DP-2', 'MAS', 1, 12, 'percentage', 50, 50]];
-  h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
+  await seedSaleLinks([['DP-1', 'Plan A'], ['DP-2', 'Plan B']], ['DPE-0002', 'mas']);
   const sale = (programId, applicationNo) => ({ existingMember: false, surname: 'Reyes', firstName: 'Ben', birthdate: '1991-02-03', programId, amountPaid: '350', applicationNo, addressHouse: 'Complete Address' });
   const route = h.load('app/api/sales/route.ts');
   const response = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 700, sales: [sale('DP-1', 'APP-1'), sale('DP-2', 'APP-2')] }));
   const result = await response.json();
   assert.equal(response.status, 200, JSON.stringify(result));
-  assert.equal(h.writes.filter((write) => write.range.startsWith("'Members'!")).length, 1, 'one member record');
-  assert.equal(h.writes.filter((write) => write.range.startsWith("'Member programs'!")).length, 2, 'two program enrollments');
+  assert.equal(await count('members'), 1, 'one member record');
+  assert.equal(await count('member_programs'), 2, 'two program enrollments');
   assert.equal(result.savedSales[0].memberNumber, result.savedSales[1].memberNumber);
-  const repeat = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 700, sales: [sale('DP-1', 'APP-3'), sale('DP-1', 'APP-4')] }));
+  // Saved for real: the same person as a new member again is caught as a returning member.
+  const again = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 350, sales: [sale('DP-1', 'APP-3')] }));
+  assert.match((await again.json()).message, /Ben Reyes with this birthdate is already member/);
+  const other = (applicationNo) => ({ ...sale('DP-1', applicationNo), surname: 'Lim' });
+  const repeat = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 700, sales: [other('APP-3'), other('APP-4')] }));
   assert.match((await repeat.json()).message, /Sale #2: This member is already enrolled in this program earlier in this batch/);
 });
 
 test('each OR Number is recorded once; a voided collection frees its receipt', async () => {
   const h = harness();
-  const row = (id, member, or, status) => { const values = Array(20).fill(''); values[0] = id; values[4] = member; values[8] = or; values[19] = status; return values; };
-  h.rows.Collections = [[], row('COL-1', 'PH-1', 'OR-500', 'Posted'), row('COL-2', 'PH-2', 'OR-501', 'Voided')];
+  await seedAccount();
+  const collection = (id, or, status, extra = {}) => ({ collection_id: id, collection_batch_id: 'CBT-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: or, amount_collected: 100, status, ...extra });
+  await seed('collections', [collection('COL-1', 'OR-500', 'Posted'), collection('COL-2', 'OR-501', 'Voided')]);
   const { recordedOrNumbers, entryKey } = h.load('lib/duplicate-entries.ts');
-  const used = await recordedOrNumbers();
+  const used = await recordedOrNumbers(['or 500', 'OR-501']);
   assert.deepEqual(used.get(entryKey('or 500')), { collectionId: 'COL-1', memberNumber: 'PH-1' });
   assert.equal(used.has(entryKey('OR-501')), false);
+  // The database refuses a second posted collection with the same receipt, however it is typed, even from a racing save.
+  await assert.rejects(seed('collections', [collection('COL-3', 'or500', 'Posted')]), /collections_or_key_unique/);
+  // A voided receipt can be used again, and duplicates that predate the database are kept, flagged.
+  await seed('collections', [collection('COL-4', 'OR 501', 'Posted'), collection('COL-5', 'OR-500', 'Posted', { legacy_duplicate: true })]);
 });
 
 test('pages granted to a role appear in the section where they belong, not under More', () => {
@@ -1222,14 +1249,14 @@ test('New Sales Fidelity is the MAS own money: incentives stay whole and the rem
   h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
   h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
   h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
-  h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'Maria']);
   const sales = h.load('app/api/sales/route.ts');
   const body = (fidelityAmount) => ({ branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', fidelityAmount, controlTotal: 350, sales: [{ existingMember: false, memberNumber: '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-9', addressHouse: 'Address', beneficiaries: [] }] });
   // No limit: more than the batch's ₱150 incentive is accepted.
   const saved = await sales.POST(request(body(500)));
   assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
-  const saleRow = h.writes.find((write) => write.range.startsWith("'Sales'!")).requestBody.values[0];
-  assert.deepEqual(saleRow.slice(40), [150, 200, 500], 'the incentive is untouched; company share and the batch Fidelity');
+  const [saved1] = await query('select mas_incentive, remittance_amount, fidelity_amount from sales');
+  assert.deepEqual(Object.values(saved1).map(Number), [150, 200, 500], 'the incentive is untouched; company share and the batch Fidelity');
 
   // Its remittance expects the company share plus the Fidelity.
   const h2 = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Approver', roleNames: ['Administrator'], permissions: { manageUsers: true } });
@@ -1487,9 +1514,9 @@ test('a program locks the New Sale amount unless it allows editing', async () =>
     const program = ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0, '', '', '', '', '', '', editable, 'FALSE'];
     h.rows.Programs = [[], program];
     h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
-    h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
     return h;
   };
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
   const post = async (h, amountPaid) => {
     const sale = { existingMember: false, programId: 'DP-1', amountPaid, applicationNo: 'APP-1', addressHouse: 'Complete Address', beneficiaries: [] };
     const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: Number(amountPaid), sales: [sale] }));
@@ -1499,7 +1526,7 @@ test('a program locks the New Sale amount unless it allows editing', async () =>
   const typo = await post(locked, '3500');
   assert.equal(typo.status, 400);
   assert.match(typo.body.message, /fixed amount of ₱350\.00/, 'no registration fee: the first month\'s base pay');
-  assert.equal(locked.writes.length, 0, 'nothing is saved');
+  assert.equal(await count('sales'), 0, 'nothing is saved');
   const blank = setup('');
   assert.equal((await post(blank, '300')).status, 400, 'a blank cell is FALSE, the default');
   const editable = setup('TRUE');
@@ -1514,7 +1541,7 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
   h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
   h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
   h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
-  h.rows['Sales!AO1:AQ1'] = [['mas_incentive', 'remittance_amount', 'fidelity_amount']];
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
   const post = async (body) => {
     const sale = { existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', beneficiaries: [], ...body.sale };
     const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: body.controlTotal, sales: [sale] }));
@@ -1524,11 +1551,10 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
   assert.match((await post({})).body.message, /Enter the control total/);
   const late = await post({ controlTotal: 350, sale: { orDate: '2026-01-05' } });
   assert.match(late.body.message, /more than a day old/);
-  assert.equal(h.writes.length, 0, 'nothing is saved');
+  assert.equal(await count('sales'), 0, 'nothing is saved');
   const explained = await post({ controlTotal: 350, sale: { orDate: '2026-01-05', backdateReason: 'MAS turned in the form late' } });
   assert.equal(explained.status, 200, JSON.stringify(explained.body));
-  const saleRow = h.writes.find((write) => write.range.startsWith("'Sales'!")).requestBody.values[0];
-  assert.equal(saleRow.at(-1), 'MAS turned in the form late', 'the reason is kept in Sales AS');
+  assert.equal((await query('select backdate_reason from sales'))[0].backdate_reason, 'MAS turned in the form late', 'the reason is kept with the sale');
 });
 
 test('a counted cash remittance must add up to the amount received, and the count is kept on the slip', async () => {

@@ -39,7 +39,7 @@ export async function correctSaleOrCollection(body: Record<string, unknown>) {
     if ((!isSale || orDate) && (!validDate(orDate) || orDate > today)) throw new Error("Enter a valid OR date, today or earlier.");
     // Each OR number is one receipt; a correction must not reuse another entry's.
     if (!isSale && entryKey(orNumber) !== entryKey(row[8])) {
-      const used = (await recordedOrNumbers()).get(entryKey(orNumber));
+      const used = (await recordedOrNumbers([orNumber])).get(entryKey(orNumber));
       if (used && used.collectionId !== id) throw new Error(`OR Number ${orNumber} is already recorded on collection ${used.collectionId}.`);
     }
   }
@@ -48,7 +48,7 @@ export async function correctSaleOrCollection(body: Record<string, unknown>) {
     const applicationNumber = text(body.applicationNumber), notes = text(body.notes);
     if (!applicationNumber) throw new Error("Application number is required.");
     if (entryKey(applicationNumber) !== entryKey(row[28])) {
-      const used = (await recordedApplicationNumbers()).get(entryKey(applicationNumber));
+      const used = (await recordedApplicationNumbers([applicationNumber])).get(entryKey(applicationNumber));
       if (used && used.saleId !== id) throw new Error(`Application number ${applicationNumber} is already recorded on sale ${used.saleId}.`);
     }
     const before = { applicationNumber: row[28], amountPaid: row[26], notes: row[27], orNumber: row[29], orDate: row[30] };

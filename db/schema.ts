@@ -209,6 +209,8 @@ export const member_programs = pgTable("member_programs", {
   ...encoder(),
   account_status: text(),
 }, (t) => [
+  // A member enrolls in each program once (app/api/sales/route.ts checks first; this stops two racing saves).
+  uniqueIndex("member_programs_member_program_key").on(t.member_id, t.program_id),
   index("member_programs_member_idx").on(t.member_id),
   index("member_programs_program_idx").on(t.program_id),
   index("member_programs_mas_idx").on(t.mas),

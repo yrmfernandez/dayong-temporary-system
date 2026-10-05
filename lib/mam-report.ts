@@ -1,6 +1,6 @@
 import { accountState, dateInMonth, monthCount, monthIndex, monthName, paymentsByEnrollment, validMonth, type Account, type AccountPayment } from "@/lib/account-rules";
 
-export type MamAccount = Account & { memberName: string; programName: string; rowNumber: number };
+export type MamAccount = Account & { memberName: string; programName: string };
 export function monitoringMonths(from: string, to: string) {
   if (!validMonth(from) || !validMonth(to) || from > to || monthCount(from, to) > 120) throw new Error("Choose a valid month range of up to 120 months.");
   return Array.from({ length: monthCount(from, to) }, (_, i) => monthName(monthIndex(from) + i));

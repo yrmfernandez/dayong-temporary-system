@@ -3,6 +3,7 @@ const REQUIRED_SERVER_VARIABLES = [
   "GOOGLE_SERVICE_ACCOUNT_EMAIL",
   "GOOGLE_PRIVATE_KEY",
   "GOOGLE_SHEET_ID",
+  "DATABASE_URL",
 ] as const;
 
 export type RequiredServerVariable =
