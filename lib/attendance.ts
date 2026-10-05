@@ -18,7 +18,9 @@ export type AttendanceStatus =
   | "Absent"
   | "Leave"
   | "AWOL"
-  | "Non-working Day";
+  | "Non-working Day"
+  /** An administrator gave the employee the day off: neither worked nor absent. */
+  | "Day Off";
 
 export function getPhilippineDate(
   date = new Date(),

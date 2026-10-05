@@ -86,7 +86,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/todays-entries` | Review New Sales and Collections for a selected day, inspect receipt evidence/date warnings, make authorized corrections, and add receipt photos (to your own entries; administrators to any). |
 | `/my-entries` | Your encoded entries by day, week, month or chosen dates: attach receipt photos (one photo can cover several entries), see entries an approver Returned and why, and resubmit them. |
 | `/remittances` | Dashboard, Pending Approval, and Reports. Entry Clerks see only what they encoded; approvers see everyone, filter by Entry Clerk, search, and approve or reject one, selected, or all slips. |
-| `/members` | Searchable member directory, enrollments and calculated standing, details, and authorized transfers/updates. |
+| `/members` | Searchable member directory, enrollments and calculated standing, details, and authorized transfers/updates. Branch first: the MAS / Collector filter lists the employees assigned to the chosen branch. |
 | `/mam` | Month-by-month account monitoring with branch/program/MAS filters and current-status synchronization. |
 | `/soa` | Printable Statement of Account for one enrollment. |
 | `/reports` | The signed-in Entry Clerk's own reports as Daily, Weekly, Monthly, and Yearly tabs (`?tab=weekly` keeps the open tab), in the company report layout. The clerk also records expenses, bank deposits, and report notes there. The old `/reports/daily`…`/reports/yearly` addresses redirect to the matching tab. |
@@ -102,7 +102,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/payroll` | Pay profiles, Draft runs, adjustments, approval, payment, printable payslips. |
 | `/employees` | Staff register, employment status, operational roles, multiple branches, and primary branch. Administrators can change an Employee ID; every reference follows (section 11). |
 | `/attendance` | Your current-day time-in/time-out and attendance calendar. |
-| `/attendance-reviews` | Management records Absent or AWOL where appropriate. |
+| `/attendance-reviews` | Management records Absent, AWOL or Day Off where appropriate; filter by branch and role. |
 | `/attendance-tracking` | Staff totals and daily board, with authorized lateness/time-out corrections. |
 | `/leave-requests` | Submit and review your own leave requests. |
 | `/leave-approvals` | Authorized approval/rejection; approved leave creates attendance records. |
@@ -387,7 +387,7 @@ Undertime minutes = max(0, 17:00 − time-out)
 
 Hours are rounded to two decimals. Worked hours are elapsed clock time: the current calculation does not subtract a lunch break. Payroll uses paid-day counts and the pay profile's hours/day rather than worked hours to price the base wage.
 
-Attendance Review can mark Absent/AWOL where no clocked or leave record blocks the action. The daily tracking board separates On time, Early, Late, Absent, AWOL, On leave, Not clocked in, and Non-working day. Authorized management/HR can adjust lateness and complete missing time-out with notes; Finance primarily reviews.
+Attendance Review can mark Absent, AWOL or **Day Off** where no clocked or leave record blocks the action, and filters the list by branch and role. Day Off (given by an administrator) replaces a system absence, is not counted as absent in payroll, and blocks clocking in that day. The daily tracking board separates On time, Early, Late, Absent, AWOL, On leave, Not clocked in, and Non-working day. Authorized management/HR can adjust lateness and complete missing time-out with notes; Finance primarily reviews.
 
 The calendar supports holiday records and branch-specific or all-branch non-working declarations. **Adding a holiday does not close attendance**; a closure declaration does. Declaring a closure cancels existing Present clock-ins in the affected branches and preserves the original times in notes. Removing a closure reopens the date but does not restore those clock-ins. Holiday templates are a starting list, with some movable dates explicitly marked estimated.
 
@@ -567,6 +567,8 @@ Sources: [daily entry model](../lib/todays-entries.ts), [clerk report](../lib/cl
 Employees and login accounts are separate records. An employee has an Employee ID in the company format (`PREFIX-YYYY-NNNN`), name, employment status, contact, operational roles, branch assignments, and primary branch. `Employee Branches` stores many-to-many assignments by stable branch ID; primary branch determines personal attendance. An account adds password, active status, and one or more login roles through `User Roles`.
 
 New employee registration attempts to create a login account immediately using matching role names. Account managers receive the one-time password; HR-only registration does not expose it, so IT must issue/reset it for handover. If account creation or privilege checks fail, the employee can still be registered with a message to finish the account in User Accounts. Updating employee roles synchronizes account roles only when the actor can manage accounts; an HR-only role change can leave a mismatch for IT to settle. Updating a User Account's roles also updates employee operational roles through the account-management workflow.
+
+**Notices to Explain (NTE)** ([nte.ts](../lib/nte.ts), Employees page, administrators only): an administrator issues a notice with the date issued and the reason. A notice is in force for 90 days from the date issued (`expires_on`). An employee with **3 or more notices in force** is listed at the top of the panel as *subject to suspension*, with the date the earliest one expires. A notice issued by mistake can be withdrawn with a reason; it stays on record but no longer counts. Notices are kept in `notices_to_explain` (migration `0006`).
 
 Administrators can change an Employee ID in Employees → Edit ([employee-id-change.ts](../lib/employee-id-change.ts)). Every column whose header ends in `employee_id` / `Employee ID`, in every tab except the Audit Log and the Legacy Pending tabs, is rewritten from the old ID to the new one, including Users (so the person signs in with the new ID) and Report Notes keys. The change refuses an ID already in use, writes the Employees row first, logs each edited row in the Audit Log, and summarizes the change in Record Corrections. Record IDs that only contain the old ID as text (`EBA-…`, `ATT-…`) are left as they are.
 

@@ -13,14 +13,14 @@ import { emptyDirectoryFilters, MEMBER_STATUSES, STANDING_FILTERS, type Director
 
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort();
-type DirectoryOptions = { branches: string[]; mas: string[]; programs: [string, string][]; statuses: string[] };
+type DirectoryOptions = { branches: string[]; mas: string[]; programs: [string, string][]; statuses: string[]; staff: Array<{ name: string; branches: string[] }> };
 
 export default function MembersPage() {
   // One page of members; filtering, sorting and paging run on the server (app/api/members/directory).
   const [members, setMembers] = useState<DirectoryMember[]>([]);
   const [totals, setTotals] = useState({ total: 0, matched: 0, pages: 1 });
   const [counts, setCounts] = useState<Record<string, number>>({});
-  const [choices, setChoices] = useState<DirectoryOptions>({ branches: [], mas: [], programs: [], statuses: [] });
+  const [choices, setChoices] = useState<DirectoryOptions>({ branches: [], mas: [], programs: [], statuses: [], staff: [] });
   const [filters, setFilters] = useState({ ...emptyDirectoryFilters });
   // The search box asks the server once typing pauses, not on every key.
   const [search, setSearch] = useState("");
@@ -72,12 +72,14 @@ export default function MembersPage() {
   const pages = totals.pages;
   const currentPage = page;
   function update(key: keyof DirectoryFilters, value: string) {
-    setFilters((previous) => ({ ...previous, [key]: value })); setPage(1); setSelected(null);
+    // A new branch clears the MAS / Collector, which belongs to the branch.
+    setFilters((previous) => ({ ...previous, [key]: value, ...(key === "branch" ? { mas: "" } : {}) })); setPage(1); setSelected(null);
   }
   const options: { key: Exclude<keyof DirectoryFilters, "search" | "standing">; label: string; values: [string, string][] }[] = [
     { key: "accountStatus", label: "Payment status (today)", values: ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Forfeited", "Suspended", "Needs review", "Not started"].map((v) => [v, v === "U" ? "U - Updated" : v === "ADV" ? "ADV - Advance" : v]) },
     { key: "branch", label: "Branch", values: choices.branches.map((v) => [v, v]) },
-    { key: "mas", label: "MAS / Collector", values: choices.mas.map((v) => [v, v]) },
+    // Branch first: only the employees assigned to the chosen branch.
+    { key: "mas", label: "MAS / Collector", values: filters.branch ? choices.staff.filter((item) => item.branches.includes(filters.branch)).map((item): [string, string] => [item.name, item.name]).sort((a, b) => a[0].localeCompare(b[0])) : [] },
     { key: "program", label: "Program", values: choices.programs },
     { key: "status", label: "Member status", values: choices.statuses.map((v): [string, string] => [v, v]) },
   ];
@@ -93,7 +95,7 @@ export default function MembersPage() {
       <label className="text-sm">Search<input className={fieldClass} value={filters.search} onChange={(e) => update("search", e.target.value)} placeholder="Name, PH number, contact number, address" /></label>
       <label className="text-sm">Sort by<select className={fieldClass} value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>{[["name", "Member name"], ["number", "PH number"], ["status", "Member status"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="text-sm">Order<select className={fieldClass} value={descending ? "desc" : "asc"} onChange={(e) => { setDescending(e.target.value === "desc"); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
-      {options.map(({ key, label, values }) => key === "branch" || key === "mas" || key === "program" ? <label key={key} className="text-sm">{label}<SearchSelect aria-label={label} className="mt-1 h-9" clearable placeholder="All" value={filters[key]} onValueChange={(value) => update(key, value)} options={values.map(([value, text]) => ({ value, label: text }))}/></label> : <label key={key} className="text-sm">{label}<select className={fieldClass} value={filters[key]} onChange={(e) => update(key, e.target.value)}><option value="">All</option>{values.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>)}
+      {options.map(({ key, label, values }) => key === "branch" || key === "mas" || key === "program" ? <label key={key} className="text-sm">{label}<SearchSelect aria-label={label} className="mt-1 h-9" clearable disabled={key === "mas" && !filters.branch} placeholder={key === "mas" && !filters.branch ? "Choose a branch first" : "All"} value={filters[key]} onValueChange={(value) => update(key, value)} options={values.map(([value, text]) => ({ value, label: text }))}/></label> : <label key={key} className="text-sm">{label}<select className={fieldClass} value={filters[key]} onChange={(e) => update(key, e.target.value)}><option value="">All</option>{values.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>)}
       <div className="flex items-end"><Button variant="ghost" onClick={() => { setFilters({ ...emptyDirectoryFilters }); setPage(1); setSelected(null); }}>Reset filters</Button></div>
     </div>
     <p className="text-sm text-muted-foreground">Branch, MAS / Collector, program, and payment status filters match the same enrollment. The Collector is whoever brought in that program&apos;s latest Collector collection. Payment statuses use today&apos;s MAM calculations. View payment history in <Link className="underline" href="/mam">MAM</Link>.</p>

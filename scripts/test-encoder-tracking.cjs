@@ -1917,3 +1917,45 @@ test('the Sheets API answered from the database reads, appends, updates and dele
     assert.deepEqual((await query('select holiday_id from holidays')).map((row) => row.holiday_id), ['HOL-2']);
   });
 });
+
+test('Notices to Explain: three in force make the employee subject to suspension; expired and withdrawn ones do not count', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'MD-1', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  h.rows.Employees = [[], ['MD-5', 'Ana Cruz', 'MATINA', 'MAS', 'active']];
+  const route = h.load('app/api/nte/route.ts');
+  const today = h.load('lib/remittance-deadline.ts').manilaNow().date;
+  const daysAgo = (days) => new Date(Date.parse(`${today}T00:00:00Z`) - days * 86400000).toISOString().slice(0, 10);
+  const issue = async (issuedOn, reason) => (await route.POST(request({ employeeId: 'MD-5', issuedOn, reason }))).json();
+  assert.match((await issue(today, '')).message, /reason/);
+  await issue(daysAgo(91), 'Old notice');            // expired: issued more than 90 days ago
+  await issue(daysAgo(40), 'Late remittance');
+  const second = await issue(daysAgo(10), 'Missing receipt photos');
+  let data = await (await route.GET()).json();
+  assert.deepEqual(data.standing.map((item) => [item.employeeId, item.active, item.subjectToSuspension]), [['MD-5', 2, false]]);
+  assert.equal(data.notices.find((nte) => nte.reason === 'Old notice').status, 'Expired');
+  const third = await issue(today, 'Unexplained absence');
+  data = await (await route.GET()).json();
+  assert.deepEqual(data.standing.map((item) => [item.active, item.subjectToSuspension]), [[3, true]], 'three in force: subject to suspension');
+  // Withdrawing one (issued by mistake) takes the employee back below the threshold.
+  assert.equal((await route.PATCH(request({ id: second.id, reason: 'Issued to the wrong person' }))).status, 200);
+  data = await (await route.GET()).json();
+  assert.deepEqual(data.standing.map((item) => [item.active, item.subjectToSuspension]), [[2, false]]);
+  assert.ok(third.id);
+  // Only administrators.
+  h.setUser({ userId: 'U2', employeeId: 'MD-2', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await route.GET()).status, 403);
+});
+
+test('an administrator can mark an employee Day Off in Attendance Review', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'MD-1', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true, manageAttendance: true } });
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-5', 'MD-5', 'Ana Cruz', 'x', 'active', '', '']];
+  h.rows.Employees = [[], ['MD-5', 'Ana Cruz', 'MATINA', 'MAS', 'active']];
+  h.rows.Attendance = [['attendance_id']];
+  const route = h.load('app/api/attendance-reviews/route.ts');
+  const response = await route.POST(request({ employeeId: 'MD-5', attendanceDate: '2026-10-05', status: 'Day Off', notes: 'Rest day' }));
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(result.record.status, 'Day Off');
+  const saved = h.writes.find((write) => String(write.range).startsWith('Attendance!') || String(write.range).startsWith("'Attendance'!"));
+  assert.ok(saved && JSON.stringify(saved.requestBody.values).includes('Day Off'), 'the record is saved as Day Off');
+  assert.equal((await route.POST(request({ employeeId: 'MD-5', attendanceDate: '2026-10-05', status: 'Holiday' }))).status, 400, 'only Absent, AWOL and Day Off');
+});

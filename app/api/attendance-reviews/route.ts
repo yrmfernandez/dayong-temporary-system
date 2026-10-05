@@ -1,6 +1,7 @@
 import { withEncoder } from "@/lib/encoder-context";
 import { closeFinishedAttendanceDaysQuietly, isSystemAbsence } from "@/lib/auto-absence";
 import { NextResponse } from "next/server";
+import { getEmployees } from "@/lib/employees";
 
 import {
   addAttendanceRecord,
@@ -59,12 +60,15 @@ export async function GET(request: Request) {
     }
 
     await closeFinishedAttendanceDaysQuietly();
-    const [employees, records, closures, branches] = await Promise.all([
+    const [employees, records, closures, branches, register] = await Promise.all([
       getActiveAttendanceEmployees(),
       getAttendanceRecordsForDate(attendanceDate),
       getClosures(attendanceDate, attendanceDate),
       employeeAttendanceBranches(),
+      getEmployees(),
     ]);
+    // Operational roles, for the review's role filter.
+    const rolesOf = new Map(register.map((employee) => [employee.id, employee.roles]));
     const closure = closures[0] ?? null;
     const recordsByEmployee = new Map(
       records.map((record) => [record.employeeId, record]),
@@ -79,6 +83,7 @@ export async function GET(request: Request) {
         return {
           ...employee,
           branch,
+          roles: rolesOf.get(employee.employeeId) ?? [],
           closed: Boolean(closure && closureCovers(closure, branch)),
           // Recorded Absent by the system at the end of the day because nobody marked the employee.
           systemAbsent: isSystemAbsence(recordsByEmployee.get(employee.employeeId)),
@@ -120,12 +125,8 @@ export const POST = withEncoder(async function POST(request: Request) {
       typeof body.attendanceDate === "string"
         ? body.attendanceDate.trim()
         : "";
-    const status =
-      body.status === "AWOL"
-        ? "AWOL"
-        : body.status === "Absent"
-          ? "Absent"
-          : "";
+    // Day Off: an administrator gives the employee the day off (not counted as absent in payroll).
+    const status = body.status === "AWOL" || body.status === "Absent" || body.status === "Day Off" ? body.status as "AWOL" | "Absent" | "Day Off" : "";
     const notes =
       typeof body.notes === "string" ? body.notes.trim() : "";
 
@@ -191,7 +192,7 @@ export const POST = withEncoder(async function POST(request: Request) {
       timeOut: "",
       workedHours: 0,
       overtimeHours: 0,
-      status: status as "Absent" | "AWOL",
+      status,
       lateMinutes: 0,
       undertimeMinutes: 0,
       leaveType: "",

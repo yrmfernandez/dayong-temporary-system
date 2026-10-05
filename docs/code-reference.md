@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-38 page routes, 52 API handlers, 95 library files, 35 component files; 285 scanned source/configuration/public-text files in total.
+38 page routes, 53 API handlers, 96 library files, 36 component files; 289 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -21,7 +21,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/cash-transactions` | [app/cash-transactions/page.tsx](../app/cash-transactions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
 | `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/receipt-photo`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance` |
 | `/commissions` | [app/commissions/page.tsx](../app/commissions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
-| `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password` |
+| `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password`, `@/components/nte-panel` |
 | `/exceptions` | [app/exceptions/page.tsx](../app/exceptions/page.tsx) | `@/components/entry-correction-form`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/api-response`, `@/lib/exceptions` |
 | `/expenses` | [app/expenses/page.tsx](../app/expenses/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/expense-options` |
 | `/fidelity/me` | [app/fidelity/me/page.tsx](../app/fidelity/me/page.tsx) |  |
@@ -91,6 +91,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/members/standing` | GET | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) |
 | `/api/members/transfer` | GET, POST | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) |
 | `/api/my-entries` | GET, POST | [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) |
+| `/api/nte` | GET, POST, PATCH | [app/api/nte/route.ts](../app/api/nte/route.ts) |
 | `/api/payroll` | GET, POST | [app/api/payroll/route.ts](../app/api/payroll/route.ts) |
 | `/api/profile` | GET | [app/api/profile/route.ts](../app/api/profile/route.ts) |
 | `/api/program-categories` | GET, POST, PUT, DELETE | [app/api/program-categories/route.ts](../app/api/program-categories/route.ts) |
@@ -160,7 +161,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/leave-data.ts](../lib/leave-data.ts) | `LeaveApprovalStatus`, `LeaveRequest`, `getLeaveRequestsForEmployee`, `addLeaveRequest`, `getAllLeaveRequests`, `updateLeaveRequestReview` | `@/lib/encoder-sheets`, `@/lib/google-sheets` |
 | [lib/mam-report.ts](../lib/mam-report.ts) | `MamAccount`, `monitoringMonths`, `buildMamReport` | `@/lib/account-rules` |
 | [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `ProgramInput`, `updateProgramRecord`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/encoder-sheets`, `@/lib/sheet-rows`, `@/lib/users-sheet`, `@/lib/program-incentive-store` |
-| [lib/member-directory-data.ts](../lib/member-directory-data.ts) | `loadMemberDirectory`, `DirectoryQuery`, `queryMemberDirectory` | `@/lib/db`, `@/lib/account-data`, `@/lib/member-directory`, `@/lib/member-scope` |
+| [lib/member-directory-data.ts](../lib/member-directory-data.ts) | `loadMemberDirectory`, `DirectoryQuery`, `queryMemberDirectory` | `@/lib/db`, `@/lib/account-data`, `@/lib/member-directory`, `@/lib/member-scope`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [lib/member-directory.ts](../lib/member-directory.ts) | `DirectoryEnrollment`, `DirectoryMember`, `DECEASED_STATUS`, `MEMBER_STATUSES`, `STANDING_FILTERS`, `Standing`, `matchesStanding`, `DirectoryFilters`, `emptyDirectoryFilters`, `MemberRecord`, `EnrollmentRecord`, `CollectorRecord`, `buildMemberDirectory`, `filterMemberDirectory` | — |
 | [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
 | [lib/member-scope.ts](../lib/member-scope.ts) | `ownMembersScope`, `isOwnAccount` | `@/lib/auth`, `@/lib/access-control`, `@/lib/employees` |
@@ -168,6 +169,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/members.ts](../lib/members.ts) | `getMemberPrograms`, `getProgram`, `getMember` | `./types` |
 | [lib/mock-members.ts](../lib/mock-members.ts) | `mockMembers` | `./types` |
 | [lib/navigation.ts](../lib/navigation.ts) | `NavItem`, `NavSection`, `normalizeRole`, `workspaceFor`, `routeMatches`, `visibleNavigation`, `isInWorkspace`, `locatePage`, `activeHref` | `@/lib/access-control` |
+| [lib/nte.ts](../lib/nte.ts) | `NTE_DAYS`, `SUSPENSION_THRESHOLD`, `Nte`, `listNtes`, `issueNte`, `withdrawNte` | `@/lib/db`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/page-catalog.ts](../lib/page-catalog.ts) | `pageCatalog`, `pageCatalogRoutes` | — |
 | [lib/passwords.ts](../lib/passwords.ts) | `ONE_TIME_PASSWORD_HOURS`, `generateOneTimePassword`, `hashPassword`, `hashOneTimePassword`, `oneTimePasswordExpiry`, `checkPassword` | — |
 | [lib/payroll-calc.ts](../lib/payroll-calc.ts) | `WORKING_DAYS_PER_YEAR`, `BaseType`, `PayProfile`, `PayrollSettings`, `defaultPayrollSettings`, `AttendanceDay`, `CommissionItem`, `PayrollLine`, `Adjustment`, `COMPANY_PROGRAM_CATEGORY`, `ADJUSTMENT_CATEGORIES`, `dailyRateOf`, `scheduledWorkingDays`, `computePayrollLine`, `lineTotals`, `runTotals` | — |
@@ -228,6 +230,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/inline-panel.tsx](../components/inline-panel.tsx) | `InlinePanel`, `InlineRow` | `@/lib/utils` |
 | [components/member-mam.tsx](../components/member-mam.tsx) | `MemberMam` | `@/components/status-badge` |
 | [components/metric-tile.tsx](../components/metric-tile.tsx) | `MetricTile` | `@/components/status-badge` |
+| [components/nte-panel.tsx](../components/nte-panel.tsx) | `NtePanel` | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/nte` |
 | [components/one-time-password.tsx](../components/one-time-password.tsx) | `IssuedPassword`, `OneTimePasswordNotice` | `@/components/ui/button` |
 | [components/print-button.tsx](../components/print-button.tsx) | `PrintButton` | `@/components/ui/button` |
 | [components/profile.tsx](../components/profile.tsx) | `Profile`, `permissionLabels`, `initials`, `Avatar`, `useProfile`, `ProfileDetails`, `ProfileMenu` | `@/components/status-badge`, `@/lib/utils`, `@/lib/ui-preferences`, `@/lib/use-form-draft` |
@@ -255,7 +258,7 @@ All routes pass through the authentication proxy except the three public auth en
 | File | Exported symbols | Local imports / re-exports |
 | --- | --- | --- |
 | [app/api/attendance-calendar/route.ts](../app/api/attendance-calendar/route.ts) | `GET`, `POST` | `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
-| [app/api/attendance-reviews/route.ts](../app/api/attendance-reviews/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auto-absence`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/google-sheets-data` |
+| [app/api/attendance-reviews/route.ts](../app/api/attendance-reviews/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auto-absence`, `@/lib/employees`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/google-sheets-data` |
 | [app/api/attendance-tracking/daily/route.ts](../app/api/attendance-tracking/daily/route.ts) | `GET`, `PATCH` | `@/lib/auth-server`, `@/lib/auto-absence`, `@/lib/encoder-context`, `@/lib/attendance-calendar`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-board`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [app/api/attendance-tracking/route.ts](../app/api/attendance-tracking/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/attendance-board`, `@/lib/attendance-data`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [app/api/attendance/route.ts](../app/api/attendance/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auto-absence`, `@/lib/attendance-data`, `@/lib/attendance-calendar`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/attendance`, `@/lib/auth-server` |
@@ -288,6 +291,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/account-data` |
 | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/member-transfer` |
 | [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/daily-audit`, `@/lib/remittance-deadline`, `@/lib/todays-entries`, `@/lib/encoder-context`, `@/lib/remittance-workflow` |
+| [app/api/nte/route.ts](../app/api/nte/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/nte` |
 | [app/api/payroll/route.ts](../app/api/payroll/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/access-control`, `@/lib/encoder-context`, `@/lib/payroll` |
 | [app/api/profile/route.ts](../app/api/profile/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/users-sheet` |
 | [app/api/program-categories/route.ts](../app/api/program-categories/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-categories` |
@@ -334,6 +338,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | --- | --- | --- |
 | [scripts/audit-sheet-database.mjs](../scripts/audit-sheet-database.mjs) | `node:fs`, `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/check-collections.mjs](../scripts/check-collections.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
+| [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
 | [scripts/copy-sheets-to-postgres.mjs](../scripts/copy-sheets-to-postgres.mjs) | `@next/env`, `googleapis`, `postgres` | Yes; read source for semantics |
 | [scripts/correct-employee-id.mjs](../scripts/correct-employee-id.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/generate-code-reference.mjs](../scripts/generate-code-reference.mjs) | `node:fs`, `node:path`, `typescript` | Yes; read source for semantics |

@@ -151,6 +151,10 @@ export const POST = withEncoder(async function POST(request: Request) {
         );
       }
 
+      if (record?.status === "Day Off") {
+        return NextResponse.json({ success: false, message: "You have the day off today; an administrator marked it in Attendance Review." }, { status: 409 });
+      }
+
       if (record) {
         return NextResponse.json(
           {

@@ -43,6 +43,13 @@
       "when": 1791169833820,
       "tag": "0005_row_order_and_photo_data",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791187581788,
+      "tag": "0006_notices_to_explain",
+      "breakpoints": true
     }
   ]
 }

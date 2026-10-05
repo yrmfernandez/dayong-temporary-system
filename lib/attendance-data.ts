@@ -61,7 +61,7 @@ export function sheetTimeText(value: unknown) {
 
 const statusOf = (value: unknown): AttendanceStatus => {
   const status = String(value ?? "").trim();
-  return status === "Leave" || status === "Absent" || status === "AWOL" || status === "Non-working Day" ? status : "Present";
+  return status === "Leave" || status === "Absent" || status === "AWOL" || status === "Non-working Day" || status === "Day Off" ? status : "Present";
 };
 
 function readAttendanceRow(row: unknown[]): AttendanceRecord {

@@ -4,6 +4,8 @@ import { currentDb, schema } from "@/lib/db";
 import { accountReport } from "@/lib/account-data";
 import { buildMemberDirectory, emptyDirectoryFilters, filterMemberDirectory, matchesStanding, type CollectorRecord, type DirectoryFilters, type DirectoryMember, type EnrollmentRecord, type MemberRecord } from "@/lib/member-directory";
 import { isOwnAccount } from "@/lib/member-scope";
+import { getEmployees } from "@/lib/employees";
+import { getBranches } from "@/lib/google-sheets-data";
 
 const { collections, member_programs: memberPrograms, members, programs } = schema;
 const text = (value: string | null | undefined) => (value ?? "").trim();
@@ -58,7 +60,10 @@ export type DirectoryQuery = {
  * other filters leave, so the page never loads every payment just to show 25 members.
  */
 export async function queryMemberDirectory(query: DirectoryQuery) {
-  const everyone = await loadMemberDirectory(query.onlyMas);
+  const [everyone, employees, branchList] = await Promise.all([loadMemberDirectory(query.onlyMas), getEmployees(), getBranches()]);
+  // Branch first: the MAS / Collector choices are the active employees assigned to each branch.
+  const branchNames = new Map(branchList.map((branch) => [branch.id, branch.name]));
+  const staff = employees.filter((employee) => employee.status === "active").map((employee) => ({ name: employee.name, branches: employee.branchIds.map((id) => branchNames.get(id) ?? "").filter(Boolean) }));
   // A MAS sees only their own programs on each member.
   const members = query.onlyMas === null ? everyone : everyone
     .map((member) => ({ ...member, enrollments: member.enrollments.filter((enrollment) => isOwnAccount(enrollment.mas, query.onlyMas ?? "")) }))
@@ -70,6 +75,7 @@ export async function queryMemberDirectory(query: DirectoryQuery) {
     mas: unique(enrollments.flatMap((enrollment) => [enrollment.mas, enrollment.collector])),
     programs: [...new Map(enrollments.map((enrollment) => [enrollment.programId, enrollment.programName])).entries()].sort((a, b) => a[1].localeCompare(b[1])),
     statuses: unique(members.map((member) => member.status)),
+    staff,
   };
   const counts = Object.fromEntries([["", members.length], ...(["active", "inactive", "dead", "alive"] as const).map((standing) => [standing, members.filter((member) => matchesStanding(member, standing)).length])]);
 

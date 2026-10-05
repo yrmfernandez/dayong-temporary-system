@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type AttendanceRecord = {
-  status: "Present" | "Leave" | "Absent" | "AWOL" | "Non-working Day";
+  status: "Present" | "Leave" | "Absent" | "AWOL" | "Non-working Day" | "Day Off";
   timeIn: string;
   timeOut: string;
 };
@@ -24,6 +24,7 @@ type EmployeeAttendance = {
   employeeId: string;
   fullName: string;
   branch: string;
+  roles: string[];
   // The employee's branch is closed by the date's non-working day.
   closed: boolean;
   // Recorded Absent by the system at the end of the day because management did not mark it.
@@ -48,6 +49,11 @@ export default function AttendanceReviewsPage() {
   const [updatingId, setUpdatingId] = useState("");
   const [message, setMessage] = useState("");
   const [nonWorkingDay, setNonWorkingDay] = useState<NonWorkingDay | null>(null);
+  const [branchFilter, setBranchFilter] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const branchChoices = [...new Set(employees.map((employee) => employee.branch).filter(Boolean))].sort();
+  const roleChoices = [...new Set(employees.flatMap((employee) => employee.roles ?? []))].sort();
+  const shown = employees.filter((employee) => (!branchFilter || employee.branch === branchFilter) && (!roleFilter || (employee.roles ?? []).includes(roleFilter)));
 
   const loadReview = async () => {
     setLoading(true);
@@ -85,7 +91,7 @@ export default function AttendanceReviewsPage() {
 
   const markAttendance = async (
     employeeId: string,
-    status: "Absent" | "AWOL",
+    status: "Absent" | "AWOL" | "Day Off",
   ) => {
     setUpdatingId(employeeId);
     setMessage("");
@@ -122,7 +128,7 @@ export default function AttendanceReviewsPage() {
           Attendance Review
         </h1>
         <p className="text-sm text-muted-foreground">
-          Mark a missing attendance as Absent or AWOL. Clocked attendance and approved leave cannot be changed here. Anyone still unmarked after 11:59 PM is recorded Absent by the system and shown as &quot;Absent · by system&quot;; marking them here replaces it.
+          Mark a missing attendance as Absent or AWOL, or give an employee the Day Off (not counted as absent in payroll; they cannot clock in that day). Clocked attendance and approved leave cannot be changed here. Anyone still unmarked after 11:59 PM is recorded Absent by the system and shown as &quot;Absent · by system&quot;; marking them here replaces it.
         </p>
       </div>
 
@@ -144,6 +150,20 @@ export default function AttendanceReviewsPage() {
             <Button type="button" onClick={() => void loadReview()} disabled={loading}>
               {loading ? "Loading..." : "Load Attendance"}
             </Button>
+            <div className="space-y-2">
+              <Label htmlFor="attendance-branch">Branch</Label>
+              <select id="attendance-branch" className="h-9 rounded-md border bg-background px-3 text-sm" value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)}>
+                <option value="">All branches</option>
+                {branchChoices.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="attendance-role">Role</Label>
+              <select id="attendance-role" className="h-9 rounded-md border bg-background px-3 text-sm" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+                <option value="">All roles</option>
+                {roleChoices.map((role) => <option key={role} value={role}>{role}</option>)}
+              </select>
+            </div>
           </div>
 
           {nonWorkingDay && (
@@ -162,7 +182,8 @@ export default function AttendanceReviewsPage() {
 
           {!loading && !nonWorkingDay?.allBranches && employees.length > 0 && (
             <div className="divide-y rounded-lg border">
-              {employees.map((employee) => {
+              {shown.length === 0 && <p className="p-4 text-sm text-muted-foreground">No employee matches this branch and role.</p>}
+              {shown.map((employee) => {
                 const locked = Boolean(
                   employee.closed ||
                     employee.record?.timeIn ||
@@ -202,6 +223,15 @@ export default function AttendanceReviewsPage() {
                             onClick={() => void markAttendance(employee.employeeId, "AWOL")}
                           >
                             Mark AWOL
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={updatingId === employee.employeeId || employee.record?.status === "Day Off"}
+                            onClick={() => void markAttendance(employee.employeeId, "Day Off")}
+                          >
+                            Mark Day Off
                           </Button>
                         </>
                       )}
