@@ -12,6 +12,14 @@ import {
   ServerConfigurationError,
 } from "@/lib/server-environment";
 
+/** Where settings must be added, named for this deployment: Vercel sets VERCEL_ENV to production, preview or development. */
+function vercelEnvironment() {
+  const environment = process.env.VERCEL_ENV;
+  if (environment === "preview") return "Vercel Preview environment";
+  if (environment === "production") return "Vercel Production environment";
+  return environment === "development" ? "Vercel Development environment" : "server environment (.env.local when running locally)";
+}
+
 function googleSheetsLoginMessage(error: unknown) {
   if (!(error instanceof Error)) return null;
 
@@ -22,7 +30,7 @@ function googleSheetsLoginMessage(error: unknown) {
     message.includes("decoder routines") ||
     message.includes("private key")
   ) {
-    return "Google service account authentication failed. Check GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY in the Vercel Production environment, then redeploy.";
+    return `Google service account authentication failed. Check GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY in the ${vercelEnvironment()}, then redeploy.`;
   }
 
   const status = (error as Error & { code?: number }).code;
@@ -34,7 +42,7 @@ function googleSheetsLoginMessage(error: unknown) {
     status === 404 ||
     message.includes("requested entity was not found")
   ) {
-    return "The configured Google Sheet was not found. Check GOOGLE_SHEET_ID in the Vercel Production environment.";
+    return `The configured Google Sheet was not found. Check GOOGLE_SHEET_ID in the ${vercelEnvironment()}.`;
   }
 
   return null;
@@ -146,7 +154,7 @@ export async function POST(request: Request) {
     let status = 500;
 
     if (error instanceof ServerConfigurationError) {
-      message = `${error.message} Add it in the Vercel Production environment and redeploy.`;
+      message = `${error.message} Add it in the ${vercelEnvironment()} and redeploy.`;
       status = 503;
     } else if (
       error instanceof Error &&

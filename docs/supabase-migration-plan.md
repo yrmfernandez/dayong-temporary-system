@@ -185,6 +185,7 @@ Updated with every change on the `supabase` branch. "Done" means the module read
 
 ### Known gaps on the branch until cutover
 
+- **Vercel previews of this branch** are kept on purpose (owner's choice, October 5, 2026). Production deploys from `main` only. A preview uses the Preview environment variables: if those include the production Google Sheets settings, saving on a page that still uses Sheets changes the live spreadsheet, so treat previews as live for those pages. On this branch `DATABASE_URL` is a required setting (`lib/server-environment.ts`), so without it in Vercel's Preview environment even sign-in stops with "Missing server environment variable: DATABASE_URL". Use staging's value, never production's, and redeploy the preview after adding it: a variable reaches only deployments built after it is saved.
 - Programs, branches and employees added or edited **in the app on this branch** are saved to Sheets, not the database, until step 1 is done. On staging, a New Sale or Collection for such a program or employee fails (the database has no matching row). Rerun the copy script to refresh staging.
 - Remittances, Today's Entries, My Entries, reports and dashboards still read Sheets, so they do not show Collections or New Sales saved on this branch.
 - The system guide and topic docs still describe the live system on Google Sheets. They are rewritten for the database in phase 6, at cutover.
