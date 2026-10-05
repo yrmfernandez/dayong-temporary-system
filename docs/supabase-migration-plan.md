@@ -1,6 +1,8 @@
 # Supabase migration plan
 
-Drafted October 4, 2026. Status: **phase 1 in progress** on the `supabase` branch. See [Progress](#progress). Moves the operational database from Google Sheets to PostgreSQL on Supabase.
+Drafted October 4, 2026; updated October 5, 2026. Moves the operational database from Google Sheets to PostgreSQL on Supabase.
+
+**Status: phase 2 in progress** on the `supabase` branch. The live system (`main`) still runs entirely on Google Sheets. See [Status by module](#status-by-module) for what is done, partly done, and still to do, and [Progress](#progress) for the dated log.
 
 ## Why
 
@@ -141,6 +143,52 @@ Every change is a migration file in git:
 
 Migration files keep a full history of every schema change, and staging catches mistakes before production does.
 
+## Status by module
+
+Updated with every change on the `supabase` branch. "Done" means the module reads and saves through `lib/db.ts` and its tests run on PGlite; it still waits for cutover like everything else.
+
+### Done
+
+| Area | Files | Notes |
+| --- | --- | --- |
+| Database layer | `lib/db.ts`, `db/schema.ts`, `db/migrations/0000`–`0004` | Transactions name the signed-in user for the audit trigger; data helpers join the open transaction (`currentDb`). |
+| Copy from Sheets | `scripts/copy-sheets-to-postgres.mjs` | Dry run by default; verified load into staging. |
+| Tests on PostgreSQL | `scripts/test-encoder-tracking.cjs` | PGlite built from `db/migrations`, emptied before each test. |
+| Collections save | `app/api/collections/route.ts`, `lib/account-data.ts` | Locks only the batch's accounts; one transaction. |
+| Account status, MAM, member MAM, member standing | `lib/account-data.ts`, `lib/mam-report.ts` | Member pages load only that member's accounts; MAS scope filters in the query. |
+| Duplicate checks | `lib/duplicate-entries.ts` | OR number, Application Number and returning person: only the numbers or people being saved. |
+| New Sales save | `app/api/sales/route.ts`, `lib/member-records.ts` | Member, enrollment, sale and beneficiaries in one transaction. |
+| Member search and lookups | `lib/member-records.ts`, `app/api/members`, `app/api/member-programs/check`, `app/api/sales/validate` | |
+| Members directory | `lib/member-directory-data.ts`, `lib/member-directory.ts` | A MAS's request loads only their own accounts and members. |
+| Member transfers | `lib/member-transfer.ts` | MAS change and history saved together; the change is in the Audit Log. |
+| Statement of account | `lib/statement-of-account.ts` | Loads one account, its member and its New Sale. |
+| Member edit and delete | `lib/master-data-crud.ts` | Program and branch delete checks look at enrollments in the database. |
+
+### Partly done
+
+| Area | What is left |
+| --- | --- |
+| `lib/master-data-crud.ts` | Programs, program incentives and branches are still edited in Sheets. |
+| `lib/entry-corrections.ts` | Duplicate checks use the database, but the correction itself still edits the Sales and Collections sheet rows. Must move with Remittances (step 4 below). |
+
+### To do, in order
+
+1. **Master data**: programs, program incentives, program categories, branches, employees, employee branches, users, roles, user roles, remittance methods, system settings, holidays (`lib/google-sheets-data.ts`, `lib/employees.ts`, `lib/roles.ts`, `lib/users-sheet.ts`, `lib/program-incentive-store.ts`, `lib/program-categories.ts`, `lib/remittance-methods.ts`, `lib/system-settings.ts`). First, because New Sales and Collections still validate against these lists in Sheets while the database links to them.
+2. **Sign-in and sessions**: `app/api/auth/login`, `lib/session-account.ts`, `app/api/settings` (password change), `lib/employee-id-change.ts` (becomes `ON UPDATE CASCADE`).
+3. **Receipt photos** to Supabase Storage: `lib/receipt-photos.ts`, `app/api/receipt-photos`.
+4. **Remittances and corrections**: `lib/remittance-workflow.ts`, `lib/remittance.ts`, `lib/entry-corrections.ts`, `lib/record-corrections.ts`.
+5. **Entry views and checks**: `lib/todays-entries.ts`, My Entries, `lib/exceptions.ts` (also lists open `copy_exceptions` and flagged legacy duplicates), `lib/date-checks.ts`, `app/api/history` (Audit Log page reads `audit_log`).
+6. **Reports and dashboards**: `lib/clerk-report.ts`, `lib/clerk-cash.ts`, `lib/report-remarks.ts`, `lib/daily-audit.ts`, `lib/reports.ts`, `lib/dashboard-data.ts`, `lib/executive-analytics.ts`, `lib/company-targets.ts`.
+7. **HR and finance**: `lib/attendance-data.ts`, `lib/attendance-calendar.ts`, `lib/auto-absence.ts`, `lib/leave-data.ts`, `lib/payroll.ts`, `lib/fidelity.ts`, `lib/finance-data.ts`, `lib/finance-operations.ts`.
+8. **Remove the Sheets layer**: `lib/google-sheets.ts`, `lib/sheets-read-cache.ts`, `lib/encoder-sheets.ts`, `lib/sheet-rows.ts`, `lib/system-health.ts` Sheets counters, `app/api/google-sheets/test`, and the `sheets:*` scripts.
+9. **Phases 4–6**: report comparison, staging trial, cutover rehearsals, cutover, nightly backups and Sheets export, documentation (system guide, code reference).
+
+### Known gaps on the branch until cutover
+
+- Programs, branches and employees added or edited **in the app on this branch** are saved to Sheets, not the database, until step 1 is done. On staging, a New Sale or Collection for such a program or employee fails (the database has no matching row). Rerun the copy script to refresh staging.
+- Remittances, Today's Entries, My Entries, reports and dashboards still read Sheets, so they do not show Collections or New Sales saved on this branch.
+- The system guide and topic docs still describe the live system on Google Sheets. They are rewritten for the database in phase 6, at cutover.
+
 ## Progress
 
 | Date | Step | Result |
@@ -151,7 +199,8 @@ Migration files keep a full history of every schema change, and staging catches 
 | Oct 4, 2026 | Phase 1: migrations `0002_employee_branch_unique`, `0003_copy_exceptions` | One branch assignment per employee and branch; table for cells the copy could not convert |
 | Oct 4, 2026 | Phase 3: `scripts/copy-sheets-to-postgres.mjs` first full load into staging | 32 s; row counts and money totals match for every table; database 51 MB. Sample lookups 66–137 ms from Manila, including the network trip (one Collections read from Sheets: about 3 s) |
 | Oct 4, 2026 | Phase 2, step 1: `lib/db.ts`; account data, OR and application-number checks, and the Collections save read and write the database | A Collections batch locks only its accounts and saves in one transaction; tests run on PGlite (in-process PostgreSQL built from the same migrations); 120 pass |
-| Oct 4, 2026 | Phase 2, step 2: New Sales save, member search and lookups (`lib/member-records.ts`), duplicate-person check; migration `0004_member_program_unique` | A New Sales batch saves in one transaction (before, a failure could leave half a batch); database rules on member number, Application Number and one enrollment per member and program stop racing saves; 120 tests pass |
+| Oct 5, 2026 | Phase 2, step 2: New Sales save, member search and lookups (`lib/member-records.ts`), duplicate-person check; migration `0004_member_program_unique` | A New Sales batch saves in one transaction (before, a failure could leave half a batch); database rules on member number, Application Number and one enrollment per member and program stop racing saves; 120 tests pass |
+| Oct 5, 2026 | Phase 2, step 3: Members directory (`lib/member-directory-data.ts`), member transfers, statement of account, member edit and delete | A MAS's directory request loads only their own members; transfers save the MAS change and history together; the SOA loads one account; 121 tests pass |
 
 Phase 1 also replaced step 4 of phase 0: the Drizzle schema in `db/schema.ts` now describes every table, so the 17 unregistered tabs were not added to `config/sheet-database-schema.json`.
 

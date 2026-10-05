@@ -1,6 +1,8 @@
 import { accountState, todayInManila } from "@/lib/account-rules";
 import { accountReport, loadAccountData } from "@/lib/account-data";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { and, asc, eq } from "drizzle-orm";
+
+import { currentDb, schema } from "@/lib/db";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -24,15 +26,14 @@ export async function listStatementAccounts() {
  * the same rules as MAM and Collections (lib/account-rules.ts), so the SOA always agrees with them.
  */
 export async function getStatementOfAccount(enrollmentId: string) {
-  const [data, extra] = await Promise.all([
-    loadAccountData(),
-    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: ["'Members'!A:R", "'Sales'!A:AE"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
-  ]);
+  const data = await loadAccountData({ enrollmentIds: [enrollmentId] });
   const account = data.accounts.find((item) => item.id === enrollmentId);
   if (!account) throw new Error("Select a member program account.");
-  const [members, sales] = extra.data.valueRanges?.map((range) => range.values ?? []) ?? [];
-  const member = members.slice(1).find((row) => text(row[0]) === account.memberId) ?? [];
-  const sale = sales.slice(1).find((row) => text(row[5]) === account.memberNumber && text(row[21]) === account.programId);
+  const db = currentDb();
+  const [[member], [sale]] = await Promise.all([
+    db.select().from(schema.members).where(eq(schema.members.member_id, account.memberId)),
+    db.select().from(schema.sales).where(and(eq(schema.sales.member_number, account.memberNumber), eq(schema.sales.program_id, account.programId))).orderBy(asc(schema.sales.date_created)).limit(1),
+  ]);
   const today = todayInManila();
   const own = data.payments.filter((payment) => payment.enrollmentId === account.id);
   const state = accountState(account, own, today);
@@ -43,18 +44,18 @@ export async function getStatementOfAccount(enrollmentId: string) {
     return { orDate: payment.orDate, orNumber: payment.orNumber, monthFrom: payment.monthFrom, monthTo: payment.monthTo, nopFrom: payment.nopFrom, nopTo: payment.nopTo, amount: payment.amount, runningTotal: running };
   });
   const collectionsPaid = round(payments.reduce((sum, payment) => sum + payment.amount, 0));
-  const salePaid = Number(sale?.[26]) || 0;
+  const salePaid = sale?.amount_paid ?? 0;
   return {
     statementDate: today,
     member: {
-      name: [text(member[3]), text(member[4]), text(member[2]), text(member[5])].filter(Boolean).join(" ") || account.memberName,
-      number: account.memberNumber, contact: text(member[11]), address: text(member[12]), birthdate: text(member[6]).slice(0, 10),
+      name: [text(member?.first_name), text(member?.middle_name), text(member?.surname), text(member?.name_extension)].filter(Boolean).join(" ") || account.memberName,
+      number: account.memberNumber, contact: text(member?.member_contact), address: text(member?.address), birthdate: member?.birthdate ?? "",
     },
     account: {
       id: account.id, programName: account.programName, programId: account.programId, doi: account.doi, branch: account.branch, mas: account.mas,
-      monthlyDue: account.basePay, payBalanceTotal: account.payBalanceTotal, applicationNumber: text(sale?.[28]),
+      monthlyDue: account.basePay, payBalanceTotal: account.payBalanceTotal, applicationNumber: text(sale?.application_no),
     },
-    newSale: sale ? { date: text(sale[30]) || text(sale[1]).slice(0, 10), amount: salePaid, registration: Number(sale[25]) || 0, paymentMode: text(sale[23]) } : null,
+    newSale: sale ? { date: sale.or_date || text(sale.date_created).slice(0, 10), amount: salePaid, registration: sale.registration_amount ?? 0, paymentMode: text(sale.payment_method) } : null,
     history,
     summary: {
       status: state.status, temporarilySuspended: state.temporarilySuspended,

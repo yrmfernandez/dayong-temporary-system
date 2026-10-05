@@ -236,13 +236,9 @@ test('expense entries follow the company form: account, attachments, approver, a
 test('statement of account lists the new sale and every collection with running totals, for administrators only', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   await seedAccount({ programName: 'DS-320', basePay: 320, payBalanceTotal: 19200, doi: '2026-06-15', branch: 'MINTAL', mas: 'Maria', accountStatus: 'U' });
+  await query("update members set member_contact = '0917', address = 'Mintal, Davao City' where member_id = 'MEM-1'");
   await seed('collections', [{ collection_id: 'COL-1', collection_batch_id: 'CBT-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', mas: 'Maria', or_number: 'OR-100', or_date: '2026-07-10', amount_collected: 640, month_from: '2026-07', month_to: '2026-08', nop_from: 2, nop_to: 3, status: 'Posted' }]);
   await seed('sales', [{ sale_id: 'SAL-1', member_number: 'PH-1', program_id: 'DP-1', amount_paid: 320, application_no: 'APP-1', or_date: '2026-06-15' }]);
-  // The SOA still reads member and sale details from the sheets until that module moves.
-  const member = Array(18).fill(''); Object.assign(member, { 0: 'MEM-1', 1: 'PH-1', 2: 'Santos', 3: 'Ana', 11: '0917', 12: 'Mintal, Davao City' });
-  const sale = Array(31).fill(''); Object.assign(sale, { 0: 'SAL-1', 5: 'PH-1', 21: 'DP-1', 26: 320, 28: 'APP-1', 30: '2026-06-15' });
-  h.rows.Members = [[], member];
-  h.rows.Sales = [[], sale];
   const route = h.load('app/api/soa/route.ts');
   const list = await (await route.GET(new Request('http://localhost/api/soa'))).json();
   assert.deepEqual(list.accounts.map((item) => [item.id, item.memberName, item.programName]), [['ENR-1', 'Santos, Ana', 'DS-320']]);
@@ -283,7 +279,7 @@ test('master-data CRUD updates programs and blocks deleting referenced records',
   const route = h.load('app/api/programs/route.ts');
   h.rows.Programs = [[], ['DP-0001', 'P1', 'Plan One', 350, 'active', '']];
   h.rows['Program Incentives'] = [[], ['INC-1', 'DP-0001', 'MAS', 1, 12, 'percentage', 50, 30]];
-  h.rows['Member programs'] = [[], ['MP-1', 'MEM-1', 'PH-1', 'DP-0001']];
+  await seedAccount({ enrollment: 'MP-1', program: 'DP-0001' });
   const input = { code: 'P1', name: 'Plan Updated', basePay: 400, status: 'active', description: '', incentiveTiers: [{ role: 'MAS', fromMonth: 1, toMonth: 12, incentiveType: 'percentage', markUp: 50, incentiveAmount: 30 }] };
   const updated = await route.PUT(new Request('http://localhost/api/programs?id=DP-0001', { method: 'PUT', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' } }));
   assert.equal(updated.status, 200);
@@ -310,11 +306,15 @@ test('member directory requires Members page access, joins accounts once, and fi
   assert.equal((await route.GET()).status, 403, 'a role without the Members page cannot pull the directory');
   // Finance sees every member but does not encode; a MAS sees only their own (tested separately).
   h.setUser({ userId: 'U1', roleNames: ['Finance'], permissions: {} });
-  const member = ['M1', 'PH-001', 'Santos', 'Ana'];
-  member[12] = 'Blk 12, Mintal, Davao City'; member[13] = 'Pedro Santos'; member[15] = 'TRUE'; member[17] = 'Active';
-  h.rows.Members = [[], member, ['M2', 'PH-002', 'Cruz', 'Ben']];
-  h.rows['Member programs'] = [[], ['E1', 'M1', 'PH-001', 'P1', '2026-01-01', 'North', 'MAS1'], ['E2', 'M1', 'PH-001', 'P2', '2026-02-01', 'South', 'MAS2']];
-  h.rows.Programs = [[], ['P1', 'A', 'Program A'], ['P2', 'B', 'Program B']];
+  await seed('members', [
+    { member_id: 'M1', member_number: 'PH-001', surname: 'Santos', first_name: 'Ana', address: 'Blk 12, Mintal, Davao City', claimant_name: 'Pedro Santos', claimant_same_address: true, status: 'Active' },
+    { member_id: 'M2', member_number: 'PH-002', surname: 'Cruz', first_name: 'Ben' },
+  ]);
+  await seed('programs', [{ program_id: 'P1', program_code: 'A', program_name: 'Program A' }, { program_id: 'P2', program_code: 'B', program_name: 'Program B' }]);
+  await seed('member_programs', [
+    { enrollment_id: 'E1', member_id: 'M1', member_number: 'PH-001', program_id: 'P1', doi: '2026-01-01', branch: 'North', mas: 'MAS1' },
+    { enrollment_id: 'E2', member_id: 'M1', member_number: 'PH-001', program_id: 'P2', doi: '2026-02-01', branch: 'South', mas: 'MAS2' },
+  ]);
   const response = await route.GET();
   assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
   const { members, canAddMember } = await response.json();
@@ -339,7 +339,8 @@ test('member directory requires Members page access, joins accounts once, and fi
   assert.equal(filter({ search: 'ana santos' }).length, 1);
   assert.equal(filter({ search: 'PH-002' })[0].enrollments.length, 0);
   assert.equal(filter({ status: 'Active', city: 'City', province: 'Province' }).length, 1);
-  assert.throws(() => buildMemberDirectory([member, member], [], []), /Duplicate member ID/);
+  const record = { id: 'M1', number: 'PH-001', surname: 'Santos', firstName: 'Ana', middleName: '', nameExtension: '', birthdate: '', birthplace: '', gender: '', civilStatus: '', contact: '', address: '', status: '', claimant: '', claimantContact: '', claimantSameAddress: false, claimantAddress: '' };
+  assert.throws(() => buildMemberDirectory([record, record], [], {}), /Duplicate member ID/);
   assert.equal(h.writes.length, 0);
 });
 
@@ -1338,11 +1339,11 @@ test('daily audit: HR, Finance, and Admin can open it; only Admin approves and a
 
 test('a program enrollment transfers only to an active employee in the same branch, with a reason and history', async () => {
   const h = harness({ userId: 'USR-2', employeeId: 'MD-1', name: 'HR Person', roleNames: ['HR Officer'], permissions: {} });
-  h.rows['Member programs'] = [[], ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', '2026-01-15', 'MATINA', 'Old MAS', 'Cash', '', '', '', '', 'active']];
+  await seedAccount({ doi: '2026-01-15', branch: 'MATINA', mas: 'Old MAS' });
+  await seed('employees', [{ employee_id: 'MD-6', full_name: 'New MAS' }]);
   h.rows.Employees = [[], ['MD-5', 'Old MAS', 'MATINA', 'MAS', 'active'], ['MD-6', 'New MAS', 'MATINA', 'MAS', 'active'], ['MD-7', 'Toril MAS', 'TORIL', 'MAS', 'active']];
   h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-5', 'BR-1'], ['EBA-2', 'MD-6', 'BR-1'], ['EBA-3', 'MD-7', 'BR-2']];
   h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'TORIL', 'METRO', '', '', '', '', '', '', '', '', '', 'active']];
-  h.rows['Member Transfers'] = [[]];
   const route = h.load('app/api/members/transfer/route.ts');
   const listed = await (await route.GET(new Request('http://localhost/api/members/transfer?enrollmentId=ENR-1'))).json();
   assert.deepEqual(listed.candidates.map((item) => item.name), ['New MAS'], 'same branch, not the current MAS');
@@ -1350,10 +1351,10 @@ test('a program enrollment transfers only to an active employee in the same bran
   assert.match((await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: '' }))).json()).message, /reason/);
   const done = await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: 'Old MAS resigned' }))).json();
   assert.deepEqual([done.transfer.fromMas, done.transfer.toMas], ['Old MAS', 'New MAS']);
-  const update = h.writes.find((write) => write.range === "'Member programs'!G2");
-  assert.deepEqual(update.requestBody.values, [['New MAS']], 'only the enrollment MAS changes');
-  const history = h.writes.find((write) => write.range.startsWith("'Member Transfers'!")).requestBody.values[0];
-  assert.deepEqual(history.slice(1, 10), ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', 'MATINA', 'Old MAS', 'New MAS', 'MD-6', 'Old MAS resigned']);
+  assert.equal((await query("select mas from member_programs where enrollment_id = 'ENR-1'"))[0].mas, 'New MAS', 'the enrollment MAS changes');
+  const [history] = await query('select enrollment_id, member_id, member_number, program_id, branch, from_mas, to_mas, to_employee_id, reason, encoded_by_name from member_transfers');
+  assert.deepEqual(Object.values(history), ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', 'MATINA', 'Old MAS', 'New MAS', 'MD-6', 'Old MAS resigned', 'HR Person']);
+  assert.deepEqual(await query('select table_name, record_id, employee_id from audit_log'), [{ table_name: 'member_programs', record_id: 'ENR-1', employee_id: 'MD-1' }], 'the MAS change is audited');
   h.setUser({ userId: 'USR-3', employeeId: 'MD-3', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
   assert.equal((await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: 'x y z' }))).status, 403, 'only Administrators and HR Officers');
 });
@@ -1411,17 +1412,18 @@ test('New Sales refuses a member or claimant contact number that belongs to an e
 
 test('member directory: Collector per program, deceased members, and the standing filters', () => {
   const { buildMemberDirectory, filterMemberDirectory, emptyDirectoryFilters } = harness().load('lib/member-directory.ts');
-  const member = (id, number, status) => { const row = Array(18).fill(''); row[0] = id; row[1] = number; row[2] = id; row[12] = 'Purok 1, Matina'; row[17] = status; return row; };
-  const enrollment = (id, memberId, number) => [id, memberId, number, 'DP-1', '2026-01-10', 'BR-1', 'Maria', 'Cash', '', '', '', '', 'Active'];
-  const collection = (number, date, role, person) => { const row = Array(32).fill(''); row[4] = number; row[5] = 'DP-1'; row[9] = date; row[19] = 'Posted'; row[25] = role; row[31] = person; return row; };
+  const member = (id, number, status) => ({ id, number, surname: id, firstName: '', middleName: '', nameExtension: '', birthdate: '', birthplace: '', gender: '', civilStatus: '', contact: '', address: 'Purok 1, Matina', status, claimant: '', claimantContact: '', claimantSameAddress: false, claimantAddress: '' });
+  const enrollment = (id, memberId, memberNumber) => ({ id, memberId, memberNumber, programId: 'DP-1', doi: '2026-01-10', branch: 'BR-1', mas: 'Maria', paymentMethod: 'Cash', status: 'Active' });
+  // Only Collector collections are passed (the database query selects them); the latest one wins.
+  const collector = (memberNumber, date, person) => ({ memberNumber, programId: 'DP-1', date, person });
   const members = buildMemberDirectory(
     [member('M1', 'PH-1', 'Active'), member('M2', 'PH-2', 'Deceased'), member('M3', 'PH-3', 'Inactive')],
     [enrollment('E1', 'M1', 'PH-1'), enrollment('E2', 'M2', 'PH-2'), enrollment('E3', 'M3', 'PH-3')],
-    [['DP-1', 'CODE', 'Program']],
-    [collection('PH-1', '2026-03-01', 'Collector', 'Old Collector'), collection('PH-1', '2026-05-01', 'Collector', 'Jun Collector'), collection('PH-1', '2026-06-01', 'MAS', 'Maria')],
+    { 'DP-1': 'Program' },
+    [collector('PH-1', '2026-05-01', 'Jun Collector'), collector('PH-1', '2026-03-01', 'Old Collector')],
   );
   const one = (id) => members.find((item) => item.id === id);
-  assert.equal(one('M1').enrollments[0].collector, 'Jun Collector', 'the latest Collector collection, not a later MAS one');
+  assert.equal(one('M1').enrollments[0].collector, 'Jun Collector', 'the latest Collector collection');
   assert.equal(one('M3').enrollments[0].collector, '');
   assert.equal(one('M2').deceased, true);
   one('M3').enrollments[0].accountStatus = 'Forfeited';

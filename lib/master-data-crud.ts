@@ -1,6 +1,9 @@
 ﻿import { createReadableId } from "@/lib/readable-id";
 import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } from "@/lib/passwords";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
+import { eq, sql } from "drizzle-orm";
+
+import { currentDb, schema } from "@/lib/db";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
 import { loadUsers, userCell } from "@/lib/users-sheet";
@@ -13,6 +16,12 @@ const text = (value: unknown) => String(value ?? "").trim();
 
 async function rows(range: string) {
   return (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range })).data.values ?? [];
+}
+
+/** Whether any program enrollment matches `condition` (enrollments live in the database). */
+async function hasEnrollments(condition: ReturnType<typeof sql>) {
+  const [row] = await currentDb().select({ found: sql<number>`1` }).from(schema.member_programs).where(condition).limit(1);
+  return Boolean(row);
 }
 
 function findRow(data: unknown[][], id: string) {
@@ -40,8 +49,8 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
 }
 
 export async function deleteProgramRecord(id: string) {
-  const [programs, enrollments] = await Promise.all([rows("Programs!A:F"), rows("'Member programs'!A:D")]);
-  if (enrollments.slice(1).some((row) => text(row[3]) === id)) throw new Error("This program has member enrollments. Set it to inactive instead of deleting it.");
+  const [programs, enrolled] = await Promise.all([rows("Programs!A:F"), hasEnrollments(sql`${schema.member_programs.program_id} = ${id}`)]);
+  if (enrolled) throw new Error("This program has member enrollments. Set it to inactive instead of deleting it.");
   findRow(programs, id);
   await deleteRowsWhere("Program Incentives", (row) => text(row[1]) === id);
   await deleteRowsById("Programs", [id]);
@@ -61,10 +70,10 @@ export async function updateBranchRecord(id: string, input: BranchInput) {
 }
 
 export async function deleteBranchRecord(id: string) {
-  const [branches, assignments, enrollments] = await Promise.all([rows("Branches!A:M"), rows("'Employee Branches'!A:C"), rows("'Member programs'!A:G")]);
+  const [branches, assignments] = await Promise.all([rows("Branches!A:M"), rows("'Employee Branches'!A:C")]);
   const branch = branches[findRow(branches, id) - 1];
   const name = text(branch[1]);
-  if (assignments.slice(1).some((row) => text(row[2]) === id) || enrollments.slice(1).some((row) => text(row[5]) === name)) throw new Error("This branch is assigned to employees or member enrollments. Set it to inactive instead of deleting it.");
+  if (assignments.slice(1).some((row) => text(row[2]) === id) || await hasEnrollments(sql`trim(${schema.member_programs.branch}) = ${name}`)) throw new Error("This branch is assigned to employees or member enrollments. Set it to inactive instead of deleting it.");
   await deleteRowsById("Branches", [id]);
 }
 
@@ -118,20 +127,16 @@ export async function deleteUserAccount(id: string, actorUserId: string) {
 }
 
 export async function updateMemberRecord(id: string, input: { contact: string; status: string }) {
-  const members = await rows("Members!A:R");
-  const rowNumber = findRow(members, id);
   const status = input.status.trim();
   if (!status) throw new Error("Member status is required.");
-  await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: [
-    { range: `Members!L${rowNumber}`, values: [[input.contact.trim()]] },
-    { range: `Members!R${rowNumber}`, values: [[status]] },
-  ] } });
+  const updated = await currentDb().update(schema.members).set({ member_contact: input.contact.trim() || null, status }).where(eq(schema.members.member_id, id)).returning({ id: schema.members.member_id });
+  if (!updated.length) throw new Error("Record not found.");
   return { id };
 }
 
+/** Removes a member with no program enrollments; one with enrollments has history and is set inactive instead. */
 export async function deleteMemberRecord(id: string) {
-  const [members, enrollments] = await Promise.all([rows("Members!A:R"), rows("'Member programs'!A:B")]);
-  if (enrollments.slice(1).some((row) => text(row[1]) === id)) throw new Error("This member has program enrollments and transaction history. Update the member status instead of deleting the record.");
-  findRow(members, id);
-  await deleteRowsById("Members", [id]);
+  if (await hasEnrollments(sql`${schema.member_programs.member_id} = ${id}`)) throw new Error("This member has program enrollments and transaction history. Update the member status instead of deleting the record.");
+  const removed = await currentDb().delete(schema.members).where(eq(schema.members.member_id, id)).returning({ id: schema.members.member_id });
+  if (!removed.length) throw new Error("Record not found.");
 }

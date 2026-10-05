@@ -24,7 +24,7 @@ The new system guide describes current code. The older feature documents below r
 | Staff savings | [Fidelity](fidelity.md) |
 | Employee pay | [Payroll](payroll.md) |
 | Reporting | [Entry Clerk reports](reports.md), [executive dashboard](executive-dashboard.md) |
-| Database maintenance | [Migration readiness](database-migration-readiness.md), [Supabase migration plan](supabase-migration-plan.md) (proposal) |
+| Database maintenance | [Migration readiness](database-migration-readiness.md), [Supabase migration plan](supabase-migration-plan.md) (in progress: status by module, what is done and still to do) |
 | Hosting and performance | [Deployment performance](deployment-performance.md) |
 
 ## Keeping documentation current

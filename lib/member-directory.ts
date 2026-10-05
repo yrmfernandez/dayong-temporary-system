@@ -9,7 +9,7 @@ export type DirectoryMember = {
   id: string; number: string; name: string; birthdate: string; birthplace: string;
   gender: string; civilStatus: string; contact: string; address: string; status: string;
   claimant: string; claimantContact: string; claimantAddress: string;
-  /** Members!R "Deceased" marks a member who has died; every other status is alive. */
+  /** Status "Deceased" marks a member who has died; every other status is alive. */
   deceased: boolean;
   enrollments: DirectoryEnrollment[];
 };
@@ -38,42 +38,49 @@ export const emptyDirectoryFilters: DirectoryFilters = {
   search: "", branch: "", mas: "", program: "", status: "", accountStatus: "", standing: "",
 };
 
-export function buildMemberDirectory(memberRows: unknown[][], enrollmentRows: unknown[][], programRows: unknown[][], collectionRows: unknown[][] = []): DirectoryMember[] {
-  const value = (row: unknown[], index: number) => String(row[index] ?? "").trim();
-  const programs = new Map(programRows.map((r) => [value(r, 0), value(r, 2) || value(r, 1)]));
-  // Collections: E member number, F program, J OR date, T posting status, Z collected by, AF accountable person.
+/** A member as stored (lib/member-directory-data.ts loads these from the database). */
+export type MemberRecord = {
+  id: string; number: string; surname: string; firstName: string; middleName: string; nameExtension: string;
+  birthdate: string; birthplace: string; gender: string; civilStatus: string; contact: string; address: string; status: string;
+  claimant: string; claimantContact: string; claimantSameAddress: boolean; claimantAddress: string;
+};
+export type EnrollmentRecord = {
+  id: string; memberId: string; memberNumber: string; programId: string; doi: string; branch: string; mas: string; paymentMethod: string; status: string;
+};
+/** A posted Collection brought in by a Collector: who, for which member number and program, on which OR date. */
+export type CollectorRecord = { memberNumber: string; programId: string; date: string; person: string };
+
+export function buildMemberDirectory(memberRecords: MemberRecord[], enrollmentRecords: EnrollmentRecord[], programNames: Record<string, string>, collectorRecords: CollectorRecord[] = []): DirectoryMember[] {
+  // The Collector shown for an account is the one on its most recent Collector collection.
   const collectors = new Map<string, { date: string; name: string }>();
-  for (const row of collectionRows) {
-    if (value(row, 19).toLowerCase() !== "posted" || value(row, 25) !== "Collector" || !value(row, 31)) continue;
-    const key = `${value(row, 4)}::${value(row, 5)}`;
+  for (const record of collectorRecords) {
+    if (!record.person) continue;
+    const key = `${record.memberNumber}::${record.programId}`;
     const current = collectors.get(key);
-    if (!current || value(row, 9) >= current.date) collectors.set(key, { date: value(row, 9), name: value(row, 31) });
+    if (!current || record.date >= current.date) collectors.set(key, { date: record.date, name: record.person });
   }
-  const numbers = new Map(memberRows.map((row) => [value(row, 0), value(row, 1)]));
+  const numbers = new Map(memberRecords.map((member) => [member.id, member.number]));
   const enrollments = new Map<string, DirectoryEnrollment[]>();
-  for (const row of enrollmentRows) {
-    if (!value(row, 0) || !value(row, 1)) continue;
-    const memberId = value(row, 1);
-    const list = enrollments.get(memberId) ?? [];
-    list.push({ id: value(row, 0), programId: value(row, 3), programName: programs.get(value(row, 3)) || value(row, 3),
-      collector: collectors.get(`${numbers.get(memberId) || value(row, 2)}::${value(row, 3)}`)?.name ?? "",
-      doi: value(row, 4), branch: value(row, 5), mas: value(row, 6), paymentMethod: value(row, 7), status: value(row, 12) });
-    enrollments.set(memberId, list);
+  for (const record of enrollmentRecords) {
+    if (!record.id || !record.memberId) continue;
+    const list = enrollments.get(record.memberId) ?? [];
+    list.push({ id: record.id, programId: record.programId, programName: programNames[record.programId] || record.programId,
+      collector: collectors.get(`${numbers.get(record.memberId) || record.memberNumber}::${record.programId}`)?.name ?? "",
+      doi: record.doi, branch: record.branch, mas: record.mas, paymentMethod: record.paymentMethod, status: record.status });
+    enrollments.set(record.memberId, list);
   }
   const members = new Map<string, DirectoryMember>();
-  for (const row of memberRows) {
-    const id = value(row, 0);
-    if (!id) continue;
-    if (members.has(id)) throw new Error("Duplicate member ID. Review the Members sheet.");
-    members.set(id, { id, number: value(row, 1),
-      name: [value(row, 2), [value(row, 3), value(row, 4), value(row, 5)].filter(Boolean).join(" ")].filter(Boolean).join(", "),
-      birthdate: value(row, 6), birthplace: value(row, 7), gender: value(row, 8), civilStatus: value(row, 10),
-      // Members!A:R: address is one complete line (M); claimant name, contact, same-address flag and address follow (N:Q); status is R.
-      contact: value(row, 11), address: value(row, 12), status: value(row, 17),
-      claimant: value(row, 13), claimantContact: value(row, 14),
-      claimantAddress: ["true", "yes"].includes(value(row, 15).toLowerCase()) ? value(row, 12) : value(row, 16),
-      deceased: value(row, 17).toLowerCase() === DECEASED_STATUS.toLowerCase(),
-      enrollments: enrollments.get(id) ?? [] });
+  for (const record of memberRecords) {
+    if (!record.id) continue;
+    if (members.has(record.id)) throw new Error("Duplicate member ID. Review the member records.");
+    members.set(record.id, { id: record.id, number: record.number,
+      name: [record.surname, [record.firstName, record.middleName, record.nameExtension].filter(Boolean).join(" ")].filter(Boolean).join(", "),
+      birthdate: record.birthdate, birthplace: record.birthplace, gender: record.gender, civilStatus: record.civilStatus,
+      contact: record.contact, address: record.address, status: record.status,
+      claimant: record.claimant, claimantContact: record.claimantContact,
+      claimantAddress: record.claimantSameAddress ? record.address : record.claimantAddress,
+      deceased: record.status.toLowerCase() === DECEASED_STATUS.toLowerCase(),
+      enrollments: enrollments.get(record.id) ?? [] });
   }
   return [...members.values()].sort((a, b) => a.name.localeCompare(b.name) || a.number.localeCompare(b.number));
 }
