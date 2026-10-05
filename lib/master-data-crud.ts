@@ -21,7 +21,7 @@ async function hasEnrollments(condition: ReturnType<typeof sql>) {
   return Boolean(row);
 }
 
-export type ProgramInput = { code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; categoryId?: string; newSaleAmountEditable?: boolean; collectionAmountEditable?: boolean; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: StoredTier[] };
+export type ProgramInput = { flexible?: boolean; code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; categoryId?: string; newSaleAmountEditable?: boolean; collectionAmountEditable?: boolean; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: StoredTier[] };
 
 export async function updateProgramRecord(id: string, input: ProgramInput) {
   if (!input.code || !input.name || !Number.isFinite(input.basePay) || input.basePay <= 0 || !input.incentiveTiers.length) throw new Error("Complete the program and incentive details.");

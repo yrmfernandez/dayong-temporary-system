@@ -2,6 +2,11 @@ export type AccountStatus = "NS" | "U" | "ADV" | "60D" | "90D" | "120D" | "150D"
 export type Account = {
   id: string; memberId: string; memberNumber: string; programId: string;
   doi: string; branch: string; mas: string; basePay: number; payBalanceTotal: number; storedStatus: string;
+  /**
+   * Flexible program: basePay is the minimum monthly payment; a payment may be any amount of at least the minimum per
+   * month it covers, and the account is paid off when its collections reach payBalanceTotal.
+   */
+  flexible?: boolean;
 };
 export type AccountPayment = {
   id: string; enrollmentId: string; orDate: string; orNumber: string;
@@ -29,7 +34,7 @@ export function addMonths(date: string, months: number) {
 export function addDay(date: string) { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); }
 
 // Allocations are derived from actual stored ranges, never synthetic collections.
-export function allocations(payments: AccountPayment[], basePay?: number) {
+export function allocations(payments: AccountPayment[], basePay?: number, flexible = false) {
   const result = new Map<string, { nop: number; amount: number; paymentId: string }>();
   const nops = new Set<number>();
   for (const payment of payments) {
@@ -40,11 +45,13 @@ export function allocations(payments: AccountPayment[], basePay?: number) {
     const cents = Math.round(payment.amount * 100);
     const monthlyCents = basePay ? Math.round(basePay * 100) : cents / count;
     if (Math.abs(payment.amount * 100 - cents) > 0.0001 || !Number.isInteger(monthlyCents) || cents < monthlyCents * count) throw new Error(`Payment ${payment.id} cannot cover its selected full monthly installments.`);
+    // Flexible programs: each covered month is credited with its share of what was actually paid (at least the minimum).
+    const share = (index: number) => (flexible ? Math.floor(cents / count) + (index < cents % count ? 1 : 0) : monthlyCents) / 100;
     for (let i = 0; i < count; i++) {
       const month = monthName(monthIndex(payment.monthFrom) + i);
       const nop = payment.nopFrom + i;
       if (result.has(month) || nops.has(nop)) throw new Error(`Payment ${payment.id} overlaps existing month or NOP coverage.`);
-      result.set(month, { nop, amount: monthlyCents / 100, paymentId: payment.id });
+      result.set(month, { nop, amount: share(i), paymentId: payment.id });
       nops.add(nop);
     }
   }
@@ -67,7 +74,7 @@ export function paymentsByEnrollment<T extends { enrollmentId: string }>(payment
 export function accountState(account: Account, allPayments: AccountPayment[], today = todayInManila()) {
   if (!validDate(account.doi) || !validDate(today) || !Number.isFinite(account.basePay) || account.basePay <= 0) throw new Error(`Account ${account.id} needs a valid DOI and monthly program rate.`);
   const payments = allPayments.filter((p) => p.enrollmentId === account.id && p.orDate <= today);
-  const coverage = allocations(payments, account.basePay);
+  const coverage = allocations(payments, account.basePay, account.flexible);
   const months = [...coverage.keys()].sort();
   const lastCoveredMonth = months.at(-1) ?? "";
   const latest = [...payments].sort((a, b) => a.orDate.localeCompare(b.orDate)).at(-1);
@@ -138,7 +145,10 @@ export function validatePayment(account: Account, history: AccountPayment[], inp
   const amountCents = Math.round(input.amount * 100);
   const paidBefore = history.filter((payment) => payment.enrollmentId === account.id).reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0);
   const payoffCents = Math.round(account.payBalanceTotal * 100);
-  if (!Number.isFinite(input.amount) || amountCents < expected) throw new Error(`Pay full monthly installments: ${count} month(s) requires at least ${(expected / 100).toFixed(2)}.`);
-  if (amountCents > expected && (!payoffCents || paidBefore + amountCents !== payoffCents)) throw new Error(`An amount above the monthly total must exactly pay the remaining program balance of ${Math.max(0, payoffCents - paidBefore) / 100}.`);
+  if (!Number.isFinite(input.amount) || amountCents < expected) throw new Error(account.flexible ? `Pay at least the minimum of ${(Math.round(account.basePay * 100) / 100).toFixed(2)} per month: ${count} month(s) requires at least ${(expected / 100).toFixed(2)}.` : `Pay full monthly installments: ${count} month(s) requires at least ${(expected / 100).toFixed(2)}.`);
+  // Flexible programs take any amount from the minimum up to what is left of the total payable.
+  if (account.flexible) {
+    if (payoffCents && paidBefore + amountCents > payoffCents) throw new Error(`The amount is more than the remaining program balance of ${Math.max(0, payoffCents - paidBefore) / 100}.`);
+  } else if (amountCents > expected && (!payoffCents || paidBefore + amountCents !== payoffCents)) throw new Error(`An amount above the monthly total must exactly pay the remaining program balance of ${Math.max(0, payoffCents - paidBefore) / 100}.`);
   return state;
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "programs" ADD COLUMN "flexible" boolean DEFAULT false NOT NULL;

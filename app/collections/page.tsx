@@ -51,6 +51,8 @@ type ProgramOption = {
   code: string;
   name: string;
   basePay: number;
+  /** Flexible payments: basePay is the minimum; any amount from the minimum per month. */
+  flexible?: boolean;
   payBalanceTotal?: number;
   /** Programs U: false (the default) locks the amount to covered months × base pay. */
   collectionAmountEditable?: boolean;
@@ -416,7 +418,7 @@ export default function CollectionsPage() {
       const selected = programs.find((p) => p.id === entry.programId);
       const count = getMonthDifference(entry.monthFrom, entry.monthTo);
       if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
-      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected)), error: "" };
+      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
   }
   const quotes = collections.map(quoteEntry);
@@ -1419,7 +1421,8 @@ export default function CollectionsPage() {
                             <Label>Amount Collected</Label>
                             {(() => {
                               const program = programs.find((item) => item.id === entry.programId);
-                              const locked = Boolean(program && !program.collectionAmountEditable);
+                              // A flexible program takes any amount from its minimum, so its amount is never locked.
+                              const locked = Boolean(program && !program.collectionAmountEditable && !program.flexible);
                               // The exact remaining payoff, offered as a button so a locked amount is never typed.
                               const paid = (histories[entry.id] ?? []).reduce((sum, item) => sum + Math.round((Number(item.amountCollected) || 0) * 100), 0);
                               const payoff = program?.payBalanceTotal ? Math.max(0, Math.round(program.payBalanceTotal * 100) - paid) / 100 : 0;

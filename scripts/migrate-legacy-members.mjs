@@ -42,6 +42,13 @@
 //   collected the payment; Active/Inactive is compared with the status the system computes.
 // - Every account is checked with the system's own rules (lib/account-rules.ts) before anything is written.
 // IDs are derived from the source ("-LEG-"), so a re-run skips what was already imported.
+//
+// Since October 5, 2026 the application data is in PostgreSQL: run this with tsx so it can use the app's database layer
+//   npx tsx --tsconfig tsconfig.json scripts/migrate-legacy-members.mjs --pending --repair [--apply --skip-invalid]
+// Members, enrollments, sales, beneficiaries and collections are read from and written to the database named by
+// DATABASE_URL (staging in .env.local; production when set in the shell). The Legacy Pending tabs and Legacy Repairs
+// stay in the Google Sheet. Never run --apply against staging: it would delete pending rows from the shared sheet.
+// A receipt or application number already in use is imported flagged legacy_duplicate, like the October copy.
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import nextEnv from "@next/env";
@@ -195,9 +202,13 @@ const repaired = (row, change, before, after) => { repairs.push({ ref: row.ref, 
 
 /* ---------- database lookups ---------- */
 const dbTitles = ["Programs", "Branches", "Employees", "Members", "Member programs", "Sales", "Collections", "Beneficiaries"];
-const dbResponse = await sheets.spreadsheets.values.batchGet({ spreadsheetId: DB, ranges: dbTitles.map((t) => `'${t}'`), valueRenderOption: "UNFORMATTED_VALUE" }, options);
+const { sheetsOnDb, appendSheetRows } = await import("../lib/sheets-on-db.ts");
+const databaseRef = /postgres\.([a-z0-9]+)[:@]/.exec(process.env.DATABASE_URL ?? "")?.[1] ?? "unknown";
+console.log(`Application data: Supabase project ${databaseRef}.`);
+const dbResponse = await sheetsOnDb.spreadsheets.values.batchGet({ ranges: dbTitles.map((t) => `'${t}'`), valueRenderOption: "UNFORMATTED_VALUE" });
 const db = Object.fromEntries(dbTitles.map((t, i) => [t, dbResponse.data.valueRanges[i].values ?? []]));
-const programs = db.Programs.slice(1).filter((r) => str(r[0])).map((r) => ({ id: str(r[0]), code: str(r[1]), name: str(r[2]), basePay: Number(r[3]), payBalanceTotal: Number(r[12]) || 0 }));
+// Programs column 22 (V) is flexible: basePay is then the minimum monthly payment (lib/account-rules.ts).
+const programs = db.Programs.slice(1).filter((r) => str(r[0])).map((r) => ({ id: str(r[0]), code: str(r[1]), name: str(r[2]), basePay: Number(r[3]), payBalanceTotal: Number(r[12]) || 0, flexible: r[21] === true || /^(true|yes)$/i.test(str(r[21])) }));
 const branches = db.Branches.slice(1).filter((r) => str(r[0])).map((r) => ({ id: str(r[0]), name: str(r[1]) }));
 const employees = db.Employees.slice(1).filter((r) => str(r[0])).map((r) => ({ id: str(r[0]), name: str(r[1]) }));
 const existingIds = new Set(dbTitles.slice(3).flatMap((t) => db[t].slice(1).map((r) => str(r[0]))));
@@ -403,13 +414,14 @@ function renumberAll(e, doiIndex) {
   let next = e.sale ? 2 : e.doiFromFirstOr || !written.length ? 1 : Math.min(...written);
   const rateCents = Math.round(rate * 100);
   // Every payment must be exactly a whole number of monthly payments; otherwise the account is left for review.
-  const inexact = ordered.filter((p) => !(rateCents > 0 && Math.round(p.amount * 100) % rateCents === 0 && Math.round(p.amount * 100) >= rateCents));
+  // A flexible program takes any amount from its minimum: each full minimum in a payment is one month.
+  const inexact = ordered.filter((p) => e.program.flexible ? !(rateCents > 0 && Math.round(p.amount * 100) >= rateCents) : !(rateCents > 0 && Math.round(p.amount * 100) % rateCents === 0 && Math.round(p.amount * 100) >= rateCents));
   if (inexact.length) {
     e.inexact = inexact.map((p) => `${p.row.where}: ₱${p.amount} at ₱${rate}/month`);
     return null;
   }
   return ordered.map((p) => {
-    const count = Math.round(p.amount * 100) / rateCents;
+    const count = e.program.flexible ? Math.floor(Math.round(p.amount * 100) / rateCents) : Math.round(p.amount * 100) / rateCents;
     const from = next;
     next += count;
     if (from === p.nopFrom && from + count - 1 === p.nopTo) return p;
@@ -530,7 +542,7 @@ for (const e of enrollments) {
   // Pending rows of an account already in the database were skipped on purpose (duplicates, NOP 1 repeats of a sale):
   // only whole accounts that failed review are migrated from the Legacy Pending tabs.
   if (fromPending && existingIds.has(e.id)) { e.alreadyImported = true; e.invalid = "account is already in the database (row was skipped on purpose)"; issue(`Not migrated: ${e.invalid}`, (e.sale ?? e.rows[0]).where); continue; }
-  const account = { id: e.id, memberId: e.member.id, memberNumber: "", programId: e.program.id, doi: e.doi, branch: "", mas: "", basePay: e.program.basePay, payBalanceTotal: e.program.payBalanceTotal, storedStatus: "" };
+  const account = { id: e.id, memberId: e.member.id, memberNumber: "", programId: e.program.id, doi: e.doi, branch: "", mas: "", basePay: e.program.basePay, payBalanceTotal: e.program.payBalanceTotal, storedStatus: "", flexible: e.program.flexible };
   // --repair: an account that fails as recorded (or has an unreadable NOP) is renumbered by rule.
   if (repair) {
     let passes = !e.payments.some((p) => p.nopFrom === 0);
@@ -593,7 +605,17 @@ if (dropExisting) {
 ${apply ? "Removed" : "Would remove"} ${removed.ns} New Sales and ${removed.coll} Collections row(s) of ${enrollments.filter((e) => e.alreadyImported).length} account(s) already in the database.`);
   process.exit(0);
 }
-if (!apply) { console.log("\nDry run only. Nothing was written to Members, Member programs, Sales, Beneficiaries, or Collections."); process.exit(0); }
+// Receipt and application numbers already in use (the database allows each once) are imported flagged as duplicates.
+const entryKey = (value) => String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const usedOr = new Set(db.Collections.slice(1).filter((r) => str(r[19]).toLowerCase() === "posted").map((r) => entryKey(r[8])).filter(Boolean));
+const usedApplications = new Set(db.Sales.slice(1).map((r) => entryKey(r[28])).filter(Boolean));
+const duplicateFlags = (rows, keyIndex, used) => rows.map((row) => { const key = entryKey(row[keyIndex]); const duplicate = Boolean(key && used.has(key)); if (key) used.add(key); return { legacy_duplicate: duplicate }; });
+if (!apply) {
+  const orRepeats = valid.reduce((count, e) => count + e.payments.filter((pay) => !existingIds.has(pay.id) && usedOr.has(entryKey(pay.orNumber))).length, 0);
+  console.log(`\n${orRepeats} payment(s) reuse an OR number already in the database and would be imported flagged as duplicates.`);
+  console.log("Dry run only. Nothing was written to Members, Member programs, Sales, Beneficiaries, or Collections.");
+  process.exit(0);
+}
 if (invalid.length && !skipInvalid) { console.error(`\n${invalid.length} account(s) fail review. Fix them in the old workbook, or re-run with --skip-invalid to import only passing accounts.`); process.exit(1); }
 
 /* ---------- write ---------- */
@@ -638,16 +660,15 @@ for (const e of valid) {
 }
 console.log(`\nWriting: ${Object.entries(out).map(([t, rows]) => `${rows.length} ${t}`).join(", ")}.`);
 const meta = await sheets.spreadsheets.get({ spreadsheetId: DB, fields: "sheets.properties" }, options);
-const sheetId = (title) => meta.data.sheets.find((s) => s.properties.title === title).properties.sheetId;
-const cell = (v) => ({ userEnteredValue: typeof v === "number" ? { numberValue: v } : { stringValue: String(v ?? "") } });
 writeFileSync(`backups/legacy-migration-ids-${stamp}.json`, JSON.stringify(Object.fromEntries(Object.entries(out).map(([t, rows]) => [t, rows.map((r) => r[0])])), null, 1));
 // Order matters for a partial failure: members before the rows that point at them. A re-run skips rows already written.
+const flags = { Sales: duplicateFlags(out.Sales, 28, usedApplications), Collections: duplicateFlags(out.Collections, 8, usedOr) };
 for (const title of ["Members", "Member programs", "Sales", "Beneficiaries", "Collections"]) {
   for (let i = 0; i < out[title].length; i += 2000) {
-    const chunk = out[title].slice(i, i + 2000);
-    await sheets.spreadsheets.batchUpdate({ spreadsheetId: DB, requestBody: { requests: [{ appendCells: { sheetId: sheetId(title), rows: chunk.map((r) => ({ values: r.map(cell) })), fields: "userEnteredValue" } }] } }, options);
+    await appendSheetRows(title, out[title].slice(i, i + 2000), flags[title]?.slice(i, i + 2000) ?? []);
   }
-  console.log(`  ${title}: ${out[title].length} row(s) written.`);
+  const flagged = flags[title]?.filter((flag) => flag.legacy_duplicate).length ?? 0;
+  console.log(`  ${title}: ${out[title].length} row(s) written${flagged ? ` (${flagged} flagged as a duplicate receipt or application number)` : ""}.`);
 }
 console.log(`Done. Written row IDs are listed in backups/legacy-migration-ids-${stamp}.json (all contain "-LEG-").`);
 
@@ -728,3 +749,5 @@ async function writePendingTabs() {
     console.log(`Exported ${values.length - 1} row(s) to the "${tab.title}" tab.`);
   }
 }
+// Close the database connections.
+process.exit(0);

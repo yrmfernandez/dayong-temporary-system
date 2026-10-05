@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-38 page routes, 53 API handlers, 96 library files, 36 component files; 289 scanned source/configuration/public-text files in total.
+38 page routes, 53 API handlers, 97 library files, 36 component files; 293 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -149,7 +149,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/encoder-sheets.ts](../lib/encoder-sheets.ts) | `appendEncodedRows`, `updateEncodedRow` | `@/lib/google-sheets`, `@/lib/encoder-context`, `@/lib/encoder-schema`, `@/lib/sheet-headers` |
 | [lib/entry-controls.ts](../lib/entry-controls.ts) | `BACKDATE_REASON_MIN`, `needsBackdateReason`, `checkBackdate`, `controlTotalProblem` | `@/lib/remittance-deadline` |
 | [lib/entry-corrections.ts](../lib/entry-corrections.ts) | `correctSaleOrCollection` | `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/remittance-deadline`, `@/lib/record-corrections` |
-| [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/date-checks` |
+| [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/lib/sheets-on-db`, `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/date-checks` |
 | [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/company-targets`, `@/lib/google-sheets` |
 | [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList` | — |
 | [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/encoder-sheets`, `@/lib/readable-id` |
@@ -176,6 +176,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/payroll.ts](../lib/payroll.ts) | `getPayProfiles`, `savePayProfile`, `PayrollRun`, `getPayrollOverview`, `getPayrollRun`, `createPayrollRun`, `recalculatePayrollRun`, `addPayrollAdjustment`, `removePayrollAdjustment`, `approvePayrollRun`, `payPayrollRun`, `voidPayrollRun`, `deletePayrollRun` | `@/lib/attendance-data`, `@/lib/sheet-ranges`, `@/lib/auto-absence`, `@/lib/encoder-context`, `@/lib/encoder-sheets`, `@/lib/employees`, `@/lib/finance-data`, `@/lib/finance-operations`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/payroll-calc`, `@/lib/readable-id`, `@/lib/sheet-rows` |
 | [lib/payslip.ts](../lib/payslip.ts) | `PAYSLIP_COMPANY`, `PayslipRow`, `Payslip`, `buildPayslip`, `payslipFileName`, `payslipPdf` | `@/lib/payroll-calc` |
 | [lib/philippine-holidays.ts](../lib/philippine-holidays.ts) | `HOLIDAY_TYPES`, `HolidayType`, `HolidayTemplate`, `philippineHolidays` | — |
+| [lib/photo-storage.ts](../lib/photo-storage.ts) | `PHOTO_BUCKET`, `storePhoto`, `readPhoto` | — |
 | [lib/privilege-guard.ts](../lib/privilege-guard.ts) | `guardAccountChange`, `guardRoleChange` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/roles` |
 | [lib/program-age.ts](../lib/program-age.ts) | `AgeRestriction`, `readAgeRestriction`, `normalizeAgeRestriction`, `ageRestrictionCells`, `describeAgeRestriction`, `ageOn`, `isoDate`, `ageRestrictionError` | — |
 | [lib/program-amount-lock.ts](../lib/program-amount-lock.ts) | `isTrue`, `amountEditableCells`, `fixedNewSaleAmount` | — |
@@ -184,7 +185,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/programs.ts](../lib/programs.ts) | `Program`, `getActivePrograms`, `getAllPrograms` | `./google-sheets-data` |
 | [lib/rate-limit.ts](../lib/rate-limit.ts) | `retryAfter`, `recordAttempt`, `clearAttempts`, `clientIp` | — |
 | [lib/readable-id.ts](../lib/readable-id.ts) | `createReadableId` | — |
-| [lib/receipt-photos.ts](../lib/receipt-photos.ts) | `MAX_PHOTO_BYTES`, `ReceiptPhotoInfo`, `listReceiptPhotos`, `photosByEntry`, `getReceiptPhoto`, `saveReceiptPhoto` | `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/readable-id` |
+| [lib/receipt-photos.ts](../lib/receipt-photos.ts) | `MAX_PHOTO_BYTES`, `ReceiptPhotoInfo`, `listReceiptPhotos`, `photosByEntry`, `getReceiptPhoto`, `saveReceiptPhoto` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/photo-storage`, `@/lib/readable-id` |
 | [lib/record-corrections.ts](../lib/record-corrections.ts) | `ensureCorrectionsSheet`, `recordCorrection` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/remittance-deadline.ts](../lib/remittance-deadline.ts) | `REMITTANCE_CUTOFF`, `validTime`, `incentiveDeadline`, `keepsIncentive`, `manilaNow`, `manilaDateOf`, `formatDeadline` | — |
 | [lib/remittance-methods.ts](../lib/remittance-methods.ts) | `PaymentMethod`, `getPaymentMethods`, `findActivePaymentMethod`, `savePaymentMethod` | `@/lib/db`, `@/lib/readable-id` |
@@ -198,7 +199,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/sheet-headers.ts](../lib/sheet-headers.ts) | `canonicalHeader`, `headerMatches` | — |
 | [lib/sheet-ranges.ts](../lib/sheet-ranges.ts) | `COLLECTIONS_RANGE`, `SALES_RANGE`, `REMITTANCES_RANGE`, `REMITTANCE_LINKS_RANGE`, `PROGRAMS_RANGE`, `MEMBERS_RANGE` | — |
 | [lib/sheet-rows.ts](../lib/sheet-rows.ts) | `deleteRowsWhere`, `deleteRowsById` | `@/lib/google-sheets` |
-| [lib/sheets-on-db.ts](../lib/sheets-on-db.ts) | `SHEET_TITLES`, `tableOf`, `isDatabaseSheet`, `countSheetRows`, `columnLetters`, `parseA1`, `sheetsOnDb`, `readSheetRows` | `@/lib/db` |
+| [lib/sheets-on-db.ts](../lib/sheets-on-db.ts) | `SHEET_TITLES`, `tableOf`, `isDatabaseSheet`, `countSheetRows`, `columnLetters`, `parseA1`, `sheetsOnDb`, `readSheetRows`, `appendSheetRows` | `@/lib/db` |
 | [lib/sheets-read-cache.ts](../lib/sheets-read-cache.ts) | `SheetsReadCache`, `KeyedLock` | — |
 | [lib/statement-of-account.ts](../lib/statement-of-account.ts) | `listStatementAccounts`, `getStatementOfAccount`, `StatementOfAccount` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db` |
 | [lib/system-health.ts](../lib/system-health.ts) | `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/lib/audit-log`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment` |
@@ -279,7 +280,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) | `GET`, `PATCH` | `@/lib/auth-server`, `@/lib/fidelity`, `@/lib/encoder-context` |
 | [app/api/finance-options/route.ts](../app/api/finance-options/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/finance-access`, `@/lib/finance-operations`, `@/lib/google-sheets-data` |
 | [app/api/google-sheets/test/route.ts](../app/api/google-sheets/test/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/google-sheets` |
-| [app/api/history/route.ts](../app/api/history/route.ts) | `GET`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/entry-corrections`, `@/lib/encoder-schema`, `@/lib/audit-log` |
+| [app/api/history/route.ts](../app/api/history/route.ts) | `GET`, `PATCH` | `@/lib/sheets-on-db`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/entry-corrections`, `@/lib/encoder-schema`, `@/lib/audit-log` |
 | [app/api/leave-approvals/route.ts](../app/api/leave-approvals/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data`, `@/lib/attendance-data` |
 | [app/api/leave-requests/route.ts](../app/api/leave-requests/route.ts) | `GET`, `POST` | `@/lib/readable-id`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data` |
 | [app/api/mam/member/route.ts](../app/api/mam/member/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/account-data` |
@@ -341,6 +342,8 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
 | [scripts/copy-sheets-to-postgres.mjs](../scripts/copy-sheets-to-postgres.mjs) | `@next/env`, `googleapis`, `postgres` | Yes; read source for semantics |
 | [scripts/correct-employee-id.mjs](../scripts/correct-employee-id.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
+| [scripts/fix-copy-exception-dates.mjs](../scripts/fix-copy-exception-dates.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/fix-or-letters.mjs](../scripts/fix-or-letters.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/generate-code-reference.mjs](../scripts/generate-code-reference.mjs) | `node:fs`, `node:path`, `typescript` | Yes; read source for semantics |
 | [scripts/hash-password.mjs](../scripts/hash-password.mjs) | `bcryptjs` | No flag detected; read source before running |
 | [scripts/inspect-legacy-sheets.mjs](../scripts/inspect-legacy-sheets.mjs) | `@next/env`, `googleapis`, `./legacy-sources.mjs` | No flag detected; read source before running |
@@ -376,6 +379,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/migrate-sale-incentives.mjs](../scripts/migrate-sale-incentives.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-sales-remittance.mjs](../scripts/migrate-sales-remittance.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-single-address.mjs](../scripts/migrate-single-address.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
+| [scripts/move-photos-to-storage.mjs](../scripts/move-photos-to-storage.mjs) | `@next/env`, `@supabase/supabase-js`, `postgres` | Yes; read source for semantics |
 | [scripts/register-legacy-mas.mjs](../scripts/register-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/remove-blank-rows.mjs](../scripts/remove-blank-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/repair-branch-ids.mjs](../scripts/repair-branch-ids.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |

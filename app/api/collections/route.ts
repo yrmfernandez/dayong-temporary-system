@@ -111,7 +111,7 @@ async function saveCollections(request: Request) {
         if (receipt && batchReceipts.has(receipt)) throw new Error(`OR Number ${input.orNumber} is entered twice in this batch (${batchReceipts.get(receipt)} and ${account.memberNumber}). Each OR Number is used once.`);
         if (receipt) batchReceipts.set(receipt, account.memberNumber);
         validatePayment(account, payments, input);
-        const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), selectedBranch.id), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount);
+        const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), selectedBranch.id), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount, account.flexible);
         // Client totals are only a preview. Persist the authoritative server calculation.
         grossCents += Math.round(quote.gross * 100);
         const id = createReadableId("COL");

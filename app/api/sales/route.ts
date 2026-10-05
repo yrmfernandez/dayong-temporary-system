@@ -538,7 +538,11 @@ async function saveSales(request: Request) {
       const amountPaid = Number(prepared.sale.amountPaid);
       if (!program || !Number.isFinite(amountPaid) || amountPaid < 0) return NextResponse.json({ success: false, message: `Sale #${index + 1}: Enter a valid amount paid.` }, { status: 400 });
       // Programs whose New Sale amount is locked accept only their fixed amount.
-      if (!program.newSaleAmountEditable && Math.round(amountPaid * 100) !== Math.round(fixedNewSaleAmount(program) * 100)) {
+      // A flexible program takes any amount from its minimum (plus any registration fee).
+      if (program.flexible && Math.round(amountPaid * 100) < Math.round(fixedNewSaleAmount(program) * 100)) {
+        return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${program.name} needs at least ${fixedNewSaleAmount(program).toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (the minimum monthly payment).` }, { status: 400 });
+      }
+      if (!program.flexible && !program.newSaleAmountEditable && Math.round(amountPaid * 100) !== Math.round(fixedNewSaleAmount(program) * 100)) {
         return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}. Ask an administrator to allow editing in Programs if this receipt is different.` }, { status: 400 });
       }
       // A branch's own incentive tiers replace the program's base tiers there.

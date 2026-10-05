@@ -25,7 +25,7 @@ export function tiersForBranch<T extends { role: string; branchId?: string }>(ti
 
 /** A program's New Sale incentive for registration-fee programs (Programs Q type, R amount). Blank type = none. */
 export type SaleIncentiveSetting = { saleIncentiveType: "fixed" | "percentage" | ""; saleIncentiveAmount: number };
-export type SaleProgram = SaleIncentiveSetting & { basePay: number; registrationFeeRequired: boolean; incentiveTiers: IncentiveTier[] };
+export type SaleProgram = SaleIncentiveSetting & { basePay: number; registrationFeeRequired: boolean; incentiveTiers: IncentiveTier[]; /** Flexible program: basePay is the minimum; incentives follow the amount paid. */ flexible?: boolean };
 
 export function normalizeSaleIncentive(input: { registrationFeeRequired?: unknown; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; registrationAmount?: unknown }): SaleIncentiveSetting {
   const type = String(input.saleIncentiveType ?? "").trim();
@@ -55,17 +55,27 @@ export function calculateSaleIncentive(program: SaleProgram, amountPaid: number)
       : Math.min(paidCents, Math.round(program.saleIncentiveAmount * 100));
     return { incentive: incentiveCents / 100, remittance: (paidCents - incentiveCents) / 100, rule: program.saleIncentiveType === "percentage" ? `${program.saleIncentiveAmount}% of the registration paid` : `Fixed New Sale incentive` };
   }
-  if (paidCents < Math.round(program.basePay * 100)) return none("Less than one month's base pay was paid, so no incentive applies.");
-  const quote = calculateRemittance(program.basePay, program.incentiveTiers, "MAS", 1, 1, amountPaid);
-  return { incentive: Math.round((amountPaid - quote.remittance) * 100) / 100, remittance: quote.remittance, rule: "Month-1 MAS incentive on the base pay" };
+  if (paidCents < Math.round(program.basePay * 100)) return none(program.flexible ? "Less than the minimum monthly payment was paid, so no incentive applies." : "Less than one month's base pay was paid, so no incentive applies.");
+  const quote = calculateRemittance(program.basePay, program.incentiveTiers, "MAS", 1, 1, amountPaid, program.flexible);
+  return { incentive: Math.round((amountPaid - quote.remittance) * 100) / 100, remittance: quote.remittance, rule: program.flexible ? "Month-1 MAS incentive on the amount paid" : "Month-1 MAS incentive on the base pay" };
 }
 
-export function calculateRemittance(basePay: number, tiers: IncentiveTier[], role: string, nopFrom: number, nopTo: number, amountCollected?: number) {
+/**
+ * `flexible`: the program's basePay is only the minimum; each NOP's installment is its share of the amount actually
+ * collected, so incentives follow what was paid.
+ */
+export function calculateRemittance(basePay: number, tiers: IncentiveTier[], role: string, nopFrom: number, nopTo: number, amountCollected?: number, flexible = false) {
   if (!Number.isFinite(basePay) || basePay <= 0 || !Number.isInteger(nopFrom) || !Number.isInteger(nopTo) || nopFrom < 1 || nopTo < nopFrom || nopTo - nopFrom > 1199) throw new Error("Select a valid program and NOP range to calculate remittance.");
   if (role !== "MAS" && role !== "Collector") throw new Error("Select the collection role.");
-  const baseCents = Math.round(basePay * 100);
+  const count = nopTo - nopFrom + 1;
+  const paidCents = amountCollected === undefined ? NaN : Math.round(amountCollected * 100);
+  const flexibleShares = flexible && Number.isFinite(paidCents);
+  if (flexibleShares && paidCents < Math.round(basePay * 100) * count) throw new Error(`Pay at least the minimum of ${basePay.toFixed(2)} per month.`);
+  const minimumCents = Math.round(basePay * 100);
   const breakdown = [];
   for (let nop = nopFrom; nop <= nopTo; nop++) {
+    const index = nop - nopFrom;
+    const baseCents = flexibleShares ? Math.floor(paidCents / count) + (index < paidCents % count ? 1 : 0) : minimumCents;
     const matches = tiers.filter((tier) => tier.role === role && nop >= tier.fromMonth && nop <= tier.toMonth);
     if (matches.length !== 1) throw new Error(`Configure exactly one ${role} incentive tier for NOP ${nop}.`);
     const tier = matches[0];
@@ -80,7 +90,7 @@ export function calculateRemittance(basePay: number, tiers: IncentiveTier[], rol
     breakdown.push({ nop, tierId: tier.id ?? "", role, basePay: baseCents / 100, markUp: markUpCents / 100,
       incentiveType: tier.incentiveType, incentiveAmount: tier.incentiveAmount, incentive: incentiveCents / 100, remittance: remittanceCents / 100 });
   }
-  const grossCents = baseCents * breakdown.length;
+  const grossCents = breakdown.reduce((sum, item) => sum + Math.round(item.basePay * 100), 0);
   const collectedCents = amountCollected === undefined ? grossCents : Math.round(amountCollected * 100);
   if (!Number.isFinite(collectedCents) || collectedCents < 0) throw new Error("Enter a valid amount collected.");
   const excessCents = Math.max(0, collectedCents - grossCents);

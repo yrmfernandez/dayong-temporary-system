@@ -86,10 +86,13 @@ incentiveTiers: IncentiveTier[];
 categoryId?: string;
 newSaleAmountEditable?: boolean;
 collectionAmountEditable?: boolean;
+flexible?: boolean;
 };
 
 type ProgramForm = {
 categoryId: string;
+/** Flexible payments: Base Pay is the minimum monthly payment; amounts follow what is paid. */
+flexible: boolean;
 newSaleAmountEditable: boolean;
 collectionAmountEditable: boolean;
 code: string;
@@ -131,6 +134,7 @@ collectorIncentive: "20",
 function createEmptyForm(): ProgramForm {
 return {
 categoryId: "",
+flexible: false,
 newSaleAmountEditable: false,
 collectionAmountEditable: false,
 code: "",
@@ -846,6 +850,7 @@ try {
     registrationFeeRequired: form.registrationFeeRequired,
     newSaleAmountEditable: form.newSaleAmountEditable,
     collectionAmountEditable: form.collectionAmountEditable,
+    flexible: form.flexible,
     registrationAmount: Number(form.registrationAmount) || 0,
     payBalanceTotal: Number(form.payBalanceTotal) || 0,
     saleIncentiveType: form.registrationFeeRequired ? form.saleIncentiveType : "",
@@ -1061,6 +1066,7 @@ setForm({
     program.description ?? "",
 
   registrationFeeRequired: Boolean(program.registrationFeeRequired),
+  flexible: Boolean(program.flexible),
   newSaleAmountEditable: Boolean(program.newSaleAmountEditable),
   collectionAmountEditable: Boolean(program.collectionAmountEditable),
   registrationAmount: String(program.registrationAmount ?? 0),
@@ -1878,7 +1884,7 @@ const programForm = (
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label>
-              Base Pay *
+              {form.flexible ? "Minimum Monthly Payment *" : "Base Pay *"}
             </Label>
 
             <div className="relative">
@@ -1981,6 +1987,16 @@ const programForm = (
           </label>
           <div className="space-y-2"><Label>Registration amount</Label><Input type="number" min="0" step="0.01" disabled={!form.registrationFeeRequired} value={form.registrationAmount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("registrationAmount", event.target.value)} /></div>
           <div className="space-y-2"><Label>Total amount payable</Label><Input type="number" min="0" step="0.01" value={form.payBalanceTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("payBalanceTotal", event.target.value)} /><p className="text-xs text-muted-foreground">The full amount a member pays to complete the program. Set to 0 when there is no fixed total.</p></div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+          <div>
+            <p className="text-sm font-medium">Flexible payments</p>
+            <p className="text-xs text-muted-foreground">On: members pay any amount from the minimum each month until the Total Amount Payable is reached. Base Pay becomes the minimum monthly payment, and incentives and remittances follow the amount actually paid. Off: every month is exactly the base pay.</p>
+          </div>
+          <button type="button" role="switch" aria-checked={form.flexible} aria-label="Flexible payments" onClick={() => setForm((current) => ({ ...current, flexible: !current.flexible }))}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${form.flexible ? "bg-primary" : "bg-muted-foreground/30"}`}>
+            <span aria-hidden="true" className={`absolute left-0 top-1 size-4 rounded-full bg-white shadow-sm transition-transform ${form.flexible ? "translate-x-6" : "translate-x-1"}`} />
+          </button>
         </div>
         <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-2">
           <div className="space-y-2">

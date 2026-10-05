@@ -288,7 +288,7 @@ export default function NewSalesPage() {
   >([]);
 
   // A program whose New Sale amount is locked always charges its fixed amount, whatever a saved draft holds.
-  const lockedProgram = (code: string) => { const program = programs.find((item) => item.code === code); return program && !program.newSaleAmountEditable ? program : null; };
+  const lockedProgram = (code: string) => { const program = programs.find((item) => item.code === code); return program && !program.newSaleAmountEditable && !program.flexible ? program : null; };
   const amountPaidOf = (sale: (typeof sales)[number]) => { const locked = lockedProgram(sale.program.programCode); return locked ? fixedNewSaleAmount(locked) : Number(sale.program.amountPaid) || 0; };
   const totalPaid = sales.reduce((sum, sale) => sum + Math.round(amountPaidOf(sale) * 100), 0) / 100;
 
@@ -303,7 +303,7 @@ export default function NewSalesPage() {
     const program = programs.find((item) => item.code === sale.program.programCode);
     if (!program) return null;
     try {
-      return calculateSaleIncentive({ basePay: program.basePay, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, amountPaidOf(sale));
+      return calculateSaleIncentive({ basePay: program.basePay, flexible: program.flexible, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, amountPaidOf(sale));
     } catch (error) {
       return { incentive: 0, remittance: 0, rule: "", error: error instanceof Error ? error.message : "The incentive could not be calculated." };
     }

@@ -84,7 +84,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/new-sales` | Register a new person or add a program to an existing member; save multiple sales in a batch. |
 | `/collections` | Batch monthly payments for the selected branch and MAS, with covered months, calculated NOP, role, waiver, and remittance preview. |
 | `/todays-entries` | Review New Sales and Collections for a selected day, inspect receipt evidence/date warnings, make authorized corrections, and add receipt photos (to your own entries; administrators to any). |
-| `/my-entries` | Your encoded entries by day, week, month or chosen dates: attach receipt photos (one photo can cover several entries), see entries an approver Returned and why, and resubmit them. |
+| `/my-entries` | Your encoded entries by day, week, month or chosen dates: attach receipt photos (one photo can cover several entries), see entries an approver Returned and why, and resubmit them. Photos are compressed in the browser (at most 80 KB) and kept in a private Supabase Storage bucket (`receipts`); the database records which entries each photo covers ([receipt-photos.ts](../lib/receipt-photos.ts)). |
 | `/remittances` | Dashboard, Pending Approval, and Reports. Entry Clerks see only what they encoded; approvers see everyone, filter by Entry Clerk, search, and approve or reject one, selected, or all slips. |
 | `/members` | Searchable member directory, enrollments and calculated standing, details, and authorized transfers/updates. Branch first: the MAS / Collector filter lists the employees assigned to the chosen branch. |
 | `/mam` | Month-by-month account monitoring with branch/program/MAS filters and current-status synchronization. |
@@ -119,6 +119,16 @@ Sources: [page catalog](../lib/page-catalog.ts), [navigation](../lib/navigation.
 ## 3. Programs, rates, and incentive rules
 
 A program contains a stable ID, code/name, monthly `basePay`, status, description, category, registration-fee rule and amount, optional `payBalanceTotal`, age restriction, New Sale incentive, and amount-editability flags. Despite its name, program `basePay` means a **member's monthly installment**, not an employee salary.
+
+**Flexible programs** (Programs → *Flexible payments* switch, column `programs.flexible`, migration `0007`; first used for D-210): `basePay` is the **minimum monthly payment** (D-210: ₱150) and `payBalanceTotal` is the **total amount payable** (D-210: ₱25,200).
+- A Collection covers the months the encoder chooses and must be at least the minimum × those months; any larger amount is accepted up to what is left of the total. Each covered month is credited with its share of the amount paid.
+- A New Sale of a flexible program takes any amount from the minimum (plus any registration fee).
+- Incentives and the company's share are computed on the amount actually paid per month, not on `basePay` ([remittance.ts](../lib/remittance.ts) `calculateRemittance(…, flexible)`).
+- Status (U, ADV, 60D…, suspension, forfeiture) follows the covered months as for any program; the account is **Paid** once its collections reach the total payable ([account-rules.ts](../lib/account-rules.ts)).
+- Exceptions does not flag amounts above the minimum on flexible programs.
+- The legacy import (`scripts/migrate-legacy-members.mjs`) reads the flag too: on a flexible program each payment of at least the minimum is one month.
+
+**OR numbers carry the branch letter**, written with a space ("12345 S"). Digits-only OR numbers are listed in Exceptions under *OR numbers without a branch letter*; `scripts/fix-or-letters.mjs` fixes only the certain cases. Application numbers are text (they contain letters).
 
 Program categories organize plans; they do not change the payment math. Inactive programs are excluded from new enrollment selection. Age-restricted enrollment uses age in whole years **today**, not the stored age text: subtract one year if the birthday has not occurred yet. A restricted program needs a minimum age; its maximum can be blank. Both limits are inclusive.
 

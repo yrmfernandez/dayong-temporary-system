@@ -122,6 +122,13 @@ const sheets = google.sheets({ version: "v4", auth });
 if (!process.env.DIRECT_DATABASE_URL) throw new Error("Missing DIRECT_DATABASE_URL.");
 const sql = postgres(process.env.DIRECT_DATABASE_URL, { max: 1, onnotice: () => {} });
 const projectRef = /^https:\/\/([a-z0-9]+)\.supabase\.co/.exec(process.env.SUPABASE_URL ?? "")?.[1] ?? "unknown";
+// Production went live on October 5, 2026: reloading it from the archived sheet would erase everything entered since.
+const PRODUCTION_REF = "qnugejonwpfvsenxvhxz";
+const databaseRef = /postgres\.([a-z0-9]+)[:@]/.exec(process.env.DIRECT_DATABASE_URL ?? "")?.[1] ?? "";
+if ([projectRef, databaseRef].includes(PRODUCTION_REF)) {
+  console.error("Refusing: this is the PRODUCTION database. It is live; reloading it from the sheet would erase everything entered since the cutover.");
+  process.exit(1);
+}
 
 const columnRows = await sql`
   select table_name, column_name, data_type, is_nullable = 'YES' as nullable, (is_generated = 'ALWAYS' or is_identity = 'YES') as generated

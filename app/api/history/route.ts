@@ -1,3 +1,6 @@
+import { sql } from "drizzle-orm";
+
+import { readSheetRows } from "@/lib/sheets-on-db";
 ﻿import { canManageAccounts, canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
@@ -95,7 +98,9 @@ export async function GET() {
     const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties.title" });
     const existing = new Set((metadata.data.sheets ?? []).map((sheet) => sheet.properties?.title ?? ""));
     const present = sources.filter((source) => existing.has(source.title));
-    const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: present.map((source) => source.range), valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
+    // Only the newest rows of each tab can reach the list (it shows the newest HISTORY_LIMIT), so only those are read.
+    const latest = await Promise.all(present.map((source) => readSheetRows(source.title, sql`true`, { latest: HISTORY_LIMIT })));
+    const response = { data: { valueRanges: latest.map((values) => ({ values })) } };
     // Every saved row is listed; rows saved before encoder tracking existed show "Not recorded" and sort last.
     const all = present.flatMap((source, index) => (response.data.valueRanges?.[index]?.values ?? []).slice(1)
       .map((row, rowIndex) => ({ row, rowNumber: rowIndex + 2 }))

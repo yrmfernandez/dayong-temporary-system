@@ -1,3 +1,6 @@
+import { sql } from "drizzle-orm";
+
+import { readSheetRows } from "@/lib/sheets-on-db";
 import type { CorrectableEntry } from "@/components/entry-correction-form";
 import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 import { monthCount } from "@/lib/account-rules";
@@ -24,6 +27,7 @@ export const EXCEPTION_CATEGORIES = {
   members: "Members with missing details",
   overdue: "Cash past the incentive deadline",
   backdated: "Late entries to review",
+  receipts: "OR numbers without a branch letter",
 } as const;
 export type ExceptionCategory = keyof typeof EXCEPTION_CATEGORIES;
 
@@ -50,16 +54,20 @@ const LIMIT = 300;
  * is wrong and either opens the correction form or links to the page where it is fixed.
  */
 export async function findExceptions({ includeLegacy = false } = {}) {
-  const response = await sheets.spreadsheets.values.batchGet({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [COLLECTIONS_RANGE, SALES_RANGE, PROGRAMS_RANGE, MEMBERS_RANGE, REMITTANCES_RANGE],
-    valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING",
-  });
-  const [collections, sales, programs, members, remittances] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  // Without old (-LEG-) data, only accounts with new entries are loaded, each with its whole history (the sequence
+  // checks compare an account's payments); the imported accounts alone are about 59,000 collections.
+  // OR numbers without a branch letter are always listed, old data included.
+  const newOnly = sql`(enrollment_id in (select enrollment_id from collections where collection_id not like '%-LEG-%') or trim(or_number) ~ '^[0-9]+$')`;
+  const [collections, sales, response] = await Promise.all([
+    includeLegacy ? sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: COLLECTIONS_RANGE, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }).then((result) => result.data.values ?? []) : readSheetRows("Collections", newOnly),
+    includeLegacy ? sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: SALES_RANGE, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }).then((result) => result.data.values ?? []) : readSheetRows("Sales", sql`sale_id not like '%-LEG-%'`),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [PROGRAMS_RANGE, MEMBERS_RANGE, REMITTANCES_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+  ]);
+  const [programs, members, remittances] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const now = manilaNow(), today = now.date, nowStamp = `${now.date} ${now.time}`;
   const programById = new Map(programs.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), {
     name: text(row[2]) || text(row[1]), basePay: number(row[3]), registrationFeeRequired: /^yes$/i.test(text(row[10])) || row[10] === true,
-    registrationAmount: number(row[11]), payBalanceTotal: number(row[12]), newSaleAmountEditable: isTrue(row[19]),
+    registrationAmount: number(row[11]), payBalanceTotal: number(row[12]), newSaleAmountEditable: isTrue(row[19]), flexible: isTrue(row[21]),
   }]));
   const items: ExceptionItem[] = [];
   const add = (item: ExceptionItem) => { if (includeLegacy || !item.legacy) items.push(item); };
@@ -80,6 +88,9 @@ export async function findExceptions({ includeLegacy = false } = {}) {
   for (const row of posted) {
     const date = text(row[9]).slice(0, 10);
     if (!validDay(date) || date > today || date < "2000-01-01") add({ category: "dates", key: `dates-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `OR date "${text(row[9]) || "blank"}" is ${!validDay(date) ? "not a valid date" : date > today ? "in the future" : "too far in the past"}.`, date, legacy: isLegacy(text(row[0])), entry: collectionEntry(row) });
+    // Each branch's receipts carry its letter (e.g. "12345 S"). Those the letter fix could not settle with certainty
+    // (scripts/fix-or-letters.mjs) are listed for staff, old data included, so they are corrected one by one.
+    if (/^\d+$/.test(text(row[8]))) add({ category: "receipts", key: `receipts-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `OR number "${text(row[8])}" has no branch letter. Check the receipt and correct it (for example "${text(row[8])} S").`, date, legacy: false, entry: collectionEntry(row) });
   }
   for (const row of sales.slice(1).filter((item) => text(item[0]))) {
     const date = text(row[30]).slice(0, 10);
@@ -118,7 +129,7 @@ export async function findExceptions({ includeLegacy = false } = {}) {
   // A New Sale on a program with a locked amount must be its fixed amount.
   for (const row of sales.slice(1).filter((item) => text(item[0]))) {
     const program = programById.get(text(row[21]));
-    if (!program || program.newSaleAmountEditable) continue;
+    if (!program || program.newSaleAmountEditable || program.flexible) continue;
     const fixed = fixedNewSaleAmount(program);
     if (fixed > 0 && cents(number(row[26])) !== cents(fixed)) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: `Amount paid ${peso(number(row[26]))}; ${program.name} is fixed at ${peso(fixed)}.`, date: manilaDateOf(text(row[1])), legacy: isLegacy(text(row[0])), entry: saleEntry(row) });
   }

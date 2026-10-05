@@ -119,6 +119,8 @@ export type ProgramIncentiveSheetData = {
 export type CreateProgramData = {
   /** The program's category (Program Categories). Blank = uncategorized. */
   categoryId?: string;
+  /** Flexible payments: basePay is the minimum monthly payment, and incentives and coverage follow the amount paid. */
+  flexible?: boolean;
   /** Whether encoders may type the amount on a New Sale / a Collection. False locks it to the program's amount. */
   newSaleAmountEditable?: boolean;
   collectionAmountEditable?: boolean;
@@ -210,6 +212,8 @@ const toProgram = (row: typeof programTable.$inferSelect) => {
     // False locks the amount to the program's own (lib/program-amount-lock.ts).
     newSaleAmountEditable: row.new_sale_amount_editable,
     collectionAmountEditable: row.collection_amount_editable,
+    // Flexible payments: basePay is the minimum monthly payment; amounts follow what is paid.
+    flexible: row.flexible,
   };
 };
 
@@ -225,7 +229,7 @@ export async function getPrograms() {
 }
 
 /** The program columns a create or an edit writes (everything but the ID and encoder). */
-export function programColumns(data: Pick<CreateProgramData, "code" | "name" | "basePay" | "status" | "description" | "registrationFeeRequired" | "registrationAmount" | "payBalanceTotal" | "categoryId" | "newSaleAmountEditable" | "collectionAmountEditable" | "saleIncentiveType" | "saleIncentiveAmount" | "ageRestricted" | "minAge" | "maxAge">) {
+export function programColumns(data: Pick<CreateProgramData, "code" | "name" | "basePay" | "status" | "description" | "registrationFeeRequired" | "registrationAmount" | "payBalanceTotal" | "categoryId" | "newSaleAmountEditable" | "collectionAmountEditable" | "saleIncentiveType" | "saleIncentiveAmount" | "ageRestricted" | "minAge" | "maxAge" | "flexible">) {
   const age = normalizeAgeRestriction(data);
   const saleIncentive = normalizeSaleIncentive(data);
   return {
@@ -233,7 +237,7 @@ export function programColumns(data: Pick<CreateProgramData, "code" | "name" | "
     description: data.description.trim() || null, registration_fee_required: Boolean(data.registrationFeeRequired), registration_amount: Number(data.registrationAmount) || 0,
     pay_balance_total: Number(data.payBalanceTotal) || 0, age_restricted: age.ageRestricted, min_age: age.minAge, max_age: age.maxAge,
     new_sale_incentive_type: saleIncentive.saleIncentiveType || null, new_sale_incentive_amount: saleIncentive.saleIncentiveType ? saleIncentive.saleIncentiveAmount : null,
-    category_id: clean(data.categoryId) || null, new_sale_amount_editable: isTrue(data.newSaleAmountEditable), collection_amount_editable: isTrue(data.collectionAmountEditable),
+    category_id: clean(data.categoryId) || null, new_sale_amount_editable: isTrue(data.newSaleAmountEditable), collection_amount_editable: isTrue(data.collectionAmountEditable), flexible: isTrue(data.flexible),
   };
 }
 

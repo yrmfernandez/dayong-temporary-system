@@ -19,10 +19,13 @@ before(async () => {
   const db = drizzle(pglite);
   await migrate(db, { migrationsFolder: path.resolve('db/migrations') });
   globalThis.dayongTestDb = db;
+  // Receipt photo files: an in-memory stand-in for Supabase Storage.
+  globalThis.dayongTestStorage = new Map();
 });
 beforeEach(async () => {
   const { rows } = await pglite.query("select string_agg(format('%I', tablename), ', ') as names from pg_tables where schemaname = 'public'");
   await pglite.exec(`truncate ${rows[0].names} restart identity cascade`);
+  globalThis.dayongTestStorage.clear();
 });
 /** Inserts rows (objects keyed by column name) into a database table. */
 async function seed(table, rows, { skipExisting = false } = {}) {
@@ -55,6 +58,7 @@ const MASTER_TABS = [
   ['Programs', 'programs', 'program_id', (r) => ({ program_id: cell(r, 0), program_code: cell(r, 1) === null ? null : String(cell(r, 1)), program_name: cell(r, 2) ?? cell(r, 0), base_pay: number(r[3]), status: cell(r, 4), description: cell(r, 5), registration_fee_required: flag(r[10]), registration_amount: number(r[11]), pay_balance_total: number(r[12]), age_restricted: flag(r[13]), min_age: number(r[14]), max_age: number(r[15]), new_sale_incentive_type: cell(r, 16), new_sale_incentive_amount: number(r[17]), category_id: cell(r, 18), new_sale_amount_editable: flag(r[19]), collection_amount_editable: flag(r[20]) })],
   ['Employee Branches', 'employee_branches', 'assignment_id', (r) => ({ assignment_id: cell(r, 0), employee_id: cell(r, 1), branch_id: cell(r, 2) })],
   ['Program Incentives', 'program_incentives', 'incentive_id', (r) => ({ incentive_id: cell(r, 0), program_id: cell(r, 1), role: cell(r, 2), from_month: number(r[3]), to_month: number(r[4]), incentive_type: cell(r, 5), mark_up: number(r[6]), incentive_amount: number(r[7]), branch_id: cell(r, 12) })],
+  ['Receipt Photos', 'receipt_photos', 'photo_id', (r) => ({ photo_id: cell(r, 0), entry_ids: cell(r, 1) ?? '', mime_type: 'image/webp', storage_path: `test/${cell(r, 0)}.webp` })],
   ['Remittance Methods', 'remittance_methods', 'remittance_method_id', (r) => ({ remittance_method_id: cell(r, 0), method_name: cell(r, 1), is_cash: flag(r[2]), requires_reference: flag(r[3]), status: cell(r, 4) })],
 ];
 async function upsert(table, key, row) {
@@ -72,12 +76,17 @@ async function syncMasterData(rows, synced, load) {
   try {
     await copyMasterData(rows, synced);
     // Sales and Collections rows given as sheet rows are loaded through the database-backed Sheets API, positionally.
-    for (const tab of ['Sales', 'Collections']) {
+    for (const tab of ['Sales', 'Collections', 'Users', 'User Roles']) {
       const data = (rows[tab] ?? []).slice(1).filter((row) => row && row.length);
       const signature = JSON.stringify(data);
-      if (!data.length || synced.get(`tab|${tab}`) === signature) continue;
-      await pglite.query(`delete from "${tab.toLowerCase()}"`);
-      await load('lib/sheets-on-db.ts').sheetsOnDb.spreadsheets.values.append({ range: `'${tab}'!A1`, valueInputOption: 'RAW', requestBody: { values: data } });
+      // Unchanged since the last copy, or never given (and never copied): nothing to do.
+      if (synced.get(`tab|${tab}`) === signature || (!data.length && !synced.has(`tab|${tab}`))) continue;
+      await pglite.query(`delete from "${tab.toLowerCase().replace(/ /g, "_")}"`);
+      // Repeated OR or application numbers (tests of duplicate checks) load flagged, as the October copy did.
+      const keyColumn = tab === 'Collections' ? 8 : tab === 'Sales' ? 28 : -1;
+      const seen = new Set();
+      const extras = data.map((row) => { if (keyColumn < 0) return {}; const key = String(row[keyColumn] ?? '').toUpperCase().replace(/[^A-Z0-9]/g, ''); const repeat = Boolean(key) && seen.has(key); if (key) seen.add(key); return { legacy_duplicate: repeat }; });
+      if (data.length) await load('lib/sheets-on-db.ts').appendSheetRows(tab, data, extras);
       synced.set(`tab|${tab}`, signature);
     }
   } finally { await pglite.query("set session_replication_role = origin"); }
@@ -1690,6 +1699,7 @@ test('exceptions find bad dates, wrong amounts, duplicates, incomplete members, 
   const member = (id, birthdate, contact, address) => { const row = Array(18).fill(''); Object.assign(row, { 0: id, 1: id, 2: 'Cruz', 3: 'Ana', 6: birthdate, 11: contact, 12: address, 17: 'Active' }); return row; };
   h.rows.Members = [[], member('M-1', '1990-01-01', '0917', 'Matina'), member('M-2', '1990-01-01', '0918', 'Toril'), member('M-3', '', '', 'Calinan')];
   const { findExceptions } = h.load('lib/exceptions.ts');
+  await h.sync();
   const result = await findExceptions();
   const ids = (category) => result.categories.find((item) => item.category === category).items.map((item) => item.recordId);
   assert.deepEqual(ids('dates'), ['COL-A'], 'year 206; the legacy row is hidden by default');
@@ -1790,10 +1800,13 @@ test('receipt photos must be small compressed images and may cover several entri
   const data = 'A'.repeat(60000);
   const saved = await h.load('lib/encoder-context.ts').runAsSystem(() => saveReceiptPhoto({ entryIds: ['COL-1', 'COL-2', 'COL-1'], dataUrl: `data:image/webp;base64,${data}`, width: 800, height: 1000 }));
   assert.deepEqual(saved.entryIds, ['COL-1', 'COL-2']);
-  const row = h.writes.find((write) => String(write.range).startsWith("'Receipt Photos'!A:N")).requestBody.values[0];
-  assert.equal(row[1], 'COL-1,COL-2');
-  assert.equal(row[9], 2, 'split into two cells under the 50,000-character limit');
-  assert.equal(row[10].length + row[11].length, 60000);
+  // The file goes to storage; the database row records which entries it covers and where the file is.
+  const [row] = await query('select entry_ids, storage_path, photo_data_1 from receipt_photos');
+  assert.equal(row.entry_ids, 'COL-1,COL-2');
+  assert.equal(row.photo_data_1, null, 'no image data in the database');
+  assert.ok(globalThis.dayongTestStorage.has(row.storage_path));
+  const viewed = await h.load('lib/receipt-photos.ts').getReceiptPhoto(saved.photoId);
+  assert.equal(viewed.dataUrl, `data:image/webp;base64,${data}`, 'viewing returns the same image');
 });
 
 test('bank deposits count as cash out, pending cash counts only in its own report, and remaining cash carries over', async () => {
@@ -1867,10 +1880,12 @@ test('entries go to Pending Approval on their own once every receipt photo is at
   };
   // One of the batch's two Collections has no photo yet: nothing is sent.
   const partial = setup(['COL-A']);
+  await partial.sync();
   assert.deepEqual(await partial.load('lib/remittance-workflow.ts').submitReadyEntries(['COL-A']), []);
   assert.equal(partial.writes.length, 0);
   // With both photos the batch goes as one slip, expecting exactly the company share.
   const ready = setup(['COL-A,COL-B']);
+  await ready.sync();
   const slips = await ready.load('lib/remittance-workflow.ts').submitReadyEntries(['COL-A']);
   assert.equal(slips.length, 1);
   const requests = ready.writes.at(-1).requestBody.requests;
@@ -1958,4 +1973,31 @@ test('an administrator can mark an employee Day Off in Attendance Review', async
   const saved = h.writes.find((write) => String(write.range).startsWith('Attendance!') || String(write.range).startsWith("'Attendance'!"));
   assert.ok(saved && JSON.stringify(saved.requestBody.values).includes('Day Off'), 'the record is saved as Day Off');
   assert.equal((await route.POST(request({ employeeId: 'MD-5', attendanceDate: '2026-10-05', status: 'Holiday' }))).status, 400, 'only Absent, AWOL and Day Off');
+});
+
+test('a flexible program takes any amount from its minimum, counts months as chosen, and is paid off at its total', () => {
+  const h = harness();
+  const { accountState, validatePayment } = h.load('lib/account-rules.ts');
+  const { calculateRemittance } = h.load('lib/remittance.ts');
+  // D-210 style: minimum ₱150 a month, ₱25,200 in total.
+  const account = { id: 'E1', memberId: 'M1', memberNumber: 'PH-1', programId: 'D-210', doi: '2026-01-10', branch: 'B', mas: 'M', basePay: 150, payBalanceTotal: 25200, storedStatus: '', flexible: true };
+  const pay = (id, from, to, nopFrom, nopTo, amount, orDate) => ({ id, enrollmentId: 'E1', orDate, orNumber: id, monthFrom: from, monthTo: to, nopFrom, nopTo, amount, dateRemitted: orDate, mas: 'M' });
+  const history = [pay('P1', '2026-02', '2026-02', 2, 2, 210, '2026-02-05'), pay('P2', '2026-03', '2026-04', 3, 4, 300, '2026-03-05')];
+  const state = accountState(account, history, '2026-04-20');
+  assert.equal(state.status, 'U', '₱210 for one month and ₱300 for two months are both full months');
+  assert.deepEqual(state.allocations.map((item) => item.amount), [210, 150, 150], 'each month is credited with its share of what was paid');
+  const input = (amount, months = 1) => ({ monthFrom: '2026-05', monthTo: months === 1 ? '2026-05' : '2026-06', nopFrom: 5, nopTo: 4 + months, amount, orDate: '2026-05-05', orNumber: 'P3', waiver: '', collectedByRole: 'MAS', originalMas: '' });
+  assert.throws(() => validatePayment(account, history, input(100), '2026-05-06'), /at least the minimum of 150/);
+  assert.throws(() => validatePayment(account, history, input(250, 2), '2026-05-06'), /2 month\(s\) requires at least 300/);
+  validatePayment(account, history, input(500), '2026-05-06');  // more than the minimum for one month is fine
+  assert.throws(() => validatePayment(account, history, input(30000), '2026-05-06'), /more than the remaining program balance of 24690/);
+  // Paid off once collections reach the total.
+  assert.equal(accountState({ ...account, payBalanceTotal: 510 }, history, '2026-04-20').status, 'Paid');
+  // Incentives follow the amount paid: 50% of (amount - ₱50 mark-up).
+  const tiers = [{ role: 'MAS', fromMonth: 1, toMonth: 999, incentiveType: 'percentage', markUp: 50, incentiveAmount: 50 }];
+  assert.deepEqual(calculateRemittance(150, tiers, 'MAS', 5, 5, 210, true).breakdown.map((item) => [item.basePay, item.incentive, item.remittance]), [[210, 80, 130]]);
+  assert.deepEqual(calculateRemittance(150, tiers, 'MAS', 5, 6, 300, true).breakdown.map((item) => item.basePay), [150, 150]);
+  assert.throws(() => calculateRemittance(150, tiers, 'MAS', 5, 6, 250, true), /at least the minimum/);
+  // A fixed program is unchanged: every month is the base pay, and only an exact payoff may exceed it.
+  assert.throws(() => validatePayment({ ...account, flexible: false, basePay: 210 }, history.map((item) => ({ ...item, amount: 210 * (item.nopTo - item.nopFrom + 1) })), input(500), '2026-05-06'), /must exactly pay the remaining program balance/);
 });

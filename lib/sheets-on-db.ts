@@ -182,18 +182,21 @@ async function rowSeqAt(table: string, rowNumber: number, db: Queryable) {
 }
 
 /** Adds rows in one statement (an attendance close-out can add hundreds at once). Unset columns take their default. */
-async function insertRows(layout: Layout, startColumn: number, rows: unknown[][], userEntered: boolean, db: Queryable) {
-  const records = rows.map((values) => {
+async function insertRows(layout: Layout, startColumn: number, rows: unknown[][], userEntered: boolean, db: Queryable, extras: Array<Record<string, unknown>> = []) {
+  const records = rows.map((values, index) => {
     const record = new Map<string, unknown>();
     values.forEach((value, offset) => {
       const column = layout.columns[startColumn + offset];
       if (column?.writable) record.set(column.name, fromCell(value, column, userEntered));
     });
     for (const column of layout.columns) if (column.writable && !record.has(column.name) && !column.nullable) record.set(column.name, fromCell("", column, userEntered));
+    // Database-only columns (e.g. legacy_duplicate) given by the caller.
+    for (const [name, value] of Object.entries(extras[index] ?? {})) record.set(name, value);
     return record;
   }).filter((record) => record.size);
   if (!records.length) return;
-  const names = layout.columns.filter((column) => records.some((record) => record.has(column.name))).map((column) => column.name);
+  const extraNames = [...new Set(extras.flatMap((extra) => Object.keys(extra ?? {})))];
+  const names = [...layout.columns.filter((column) => records.some((record) => record.has(column.name))).map((column) => column.name), ...extraNames];
   // PostgreSQL allows 65,535 parameters per statement.
   const size = Math.max(1, Math.floor(30_000 / names.length));
   for (let start = 0; start < records.length; start += size) {
@@ -309,4 +312,13 @@ export async function readSheetRows(title: string, where: SQL, { unformatted = t
     layout.columns.map((column) => HEADER_NAMES[layout.table]?.[column.name] ?? column.name),
     ...rows.map((row) => layout.columns.map((column) => toCell(row[column.name], column, { unformatted }))),
   ];
+}
+
+/**
+ * Appends rows in a tab's sheet layout in one transaction (used by the legacy import script). `extras[i]` sets
+ * database-only columns of row i, such as legacy_duplicate on a receipt or application number already in use.
+ */
+export async function appendSheetRows(title: string, rows: unknown[][], extras: Array<Record<string, unknown>> = []) {
+  const layout = await layoutOf(title);
+  await inTransaction((tx) => insertRows(layout, 0, rows, false, tx, extras));
 }

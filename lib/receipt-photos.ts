@@ -1,45 +1,28 @@
+import { asc, eq } from "drizzle-orm";
+
+import { getDb, schema } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { readPhoto, storePhoto } from "@/lib/photo-storage";
 import { createReadableId } from "@/lib/readable-id";
 
 /**
- * Receipt photos for New Sales and Collections, kept in the "Receipt Photos" sheet because the system stores everything
- * in Google Sheets. To keep that small, the browser shrinks each photo before upload (grayscale, at most 1280 px, WebP
- * or JPEG) to MAX_PHOTO_BYTES; it is stored as base64 text split across cells (a cell holds at most 50,000 characters).
+ * Receipt photos for New Sales and Collections. The browser shrinks each photo before upload (grayscale, at most
+ * 1280 px, WebP or JPEG) to MAX_PHOTO_BYTES. The file is kept in Supabase Storage (lib/photo-storage.ts, path in
+ * storage_path); the receipt_photos row records which entries it covers. Photos saved before the move to Storage may
+ * still hold their base64 data in photo_data_1..4 until scripts/move-photos-to-storage.mjs moves them.
  * One photo may cover several entries (one remittance receipt for a batch).
- *
- * Receipt Photos columns: A photo_id, B entry_ids (comma separated), C mime_type, D size_bytes, E width, F height,
- * G uploaded_at, H uploaded_by_employee_id, I uploaded_by_name, J chunk_count, K:N photo_data_1..4.
- * Only A:J are read to know which entries have a photo; the data columns are read one photo at a time.
  */
 export const MAX_PHOTO_BYTES = 80_000;
-const SHEET = "Receipt Photos";
-const CHUNK = 45_000;
-const MAX_CHUNKS = 4;
-const HEADERS = ["photo_id", "entry_ids", "mime_type", "size_bytes", "width", "height", "uploaded_at", "uploaded_by_employee_id", "uploaded_by_name", "chunk_count", "photo_data_1", "photo_data_2", "photo_data_3", "photo_data_4"];
+const photos = schema.receipt_photos;
 const text = (value: unknown) => String(value ?? "").trim();
 
 export type ReceiptPhotoInfo = { photoId: string; entryIds: string[]; sizeBytes: number; uploadedAt: string; uploadedByName: string; uploadedByEmployeeId: string };
 
-async function sheetExists() {
-  const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties.title" });
-  return Boolean(metadata.data.sheets?.some((sheet) => sheet.properties?.title === SHEET));
-}
-
-async function ensureSheet() {
-  if (await sheetExists()) return;
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [{ addSheet: { properties: { title: SHEET, gridProperties: { frozenRowCount: 1, columnCount: HEADERS.length } } } }] } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A1:N1`, valueInputOption: "RAW", requestBody: { values: [HEADERS] } });
-}
-
-/** Every photo's details without the image data, newest last. A missing sheet means no photos yet. */
+/** Every photo's details without the image, oldest first. */
 export async function listReceiptPhotos(): Promise<ReceiptPhotoInfo[]> {
-  if (!(await sheetExists())) return [];
-  const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A:J` })).data.values ?? [];
-  return rows.slice(1).filter((row) => text(row[0])).map((row) => ({
-    photoId: text(row[0]), entryIds: text(row[1]).split(",").map(text).filter(Boolean), sizeBytes: Number(row[3]) || 0,
-    uploadedAt: text(row[6]), uploadedByEmployeeId: text(row[7]), uploadedByName: text(row[8]),
-  }));
+  const rows = await getDb().select({ id: photos.photo_id, entryIds: photos.entry_ids, size: photos.size_bytes, at: photos.uploaded_at, by: photos.uploaded_by_name, byId: photos.uploaded_by_employee_id })
+    .from(photos).orderBy(asc(photos.row_seq));
+  return rows.map((row) => ({ photoId: row.id, entryIds: text(row.entryIds).split(",").map(text).filter(Boolean), sizeBytes: row.size ?? 0, uploadedAt: row.at ?? "", uploadedByEmployeeId: text(row.byId), uploadedByName: text(row.by) }));
 }
 
 /** Entry ID → its latest photo. */
@@ -51,13 +34,12 @@ export async function photosByEntry() {
 
 /** The image as a data URL, for viewing. */
 export async function getReceiptPhoto(photoId: string) {
-  if (!(await sheetExists())) throw new Error("Photo not found.");
-  const ids = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A:A` })).data.values ?? [];
-  const index = ids.findIndex((row, position) => position > 0 && text(row[0]) === photoId);
-  if (index < 0) throw new Error("Photo not found.");
-  const row = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A${index + 1}:N${index + 1}` })).data.values?.[0] ?? [];
-  const chunks = Number(row[9]) || 0;
-  return { photoId, entryIds: text(row[1]).split(",").map(text).filter(Boolean), dataUrl: `data:${text(row[2])};base64,${row.slice(10, 10 + chunks).map(text).join("")}`, uploadedAt: text(row[6]), uploadedByName: text(row[8]) };
+  const [row] = await getDb().select().from(photos).where(eq(photos.photo_id, text(photoId)));
+  if (!row) throw new Error("Photo not found.");
+  const base64 = row.storage_path ? await readPhoto(row.storage_path)
+    : [row.photo_data_1, row.photo_data_2, row.photo_data_3, row.photo_data_4].slice(0, row.chunk_count ?? 0).map(text).join("");
+  if (!base64) throw new Error("Photo not found.");
+  return { photoId: row.photo_id, entryIds: text(row.entry_ids).split(",").map(text).filter(Boolean), dataUrl: `data:${text(row.mime_type)};base64,${base64}`, uploadedAt: row.uploaded_at ?? "", uploadedByName: text(row.uploaded_by_name) };
 }
 
 /**
@@ -69,18 +51,17 @@ export async function saveReceiptPhoto(input: { entryIds: string[]; dataUrl: str
   const match = /^data:(image\/(?:webp|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(input.dataUrl);
   if (!match) throw new Error("The photo must be a compressed WebP or JPEG image.");
   const [, mime, base64] = match;
-  const sizeBytes = Math.floor(base64.length * 3 / 4) - (base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0);
-  if (sizeBytes > MAX_PHOTO_BYTES) throw new Error(`The photo is ${Math.round(sizeBytes / 1000)} KB; the limit is ${MAX_PHOTO_BYTES / 1000} KB. Take it again closer to the receipt.`);
+  const bytes = Buffer.from(base64, "base64");
+  if (bytes.length > MAX_PHOTO_BYTES) throw new Error(`The photo is ${Math.round(bytes.length / 1000)} KB; the limit is ${MAX_PHOTO_BYTES / 1000} KB. Take it again closer to the receipt.`);
   const entryIds = [...new Set(input.entryIds.map(text).filter(Boolean))];
   if (!entryIds.length) throw new Error("Choose the entries this receipt is for.");
-  const chunks: string[] = [];
-  for (let start = 0; start < base64.length; start += CHUNK) chunks.push(base64.slice(start, start + CHUNK));
-  if (chunks.length > MAX_CHUNKS) throw new Error("The photo is too large.");
-  await ensureSheet();
   const photoId = createReadableId("RCP");
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A:N`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
-    requestBody: { values: [[photoId, entryIds.join(","), mime, sizeBytes, Math.round(input.width) || 0, Math.round(input.height) || 0, actor.encodedAt, actor.employeeId, actor.name, chunks.length, ...chunks]] },
+  const path = `${actor.encodedAt.slice(0, 7)}/${photoId}.${mime === "image/webp" ? "webp" : "jpg"}`;
+  // The file first: a row never points at a file that was not stored.
+  await storePhoto(path, new Uint8Array(bytes), mime);
+  await getDb().insert(photos).values({
+    photo_id: photoId, entry_ids: entryIds.join(","), mime_type: mime, size_bytes: bytes.length, width: Math.round(input.width) || 0, height: Math.round(input.height) || 0,
+    uploaded_at: actor.encodedAt, uploaded_by_employee_id: actor.employeeId, uploaded_by_name: actor.name, storage_path: path,
   });
-  return { photoId, sizeBytes, entryIds };
+  return { photoId, sizeBytes: bytes.length, entryIds };
 }

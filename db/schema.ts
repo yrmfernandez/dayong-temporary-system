@@ -165,6 +165,8 @@ export const programs = pgTable("programs", {
   category_id: text().references(() => program_categories.category_id),
   new_sale_amount_editable: boolean().notNull().default(false),
   collection_amount_editable: boolean().notNull().default(false),
+  /** Flexible payments: base_pay is the minimum monthly payment and amounts follow what is paid (lib/account-rules.ts). */
+  flexible: boolean().notNull().default(false),
 }).enableRLS();
 
 export const program_incentives = pgTable("program_incentives", {
