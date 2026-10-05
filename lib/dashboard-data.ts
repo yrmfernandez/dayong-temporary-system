@@ -9,7 +9,9 @@ import { buildOperationalReport } from "@/lib/reports";
 import { getRemittanceDashboard } from "@/lib/remittance-workflow";
 import { getTodayMode, TODAY_MODE_LABELS } from "@/lib/system-settings";
 import { getEntriesForDay } from "@/lib/todays-entries";
-import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
+import { PROGRAMS_RANGE } from "@/lib/sheet-ranges";
+import { countSheetRows, readSheetRows } from "@/lib/sheets-on-db";
+import { sql } from "drizzle-orm";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const date = (value: unknown) => text(value).slice(0, 10);
@@ -27,7 +29,9 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const needsSales = ["admin", "entry", "mas", "collector"].includes(kind);
   // Large sheets use the shared ranges (lib/sheet-ranges.ts), so the report, remittances and today's counts below reuse
   // this read instead of fetching Collections again. Member programs is only needed for the MAS portfolio.
-  const ranges = ["'Employees'!A:M", ...(kind === "admin" ? [USERS_RANGE, "'Branches'!A:Q", MEMBERS_RANGE] : []), ...(needsSales ? [PROGRAMS_RANGE, SALES_RANGE, COLLECTIONS_RANGE, MEMBERS_RANGE] : []), ...(kind === "mas" ? ["'Member programs'!A:S"] : [])];
+  // Sales, Collections and Members are not read whole: recent activity takes the newest rows in the user's scope, and
+  // the member count and portfolio names come from the database directly (below).
+  const ranges = ["'Employees'!A:M", ...(kind === "admin" ? [USERS_RANGE, "'Branches'!A:Q"] : []), ...(needsSales ? [PROGRAMS_RANGE] : []), ...(kind === "mas" ? ["'Member programs'!A:S"] : [])];
   const unique = [...new Set(ranges)];
   const read = (list: string[]) => sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: list, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
   // Start everything that does not depend on who the user is at once, instead of one step after another.
@@ -45,7 +49,14 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const [response, todayMode, monthReport, remittance, todayEntries] = await Promise.all([mainRead, todayModeRead, reportRead, remittanceRead, entriesRead]);
   const byRange = new Map(unique.map((range, index) => [range, response.data.valueRanges?.[index]?.values ?? []]));
   const sheet = (range: string) => byRange.get(range) ?? [];
-  const employees = sheet("'Employees'!A:M"), members = sheet(MEMBERS_RANGE), programs = sheet(PROGRAMS_RANGE), enrollments = sheet("'Member programs'!A:S"), sales = sheet(SALES_RANGE), collections = sheet(COLLECTIONS_RANGE);
+  const employees = sheet("'Employees'!A:M"), programs = sheet(PROGRAMS_RANGE), enrollments = sheet("'Member programs'!A:S");
+  // Recent activity: the newest sales and collections in this user's scope.
+  const lowerName = personName.toLowerCase();
+  const salesScope = kind === "entry" ? sql`encoded_by_employee_id = ${user.employeeId}` : kind === "mas" || kind === "collector" ? sql`lower(trim(mas)) = ${lowerName}` : sql`true`;
+  const collectionsScope = kind === "entry" ? sql`encoded_by_employee_id = ${user.employeeId}` : kind === "mas" || kind === "collector" ? sql`lower(trim(coalesce(nullif(trim(accountable_name), ''), mas))) = ${lowerName}` : sql`true`;
+  const [sales, collections, memberCount] = needsSales
+    ? await Promise.all([readSheetRows("Sales", salesScope, { latest: 40 }), readSheetRows("Collections", collectionsScope, { latest: 40 }), kind === "admin" ? countSheetRows("Members") : Promise.resolve(0)])
+    : [[[]], [[]], kind === "admin" ? await countSheetRows("Members") : 0];
 
   const employee = employees.slice(1).find((row) => text(row[0]) === user.employeeId);
   const employeeName = text(employee?.[1]) || user.name;
@@ -53,15 +64,18 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const activeEmployees = employees.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() === "active");
   const hasRole = (row: unknown[], role: string) => text(row[3]).toLowerCase().split(",").map((item) => item.trim()).includes(role);
   const branchStats = [...new Set(activeEmployees.map((row) => text(row[2])).filter(Boolean))].sort().map((branch) => { const staff = activeEmployees.filter((row) => text(row[2]) === branch); return { branch, employees: staff.length, mas: staff.filter((row) => hasRole(row, "mas")).length, collectors: staff.filter((row) => hasRole(row, "collector")).length }; });
-  const counts = { employees: employees.slice(1).filter((row) => text(row[0])).length, activeEmployees: activeEmployees.length, mas: activeEmployees.filter((row) => hasRole(row, "mas")).length, collectors: activeEmployees.filter((row) => hasRole(row, "collector")).length, users: kind === "admin" ? readUserRows(sheet(USERS_RANGE)).users.filter((row) => row.status === "active").length : 0, branches: sheet("'Branches'!A:Q").slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active").length, members: members.slice(1).filter((row) => text(row[0])).length, programs: programs.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() === "active").length, portfolio: 0 };
+  const counts = { employees: employees.slice(1).filter((row) => text(row[0])).length, activeEmployees: activeEmployees.length, mas: activeEmployees.filter((row) => hasRole(row, "mas")).length, collectors: activeEmployees.filter((row) => hasRole(row, "collector")).length, users: kind === "admin" ? readUserRows(sheet(USERS_RANGE)).users.filter((row) => row.status === "active").length : 0, branches: sheet("'Branches'!A:Q").slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active").length, members: memberCount, programs: programs.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() === "active").length, portfolio: 0 };
 
   // Sales and collection activity above is scoped to the person for MAS and Collector dashboards. "Today" follows the
   // company setting (remittance date unless an administrator chose encoded or OR date).
   const todayActivity = { salesAccounts: todayEntries?.sales.count ?? 0, salesGross: todayEntries?.sales.amount ?? 0, collectionAccounts: todayEntries?.collections.count ?? 0, collectionGross: todayEntries?.collections.amount ?? 0, basis: TODAY_MODE_LABELS[todayMode] };
 
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
-  const memberNames = new Map(members.slice(1).map((row) => [text(row[0]), `${text(row[3])} ${text(row[2])}`.trim()]));
   const portfolioRows = kind === "mas" ? enrollments.slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active" && own(row[6])) : [];
+  // Names only for the members in this MAS's portfolio.
+  const portfolioIds = [...new Set(portfolioRows.map((row) => text(row[1])).filter(Boolean))];
+  const members = portfolioIds.length ? await readSheetRows("Members", sql`member_id in (${sql.join(portfolioIds.map((id) => sql`${id}`), sql`, `)})`) : [[]];
+  const memberNames = new Map(members.slice(1).map((row) => [text(row[0]), `${text(row[3])} ${text(row[2])}`.trim()]));
   counts.portfolio = portfolioRows.length;
   const describe = (row: unknown[]) => ({ member: memberNames.get(text(row[1])) || text(row[2]), program: programNames.get(text(row[3])) || text(row[3]), branch: text(row[5]), status: text(row[18]) || "NS", doi: date(row[4]) });
   const portfolio = portfolioRows.slice(0, 8).map(describe);

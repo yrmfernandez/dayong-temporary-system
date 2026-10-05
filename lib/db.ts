@@ -29,7 +29,9 @@ export function getDb(): Database {
     if (!url) throw new ServerConfigurationError(["DATABASE_URL"]);
     // max_pipeline 1: Supabase's transaction pooler can stall when several queries are pipelined on one connection
     // (seen October 5, 2026: concurrent reads never returned). One query at a time per connection avoids it.
-    const client = postgres(url, { prepare: false, max: 10, max_pipeline: 1, idle_timeout: 20, connect_timeout: 10 });
+    // max_pipeline is a postgres.js option its TypeScript types do not list.
+    const options = { prepare: false, max: 10, max_pipeline: 1, idle_timeout: 20, connect_timeout: 10 } as postgres.Options<Record<string, never>>;
+    const client = postgres(url, options);
     shared.dayongDb = drizzle(client, { schema }) as unknown as Database;
   }
   return shared.dayongDb;

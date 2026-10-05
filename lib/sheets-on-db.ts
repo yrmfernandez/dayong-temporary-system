@@ -55,6 +55,13 @@ async function layoutOf(title: string) {
   return layout;
 }
 
+/** Number of rows in a tab that match `where`. */
+export async function countSheetRows(title: string, where: SQL = sql`true`) {
+  const layout = await layoutOf(title);
+  const [row] = rowsOf<{ count: number }>(await getDb().execute(sql`select count(*)::int as count from ${ident(layout.table)} where ${where}`));
+  return Number(row?.count ?? 0);
+}
+
 /** Rows of a raw query: postgres.js returns them as the result itself, PGlite (tests) under .rows. */
 const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
 
@@ -96,7 +103,13 @@ function toCell(value: unknown, column: Column, render: Render): unknown {
   if (column.type === "boolean") return render.unformatted ? Boolean(value) : value ? "TRUE" : "FALSE";
   if (["numeric", "integer", "bigint", "double precision", "smallint", "real"].includes(column.type)) { const number = Number(value); return render.unformatted ? number : String(number); }
   if (column.type === "date") return value instanceof Date ? isoDay(value) : String(value).slice(0, 10);
-  if (column.type.startsWith("timestamp")) return value instanceof Date ? value.toISOString() : new Date(String(value).replace(" ", "T").replace(/\+00$/, "Z")).toISOString();
+  if (column.type.startsWith("timestamp")) {
+    if (value instanceof Date) return value.toISOString();
+    // PostgreSQL text like "2026-10-04 03:05:28.78+00" or "+08": JavaScript needs "T" and an "+hh:mm" offset.
+    const iso = String(value).trim().replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00").replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+    const parsed = new Date(iso);
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+  }
   if (column.type === "jsonb" || column.type === "json") return typeof value === "string" ? value : JSON.stringify(value);
   return String(value);
 }
@@ -281,3 +294,19 @@ export const sheetsOnDb = {
     },
   },
 };
+
+/**
+ * Rows of one tab that match `where`, in the tab's sheet layout (header row first, every column, oldest first), for
+ * code written for whole-sheet reads that only needs some rows: the database filters before anything is converted.
+ */
+export async function readSheetRows(title: string, where: SQL, { unformatted = true, latest = 0 }: { unformatted?: boolean; latest?: number } = {}) {
+  const layout = await layoutOf(title);
+  // latest: only the newest rows (still returned oldest first).
+  const order = latest ? sql`order by row_seq desc limit ${latest}` : sql`order by row_seq`;
+  const found = rowsOf<Record<string, unknown>>(await getDb().execute(sql`select ${list(layout.columns.map((column) => column.name))} from ${ident(layout.table)} where ${where} ${order}`));
+  const rows = latest ? found.reverse() : found;
+  return [
+    layout.columns.map((column) => HEADER_NAMES[layout.table]?.[column.name] ?? column.name),
+    ...rows.map((row) => layout.columns.map((column) => toCell(row[column.name], column, { unformatted }))),
+  ];
+}

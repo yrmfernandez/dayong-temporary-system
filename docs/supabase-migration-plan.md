@@ -153,7 +153,13 @@ To go live quickly, the pages not yet rewritten were moved with a compatibility 
 - Reads never join a transaction (only the layer's own writes use one, passed explicitly), and the database client sends one query at a time per connection (`max_pipeline: 1` in `lib/db.ts`): with pipelining, Supabase's transaction pooler left concurrent reads waiting forever (found October 5, 2026 when Attendance and Payroll never loaded).
 - Absence close-out and other multi-row appends insert in one statement.
 - Receipt photos are kept in the database (four base64 chunks per photo, as in the sheet). Moving them to Supabase Storage is a later improvement; watch the database size (free plan: 500 MB).
-- These pages still read whole tables (now from the database, in Singapore, instead of Google Sheets). Rewriting them module by module with targeted queries, like Collections and New Sales, is the follow-up for speed.
+- The pages that used the most Vercel Active CPU now let the database filter first (`readSheetRows`, `countSheetRows` in `lib/sheets-on-db.ts`), measured October 5, 2026 on staging (second call):
+  - Audits (`/api/audit`, 19 min of CPU in 12 calls before): about 0.5 s. Each clerk's report used to convert every New Sale and Collection ever recorded; `getEntriesForRange` (`lib/todays-entries.ts`) now loads only the clerk's, person's or date range's rows.
+  - Today's Entries 0.2 s, My Entries and Entry Clerk reports about 0.5 s (about 40 s before).
+  - Dashboard (`/`, 9 min of CPU in 122 calls before): about 0.8 s. Recent activity takes the newest 40 rows in scope, members are counted in the database, the month report (`lib/reports.ts`) loads only the month's rows, and the remittance summary uses a read-only ledger without the 59,000 imported, already remitted collections (`loadLedger({ activeOnly })`).
+  - Remittances page about 0.1 s.
+- Saves in the remittance workflow still load the whole ledger, because they find rows by position; rewriting them with targeted queries is the remaining follow-up for speed, along with Exceptions and History.
+- Vercel Hobby includes 4 hours of Active CPU a month; 3 hours were used by October 5, 2026, mostly by Audits and the dashboard before these changes.
 
 ## Status by module
 

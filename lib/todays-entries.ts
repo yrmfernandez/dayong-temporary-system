@@ -1,5 +1,8 @@
+import { sql, type SQL } from "drizzle-orm";
+
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
+import { PROGRAMS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
+import { readSheetRows } from "@/lib/sheets-on-db";
 import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-deadline";
 import { dateWarnings } from "@/lib/date-checks";
 import { photosByEntry } from "@/lib/receipt-photos";
@@ -75,13 +78,35 @@ export async function getEntriesForDay(date: string, mode: TodayMode, person = "
  * New Sales and posted Collections whose day (by `mode`) falls from `from` to `to`, optionally only one MAS/Collector's
  * (`person`) or only what one employee encoded (`encodedBy`, an Employee ID).
  */
+/**
+ * The database narrows Sales and Collections to the rows that can match before anything is converted: the encoder,
+ * the person accountable, and the date the mode uses (one day of margin each side for the Manila day). The exact
+ * filters below still decide, so this only has to keep every row that could match.
+ */
+function prefilter(kind: "sales" | "collections", from: string, to: string, mode: TodayMode, person: string, encodedBy: string) {
+  const conditions: SQL[] = [];
+  const low = sql`(${from}::date - 1)`, high = sql`(${to}::date + 1)`;
+  if (encodedBy) conditions.push(sql`encoded_by_employee_id = ${encodedBy}`);
+  if (person) conditions.push(kind === "sales" ? sql`lower(trim(mas)) = ${person.toLowerCase()}` : sql`lower(trim(coalesce(nullif(trim(accountable_name), ''), mas))) = ${person.toLowerCase()}`);
+  const created = kind === "sales" ? sql`coalesce(encoded_at, date_created)` : sql`coalesce(encoded_at, created_at)`;
+  if (from > "2000-01-01" || mode !== "encoded") {
+    if (mode === "encoded") conditions.push(sql`(${created})::date between ${low} and ${high}`);
+    else if (mode === "or") conditions.push(kind === "sales" ? sql`coalesce(or_date, (date_created)::date) between ${low} and ${high}` : sql`or_date between ${low} and ${high}`);
+    else conditions.push(sql`(date_remitted between ${low} and ${high} or linked_remittance_id in (select remittance_id from remittances where date_remitted between ${low} and ${high}))`);
+  } else conditions.push(sql`(${created})::date <= ${high}`);
+  return conditions.length ? sql.join(conditions, sql` and `) : sql`true`;
+}
+
 export async function getEntriesForRange(from: string, to: string, mode: TodayMode, { person = "", encodedBy = "" }: { person?: string; encodedBy?: string } = {}) {
-  const response = await sheets.spreadsheets.values.batchGet({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: [SALES_RANGE, COLLECTIONS_RANGE, REMITTANCES_RANGE, PROGRAMS_RANGE, MEMBERS_RANGE],
-    valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING",
-  });
-  const [sales, collections, remittances, programs, members] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  const [sales, collections, response] = await Promise.all([
+    readSheetRows("Sales", prefilter("sales", from, to, mode, person, encodedBy)),
+    readSheetRows("Collections", prefilter("collections", from, to, mode, person, encodedBy)),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [REMITTANCES_RANGE, PROGRAMS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+  ]);
+  const [remittances, programs] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  // Member names only for the members on these collections.
+  const memberIds = [...new Set(collections.slice(1).map((row) => text(row[3])).filter(Boolean))];
+  const members = memberIds.length ? await readSheetRows("Members", sql`member_id in (${sql.join(memberIds.map((id) => sql`${id}`), sql`, `)})`) : [[]];
   const photos = await photosByEntry();
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const memberNames = new Map(members.slice(1).map((row) => [text(row[0]), `${text(row[3])} ${text(row[2])}`.trim()]));

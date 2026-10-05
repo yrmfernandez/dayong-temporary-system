@@ -1,5 +1,8 @@
+import { sql } from "drizzle-orm";
+
+import { readSheetRows } from "@/lib/sheets-on-db";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { COLLECTIONS_RANGE, PROGRAMS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
+import { PROGRAMS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
@@ -29,8 +32,14 @@ function aggregate(lines: ReportLine[], key: (line: ReportLine) => string) {
 
 export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; encoder?: string; encoders?: string[] } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error("Choose a valid report date range.");
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [SALES_RANGE, COLLECTIONS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, "'Expenses'!A:Q", "'Cash Transactions'!A:P", REMITTANCE_LINKS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
-  const [sales, collections, programs, remittances, expenses, cash, remittanceCollections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  // Sales lines are dated by date_created and collection lines by OR date, so the database returns only those in the
+  // range (a day of margin for the Manila day on date_created); the exact range check below still decides.
+  const [sales, collections, response] = await Promise.all([
+    readSheetRows("Sales", sql`(date_created)::date between (${from}::date - 1) and (${to}::date + 1)`),
+    readSheetRows("Collections", sql`or_date between ${from}::date and ${to}::date`),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [PROGRAMS_RANGE, REMITTANCES_RANGE, "'Expenses'!A:Q", "'Cash Transactions'!A:P", REMITTANCE_LINKS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+  ]);
+  const [programs, remittances, expenses, cash, remittanceCollections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const inRange = (date: string) => date >= from && date <= to;
   const matches = (branch: string, programId: string, person: string, encoder: string) => (!filters.branch || branch === filters.branch) && (!filters.programId || programId === filters.programId) && (!filters.person || person === filters.person) && (!filters.encoder || encoder === filters.encoder) && (!filters.encoders || filters.encoders.includes(encoder));

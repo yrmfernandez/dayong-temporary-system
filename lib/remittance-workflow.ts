@@ -1,3 +1,6 @@
+import { sql } from "drizzle-orm";
+
+import { readSheetRows } from "@/lib/sheets-on-db";
 ﻿import { createReadableId } from "@/lib/readable-id";
 import { COLLECTIONS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 import { getEncoder, runAsSystem } from "@/lib/encoder-context";
@@ -114,14 +117,25 @@ export type CashRemittance = {
   clerkNames: string[];
 };
 
-async function loadLedger() {
-  const response = await sheets.spreadsheets.values.batchGet({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: titles.map((title) => ledgerRanges[title]),
-    valueRenderOption: "UNFORMATTED_VALUE",
-    dateTimeRenderOption: "FORMATTED_STRING",
-  });
-  const rows = Object.fromEntries(titles.map((title, index) => [title, response.data.valueRanges?.[index]?.values ?? []]));
+/**
+ * The remittance ledger. Saves load every row, because they find a row by its position. A read-only view
+ * (`activeOnly`) skips what plays no part in remittances: items already Remitted with no encoder, which are the
+ * imported old data (about 59,000 of 60,000 collections), so dashboards stay light. Never save from an activeOnly ledger.
+ */
+async function loadLedger({ activeOnly = false }: { activeOnly?: boolean } = {}) {
+  const active = sql`(coalesce(remittance_status, '') <> 'Remitted' or coalesce(encoded_by_employee_id, '') <> '' or linked_remittance_id is not null)`;
+  const [response, activeCollections, activeSales] = await Promise.all([
+    sheets.spreadsheets.values.batchGet({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      ranges: titles.filter((title) => !activeOnly || (title !== "Collections" && title !== "Sales")).map((title) => ledgerRanges[title]),
+      valueRenderOption: "UNFORMATTED_VALUE",
+      dateTimeRenderOption: "FORMATTED_STRING",
+    }),
+    activeOnly ? readSheetRows("Collections", active) : Promise.resolve(null),
+    activeOnly ? readSheetRows("Sales", active) : Promise.resolve(null),
+  ]);
+  const fetched = titles.filter((title) => !activeOnly || (title !== "Collections" && title !== "Sales"));
+  const rows = Object.fromEntries(titles.map((title) => [title, title === "Collections" && activeCollections ? activeCollections : title === "Sales" && activeSales ? activeSales : response.data.valueRanges?.[fetched.indexOf(title)]?.values ?? []]));
   if (!headerMatches(rows.Collections[0]?.[28], "Remittance Status") || !headerMatches(rows.Remittances[0]?.[12], "Difference") || !headerMatches(rows["Remittance Collections"][0]?.[0], "Remittance Collection ID")) {
     throw new Error("Run the remittance workflow sheet migration before using Remittances.");
   }
@@ -195,7 +209,8 @@ export const amountDue = (collection: Pick<CashCollection, "amount" | "remittanc
  * Items still waiting for receipt photos are Outstanding; items whose slip was rejected are Returned to the clerk.
  */
 export async function getRemittanceDashboard(clerkId = "") {
-  const all = await loadLedger();
+  // Read-only: the active part of the ledger is enough for the summary, the queues and the clerk list.
+  const all = await loadLedger({ activeOnly: true });
   const ledger = clerkId
     ? { ...all, collections: all.collections.filter((item) => item.encodedByEmployeeId === clerkId), remittances: all.remittances.filter((remittance) => remittance.clerkIds.includes(clerkId)) }
     : all;

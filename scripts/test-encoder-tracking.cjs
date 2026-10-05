@@ -66,10 +66,21 @@ async function upsert(table, key, row) {
 async function placeholder(table, key, id, extra) {
   if (id) await pglite.query(`insert into "${table}" ("${key}", ${Object.keys(extra).map((column) => `"${column}"`).join(', ')}) values ($1, ${Object.keys(extra).map((_, index) => `$${index + 2}`).join(', ')}) on conflict do nothing`, [id, ...Object.values(extra)]);
 }
-async function syncMasterData(rows, synced) {
-  // Setup data is not an edit by the code under test, so the audit trigger is off while it is copied.
+async function syncMasterData(rows, synced, load) {
+  // Setup data is not an edit by the code under test, so the audit trigger (and link checks) are off while it is copied.
   await pglite.query("set session_replication_role = replica");
-  try { await copyMasterData(rows, synced); } finally { await pglite.query("set session_replication_role = origin"); }
+  try {
+    await copyMasterData(rows, synced);
+    // Sales and Collections rows given as sheet rows are loaded through the database-backed Sheets API, positionally.
+    for (const tab of ['Sales', 'Collections']) {
+      const data = (rows[tab] ?? []).slice(1).filter((row) => row && row.length);
+      const signature = JSON.stringify(data);
+      if (!data.length || synced.get(`tab|${tab}`) === signature) continue;
+      await pglite.query(`delete from "${tab.toLowerCase()}"`);
+      await load('lib/sheets-on-db.ts').sheetsOnDb.spreadsheets.values.append({ range: `'${tab}'!A1`, valueInputOption: 'RAW', requestBody: { values: data } });
+      synced.set(`tab|${tab}`, signature);
+    }
+  } finally { await pglite.query("set session_replication_role = origin"); }
 }
 async function copyMasterData(rows, synced) {
   for (const [tab, table, key, convert] of MASTER_TABS) {
@@ -174,7 +185,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
     return loadedModule.exports;
   }
   const synced = new Map();
-  const sync = () => syncMasterData(rows, synced);
+  const sync = () => syncMasterData(rows, synced, load);
   // Route handlers (GET, POST, …) copy the master data rows into the database first; lib modules call h.sync() themselves.
   const loadForTest = (file) => {
     const loaded = load(file);
@@ -607,6 +618,7 @@ test('pending approval does not clear cash accountability', async () => {
   h.rows.Remittances = [remittancesHeader, remittance];
   h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At'], ['RCL-1', 'REM-1', 'COL-1', 350]];
   deadlineHeaders(h);
+  await h.sync();
   const dashboard = await h.load('lib/remittance-workflow.ts').getRemittanceDashboard();
   assert.equal(dashboard.summary.outstandingAmount, 200);
   assert.equal(dashboard.summary.pendingAmount, 350);
@@ -1028,6 +1040,7 @@ test('operational reports reconcile source transactions without duplicating data
   const remittance = Array(24).fill(''); remittance[0] = 'REM-1'; remittance[1] = 'MATINA'; remittance[3] = '2026-09-10'; remittance[4] = 'Approved'; remittance[11] = 200;
   const deposit = Array(16).fill(''); deposit[0] = 'CSH-1'; deposit[1] = '2026-09-10'; deposit[2] = 'inflow'; deposit[3] = 'Bank Deposit'; deposit[5] = 100; deposit[6] = 'MATINA'; deposit[10] = 'Posted';
   h.rows.Sales = [[], sale]; h.rows.Collections = [[], collection]; h.rows.Programs = [[], ['DP-1', 'P1', 'Program One']]; h.rows.Remittances = [[], remittance]; h.rows.Expenses = [[], expense]; h.rows['Cash Transactions'] = [[], deposit];
+  await h.sync();
   const report = await h.load('lib/reports.ts').buildOperationalReport('2026-09-01', '2026-09-30');
   assert.equal(report.summary.accounts, 2);
   assert.equal(report.summary.gross, 700);
@@ -1749,6 +1762,7 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   h.rows.Programs = [[], ['DP-1', 'CODE', 'Program']];
   const expense = Array(21).fill(''); Object.assign(expense, { 0: 'EXP-1', 1: '2026-06-16', 2: 'Fare', 4: 100, 11: 'Posted', 18: 'DPE-7' });
   h.rows.Expenses = [[], expense];
+  await h.sync();
   const { buildClerkReport } = h.load('lib/clerk-report.ts');
   const report = await buildClerkReport('weekly', '2026-06-17', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.equal(report.reportName, 'WEEKLY REPORT');
@@ -1792,6 +1806,7 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
     ['DEP-2', '2026-09-03', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 50, 'RCBC', '', '', 'Voided', 'Typed twice', ''],
   ];
   h.rows['Report Notes'] = [[], ['DPE-7|daily|2026-09-03', 'DPE-7', 'daily', '2026-09-03', 120, 'Penalty paid', '', '220 - COH', '', '']];
+  await h.sync();
   const { buildClerkReport } = h.load('lib/clerk-report.ts');
   const day = await buildClerkReport('daily', '2026-09-03', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.deepEqual(day.deposits.map((item) => [item.id, item.amount, item.transferType]), [['DEP-1', 700, 'RCBC']], 'a voided deposit is left out');
