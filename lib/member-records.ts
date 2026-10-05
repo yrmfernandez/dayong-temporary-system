@@ -118,16 +118,18 @@ async function findMembers(search: string, branch: string, mas: string, limit: n
   const normalizedBranch = text(branch).toLowerCase(), normalizedMas = text(mas).toLowerCase();
   const scoped = Boolean(normalizedBranch || normalizedMas);
   if ((!term && !scoped) || (scoped && (!normalizedBranch || !normalizedMas))) return [];
+  // Written with an explicit alias (mp) and table name: inside a subquery, Drizzle's column references are not
+  // table-qualified, and an unqualified member_id would compare the enrollment with itself instead of with the member.
   const eligible = scoped
-    ? sql`lower(trim(${memberPrograms.branch})) = ${normalizedBranch} and lower(trim(${memberPrograms.mas})) = ${normalizedMas} and (coalesce(trim(${memberPrograms.status}), '') = '' or lower(trim(${memberPrograms.status})) = 'active')`
+    ? sql`lower(trim(mp.branch)) = ${normalizedBranch} and lower(trim(mp.mas)) = ${normalizedMas} and (coalesce(trim(mp.status), '') = '' or lower(trim(mp.status)) = 'active')`
     : sql`true`;
   const pattern = `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
   const fullName = sql`lower(regexp_replace(trim(concat_ws(' ', ${members.first_name}, ${members.middle_name}, ${members.surname})), '\\s+', ' ', 'g'))`;
-  const programIds = sql<string[]>`coalesce((select array_agg(${memberPrograms.program_id} order by ${memberPrograms.program_id}) from ${memberPrograms} where ${memberPrograms.member_id} = ${members.member_id} and ${eligible}), '{}')`;
+  const programIds = sql<string[]>`coalesce((select array_agg(mp.program_id order by mp.program_id) from member_programs mp where mp.member_id = "members"."member_id" and ${eligible}), '{}')`;
   const rows = await currentDb().select({ member: members, programIds }).from(members)
     .where(and(
       term ? sql`(${fullName} like ${pattern} or lower(${members.member_number}) like ${pattern})` : undefined,
-      scoped ? sql`exists (select 1 from ${memberPrograms} where ${memberPrograms.member_id} = ${members.member_id} and ${eligible})` : undefined,
+      scoped ? sql`exists (select 1 from member_programs mp where mp.member_id = "members"."member_id" and ${eligible})` : undefined,
     ))
     .orderBy(asc(members.surname), asc(members.first_name), asc(members.member_number))
     .limit(limit);
@@ -245,4 +247,17 @@ export async function addSale(
     mas_incentive: quote.incentive, remittance_amount: quote.remittance, fidelity_amount: quote.fidelity > 0 ? quote.fidelity : null,
     backdate_reason: optional(sale.backdateReason),
   });
+}
+
+/** Members with an account in this branch (and with this MAS when given), for the MAM member dropdown: ID, number, name. */
+export async function listMembersInBranch(branch: string, mas = "") {
+  const normalizedBranch = text(branch).toLowerCase(), normalizedMas = text(mas).toLowerCase();
+  if (!normalizedBranch) return [];
+  // Explicit alias and table name: see findMembers.
+  const rows = await currentDb().select({ id: members.member_id, number: members.member_number, surname: members.surname, firstName: members.first_name, middleName: members.middle_name })
+    .from(members)
+    .where(sql`exists (select 1 from member_programs mp where mp.member_id = "members"."member_id" and lower(trim(mp.branch)) = ${normalizedBranch}${normalizedMas ? sql` and lower(trim(mp.mas)) = ${normalizedMas}` : sql``})`)
+    .orderBy(asc(members.surname), asc(members.first_name), asc(members.member_number))
+    .limit(5000);
+  return rows.map((row) => ({ id: row.id, number: row.number, name: `${row.surname}, ${[row.firstName, row.middleName].filter(Boolean).join(" ")}`.trim() }));
 }

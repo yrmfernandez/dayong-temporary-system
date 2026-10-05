@@ -1001,7 +1001,8 @@ export default function CollectionsPage() {
             </div>
           </CardHeader>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* overscroll-contain: reaching the end of one panel never scrolls the page or the other panel. */}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <CardContent className="space-y-4 p-4">
               {collections.map(
                 (entry, index) => {
@@ -1781,7 +1782,8 @@ export default function CollectionsPage() {
             </div>
           </CardHeader>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* overscroll-contain: reaching the end of one panel never scrolls the page or the other panel. */}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <CardContent className="space-y-5 p-4">
               {!activeMember ? (
                 <div className="flex min-h-[300px] items-center justify-center rounded-xl border border-dashed">
@@ -1800,8 +1802,8 @@ export default function CollectionsPage() {
                 </div>
               ) : (
                 <>
-                  {/* ACCOUNT SUMMARY */}
-                  <div className="rounded-xl border bg-muted/30 p-4">
+                  {/* ACCOUNT SUMMARY: stays at the top while the history below it scrolls. */}
+                  <div className="sticky top-0 z-10 rounded-xl border bg-card p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-semibold">

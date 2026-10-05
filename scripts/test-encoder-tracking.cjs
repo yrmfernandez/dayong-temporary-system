@@ -563,6 +563,11 @@ test('collection member search matches branch and MAS and returns eligible progr
   assert.equal(results.length, 1);
   assert.equal(results[0].id, 'M1');
   assert.deepEqual(results[0].programIds, ['P1', 'P2']);
+  // The full list for a Branch and MAS: each member with only their own programs there, and no one else's members.
+  await seed('members', [{ member_id: 'M3', member_number: 'PH-003', surname: 'Lim', first_name: 'Joy' }]);
+  await seed('member_programs', [{ enrollment_id: 'E5', member_id: 'M3', member_number: 'PH-003', program_id: 'P3', branch: 'North', mas: 'MAS One', status: 'Active' }]);
+  const list = await h.load('lib/member-records.ts').listMembersForMas('North', 'MAS One');
+  assert.deepEqual(list.map((member) => [member.id, member.programIds]).sort(), [['M1', ['P1', 'P2']], ['M3', ['P3']]], 'one program is auto-selected for M3; M2 is not under this MAS');
 });
 
 test('physical remittance links exact outstanding collections and records a discrepancy', async () => {

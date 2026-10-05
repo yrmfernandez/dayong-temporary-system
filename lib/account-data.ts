@@ -14,6 +14,8 @@ export type AccountScope = {
   memberId?: string;
   /** Exact MAS name, case-insensitive (lib/member-scope.ts). */
   mas?: string;
+  /** Exact branch name, case-insensitive. */
+  branch?: string;
   /** Accounts matching any of these member number + program pairs (a Collections batch). */
   memberPrograms?: Array<{ memberNumber: string; programId: string }>;
 };
@@ -28,6 +30,7 @@ function scopeCondition(scope: AccountScope): SQL | undefined {
   if (scope.enrollmentIds) conditions.push(scope.enrollmentIds.length ? inArray(memberPrograms.enrollment_id, scope.enrollmentIds) : sql`false`);
   if (scope.memberId !== undefined) conditions.push(eq(memberPrograms.member_id, scope.memberId));
   if (scope.mas !== undefined) conditions.push(sql`lower(trim(${memberPrograms.mas})) = ${scope.mas.trim().toLowerCase()}`);
+  if (scope.branch !== undefined) conditions.push(sql`lower(trim(${memberPrograms.branch})) = ${scope.branch.trim().toLowerCase()}`);
   if (scope.memberPrograms) {
     const pairs = scope.memberPrograms.filter((pair) => pair.memberNumber && pair.programId);
     conditions.push(pairs.length ? sql`(${memberPrograms.member_number}, ${memberPrograms.program_id}) in (${sql.join(pairs.map((pair) => sql`(${pair.memberNumber}, ${pair.programId})`), sql`, `)})` : sql`false`);
@@ -116,10 +119,18 @@ export async function memberStanding(memberId: string): Promise<ProgramStanding[
   });
 }
 
-/** `onlyMas` limits the report to that MAS's own accounts (lib/member-scope.ts). */
-export async function mamReport(from?: string, to?: string, onlyMas: string | null = null) {
+/**
+ * MAM for the chosen branch, MAS or member: only those accounts and their payments are loaded. `onlyMas` limits it to
+ * that MAS's own accounts (lib/member-scope.ts) whatever else is chosen.
+ */
+export async function mamReport(from?: string, to?: string, onlyMas: string | null = null, filter: { branch?: string; mas?: string; memberId?: string } = {}) {
   const today = todayInManila();
-  return buildMamReport(await loadAccountData(onlyMas === null ? {} : { mas: onlyMas }), from || today.slice(0, 7), to || today.slice(0, 7), today);
+  const scope: AccountScope = {};
+  if (filter.branch) scope.branch = filter.branch;
+  if (filter.memberId) scope.memberId = filter.memberId;
+  // A MAS user's own name always wins over a chosen MAS.
+  if (onlyMas !== null) scope.mas = onlyMas; else if (filter.mas) scope.mas = filter.mas;
+  return buildMamReport(await loadAccountData(scope), from || today.slice(0, 7), to || today.slice(0, 7), today);
 }
 
 /** One member's MAM: each of their program accounts, month by month, from enrollment (at most the last 36 months) to today. */

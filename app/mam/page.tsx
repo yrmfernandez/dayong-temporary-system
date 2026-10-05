@@ -72,6 +72,10 @@ export default function MamPage() {
   const [program, setProgram] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  // Branch first, then a MAS or employee assigned to it, then a member; only that slice is loaded.
+  const [member, setMember] = useState("");
+  const [choices, setChoices] = useState<{ branches: Array<{ id: string; name: string }>; staff: Array<{ employeeId: string; fullName: string; branchIds: string[] }>; ownMembersOnly: boolean } | null>(null);
+  const [memberOptions, setMemberOptions] = useState<Array<{ id: string; number: string; name: string }>>([]);
   const [selected, setSelected] = useState<Row | null>(null);
   const pending = useRef<AbortController | null>(null);
 
@@ -84,12 +88,14 @@ export default function MamPage() {
     setSelected(null);
     try {
       if (!from || !to || from > to) throw new Error("Choose a valid From / To month range.");
+      if (!branch && !choices?.ownMembersOnly) { setReport(null); return; }
       if (sync) {
         const response = await fetch("/api/mam", { method: "POST", signal: controller.signal });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || "Unable to sync statuses.");
       }
-      const response = await fetch(`/api/mam?from=${from}&to=${to}`, { cache: "no-store", signal: controller.signal });
+      const query = new URLSearchParams({ from, to, branch, mas, member });
+      const response = await fetch(`/api/mam?${query}`, { cache: "no-store", signal: controller.signal });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load MAM.");
       if (!controller.signal.aborted) setReport(result);
@@ -100,23 +106,43 @@ export default function MamPage() {
     }
   }
 
+  // The branches and employees for the filters.
   useEffect(() => {
     const controller = new AbortController();
-    pending.current = controller;
-    void fetch("/api/mam", { cache: "no-store", signal: controller.signal })
+    void fetch("/api/mam?options=1", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || "Unable to load MAM.");
-        if (!controller.signal.aborted) setReport(result);
+        setChoices(result);
       })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load MAM.");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setBusy(false);
-      });
-    return () => pending.current?.abort();
+      .catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load MAM."); })
+      .finally(() => { if (!controller.signal.aborted) setBusy(false); });
+    return () => controller.abort();
   }, []);
+
+  // The members of the chosen branch (and MAS) for the member dropdown.
+  useEffect(() => {
+    if (!branch) return;
+    const controller = new AbortController();
+    void fetch(`/api/mam?${new URLSearchParams({ members: "1", branch, mas })}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.json())
+      .then((result) => { if (result.success) setMemberOptions(result.members ?? []); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [branch, mas]);
+
+  // Each choice loads its own slice: the report waits for a branch (a MAS sees their own members without one).
+  useEffect(() => {
+    if (!choices) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the report for the chosen branch, MAS and member
+    void load();
+    return () => pending.current?.abort();
+    // load reads from/to as of this choice; changing the month range waits for Apply Range.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [choices, branch, mas, member]);
+
+  const branchId = choices?.branches.find((item) => item.name === branch)?.id ?? "";
+  const masChoices = (choices?.staff ?? []).filter((staff) => branchId && staff.branchIds.includes(branchId)).map((staff) => staff.fullName);
 
   useEffect(() => {
     if (!selected) return;
@@ -130,8 +156,6 @@ export default function MamPage() {
   const rows =
     report?.rows.filter(
       (r) =>
-        (!branch || r.branch === branch) &&
-        (!mas || r.mas === mas) &&
         (!program || r.programId === program) &&
         (!status || r.periods.some((p) => p.state?.status === status)) &&
         `${r.memberName} ${r.memberNumber} ${r.applicationNumber}`.toLowerCase().includes(search.toLowerCase())
@@ -154,8 +178,6 @@ export default function MamPage() {
     return p?.state && p.state.status !== "Forfeited" && !p.state.temporarilySuspended;
   }).length;
 
-  const options = (field: "branch" | "mas") =>
-    [...new Set(report?.rows.map((r) => r[field]) ?? [])].sort();
 
   function exportCsv() {
     const table: unknown[][] = [
@@ -255,22 +277,37 @@ export default function MamPage() {
               aria-label="Branch"
               className="h-9"
               clearable
-              placeholder="All branches"
+              placeholder={choices?.ownMembersOnly ? "All your branches" : "Choose a branch"}
               value={branch}
-              onValueChange={setBranch}
-              options={options("branch").map((s) => ({ value: s, label: s }))}
+              onValueChange={(value) => { setBranch(value); setMas(""); setMember(""); setMemberOptions([]); }}
+              options={(choices?.branches ?? []).map((item) => ({ value: item.name, label: item.name, keywords: item.id }))}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">MAS</label>
+            <label className="text-xs font-semibold text-muted-foreground">MAS / Employee</label>
             <SearchSelect
               aria-label="MAS"
               className="h-9"
               clearable
-              placeholder="All MAS"
+              disabled={!branch || Boolean(choices?.ownMembersOnly)}
+              placeholder={choices?.ownMembersOnly ? "Your own members" : branch ? "All in this branch" : "Choose a branch first"}
               value={mas}
-              onValueChange={setMas}
-              options={options("mas").map((s) => ({ value: s, label: s }))}
+              onValueChange={(value) => { setMas(value); setMember(""); }}
+              options={masChoices.map((name) => ({ value: name, label: name }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Member</label>
+            <SearchSelect
+              aria-label="Member"
+              className="h-9"
+              clearable
+              limit={1000}
+              disabled={!branch}
+              placeholder={branch ? "All members" : "Choose a branch first"}
+              value={member}
+              onValueChange={setMember}
+              options={memberOptions.map((item) => ({ value: item.id, label: item.name, description: item.number }))}
             />
           </div>
           <div className="space-y-1">
@@ -319,6 +356,8 @@ export default function MamPage() {
               onClick={() => {
                 setBranch("");
                 setMas("");
+                setMember("");
+                setMemberOptions([]);
                 setProgram("");
                 setStatus("");
                 setSearch("");
@@ -549,7 +588,7 @@ export default function MamPage() {
 
       {!busy && !rows.length && (
         <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">
-          No account entries match your applied filters.
+          {!branch && !choices?.ownMembersOnly ? "Choose a branch to load MAM. Then narrow it by MAS / employee or member." : "No account entries match your applied filters."}
         </div>
       )}
 
