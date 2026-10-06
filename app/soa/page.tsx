@@ -1,7 +1,7 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Printer } from "lucide-react";
+import { Printer, Save } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ function StatementContent() {
   const [accounts, setAccounts] = useState<AccountOption[]>([]), [statement, setStatement] = useState<StatementOfAccount | null>(null);
   const [loading, setLoading] = useState(false), [error, setError] = useState("");
   const [filters, setFilters] = useState<Filters>(noFilters);
+  const [canSetSignatories, setCanSetSignatories] = useState(false), [headDraft, setHeadDraft] = useState(""), [savingHead, setSavingHead] = useState(false), [headMessage, setHeadMessage] = useState("");
   const filtering = Object.values(filters).some(Boolean);
   // Filters narrow the account picker and the list below it, so a member is easy to find among many accounts.
   const filtered = useMemo(() => {
@@ -56,12 +57,24 @@ function StatementContent() {
     fetch(`/api/soa?account=${encodeURIComponent(selected)}`, { cache: "no-store" }).then(async (response) => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.message);
-      if (!cancelled) setStatement(result.statement);
+      if (!cancelled) { setStatement(result.statement); setCanSetSignatories(Boolean(result.canSetSignatories)); setHeadDraft(result.statement.signatories.collectionHead); setHeadMessage(""); }
     }).catch((failure) => { if (!cancelled) { setStatement(null); setError(failure instanceof Error ? failure.message : "Unable to prepare the statement."); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [selected]);
 
+  // The Collection Department Head is one company-wide name, printed on every SOA.
+  const saveHead = async () => {
+    setSavingHead(true); setHeadMessage("");
+    try {
+      const response = await fetch("/api/soa", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ collectionHead: headDraft }) }), result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      setHeadDraft(result.collectionHead);
+      setStatement((current) => current && { ...current, signatories: { ...current.signatories, collectionHead: result.collectionHead } });
+      setHeadMessage("Saved. It prints on every SOA.");
+    } catch (failure) { setHeadMessage(failure instanceof Error ? failure.message : "Unable to save."); }
+    finally { setSavingHead(false); }
+  };
   const choose = (id: string) => router.replace(id ? `${pathname}?account=${encodeURIComponent(id)}` : pathname, { scroll: false });
   const s = statement?.summary;
   return <section className="mx-auto max-w-5xl space-y-6">
@@ -98,21 +111,13 @@ function StatementContent() {
     {statement && s && !loading && <article data-slot="card" className="soa-sheet space-y-6 rounded-2xl border bg-card p-6 text-sm sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4">
         <div className="flex items-center gap-3"><BrandLogo className="size-14 object-contain" /><div><p className="text-base font-bold">D&apos; San Roque Dayong Providers Inc.</p><p className="text-xs text-muted-foreground">{statement.account.branch} Branch</p></div></div>
-        <div className="text-right"><p className="text-lg font-black tracking-wide">STATEMENT OF ACCOUNT</p><p className="text-xs text-muted-foreground">As of {longDate(statement.statementDate)}</p><p className="text-xs text-muted-foreground">Account {statement.account.id}</p></div>
+        <div className="text-right"><p className="text-lg font-black tracking-wide">STATEMENT OF ACCOUNT</p><p className="text-xs"><span className="text-muted-foreground">Date: </span><span className="font-semibold">{longDate(statement.statementDate)}</span></p><p className="text-xs text-muted-foreground">Account {statement.account.id}</p></div>
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
         <Block title="Member">{[["Name", statement.member.name], ["Member no.", statement.member.number], ["Address", statement.member.address], ["Contact", statement.member.contact]]}</Block>
-        <Block title="Plan">{[["Program", statement.account.programName], ["Date of issue (DOI)", longDate(statement.account.doi)], ["Application no.", statement.account.applicationNumber], ["Monthly due", money(statement.account.monthlyDue)], ["MAS", statement.account.mas]]}</Block>
+        <Block title="Account">{[["Program", statement.account.programName], ["Category", statement.account.programCategory], ["MAS", statement.account.mas], ["Date of issue (DOI)", longDate(statement.account.doi)], ["Application no.", statement.account.applicationNumber], ["Monthly due", money(statement.account.monthlyDue)]]}</Block>
       </div>
-
-      <div className="grid gap-3 rounded-xl border p-4 sm:grid-cols-4">
-        <Figure label="Account status" value={<span className="flex flex-wrap items-center gap-2"><StatusBadge status={s.status} tone={["U", "ADV", "Paid"].includes(s.status) ? "success" : s.status === "NS" ? "info" : s.status === "Forfeited" ? "neutral" : "danger"} /><span className="text-xs font-normal text-muted-foreground">{statusText[s.status] ?? s.status}</span></span>} />
-        <Figure label="Amount due now" value={s.amountDue === null ? "Forfeited" : money(s.amountDue)} strong />
-        <Figure label="Paid through" value={`${monthLabel(s.lastCoveredMonth)} · ${s.monthsPaid} month${s.monthsPaid === 1 ? "" : "s"}`} />
-        <Figure label="Next due" value={`${monthLabel(s.nextMonth)} (NOP ${s.nextNop})`} />
-      </div>
-      {s.temporarilySuspended && s.status !== "Forfeited" && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">This account is temporarily suspended since {longDate(s.suspendedAt)}. It will be forfeited on {longDate(s.forfeitedAt)} unless updated.</p>}
 
       <div>
         <h2 className="mb-2 font-semibold">Payment History</h2>
@@ -126,12 +131,32 @@ function StatementContent() {
         </table></div>
       </div>
 
-      <dl className="ml-auto max-w-sm space-y-1.5 border-t pt-4">
-        <Row label="Total paid" value={money(s.totalPaid)} />
-        {s.remainingBalance !== null && <Row label={`Remaining of total amount payable (${money(statement.account.payBalanceTotal)})`} value={money(s.remainingBalance)} />}
-        <Row label="Months behind" value={String(s.unpaidMonths)} />
-        <Row label="Amount due now" value={s.amountDue === null ? "Forfeited" : money(s.amountDue)} strong />
-      </dl>
+      <div className="rounded-xl border p-4">
+        <h2 className="mb-3 font-semibold">Summary</h2>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Figure label="Account status" value={<span className="flex flex-wrap items-center gap-2"><StatusBadge status={s.status} tone={["U", "ADV", "Paid"].includes(s.status) ? "success" : s.status === "NS" ? "info" : s.status === "Forfeited" ? "neutral" : "danger"} /><span className="text-xs font-normal text-muted-foreground">{statusText[s.status] ?? s.status}</span></span>} />
+          <Figure label="Total paid" value={money(s.totalPaid)} />
+          <Figure label="Program balance" value={s.remainingBalance === null ? "No fixed total" : money(s.remainingBalance)} />
+          <Figure label="Amount due now" value={s.amountDue === null ? "Forfeited" : money(s.amountDue)} strong />
+        </div>
+        <dl className="mt-4 grid gap-x-8 gap-y-1.5 border-t pt-3 sm:grid-cols-2">
+          <Row label="Paid through" value={`${monthLabel(s.lastCoveredMonth)} · ${s.monthsPaid} month${s.monthsPaid === 1 ? "" : "s"}`} />
+          <Row label="Next due" value={`${monthLabel(s.nextMonth)} (NOP ${s.nextNop})`} />
+          <Row label="Months behind" value={String(s.unpaidMonths)} />
+          {s.remainingBalance !== null && <Row label="Total amount payable" value={money(statement.account.payBalanceTotal)} />}
+        </dl>
+        {s.temporarilySuspended && s.status !== "Forfeited" && <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">This account is temporarily suspended since {longDate(s.suspendedAt)}. It will be forfeited on {longDate(s.forfeitedAt)} unless updated.</p>}
+      </div>
+
+      <div className="grid gap-10 pt-6 sm:grid-cols-2">
+        <Signature caption="Prepared by" name={statement.signatories.preparedBy} />
+        <Signature caption="Collection Department Head" name={statement.signatories.collectionHead} />
+      </div>
+      {canSetSignatories && <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed p-3 print:hidden">
+        <label className="min-w-0 flex-1 text-xs text-muted-foreground">Collection Department Head (prints on every SOA)<input className={fieldClass} value={headDraft} maxLength={120} onChange={(event) => setHeadDraft(event.target.value)} placeholder="Full name" /></label>
+        <Button type="button" size="sm" variant="outline" disabled={savingHead || headDraft.trim() === statement.signatories.collectionHead} onClick={() => void saveHead()}><Save className="size-4" />{savingHead ? "Saving..." : "Save"}</Button>
+        {headMessage && <p className="w-full text-xs text-muted-foreground" aria-live="polite">{headMessage}</p>}
+      </div>}
 
       <p className="border-t pt-4 text-xs text-muted-foreground">Payments are applied to monthly installments in order. An account two months behind is temporarily suspended and is forfeited six months after its last covered month. Please present official receipts for any payment not listed. This statement was generated from company records on {longDate(statement.statementDate)}.</p>
     </article>}
@@ -143,6 +168,9 @@ function Block({ title, children }: { title: string; children: string[][] }) {
 }
 function Figure({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return <div><p className="text-xs text-muted-foreground">{label}</p><div className={`mt-1 tabular-nums ${strong ? "text-xl font-bold" : "font-semibold"}`}>{value}</div></div>;
+}
+function Signature({ caption, name }: { caption: string; name: string }) {
+  return <div className="text-center"><p className="min-h-5 font-semibold uppercase">{name}</p><p className="mt-1 border-t border-foreground/60 pt-1 text-xs text-muted-foreground">{caption}</p></div>;
 }
 function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return <div className="flex justify-between gap-4"><dt className={strong ? "font-semibold" : "text-muted-foreground"}>{label}</dt><dd className={`tabular-nums ${strong ? "text-base font-bold" : "font-medium"}`}>{value}</dd></div>;

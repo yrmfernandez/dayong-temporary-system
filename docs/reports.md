@@ -1,6 +1,6 @@
 # Reports
 
-Updated October 4, 2026. Formulas and worked examples are in [system guide § 10](system-guide.md#10-reports-mam-soa-and-executive-dashboard).
+Updated October 6, 2026. Formulas and worked examples are in [system guide § 10](system-guide.md#10-reports-mam-soa-and-executive-dashboard).
 
 ## Entry Clerk reports (`/reports`)
 
@@ -30,3 +30,13 @@ Report Review shows the same tabs for any Entry Clerk, read-only, with the entry
 The company-wide operational builder (`lib/reports.ts`, `/api/reports`) no longer has its own screen. It still feeds dashboards and the earned-commission comparison, and stores report remarks. Its date bases and formulas are in the system guide.
 
 Live reports are not snapshots: corrections to a source entry appear the next time the report loads. Approved audits keep the figures they were approved with.
+
+## Statement of Account (`/soa`)
+
+One member program enrollment, printable. Layout: header (company, branch, Date, account ID); Member and Account blocks (program, category, MAS, DOI, application no., monthly due); Payment History; Summary (account status, total paid, program balance, amount due now, paid through, next due, months behind); signature lines for Prepared by and Collection Department Head.
+
+| Status | Item |
+| --- | --- |
+| Done | Program category, program balance, Summary section, Prepared by and Collection Department Head signature lines, department head setting for administrators and IT. |
+| In progress | Browser check and test print of the new layout. |
+| To do | None yet. |

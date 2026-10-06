@@ -105,7 +105,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/sales` | POST | [app/api/sales/route.ts](../app/api/sales/route.ts) |
 | `/api/sales/validate` | POST | [app/api/sales/validate/route.ts](../app/api/sales/validate/route.ts) |
 | `/api/settings` | PATCH | [app/api/settings/route.ts](../app/api/settings/route.ts) |
-| `/api/soa` | GET | [app/api/soa/route.ts](../app/api/soa/route.ts) |
+| `/api/soa` | GET, PATCH | [app/api/soa/route.ts](../app/api/soa/route.ts) |
 | `/api/todays-entries` | GET, POST, PATCH | [app/api/todays-entries/route.ts](../app/api/todays-entries/route.ts) |
 | `/api/user-accounts/password` | POST | [app/api/user-accounts/password/route.ts](../app/api/user-accounts/password/route.ts) |
 | `/api/user-accounts` | GET, POST, PATCH, DELETE | [app/api/user-accounts/route.ts](../app/api/user-accounts/route.ts) |
@@ -307,7 +307,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/sales/route.ts](../app/api/sales/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/encoder-context`, `@/lib/google-sheets-data`, `@/lib/member-records`, `@/lib/employees`, `@/lib/program-age`, `@/lib/account-rules`, `@/lib/db`, `@/lib/remittance`, `@/lib/duplicate-entries` |
 | [app/api/sales/validate/route.ts](../app/api/sales/validate/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/member-records` |
 | [app/api/settings/route.ts](../app/api/settings/route.ts) | `PATCH` | `@/lib/auth-server`, `@/lib/google-sheets`, `@/lib/auth`, `@/lib/default-password`, `@/lib/passwords`, `@/lib/session-account`, `@/lib/users-sheet` |
-| [app/api/soa/route.ts](../app/api/soa/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/statement-of-account` |
+| [app/api/soa/route.ts](../app/api/soa/route.ts) | `GET`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/statement-of-account` |
 | [app/api/todays-entries/route.ts](../app/api/todays-entries/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/remittance-deadline`, `@/lib/system-settings`, `@/lib/todays-entries` |
 | [app/api/user-accounts/password/route.ts](../app/api/user-accounts/password/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/master-data-crud`, `@/lib/privilege-guard` |
 | [app/api/user-accounts/route.ts](../app/api/user-accounts/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/encoder-context`, `@/lib/employees`, `@/lib/employee-accounts`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/google-sheets-data`, `@/lib/privilege-guard` |

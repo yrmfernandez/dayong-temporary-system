@@ -85,3 +85,5 @@ Future permission work should replace broad boolean flags with stable permission
 ## Statement of Account
 
 `/soa` prints a member's Statement of Account for one program enrollment: member and plan details, the New Sale payment, every posted Collection with its months and NOP, and today's status, amount due, next due month, and remaining pay-the-balance. Figures come from the same rules as MAM (`lib/account-rules.ts`). Administrators, the CEO, and the President have it by default (under Reports); grant it to another role in Roles → Page access. Filters for search, branch, MAS, program, and today's status narrow the account picker and list the matching accounts.
+
+The printed SOA shows the program category, program balance, a Summary section, and signature lines for Prepared by (the signed-in user) and Collection Department Head. Only users who can manage configuration (administrators and IT) can set the Collection Department Head name (`PATCH /api/soa`); everyone with `/soa` access sees it printed.

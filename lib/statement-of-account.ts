@@ -3,6 +3,10 @@ import { accountReport, loadAccountData } from "@/lib/account-data";
 import { and, asc, eq } from "drizzle-orm";
 
 import { currentDb, schema } from "@/lib/db";
+import { getSetting, saveSetting } from "@/lib/system-settings";
+
+/** System Settings key for the Collection Department Head named on every printed SOA. */
+const COLLECTION_HEAD_KEY = "soa_collection_head";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -30,9 +34,13 @@ export async function getStatementOfAccount(enrollmentId: string) {
   const account = data.accounts.find((item) => item.id === enrollmentId);
   if (!account) throw new Error("Select a member program account.");
   const db = currentDb();
-  const [[member], [sale]] = await Promise.all([
+  const [[member], [sale], [category], collectionHead] = await Promise.all([
     db.select().from(schema.members).where(eq(schema.members.member_id, account.memberId)),
     db.select().from(schema.sales).where(and(eq(schema.sales.member_number, account.memberNumber), eq(schema.sales.program_id, account.programId))).orderBy(asc(schema.sales.date_created)).limit(1),
+    db.select({ name: schema.program_categories.category_name }).from(schema.programs)
+      .innerJoin(schema.program_categories, eq(schema.program_categories.category_id, schema.programs.category_id))
+      .where(eq(schema.programs.program_id, account.programId)).limit(1),
+    getSetting(COLLECTION_HEAD_KEY),
   ]);
   const today = todayInManila();
   const own = data.payments.filter((payment) => payment.enrollmentId === account.id);
@@ -52,7 +60,7 @@ export async function getStatementOfAccount(enrollmentId: string) {
       number: account.memberNumber, contact: text(member?.member_contact), address: text(member?.address), birthdate: member?.birthdate ?? "",
     },
     account: {
-      id: account.id, programName: account.programName, programId: account.programId, doi: account.doi, branch: account.branch, mas: account.mas,
+      id: account.id, programName: account.programName, programId: account.programId, programCategory: text(category?.name), doi: account.doi, branch: account.branch, mas: account.mas,
       monthlyDue: account.basePay, payBalanceTotal: account.payBalanceTotal, applicationNumber: text(sale?.application_no),
     },
     newSale: sale ? { date: sale.or_date || text(sale.date_created).slice(0, 10), amount: salePaid, registration: sale.registration_amount ?? 0, paymentMode: text(sale.payment_method) } : null,
@@ -65,6 +73,16 @@ export async function getStatementOfAccount(enrollmentId: string) {
       // Remaining toward the program's pay-the-balance total, when the program has one.
       remainingBalance: account.payBalanceTotal > 0 ? Math.max(0, round(account.payBalanceTotal - collectionsPaid)) : null,
     },
+    // preparedBy is the signed-in user, filled in by the route.
+    signatories: { collectionHead: text(collectionHead), preparedBy: "" },
   };
+}
+
+/** Name printed above "Collection Department Head" on every SOA; blank leaves an empty signature line. */
+export async function setCollectionHead(name: unknown, by: string) {
+  const value = text(name).replace(/\s+/g, " ");
+  if (value.length > 120) throw new Error("Keep the Collection Department Head name under 120 characters.");
+  await saveSetting(COLLECTION_HEAD_KEY, value, by);
+  return value;
 }
 export type StatementOfAccount = Awaited<ReturnType<typeof getStatementOfAccount>>;

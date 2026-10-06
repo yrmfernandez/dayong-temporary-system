@@ -534,6 +534,8 @@ For example, a September receipt covering October–December shows money receive
 
 SOA selects **one enrollment**, shows member/program/DOI/branch/MAS, New Sale separately, Collections with OR, covered month and NOP ranges, and running Collection totals. Its current status uses the same `accountState` logic as MAM/Collections.
 
+Printed layout, top to bottom: header (company, branch, **Date**, account ID); **Member** and **Account** blocks (program, program **category**, MAS, DOI, application no., monthly due); Payment History; **Summary** (account status, total paid, **program balance** = payoff remaining, or "No fixed total" for programs without one, amount due now, paid through, next due, months behind); then signature lines for **Prepared by** (the signed-in user) and **Collection Department Head**. The department head is one company-wide name kept in System Settings (`soa_collection_head`); administrators and IT set it on the SOA page (`PATCH /api/soa`), and a blank name prints an empty signature line.
+
 ```text
 Total paid shown       = New Sale paid + Collections paid
 Payoff remaining       = max(0, program payoff total − Collections paid)
