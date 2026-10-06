@@ -1,12 +1,12 @@
 # Dayong System code reference
 
-Generated from the repository source on 2026-10-04. Start with the [system guide](system-guide.md) for explanations and worked examples. This index covers source files, exported functions/types/constants, local dependencies, API methods, and maintenance scripts. It does not inspect credentials, dependencies in node_modules, binary assets, or the live workbook. Export names and import connections are extracted with the TypeScript parser; they are navigation aids, not a proof that every path is used at runtime.
+Generated from the repository source on 2026-10-06. Start with the [system guide](system-guide.md) for explanations and worked examples. This index covers source files, exported functions/types/constants, local dependencies, API methods, and maintenance scripts. It does not inspect credentials, dependencies in node_modules, binary assets, or the live workbook. Export names and import connections are extracted with the TypeScript parser; they are navigation aids, not a proof that every path is used at runtime.
 
 Regenerate from the repository root with `node scripts/generate-code-reference.mjs` after changes. Update the review date in this script when performing a new review.
 
 ## Coverage
 
-39 page routes, 54 API handlers, 99 library files, 37 component files; 301 scanned source/configuration/public-text files in total.
+39 page routes, 54 API handlers, 100 library files, 37 component files; 304 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -38,7 +38,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/new-sales` | [app/new-sales/page.tsx](../app/new-sales/page.tsx) | `@/components/new-sales-form` |
 | `/` | [app/page.tsx](../app/page.tsx) | `@/components/executive-dashboard`, `@/components/finance-dashboard`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/system-health-dashboard`, `@/components/ui/card`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auth-server`, `@/lib/dashboard-data`, `@/lib/employees`, `@/lib/executive-analytics`, `@/lib/finance-operations`, `@/lib/remittance-workflow`, `@/lib/system-health`, `@/lib/ui-preferences` |
 | `/payroll` | [app/payroll/page.tsx](../app/payroll/page.tsx) | `@/components/inline-panel`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/payroll-calc`, `@/lib/payslip` |
-| `/programs` | [app/programs/page.tsx](../app/programs/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/program-age` |
+| `/programs` | [app/programs/page.tsx](../app/programs/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/program-age`, `@/lib/program-payment-limit.mjs` |
 | `/remittances` | [app/remittances/page.tsx](../app/remittances/page.tsx) | `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response` |
 | `/reports/daily` | [app/reports/daily/page.tsx](../app/reports/daily/page.tsx) |  |
 | `/reports/monthly` | [app/reports/monthly/page.tsx](../app/reports/monthly/page.tsx) |  |
@@ -119,7 +119,7 @@ All routes pass through the authentication proxy except the three public auth en
 | --- | --- | --- |
 | [lib/access-control.ts](../lib/access-control.ts) | `AccessContext`, `executiveRoles`, `normalizeRoleName`, `isAdministratorRole`, `itRoles`, `hrRoles`, `canManageAccountsFor`, `canManageEmployeesFor`, `canManageConfigurationFor`, `defaultRoutesForRole`, `routesForRole`, `accessibleRoutes`, `canAccessPath`, `DashboardKind`, `dashboardKind` | — |
 | [lib/account-data.ts](../lib/account-data.ts) | `AccountScope`, `LoadedAccount`, `AccountData`, `loadAccountData`, `accountReport`, `ProgramStanding`, `memberStanding`, `mamReport`, `memberMam`, `syncAccountStatuses`, `NewCollection`, `commitCollections` | `@/lib/account-rules`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance`, `@/lib/mam-report` |
-| [lib/account-rules.ts](../lib/account-rules.ts) | `AccountStatus`, `Account`, `AccountPayment`, `todayInManila`, `validDate`, `validMonth`, `monthIndex`, `monthName`, `monthCount`, `dateInMonth`, `addMonths`, `addDay`, `allocations`, `paymentsByEnrollment`, `accountState`, `COLLECTION_CHANNELS`, `CollectionChannel`, `incentiveRoleFor`, `PaymentInput`, `validatePayment` | — |
+| [lib/account-rules.ts](../lib/account-rules.ts) | `AccountStatus`, `Account`, `AccountPayment`, `todayInManila`, `validDate`, `validMonth`, `monthIndex`, `monthName`, `monthCount`, `dateInMonth`, `addMonths`, `addDay`, `allocations`, `paymentsByEnrollment`, `accountState`, `COLLECTION_CHANNELS`, `CollectionChannel`, `incentiveRoleFor`, `PaymentInput`, `validatePayment` | `./program-payment-limit.mjs` |
 | [lib/api-response.ts](../lib/api-response.ts) | `readApiResponse`, `parseJsonResponse` | — |
 | [lib/attendance-board.ts](../lib/attendance-board.ts) | `BoardCategory`, `canViewAttendanceTracking`, `canAdjustLateness`, `boardCategory`, `minutesBetween` | `@/lib/auth`, `@/lib/attendance-data` |
 | [lib/attendance-calendar.ts](../lib/attendance-calendar.ts) | `ALL_BRANCHES`, `Holiday`, `Closure`, `validDate`, `getHolidays`, `saveHoliday`, `deleteHoliday`, `addPhilippineHolidays`, `getClosures`, `closureCovers`, `closureLabel`, `closureForBranch`, `employeeAttendanceBranches`, `declareClosure`, `removeClosure` | `@/lib/attendance-data`, `@/lib/encoder-sheets`, `@/lib/encoder-schema`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/philippine-holidays`, `@/lib/readable-id`, `@/lib/sheet-rows` |
@@ -158,7 +158,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/finance-access.ts](../lib/finance-access.ts) | `canUseFinance` | `@/lib/auth-server` |
 | [lib/finance-data.ts](../lib/finance-data.ts) | `EXPENSE_EXTRA_HEADERS`, `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `createCashTransaction`, `voidFinanceRecord` | `@/lib/readable-id`, `@/lib/encoder-sheets`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/expense-options` |
 | [lib/finance-operations.ts](../lib/finance-operations.ts) | `getCashAccounts`, `saveCashAccount`, `getVendorPayables`, `createVendorPayable`, `payVendorPayable`, `getCommissions`, `createCommission`, `payCommission` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
-| [lib/google-sheets-data.ts](../lib/google-sheets-data.ts) | `ProgramSheetData`, `BranchSheetData`, `getBranches`, `createBranch`, `ProgramIncentiveSheetData`, `CreateProgramData`, `getProgramIncentives`, `addProgramIncentive`, `getPrograms`, `programColumns`, `createProgram`, `LoginRole`, `LoginUserData`, `AttendanceEmployee`, `getLoginUserByEmployeeId`, `AccountRole`, `CreateEmployeeAccountData`, `getActiveAccountRoles`, `createEmployeeAccount`, `getActiveAttendanceEmployees` | `@/lib/db`, `@/lib/program-amount-lock`, `@/lib/program-incentive-store`, `@/lib/employees`, `@/lib/employee-id`, `@/lib/encoder-sheets`, `@/lib/roles`, `@/lib/program-age`, `@/lib/remittance`, `@/lib/users-sheet`, `@/lib/google-sheets` |
+| [lib/google-sheets-data.ts](../lib/google-sheets-data.ts) | `ProgramSheetData`, `BranchSheetData`, `getBranches`, `createBranch`, `ProgramIncentiveSheetData`, `CreateProgramData`, `getProgramIncentives`, `addProgramIncentive`, `getPrograms`, `programColumns`, `createProgram`, `LoginRole`, `LoginUserData`, `AttendanceEmployee`, `getLoginUserByEmployeeId`, `AccountRole`, `CreateEmployeeAccountData`, `getActiveAccountRoles`, `createEmployeeAccount`, `getActiveAttendanceEmployees` | `@/lib/db`, `@/lib/program-amount-lock`, `@/lib/program-incentive-store`, `@/lib/employees`, `@/lib/employee-id`, `@/lib/encoder-sheets`, `@/lib/roles`, `@/lib/program-age`, `@/lib/remittance`, `@/lib/program-payment-limit.mjs`, `@/lib/users-sheet`, `@/lib/google-sheets` |
 | [lib/google-sheets.ts](../lib/google-sheets.ts) | `GOOGLE_SHEET_ID`, `sheetsStats`, `withWriteLock`, `sheetOfRange`, `readingFresh`, `sheets` | `@/lib/sheets-read-cache`, `@/lib/encoder-context`, `@/lib/sheets-on-db`, `@/lib/server-environment` |
 | [lib/leave-data.ts](../lib/leave-data.ts) | `LeaveApprovalStatus`, `LeaveRequest`, `getLeaveRequestsForEmployee`, `addLeaveRequest`, `getAllLeaveRequests`, `updateLeaveRequestReview` | `@/lib/encoder-sheets`, `@/lib/google-sheets` |
 | [lib/mam-report.ts](../lib/mam-report.ts) | `MamAccount`, `monitoringMonths`, `buildMamReport` | `@/lib/account-rules` |
@@ -184,6 +184,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/program-amount-lock.ts](../lib/program-amount-lock.ts) | `isTrue`, `amountEditableCells`, `fixedNewSaleAmount` | — |
 | [lib/program-categories.ts](../lib/program-categories.ts) | `ProgramCategory`, `getProgramCategories`, `createProgramCategory`, `updateProgramCategory`, `deleteProgramCategory` | `@/lib/db`, `@/lib/readable-id` |
 | [lib/program-incentive-store.ts](../lib/program-incentive-store.ts) | `StoredTier`, `validateIncentiveTiers`, `writeProgramIncentives` | `@/lib/db`, `@/lib/readable-id` |
+| [lib/program-payment-limit.mjs](../lib/program-payment-limit.mjs) | `normalizeMonthlyMaximum`, `validateMonthlyMaximum` | — |
 | [lib/programs.ts](../lib/programs.ts) | `Program`, `getActivePrograms`, `getAllPrograms` | `./google-sheets-data` |
 | [lib/rate-limit.ts](../lib/rate-limit.ts) | `retryAfter`, `recordAttempt`, `clearAttempts`, `clientIp` | — |
 | [lib/readable-id.ts](../lib/readable-id.ts) | `createReadableId` | — |
@@ -192,7 +193,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/remittance-deadline.ts](../lib/remittance-deadline.ts) | `REMITTANCE_CUTOFF`, `ENTRY_CLOSED_MESSAGE`, `validTime`, `incentiveDeadline`, `keepsIncentive`, `manilaNow`, `manilaDateOf`, `entryClosed`, `formatDeadline` | — |
 | [lib/remittance-methods.ts](../lib/remittance-methods.ts) | `PaymentMethod`, `getPaymentMethods`, `findActivePaymentMethod`, `savePaymentMethod` | `@/lib/db`, `@/lib/readable-id` |
 | [lib/remittance-workflow.ts](../lib/remittance-workflow.ts) | `RemittanceKind`, `CashCollection`, `CashRemittance`, `forfeitsIncentive`, `amountDue`, `getRemittanceDashboard`, `CASH_IN_FULL_NOTE`, `createCashRemittance`, `decideCashRemittance`, `submitReadyEntries`, `resubmitReturned` | `@/lib/sheets-on-db`, `@/lib/readable-id`, `@/lib/sheet-ranges`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/remittance-deadline`, `@/lib/cash-count`, `@/lib/receipt-photos` |
-| [lib/remittance.ts](../lib/remittance.ts) | `IncentiveTier`, `tiersForBranch`, `SaleIncentiveSetting`, `SaleProgram`, `normalizeSaleIncentive`, `calculateSaleIncentive`, `calculateRemittance` | — |
+| [lib/remittance.ts](../lib/remittance.ts) | `IncentiveTier`, `tiersForBranch`, `SaleIncentiveSetting`, `SaleProgram`, `normalizeSaleIncentive`, `calculateSaleIncentive`, `calculateRemittance` | `./program-payment-limit.mjs` |
 | [lib/report-remarks.ts](../lib/report-remarks.ts) | `getReportRemarks`, `addReportRemark` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/sheets-on-db`, `@/lib/google-sheets`, `@/lib/sheet-ranges` |
 | [lib/roles.ts](../lib/roles.ts) | `RoleRecord`, `parsePageAccess`, `getRoles`, `createRole`, `updateRole`, `deleteRole` | `@/lib/google-sheets`, `@/lib/encoder-context`, `@/lib/sheet-rows`, `@/lib/access-control`, `@/lib/page-catalog` |
@@ -302,7 +303,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/profile/route.ts](../app/api/profile/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/users-sheet` |
 | [app/api/program-categories/route.ts](../app/api/program-categories/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-categories` |
 | [app/api/program-incentives/route.ts](../app/api/program-incentives/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
-| [app/api/programs/route.ts](../app/api/programs/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/program-incentive-store`, `@/lib/google-sheets-data` |
+| [app/api/programs/route.ts](../app/api/programs/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/program-incentive-store`, `@/lib/program-payment-limit.mjs`, `@/lib/google-sheets-data` |
 | [app/api/receipt-photos/route.ts](../app/api/receipt-photos/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/receipt-photos`, `@/lib/sheet-ranges` |
 | [app/api/remittance-methods/route.ts](../app/api/remittance-methods/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-methods` |
 | [app/api/remittances/route.ts](../app/api/remittances/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-workflow`, `@/lib/access-control` |
@@ -395,7 +396,9 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/repair-sheet-rows.mjs](../scripts/repair-sheet-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/test-access-control.mjs](../scripts/test-access-control.mjs) | `node:assert/strict`, `node:test`, `../lib/access-control.ts` | No flag detected; read source before running |
 | [scripts/test-account-rules.mjs](../scripts/test-account-rules.mjs) | `node:assert/strict`, `node:test`, `../lib/account-rules.ts` | No flag detected; read source before running |
+| [scripts/test-attendance-board.mjs](../scripts/test-attendance-board.mjs) | `node:assert/strict`, `node:test`, `../lib/attendance-board.ts` | No flag detected; read source before running |
 | [scripts/test-encoder-tracking.cjs](../scripts/test-encoder-tracking.cjs) | See source | No flag detected; read source before running |
+| [scripts/test-program-payment-limit.mjs](../scripts/test-program-payment-limit.mjs) | `node:assert/strict`, `node:test`, `../lib/program-payment-limit.mjs`, `../lib/account-rules.ts`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/test-remittance.mjs](../scripts/test-remittance.mjs) | `node:assert/strict`, `node:test`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/test-sheets-cache.mjs](../scripts/test-sheets-cache.mjs) | `node:test`, `node:assert/strict`, `../lib/sheets-read-cache.ts` | No flag detected; read source before running |
 

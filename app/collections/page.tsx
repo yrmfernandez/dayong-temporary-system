@@ -54,6 +54,7 @@ type ProgramOption = {
   basePay: number;
   /** Flexible payments: basePay is the minimum; any amount from the minimum per month. */
   flexible?: boolean;
+  maxMonthlyPayment?: number | null;
   payBalanceTotal?: number;
   /** Programs U: false (the default) locks the amount to covered months × base pay. */
   collectionAmountEditable?: boolean;
@@ -420,7 +421,7 @@ export default function CollectionsPage() {
       const selected = programs.find((p) => p.id === entry.programId);
       const count = getMonthDifference(entry.monthFrom, entry.monthTo);
       if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
-      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible), error: "" };
+      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
   }
   const quotes = collections.map(quoteEntry);

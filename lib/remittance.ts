@@ -1,3 +1,5 @@
+import { validateMonthlyMaximum } from "./program-payment-limit.mjs";
+
 export type IncentiveTier = {
   id?: string;
   role: "MAS" | "Collector";
@@ -25,7 +27,7 @@ export function tiersForBranch<T extends { role: string; branchId?: string }>(ti
 
 /** A program's New Sale incentive for registration-fee programs (Programs Q type, R amount). Blank type = none. */
 export type SaleIncentiveSetting = { saleIncentiveType: "fixed" | "percentage" | ""; saleIncentiveAmount: number };
-export type SaleProgram = SaleIncentiveSetting & { basePay: number; registrationFeeRequired: boolean; incentiveTiers: IncentiveTier[]; /** Flexible program: basePay is the minimum; incentives follow the amount paid. */ flexible?: boolean };
+export type SaleProgram = SaleIncentiveSetting & { basePay: number; registrationFeeRequired: boolean; incentiveTiers: IncentiveTier[]; /** Flexible program: basePay is the minimum; incentives follow the amount paid. */ flexible?: boolean; maxMonthlyPayment?: number | null };
 
 export function normalizeSaleIncentive(input: { registrationFeeRequired?: unknown; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; registrationAmount?: unknown }): SaleIncentiveSetting {
   const type = String(input.saleIncentiveType ?? "").trim();
@@ -41,8 +43,8 @@ export function normalizeSaleIncentive(input: { registrationFeeRequired?: unknow
 /**
  * What the MAS keeps from a New Sale, and what the company is owed.
  * - Programs with a registration fee: the program's own New Sale incentive, fixed or a percentage of the amount paid.
- * - Programs without one: the sale pays the first month, so the month-1 MAS incentive tier applies to the base pay,
- *   exactly as a Collection for NOP 1 would. Anything paid above one month is remitted in full.
+ * - Programs without one: the sale pays the first month, using the month-1 MAS incentive tier as a Collection for
+ *   NOP 1 would. Flexible programs use the amount paid within the monthly maximum; fixed programs remit excess in full.
  */
 export function calculateSaleIncentive(program: SaleProgram, amountPaid: number) {
   const paidCents = Math.round(amountPaid * 100);
@@ -56,7 +58,7 @@ export function calculateSaleIncentive(program: SaleProgram, amountPaid: number)
     return { incentive: incentiveCents / 100, remittance: (paidCents - incentiveCents) / 100, rule: program.saleIncentiveType === "percentage" ? `${program.saleIncentiveAmount}% of the registration paid` : `Fixed New Sale incentive` };
   }
   if (paidCents < Math.round(program.basePay * 100)) return none(program.flexible ? "Less than the minimum monthly payment was paid, so no incentive applies." : "Less than one month's base pay was paid, so no incentive applies.");
-  const quote = calculateRemittance(program.basePay, program.incentiveTiers, "MAS", 1, 1, amountPaid, program.flexible);
+  const quote = calculateRemittance(program.basePay, program.incentiveTiers, "MAS", 1, 1, amountPaid, program.flexible, program.maxMonthlyPayment);
   return { incentive: Math.round((amountPaid - quote.remittance) * 100) / 100, remittance: quote.remittance, rule: program.flexible ? "Month-1 MAS incentive on the amount paid" : "Month-1 MAS incentive on the base pay" };
 }
 
@@ -64,13 +66,14 @@ export function calculateSaleIncentive(program: SaleProgram, amountPaid: number)
  * `flexible`: the program's basePay is only the minimum; each NOP's installment is its share of the amount actually
  * collected, so incentives follow what was paid.
  */
-export function calculateRemittance(basePay: number, tiers: IncentiveTier[], role: string, nopFrom: number, nopTo: number, amountCollected?: number, flexible = false) {
+export function calculateRemittance(basePay: number, tiers: IncentiveTier[], role: string, nopFrom: number, nopTo: number, amountCollected?: number, flexible = false, maxMonthlyPayment?: number | null) {
   if (!Number.isFinite(basePay) || basePay <= 0 || !Number.isInteger(nopFrom) || !Number.isInteger(nopTo) || nopFrom < 1 || nopTo < nopFrom || nopTo - nopFrom > 1199) throw new Error("Select a valid program and NOP range to calculate remittance.");
   if (role !== "MAS" && role !== "Collector") throw new Error("Select the collection role.");
   const count = nopTo - nopFrom + 1;
   const paidCents = amountCollected === undefined ? NaN : Math.round(amountCollected * 100);
   const flexibleShares = flexible && Number.isFinite(paidCents);
   if (flexibleShares && paidCents < Math.round(basePay * 100) * count) throw new Error(`Pay at least the minimum of ${basePay.toFixed(2)} per month.`);
+  if (flexibleShares) validateMonthlyMaximum(paidCents / 100, count, true, maxMonthlyPayment);
   const minimumCents = Math.round(basePay * 100);
   const breakdown = [];
   for (let nop = nopFrom; nop <= nopTo; nop++) {

@@ -21,6 +21,8 @@ Entries count by the date the clerk encoded them. Weeks run Monday to Sunday. Ca
 
 On their own report a clerk records expenses (saved to Expenses for their primary branch, so Finance sees them), cash forwarded to the bank (voided with a reason, never deleted), and the report notes.
 
+Report sheets and the MAS summary use theme-aware surfaces and text for readable light and dark modes. Colored section headings keep contrasting text. Printing from either theme uses white sheets with dark text and readable column headings. This shared layout also applies in Report Review and Audits ([component](../components/clerk-report.tsx), [print styles](../app/globals.css)).
+
 ## Report Review (`/admin-reports`) and Audits
 
 Report Review shows the same tabs for any Entry Clerk, read-only, with the entry checklist and reviewer remarks. Audits open the same report for the audited clerk and period, and the audit figures come from it.

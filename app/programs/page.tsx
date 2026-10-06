@@ -29,6 +29,7 @@ SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { describeAgeRestriction } from "@/lib/program-age";
+import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 import { ProgramCategoriesManager, type ProgramCategory } from "./program-categories";
 
 type IncentiveType = "percentage" | "fixed";
@@ -87,12 +88,15 @@ categoryId?: string;
 newSaleAmountEditable?: boolean;
 collectionAmountEditable?: boolean;
 flexible?: boolean;
+maxMonthlyPayment?: number | null;
 };
 
 type ProgramForm = {
 categoryId: string;
 /** Flexible payments: Base Pay is the minimum monthly payment; amounts follow what is paid. */
 flexible: boolean;
+hasMonthlyMaximum: boolean;
+maxMonthlyPayment: string;
 newSaleAmountEditable: boolean;
 collectionAmountEditable: boolean;
 code: string;
@@ -135,6 +139,8 @@ function createEmptyForm(): ProgramForm {
 return {
 categoryId: "",
 flexible: false,
+hasMonthlyMaximum: false,
+maxMonthlyPayment: "",
 newSaleAmountEditable: false,
 collectionAmountEditable: false,
 code: "",
@@ -831,6 +837,17 @@ try {
       },
     );
 
+  let maxMonthlyPayment: number | null = null;
+  try {
+    if (form.flexible && form.hasMonthlyMaximum) {
+      if (!form.maxMonthlyPayment.trim()) throw new Error("Enter the maximum monthly payment.");
+      maxMonthlyPayment = normalizeMonthlyMaximum({ flexible: true, basePay, maxMonthlyPayment: form.maxMonthlyPayment });
+    }
+  } catch (error) {
+    alert(error instanceof Error ? error.message : "Enter a valid maximum monthly payment.");
+    return;
+  }
+
   const payload = {
     code: form.code.trim(),
 
@@ -851,6 +868,7 @@ try {
     newSaleAmountEditable: form.newSaleAmountEditable,
     collectionAmountEditable: form.collectionAmountEditable,
     flexible: form.flexible,
+    maxMonthlyPayment,
     registrationAmount: Number(form.registrationAmount) || 0,
     payBalanceTotal: Number(form.payBalanceTotal) || 0,
     saleIncentiveType: form.registrationFeeRequired ? form.saleIncentiveType : "",
@@ -1067,6 +1085,8 @@ setForm({
 
   registrationFeeRequired: Boolean(program.registrationFeeRequired),
   flexible: Boolean(program.flexible),
+  hasMonthlyMaximum: program.maxMonthlyPayment != null,
+  maxMonthlyPayment: program.maxMonthlyPayment == null ? "" : String(program.maxMonthlyPayment),
   newSaleAmountEditable: Boolean(program.newSaleAmountEditable),
   collectionAmountEditable: Boolean(program.collectionAmountEditable),
   registrationAmount: String(program.registrationAmount ?? 0),
@@ -1991,13 +2011,28 @@ const programForm = (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
           <div>
             <p className="text-sm font-medium">Flexible payments</p>
-            <p className="text-xs text-muted-foreground">On: members pay any amount from the minimum each month until the Total Amount Payable is reached. Base Pay becomes the minimum monthly payment, and incentives and remittances follow the amount actually paid. Off: every month is exactly the base pay.</p>
+            <p className="text-xs text-muted-foreground">On: members pay at least the minimum each month, with an optional monthly maximum. Base Pay becomes the minimum monthly payment, and incentives and remittances follow the amount actually paid. The total amount payable still applies when set. Off: every month is exactly the base pay.</p>
           </div>
           <button type="button" role="switch" aria-checked={form.flexible} aria-label="Flexible payments" onClick={() => setForm((current) => ({ ...current, flexible: !current.flexible }))}
             className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${form.flexible ? "bg-primary" : "bg-muted-foreground/30"}`}>
             <span aria-hidden="true" className={`absolute left-0 top-1 size-4 rounded-full bg-white shadow-sm transition-transform ${form.flexible ? "translate-x-6" : "translate-x-1"}`} />
           </button>
         </div>
+        {form.flexible && <div className="mt-4 grid gap-4 rounded-lg border p-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="program-monthly-maximum">Maximum monthly payment?</Label>
+            <select id="program-monthly-maximum" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={form.hasMonthlyMaximum ? "yes" : "no"} onChange={(event) => setForm((current) => ({ ...current, hasMonthlyMaximum: event.target.value === "yes" }))}>
+              <option value="no">No maximum</option>
+              <option value="yes">Yes, set a maximum</option>
+            </select>
+            <p className="text-xs text-muted-foreground">This limits each covered month, separately from the total amount payable.</p>
+          </div>
+          {form.hasMonthlyMaximum && <div className="space-y-2">
+            <Label htmlFor="program-max-monthly-payment">Maximum monthly payment *</Label>
+            <Input id="program-max-monthly-payment" type="number" min={form.basePay || "0.01"} step="0.01" required value={form.maxMonthlyPayment} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("maxMonthlyPayment", event.target.value)} />
+            <p className="text-xs text-muted-foreground">Must be at least the minimum monthly payment. A receipt covering two months may pay up to twice this amount.</p>
+          </div>}
+        </div>}
         <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="new-sale-amount-editable">New Sales: amount paid can be edited</Label>
@@ -2266,6 +2301,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           )}
                           {" · "}Total amount payable:{" "}
                           {program.payBalanceTotal > 0 ? formatPeso(program.payBalanceTotal) : "No fixed total"}
+                          {program.flexible && <>{" · "}Monthly maximum: {program.maxMonthlyPayment == null ? "No maximum" : formatPeso(program.maxMonthlyPayment)}</>}
                         </p>
 
                       </div>

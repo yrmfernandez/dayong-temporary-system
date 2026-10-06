@@ -68,6 +68,7 @@ export type Program = {
   newSaleAmountEditable?: boolean;
   /** Flexible payments: basePay is the minimum monthly payment; amounts follow what is paid. */
   flexible?: boolean;
+  maxMonthlyPayment?: number | null;
   collectionAmountEditable?: boolean;
   /** MAS and Collector incentive tiers by month; month 1 applies to a New Sale without a registration fee. */
   incentiveTiers?: Array<{ role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number }>;

@@ -289,6 +289,8 @@ The system is not in daily use yet, so cutover needs no quiet window. The owner 
 | Oct 6, 2026 | Production runner: `.env.local` stays on staging; `npm run prod -- <command>` runs one command with the production values from `.env.prod-scripts` (`scripts/prod.mjs`) | Checked with sample values: production passes through, a staging value is refused |
 | Oct 6, 2026 | MAS New Sales submissions: table `sale_submissions` (migration `0008_mas_sale_submissions`, 45 tables), Submit New Sales page for MAS, Submitted by MAS tab on New Sales for the branch's clerks; the clerk's save marks the submission Saved in the same transaction. Test harness reads System Settings (the SOA test needed it after the signatories change) | Staging migrated (9 of 9). **To do:** `npm run prod -- npm run db:migrate` before pushing; 128 tests pass |
 
+| Oct 6, 2026 | Optional maximum monthly payment for flexible programs: `programs.max_monthly_payment` (migration `0009_program_monthly_maximum`), Programs Yes/No choice, Collections and first-month New Sale validation. Existing programs default to no maximum. Report dark-mode readability and Day Off tracking are documented in the system guide. | Migration generated locally, not applied to staging or production in this change. Run `npm run db:migrate` against the intended environment before deploying. 27 targeted payment and attendance tests pass. |
+
 Phase 1 also replaced step 4 of phase 0: the Drizzle schema in `db/schema.ts` now describes every table, so the 17 unregistered tabs were not added to `config/sheet-database-schema.json`.
 
 ### Data findings (October 4, 2026)

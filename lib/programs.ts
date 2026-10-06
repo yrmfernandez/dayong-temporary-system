@@ -15,6 +15,8 @@ export type Program = {
   registrationFeeRequired: boolean;
   registrationAmount: number;
   payBalanceTotal: number;
+  flexible?: boolean;
+  maxMonthlyPayment?: number | null;
   ageRestricted: boolean;
   minAge: number | null;
   maxAge: number | null;
@@ -62,6 +64,8 @@ export async function getActivePrograms(): Promise<
       registrationFeeRequired: program.registrationFeeRequired,
       registrationAmount: program.registrationAmount,
       payBalanceTotal: program.payBalanceTotal,
+      flexible: program.flexible,
+      maxMonthlyPayment: program.maxMonthlyPayment,
       ageRestricted: program.ageRestricted,
       minAge: program.minAge,
       maxAge: program.maxAge,
@@ -91,6 +95,8 @@ export async function getAllPrograms(): Promise<
     registrationFeeRequired: program.registrationFeeRequired,
     registrationAmount: program.registrationAmount,
     payBalanceTotal: program.payBalanceTotal,
+    flexible: program.flexible,
+    maxMonthlyPayment: program.maxMonthlyPayment,
     ageRestricted: program.ageRestricted,
     minAge: program.minAge,
     maxAge: program.maxAge,

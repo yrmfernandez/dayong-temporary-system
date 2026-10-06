@@ -248,6 +248,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 
 ## Attendance corrections
 
+### Tracking and report readability (2026-10-06)
+
+- Attendance Tracking now recognizes recorded **Day Off** as its own category, with a daily count, filter and employee list, plus a **Days off** history total. It is separate from Absent, AWOL and leave, including on past dates and declared branch closures. Day offs continue to be assigned in Attendance Review.
+- Entry Clerk report sheets and MAS summaries now use theme-aware text and surfaces. Colored summary headings have explicit contrasting text; printed sheets stay dark text on white even when the app is in dark mode.
+- Flexible programs ask whether each monthly payment has a maximum. **No maximum** saves null; **Yes** requires a maximum at least equal to the monthly minimum. Multi-month receipts may pay up to maximum × covered months, subject to the remaining total payable. First-month New Sales follow the limit; registration fees are separate. Existing history remains readable. Source: `lib/program-payment-limit.mjs`; migration: `0009_program_monthly_maximum`, required before deployment.
+
 Administrators, HR, the CEO and President (and anyone with manage-attendance) can correct a clocked-in day on the Attendance Tracking daily board: **Adjust late**, and **Set clock-out / Fix clock-out** for an employee who forgot to clock out or clocked out at the wrong time. Worked hours, overtime and undertime are recalculated exactly as at clock-out, and the change, who made it and the reason are appended to the attendance notes. Past days list anyone who did not clock out.
 
 ## Audits (daily, weekly, monthly, yearly)

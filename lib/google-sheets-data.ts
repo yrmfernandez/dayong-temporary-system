@@ -9,6 +9,7 @@ import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { parsePageAccess } from "@/lib/roles";
 import { normalizeAgeRestriction, type AgeRestriction } from "@/lib/program-age";
 import { normalizeSaleIncentive } from "@/lib/remittance";
+import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 import { assertUsernameColumnRemoved, loadUsers, readUserRows, USERS_RANGE } from "@/lib/users-sheet";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 
@@ -121,6 +122,7 @@ export type CreateProgramData = {
   categoryId?: string;
   /** Flexible payments: basePay is the minimum monthly payment, and incentives and coverage follow the amount paid. */
   flexible?: boolean;
+  maxMonthlyPayment?: unknown;
   /** Whether encoders may type the amount on a New Sale / a Collection. False locks it to the program's amount. */
   newSaleAmountEditable?: boolean;
   collectionAmountEditable?: boolean;
@@ -214,6 +216,7 @@ const toProgram = (row: typeof programTable.$inferSelect) => {
     collectionAmountEditable: row.collection_amount_editable,
     // Flexible payments: basePay is the minimum monthly payment; amounts follow what is paid.
     flexible: row.flexible,
+    maxMonthlyPayment: row.max_monthly_payment ?? null,
   };
 };
 
@@ -229,13 +232,14 @@ export async function getPrograms() {
 }
 
 /** The program columns a create or an edit writes (everything but the ID and encoder). */
-export function programColumns(data: Pick<CreateProgramData, "code" | "name" | "basePay" | "status" | "description" | "registrationFeeRequired" | "registrationAmount" | "payBalanceTotal" | "categoryId" | "newSaleAmountEditable" | "collectionAmountEditable" | "saleIncentiveType" | "saleIncentiveAmount" | "ageRestricted" | "minAge" | "maxAge" | "flexible">) {
+export function programColumns(data: Pick<CreateProgramData, "code" | "name" | "basePay" | "status" | "description" | "registrationFeeRequired" | "registrationAmount" | "payBalanceTotal" | "categoryId" | "newSaleAmountEditable" | "collectionAmountEditable" | "saleIncentiveType" | "saleIncentiveAmount" | "ageRestricted" | "minAge" | "maxAge" | "flexible" | "maxMonthlyPayment">) {
   const age = normalizeAgeRestriction(data);
   const saleIncentive = normalizeSaleIncentive(data);
   return {
     program_code: data.code.trim(), program_name: data.name.trim(), base_pay: Number(data.basePay) || 0, status: data.status === "inactive" ? "inactive" : "active",
     description: data.description.trim() || null, registration_fee_required: Boolean(data.registrationFeeRequired), registration_amount: Number(data.registrationAmount) || 0,
     pay_balance_total: Number(data.payBalanceTotal) || 0, age_restricted: age.ageRestricted, min_age: age.minAge, max_age: age.maxAge,
+    max_monthly_payment: normalizeMonthlyMaximum(data),
     new_sale_incentive_type: saleIncentive.saleIncentiveType || null, new_sale_incentive_amount: saleIncentive.saleIncentiveType ? saleIncentive.saleIncentiveAmount : null,
     category_id: clean(data.categoryId) || null, new_sale_amount_editable: isTrue(data.newSaleAmountEditable), collection_amount_editable: isTrue(data.collectionAmountEditable), flexible: isTrue(data.flexible),
   };

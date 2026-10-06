@@ -1,0 +1,1 @@
+ALTER TABLE "programs" ADD COLUMN "max_monthly_payment" numeric(12, 2);

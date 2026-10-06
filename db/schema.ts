@@ -167,6 +167,8 @@ export const programs = pgTable("programs", {
   collection_amount_editable: boolean().notNull().default(false),
   /** Flexible payments: base_pay is the minimum monthly payment and amounts follow what is paid (lib/account-rules.ts). */
   flexible: boolean().notNull().default(false),
+  /** Null = no maximum for a flexible monthly payment. */
+  max_monthly_payment: money("max_monthly_payment"),
 }).enableRLS();
 
 export const program_incentives = pgTable("program_incentives", {

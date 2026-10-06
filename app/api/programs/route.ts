@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { canManageConfiguration } from "@/lib/auth-server";
 import { deleteProgramRecord, updateProgramRecord, type ProgramInput } from "@/lib/master-data-crud";
 import { validateIncentiveTiers } from "@/lib/program-incentive-store";
+import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 
 import {
   createProgram,
@@ -345,7 +346,10 @@ export const POST = withEncoder(async function POST(
         ? description.trim()
         : "";
 
-    try { await validateIncentiveTiers(normalizedTiers, basePay); }
+    try {
+      normalizeMonthlyMaximum({ flexible: body.flexible === true, basePay, maxMonthlyPayment: body.maxMonthlyPayment });
+      await validateIncentiveTiers(normalizedTiers, basePay);
+    }
     catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Invalid incentive tiers." }, { status: 400 }); }
 
     const program =
@@ -360,6 +364,7 @@ export const POST = withEncoder(async function POST(
         newSaleAmountEditable: body.newSaleAmountEditable === true,
         collectionAmountEditable: body.collectionAmountEditable === true,
         flexible: body.flexible === true,
+        maxMonthlyPayment: body.maxMonthlyPayment,
 
         description:
           normalizedDescription,
@@ -417,6 +422,7 @@ function programInput(body: Record<string, unknown>): ProgramInput {
     newSaleAmountEditable: body.newSaleAmountEditable === true,
     collectionAmountEditable: body.collectionAmountEditable === true,
     flexible: body.flexible === true,
+    maxMonthlyPayment: body.maxMonthlyPayment,
     registrationFeeRequired: Boolean(body.registrationFeeRequired),
     registrationAmount: Number(body.registrationAmount) || 0,
     payBalanceTotal: Number(body.payBalanceTotal) || 0,

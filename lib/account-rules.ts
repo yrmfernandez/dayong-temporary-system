@@ -1,3 +1,5 @@
+import { validateMonthlyMaximum } from "./program-payment-limit.mjs";
+
 export type AccountStatus = "NS" | "U" | "ADV" | "60D" | "90D" | "120D" | "150D" | "Paid" | "Forfeited";
 export type Account = {
   id: string; memberId: string; memberNumber: string; programId: string;
@@ -7,6 +9,7 @@ export type Account = {
    * month it covers, and the account is paid off when its collections reach payBalanceTotal.
    */
   flexible?: boolean;
+  maxMonthlyPayment?: number | null;
 };
 export type AccountPayment = {
   id: string; enrollmentId: string; orDate: string; orNumber: string;
@@ -148,6 +151,7 @@ export function validatePayment(account: Account, history: AccountPayment[], inp
   if (!Number.isFinite(input.amount) || amountCents < expected) throw new Error(account.flexible ? `Pay at least the minimum of ${(Math.round(account.basePay * 100) / 100).toFixed(2)} per month: ${count} month(s) requires at least ${(expected / 100).toFixed(2)}.` : `Pay full monthly installments: ${count} month(s) requires at least ${(expected / 100).toFixed(2)}.`);
   // Flexible programs take any amount from the minimum up to what is left of the total payable.
   if (account.flexible) {
+    validateMonthlyMaximum(input.amount, count, true, account.maxMonthlyPayment);
     if (payoffCents && paidBefore + amountCents > payoffCents) throw new Error(`The amount is more than the remaining program balance of ${Math.max(0, payoffCents - paidBefore) / 100}.`);
   } else if (amountCents > expected && (!payoffCents || paidBefore + amountCents !== payoffCents)) throw new Error(`An amount above the monthly total must exactly pay the remaining program balance of ${Math.max(0, payoffCents - paidBefore) / 100}.`);
   return state;

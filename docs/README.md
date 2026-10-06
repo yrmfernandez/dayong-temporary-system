@@ -2,6 +2,8 @@
 
 Reviewed against repository code on **October 4, 2026**. Start with the [system guide](system-guide.md): it explains daily operations, calculations with examples, how records connect, staff permissions, setup, and current limitations.
 
+October 6 updates cover report readability in dark mode, Day Off in attendance tracking, and optional maximum monthly payments on flexible programs. The monthly maximum requires migration `0009_program_monthly_maximum` before deployment; see the [migration plan](supabase-migration-plan.md).
+
 | Read this | When you need it |
 | --- | --- |
 | [System guide](system-guide.md) | Understand how the whole system works; main review document. |

@@ -323,7 +323,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     const program = programs.find((item) => item.code === sale.program.programCode);
     if (!program) return null;
     try {
-      return calculateSaleIncentive({ basePay: program.basePay, flexible: program.flexible, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, amountPaidOf(sale));
+      return calculateSaleIncentive({ basePay: program.basePay, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, amountPaidOf(sale));
     } catch (error) {
       return { incentive: 0, remittance: 0, rule: "", error: error instanceof Error ? error.message : "The incentive could not be calculated." };
     }
