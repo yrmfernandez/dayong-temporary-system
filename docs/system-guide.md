@@ -28,7 +28,7 @@ The system manages member enrollments and payments, employees and attendance, ca
 
 | Term | Meaning in this system |
 | --- | --- |
-| Member | A person and their contact, address, and claimant details. One person can have several programs. |
+| Member | A person and their contact, address, and claimant details. One person can have several programs. A member recorded without a contact number uses the claimant's number (filled October 6, 2026 by `scripts/fill-member-contacts.mjs`; the legacy import does the same). |
 | Member Program / enrollment | One member's account in one program. DOI, assigned branch/MAS, NOP, payment history, and account standing belong here. |
 | Program | A plan's monthly rate, registration rule, total payable, age rules, categories, and incentives. |
 | DOI | Enrollment's Date of Inception; it determines the initial month and the day used for advance-coverage timing. |

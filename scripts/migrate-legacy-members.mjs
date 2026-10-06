@@ -638,7 +638,8 @@ for (const e of valid) {
   if (!existingIds.has(m.id) && !writtenMembers.has(m.id)) {
     writtenMembers.add(m.id);
     const p = m.parsed, f = m.first;
-    out.Members.push([m.id, number, p.surname, p.firstName, p.middleName, p.nameExtension, m.birthdate, "", "", f?.age ?? "", titleCase(f?.civil), "", f?.address ?? "", f?.claimantName ?? "", f?.claimantContact ?? "", "No", "", "Active", ...identity]);
+    // The old tabs have no member contact: the claimant's number is used (owner's decision 2026-10-06).
+    out.Members.push([m.id, number, p.surname, p.firstName, p.middleName, p.nameExtension, m.birthdate, "", "", f?.age ?? "", titleCase(f?.civil), f?.claimantContact ?? "", f?.address ?? "", f?.claimantName ?? "", f?.claimantContact ?? "", "No", "", "Active", ...identity]);
   }
   const created = parseTimestamp(s?.timestamp ?? e.payments[0]?.row.timestamp) || importedAt;
   if (!existingIds.has(e.id)) out["Member programs"].push([e.id, m.id, number, e.program.id, e.doi, e.branch.name, e.mas, "Cash", s ? yesNo(s.regFee) : "", s?.regAmount ?? "", s ? parseAmount(s.amount) || 0 : "", "", "Active", created, ...identity, e.status]);
@@ -646,7 +647,7 @@ for (const e of valid) {
     const saleId = hashId("SALE", s.ref);
     if (!existingIds.has(saleId)) {
       const p = parseName(s.member);
-      out.Sales.push([saleId, created, s.branch$.name, s.agent$?.name ?? s.agent, parseDate(s.dateRemitted).date, number, p.surname, p.firstName, p.middleName, p.nameExtension, s.birth, "", "", s.age, titleCase(s.civil), "", s.address, s.claimantName, s.claimantContact, "No", "", e.program.id, s.doi, "Cash", yesNo(s.regFee), s.regAmount, parseAmount(s.amount) || 0, "", s.applicationNo, s.orNumber, s.doi, ...identity, "Remitted", "", s.agent$?.id ?? "", "", "", "", "", ""]);
+      out.Sales.push([saleId, created, s.branch$.name, s.agent$?.name ?? s.agent, parseDate(s.dateRemitted).date, number, p.surname, p.firstName, p.middleName, p.nameExtension, s.birth, "", "", s.age, titleCase(s.civil), s.claimantContact, s.address, s.claimantName, s.claimantContact, "No", "", e.program.id, s.doi, "Cash", yesNo(s.regFee), s.regAmount, parseAmount(s.amount) || 0, "", s.applicationNo, s.orNumber, s.doi, ...identity, "Remitted", "", s.agent$?.id ?? "", "", "", "", "", ""]);
       s.beneficiaries.forEach((b, i) => { const p = parseName(b.name); out.Beneficiaries.push([hashId("BEN", s.ref, i), m.id, saleId, p.surname, p.firstName, p.middleName, "", Number(b.age) || 0, titleCase(b.relationship), ...identity]); });
     }
   }

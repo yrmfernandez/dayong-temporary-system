@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node --test scripts/test-access-control.mjs scripts/test-account-rules.mjs scripts/test-encoder-tracking.cjs scripts/test-remittance.mjs scripts/test-sheets-cache.mjs",
     "dev": "next dev",
+    "prod": "node scripts/prod.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

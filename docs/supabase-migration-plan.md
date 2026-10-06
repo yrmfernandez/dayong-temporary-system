@@ -230,6 +230,19 @@ Pages that still read Sheets keep their old speed until their step: **Remittance
 - Remittances, Today's Entries, My Entries, reports and dashboards still read Sheets, so they do not show Collections or New Sales saved on this branch.
 - The system guide and topic docs still describe the live system on Google Sheets. They are rewritten for the database in phase 6, at cutover.
 
+## Running a script on production (from October 6, 2026)
+
+`.env.local` always stays on **staging**; never edit it to reach production. Production values live in `.env.prod-scripts` in the project folder (ignored by git, like every `.env*` file), one per line:
+
+```
+DATABASE_URL=<production transaction pooler, :6543>
+DIRECT_DATABASE_URL=<production session pooler, :5432>
+SUPABASE_URL=https://qnugejonwpfvsenxvhxz.supabase.co
+SUPABASE_SERVICE_KEY=<production service_role key>
+```
+
+Then prefix any command with `npm run prod --`, for example `npm run prod -- node scripts/fill-member-contacts.mjs --apply` or `npm run prod -- npm run db:migrate`. `scripts/prod.mjs` checks that the values name the production project, prints `PRODUCTION (qnugejonwpfvsenxvhxz)`, and gives the values to that one command only. A command without the prefix uses staging. The `$env:` routine below is how cutover was done; it still works but is no longer needed.
+
 ## Cutover steps
 
 The system is not in daily use yet, so cutover needs no quiet window. The owner runs steps 1 to 3, so the production password never leaves their computer.
@@ -272,6 +285,8 @@ The system is not in daily use yet, so cutover needs no quiet window. The owner 
 | Oct 5, 2026 | Legacy import `--apply` ran against **staging** by mistake: 22 members, 31 enrollments, 214 collections written there and removed from the Legacy Pending tabs. `scripts/copy-legacy-import.mjs` copies exactly those rows (IDs in `backups/legacy-migration-ids-2026-10-05T09-39-36-262Z.json`) from staging to production | Done: 267 rows copied to production (22 members, 31 enrollments, 214 collections). The other 32 pending accounts stay in the Legacy Pending tabs for review |
 | Oct 5, 2026 | Remittance saves read only active Collections and Sales (about 1,000 instead of 60,000 rows), with row positions counted by the database | 126 tests pass |
 | Oct 5, 2026 | 3:00 PM cutoff: incentive deadline moved from 10:00 AM to 3:00 PM the day after the OR date; nobody can save New Sales or Collections from 3:00 PM to midnight (pages and save routes) | 127 tests pass |
+| Oct 6, 2026 | Member contact from claimant: `scripts/fill-member-contacts.mjs` fills a blank member contact with the claimant's number (at least 7 digits) in Members and Sales; staging: 2,698 members and 2,719 New Sale records filled, 8,379 members have no number at all. The legacy import does the same for new rows. Legacy dry run: 0 of the 32 pending accounts pass, so nothing more to import | **To do:** run on production (dry run, then `--apply`) |
+| Oct 6, 2026 | Production runner: `.env.local` stays on staging; `npm run prod -- <command>` runs one command with the production values from `.env.prod-scripts` (`scripts/prod.mjs`) | Checked with sample values: production passes through, a staging value is refused |
 
 Phase 1 also replaced step 4 of phase 0: the Drizzle schema in `db/schema.ts` now describes every table, so the 17 unregistered tabs were not added to `config/sheet-database-schema.json`.
 
