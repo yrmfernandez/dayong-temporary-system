@@ -661,7 +661,7 @@ Ordinary reports remain live and can change when source data changes; an approve
 
 Exceptions scans source sheets for impossible/future dates, sequencing problems, wrong amounts, duplicates, missing member details, overdue incentive-deadline cash, and late entries. Imported IDs containing `-LEG-` are hidden by default, with an option to include them. Results cap at 300. The scan generates findings without changing data.
 
-The IT/system-health dashboard adds database integrity/configuration checks and Sheets request counters. Refresh/inspection is useful after changes; it does not mean every problem is automatically repaired.
+The IT System Health dashboard checks the Supabase database: response time and open connections, size against the Supabase Free 500 MB limit, the largest tables, and the **schema**: every table and column the code uses must exist, and every migration file must be recorded as applied. A missing column is listed as critical (pages reading that table fail with "Failed query"); fix it by running `npm run db:migrate` on that database (production: `npm run prod -- npm run db:migrate`). It also shows which Supabase project the deployment uses (Production or Staging), whether receipt photo storage is configured, account and role integrity, the last 10 Audit Log changes, and Sheets-layer request counters. Refresh/inspection is useful after changes; it does not mean every problem is automatically repaired.
 
 Sources: [transfer](../lib/member-transfer.ts), [CRUD guards](../lib/master-data-crud.ts), [corrections](../lib/entry-corrections.ts), [audit log](../lib/audit-log.ts), [period audits](../lib/daily-audit.ts), [exceptions](../lib/exceptions.ts), [health](../lib/system-health.ts).
 

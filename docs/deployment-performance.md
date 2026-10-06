@@ -28,11 +28,11 @@ New Sales and Collections validate against the latest data and then write. `with
 
 ## Checklist for going live
 
-1. Set `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_SHEET_ID` and an `AUTH_SECRET` of at least 32 random characters. The IT System Health dashboard checks these.
+1. Set `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_SHEET_ID` and an `AUTH_SECRET` of at least 32 random characters. The IT System Health dashboard checks these, plus `DATABASE_URL` (shown as Production or Staging) and the receipt photo storage settings.
 2. In Google Cloud Console → APIs & Services → Google Sheets API → Quotas, request higher read and write limits per user. It is free, and the single most effective step for many users.
-3. Keep the workbook lean: the IT dashboard shows the cell count against Google's 10 million cell limit and the largest tabs. Delete unused empty rows and columns. Receipt photos are stored in the `Receipt Photos` tab at up to 80 KB each (about 107,000 characters across up to four cells); only their small details are read for lists, and the image only when someone views it. If photo volume grows large, move them to a separate spreadsheet file.
+3. Watch database size: since the move to Supabase the IT dashboard shows the database size against the Free plan's 500 MB and the largest tables. (Before that it showed the workbook's cells against Google's 10 million cell limit.) Delete unused empty rows and columns. Receipt photos are stored in the `Receipt Photos` tab at up to 80 KB each (about 107,000 characters across up to four cells); only their small details are read for lists, and the image only when someone views it. If photo volume grows large, move them to a separate spreadsheet file.
 4. Each Vercel server instance keeps its own cache. For very large teams, a shared cache (for example Upstash Redis) would let instances share reads; the cache class is the only place that would change.
-5. Watch **IT → System Health → Google API Usage**: rising retries or failures mean the quota is close.
+5. Watch **IT → System Health → Schema** after every deploy: anything missing means a migration was not run on that database.
 
 ## Account calculations at scale
 

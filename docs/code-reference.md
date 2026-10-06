@@ -206,7 +206,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/sheets-on-db.ts](../lib/sheets-on-db.ts) | `SHEET_TITLES`, `tableOf`, `isDatabaseSheet`, `countSheetRows`, `columnLetters`, `parseA1`, `sheetsOnDb`, `readSheetRows`, `readSheetRowsNumbered`, `appendSheetRows` | `@/lib/db` |
 | [lib/sheets-read-cache.ts](../lib/sheets-read-cache.ts) | `SheetsReadCache`, `KeyedLock` | — |
 | [lib/statement-of-account.ts](../lib/statement-of-account.ts) | `listStatementAccounts`, `getStatementOfAccount`, `setCollectionHead`, `StatementOfAccount` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/system-settings` |
-| [lib/system-health.ts](../lib/system-health.ts) | `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/lib/audit-log`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment` |
+| [lib/system-health.ts](../lib/system-health.ts) | `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/db/migrations/meta/_journal.json`, `@/lib/db`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment` |
 | [lib/system-settings.ts](../lib/system-settings.ts) | `isTodayMode`, `TODAY_MODE_LABELS`, `TODAY_MODES`, `TodayMode`, `getSetting`, `saveSetting`, `getTodayMode`, `setTodayMode` | `@/lib/google-sheets`, `@/lib/today-mode` |
 | [lib/theme.ts](../lib/theme.ts) | `ThemePreference`, `THEME_KEY`, `themeBootScript`, `readTheme`, `resolveTheme`, `applyTheme`, `setTheme`, `watchTheme` | — |
 | [lib/today-mode.ts](../lib/today-mode.ts) | `TODAY_MODES`, `TodayMode`, `TODAY_MODE_LABELS`, `isTodayMode` | — |
