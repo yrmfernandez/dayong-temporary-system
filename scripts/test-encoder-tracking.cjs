@@ -153,6 +153,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       if (range.startsWith("'Receipt Photos'")) return { data: { values: rows['Receipt Photos'] ?? [[]] } };
       if (range.startsWith("'Bank Deposits'")) return { data: { values: rows['Bank Deposits'] ?? [[]] } };
       if (range.startsWith("'Report Notes'")) return { data: { values: rows['Report Notes'] ?? [[]] } };
+      if (range.startsWith("'System Settings'")) return { data: { values: rows['System Settings'] ?? [[]] } };
       if (range === 'Expenses!V1:W1' || range === 'Sales!AO1:AQ1') return { data: { values: rows[range] ?? [[]] } };
       if (/!A:ZZ$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
@@ -1699,6 +1700,70 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
   const explained = await post({ controlTotal: 350, sale: { orDate: '2026-01-05', backdateReason: 'MAS turned in the form late' } });
   assert.equal(explained.status, 200, JSON.stringify(explained.body));
   assert.equal((await query('select backdate_reason from sales'))[0].backdate_reason, 'MAS turned in the form late', 'the reason is kept with the sale');
+});
+
+test('a MAS submits New Sales; only a clerk of that branch reviews them, saves once, or returns them', async () => {
+  const users = {
+    mas: { userId: 'USR-M', employeeId: 'DPE-0002', name: 'different-mas', roleNames: ['MAS'], permissions: {} },
+    clerk: { userId: 'USR-1', employeeId: 'DPE-0001', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} },
+    otherClerk: { userId: 'USR-3', employeeId: 'DPE-0003', name: 'other clerk', roleNames: ['Entry Clerk'], permissions: {} },
+  };
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'BR-2', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'clerk', 'BR-1', 'Entry Clerk', 'active'], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'other clerk', 'BR-2', 'Entry Clerk', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-2']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+    return h;
+  };
+  const mas = as(users.mas), clerk = as(users.clerk), otherClerk = as(users.otherClerk);
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+  const call = async (h, method, url, body) => {
+    const route = h.load('app/api/sale-submissions/route.ts');
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const card = (surname) => ({ id: `S-${surname}`, member: { name: { firstName: 'Ana', surname } }, program: { programCode: 'CODE', amountPaid: '350', dateEnrolled: '2020-01-01' } });
+
+  // An Entry Clerk cannot use the MAS page.
+  assert.equal((await call(clerk, 'POST', '/api/sale-submissions', { sales: [card('Cruz')] })).status, 403);
+  const submitted = await call(mas, 'POST', '/api/sale-submissions', { sales: [card('Cruz')] });
+  assert.equal(submitted.status, 201, JSON.stringify(submitted.body));
+  const [row] = await query('select * from sale_submissions');
+  assert.equal(row.branch, 'BR-1', 'the branch is the MAS\'s own');
+  assert.equal(row.mas, 'different-mas', 'the MAS is the one signed in');
+  assert.equal(row.sales[0].program.dateEnrolled, mas.load('lib/remittance-deadline.ts').manilaNow().date, 'Date Enrolled is the day submitted');
+  const mine = await call(mas, 'GET', '/api/sale-submissions');
+  assert.deepEqual(mine.body.profile.branches.map((branch) => branch.id), ['BR-1']);
+  assert.equal(mine.body.submissions[0].status, 'Submitted');
+
+  // Only the clerk assigned to BR-1 sees and saves it.
+  assert.equal((await call(otherClerk, 'GET', '/api/sale-submissions?view=review')).body.submissions.length, 0);
+  assert.equal((await call(clerk, 'GET', '/api/sale-submissions?view=review')).body.submissions.length, 1);
+  const save = async (h, applicationNo) => {
+    const sale = { existingMember: false, surname: 'Cruz', firstName: 'Ana', programId: 'DP-1', amountPaid: '350', applicationNo, addressHouse: 'Complete Address', beneficiaries: [] };
+    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 350, submissionId: row.submission_id, sales: [sale] }));
+    return { status: response.status, body: await response.json() };
+  };
+  assert.match((await save(otherClerk, 'APP-1')).body.message, /not assigned/);
+  const saved = await save(clerk, 'APP-1');
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  const [after] = await query('select status, sale_ids, reviewed_by_name from sale_submissions');
+  assert.deepEqual([after.status, after.sale_ids, after.reviewed_by_name], ['Saved', saved.body.savedSales[0].saleId, 'clerk']);
+  assert.match((await save(clerk, 'APP-2')).body.message, /already saved/);
+  assert.equal(await count('sales'), 1, 'a submission is saved once');
+  assert.equal((await call(mas, 'POST', '/api/sale-submissions', { submissionId: row.submission_id, sales: [card('Cruz')] })).status, 400, 'a saved submission cannot be edited');
+
+  // Returned: the MAS sees why, fixes it, and submits it again.
+  const second = await call(mas, 'POST', '/api/sale-submissions', { sales: [card('Reyes')] });
+  assert.equal((await call(otherClerk, 'PATCH', '/api/sale-submissions', { id: second.body.id, reason: 'Wrong address' })).status, 400);
+  assert.equal((await call(clerk, 'PATCH', '/api/sale-submissions', { id: second.body.id, reason: 'Wrong address' })).status, 200);
+  const returned = (await call(mas, 'GET', '/api/sale-submissions')).body.submissions.find((item) => item.id === second.body.id);
+  assert.deepEqual([returned.status, returned.returnReason], ['Returned', 'Wrong address']);
+  assert.equal((await call(clerk, 'GET', '/api/sale-submissions?view=review')).body.submissions.length, 0, 'a returned submission leaves the clerk\'s list');
+  assert.equal((await call(mas, 'POST', '/api/sale-submissions', { submissionId: second.body.id, sales: [card('Reyes')] })).status, 201);
+  assert.equal((await call(clerk, 'GET', '/api/sale-submissions?view=review')).body.submissions.length, 1, 'submitted again');
 });
 
 test('a counted cash remittance must add up to the amount received, and the count is kept on the slip', async () => {

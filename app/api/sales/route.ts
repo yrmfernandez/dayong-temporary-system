@@ -4,6 +4,8 @@ import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { ENTRY_CLOSED_MESSAGE, entryClosed, manilaNow } from "@/lib/remittance-deadline";
 import { withEncoder } from "@/lib/encoder-context";
+import type { SessionUser } from "@/lib/auth";
+import { markSubmissionSaved, reviewableSubmission } from "@/lib/sale-submissions";
 import { NextResponse } from "next/server";
 
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
@@ -28,6 +30,8 @@ type SalePayload = {
   penaltyNote?: string;
   /** Fidelity for this batch: the MAS's own money, added to the total remittance. No limit; zero is allowed. */
   fidelityAmount?: number;
+  /** Set when the clerk saves a MAS submission (lib/sale-submissions.ts); it is marked Saved in the same transaction. */
+  submissionId?: string;
 };
 
 type SalePayloadItem = {
@@ -101,13 +105,14 @@ function phoneKey(value: unknown) {
 }
 
 export const POST = withEncoder(async function POST(request: Request) {
-  if (!(await userWithPageAccess("/new-sales"))) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
+  const user = await userWithPageAccess("/new-sales");
+  if (!user) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
   // Nobody encodes from the 3:00 PM cutoff until midnight.
   if (entryClosed()) return NextResponse.json({ success: false, message: ENTRY_CLOSED_MESSAGE }, { status: 403 });
-  return saveSales(request);
+  return saveSales(request, user);
 });
 
-async function saveSales(request: Request) {
+async function saveSales(request: Request, user: SessionUser) {
   try {
     const body =
       (await request.json()) as SalePayload;
@@ -131,6 +136,12 @@ async function saveSales(request: Request) {
         },
         { status: 400 },
       );
+    }
+
+    const submissionId = String(body.submissionId ?? "").trim();
+    if (submissionId) {
+      try { await reviewableSubmission(user, submissionId, body.branch, body.mas); }
+      catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "The MAS submission cannot be saved." }, { status: 400 }); }
     }
 
     if (!body.dateRemitted?.trim()) {
@@ -773,6 +784,7 @@ async function saveSales(request: Request) {
           saleId,
         });
       }
+      if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId));
     });
 
     return NextResponse.json({

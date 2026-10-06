@@ -4,7 +4,7 @@ import { userWithPageAccess } from "@/lib/auth-server";
 import { listMembersForMas, searchMembersByName } from "@/lib/member-records";
 
 export async function GET(request: Request) {
-  if (!(await userWithPageAccess("/new-sales", "/collections"))) return NextResponse.json({ success: false, message: "You do not have access to member encoding." }, { status: 403 });
+  if (!(await userWithPageAccess("/new-sales", "/mas-sales", "/collections"))) return NextResponse.json({ success: false, message: "You do not have access to member encoding." }, { status: 403 });
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search")?.trim() ?? "";
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     }
 
     // New Sales searches all members; Collections searches one branch and MAS.
-    if (!search || (!branch !== !mas) || (!branch && !(await userWithPageAccess("/new-sales")))) {
+    if (!search || (!branch !== !mas) || (!branch && !(await userWithPageAccess("/new-sales", "/mas-sales")))) {
       return NextResponse.json({
         success: true,
         members: [],

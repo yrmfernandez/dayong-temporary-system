@@ -57,6 +57,13 @@
       "when": 1791191236438,
       "tag": "0007_program_flexible",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791248907191,
+      "tag": "0008_mas_sale_submissions",
+      "breakpoints": true
     }
   ]
 }

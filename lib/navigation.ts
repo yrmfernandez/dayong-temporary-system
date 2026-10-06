@@ -14,6 +14,8 @@ export type NavSection = { title: string; items: NavItem[] };
 const page = {
   dashboard: { name: "Dashboard", href: "/", icon: LayoutDashboard },
   newSales: { name: "New Sales", href: "/new-sales", icon: FilePlus2 },
+  // A MAS submits sale cards here; an Entry Clerk of the branch reviews and saves them (lib/sale-submissions.ts).
+  masSales: { name: "Submit New Sales", href: "/mas-sales", icon: FilePlus2 },
   collections: { name: "Collections", href: "/collections", icon: Receipt },
   remittances: { name: "Remittances", href: "/remittances", icon: Wallet },
   mam: { name: "MAM", href: "/mam", icon: BarChart3 },
@@ -60,7 +62,7 @@ const masHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveR
 const workspaces: Record<string, NavSection[]> = {
   administrator: [
     { title: "Overview", items: [page.dashboard, page.todaysEntries, page.exceptions] },
-    { title: "Operations", items: [page.newSales, page.collections, page.myEntries, page.remittances, page.mam] },
+    { title: "Operations", items: [page.newSales, page.masSales, page.collections, page.myEntries, page.remittances, page.mam] },
     { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.payroll, page.fidelity] },
     { title: "Reports", items: [page.reports, page.soa, page.dailyAudit, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
@@ -107,7 +109,7 @@ const workspaces: Record<string, NavSection[]> = {
   ],
   mas: [
     { title: "Overview", items: [page.dashboard] },
-    { title: "My Portfolio", items: [page.myMembers, page.mam, page.myFidelity] },
+    { title: "My Portfolio", items: [page.masSales, page.myMembers, page.mam, page.myFidelity] },
     { title: "Reference", items: [page.programs, page.branches, page.masterData] },
     masHr,
   ],

@@ -346,6 +346,34 @@ export const sales = pgTable("sales", {
   index("sales_linked_remittance_idx").on(t.linked_remittance_id),
 ]).enableRLS();
 
+/**
+ * New Sales a MAS submits from the field (MAS New Sales page). An Entry Clerk assigned to the branch reviews one on New
+ * Sales → Submitted by MAS and saves it as a normal New Sales batch (status Saved, sale_ids set in the same transaction),
+ * or returns it with a reason. `sales` holds the sale cards exactly as the form keeps them.
+ */
+export const sale_submissions = pgTable("sale_submissions", {
+  ...rowSeq(),
+  submission_id: text().primaryKey(),
+  branch_id: text().notNull(),
+  branch: text().notNull(),
+  mas_employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
+  mas: text().notNull(),
+  status: text().notNull().default("Submitted"),
+  sales: jsonb().notNull(),
+  sale_count: integer().notNull(),
+  total_amount: money("total_amount").notNull(),
+  submitted_at: moment("submitted_at").notNull(),
+  return_reason: text(),
+  reviewed_by_employee_id: text(),
+  reviewed_by_name: text(),
+  reviewed_at: moment("reviewed_at"),
+  sale_ids: text(),
+  ...encoder(),
+}, (t) => [
+  index("sale_submissions_branch_status_idx").on(t.branch_id, t.status),
+  index("sale_submissions_mas_idx").on(t.mas_employee_id),
+]).enableRLS();
+
 export const beneficiaries = pgTable("beneficiaries", {
   ...rowSeq(),
   beneficiary_id: text().primaryKey(),

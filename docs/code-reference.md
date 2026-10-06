@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-38 page routes, 53 API handlers, 98 library files, 36 component files; 297 scanned source/configuration/public-text files in total.
+39 page routes, 54 API handlers, 99 library files, 37 component files; 301 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -31,10 +31,11 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/leave-requests` | [app/leave-requests/page.tsx](../app/leave-requests/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea` |
 | `/login` | [app/login/page.tsx](../app/login/page.tsx) | `@/components/brand-logo`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label` |
 | `/mam` | [app/mam/page.tsx](../app/mam/page.tsx) | `@/lib/mam-report`, `@/lib/account-rules`, `@/components/ui/button`, `@/components/ui/badge`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select` |
+| `/mas-sales` | [app/mas-sales/page.tsx](../app/mas-sales/page.tsx) | `@/components/new-sales-form` |
 | `/master-data` | [app/master-data/page.tsx](../app/master-data/page.tsx) |  |
 | `/members` | [app/members/page.tsx](../app/members/page.tsx) | `@/components/inline-panel`, `@/components/ui/search-select`, `@/components/ui/input`, `@/lib/api-response`, `@/components/ui/button`, `@/components/status-badge`, `@/components/member-mam`, `@/lib/member-directory` |
 | `/my-entries` | [app/my-entries/page.tsx](../app/my-entries/page.tsx) | `@/components/entry-details`, `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/todays-entries` |
-| `/new-sales` | [app/new-sales/page.tsx](../app/new-sales/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/use-entry-closed`, `@/lib/use-form-draft`, `@/components/remittance-summary`, `@/lib/remittance`, `@/components/ui/select`, `@/components/ui/separator`, `@/components/ui/textarea`, `@/lib/types` |
+| `/new-sales` | [app/new-sales/page.tsx](../app/new-sales/page.tsx) | `@/components/new-sales-form` |
 | `/` | [app/page.tsx](../app/page.tsx) | `@/components/executive-dashboard`, `@/components/finance-dashboard`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/system-health-dashboard`, `@/components/ui/card`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auth-server`, `@/lib/dashboard-data`, `@/lib/employees`, `@/lib/executive-analytics`, `@/lib/finance-operations`, `@/lib/remittance-workflow`, `@/lib/system-health`, `@/lib/ui-preferences` |
 | `/payroll` | [app/payroll/page.tsx](../app/payroll/page.tsx) | `@/components/inline-panel`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/payroll-calc`, `@/lib/payslip` |
 | `/programs` | [app/programs/page.tsx](../app/programs/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/program-age` |
@@ -102,6 +103,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/remittances` | GET, POST, PATCH | [app/api/remittances/route.ts](../app/api/remittances/route.ts) |
 | `/api/reports` | GET, POST | [app/api/reports/route.ts](../app/api/reports/route.ts) |
 | `/api/roles` | GET, POST, PATCH, DELETE | [app/api/roles/route.ts](../app/api/roles/route.ts) |
+| `/api/sale-submissions` | GET, POST, PATCH | [app/api/sale-submissions/route.ts](../app/api/sale-submissions/route.ts) |
 | `/api/sales` | POST | [app/api/sales/route.ts](../app/api/sales/route.ts) |
 | `/api/sales/validate` | POST | [app/api/sales/validate/route.ts](../app/api/sales/validate/route.ts) |
 | `/api/settings` | PATCH | [app/api/settings/route.ts](../app/api/settings/route.ts) |
@@ -194,6 +196,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/report-remarks.ts](../lib/report-remarks.ts) | `getReportRemarks`, `addReportRemark` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/sheets-on-db`, `@/lib/google-sheets`, `@/lib/sheet-ranges` |
 | [lib/roles.ts](../lib/roles.ts) | `RoleRecord`, `parsePageAccess`, `getRoles`, `createRole`, `updateRole`, `deleteRole` | `@/lib/google-sheets`, `@/lib/encoder-context`, `@/lib/sheet-rows`, `@/lib/access-control`, `@/lib/page-catalog` |
+| [lib/sale-submissions.ts](../lib/sale-submissions.ts) | `MAX_SUBMISSION_SALES`, `SaleSubmission`, `masProfile`, `listMySubmissions`, `submitSales`, `listForReview`, `reviewableSubmission`, `markSubmissionSaved`, `returnSubmission` | `@/lib/access-control`, `@/lib/auth`, `@/lib/db`, `@/lib/employees`, `@/lib/encoder-context`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/server-environment.ts](../lib/server-environment.ts) | `RequiredServerVariable`, `readServerVariable`, `getMissingServerVariables`, `ServerConfigurationError`, `assertServerConfiguration`, `getAuthSecret`, `getGooglePrivateKey`, `getGoogleSheetId` | — |
 | [lib/session-account.ts](../lib/session-account.ts) | `SESSION_RECHECK_MS`, `passwordStamp`, `sessionFor`, `recheckSession` | `@/lib/auth`, `@/lib/google-sheets-data` |
 | [lib/sheet-headers.ts](../lib/sheet-headers.ts) | `canonicalHeader`, `headerMatches` | — |
@@ -232,6 +235,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/inline-panel.tsx](../components/inline-panel.tsx) | `InlinePanel`, `InlineRow` | `@/lib/utils` |
 | [components/member-mam.tsx](../components/member-mam.tsx) | `MemberMam` | `@/components/status-badge` |
 | [components/metric-tile.tsx](../components/metric-tile.tsx) | `MetricTile` | `@/components/status-badge` |
+| [components/new-sales-form.tsx](../components/new-sales-form.tsx) | `NewSalesForm` | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/use-entry-closed`, `@/lib/use-form-draft`, `@/components/remittance-summary`, `@/lib/remittance`, `@/components/ui/select`, `@/components/ui/separator`, `@/components/ui/textarea`, `@/lib/types` |
 | [components/nte-panel.tsx](../components/nte-panel.tsx) | `NtePanel` | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/nte` |
 | [components/one-time-password.tsx](../components/one-time-password.tsx) | `IssuedPassword`, `OneTimePasswordNotice` | `@/components/ui/button` |
 | [components/print-button.tsx](../components/print-button.tsx) | `PrintButton` | `@/components/ui/button` |
@@ -304,7 +308,8 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/remittances/route.ts](../app/api/remittances/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-workflow`, `@/lib/access-control` |
 | [app/api/reports/route.ts](../app/api/reports/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/employees`, `@/lib/access-control`, `@/lib/reports`, `@/lib/encoder-context`, `@/lib/report-remarks` |
 | [app/api/roles/route.ts](../app/api/roles/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/privilege-guard`, `@/lib/roles` |
-| [app/api/sales/route.ts](../app/api/sales/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/encoder-context`, `@/lib/google-sheets-data`, `@/lib/member-records`, `@/lib/employees`, `@/lib/program-age`, `@/lib/account-rules`, `@/lib/db`, `@/lib/remittance`, `@/lib/duplicate-entries` |
+| [app/api/sale-submissions/route.ts](../app/api/sale-submissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/sale-submissions` |
+| [app/api/sales/route.ts](../app/api/sales/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/encoder-context`, `@/lib/auth`, `@/lib/sale-submissions`, `@/lib/google-sheets-data`, `@/lib/member-records`, `@/lib/employees`, `@/lib/program-age`, `@/lib/account-rules`, `@/lib/db`, `@/lib/remittance`, `@/lib/duplicate-entries` |
 | [app/api/sales/validate/route.ts](../app/api/sales/validate/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/member-records` |
 | [app/api/settings/route.ts](../app/api/settings/route.ts) | `PATCH` | `@/lib/auth-server`, `@/lib/google-sheets`, `@/lib/auth`, `@/lib/default-password`, `@/lib/passwords`, `@/lib/session-account`, `@/lib/users-sheet` |
 | [app/api/soa/route.ts](../app/api/soa/route.ts) | `GET`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/statement-of-account` |

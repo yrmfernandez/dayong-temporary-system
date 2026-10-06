@@ -4,6 +4,7 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
     { href: "/todays-entries", label: "Today's Entries" },
     { href: "/my-entries", label: "My Entries (receipt photos)" },
     { href: "/new-sales", label: "New Sales" },
+    { href: "/mas-sales", label: "Submit New Sales (MAS, reviewed by the branch clerk)" },
     { href: "/collections", label: "Collections" },
     { href: "/remittances", label: "Remittances" },
     { href: "/mam", label: "MAM" },

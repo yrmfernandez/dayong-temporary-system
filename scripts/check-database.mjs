@@ -18,9 +18,9 @@ try {
   const [tables] = await sql`select count(*)::int as n from pg_tables where schemaname = 'public'`;
   const [migrations] = await sql`select count(*)::int as n from drizzle.__drizzle_migrations`.catch(() => [{ n: 0 }]);
   console.log(`Supabase project: ${project}`);
-  console.log(`Tables: ${tables.n} (expected 44)`);
+  console.log(`Tables: ${tables.n} (expected 45)`);
   console.log(`Migrations applied: ${migrations.n} of ${expected}`);
-  console.log(tables.n === 44 && migrations.n === expected ? "OK: the database is ready for the copy." : "NOT READY: run npm run db:migrate again, then this check.");
+  console.log(tables.n === 45 && migrations.n === expected ? "OK: the database is ready for the copy." : "NOT READY: run npm run db:migrate again, then this check.");
 } catch (error) {
   console.log(`ERROR: ${error.message}`);
   process.exitCode = 1;

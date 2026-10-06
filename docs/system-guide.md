@@ -180,6 +180,16 @@ Sources: [remittance formulas](../lib/remittance.ts), [tier validation/storage](
 6. Save. Existing member details confirmed in this form become their current member record. New member, enrollment, sale, and beneficiary records are written as needed, with encoder metadata.
 7. Attach the receipt photo in My Entries or Today's Entries. Once it is attached, the sale goes to Pending Approval on its own (section 6). Saving a sale does not itself make the cash an approved company inflow.
 
+### New Sales submitted by a MAS (from October 6, 2026)
+
+A MAS can fill in New Sales themselves on **Submit New Sales** (`/mas-sales`, in the MAS sidebar under My Portfolio). The Entry Clerk still saves them.
+
+1. **MAS:** fills in only the sale cards (member, claimant, beneficiaries, program, application number and date, amount). The branch is their own (a MAS with several branches chooses one), the MAS is themselves, and the **Date Enrolled is the day they submit**. Preview, then **Confirm and Submit**. Submitting is allowed at any time; the 3:00 PM cutoff applies to the clerk's save.
+2. **Entry Clerk:** New Sales has two tabs, **Encode** and **Submitted by MAS** (with a count). The list shows only submissions from the branches the clerk is assigned to (Employees → branches); administrators see every branch. **Review** loads the sale cards into the form with the branch and MAS locked. The clerk checks every card, adds the Date Remitted, control total, Fidelity and any penalty, and saves as usual. The save marks the submission Saved in the same transaction, so it can never be saved twice.
+3. **Return to MAS:** the clerk gives a reason instead of saving. The MAS sees it under **My submissions** ("To fix: …"), edits the cards and submits again; the submission goes back to the clerk's list.
+
+A MAS can also edit a submission while it is still waiting. Once saved, it can no longer change. Data: table `sale_submissions` (migration `0008`), code in `lib/sale-submissions.ts`, `app/api/sale-submissions/route.ts` and the shared form `components/new-sales-form.tsx` (`mode="mas"` or `"clerk"`). A role whose page access was configured in Roles needs **Submit New Sales** ticked; the MAS role gets it by default.
+
 Duplicate protections normalize application numbers by removing spaces/dashes/punctuation and ignoring case. A number is used only once system-wide. The person duplicate check uses normalized surname, first name, and birthdate; middle name is ignored. Existing members cannot enroll in the same program again, including within the batch.
 
 The control total compares the sum of **member payment amounts** in centavos, not those amounts plus Fidelity or penalties. More than one day of backdating requires a reason of at least five characters; dates are checked against remittance date and today.
