@@ -262,8 +262,9 @@ The Audits page (`/audit`, formerly Daily Audit) audits each Entry Clerk's repor
 
 ## Old web app export (dayong.gissolve.com)
 
-The older Dayong web app (Laravel, hosted by its vendor) has no export and we have no database access. Status, October 6, 2026:
+The older Dayong web app (Laravel, hosted by its vendor) has no export and we have no database access. It is read with the owner's account from `.env.legacy-site` (`LEGACY_SITE_USERNAME`, `LEGACY_SITE_PASSWORD`; git ignores it). Output goes to `legacy-data/` (git ignores it) and holds personal data: delete it after the import.
 
-- **Done:** `scripts/legacy-site-survey.mjs` signs in with the owner's account from `.env.legacy-site` (`LEGACY_SITE_USERNAME`, `LEGACY_SITE_PASSWORD`; git ignores it), opens the menu pages with GET requests only (one per second, never delete/update/edit links), saves them to `legacy-data/site/` (git ignores it) and prints only structure: titles, table column headings, row counts, paging, link patterns. Its output is written to `legacy-data/site/survey.json`.
-- **In progress:** the owner runs the survey.
-- **To do:** write the export (pages or detail records to CSV) from what the survey shows; ask the vendor for a direct export in parallel; then import with the same checks and repair rules as the old workbook; delete `legacy-data/site/` afterwards.
+- **Done (October 6, 2026):** `scripts/legacy-site-survey.mjs` mapped the site (GET only, one request per second; prints structure, never values). Every list page holds all its rows (the New Sales page is 881 MB, mostly blank space), and each record's edit form holds its full details. The member Statement of Account is a PDF, so payments come from the Collections list.
+- **Done:** `scripts/legacy-site-export.mjs` writes one CSV per list to `legacy-data/export/` (members, new_sales, collections, expenses_remittance, expenses_expense, branches, programs, users, attendance, audit, reports, fidelity, matrix) and adds each member's, sale's and collection's edit-form fields (member and claimant details, beneficiaries when listed, program, branch, MAS, OR, amounts, months). Lists: 2,126 members, 2,126 New Sales, 1,088 collections, 1,114 remittances, 529 expenses, 28 branches, 47 programs, 130 users. Re-runnable: fetched records are skipped; `--lists`, `--reuse`, `--limit=N`, `--delay=ms`.
+- **In progress:** full detail run (about 5,300 records, about 2 hours).
+- **To do:** compare with what was already imported from the old workbook (`-LEG-` IDs) to find records only this site has; map columns to our tables and import with the same checks and repair rules; ask the vendor for a direct export as a cross-check; delete `legacy-data/`.
