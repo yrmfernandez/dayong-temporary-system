@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-39 page routes, 54 API handlers, 100 library files, 37 component files; 304 scanned source/configuration/public-text files in total.
+39 page routes, 54 API handlers, 100 library files, 38 component files; 305 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -249,7 +249,8 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/status-badge.tsx](../components/status-badge.tsx) | `Tone`, `toneForStatus`, `StatusBadge` | — |
 | [components/system-health-dashboard.tsx](../components/system-health-dashboard.tsx) | `SystemHealthDashboard` | `@/components/status-badge`, `@/components/ui/card`, `@/lib/system-health` |
 | [components/theme-toggle.tsx](../components/theme-toggle.tsx) | `useThemePreference`, `ThemeToggle` | `@/lib/theme` |
-| [components/topbar.tsx](../components/topbar.tsx) | `Topbar` | `@/components/app-shell`, `@/components/profile`, `@/components/theme-toggle`, `@/lib/navigation` |
+| [components/topbar-clock.tsx](../components/topbar-clock.tsx) | `TopbarClock` | `@/lib/remittance-deadline` |
+| [components/topbar.tsx](../components/topbar.tsx) | `Topbar` | `@/components/app-shell`, `@/components/profile`, `@/components/theme-toggle`, `@/components/topbar-clock`, `@/lib/navigation` |
 | [components/ui/badge.tsx](../components/ui/badge.tsx) | `Badge`, `badgeVariants` | — |
 | [components/ui/button.tsx](../components/ui/button.tsx) | `Button`, `buttonVariants` | — |
 | [components/ui/card.tsx](../components/ui/card.tsx) | `Card`, `CardHeader`, `CardFooter`, `CardTitle`, `CardAction`, `CardDescription`, `CardContent` | — |

@@ -1,11 +1,12 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { CalendarDays, ChevronRight, Menu } from "lucide-react";
+import { ChevronRight, Menu } from "lucide-react";
 
 import type { ShellUser } from "@/components/app-shell";
 import { Avatar, ProfileMenu } from "@/components/profile";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { TopbarClock } from "@/components/topbar-clock";
 import { locatePage, type NavSection } from "@/lib/navigation";
 
 type TopbarProps = { sections: NavSection[]; activeRole: string; user: ShellUser | null; onMenu: () => void };
@@ -13,7 +14,6 @@ type TopbarProps = { sections: NavSection[]; activeRole: string; user: ShellUser
 export function Topbar({ sections, activeRole, user, onMenu }: TopbarProps) {
   const pathname = usePathname();
   const location = locatePage(pathname, sections);
-  const today = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(new Date());
 
   return (
     // The sticky wrapper is transparent; the rounded glass bar floats inside the page margins.
@@ -29,7 +29,7 @@ export function Topbar({ sections, activeRole, user, onMenu }: TopbarProps) {
             <li className="truncate font-semibold text-foreground" aria-current="page">{location.title}</li>
           </ol>
         </nav>
-        <span className="hidden items-center gap-1.5 text-xs text-muted-foreground lg:flex" suppressHydrationWarning><CalendarDays className="size-3.5 text-brand-gold" />{today}</span>
+        <TopbarClock />
         {activeRole && <span className="tone-chip tone-brand hidden rounded-full px-2.5 py-1 text-xs font-semibold sm:block">{activeRole}</span>}
         {/* The sidebar holds the labelled switch; phones get this compact one since the drawer is closed. */}
         <ThemeToggle className="md:hidden" />

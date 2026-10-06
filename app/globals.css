@@ -422,6 +422,25 @@
 
   .tone-bar { background: var(--tone); }
 
+  /* Top bar date and live clock (components/topbar-clock.tsx). */
+  .topbar-clock {
+    background: color-mix(in oklab, var(--brand-gold) 7%, color-mix(in oklab, var(--card) 70%, transparent));
+    border: 1px solid color-mix(in oklab, var(--brand-gold) 26%, var(--glass-border, transparent));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 35%), 0 1px 2px rgb(0 0 0 / 5%);
+  }
+  .dark .topbar-clock { box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%); }
+  .topbar-clock-divider { background: color-mix(in oklab, var(--brand-gold) 35%, transparent); }
+  .topbar-clock-dot {
+    --dot: var(--brand-moss);
+    position: relative; width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: var(--dot); flex-shrink: 0;
+  }
+  .topbar-clock-dot.is-closed { --dot: var(--brand-gold); }
+  .topbar-clock-dot::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--dot);
+    animation: clock-pulse 2s ease-out infinite;
+  }
+  .topbar-clock-colon { animation: clock-blink 2s steps(1, end) infinite; }
+
   /* Executive dashboard charts. Series pair validated for colour-vision deficiency in both themes. */
   .viz { --viz-1: #7b33c7; --viz-2: #eb6834; --viz-grid: color-mix(in oklab, var(--muted-foreground) 18%, transparent); }
   .dark .viz { --viz-1: #9a6ae6; --viz-2: #d95926; }
@@ -615,6 +634,19 @@ main [data-slot="card-title"] {
     min-width: 17rem !important;
     padding: 0.75rem !important;
   }
+}
+
+@keyframes clock-pulse {
+  from { transform: scale(1); opacity: 0.55; }
+  to { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes clock-blink {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-clock-dot::after, .topbar-clock-colon { animation: none; }
 }
 
 @keyframes page-enter {

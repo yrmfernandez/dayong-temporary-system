@@ -282,7 +282,7 @@ New Sales and Collections enter the cash workflow as **Outstanding**. Legacy ent
 
 ### Expected cash and deadlines
 
-Ordinarily an entry owes its saved company share. Staff keep their incentive only if cash is received by **3:00 PM Manila time the day after the OR/application date** (it was 10:00 AM until October 5, 2026). Exactly at 3:00 PM is still within the deadline. **Encoding closes at 3:00 PM:** from 3:00 PM until midnight nobody, administrators included, can save New Sales or Collections; the pages show a notice and disable saving, and the save routes refuse (`entryClosed` in `lib/remittance-deadline.ts`). This is based on a date-only receipt and the fixed cutoff, not 24 hours after an actual sale time.
+Ordinarily an entry owes its saved company share. Staff keep their incentive only if cash is received by **3:00 PM Manila time the day after the OR/application date** (it was 10:00 AM until October 5, 2026). Exactly at 3:00 PM is still within the deadline. **Encoding closes at 3:00 PM:** from 3:00 PM until midnight nobody, administrators included, can save New Sales or Collections; the pages show a notice and disable saving, and the save routes refuse (`entryClosed` in `lib/remittance-deadline.ts`). The top bar shows today's date and a live Manila clock on every page; its dot is green while encoding is open and gold from 3:00 PM until midnight ([topbar clock](../components/topbar-clock.tsx)). This is based on a date-only receipt and the fixed cutoff, not 24 hours after an actual sale time.
 
 ```text
 Entry cash due = saved company share, within deadline
@@ -786,7 +786,7 @@ Inspect helpers include sheet-header inspection, database audit, legacy inspecti
 | Tier missing for NOP | Role and NOP range; branch overrides replace the role's entire base tier set. |
 | Amount field locked | Program editability flag and server fixed/full-installment rules. |
 | Approval refuses | Receipt photo for every entry, complete slip links, reason for discrepancy, decision permission/self-decision rule. Bulk decisions report each slip that was not done. |
-| Cannot save New Sales or Collections | It is 3:00 PM or later (Manila); encoding opens again at midnight. |
+| Cannot save New Sales or Collections | It is 3:00 PM or later (Manila); encoding opens again at midnight. The top bar clock's dot turns gold while encoding is closed. |
 | Incentive disappears | Time received after next-day 3:00 PM cutoff and saved forfeiture/company-share update. |
 | Fidelity contribution not available | Remittance must be Approved; pending/discrepancy is not withdrawable. |
 | Payroll omits employee or commission | Active pay profile/employee, eligible flag, Pending commission period end, existing live payroll reservation. |
