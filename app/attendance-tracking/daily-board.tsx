@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 
-type Category = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Not clocked in" | "Non-working day";
+type Category = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not clocked in" | "Non-working day";
 type BoardRecord = { timeIn: string; timeOut: string; scheduledTimeIn: string; lateMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string; branch: string };
 type Row = { employeeId: string; name: string; roles: string[]; branches: string[]; category: Category; earlyMinutes: number; systemAbsent: boolean; record: BoardRecord | null };
 type Board = { date: string; today: string; canAdjustLate: boolean; canSetClockOut: boolean; closedDay: string; rows: Row[] };
@@ -21,6 +21,7 @@ const sections: Array<{ category: Category; title: string; tone: string }> = [
   { category: "Absent", title: "Absent", tone: "text-red-700" },
   { category: "AWOL", title: "AWOL", tone: "text-red-800" },
   { category: "On leave", title: "On leave", tone: "text-sky-700" },
+  { category: "Day Off", title: "Day Off", tone: "text-primary" },
   { category: "Not clocked in", title: "Not clocked in yet", tone: "text-muted-foreground" },
   { category: "Non-working day", title: "Branch closed (non-working day)", tone: "text-violet-700" },
 ];
@@ -85,6 +86,7 @@ export function DailyBoard() {
     { key: "Absent", label: "Absent", value: count("Absent"), tone: "text-red-700" },
     { key: "AWOL", label: "AWOL", value: count("AWOL"), tone: "text-red-800" },
     { key: "On leave", label: "On leave", value: count("On leave"), tone: "text-sky-700" },
+    { key: "Day Off", label: "Day Off", value: count("Day Off"), tone: "text-primary" },
     ...(board && board.date === board.today ? [{ key: "Not clocked in" as const, label: "Not clocked in", value: count("Not clocked in"), tone: "text-muted-foreground" }] : []),
     ...(count("Non-working day") ? [{ key: "Non-working day" as const, label: "Branch closed", value: count("Non-working day"), tone: "text-violet-700" }] : []),
   ];
@@ -101,7 +103,7 @@ export function DailyBoard() {
     {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 print:hidden">{message}</p>}
     {board?.closedDay && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{board.closedDay}</p>}
 
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">{tiles.map((tile) => <button key={tile.key} type="button" aria-pressed={focus === tile.key} onClick={() => setFocus(focus === tile.key ? "" : tile.key)} className={`rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary ${focus === tile.key ? "border-primary ring-2 ring-primary/30" : ""}`}><p className="text-xs text-muted-foreground">{tile.label}</p><p className={`text-2xl font-bold tabular-nums ${tile.tone}`}>{tile.value}</p></button>)}</div>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">{tiles.map((tile) => <button key={tile.key} type="button" aria-pressed={focus === tile.key} onClick={() => setFocus(focus === tile.key ? "" : tile.key)} className={`rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary ${focus === tile.key ? "border-primary ring-2 ring-primary/30" : ""}`}><p className="text-xs text-muted-foreground">{tile.label}</p><p className={`text-2xl font-bold tabular-nums ${tile.tone}`}>{tile.value}</p></button>)}</div>
     {board && board.date < board.today && missingClockOuts > 0 && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">{missingClockOuts} employee{missingClockOuts === 1 ? "" : "s"} did not clock out on this day.{board.canSetClockOut ? " Use Set clock-out on their row." : ""}</p>}
     {focus && <p className="text-xs text-muted-foreground print:hidden">Showing {focus} only. <button type="button" className="font-medium text-primary hover:underline" onClick={() => setFocus("")}>Show everyone</button></p>}
 

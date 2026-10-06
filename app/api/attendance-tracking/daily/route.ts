@@ -38,7 +38,7 @@ export async function GET(request: Request) {
       return {
         employeeId: employee.employeeId, name: employee.fullName, roles: detail?.roles ?? [],
         branches: (detail?.branchIds ?? []).map((id) => branchNames.get(id) ?? id),
-        category: closed ? "Non-working day" as const : boardCategory(record, date, today),
+        category: closed && record?.status !== "Day Off" ? "Non-working day" as const : boardCategory(record, date, today),
         systemAbsent: isSystemAbsence(record),
         earlyMinutes: record?.timeIn && record.scheduledTimeIn ? Math.max(0, minutesBetween(record.timeIn, record.scheduledTimeIn)) : 0,
         record,

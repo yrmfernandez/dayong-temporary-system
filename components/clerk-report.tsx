@@ -106,7 +106,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       {message && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">{message}</p>}
 
       {report && (
-        <div className="overflow-x-auto rounded-xl border bg-white p-3 text-[13px] text-neutral-900 print:border-0 print:p-0">
+        <div className="clerk-report-sheet overflow-x-auto rounded-xl border bg-card p-3 text-[13px] text-card-foreground print:border-0 print:p-0">
           <div className="min-w-[980px] space-y-3">
             <ReportHeader report={report} />
 
@@ -295,9 +295,9 @@ function Check({ label, value }: { label: string; value: string }) {
 function MasSummary({ report }: { report: Report }) {
   const line = (sales: ReportLine, collections: ReportLine) => [String(sales.accounts || ""), money(sales.gross), money(sales.incentives), String(collections.accounts || ""), money(collections.gross), money(collections.incentives)];
   return (
-    <div className="overflow-x-auto rounded-xl border bg-white p-3 text-[13px] text-neutral-900 print:break-before-page print:border-0">
+    <div className="clerk-report-sheet overflow-x-auto rounded-xl border bg-card p-3 text-[13px] text-card-foreground print:break-before-page print:border-0">
       <div className="min-w-[760px] space-y-2">
-        <div className="bg-yellow-300 py-1 text-center font-bold leading-tight">
+        <div className="bg-yellow-300 py-1 text-center font-bold leading-tight text-neutral-900">
           <p>{report.company.name}</p><p>{report.masSummary.title}</p><p>NEW MEMBER AND COLLECTION</p>
         </div>
         <div className="flex justify-between gap-6 text-xs">
@@ -310,7 +310,7 @@ function MasSummary({ report }: { report: Report }) {
         </div>
         <table className="w-full border-collapse border text-[12px]">
           <thead>
-            <tr><th rowSpan={2} className="border p-1">No.</th><th rowSpan={2} className="border p-1">Marketing Account Staff</th><th colSpan={3} className="border bg-orange-200 p-1">NEW SALES</th><th colSpan={3} className="border bg-blue-200 p-1">COLLECTION</th><th colSpan={3} className="border bg-green-200 p-1">CVE (%)</th></tr>
+            <tr><th rowSpan={2} className="border p-1">No.</th><th rowSpan={2} className="border p-1">Marketing Account Staff</th><th colSpan={3} className="border bg-orange-200 p-1 text-orange-950">NEW SALES</th><th colSpan={3} className="border bg-blue-200 p-1 text-blue-950">COLLECTION</th><th colSpan={3} className="border bg-green-200 p-1 text-green-950">CVE (%)</th></tr>
             <tr>{["ACCTS", "GROSS", "INC.", "ACCTS", "GROSS", "INC.", "ACCTS", "GROSS", "CVE%"].map((header, index) => <th key={`${header}-${index}`} className="border p-1 text-[11px]">{header}</th>)}</tr>
           </thead>
           <tbody>

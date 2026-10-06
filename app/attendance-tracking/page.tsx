@@ -22,7 +22,7 @@ export default function AttendanceTrackingPage() {
   const [view, setView] = useState<"daily" | "history">("daily");
   return <section className="mx-auto max-w-7xl space-y-6">
     <header className="rounded-2xl page-hero p-5">
-      <div className="flex items-center gap-3"><div className="rounded-xl bg-violet-95 p-3 text-violet-40"><BarChart3 className="size-6" /></div><div><h1 className="text-2xl font-bold">Employee Attendance Tracking</h1><p className="text-sm text-violet-30/80">See who is present, late, early, absent, AWOL, or on leave each day, and review attendance history.</p></div></div>
+      <div className="flex items-center gap-3"><div className="rounded-xl bg-violet-95 p-3 text-violet-40"><BarChart3 className="size-6" /></div><div><h1 className="text-2xl font-bold">Employee Attendance Tracking</h1><p className="text-sm text-violet-30/80">See who is present, late, early, absent, AWOL, on leave, or on a day off each day, and review attendance history.</p></div></div>
     </header>
     <div role="tablist" className="flex gap-1 border-b print:hidden">{([["daily", "Daily board"], ["history", "History"]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`border-b-2 px-3 py-2.5 text-sm font-medium ${view === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{label}</button>)}</div>
     {view === "daily" ? <DailyBoard /> : <AttendanceHistory />}
@@ -56,6 +56,7 @@ function AttendanceHistory() {
     present: records.filter((record) => record.status === "Present").length,
     absent: records.filter((record) => record.status === "Absent" || record.status === "AWOL").length,
     leave: records.filter((record) => record.status === "Leave").length,
+    dayOff: records.filter((record) => record.status === "Day Off").length,
     worked: records.reduce((sum, record) => sum + record.workedHours, 0),
     overtime: records.reduce((sum, record) => sum + record.overtimeHours, 0),
     late: records.reduce((sum, record) => sum + record.lateMinutes, 0),
@@ -71,8 +72,9 @@ function AttendanceHistory() {
     </CardContent></Card>
 
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <Metric icon={UserCheck} label="Present days" value={String(summary.present)} />
+      <Metric icon={UserCheck} label="Days off" value={String(summary.dayOff)} />
       <Metric icon={Clock3} label="Worked hours" value={hours(summary.worked)} />
       <Metric icon={Timer} label="Overtime" value={hours(summary.overtime)} />
       <Metric icon={BarChart3} label="Attendance exceptions" value={String(summary.absent + summary.leave)} detail={`${summary.absent} absent/AWOL · ${summary.leave} leave`} />

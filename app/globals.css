@@ -705,6 +705,12 @@ main [data-slot="card"]:nth-child(4) {
   .mam-report th, .mam-report td { position: static !important; min-width: 0 !important; padding: 4px !important; }
   .mam-report table { width: 100% !important; table-layout: fixed; }
   .mam-report tr { break-inside: avoid; }
+  /* Clerk report sheets stay readable on paper when printed from dark mode. */
+  .clerk-report-sheet {
+    --card: #fff; --card-foreground: #000; --muted-foreground: #555; --border: #bbb;
+    --surface-thead: #f6f3fa; --violet-30: #4b4159;
+    background: #fff !important; color: #000 !important;
+  }
   /* Payroll: print only the open payslip (its overlay is a direct child of body), on its own portrait page. */
   html.print-payslip body > :not(.payslip-overlay) { display: none !important; }
   html.print-payslip .payslip-overlay { position: static !important; display: block !important; overflow: visible !important; padding: 0 !important; background: none !important; }

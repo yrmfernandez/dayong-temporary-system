@@ -2,7 +2,7 @@ import type { SessionUser } from "@/lib/auth";
 import type { AttendanceRecord } from "@/lib/attendance-data";
 
 /** Where an employee stands on one day. Present covers On time, Late, and Early. */
-export type BoardCategory = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Not clocked in" | "Non-working day";
+export type BoardCategory = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not clocked in" | "Non-working day";
 
 const roleNames = (user: Pick<SessionUser, "roleNames">) => user.roleNames.map((role) => role.trim().toLowerCase());
 
@@ -22,6 +22,7 @@ export function canAdjustLateness(user: Pick<SessionUser, "roleNames" | "permiss
  * A clocked-in employee is Late when late minutes remain, Early when they clocked in before the schedule.
  */
 export function boardCategory(record: AttendanceRecord | null, date: string, today: string): BoardCategory {
+  if (record?.status === "Day Off") return "Day Off";
   if (record?.status === "Leave") return "On leave";
   if (record?.status === "AWOL") return "AWOL";
   if (record?.status === "Absent") return "Absent";
