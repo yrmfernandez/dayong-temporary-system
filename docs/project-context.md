@@ -259,3 +259,11 @@ Administrators, HR, the CEO and President (and anyone with manage-attendance) ca
 ## Audits (daily, weekly, monthly, yearly)
 
 The Audits page (`/audit`, formerly Daily Audit) audits each Entry Clerk's report by day, week (Monday to Sunday), month or year, with the same workflow: HR/Finance prepare, only an Administrator approves (which locks the figures) or reopens with a reason. Weekly, monthly and yearly audits use the report totals for the whole period plus how the clerk's daily audits in that period stand. They are stored in Weekly Audits, Monthly Audits and Yearly Audits, laid out like Daily Audits with report_date = the period's first day (`npm run sheets:period-audits -- --apply`, applied 2026-10-02). The Daily summary tab still summarizes approved daily audits.
+
+## Old web app export (dayong.gissolve.com)
+
+The older Dayong web app (Laravel, hosted by its vendor) has no export and we have no database access. Status, October 6, 2026:
+
+- **Done:** `scripts/legacy-site-survey.mjs` signs in with the owner's account from `.env.legacy-site` (`LEGACY_SITE_USERNAME`, `LEGACY_SITE_PASSWORD`; git ignores it), opens the menu pages with GET requests only (one per second, never delete/update/edit links), saves them to `legacy-data/site/` (git ignores it) and prints only structure: titles, table column headings, row counts, paging, link patterns. Its output is written to `legacy-data/site/survey.json`.
+- **In progress:** the owner runs the survey.
+- **To do:** write the export (pages or detail records to CSV) from what the survey shows; ask the vendor for a direct export in parallel; then import with the same checks and repair rules as the old workbook; delete `legacy-data/site/` afterwards.
