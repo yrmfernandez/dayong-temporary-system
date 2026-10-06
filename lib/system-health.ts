@@ -18,7 +18,7 @@ export type IntegrityIssue = { severity: "critical" | "warning" | "info"; title:
 
 /** Every table and column db/schema.ts expects, which the deployed code will query. */
 function expectedColumns() {
-  return Object.values(schema).filter((value): value is PgTable => is(value, PgTable)).map((table) => getTableConfig(table))
+  return Object.values(schema as Record<string, unknown>).filter((value): value is PgTable => is(value, PgTable)).map((table) => getTableConfig(table))
     .map((config) => ({ table: config.name, columns: config.columns.map((column) => column.name) }));
 }
 
@@ -94,7 +94,8 @@ export async function getSystemHealth() {
   const databaseUrl = readServerVariable("DATABASE_URL");
   const project = /postgres\.([a-z0-9]+)[:@]/.exec(databaseUrl)?.[1] ?? "";
   const authSecret = readServerVariable("AUTH_SECRET");
-  const storageReady = Boolean(readServerVariable("SUPABASE_URL") && readServerVariable("SUPABASE_SERVICE_KEY"));
+  // Read like lib/photo-storage.ts does; these are not in readServerVariable's list.
+  const storageReady = Boolean(process.env.SUPABASE_URL?.trim() && process.env.SUPABASE_SERVICE_KEY?.trim());
   const config = [
     { label: "Database", ok: Boolean(project), detail: project === PRODUCTION_REF ? `Production (${project})` : project === STAGING_REF ? `Staging (${project})` : project || "DATABASE_URL missing" },
     { label: "Receipt photo storage", ok: storageReady, detail: storageReady ? "Supabase Storage configured" : "SUPABASE_URL or SUPABASE_SERVICE_KEY missing" },
