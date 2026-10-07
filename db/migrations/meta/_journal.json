@@ -85,6 +85,13 @@
       "when": 1791356685391,
       "tag": "0011_collection_links",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791357274580,
+      "tag": "0012_rename_follows",
+      "breakpoints": true
     }
   ]
 }

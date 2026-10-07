@@ -436,6 +436,31 @@ test('collection links follow name changes and stay empty for unknown names', as
   assert.equal((await links()).branch_id, 'BR-10', 'a changed branch ID follows through');
 });
 
+test('renaming a branch or employee updates every copy of the name, logged once', async () => {
+  harness();
+  await seedAccount();
+  await seed('branches', [{ branch_id: 'BR-7', branch_name_code: 'Mintal' }]);
+  await seed('employees', [{ employee_id: 'DPE-0007', full_name: 'Rosa Lim' }, { employee_id: 'DPE-0008', full_name: 'Twin Name' }, { employee_id: 'DPE-0009', full_name: 'Twin Name' }]);
+  const [enrollment] = await query('select enrollment_id, member_id, program_id from member_programs limit 1');
+  await query("update member_programs set branch = 'Mintal', mas = 'Rosa Lim' where enrollment_id = $1", [enrollment.enrollment_id]);
+  await seed('collections', [
+    { collection_id: 'COL-R1', collection_batch_id: 'CBT-R', enrollment_id: enrollment.enrollment_id, member_id: enrollment.member_id, program_id: enrollment.program_id, branch: 'Mintal', mas: 'Rosa Lim', accountable_employee_id: 'DPE-0007', accountable_name: 'Rosa Lim', amount_collected: 350, status: 'Posted' },
+    { collection_id: 'COL-R2', collection_batch_id: 'CBT-R', enrollment_id: enrollment.enrollment_id, member_id: enrollment.member_id, program_id: enrollment.program_id, branch: 'Mintal', mas: 'Twin Name', original_mas: 'Twin Name', amount_collected: 350, status: 'Posted' },
+  ]);
+  const auditBefore = (await query('select count(*)::int as n from audit_log'))[0].n;
+  await query("update branches set branch_name_code = 'Mintal Proper' where branch_id = 'BR-7'");
+  await query("update employees set full_name = 'Rosa Lim-Santos' where employee_id = 'DPE-0007'");
+  const rows = await query("select collection_id, branch, mas, accountable_name, branch_id, mas_employee_id from collections where collection_id in ('COL-R1', 'COL-R2') order by collection_id");
+  assert.deepEqual(rows.map((row) => [row.branch, row.mas, row.accountable_name, row.branch_id, row.mas_employee_id]), [
+    ['Mintal Proper', 'Rosa Lim-Santos', 'Rosa Lim-Santos', 'BR-7', 'DPE-0007'], ['Mintal Proper', 'Twin Name', null, 'BR-7', 'DPE-0008'],
+  ], 'collections follow both renames and keep their links');
+  assert.deepEqual((await query('select branch, mas from member_programs where enrollment_id = $1', [enrollment.enrollment_id]))[0], { branch: 'Mintal Proper', mas: 'Rosa Lim-Santos' }, 'the enrollment follows too, so its collections still match it');
+  assert.deepEqual((await query("select action, table_name from audit_log order by row_seq")).slice(auditBefore).map((row) => row.table_name), ['branches', 'employees'], 'each rename is logged once, the copies are not');
+  // Two employees shared "Twin Name": renaming one changes only the copies linked to that employee by ID.
+  await query("update employees set full_name = 'Twin One' where employee_id = 'DPE-0008'");
+  assert.deepEqual((await query("select mas, original_mas from collections where collection_id = 'COL-R2'"))[0], { mas: 'Twin One', original_mas: 'Twin Name' }, 'the name-only copy is left alone when the old name was shared');
+});
+
 test('master-data CRUD blocks deleting assigned branches', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const crud = h.load('lib/master-data-crud.ts');
