@@ -5,7 +5,10 @@ export const SCHEDULED_TIME_IN = "08:00";
 
 export const SCHEDULED_TIME_OUT = "17:00";
 
-/** Clocking in up to 20 minutes after the scheduled time-in (08:20) is not late. From 08:21, late counts from 08:00. */
+/**
+ * Clocking in up to 20 minutes after the scheduled time-in is not late, and late counts from the end of that grace
+ * period: 08:20 is on time, 08:25 is 5 minutes late. At or before 08:00 is Early (lib/attendance-board.ts).
+ */
 export const LATE_GRACE_MINUTES = 20;
 
 /** Unpaid lunch break: not counted as worked, late or undertime. 08:00–17:00 less the break is the 8-hour day. */
@@ -23,10 +26,9 @@ export function workingMinutesBetween(from: number, to: number) {
   return to - from - overlap;
 }
 
-/** Late minutes for a time-in: 0 within the grace period, otherwise the working time missed since the scheduled time-in. */
+/** Late minutes for a time-in: the working time after the grace period (08:20) up to the time-in. */
 export function lateMinutesFor(timeIn: string, scheduledTimeIn = SCHEDULED_TIME_IN) {
-  const start = timeToMinutes(scheduledTimeIn), arrived = timeToMinutes(timeIn);
-  return arrived - start <= LATE_GRACE_MINUTES ? 0 : workingMinutesBetween(start, arrived);
+  return workingMinutesBetween(timeToMinutes(scheduledTimeIn) + LATE_GRACE_MINUTES, timeToMinutes(timeIn));
 }
 
 /** Worked hours, overtime hours and undertime minutes for a day, with the lunch break left out of worked and undertime. */

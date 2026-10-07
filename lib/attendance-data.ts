@@ -1,3 +1,6 @@
+import { and, asc, between, eq } from "drizzle-orm";
+
+import { getDb, schema } from "@/lib/db";
 import { appendEncodedRows, updateEncodedRow } from "@/lib/encoder-sheets";
 import {
   GOOGLE_SHEET_ID,
@@ -219,6 +222,23 @@ export async function getAttendanceRecordsForRange(
     if (!kept || (kept.notes.startsWith("Absent by system") && !record.notes.startsWith("Absent by system"))) byDay.set(key, record);
   }
   return [...byDay.values()].sort((first, second) => second.attendanceDate.localeCompare(first.attendanceDate));
+}
+
+/**
+ * One employee's records in a date range, read straight from the database with the employee/date index (a year is
+ * one small query, not a read of the whole Attendance table). Same one-record-per-day rule as getAttendanceRecordsForRange.
+ */
+export async function getEmployeeAttendance(employeeId: string, dateFrom: string, dateTo: string): Promise<AttendanceRecord[]> {
+  const a = schema.attendance;
+  const rows = await getDb().select().from(a).where(and(eq(a.employee_id, employeeId), between(a.attendance_date, dateFrom, dateTo))).orderBy(asc(a.row_seq));
+  const byDay = new Map<string, AttendanceRecord>();
+  for (const row of rows) {
+    const record = readAttendanceRow([row.attendance_id, row.employee_id, row.attendance_date, row.branch, row.scheduled_time_in, row.scheduled_time_out, row.time_in, row.time_out,
+      row.worked_hours, row.overtime_hours, row.attendance_status, row.late_minutes, row.undertime_minutes, row.leave_type, row.leave_approval_status, row.notes, row.created_at, row.updated_at]);
+    const kept = byDay.get(record.attendanceDate);
+    if (!kept || (kept.notes.startsWith("Absent by system") && !record.notes.startsWith("Absent by system"))) byDay.set(record.attendanceDate, record);
+  }
+  return [...byDay.values()];
 }
 
 function getWorkingDatesInRange(

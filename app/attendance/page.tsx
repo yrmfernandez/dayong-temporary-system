@@ -14,7 +14,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { AttendanceCalendar } from "@/components/attendance-calendar";
-import { BREAK_END, BREAK_START, timeToMinutes } from "@/lib/attendance";
+import { MyAttendanceHistory } from "@/components/my-attendance-history";
+import { BREAK_END, BREAK_START, SCHEDULED_TIME_IN, timeToMinutes } from "@/lib/attendance";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -408,7 +409,7 @@ export default function AttendancePage() {
                   action="Clock In"
                   time={record.timeIn}
                   branch={record.branch}
-                  status={record.lateMinutes > 0 ? `${record.lateMinutes} min late` : "On time"}
+                  status={record.lateMinutes > 0 ? `${record.lateMinutes} min late` : record.timeIn <= SCHEDULED_TIME_IN ? "Early" : "On time"}
                   icon={<LogIn className="size-4" />}
                   tone="lime"
                 />
@@ -440,6 +441,8 @@ export default function AttendancePage() {
           </div>
         )}
       </section>
+
+      <MyAttendanceHistory />
 
       <AttendanceCalendar />
     </div>

@@ -399,16 +399,18 @@ Sources: [earned comparison](../lib/earned-commissions.ts), [register](../lib/fi
 
 Regular attendance uses Manila time, Monday–Saturday, scheduled **08:00–17:00**. Sunday clocking is blocked. Time-in requires an assigned primary attendance branch and no existing record for that day. Time-out requires a time-in and no previous time-out.
 
-Since October 7, 2026: a **20-minute grace period** (clocking in up to 08:20 is not late) and an unpaid **12:00–13:00 lunch break**, so the day is 8 working hours. "Working time" below means clock time less any part inside 12:00–13:00.
+Since October 7, 2026: a **20-minute grace period** (late starts after 08:20 and counts from 08:20), **Early** means clocking in at or before 08:00 (08:00 itself is Early; 08:01–08:20 is On time), and an unpaid **12:00–13:00 lunch break**, so the day is 8 working hours. "Working time" below means clock time less any part inside 12:00–13:00.
 
 ```text
-Late minutes      = 0 if time-in ≤ 08:20, else working time from 08:00 to time-in   (08:21 → 21; 12:30 → 240)
+Late minutes      = working time from 08:20 to time-in, 0 if earlier             (08:25 → 5; 09:30 → 70; 12:30 → 220)
 Worked hours      = working time from time-in to time-out / 60                     (08:00–17:00 → 8)
 Overtime hours    = max(0, time-out − 17:00) / 60
 Undertime minutes = working time from time-out to 17:00                            (16:00 → 60; 12:30 → 240)
 ```
 
-Hours are rounded to two decimals. The rules live in `lib/attendance.ts` (`LATE_GRACE_MINUTES`, `BREAK_START`, `BREAK_END`, `lateMinutesFor`, `clockOutFigures`) and are used by clock-in, clock-out and the daily board's Set clock-out; the employee's running session timer pauses during the break. Records saved before October 7 keep the figures calculated then. Adjust late on the daily board still sets any value by hand. Payroll uses paid-day counts and the pay profile's hours/day rather than worked hours to price the base wage.
+Hours are rounded to two decimals. The rules live in `lib/attendance.ts` (`LATE_GRACE_MINUTES`, `BREAK_START`, `BREAK_END`, `lateMinutesFor`, `clockOutFigures`) and are used by clock-in, clock-out and the daily board's Set clock-out; the employee's running session timer pauses during the break.
+
+**My Attendance history** (on `/attendance`, every employee, own records only): Week (Monday–Sunday), Month or Year with previous/next and Today. It shows days present with the share early or on time, late days and total late time, absences with leave and days off, hours worked with overtime and undertime, a breakdown by week (month view) or by month (year view), and every day with its Early / On time / Late / Absent / On leave / Day off status. Data: `GET /api/attendance/history?period=week|month|year&date=YYYY-MM-DD` → `getEmployeeAttendance` (one indexed database query by employee and dates) and `periodRange` / `summarizeHistory` in `lib/attendance-board.ts`. Records saved before October 7 keep the figures calculated then. Adjust late on the daily board still sets any value by hand. Payroll uses paid-day counts and the pay profile's hours/day rather than worked hours to price the base wage.
 
 Attendance Review can mark Absent, AWOL or **Day Off** where no clocked or leave record blocks the action, and filters the list by branch and role. Day Off (given by an administrator) replaces a system absence, is not counted as absent in payroll, and blocks clocking in that day. The daily tracking board separates On time, Early, Late, Absent, AWOL, On leave, **Day Off**, Not clocked in, and Non-working day. Day Off has its own count, clickable filter, and employee list on screen and in print; recorded days off retain that category on past days and branch closures. Attendance history shows a separate **Days off** total, excluded from absent/AWOL and leave exceptions. Authorized management/HR can adjust lateness and complete missing time-out with notes; Finance primarily reviews.
 

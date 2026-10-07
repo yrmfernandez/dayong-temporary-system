@@ -176,7 +176,8 @@ test("attendance board: who is late, early, absent, AWOL, or on leave, and who m
   assert.equal(boardCategory(record({ timeIn: "08:25", lateMinutes: 25 }), "2026-09-29", "2026-09-30"), "Late");
   assert.equal(boardCategory(record({ timeIn: "08:25", lateMinutes: 0 }), "2026-09-29", "2026-09-30"), "On time", "late adjusted to zero");
   assert.equal(boardCategory(record({ timeIn: "07:40" }), "2026-09-29", "2026-09-30"), "Early");
-  assert.equal(boardCategory(record({}), "2026-09-29", "2026-09-30"), "On time");
+  assert.equal(boardCategory(record({}), "2026-09-29", "2026-09-30"), "Early", "exactly 08:00 counts as early");
+  assert.equal(boardCategory(record({ timeIn: "08:15" }), "2026-09-29", "2026-09-30"), "On time", "within the 20-minute grace");
   assert.equal(boardCategory(record({ status: "AWOL", timeIn: "" }), "2026-09-29", "2026-09-30"), "AWOL");
   assert.equal(boardCategory(record({ status: "Leave", timeIn: "" }), "2026-09-29", "2026-09-30"), "On leave");
   assert.equal(boardCategory(null, "2026-09-29", "2026-09-30"), "Absent", "no record on a past day");
