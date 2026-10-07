@@ -506,7 +506,7 @@ for (const existingMember of [false, true]) {
     await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
     if (existingMember) await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'Old', first_name: 'Name' }]);
     const response = await h.load('app/api/sales/route.ts').POST(request({
-      branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 350,
+      branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 200,
       encodedBy: 'attacker', userId: 'attacker',
       sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', encodedBy: 'attacker', beneficiaries: existingMember ? [] : [{ surname: 'Santos', firstName: 'Ben', middleName: '', birthdate: '2000-01-02', age: 26, relationship: 'Child' }] }],
     }));
@@ -576,7 +576,7 @@ test('collection batch is encoded atomically without creating a remittance', asy
   // The New Sale is NOP 1 (DOI month), so the first collection is NOP 2 for the following month.
   const afterNext = h.load('lib/account-rules.ts').monthName(h.load('lib/account-rules.ts').monthIndex(month) + 2);
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: 'OR-1', orDate: today };
-  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', controlTotal: 700, collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: 'OR-2' }] };
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', controlTotal: 580, collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: 'OR-2' }] };
   const route = h.load('app/api/collections/route.ts');
   assert.match((await (await route.POST(request({ ...batch, paymentReference: '' }))).json()).message, /GCash reference number/);
   assert.match((await (await route.POST(request({ ...batch, autoApproveRemittance: true, cashReceived: 400 }))).json()).message, /verified in Remittances/);
@@ -611,7 +611,7 @@ test('collection batch is encoded atomically without creating a remittance', asy
   // The status change is in the Audit Log with the signed-in user, written by the database itself.
   assert.deepEqual(await query('select action, table_name, record_id, employee_id from audit_log'), [{ action: 'update', table_name: 'member_programs', record_id: 'ENR-1', employee_id: 'DPE-0001' }]);
   // Paying the same months again is refused against the saved payments.
-  assert.equal((await route.POST(request({ ...batch, collections: [{ ...entry, orNumber: 'OR-3' }], controlTotal: 350 }))).status, 400);
+  assert.equal((await route.POST(request({ ...batch, collections: [{ ...entry, orNumber: 'OR-3' }], controlTotal: 200 }))).status, 400);
   assert.equal(result.remittanceId, undefined);
   assert.equal(result.grossCollection, 700);
   assert.match(result.message, /₱50.00 penalty/);
@@ -921,17 +921,17 @@ test('a new member enrolled in two programs in one batch is registered once', as
   await seedSaleLinks([['DP-1', 'Plan A'], ['DP-2', 'Plan B']], ['DPE-0002', 'mas']);
   const sale = (programId, applicationNo) => ({ existingMember: false, surname: 'Reyes', firstName: 'Ben', birthdate: '1991-02-03', programId, amountPaid: '350', applicationNo, addressHouse: 'Complete Address' });
   const route = h.load('app/api/sales/route.ts');
-  const response = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 700, sales: [sale('DP-1', 'APP-1'), sale('DP-2', 'APP-2')] }));
+  const response = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 400, sales: [sale('DP-1', 'APP-1'), sale('DP-2', 'APP-2')] }));
   const result = await response.json();
   assert.equal(response.status, 200, JSON.stringify(result));
   assert.equal(await count('members'), 1, 'one member record');
   assert.equal(await count('member_programs'), 2, 'two program enrollments');
   assert.equal(result.savedSales[0].memberNumber, result.savedSales[1].memberNumber);
   // Saved for real: the same person as a new member again is caught as a returning member.
-  const again = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 350, sales: [sale('DP-1', 'APP-3')] }));
+  const again = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 200, sales: [sale('DP-1', 'APP-3')] }));
   assert.match((await again.json()).message, /Ben Reyes with this birthdate is already member/);
   const other = (applicationNo) => ({ ...sale('DP-1', applicationNo), surname: 'Lim' });
-  const repeat = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 700, sales: [other('APP-3'), other('APP-4')] }));
+  const repeat = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 400, sales: [other('APP-3'), other('APP-4')] }));
   assert.match((await repeat.json()).message, /Sale #2: This member is already enrolled in this program earlier in this batch/);
 });
 
@@ -1422,7 +1422,7 @@ test('New Sales Fidelity is the MAS own money: incentives stay whole and the rem
   h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
   await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'Maria']);
   const sales = h.load('app/api/sales/route.ts');
-  const body = (fidelityAmount) => ({ branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', fidelityAmount, controlTotal: 350, sales: [{ existingMember: false, memberNumber: '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-9', addressHouse: 'Address', beneficiaries: [] }] });
+  const body = (fidelityAmount) => ({ branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', fidelityAmount, controlTotal: 200 + (Number(fidelityAmount) || 0), sales: [{ existingMember: false, memberNumber: '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-9', addressHouse: 'Address', beneficiaries: [] }] });
   // No limit: more than the batch's ₱150 incentive is accepted.
   const saved = await sales.POST(request(body(500)));
   assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
@@ -1690,9 +1690,9 @@ test('a program locks the New Sale amount unless it allows editing', async () =>
     return h;
   };
   await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
-  const post = async (h, amountPaid) => {
+  const post = async (h, amountPaid, controlTotal = 200) => {
     const sale = { existingMember: false, programId: 'DP-1', amountPaid, applicationNo: 'APP-1', addressHouse: 'Complete Address', beneficiaries: [] };
-    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: Number(amountPaid), sales: [sale] }));
+    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal, sales: [sale] }));
     return { status: response.status, body: await response.json() };
   };
   const locked = setup('FALSE');
@@ -1703,7 +1703,7 @@ test('a program locks the New Sale amount unless it allows editing', async () =>
   const blank = setup('');
   assert.equal((await post(blank, '300')).status, 400, 'a blank cell is FALSE, the default');
   const editable = setup('TRUE');
-  const different = await post(editable, '700');
+  const different = await post(editable, '700', 550);
   assert.equal(different.status, 200, JSON.stringify(different.body));
 });
 
@@ -1720,12 +1720,13 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
     const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: body.controlTotal, sales: [sale] }));
     return { status: response.status, body: await response.json() };
   };
-  assert.match((await post({ controlTotal: 3500 })).body.message, /add up to ₱350\.00 but the turnover sheet says ₱3,500\.00 \(short by ₱3,150\.00\)/);
-  assert.match((await post({})).body.message, /Enter the control total/);
+  assert.match((await post({ controlTotal: 3500 })).body.message, /total remittance is ₱200\.00 but the turnover sheet says ₱3,500\.00 \(short by ₱3,300\.00\)/);
+  assert.match((await post({ controlTotal: 350 })).body.message, /total remittance is ₱200\.00 .* says ₱350\.00/, 'the amount collected is not the control total');
+  assert.match((await post({})).body.message, /Enter the net total/);
   const late = await post({ controlTotal: 350, sale: { orDate: '2026-01-05' } });
   assert.match(late.body.message, /more than a day old/);
   assert.equal(await count('sales'), 0, 'nothing is saved');
-  const explained = await post({ controlTotal: 350, sale: { orDate: '2026-01-05', backdateReason: 'MAS turned in the form late' } });
+  const explained = await post({ controlTotal: 200, sale: { orDate: '2026-01-05', backdateReason: 'MAS turned in the form late' } });
   assert.equal(explained.status, 200, JSON.stringify(explained.body));
   assert.equal((await query('select backdate_reason from sales'))[0].backdate_reason, 'MAS turned in the form late', 'the reason is kept with the sale');
 });
@@ -1771,7 +1772,7 @@ test('a MAS submits New Sales; only a clerk of that branch reviews them, saves o
   assert.equal((await call(clerk, 'GET', '/api/sale-submissions?view=review')).body.submissions.length, 1);
   const save = async (h, applicationNo) => {
     const sale = { existingMember: false, surname: 'Cruz', firstName: 'Ana', programId: 'DP-1', amountPaid: '350', applicationNo, addressHouse: 'Complete Address', beneficiaries: [] };
-    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 350, submissionId: row.submission_id, sales: [sale] }));
+    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 200, submissionId: row.submission_id, sales: [sale] }));
     return { status: response.status, body: await response.json() };
   };
   assert.match((await save(otherClerk, 'APP-1')).body.message, /not assigned/);

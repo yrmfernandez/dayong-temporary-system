@@ -331,6 +331,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const quoteProblem = saleQuotes.find((quote) => quote && "error" in quote) as { error: string } | undefined;
   const quotesReady = saleQuotes.every(Boolean) && !quoteProblem;
   const totalSaleRemittance = quotesReady ? saleQuotes.reduce((sum, quote) => sum + Math.round((quote?.remittance ?? 0) * 100), 0) / 100 : null;
+  // The net total checked against the turnover sheet: company remittance plus Fidelity (the summary's Total remittance).
+  const saleTotalDue = totalSaleRemittance === null ? null : Math.round((totalSaleRemittance + fidelityAmount) * 100) / 100;
 
   const [programLoading, setProgramLoading] =
     useState(true);
@@ -1081,7 +1083,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       return;
     }
 
-    const controlProblem = controlTotalProblem(controlTotal, sales.map(amountPaidOf));
+    const controlProblem = controlTotalProblem(controlTotal, saleTotalDue);
     if (controlProblem) {
       setSaveMessage(controlProblem);
       return;
@@ -2862,9 +2864,9 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
           {quoteProblem && <p role="alert" className="text-sm text-destructive">{quoteProblem.error}</p>}
           <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px] sm:items-center">
             <div>
-              <Label htmlFor="sales-control-total">Control total from the turnover sheet *</Label>
-              <p className="text-xs text-muted-foreground">Type the total the MAS wrote on the turnover sheet, not the total shown here. The batch saves only when they match.</p>
-              {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, sales.map(amountPaidOf)); return <p className={`mt-1 text-sm ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the sales."}</p>; })()}
+              <Label htmlFor="sales-control-total">Control total from the turnover sheet (net / total remittance) *</Label>
+              <p className="text-xs text-muted-foreground">Type the net total the MAS wrote on the turnover sheet: amount paid less MAS incentives, plus Fidelity. Not the total collections, and not copied from the summary. The batch saves only when it matches the Total remittance.</p>
+              {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, saleTotalDue); return <p className={`mt-1 text-sm ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the total remittance."}</p>; })()}
             </div>
             <Input id="sales-control-total" type="number" min="0" step="0.01" value={controlTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setControlTotal(event.target.value)} placeholder="0.00" />
           </div>

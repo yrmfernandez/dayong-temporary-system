@@ -783,7 +783,7 @@ export default function CollectionsPage() {
       }
     }
 
-    const controlProblem = controlTotalProblem(controlTotal, collections.map((entry) => Number(entry.amountCollected) || 0));
+    const controlProblem = controlTotalProblem(controlTotal, totalDue);
     if (controlProblem) {
       setSaveMessage(controlProblem);
       return;
@@ -1711,9 +1711,9 @@ export default function CollectionsPage() {
               {/* CONTROL TOTAL: typed from the MAS's turnover sheet before saving */}
               <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px] sm:items-center">
                 <div>
-                  <Label htmlFor="control-total">Control total from the turnover sheet *</Label>
-                  <p className="text-xs text-muted-foreground">Type the total the MAS wrote on the turnover sheet, not the total shown here. The batch saves only when they match.</p>
-                  {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, collections.map((entry) => Number(entry.amountCollected) || 0)); return <p className={`mt-1 text-sm ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the entries."}</p>; })()}
+                  <Label htmlFor="control-total">Control total from the turnover sheet (net / total remittance) *</Label>
+                  <p className="text-xs text-muted-foreground">Type the net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary. The batch saves only when it matches the Total remittance.</p>
+                  {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, totalDue); return <p className={`mt-1 text-sm ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the total remittance."}</p>; })()}
                 </div>
                 <Input id="control-total" type="number" min="0" step="0.01" value={controlTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setControlTotal(event.target.value)} placeholder="0.00" />
               </div>

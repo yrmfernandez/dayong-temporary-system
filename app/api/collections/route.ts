@@ -67,9 +67,6 @@ async function saveCollections(request: Request) {
     // untouched, and is added to the batch's total remittance.
     const fidelity = Math.round((Number(body.fidelityAmount) || 0) * 100) / 100;
     if (!Number.isFinite(fidelity) || fidelity < 0) throw new Error("Fidelity must be zero or a positive amount.");
-    // The batch must add up to the total the MAS wrote on the turnover sheet.
-    const controlProblem = controlTotalProblem(body.controlTotal, body.collections.map((entry: Record<string, unknown>) => Number(entry.amountCollected) || 0));
-    if (controlProblem) throw new Error(controlProblem);
     if (autoApproveRemittance) {
       // Same rule as Remittances: anyone who can encode may confirm full physical cash; other methods are verified there.
       if (!paymentMethod.isCash) throw new Error(`${paymentMethod.name} payments are verified in Remittances before approval.`);
@@ -92,7 +89,7 @@ async function saveCollections(request: Request) {
       const rows: NewCollection[] = [];
       const timestamp = new Date().toISOString();
       const batchId = createReadableId("CBT");
-      let grossCents = 0;
+      let grossCents = 0, remittanceCents = 0;
       for (const entry of entries) {
         const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
         if (matches.length !== 1) throw new Error("A unique program enrollment was not found.");
@@ -116,6 +113,7 @@ async function saveCollections(request: Request) {
         const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), selectedBranch.id), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount, account.flexible, account.maxMonthlyPayment);
         // Client totals are only a preview. Persist the authoritative server calculation.
         grossCents += Math.round(quote.gross * 100);
+        remittanceCents += Math.round(quote.remittance * 100);
         const id = createReadableId("COL");
         const payment: AccountPayment = { ...input, id, enrollmentId: account.id, dateRemitted, mas };
         payments.push(payment);
@@ -135,6 +133,9 @@ async function saveCollections(request: Request) {
           backdate_reason: backdateReason || null, date_remitted: dateRemitted,
         });
       }
+      // The batch's total remittance (server calculation, plus Fidelity) must equal the net total on the turnover sheet.
+      const controlProblem = controlTotalProblem(body.controlTotal, (remittanceCents + Math.round(fidelity * 100)) / 100);
+      if (controlProblem) throw new Error(controlProblem);
       writing = true;
       await commitCollections(tx, rows, [...touched.values()], payments);
       return { ids: rows.map((row) => row.collection_id), grossCents };

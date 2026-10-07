@@ -536,9 +536,7 @@ async function saveSales(request: Request, user: SessionUser) {
      * What the MAS keeps from each sale and what the company is owed (lib/remittance.ts calculateSaleIncentive).
      * The batch's Fidelity is the MAS's own money: it leaves these incentives untouched and is added to the remittance.
      */
-    // The batch must add up to the total on the MAS's turnover sheet, and late application dates need a reason.
-    const controlProblem = controlTotalProblem(body.controlTotal, preparedSales.map((prepared) => Number(prepared.sale.amountPaid) || 0));
-    if (controlProblem) return NextResponse.json({ success: false, message: controlProblem }, { status: 400 });
+    // Late application dates need a reason; the control total is checked once the remittances are calculated below.
     for (const [index, prepared] of preparedSales.entries()) {
       const dateProblem = blockingDateProblem({ receiptDate: String(prepared.sale.orDate ?? "").trim(), receiptLabel: "application date", dateRemitted: String(body.dateRemitted ?? "").trim(), today: manilaNow().date });
       if (dateProblem) return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${dateProblem}` }, { status: 400 });
@@ -562,6 +560,10 @@ async function saveSales(request: Request, user: SessionUser) {
       try { quotes.push(calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, selectedBranch?.id ?? "") }, amountPaid)); }
       catch (error) { return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${error instanceof Error ? error.message : "The incentive could not be calculated."}` }, { status: 400 }); }
     }
+    // The batch's total remittance (server calculation, plus Fidelity) must equal the net total on the turnover sheet.
+    const totalRemittance = (quotes.reduce((sum, quote) => sum + Math.round(quote.remittance * 100), 0) + Math.round(fidelity * 100)) / 100;
+    const controlProblem = controlTotalProblem(body.controlTotal, totalRemittance);
+    if (controlProblem) return NextResponse.json({ success: false, message: controlProblem }, { status: 400 });
 
     /*
      * =====================================================

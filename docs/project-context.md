@@ -115,7 +115,7 @@ Programs T `new_sale_amount_editable` and U `collection_amount_editable` hold TR
 
 ## Data-entry controls (2026-10-03)
 
-- **Control total:** before saving a New Sales or Collections batch, the clerk types the total from the MAS's turnover sheet. The batch saves only when the entries add up to it exactly (`lib/entry-controls.ts`, checked by the form and the server).
+- **Control total:** before saving a New Sales or Collections batch, the clerk types the **net total (total remittance)** from the MAS's turnover sheet: amount collected less incentives, plus Fidelity; the penalty is separate. The batch saves only when it equals the batch's Total remittance exactly (`lib/entry-controls.ts`; the server checks its own calculation). Until October 7, 2026 it was compared with the total collected.
 - **Late entries:** an OR or application date older than yesterday needs a reason, kept in Collections AN / Sales AS `backdate_reason` and listed in Exceptions for 30 days.
 - **Cash count:** a slip may carry a bill-and-coin count (₱1000 to ₱1) in Remittances AB `cash_count` (e.g. `1000x3, 500x1`), and the server checks that a submitted count adds up to the amount. Since slips became automatic (later on 2026-10-04), no screen collects a count.
 - **Member check:** Collections shows the selected member's birthdate, address and last payment, and warns when another member has the same name.

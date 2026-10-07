@@ -6,8 +6,10 @@ import { manilaNow } from "@/lib/remittance-deadline";
  * Backdated entries: an OR (or application) date of today or yesterday is normal. An older date needs a reason, kept
  * with the entry (Collections AN, Sales AS backdate_reason) and listed for administrators in Exceptions.
  *
- * Control total: before saving a batch, the clerk types the total written on the MAS's turnover sheet. The batch saves
- * only when its entries add up to exactly that, so a mistyped, missed or doubled entry is caught at once.
+ * Control total: before saving a batch, the clerk types the net total written on the MAS's turnover sheet: the total
+ * remittance (amount collected less incentives, plus Fidelity), the same figure as "Total remittance" in the batch
+ * summary. The batch saves only when it matches exactly, so a mistyped, missed or doubled entry, a wrong amount or a
+ * wrong incentive is caught at once. A penalty is separate and not part of it.
  */
 export const BACKDATE_REASON_MIN = 5;
 
@@ -24,12 +26,16 @@ export function checkBackdate(date: string, reason: string, label: string, today
 
 const cents = (value: number) => Math.round(value * 100);
 
-/** "" when the entries add up to the control total, otherwise what is wrong. */
-export function controlTotalProblem(controlTotal: unknown, amounts: number[]) {
+/**
+ * "" when the batch's total remittance equals the control total, otherwise what is wrong. `totalRemittance` is null
+ * while an entry is incomplete (its remittance cannot be calculated yet).
+ */
+export function controlTotalProblem(controlTotal: unknown, totalRemittance: number | null) {
   const total = Number(controlTotal);
-  if (controlTotal === "" || controlTotal === null || controlTotal === undefined || !Number.isFinite(total) || total <= 0) return "Enter the control total from the MAS's turnover sheet.";
-  const sum = amounts.reduce((value, amount) => value + cents(amount), 0);
+  if (controlTotal === "" || controlTotal === null || controlTotal === undefined || !Number.isFinite(total) || total <= 0) return "Enter the net total (total remittance) from the MAS's turnover sheet.";
+  if (totalRemittance === null) return "Complete the entries so the total remittance can be calculated.";
+  const sum = cents(totalRemittance);
   if (sum === cents(total)) return "";
   const peso = (value: number) => (value / 100).toLocaleString("en-PH", { style: "currency", currency: "PHP" });
-  return `The entries add up to ${peso(sum)} but the turnover sheet says ${peso(cents(total))} (${sum > cents(total) ? "over" : "short"} by ${peso(Math.abs(sum - cents(total)))}). Check for a mistyped, missing or repeated entry.`;
+  return `The total remittance is ${peso(sum)} but the turnover sheet says ${peso(cents(total))} (${sum > cents(total) ? "over" : "short"} by ${peso(Math.abs(sum - cents(total)))}). Check the amounts, incentives and Fidelity, and look for a missing or repeated entry.`;
 }

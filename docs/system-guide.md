@@ -179,7 +179,7 @@ Sources: [remittance formulas](../lib/remittance.ts), [tier validation/storage](
 2. Select an existing member when the person is already registered. Otherwise enter personal, contact, complete address, and claimant information. Names (member and claimant) have no length limit and use the normal keyboard; until October 7, 2026 the Surname and the claimant's Complete Name were wrongly capped at 13 characters with a number keypad, copied from a phone field. Beneficiaries are saved separately and each needs surname, first name, and relationship.
 3. Select an active program, DOI, application number/date, payment information, and amount. Registration requirements come from the program rather than the submitted fee flag.
 4. Add more sales if needed. The same new person can enroll in several programs in one batch: the person row is created once, with separate enrollments and Sales rows.
-5. Enter the **control total from the turnover sheet**, plus any batch Fidelity or separately tracked penalty.
+5. Enter the **control total (net / total remittance) from the turnover sheet**, plus any batch Fidelity or separately tracked penalty.
 6. Save. Existing member details confirmed in this form become their current member record. New member, enrollment, sale, and beneficiary records are written as needed, with encoder metadata.
 7. Attach the receipt photo in My Entries or Today's Entries. Once it is attached, the sale goes to Pending Approval on its own (section 6). Saving a sale does not itself make the cash an approved company inflow.
 
@@ -195,7 +195,7 @@ A MAS can also edit a submission while it is still waiting. Once saved, it can n
 
 Duplicate protections normalize application numbers by removing spaces/dashes/punctuation and ignoring case. A number is used only once system-wide. The person duplicate check uses normalized surname, first name, and birthdate; middle name is ignored. Existing members cannot enroll in the same program again, including within the batch.
 
-The control total compares the sum of **member payment amounts** in centavos, not those amounts plus Fidelity or penalties. More than one day of backdating requires a reason of at least five characters; dates are checked against remittance date and today.
+Since October 7, 2026 the control total is the **net total from the turnover sheet**, compared in centavos with the batch's **Total remittance** = Σ company remittance (each payment less its MAS/Collector incentive, with any excess over the installment going to the company) + Fidelity. The penalty is separate and not included. Example: two ₱350 payments brought in by a Collector on a 20% tier with ₱50 mark-up → incentive (350 − 50) × 20% = ₱60 each → control total ₱580. A ₱350 New Sale with a 50% month-1 MAS tier and ₱50 mark-up → incentive ₱150 → control total ₱200 (plus any Fidelity). The server recalculates and checks it inside the save, so a mismatch saves nothing. More than one day of backdating requires a reason of at least five characters; dates are checked against remittance date and today.
 
 Unsaved forms use this browser tab's `sessionStorage`: they survive navigation/refresh but are not database records. Sign-out clears drafts. A closed tab is not a reliable way to preserve them.
 
