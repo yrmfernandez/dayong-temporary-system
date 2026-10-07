@@ -53,6 +53,7 @@ import type {
   Program,
   ProgramEnrollment,
 } from "@/lib/types";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type ProgramApiResponse = {
   success: boolean;
@@ -380,6 +381,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     })();
     return () => { cancelled = true; };
   }, [masMode, submissionRevision]);
+  // Live updates: a clerk sees new MAS submissions, and a MAS sees returned ones, without reloading (lib/use-live-refresh.ts).
+  useLiveRefresh(["sale_submissions"], () => setSubmissionRevision((value) => value + 1));
 
   useEffect(() => {
     if (!scrollTargetSaleId) return;

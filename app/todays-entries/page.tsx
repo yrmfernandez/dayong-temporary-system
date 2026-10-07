@@ -16,6 +16,7 @@ import type { DayEntry } from "@/lib/todays-entries";
 import { EntryCorrectionForm } from "@/components/entry-correction-form";
 import { EntryDetails } from "@/components/entry-details";
 import { ReceiptPhotoUpload, ReceiptPhotoView } from "@/components/receipt-photo";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Totals = { count: number; amount: number; incentives: number; forfeited: number };
 type Result = { success: boolean; message?: string; date: string; today: string; mode: TodayMode; defaultMode: TodayMode; canEdit: boolean; employeeId: string; entries: DayEntry[]; sales: Totals; collections: Totals };
@@ -59,6 +60,8 @@ export default function TodaysEntriesPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- first load uses today and the company default
     void load("", "");
   }, [load]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["sales", "collections", "members", "system_settings"], () => load(date, mode));
 
   const changeView = (nextDate: string, nextMode: TodayMode | "") => { setEditing(""); setMessage(""); void load(nextDate, nextMode); };
 

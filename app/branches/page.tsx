@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Branch = {
   id: string;
@@ -110,6 +111,8 @@ export default function BranchesPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadBranches();
   }, []);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["branches"], loadBranches);
 
   const saveBranch = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

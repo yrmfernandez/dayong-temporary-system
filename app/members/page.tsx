@@ -10,6 +10,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { MemberMam } from "@/components/member-mam";
 import { emptyDirectoryFilters, MEMBER_STATUSES, STANDING_FILTERS, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort();
@@ -68,6 +69,8 @@ export default function MembersPage() {
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
   }, [revision, search, branch, mas, program, status, accountStatus, standing, sort, descending, page]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["members", "member_programs", "beneficiaries", "member_transfers", "collections", "sales"], () => { if (!editing) setRevision((value) => value + 1); });
   const visible = members;
   const pages = totals.pages;
   const currentPage = page;

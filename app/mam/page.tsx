@@ -23,6 +23,7 @@ import {
   Building2,
   FileText,
 } from "lucide-react";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Report = ReturnType<typeof buildMamReport>;
 type Row = Report["rows"][number];
@@ -140,6 +141,8 @@ export default function MamPage() {
     // load reads from/to as of this choice; changing the month range waits for Apply Range.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choices, branch, mas, member]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["collections", "sales", "member_programs"], () => { if (choices) void load(); });
 
   const branchId = choices?.branches.find((item) => item.name === branch)?.id ?? "";
   const masChoices = (choices?.staff ?? []).filter((staff) => branchId && staff.branchIds.includes(branchId)).map((staff) => staff.fullName);

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type AttendanceRecord = {
   status: "Present" | "Leave" | "Absent" | "AWOL" | "Non-working Day" | "Day Off";
@@ -88,6 +89,8 @@ export default function AttendanceReviewsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
     void loadReview();
   }, []);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["attendance", "leave_requests", "holidays"], loadReview);
 
   const markAttendance = async (
     employeeId: string,

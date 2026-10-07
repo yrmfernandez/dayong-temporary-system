@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Commission = { id: string; employeeId: string; employeeName: string; periodFrom: string; periodTo: string; grossIncentive: number; fidelityDeduction: number; netCommission: number; status: string; paidAt: string; referenceNumber: string; remarks: string };
 type Earned = { employeeId: string; name: string; role: string; saleIncentives: number; collectionIncentives: number; sales: number; collections: number; grossIncentive: number; fidelity: number; netCommission: number; recorded: number };
@@ -46,6 +47,8 @@ export default function CommissionsPage() {
   }, [from, to]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
   useEffect(() => { void load(); }, [load]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["commissions", "collections", "sales"], load);
   const earnerIds = useMemo(() => new Set(earned.map((x) => x.employeeId).filter(Boolean)), [earned]);
   const roleOf = useMemo(() => new Map(earned.map((x) => [x.employeeId, x.role])), [earned]);
   // Any employee with sales earns incentives, so the role filter offers whatever roles this period's earners hold.

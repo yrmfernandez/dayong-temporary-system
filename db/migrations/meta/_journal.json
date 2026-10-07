@@ -71,6 +71,13 @@
       "when": 1791270696832,
       "tag": "0009_program_monthly_maximum",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791355292331,
+      "tag": "0010_realtime_changes",
+      "breakpoints": true
     }
   ]
 }

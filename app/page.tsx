@@ -6,6 +6,7 @@ import { ExecutiveDashboard } from "@/components/executive-dashboard";
 import { FinanceDashboard } from "@/components/finance-dashboard";
 import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge, type Tone } from "@/components/status-badge";
+import { LiveRouterRefresh } from "@/components/live-router-refresh";
 import { SystemHealthDashboard } from "@/components/system-health-dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { todayInManila } from "@/lib/account-rules";
@@ -63,12 +64,18 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   let loaded: Awaited<ReturnType<typeof load>>;
   try { loaded = await load(user, kind, period); }
   catch (error) { return DashboardError(error instanceof Error ? error.message : "Unable to load dashboard."); }
-  switch (loaded.view) {
-    case "executive": return <ExecutiveDashboard data={loaded.analytics} employeeName={loaded.name} />;
-    case "it": return <SystemHealthDashboard data={loaded.health} employeeName={loaded.name} />;
-    case "finance": return <FinanceDashboard employeeName={loaded.name} today={todayInManila()} analytics={loaded.analytics} remittance={loaded.remittance} payables={loaded.payables} commissions={loaded.commissions} />;
-    default: return <Operational data={loaded.data} />;
-  }
+  const view = (() => {
+    switch (loaded.view) {
+      case "executive": return <ExecutiveDashboard data={loaded.analytics} employeeName={loaded.name} />;
+      case "it": return <SystemHealthDashboard data={loaded.health} employeeName={loaded.name} />;
+      case "finance": return <FinanceDashboard employeeName={loaded.name} today={todayInManila()} analytics={loaded.analytics} remittance={loaded.remittance} payables={loaded.payables} commissions={loaded.commissions} />;
+      default: return <Operational data={loaded.data} />;
+    }
+  })();
+  // Live updates (components/live-router-refresh.tsx): the dashboard re-renders when the data it summarizes changes. The
+  // executive and finance views run heavier queries, so they refresh at most every 30 seconds; System Health is not live.
+  const live = loaded.view === "it" ? null : <LiveRouterRefresh tables={["sales", "collections", "remittances", "member_programs", "attendance", "leave_requests", "expenses", "cash_transactions", "commissions", "vendor_payables"]} delayMs={loaded.view === "operational" ? 3000 : 30000} />;
+  return <>{live}{view}</>;
 }
 
 // Loads only the data the chosen dashboard shows.

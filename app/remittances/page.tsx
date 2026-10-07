@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { parseJsonResponse } from "@/lib/api-response";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Kind = "Collections" | "New Sales";
 type Item = { kind: Kind; id: string; memberNumber: string; branch: string; accountableName: string; accountableRole: string; orNumber: string; orDate: string; amount: number; remittanceAmount: number; remittanceStatus: string; daysOutstanding: number; photoId: string; encodedByEmployeeId: string; encodedByName: string; encodedAt: string; linkedRemittanceId: string };
@@ -74,6 +75,8 @@ export default function RemittancesPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the chosen clerk's remittances
     void load(clerk);
   }, [load, clerk]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["remittances", "remittance_collections", "collections", "sales", "bank_deposits", "receipt_photos"], () => load(clerk));
 
   // Search narrows every list: slip or entry ID, accountable person, branch, or Entry Clerk.
   const term = search.trim().toLowerCase();

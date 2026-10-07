@@ -260,6 +260,14 @@ Administrators, HR, the CEO and President (and anyone with manage-attendance) ca
 
 The Audits page (`/audit`, formerly Daily Audit) audits each Entry Clerk's report by day, week (Monday to Sunday), month or year, with the same workflow: HR/Finance prepare, only an Administrator approves (which locks the figures) or reopens with a reason. Weekly, monthly and yearly audits use the report totals for the whole period plus how the clerk's daily audits in that period stand. They are stored in Weekly Audits, Monthly Audits and Yearly Audits, laid out like Daily Audits with report_date = the period's first day (`npm run sheets:period-audits -- --apply`, applied 2026-10-02). The Daily summary tab still summarizes approved daily audits.
 
+## Live updates and linked tables (from October 7, 2026)
+
+Goal from the owner: other users see changes without reloading, and a change in one place (a branch or MAS name) shows everywhere.
+
+- **Done, phase 1 (live updates):** every table broadcasts its name on Supabase Realtime after a change (migration `0010_realtime_changes`); 22 pages and the dashboards reload their data when a table they show changes (`lib/use-live-refresh.ts`). See system guide section 13, Live updates. Staging migrated and tested end to end.
+- **In progress:** production migration (`npm run prod -- npm run db:migrate`) before this is pushed.
+- **To do, phase 2 (link branch and MAS by ID, one table at a time):** 12 tables store the branch and MAS **name** as text (attendance, bank_deposits, cash_transactions, collections, expenses, member_programs, member_transfers, payroll_runs, remittances, sale_submissions, sales, vendor_payables). For each: add `branch_id` / `mas_employee_id`, fill them from the names with a check that every row matched, switch reads and writes to the IDs, then retire the text column. Afterwards renaming a branch or MAS shows everywhere at once. Also live updates for User Accounts, SOA, Reports, Admin Reports and History.
+
 ## Old web app export (dayong.gissolve.com)
 
 The older Dayong web app (Laravel, hosted by its vendor) has no export and we have no database access. It is read with the owner's account from `.env.legacy-site` (`LEGACY_SITE_USERNAME`, `LEGACY_SITE_PASSWORD`; git ignores it). Output goes to `legacy-data/` (git ignores it) and holds personal data: delete it after the import.

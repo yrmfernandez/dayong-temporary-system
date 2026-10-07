@@ -673,6 +673,17 @@ Sources: [transfer](../lib/member-transfer.ts), [CRUD guards](../lib/master-data
 
 ## 13. Architecture, database, and storage
 
+### Live updates (October 7, 2026)
+
+Open pages refresh themselves when another user saves; nobody needs to reload.
+
+1. Every application table (except `audit_log`) has a statement trigger, `notify_table_change` (`db/migrations/0010_realtime_changes.sql`). After any insert, update or delete, including scripts and the SQL editor, it broadcasts `{"table": "<name>"}` on the public Supabase Realtime channel `db-changes` when the transaction commits. A rolled-back save sends nothing; a batch of many rows sends one message. A failure to broadcast never blocks a save.
+2. Each browser tab opens one Realtime connection with the publishable key (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`). The channel carries only table names, never records.
+3. A page lists the tables it shows with `useLiveRefresh(tables, reload)` (`lib/use-live-refresh.ts`) and reloads through its usual API route, so each user's access rules still apply. Changes are gathered for about a second (one reload for a burst of saves); a hidden tab reloads when it is shown again. Forms being filled in are never reset: Members, Employees and Programs skip the reload while an edit form is open.
+4. Server-rendered dashboards use `components/live-router-refresh.tsx` (re-renders in place): operational dashboards after 3 seconds, executive and finance at most every 30 seconds (heavier queries); System Health is not live.
+
+Live pages: Dashboard, Remittances, Today's Entries, My Entries, New Sales (Submitted by MAS), Members, MAM, Exceptions, Audits, Attendance Tracking (daily board), Attendance Review, Leave Requests and Approvals, Employees, Roles, Branches, Programs, Expenses, Cash Transactions, Vendor Payables, Commissions, Payroll. Not yet: User Accounts, SOA, Reports, Admin Reports, History. Measured on staging: the message arrives about 0.2 seconds after the commit. A new table gets the trigger with `SELECT attach_change_triggers();` at the end of its migration.
+
 ### Request path
 
 ```mermaid

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { EXPENSE_ACCOUNTS, EXPENSE_APPROVERS, EXPENSE_ATTACHMENTS } from "@/lib/expense-options";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 type Expense = { id:string; date:string; category:string; description:string; amount:number; payee:string; paidBy:string; branch:string; paymentMethod:string; referenceNumber:string; receiptNumber:string; status:string; remarks:string; voidReason:string; attachments:string; approvedBy:string };
 type Form = { branch:string; date:string; category:string; categoryOther:string; amount:string; attachments:string[]; attachmentOther:string; receiptNumber:string; description:string; approvedBy:string; approvedByOther:string; remarks:string; payee:string; paidBy:string; paymentMethod:string; referenceNumber:string };
 const today=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila"}).format(new Date());
@@ -22,6 +23,7 @@ export default function ExpensesPage(){
  const load=useCallback(async()=>{setBusy(true);setError("");try{const [r,o]=await Promise.all([fetch("/api/expenses",{cache:"no-store"}),fetch("/api/finance-options",{cache:"no-store"})]);const [j,options]=await Promise.all([r.json(),o.json()]);if(!r.ok)throw new Error(j.message);if(!o.ok)throw new Error(options.message);setExpenses(j.expenses??[]);setCanVoid(Boolean(j.canVoid));setFinanceBranches(options.branches??[]);setCashAccounts(options.accounts??[]);}catch(e){setError(e instanceof Error?e.message:"Unable to load expenses.");}finally{setBusy(false);}},[]);
  // eslint-disable-next-line react-hooks/set-state-in-effect
  useEffect(()=>{void load();},[load]);
+ useLiveRefresh(["expenses"], load); // live updates (lib/use-live-refresh.ts)
  const rows=useMemo(()=>expenses.filter(x=>(!branch||x.branch===branch)&&(!account||accountOf(x.category)===account)&&(!status||x.status===status)&&`${x.description} ${x.category} ${x.payee} ${x.receiptNumber} ${x.referenceNumber} ${x.approvedBy} ${x.id}`.toLowerCase().includes(search.toLowerCase())),[expenses,branch,account,status,search]);
  const posted=useMemo(()=>rows.filter(x=>x.status==="Posted"),[rows]),total=posted.reduce((s,x)=>s+x.amount,0),set=(k:keyof Form,v:string)=>setForm(c=>({...c,[k]:v}));
  // Posted totals per account for the current filters, largest first.

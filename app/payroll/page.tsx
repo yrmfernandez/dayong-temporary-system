@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { COMPANY_PROGRAM_CATEGORY, dailyRateOf, defaultPayrollSettings, lineTotals, type Adjustment, type PayProfile, type PayrollLine, type PayrollSettings } from "@/lib/payroll-calc";
 import { buildPayslip, PAYSLIP_COMPANY, payslipFileName, payslipPdf, type PayslipRow } from "@/lib/payslip";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Run = { id: string; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings; employeeCount: number; grossTotal: number; deductionsTotal: number; netTotal: number; preparedByUserId: string; preparedByName: string; approvedByName: string; approvedAt: string; paidAt: string; cashAccount: string; paymentReference: string; cashTransactionId: string; branch: string; voidReason: string; remarks: string };
 type Overview = { canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; roles: string[] }>; cashAccounts: string[]; branches: string[]; adjustmentCategories: Record<Adjustment["kind"], string[]>; programs: Array<{ id: string; code: string; name: string; basePay: number }> };
@@ -60,6 +61,8 @@ export default function PayrollPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadOverview().catch((failure) => setError(failure instanceof Error ? failure.message : "Unable to load payroll."));
   }, [loadOverview]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["payroll_runs", "payroll_lines", "payroll_adjustments", "pay_profiles", "commissions"], () => loadOverview().catch(() => undefined));
 
   async function act(body: Record<string, unknown>, success: string, after?: (result: Record<string, unknown>) => Promise<void>) {
     setBusy(true); setError(""); setMessage("");

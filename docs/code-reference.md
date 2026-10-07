@@ -6,51 +6,51 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-39 page routes, 55 API handlers, 100 library files, 39 component files; 312 scanned source/configuration/public-text files in total.
+39 page routes, 55 API handlers, 101 library files, 40 component files; 314 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
 | Page | Source | Local dependencies |
 | --- | --- | --- |
 | `/admin-reports` | [app/admin-reports/page.tsx](../app/admin-reports/page.tsx) | `@/components/report-tabs` |
-| `/attendance-reviews` | [app/attendance-reviews/page.tsx](../app/attendance-reviews/page.tsx) | `@/components/attendance-calendar`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label` |
+| `/attendance-reviews` | [app/attendance-reviews/page.tsx](../app/attendance-reviews/page.tsx) | `@/components/attendance-calendar`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/use-live-refresh` |
 | `/attendance-tracking` | [app/attendance-tracking/page.tsx](../app/attendance-tracking/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
 | `/attendance` | [app/attendance/page.tsx](../app/attendance/page.tsx) | `@/components/attendance-calendar`, `@/components/my-attendance-history`, `@/lib/attendance`, `@/components/ui/badge`, `@/components/ui/button` |
-| `/audit` | [app/audit/page.tsx](../app/audit/page.tsx) | `@/components/inline-panel`, `@/components/clerk-report`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/account-rules` |
-| `/branches` | [app/branches/page.tsx](../app/branches/page.tsx) | `@/components/ui/badge`, `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select` |
-| `/cash-transactions` | [app/cash-transactions/page.tsx](../app/cash-transactions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
+| `/audit` | [app/audit/page.tsx](../app/audit/page.tsx) | `@/components/inline-panel`, `@/components/clerk-report`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/use-live-refresh` |
+| `/branches` | [app/branches/page.tsx](../app/branches/page.tsx) | `@/components/ui/badge`, `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/lib/use-live-refresh` |
+| `/cash-transactions` | [app/cash-transactions/page.tsx](../app/cash-transactions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/remittance-deadline`, `@/lib/use-entry-closed`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/receipt-photo`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance` |
-| `/commissions` | [app/commissions/page.tsx](../app/commissions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
-| `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password`, `@/components/nte-panel` |
-| `/exceptions` | [app/exceptions/page.tsx](../app/exceptions/page.tsx) | `@/components/entry-correction-form`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/api-response`, `@/lib/exceptions` |
-| `/expenses` | [app/expenses/page.tsx](../app/expenses/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/expense-options` |
+| `/commissions` | [app/commissions/page.tsx](../app/commissions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
+| `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password`, `@/components/nte-panel`, `@/lib/use-live-refresh` |
+| `/exceptions` | [app/exceptions/page.tsx](../app/exceptions/page.tsx) | `@/components/entry-correction-form`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/api-response`, `@/lib/exceptions`, `@/lib/use-live-refresh` |
+| `/expenses` | [app/expenses/page.tsx](../app/expenses/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
 | `/fidelity/me` | [app/fidelity/me/page.tsx](../app/fidelity/me/page.tsx) |  |
 | `/fidelity` | [app/fidelity/page.tsx](../app/fidelity/page.tsx) | `@/lib/auth-server` |
 | `/history` | [app/history/page.tsx](../app/history/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/input` |
-| `/leave-approvals` | [app/leave-approvals/page.tsx](../app/leave-approvals/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card` |
-| `/leave-requests` | [app/leave-requests/page.tsx](../app/leave-requests/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea` |
+| `/leave-approvals` | [app/leave-approvals/page.tsx](../app/leave-approvals/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/use-live-refresh` |
+| `/leave-requests` | [app/leave-requests/page.tsx](../app/leave-requests/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/use-live-refresh` |
 | `/login` | [app/login/page.tsx](../app/login/page.tsx) | `@/components/brand-logo`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label` |
-| `/mam` | [app/mam/page.tsx](../app/mam/page.tsx) | `@/lib/mam-report`, `@/lib/account-rules`, `@/components/ui/button`, `@/components/ui/badge`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select` |
+| `/mam` | [app/mam/page.tsx](../app/mam/page.tsx) | `@/lib/mam-report`, `@/lib/account-rules`, `@/components/ui/button`, `@/components/ui/badge`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/mas-sales` | [app/mas-sales/page.tsx](../app/mas-sales/page.tsx) | `@/components/new-sales-form` |
 | `/master-data` | [app/master-data/page.tsx](../app/master-data/page.tsx) |  |
-| `/members` | [app/members/page.tsx](../app/members/page.tsx) | `@/components/inline-panel`, `@/components/ui/search-select`, `@/components/ui/input`, `@/lib/api-response`, `@/components/ui/button`, `@/components/status-badge`, `@/components/member-mam`, `@/lib/member-directory` |
-| `/my-entries` | [app/my-entries/page.tsx](../app/my-entries/page.tsx) | `@/components/entry-details`, `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/todays-entries` |
+| `/members` | [app/members/page.tsx](../app/members/page.tsx) | `@/components/inline-panel`, `@/components/ui/search-select`, `@/components/ui/input`, `@/lib/api-response`, `@/components/ui/button`, `@/components/status-badge`, `@/components/member-mam`, `@/lib/member-directory`, `@/lib/use-live-refresh` |
+| `/my-entries` | [app/my-entries/page.tsx](../app/my-entries/page.tsx) | `@/components/entry-details`, `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/todays-entries`, `@/lib/use-live-refresh` |
 | `/new-sales` | [app/new-sales/page.tsx](../app/new-sales/page.tsx) | `@/components/new-sales-form` |
-| `/` | [app/page.tsx](../app/page.tsx) | `@/components/executive-dashboard`, `@/components/finance-dashboard`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/system-health-dashboard`, `@/components/ui/card`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auth-server`, `@/lib/dashboard-data`, `@/lib/employees`, `@/lib/executive-analytics`, `@/lib/finance-operations`, `@/lib/remittance-workflow`, `@/lib/system-health`, `@/lib/ui-preferences` |
-| `/payroll` | [app/payroll/page.tsx](../app/payroll/page.tsx) | `@/components/inline-panel`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/payroll-calc`, `@/lib/payslip` |
-| `/programs` | [app/programs/page.tsx](../app/programs/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/program-age`, `@/lib/program-payment-limit.mjs` |
-| `/remittances` | [app/remittances/page.tsx](../app/remittances/page.tsx) | `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response` |
+| `/` | [app/page.tsx](../app/page.tsx) | `@/components/executive-dashboard`, `@/components/finance-dashboard`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/live-router-refresh`, `@/components/system-health-dashboard`, `@/components/ui/card`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auth-server`, `@/lib/dashboard-data`, `@/lib/employees`, `@/lib/executive-analytics`, `@/lib/finance-operations`, `@/lib/remittance-workflow`, `@/lib/system-health`, `@/lib/ui-preferences` |
+| `/payroll` | [app/payroll/page.tsx](../app/payroll/page.tsx) | `@/components/inline-panel`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/payroll-calc`, `@/lib/payslip`, `@/lib/use-live-refresh` |
+| `/programs` | [app/programs/page.tsx](../app/programs/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/program-age`, `@/lib/program-payment-limit.mjs`, `@/lib/use-live-refresh` |
+| `/remittances` | [app/remittances/page.tsx](../app/remittances/page.tsx) | `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/use-live-refresh` |
 | `/reports/daily` | [app/reports/daily/page.tsx](../app/reports/daily/page.tsx) |  |
 | `/reports/monthly` | [app/reports/monthly/page.tsx](../app/reports/monthly/page.tsx) |  |
 | `/reports` | [app/reports/page.tsx](../app/reports/page.tsx) | `@/components/report-tabs` |
 | `/reports/weekly` | [app/reports/weekly/page.tsx](../app/reports/weekly/page.tsx) |  |
 | `/reports/yearly` | [app/reports/yearly/page.tsx](../app/reports/yearly/page.tsx) |  |
-| `/roles` | [app/roles/page.tsx](../app/roles/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/lib/access-control`, `@/lib/page-catalog` |
+| `/roles` | [app/roles/page.tsx](../app/roles/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/lib/access-control`, `@/lib/page-catalog`, `@/lib/use-live-refresh` |
 | `/settings` | [app/settings/page.tsx](../app/settings/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/finance-settings`, `@/components/profile`, `@/components/theme-toggle`, `@/components/remittance-method-settings`, `@/lib/ui-preferences`, `@/lib/use-form-draft` |
 | `/soa` | [app/soa/page.tsx](../app/soa/page.tsx) | `@/components/brand-logo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/statement-of-account` |
-| `/todays-entries` | [app/todays-entries/page.tsx](../app/todays-entries/page.tsx) | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/remittance-deadline`, `@/lib/today-mode`, `@/lib/todays-entries`, `@/components/entry-correction-form`, `@/components/entry-details`, `@/components/receipt-photo` |
+| `/todays-entries` | [app/todays-entries/page.tsx](../app/todays-entries/page.tsx) | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/remittance-deadline`, `@/lib/today-mode`, `@/lib/todays-entries`, `@/components/entry-correction-form`, `@/components/entry-details`, `@/components/receipt-photo`, `@/lib/use-live-refresh` |
 | `/user-accounts` | [app/user-accounts/page.tsx](../app/user-accounts/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/one-time-password` |
-| `/vendor-payables` | [app/vendor-payables/page.tsx](../app/vendor-payables/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
+| `/vendor-payables` | [app/vendor-payables/page.tsx](../app/vendor-payables/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 
 ## API routes
 
@@ -216,6 +216,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/ui-preferences.ts](../lib/ui-preferences.ts) | `IndicatorStyle`, `TableDensity`, `preferenceKeys`, `ACTIVE_ROLE_COOKIE`, `writeActiveRoleCookie`, `readPreference`, `writePreference`, `removePreference`, `onPreferencesChange`, `readIndicator`, `readDensity` | — |
 | [lib/use-entry-closed.ts](../lib/use-entry-closed.ts) | `useEntryClosed` | `@/lib/remittance-deadline` |
 | [lib/use-form-draft.ts](../lib/use-form-draft.ts) | `useFormDraft`, `clearFormDrafts` | — |
+| [lib/use-live-refresh.ts](../lib/use-live-refresh.ts) | `useLiveRefresh` | — |
 | [lib/users-sheet.ts](../lib/users-sheet.ts) | `USERS_RANGE`, `UserColumns`, `UserRecord`, `userColumns`, `readUserRows`, `loadUsers`, `userCell`, `assertUsernameColumnRemoved` | `@/lib/google-sheets`, `@/lib/encoder-schema`, `@/lib/sheet-headers` |
 | [lib/utils.ts](../lib/utils.ts) | `cn` | — |
 
@@ -235,10 +236,11 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/finance-dashboard.tsx](../components/finance-dashboard.tsx) | `FinanceDashboard` | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/card`, `@/lib/executive-analytics`, `@/lib/remittance-workflow`, `@/lib/finance-operations` |
 | [components/finance-settings.tsx](../components/finance-settings.tsx) | `FinanceSettings` | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label` |
 | [components/inline-panel.tsx](../components/inline-panel.tsx) | `InlinePanel`, `InlineRow` | `@/lib/utils` |
+| [components/live-router-refresh.tsx](../components/live-router-refresh.tsx) | `LiveRouterRefresh` | `@/lib/use-live-refresh` |
 | [components/member-mam.tsx](../components/member-mam.tsx) | `MemberMam` | `@/components/status-badge` |
 | [components/metric-tile.tsx](../components/metric-tile.tsx) | `MetricTile` | `@/components/status-badge` |
 | [components/my-attendance-history.tsx](../components/my-attendance-history.tsx) | `MyAttendanceHistory` | `@/lib/attendance-board` |
-| [components/new-sales-form.tsx](../components/new-sales-form.tsx) | `NewSalesForm` | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/use-entry-closed`, `@/lib/use-form-draft`, `@/components/remittance-summary`, `@/lib/remittance`, `@/components/ui/select`, `@/components/ui/separator`, `@/components/ui/textarea`, `@/lib/types` |
+| [components/new-sales-form.tsx](../components/new-sales-form.tsx) | `NewSalesForm` | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/use-entry-closed`, `@/lib/use-form-draft`, `@/components/remittance-summary`, `@/lib/remittance`, `@/components/ui/select`, `@/components/ui/separator`, `@/components/ui/textarea`, `@/lib/types`, `@/lib/use-live-refresh` |
 | [components/nte-panel.tsx](../components/nte-panel.tsx) | `NtePanel` | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/nte` |
 | [components/one-time-password.tsx](../components/one-time-password.tsx) | `IssuedPassword`, `OneTimePasswordNotice` | `@/components/ui/button` |
 | [components/print-button.tsx](../components/print-button.tsx) | `PrintButton` | `@/components/ui/button` |
@@ -328,7 +330,7 @@ All routes pass through the authentication proxy except the three public auth en
 | File | Exported symbols | Local imports / re-exports |
 | --- | --- | --- |
 | [.env.example](../.env.example) | — | — |
-| [app/attendance-tracking/daily-board.tsx](../app/attendance-tracking/daily-board.tsx) | `DailyBoard` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
+| [app/attendance-tracking/daily-board.tsx](../app/attendance-tracking/daily-board.tsx) | `DailyBoard` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | [app/fidelity/fidelity-views.tsx](../app/fidelity/fidelity-views.tsx) | `MyFidelity`, `FidelityMonitoring` | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/search-select`, `@/components/ui/button`, `@/components/ui/card` |
 | [app/globals.css](../app/globals.css) | — | — |
 | [app/layout.tsx](../app/layout.tsx) | `metadata`, `viewport`, `RootLayout`, `default` | `./globals.css`, `@/components/app-shell`, `@/lib/theme` |

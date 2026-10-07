@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type LeaveRequest = {
   id: string;
@@ -95,6 +96,8 @@ export default function LeaveRequestsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
     void loadRequests();
   }, []);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["leave_requests"], loadRequests);
 
   const submitRequest = async (
     event: React.FormEvent<HTMLFormElement>,

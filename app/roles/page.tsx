@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { defaultRoutesForRole, isAdministratorRole } from "@/lib/access-control";
 import { pageCatalog, pageCatalogRoutes } from "@/lib/page-catalog";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Role = { id: string; name: string; description: string; manageUsers: boolean; manageAttendance: boolean; viewAttendanceReports: boolean; status: "active" | "inactive"; pages: string[] | null };
 const permissionLabels = [["manageUsers", "Manage users and master data"], ["manageAttendance", "Manage attendance"], ["viewAttendanceReports", "View attendance reports"]] as const;
@@ -36,6 +37,8 @@ export default function RolesPage() {
   }, []);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["roles", "user_roles"], load);
 
   // Edit opens under the role's row; clicking Edit again closes it.
   function edit(role: Role) {

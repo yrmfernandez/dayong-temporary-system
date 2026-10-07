@@ -33,6 +33,7 @@ import { describeAgeRestriction } from "@/lib/program-age";
 import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 import { ProgramBulkEdit } from "./program-bulk-edit";
 import { ProgramCategoriesManager, type ProgramCategory } from "./program-categories";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type IncentiveType = "percentage" | "fixed";
 
@@ -429,6 +430,9 @@ useEffect(() => {
 loadPrograms();
 void loadReference();
 }, []);
+// Live updates: reload when another user saves (lib/use-live-refresh.ts). Not while a program form is open.
+useLiveRefresh(["programs", "program_incentives"], () => { if (!showForm && !editingId) void loadPrograms(); });
+useLiveRefresh(["program_categories", "branches"], loadReference);
 
 function resetForm() {
 setForm(createEmptyForm());

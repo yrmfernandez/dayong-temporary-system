@@ -407,6 +407,16 @@ test('programs bulk edit sets only the chosen settings on every selected program
   assert.equal((await patch({ ids: ['DP-0001'], changes: { status: 'inactive' } })).status, 403);
 });
 
+test('every application table announces its changes for live updates, and saves never depend on it', async () => {
+  harness();
+  const [tables] = await query("select count(*)::int as n from pg_tables where schemaname = 'public' and tablename <> 'audit_log'");
+  const [triggers] = await query("select count(distinct tgrelid)::int as n from pg_trigger where tgname = 'notify_table_change' and not tgisinternal");
+  assert.equal(triggers.n, tables.n, 'one statement trigger per table (audit_log excluded)');
+  // PGlite has no Supabase realtime schema: the trigger does nothing and the write goes through.
+  await seed('program_categories', [{ category_id: 'CAT-LIVE', category_name: 'Live', status: 'active' }]);
+  assert.equal((await query("select count(*)::int as n from program_categories where category_id = 'CAT-LIVE'"))[0].n, 1);
+});
+
 test('master-data CRUD blocks deleting assigned branches', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const crud = h.load('lib/master-data-crud.ts');

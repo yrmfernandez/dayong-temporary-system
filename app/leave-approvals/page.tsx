@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type LeaveRequest = {
   id: string;
@@ -73,6 +74,8 @@ export default function LeaveApprovalsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
     void loadRequests();
   }, []);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["leave_requests"], loadRequests);
 
   const reviewRequest = async (
     leaveRequestId: string,

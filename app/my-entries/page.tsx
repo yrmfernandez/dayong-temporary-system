@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { DayEntry } from "@/lib/todays-entries";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Totals = { count: number; amount: number };
 type Result = { success: boolean; message?: string; from: string; to: string; today: string; employeeId: string; isAdmin: boolean; clerks: Array<{ employeeId: string; name: string }>; entries: DayEntry[]; sales: Totals; collections: Totals; withPhoto: number };
@@ -56,6 +57,8 @@ export default function MyEntriesPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the chosen period
     void load(from, to, employeeId);
   }, [load, from, to, employeeId]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["sales", "collections", "remittances"], () => load(from, to, employeeId));
 
   const choose = (next: Period) => { setPeriod(next); setSelected([]); if (next !== "custom") setRange(rangeFor(next, todayInManila())); };
   const saved = (text: string) => { setMessage(text); setSelected([]); void load(from, to, employeeId); };

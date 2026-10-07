@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { ExceptionCategory, ExceptionItem } from "@/lib/exceptions";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Category = { category: ExceptionCategory; label: string; total: number; items: ExceptionItem[] };
 type Result = { success: boolean; message?: string; categories: Category[]; limit: number };
@@ -50,6 +51,8 @@ export default function ExceptionsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- first load
     void load(false);
   }, [load]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["sales", "collections", "remittances"], () => load(includeLegacy));
 
   const current = data?.categories.find((item) => item.category === category);
 

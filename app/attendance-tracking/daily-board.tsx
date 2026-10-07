@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Category = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not clocked in" | "Non-working day";
 type BoardRecord = { timeIn: string; timeOut: string; scheduledTimeIn: string; lateMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string; branch: string };
@@ -55,6 +56,8 @@ export function DailyBoard() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the board whenever the date changes
   useEffect(() => { void load(); }, [load]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["attendance", "leave_requests", "holidays"], load);
 
   const rows = useMemo(() => (board?.rows ?? []).filter((row) => !branch || row.branches.includes(branch)), [board, branch]);
   const count = (category: Category) => rows.filter((row) => row.category === category).length;

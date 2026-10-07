@@ -17,6 +17,7 @@ import { InlineRow } from "@/components/inline-panel";
 import { StatusBadge } from "@/components/status-badge";
 import { type IssuedPassword, OneTimePasswordNotice } from "@/components/one-time-password";
 import { NtePanel } from "@/components/nte-panel";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Employee = { id: string; name: string; status: string; branch: string; primaryBranchId: string; hasAccount: boolean; branchIds: string[]; roles: string[]; roleIds:string[]; createdAt: string; contact: string; email: string; dateHired: string };
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
@@ -68,6 +69,8 @@ export default function EmployeesPage() {
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
   }, [revision]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["employees", "employee_branches", "users", "user_roles"], () => { if (!showForm && !editing) setRevision((value) => value + 1); });
   const toggleEmployee = (employeeId: string) => {
     setExpandedEmployeeId((current) => current === employeeId ? null : employeeId);
   };
