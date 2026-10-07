@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { SearchSelect } from "@/components/ui/search-select";
 import type { StatementOfAccount } from "@/lib/statement-of-account";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type AccountOption = { id: string; memberName: string; memberNumber: string; programName: string; branch: string; mas: string; doi: string; status: string; temporarilySuspended: boolean };
 type Filters = { search: string; branch: string; mas: string; program: string; status: string };
@@ -49,6 +50,9 @@ function StatementContent() {
   }, []);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
   useEffect(() => { void loadAccounts(); }, [loadAccounts]);
+  // Live updates (lib/use-live-refresh.ts): the account list and the open statement reload when payments or enrollments change.
+  const [liveRevision, setLiveRevision] = useState(0);
+  useLiveRefresh(["member_programs", "members", "collections", "sales", "programs", "system_settings"], () => { void loadAccounts(); setLiveRevision((value) => value + 1); });
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
@@ -61,7 +65,7 @@ function StatementContent() {
     }).catch((failure) => { if (!cancelled) { setStatement(null); setError(failure instanceof Error ? failure.message : "Unable to prepare the statement."); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [selected]);
+  }, [selected, liveRevision]);
 
   // The Collection Department Head is one company-wide name, printed on every SOA.
   const saveHead = async () => {

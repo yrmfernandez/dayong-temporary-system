@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ClerkReport as Report, ReportLine } from "@/lib/clerk-report";
 import { EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
 type Remark = { id: string; comment: string; createdAt: string; encodedBy: string };
@@ -63,6 +64,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reload when the period or clerk changes
     void load();
   }, [load]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["sales", "collections", "remittances", "remittance_collections", "expenses", "cash_transactions", "bank_deposits", "daily_audits", "report_remarks", "report_notes"], load, 3000);
 
   /** Sends one of the clerk's own report actions, then reloads the report. */
   const act = async (body: Record<string, unknown>) => {

@@ -26,7 +26,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/expenses` | [app/expenses/page.tsx](../app/expenses/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
 | `/fidelity/me` | [app/fidelity/me/page.tsx](../app/fidelity/me/page.tsx) |  |
 | `/fidelity` | [app/fidelity/page.tsx](../app/fidelity/page.tsx) | `@/lib/auth-server` |
-| `/history` | [app/history/page.tsx](../app/history/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/input` |
+| `/history` | [app/history/page.tsx](../app/history/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/input`, `@/lib/use-live-refresh` |
 | `/leave-approvals` | [app/leave-approvals/page.tsx](../app/leave-approvals/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/use-live-refresh` |
 | `/leave-requests` | [app/leave-requests/page.tsx](../app/leave-requests/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/use-live-refresh` |
 | `/login` | [app/login/page.tsx](../app/login/page.tsx) | `@/components/brand-logo`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label` |
@@ -47,9 +47,9 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/reports/yearly` | [app/reports/yearly/page.tsx](../app/reports/yearly/page.tsx) |  |
 | `/roles` | [app/roles/page.tsx](../app/roles/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/lib/access-control`, `@/lib/page-catalog`, `@/lib/use-live-refresh` |
 | `/settings` | [app/settings/page.tsx](../app/settings/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/finance-settings`, `@/components/profile`, `@/components/theme-toggle`, `@/components/remittance-method-settings`, `@/lib/ui-preferences`, `@/lib/use-form-draft` |
-| `/soa` | [app/soa/page.tsx](../app/soa/page.tsx) | `@/components/brand-logo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/statement-of-account` |
+| `/soa` | [app/soa/page.tsx](../app/soa/page.tsx) | `@/components/brand-logo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/statement-of-account`, `@/lib/use-live-refresh` |
 | `/todays-entries` | [app/todays-entries/page.tsx](../app/todays-entries/page.tsx) | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/remittance-deadline`, `@/lib/today-mode`, `@/lib/todays-entries`, `@/components/entry-correction-form`, `@/components/entry-details`, `@/components/receipt-photo`, `@/lib/use-live-refresh` |
-| `/user-accounts` | [app/user-accounts/page.tsx](../app/user-accounts/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/one-time-password` |
+| `/user-accounts` | [app/user-accounts/page.tsx](../app/user-accounts/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/one-time-password`, `@/lib/use-live-refresh` |
 | `/vendor-payables` | [app/vendor-payables/page.tsx](../app/vendor-payables/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 
 ## API routes
@@ -227,7 +227,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/ui-preferences` |
 | [components/attendance-calendar.tsx](../components/attendance-calendar.tsx) | `AttendanceCalendar` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/philippine-holidays` |
 | [components/brand-logo.tsx](../components/brand-logo.tsx) | `BrandLogo` | — |
-| [components/clerk-report.tsx](../components/clerk-report.tsx) | `ClerkReport` | `@/components/brand-logo`, `@/components/entry-details`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/clerk-report`, `@/lib/expense-options` |
+| [components/clerk-report.tsx](../components/clerk-report.tsx) | `ClerkReport` | `@/components/brand-logo`, `@/components/entry-details`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/clerk-report`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
 | [components/company-targets.tsx](../components/company-targets.tsx) | `CompanyTargets` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label` |
 | [components/entry-correction-form.tsx](../components/entry-correction-form.tsx) | `CorrectableEntry`, `EntryCorrectionForm` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response` |
 | [components/entry-details.tsx](../components/entry-details.tsx) | `EntryDetails` | `@/components/receipt-photo`, `@/components/ui/button`, `@/lib/todays-entries` |

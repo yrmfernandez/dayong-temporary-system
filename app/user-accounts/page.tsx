@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { type IssuedPassword, OneTimePasswordNotice } from "@/components/one-time-password";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Role = {
   id: string;
@@ -82,6 +83,8 @@ export default function UserAccountsPage() {
 
     void loadRoles();
   }, [revision]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["users", "user_roles", "roles", "employees"], () => { if (!editing && !found) setRevision((value) => value + 1); });
 
   const withoutAccount = employees.filter((employee) => !accounts.some((account) => account.employeeId === employee.id));
   const foundEmployee = found.startsWith("emp:") ? withoutAccount.find((employee) => employee.id === found.slice(4)) : undefined;
