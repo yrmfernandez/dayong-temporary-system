@@ -399,14 +399,16 @@ Sources: [earned comparison](../lib/earned-commissions.ts), [register](../lib/fi
 
 Regular attendance uses Manila time, Monday–Saturday, scheduled **08:00–17:00**. Sunday clocking is blocked. Time-in requires an assigned primary attendance branch and no existing record for that day. Time-out requires a time-in and no previous time-out.
 
+Since October 7, 2026: a **20-minute grace period** (clocking in up to 08:20 is not late) and an unpaid **12:00–13:00 lunch break**, so the day is 8 working hours. "Working time" below means clock time less any part inside 12:00–13:00.
+
 ```text
-Late minutes      = max(0, time-in − 08:00)
-Worked hours      = max(0, time-out − time-in) / 60
+Late minutes      = 0 if time-in ≤ 08:20, else working time from 08:00 to time-in   (08:21 → 21; 12:30 → 240)
+Worked hours      = working time from time-in to time-out / 60                     (08:00–17:00 → 8)
 Overtime hours    = max(0, time-out − 17:00) / 60
-Undertime minutes = max(0, 17:00 − time-out)
+Undertime minutes = working time from time-out to 17:00                            (16:00 → 60; 12:30 → 240)
 ```
 
-Hours are rounded to two decimals. Worked hours are elapsed clock time: the current calculation does not subtract a lunch break. Payroll uses paid-day counts and the pay profile's hours/day rather than worked hours to price the base wage.
+Hours are rounded to two decimals. The rules live in `lib/attendance.ts` (`LATE_GRACE_MINUTES`, `BREAK_START`, `BREAK_END`, `lateMinutesFor`, `clockOutFigures`) and are used by clock-in, clock-out and the daily board's Set clock-out; the employee's running session timer pauses during the break. Records saved before October 7 keep the figures calculated then. Adjust late on the daily board still sets any value by hand. Payroll uses paid-day counts and the pay profile's hours/day rather than worked hours to price the base wage.
 
 Attendance Review can mark Absent, AWOL or **Day Off** where no clocked or leave record blocks the action, and filters the list by branch and role. Day Off (given by an administrator) replaces a system absence, is not counted as absent in payroll, and blocks clocking in that day. The daily tracking board separates On time, Early, Late, Absent, AWOL, On leave, **Day Off**, Not clocked in, and Non-working day. Day Off has its own count, clickable filter, and employee list on screen and in print; recorded days off retain that category on past days and branch closures. Attendance history shows a separate **Days off** total, excluded from absent/AWOL and leave exceptions. Authorized management/HR can adjust lateness and complete missing time-out with notes; Finance primarily reviews.
 

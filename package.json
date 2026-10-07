@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test": "node --test scripts/test-access-control.mjs scripts/test-account-rules.mjs scripts/test-encoder-tracking.cjs scripts/test-remittance.mjs scripts/test-sheets-cache.mjs scripts/test-attendance-board.mjs scripts/test-program-payment-limit.mjs",
+    "test": "node --test scripts/test-access-control.mjs scripts/test-account-rules.mjs scripts/test-encoder-tracking.cjs scripts/test-remittance.mjs scripts/test-sheets-cache.mjs scripts/test-attendance-board.mjs scripts/test-program-payment-limit.mjs scripts/test-attendance-rules.mjs",
     "dev": "next dev",
     "prod": "node scripts/prod.mjs",
     "build": "next build",

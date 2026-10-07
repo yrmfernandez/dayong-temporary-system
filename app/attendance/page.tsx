@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { AttendanceCalendar } from "@/components/attendance-calendar";
+import { BREAK_END, BREAK_START, timeToMinutes } from "@/lib/attendance";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -127,18 +128,13 @@ export default function AttendancePage() {
     void loadPage();
   }, []);
 
+  // The session pauses during the 12:00–13:00 lunch break, which is not worked time.
   const activeSeconds = useMemo(() => {
     if (!record?.timeIn) return 0;
-    if (record.timeOut) {
-      return Math.max(
-        0,
-        timeToSeconds(record.timeOut) - timeToSeconds(record.timeIn),
-      );
-    }
-    return Math.max(
-      0,
-      currentPhilippineSeconds(now) - timeToSeconds(record.timeIn),
-    );
+    const start = timeToSeconds(record.timeIn);
+    const end = record.timeOut ? timeToSeconds(record.timeOut) : currentPhilippineSeconds(now);
+    const lunch = Math.max(0, Math.min(end, timeToMinutes(BREAK_END) * 60) - Math.max(start, timeToMinutes(BREAK_START) * 60));
+    return Math.max(0, end - start - lunch);
   }, [now, record]);
 
   const trackedHours = record?.timeOut

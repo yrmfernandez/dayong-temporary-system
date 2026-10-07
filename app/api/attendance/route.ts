@@ -27,25 +27,15 @@ async function assignedBranch(employeeId: string) {
   return (await employeeBranches(employeeId)).primary;
 }
 import {
+  clockOutFigures,
   getPhilippineDate,
   getPhilippineTime,
   isWorkingDay,
+  lateMinutesFor,
   SCHEDULED_TIME_IN,
   SCHEDULED_TIME_OUT,
 } from "@/lib/attendance";
 import { getSessionUser } from "@/lib/auth-server";
-
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time
-    .split(":")
-    .map(Number);
-
-  return hours * 60 + minutes;
-}
-
-function roundHours(minutes: number) {
-  return Number((minutes / 60).toFixed(2));
-}
 
 export async function GET() {
   try {
@@ -166,11 +156,8 @@ export const POST = withEncoder(async function POST(request: Request) {
         );
       }
 
-      const lateMinutes = Math.max(
-        0,
-        timeToMinutes(currentTime) -
-          timeToMinutes(SCHEDULED_TIME_IN),
-      );
+      // 20-minute grace period; the lunch break is not counted as late (lib/attendance.ts).
+      const lateMinutes = lateMinutesFor(currentTime);
 
       const newRecord: AttendanceRecord = {
         id: `ATT-${attendanceDate.replaceAll(
@@ -230,27 +217,11 @@ export const POST = withEncoder(async function POST(request: Request) {
       );
     }
 
-    const timeInMinutes = timeToMinutes(record.timeIn);
-    const timeOutMinutes = timeToMinutes(currentTime);
-    const scheduledTimeOutMinutes =
-      timeToMinutes(SCHEDULED_TIME_OUT);
-
+    // The 12:00–13:00 lunch break is not counted as worked or undertime.
     const updatedRecord: AttendanceRecord = {
       ...record,
       timeOut: currentTime,
-      workedHours: roundHours(
-        Math.max(0, timeOutMinutes - timeInMinutes),
-      ),
-      overtimeHours: roundHours(
-        Math.max(
-          0,
-          timeOutMinutes - scheduledTimeOutMinutes,
-        ),
-      ),
-      undertimeMinutes: Math.max(
-        0,
-        scheduledTimeOutMinutes - timeOutMinutes,
-      ),
+      ...clockOutFigures(record.timeIn, currentTime, record.scheduledTimeOut || SCHEDULED_TIME_OUT),
       updatedAt: timestamp,
     };
 

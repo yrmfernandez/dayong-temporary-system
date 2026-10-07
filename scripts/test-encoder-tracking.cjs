@@ -189,8 +189,10 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       }
       if (name === '@/lib/google-sheets') return { sheets, GOOGLE_SHEET_ID: 'test', withWriteLock: (key, work) => work(), readingFresh: (work) => work(), sheetsStats: () => ({}) };
       if (name === 'next/server') return { NextResponse: Response };
-      if (name.startsWith('@/')) return load(name.slice(2) + '.ts');
-      if (name.startsWith('./')) return load(path.posix.join(path.posix.dirname(file), name) + '.ts');
+      // Imports that name their extension (e.g. "@/lib/program-payment-limit.mjs") are loaded as written.
+      const withExtension = (target) => (/\.m?[jt]s$/.test(target) ? target : `${target}.ts`);
+      if (name.startsWith('@/')) return load(withExtension(name.slice(2)));
+      if (name.startsWith('./')) return load(withExtension(path.posix.join(path.posix.dirname(file), name)));
       return require(name);
     };
     new Function('require', 'module', 'exports', source)(localRequire, loadedModule, loadedModule.exports);

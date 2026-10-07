@@ -3,7 +3,7 @@ import { closeFinishedAttendanceDaysQuietly, isSystemAbsence } from "@/lib/auto-
 import { withEncoder } from "@/lib/encoder-context";
 import { closureCovers, closureLabel, getClosures } from "@/lib/attendance-calendar";
 import { getAttendanceForEmployeeDate, getAttendanceRecordsForDate, updateAttendanceRecord } from "@/lib/attendance-data";
-import { getPhilippineDate, SCHEDULED_TIME_OUT } from "@/lib/attendance";
+import { clockOutFigures, getPhilippineDate, SCHEDULED_TIME_OUT } from "@/lib/attendance";
 import { boardCategory, canAdjustLateness, canViewAttendanceTracking, minutesBetween } from "@/lib/attendance-board";
 import { getEmployees } from "@/lib/employees";
 import { getActiveAttendanceEmployees, getBranches } from "@/lib/google-sheets-data";
@@ -11,7 +11,6 @@ import { getActiveAttendanceEmployees, getBranches } from "@/lib/google-sheets-d
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const MAX_LATE_MINUTES = 24 * 60;
 const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
-const hours = (minutes: number) => Number((minutes / 60).toFixed(2));
 
 /** One day's board: every active employee with their record and whether they were on time, late, early, absent, AWOL, or on leave. */
 export async function GET(request: Request) {
@@ -99,12 +98,12 @@ async function setClockOut(body: Record<string, unknown>, by: string) {
   const now = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
   if (date === today && timeOut > now) throw new Error("The clock-out cannot be later than the current time.");
   const toMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
-  const timeIn = toMinutes(record.timeIn), out = toMinutes(timeOut), scheduled = toMinutes(record.scheduledTimeOut || SCHEDULED_TIME_OUT);
+  const timeIn = toMinutes(record.timeIn), out = toMinutes(timeOut);
   if (out <= timeIn) throw new Error(`The clock-out must be after the time in (${record.timeIn}).`);
   if (record.timeOut === timeOut) throw new Error("The clock-out is already that time.");
   const note = `Clock-out ${record.timeOut ? `changed from ${record.timeOut}` : "set"} to ${timeOut} by ${by} on ${today}: ${reason}`;
   const updated = {
-    ...record, timeOut, workedHours: hours(Math.max(0, out - timeIn)), overtimeHours: hours(Math.max(0, out - scheduled)), undertimeMinutes: Math.max(0, scheduled - out),
+    ...record, timeOut, ...clockOutFigures(record.timeIn, timeOut, record.scheduledTimeOut || SCHEDULED_TIME_OUT),
     notes: [record.notes, note].filter(Boolean).join(" | "), updatedAt: new Date().toISOString(),
   };
   await updateAttendanceRecord(rowNumber, updated);
