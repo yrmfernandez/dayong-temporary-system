@@ -100,6 +100,10 @@ for (const [table, idColumn, numberColumn, keyColumn] of [["collections", "colle
   });
 }
 
+// Rows marked by earlier runs, so a run that finds nothing new still shows what was done before.
+const [already] = await sql`select (select count(*)::int from collections where or_number ilike '%(duplicated%') as collections, (select count(*)::int from sales where application_no ilike '%(duplicated%') as sales,
+  (select count(*)::int from (select or_key from collections where status = 'Posted' and or_key <> '' group by or_key having count(*) > 1) x) as or_groups,
+  (select count(*)::int from collections where legacy_duplicate) as flagged_collections`;
 const [members] = await sql`select count(*)::int as groups from (select 1 from members where trim(coalesce(surname, '')) <> '' and birthdate is not null group by lower(trim(surname)), lower(trim(first_name)), birthdate having count(*) > 1) x`;
 
 console.log(`Database: ${project}${APPLY ? "" : " (dry run: nothing is changed)"}`);
@@ -108,6 +112,7 @@ console.log(`  same entry twice: ${plan.collections.sameEntry} groups → ${plan
 console.log(`  different entries: later copies marked "${MARK.trim()}": ${plan.collections.marked - plan.collections.keptOnRemittance}`);
 console.log(`New Sales sharing an application number: ${plan.sales.groups} groups → ${plan.sales.marked} later copies marked "${MARK.trim()}"`);
 if (plan.renumbered) console.log(`Marked copies that still matched each other, numbered "(duplicated 2)", "(duplicated 3)": ${plan.renumbered}`);
+console.log(`Already marked by earlier runs: ${already.collections} collections, ${already.sales} New Sales. OR numbers still shared by posted collections: ${already.or_groups}. Rows flagged as old-data duplicates at the move: ${already.flagged_collections}.`);
 console.log(`Members with the same name and birthdate: ${members.groups} (not changed; review them in Exceptions → Possible duplicates)`);
 if (!plan.changes.length) { console.log("Nothing to fix."); await sql.end(); process.exit(0); }
 if (!APPLY) { console.log("\nRun again with --apply to make these changes."); await sql.end(); process.exit(0); }
