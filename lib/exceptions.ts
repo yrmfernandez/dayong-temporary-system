@@ -28,6 +28,7 @@ export const EXCEPTION_CATEGORIES = {
   overdue: "Cash past the incentive deadline",
   backdated: "Late entries to review",
   receipts: "OR numbers without a branch letter",
+  incomplete: "Application numbers to complete",
 } as const;
 export type ExceptionCategory = keyof typeof EXCEPTION_CATEGORIES;
 
@@ -142,6 +143,9 @@ export async function findExceptions({ includeLegacy = false } = {}) {
   seen(posted, (row) => entryKey(row[8]), (row, first) => add({ category: "duplicates", key: `dup-or-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `OR number ${text(row[8])} is also on collection ${text(first[0])}. Each receipt is used once.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])) && isLegacy(text(first[0])), entry: collectionEntry(row) }));
   seen(sales.slice(1).filter((row) => text(row[0])), (row) => entryKey(row[28]), (row, first) => add({ category: "duplicates", key: `dup-app-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: `Application number ${text(row[28])} is also on sale ${text(first[0])}.`, date: manilaDateOf(text(row[1])), legacy: isLegacy(text(row[0])) && isLegacy(text(first[0])), entry: saleEntry(row) }));
   seen(members.slice(1).filter((row) => text(row[0])), (row) => personKey({ surname: row[2], firstName: row[3], birthdate: row[6] }), (row, first) => add({ category: "duplicates", key: `dup-member-${text(row[0])}`, recordId: text(row[0]), title: `Member ${text(row[1]) || text(row[0])} · ${text(row[3])} ${text(row[2])}`, problem: `Same name and birthdate as member ${text(first[1]) || text(first[0])}. They may be the same person registered twice.`, date: "", legacy: isLegacy(text(row[0])) && isLegacy(text(first[0])), href: `/members?search=${encodeURIComponent(text(row[1]) || text(row[0]))}` }));
+
+  // Sales whose application number was saved without its form number ("2026SP"), labelled "(need edit)" on October 7, 2026.
+  for (const row of sales.slice(1).filter((row) => text(row[0]) && /\(need edit/i.test(text(row[28])))) add({ category: "incomplete", key: `incomplete-app-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: `Application number "${text(row[28])}" has no form number. Find the paper application form and enter the whole number (e.g. 2026SP-00154).`, date: manilaDateOf(text(row[1])), legacy: false, entry: saleEntry(row) }); // always listed, imported or not
 
   // Members without the details needed to identify them or reach their claimant.
   for (const row of members.slice(1).filter((item) => text(item[0]) && !/deceased|inactive/i.test(text(item[17])))) {

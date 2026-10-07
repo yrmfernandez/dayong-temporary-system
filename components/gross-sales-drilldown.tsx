@@ -107,7 +107,7 @@ export function GrossSalesDrilldown({ label, value, note, change, from, to }: { 
           <tbody>{filtered.map((row) => <tr key={`${row.kind}-${row.id}`} className="border-t">
             <td className="whitespace-nowrap px-3 py-2 tabular-nums">{shortDate(row.date)}</td>
             <td className="px-3 py-2"><span className={`tone-chip ${row.kind === "New Sale" ? "tone-orange" : "tone-teal"} rounded-full px-2 py-0.5 text-[11px] font-semibold`}>{row.kind}</span></td>
-            <td className={`px-3 py-2 tabular-nums ${/\(duplicated/i.test(row.reference) ? "text-amber-700 dark:text-amber-400" : ""}`}>{row.reference || "—"}</td>
+            <td className={`px-3 py-2 tabular-nums ${/\((duplicated|need edit)/i.test(row.reference) ? "text-amber-700 dark:text-amber-400" : ""}`}>{row.reference || "—"}</td>
             <td className="px-3 py-2"><span className="font-medium">{row.memberName || "—"}</span>{row.memberNumber && <span className="block text-xs text-muted-foreground">{row.memberNumber}</span>}</td>
             <td className="px-3 py-2">{row.program || "—"}</td><td className="px-3 py-2">{row.branch || "—"}</td><td className="px-3 py-2">{row.person || "—"}</td>
             <td className="px-3 py-2 text-right font-semibold tabular-nums">{money(row.amount)}{row.penalty > 0 && <span className="block text-xs font-normal text-muted-foreground">incl. {money(row.penalty)} penalty</span>}</td>

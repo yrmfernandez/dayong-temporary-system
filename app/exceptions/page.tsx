@@ -23,6 +23,7 @@ const HELP: Record<ExceptionCategory, string> = {
   overdue: "Cash still with the MAS or Collector after 3:00 PM the day after the OR date. The incentive is forfeited when it is remitted.",
   backdated: "Entries saved in the last 30 days with a date more than a day old, and the reason the clerk gave.",
   receipts: "OR numbers written without the branch letter (for example \"12345\" instead of \"12345 S\") whose letter could not be worked out with certainty. Check the receipt and correct each one. Listed even for old data.",
+  incomplete: "New Sales whose application number is only the year and series letters (\"2026SP (need edit)\"): the form number was never typed. Find the paper application form, then use Correct to enter the whole number. New Sales now refuse numbers like these.",
 };
 
 export default function ExceptionsPage() {

@@ -1835,6 +1835,9 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
   assert.match((await post({ controlTotal: 3500 })).body.message, /total remittance is ₱200\.00 but the turnover sheet says ₱3,500\.00 \(short by ₱3,300\.00\)/);
   assert.match((await post({ controlTotal: 350 })).body.message, /total remittance is ₱200\.00 .* says ₱350\.00/, 'the amount collected is not the control total');
   assert.match((await post({})).body.message, /Enter the net total/);
+  // Only the year and series letters: the form number is missing, so the sale is refused before anything else.
+  assert.match((await post({ controlTotal: 200, sale: { applicationNo: '2026SP-' } })).body.message, /whole Application Number/);
+  assert.match((await post({ controlTotal: 200, sale: { applicationNo: '2026 SP' } })).body.message, /whole Application Number/);
   const late = await post({ controlTotal: 350, sale: { orDate: '2026-01-05' } });
   assert.match(late.body.message, /more than a day old/);
   assert.equal(await count('sales'), 0, 'nothing is saved');

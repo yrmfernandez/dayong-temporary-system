@@ -284,7 +284,7 @@ Owner's rule: the same entry twice → keep the most complete copy and remove th
 
 - **Found on staging:** 698 OR numbers shared by 1,400 collections and 19 application numbers shared by 80 New Sales, **none of them the same entry twice** (different members, amounts, months, dates): old-workbook receipts reused on different payments. 44 of the sales carry only the series prefix ("2026SP" ×31, "2026SP-" ×13): the number was never typed and needs the paper form. One pair of members has the same name and birthdate (left for review in Exceptions).
 - **Done on staging and production (October 7, 2026):** 702 collections and 61 New Sales marked, the 3rd+ copies numbered "(duplicated 2)", "(duplicated 3)" (46 rows) so marked copies never match each other; no OR number is shared by posted collections any more. Exact copies to remove: none. The dry run reports rows marked by earlier runs.
-- **To do:** enter the real application numbers for the 44 "2026SP" sales; review the duplicate member pair.
+- **Incomplete application numbers (October 7, 2026):** the 44 New Sales whose number is only "2026SP" or "2026SP-" are relabelled by the same script as "2026SP (need edit)", "(need edit 2)" … "(need edit 44)" (replacing their "(duplicated)" label) and listed in Exceptions → **Application numbers to complete** (always shown, even for imported rows). New Sales now refuse a number that is only the year and series letters (`isIncompleteApplicationNumber` in `lib/entry-controls.ts`, form and save). Staging dry run: 44 to relabel. **To do:** the owner runs `--apply` on staging and production; clerks correct each one from the paper form; review the duplicate member pair.
 
 ## Old web app export (dayong.gissolve.com)
 
