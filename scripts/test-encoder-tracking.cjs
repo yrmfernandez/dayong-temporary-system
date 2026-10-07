@@ -381,6 +381,32 @@ test('master-data CRUD updates programs and blocks deleting referenced records',
   assert.match((await deleted.json()).error, /member enrollments/i);
 });
 
+test('programs bulk edit sets only the chosen settings on every selected program, all or nothing', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
+  const route = h.load('app/api/programs/route.ts');
+  h.rows.Programs = [[], ['DP-0001', 'P1', 'Plan One', 350, 'active', ''], ['DP-0002', 'P2', 'Plan Two', 200, 'active', ''], ['DP-0003', 'P3', 'Plan Three', 500, 'active', '']];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-0001', 'MAS', 1, 12, 'percentage', 50, 30]];
+  await h.sync();
+  await seed('program_categories', [{ category_id: 'CAT-1', category_name: 'Funeral Services', status: 'active' }]);
+  const patch = (body) => route.PATCH(new Request('http://localhost/api/programs', { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+  const ok = await patch({ ids: ['DP-0001', 'DP-0002'], changes: { categoryId: 'CAT-1', collectionAmountEditable: true, flexible: true } });
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).updated, 2);
+  const rows = await query("select program_id, program_name, base_pay, category_id, collection_amount_editable, flexible from programs order by program_id");
+  assert.deepEqual(rows.map((row) => [row.program_id, row.program_name, Number(row.base_pay), row.category_id, row.collection_amount_editable, row.flexible]), [
+    ['DP-0001', 'Plan One', 350, 'CAT-1', true, true], ['DP-0002', 'Plan Two', 200, 'CAT-1', true, true], ['DP-0003', 'Plan Three', 500, null, false, false],
+  ], 'names and base pay stay; the unselected program is untouched');
+  assert.equal((await query("select count(*)::int as n from program_incentives where program_id = 'DP-0001'"))[0].n, 1, 'incentive tiers are not touched');
+  // A monthly maximum of 300 is below Plan One's 350 base pay: nothing is saved, and the error names the program.
+  const failed = await patch({ ids: ['DP-0001', 'DP-0002'], changes: { maxMonthlyPayment: 300 } });
+  assert.equal(failed.status, 400);
+  assert.match((await failed.json()).error, /^P1: /);
+  assert.deepEqual((await query("select max_monthly_payment from programs where program_id = 'DP-0002'"))[0].max_monthly_payment, null, 'Plan Two was not saved either');
+  assert.equal((await patch({ ids: [], changes: { status: 'inactive' } })).status, 400);
+  h.setUser({ userId: 'U2', employeeId: 'DPE-0002', name: 'mas', roleNames: ['MAS'], permissions: {} });
+  assert.equal((await patch({ ids: ['DP-0001'], changes: { status: 'inactive' } })).status, 403);
+});
+
 test('master-data CRUD blocks deleting assigned branches', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const crud = h.load('lib/master-data-crud.ts');

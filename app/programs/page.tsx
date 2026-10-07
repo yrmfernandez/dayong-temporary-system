@@ -6,6 +6,7 @@ ChevronDown,
 ChevronUp,
 Pencil,
 Plus,
+Search,
 Trash2,
 X,
 } from "lucide-react";
@@ -30,6 +31,7 @@ SelectValue,
 import { Textarea } from "@/components/ui/textarea";
 import { describeAgeRestriction } from "@/lib/program-age";
 import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
+import { ProgramBulkEdit } from "./program-bulk-edit";
 import { ProgramCategoriesManager, type ProgramCategory } from "./program-categories";
 
 type IncentiveType = "percentage" | "fixed";
@@ -349,6 +351,13 @@ function copyBaseRatesToBranch(branchId: string) {
 }
 
 const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
+// Programs ticked for Edit selected (program-bulk-edit.tsx).
+const [selectedIds, setSelectedIds] = useState<string[]>([]);
+// Search box: matches code, name, ID, category, status and description, ignoring case.
+const [search, setSearch] = useState("");
+const searchWords = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+const visiblePrograms = searchWords.length ? programs.filter((program) => { const haystack = [program.code, program.name, program.id, program.status, program.description, program.categoryId ? categoryName(program.categoryId) : "", program.flexible ? "flexible" : ""].join(" ").toLowerCase(); return searchWords.every((word) => haystack.includes(word)); }) : programs;
+const toggleSelected = (id: string) => setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
 
 async function loadPrograms() {
 setLoadError("");
@@ -2215,6 +2224,11 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
       <CardTitle>
         Program List
       </CardTitle>
+      {programs.length > 0 && <div className="relative mt-2 max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+        <Input type="search" aria-label="Search programs" className="pl-9" placeholder="Search code, name, category or status" value={search} onChange={(event) => setSearch(event.target.value)} />
+      </div>}
+      {searchWords.length > 0 && <p className="text-xs text-muted-foreground">{visiblePrograms.length} of {programs.length} programs match &ldquo;{search.trim()}&rdquo;</p>}
     </CardHeader>
 
     <CardContent>
@@ -2237,7 +2251,9 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
         </div>
       ) : (
         <div className="space-y-4">
-          {programs.map(
+          {canManage && <ProgramBulkEdit allIds={visiblePrograms.map((program) => program.id)} selected={selectedIds} onSelectedChange={setSelectedIds} categories={categories} onSaved={loadPrograms} />}
+          {searchWords.length > 0 && !visiblePrograms.length && <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No program matches &ldquo;{search.trim()}&rdquo;. <button type="button" className="font-medium text-primary hover:underline" onClick={() => setSearch("")}>Clear search</button></div>}
+          {visiblePrograms.map(
             (program) => {
               const periods =
                 Array.from(
@@ -2260,13 +2276,14 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
               return (
                 <div
                   key={program.id}
-                  className="rounded-xl border p-5"
+                  className={`rounded-xl border p-5 ${selectedIds.includes(program.id) ? "border-primary/60 bg-primary/5" : ""}`}
                 >
                   <div className="flex flex-col gap-5">
                     {/* HEADER */}
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
+                          {canManage && <input type="checkbox" className="size-4 accent-[var(--primary)]" aria-label={`Select ${program.name}`} checked={selectedIds.includes(program.id)} onChange={() => toggleSelected(program.id)} />}
                           <p className="font-semibold">
                             {
                               program.name

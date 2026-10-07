@@ -1,7 +1,7 @@
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 import { canManageConfiguration } from "@/lib/auth-server";
-import { deleteProgramRecord, updateProgramRecord, type ProgramInput } from "@/lib/master-data-crud";
+import { deleteProgramRecord, type ProgramBulkChanges, type ProgramInput, updateProgramRecord, updateProgramsBulk } from "@/lib/master-data-crud";
 import { validateIncentiveTiers } from "@/lib/program-incentive-store";
 import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 
@@ -442,6 +442,30 @@ export const PUT = withEncoder(async (request: Request) => {
     const body = await request.json();
     return NextResponse.json({ success: true, program: await updateProgramRecord(id, programInput(body)) });
   } catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unable to update program." }, { status: 400 }); }
+});
+
+/** Bulk edit: { ids: string[], changes } sets the same settings on every selected program (lib/master-data-crud.ts). */
+export const PATCH = withEncoder(async (request: Request) => {
+  if (!(await canManageConfiguration())) return NextResponse.json({ success: false, error: "You are not allowed to update programs." }, { status: 403 });
+  try {
+    const body = await request.json() as { ids?: unknown; changes?: Record<string, unknown> };
+    const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
+    const input = body.changes ?? {};
+    const yes = (value: unknown) => value === true;
+    const optionalNumber = (value: unknown) => (value === null || value === undefined || value === "" ? null : Number(value));
+    const changes: ProgramBulkChanges = {};
+    if ("categoryId" in input) changes.categoryId = typeof input.categoryId === "string" ? input.categoryId.trim() : "";
+    if ("status" in input) changes.status = input.status === "inactive" ? "inactive" : "active";
+    if ("newSaleAmountEditable" in input) changes.newSaleAmountEditable = yes(input.newSaleAmountEditable);
+    if ("collectionAmountEditable" in input) changes.collectionAmountEditable = yes(input.collectionAmountEditable);
+    if ("flexible" in input) changes.flexible = yes(input.flexible);
+    if ("maxMonthlyPayment" in input) changes.maxMonthlyPayment = optionalNumber(input.maxMonthlyPayment);
+    if (input.registration && typeof input.registration === "object") { const value = input.registration as Record<string, unknown>; changes.registration = { required: yes(value.required), amount: Number(value.amount) || 0 }; }
+    if (input.age && typeof input.age === "object") { const value = input.age as Record<string, unknown>; changes.age = { restricted: yes(value.restricted), minAge: optionalNumber(value.minAge), maxAge: optionalNumber(value.maxAge) }; }
+    if (input.saleIncentive && typeof input.saleIncentive === "object") { const value = input.saleIncentive as Record<string, unknown>; changes.saleIncentive = { type: value.type === "fixed" || value.type === "percentage" ? value.type : "", amount: Number(value.amount) || 0 }; }
+    const result = await updateProgramsBulk(ids, changes);
+    return NextResponse.json({ success: true, ...result });
+  } catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unable to update programs." }, { status: 400 }); }
 });
 
 export const DELETE = withEncoder(async (request: Request) => {

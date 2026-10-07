@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 
 import { currentDb, inTransaction, schema } from "@/lib/db";
-import { programColumns } from "@/lib/google-sheets-data";
+import { getPrograms, programColumns } from "@/lib/google-sheets-data";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } from "@/lib/passwords";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
@@ -36,6 +36,59 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
     await writeProgramIncentives(id, input.incentiveTiers);
   });
   return { id };
+}
+
+/**
+ * Settings that can be set on several programs at once (Programs → Edit selected). Only the keys present change;
+ * code, name, base pay, total payable and incentive tiers stay per program.
+ */
+export type ProgramBulkChanges = {
+  categoryId?: string;
+  status?: "active" | "inactive";
+  newSaleAmountEditable?: boolean;
+  collectionAmountEditable?: boolean;
+  flexible?: boolean;
+  /** null = no maximum. Applies to flexible programs only. */
+  maxMonthlyPayment?: number | null;
+  registration?: { required: boolean; amount: number };
+  age?: { restricted: boolean; minAge: number | null; maxAge: number | null };
+  saleIncentive?: { type: "" | "fixed" | "percentage"; amount: number };
+};
+
+/**
+ * Applies the same changes to every listed program in one transaction: each program is checked with the same rules as
+ * a single edit (programColumns), and if any of them fails nothing is saved. Incentive tiers are not touched.
+ */
+export async function updateProgramsBulk(ids: string[], changes: ProgramBulkChanges) {
+  const unique = [...new Set(ids.map(text).filter(Boolean))];
+  if (!unique.length) throw new Error("Select at least one program.");
+  if (!Object.keys(changes).length) throw new Error("Choose at least one setting to change.");
+  const programs = (await getPrograms()).filter((program) => unique.includes(program.id));
+  if (programs.length !== unique.length) throw new Error("Some selected programs no longer exist. Reload the page.");
+  const updates = programs.map((program) => {
+    const merged = {
+      ...program,
+      ...(changes.categoryId !== undefined && { categoryId: changes.categoryId }),
+      ...(changes.status && { status: changes.status }),
+      ...(changes.newSaleAmountEditable !== undefined && { newSaleAmountEditable: changes.newSaleAmountEditable }),
+      ...(changes.collectionAmountEditable !== undefined && { collectionAmountEditable: changes.collectionAmountEditable }),
+      ...(changes.flexible !== undefined && { flexible: changes.flexible }),
+      ...(changes.maxMonthlyPayment !== undefined && { maxMonthlyPayment: changes.maxMonthlyPayment }),
+      ...(changes.registration && { registrationFeeRequired: changes.registration.required, registrationAmount: changes.registration.required ? changes.registration.amount : 0 }),
+      ...(changes.age && { ageRestricted: changes.age.restricted, minAge: changes.age.minAge, maxAge: changes.age.maxAge }),
+      ...(changes.saleIncentive && { saleIncentiveType: changes.saleIncentive.type, saleIncentiveAmount: changes.saleIncentive.amount }),
+    };
+    try {
+      if (merged.registrationFeeRequired && !(Number(merged.registrationAmount) > 0)) throw new Error("Enter the required registration amount.");
+      return { id: program.id, columns: programColumns(merged) };
+    } catch (error) {
+      throw new Error(`${program.code || program.id}: ${error instanceof Error ? error.message : "Invalid settings."}`);
+    }
+  });
+  await inTransaction(async (tx) => {
+    for (const { id, columns } of updates) await tx.update(schema.programs).set(columns).where(eq(schema.programs.program_id, id));
+  });
+  return { updated: updates.length };
 }
 
 export async function deleteProgramRecord(id: string) {

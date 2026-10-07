@@ -131,6 +131,8 @@ A program contains a stable ID, code/name, monthly `basePay`, status, descriptio
 
 **OR numbers carry the branch letter**, written with a space ("12345 S"). Digits-only OR numbers are listed in Exceptions under *OR numbers without a branch letter*; `scripts/fix-or-letters.mjs` fixes only the certain cases. Application numbers are text (they contain letters).
 
+**Search and bulk edit (October 7, 2026).** The Program List has a search box (code, name, ID, category, status, description; every word must match). People who manage configuration can tick programs, use **Select all** (it selects the programs the search shows), then **Edit selected**: tick only the settings to change (category, status, New Sale / Collection amount editable, flexible payments, monthly maximum, registration fee, age restriction, New Sale incentive) and apply them to every selected program. Each program is checked with the same rules as a single edit; if one fails (for example a monthly maximum below its base pay) nothing is saved and the error names that program. Code, name, base pay, total payable and incentive periods stay per program. Route: `PATCH /api/programs` → `updateProgramsBulk` in `lib/master-data-crud.ts`.
+
 Program categories organize plans; they do not change the payment math. Inactive programs are excluded from new enrollment selection. Age-restricted enrollment uses age in whole years **today**, not the stored age text: subtract one year if the birthday has not occurred yet. A restricted program needs a minimum age; its maximum can be blank. Both limits are inclusive.
 
 ### Amount locking
