@@ -478,6 +478,29 @@ test('sales, enrollments and attendance link to branch and MAS records, and late
   assert.equal((await query('select mas_employee_id from member_programs where enrollment_id = $1', [enrollment.enrollment_id]))[0].mas_employee_id, 'DPE-0006');
 });
 
+test('Gross Sales breakdown lists the New Sales and posted collections behind the figure, for executives and Finance only', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'ceo', roleNames: ['CEO'], permissions: {} });
+  await seedAccount();
+  const [enrollment] = await query('select enrollment_id, member_id, program_id from member_programs limit 1');
+  // 23:30 UTC on Oct 4 is 7:30 AM on Oct 5 in Manila: the sale counts on Oct 5.
+  await seed('sales', [{ sale_id: 'SAL-G1', date_created: '2026-10-04T23:30:00Z', branch: 'BR-1', mas: 'mas', member_number: 'PH-1', program_id: enrollment.program_id, application_no: 'APP-G1', amount_paid: 350, penalty_amount: 50 },
+    { sale_id: 'SAL-G2', date_created: '2026-09-30T05:00:00Z', branch: 'BR-1', program_id: enrollment.program_id, amount_paid: 999 }]);
+  const collection = (id, orDate, status, amount) => ({ collection_id: id, collection_batch_id: 'CBT-G', enrollment_id: enrollment.enrollment_id, member_id: enrollment.member_id, program_id: enrollment.program_id, branch: 'BR-2', mas: 'mas', or_number: id, or_date: orDate, amount_collected: amount, status });
+  await seed('collections', [collection('OR-G1', '2026-10-05', 'Posted', 700), collection('OR-G2', '2026-10-06', 'Voided', 300), collection('OR-G3', '2026-11-01', 'Posted', 200)]);
+  const route = h.load('app/api/dashboard/gross-sales/route.ts');
+  const get = async (query) => { const response = await route.GET(new Request(`http://localhost/api/dashboard/gross-sales?${query}`)); return { status: response.status, body: response.headers.get('content-type')?.includes('csv') ? await response.text() : await response.json() }; };
+  const { status, body } = await get('from=2026-10-01&to=2026-10-31');
+  assert.equal(status, 200, JSON.stringify(body));
+  assert.deepEqual([body.totals.newSales, body.totals.penalties, body.totals.collections, body.totals.gross], [400, 50, 700, 1100], 'sale amount + penalty, posted collections only, inside the dates');
+  assert.deepEqual(body.entries.map((row) => [row.kind, row.id, row.date]), [['Collection', 'OR-G1', '2026-10-05'], ['New Sale', 'SAL-G1', '2026-10-05']]);
+  assert.deepEqual(body.branches.map((row) => [row.branch, row.total]), [['BR-2', 700], ['BR-1', 400]]);
+  const filtered = (await get('from=2026-10-01&to=2026-10-31&kind=New%20Sale')).body;
+  assert.deepEqual([filtered.filtered.count, filtered.filtered.total, filtered.totals.gross], [1, 400, 1100], 'filters narrow the list, not the overall total');
+  assert.match((await get('from=2026-10-01&to=2026-10-31&format=csv')).body, /APP-G1/);
+  h.setUser({ userId: 'U2', employeeId: 'DPE-0002', name: 'mas', roleNames: ['MAS'], permissions: {} });
+  assert.equal((await get('from=2026-10-01&to=2026-10-31')).status, 403);
+});
+
 test('editing a member updates the copies on their sales, enrollments and collections; renames reach the login account', async () => {
   harness();
   await seedAccount();

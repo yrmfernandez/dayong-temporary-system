@@ -565,6 +565,8 @@ Payoff remaining is unavailable when no positive payoff total is configured. The
 
 CEO/President dashboards offer month-to-date, quarter-to-date, year-to-date, and rolling 12-month views with comparison periods, trends, branches, programs, people, payment modes, demographics, account health, cash, and targets.
 
+**Gross Sales breakdown (October 7, 2026).** Gross Sales = New Sales (amount paid + penalty, counted on the sale's **Manila** date) + posted Collections (counted on their OR date). Clicking the Gross Sales tile on the executive or Finance dashboard opens every entry behind it: totals for New Sales (with penalties) and Collections that add up to the tile (it says "Matches the dashboard"), totals by branch (click one to list only its entries), a search by OR / application number, member, program or MAS, and a CSV download of the matching entries. The server filters and pages (200 at a time), so a whole year stays quick. Only Administrators, the CEO, the President and Finance can open it. Route: `GET /api/dashboard/gross-sales` → `lib/gross-sales.ts`. Before October 7 the dashboards counted a sale on its UTC date, so a sale encoded before 8:00 AM fell on the previous day.
+
 | Metric | Implemented calculation |
 | --- | --- |
 | Gross sales | New Sale amounts **plus their recorded penalties** + Collection gross. |

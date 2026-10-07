@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { Award, Building2, Flame, FilePlus2, Landmark, Lightbulb, Percent, PhilippinePeso, Receipt, Repeat, TrendingDown, TrendingUp, Users, Wallet, type LucideIcon } from "lucide-react";
+import { Award, Building2, Flame, FilePlus2, Landmark, Lightbulb, Percent, Receipt, Repeat, TrendingDown, TrendingUp, Users, Wallet, type LucideIcon } from "lucide-react";
 import { CompanyTargets } from "@/components/company-targets";
 import { PrintButton } from "@/components/print-button";
 import { Change, Columns, RankBars, RevenueTrend, ShareBar } from "@/components/executive-charts";
 import type { Tone } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { executivePeriods, type ExecutiveAnalytics, type Ranked } from "@/lib/executive-analytics";
+import { GrossSalesDrilldown } from "@/components/gross-sales-drilldown";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(value);
 const growth = (row: Ranked) => row.previous ? ((row.amount - row.previous) / row.previous) * 100 : null;
@@ -27,7 +28,7 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
     <p className="hidden text-xs print:block">Printed {new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {employeeName}</p>
 
     <KpiGroup title="Sales" description="Money received this period from New Sales and Collections, compared with the previous period.">
-      <Kpi label="Gross Sales" value={money(k.grossSales.value)} change={k.grossSales.change} note="All money received: New Sales + Collections" icon={PhilippinePeso} tone="brand" />
+      <GrossSalesDrilldown label="Gross Sales" value={k.grossSales.value} change={k.grossSales.change} note="All money received: New Sales + Collections" from={data.from} to={data.to} />
       <Kpi label="Net Sales" value={money(k.netSales.value)} change={k.netSales.change} note={`After ${money(f.commissions)} agent commissions`} icon={Wallet} tone="brand" />
       <Kpi label="New Sales" value={money(k.salesGross.value)} change={k.salesGross.change} note={`${k.newAccounts.value.toLocaleString("en-PH")} new accounts`} icon={FilePlus2} tone="orange" />
       <Kpi label="Collections" value={money(k.collectionGross.value)} change={k.collectionGross.change} note={`${k.collectionCount.toLocaleString("en-PH")} posted payments`} icon={Receipt} tone="teal" />

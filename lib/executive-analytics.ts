@@ -1,6 +1,10 @@
 import { addMonths, todayInManila } from "@/lib/account-rules";
-import { COLLECTIONS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
+import { sql } from "drizzle-orm";
+
+import { PROGRAMS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
+import { readSheetRows } from "@/lib/sheets-on-db";
 import { getCompanyTargets } from "@/lib/company-targets";
+import { manilaDateOf } from "@/lib/remittance-deadline";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -54,24 +58,39 @@ const ageBands: Array<[string, number, number]> = [["Under 18", 0, 17], ["18–2
 const accountGroups: Array<[string, string[]]> = [["Current", ["NS", "U", "ADV", "PAID"]], ["60 days", ["60D"]], ["90 days", ["90D"]], ["120+ days", ["120D", "150D"]], ["Forfeited", ["FORFEITED"]]];
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** Company-wide sales analytics for the CEO / President dashboard. Reads every source sheet once. */
-export async function getExecutiveAnalytics(period: ExecutivePeriod) {
+/**
+ * Company-wide sales analytics for the CEO / President dashboard (and, with financeOnly, the Finance dashboard's
+ * figures). Sales and Collections are read only from the earliest date the view uses, not their whole history:
+ * the previous period, the year's targets and the 12-month trend for the executive view; just the selected period for
+ * Finance, which shows only the finance and cash figures and so also skips members, enrollments and programs.
+ */
+export async function getExecutiveAnalytics(period: ExecutivePeriod, { financeOnly = false }: { financeOnly?: boolean } = {}) {
   const today = todayInManila();
   const range = periodRange(period, today);
-  const [response, targets] = await Promise.all([
-    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [SALES_RANGE, COLLECTIONS_RANGE, PROGRAMS_RANGE, "'Member programs'!A:S", "'Branches'!A:M", "'Expenses'!A:Q", REMITTANCES_RANGE, "'Members'!A:A", "'Cash Transactions'!A:P", "'Cash Accounts'!A:E", "'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Vendor Payables'!A:O"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+  const since = financeOnly ? range.from : [range.previousFrom, `${today.slice(0, 4)}-01-01`, addMonths(`${today.slice(0, 7)}-01`, -11)].sort()[0];
+  const ledgerRanges = ["'Expenses'!A:Q", REMITTANCES_RANGE, "'Cash Transactions'!A:P", "'Cash Accounts'!A:E", "'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Vendor Payables'!A:O"];
+  const catalogRanges = financeOnly ? [] : [PROGRAMS_RANGE, "'Member programs'!A:S", "'Branches'!A:M", "'Members'!A:A"];
+  const [salesRows, collectionRows, response, targets] = await Promise.all([
+    // A sale's date is its Manila date, which can be the day after its UTC date: one day of margin.
+    readSheetRows("Sales", sql`date_created >= (${since}::date - 1)`),
+    // Only the columns used below (the remittance breakdown alone is most of each row).
+    readSheetRows("Collections", sql`or_date >= ${since}::date`, { only: ["collection_id", "program_id", "branch", "mas", "or_date", "amount_collected", "status", "remittance_amount", "accountable_name"] }),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [...ledgerRanges, ...catalogRanges], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
     getCompanyTargets(),
   ]);
-  const [salesRows, collectionRows, programRows, enrollmentRows, branchRows, expenseRows, remittanceRows, memberRows, cashRows, cashAccountRows, payrollRunRows, payrollLineRows, payableRows] = response.data.valueRanges?.map((item) => item.values ?? []) ?? [];
+  const values = response.data.valueRanges?.map((item) => item.values ?? []) ?? [];
+  const [expenseRows, remittanceRows, cashRows, cashAccountRows, payrollRunRows, payrollLineRows, payableRows] = values;
+  const [programRows = [], enrollmentRows = [], branchRows = [], memberRows = []] = values.slice(ledgerRanges.length);
 
   const programNames = new Map(programRows.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), text(row[2]) || text(row[1]) || text(row[0])]));
   const branchNames = new Map(branchRows.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), text(row[1]) || text(row[0])]));
   const programLabel = (id: string) => programNames.get(id) ?? id;
   const branchLabel = (value: string) => branchNames.get(value) ?? value;
 
-  const sales: Sale[] = salesRows.slice(1).filter((row) => text(row[0]) && validDay(day(row[1]))).map((row) => {
+  // A sale counts on its Manila date (date_created is stored in UTC; before 8:00 AM Manila it is still the previous UTC day).
+  const sales: Sale[] = salesRows.slice(1).filter((row) => text(row[0]) && validDay(manilaDateOf(text(row[1])))).map((row) => {
     const age = Number.parseInt(text(row[13]), 10);
-    return { date: day(row[1]), branch: branchLabel(text(row[2])), programId: text(row[21]), mas: text(row[3]), amount: number(row[26]) + number(row[38]), incentive: text(row[41]) === "" ? 0 : Math.max(0, number(row[26]) - number(row[41])), paymentMode: text(row[23]) || "Not recorded", age: Number.isFinite(age) && age >= 0 && age < 130 ? age : null, gender: text(row[12]) };
+    return { date: manilaDateOf(text(row[1])), branch: branchLabel(text(row[2])), programId: text(row[21]), mas: text(row[3]), amount: number(row[26]) + number(row[38]), incentive: text(row[41]) === "" ? 0 : Math.max(0, number(row[26]) - number(row[41])), paymentMode: text(row[23]) || "Not recorded", age: Number.isFinite(age) && age >= 0 && age < 130 ? age : null, gender: text(row[12]) };
   });
   const collections: Collection[] = collectionRows.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted" && validDay(day(row[9]))).map((row) => ({
     date: day(row[9]), branch: branchLabel(text(row[6])), programId: text(row[5]), person: text(row[31]) || text(row[7]), amount: number(row[10]), remitted: number(row[26]) || number(row[10]),

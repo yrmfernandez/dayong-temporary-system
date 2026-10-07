@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { AlertTriangle, Clock3, FileText, HandCoins, Landmark, PhilippinePeso, Receipt, Wallet } from "lucide-react";
+import { AlertTriangle, Clock3, FileText, HandCoins, Landmark, Receipt, Wallet } from "lucide-react";
 import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ExecutiveAnalytics } from "@/lib/executive-analytics";
 import type { getRemittanceDashboard } from "@/lib/remittance-workflow";
 import type { getCommissions, getVendorPayables } from "@/lib/finance-operations";
+import { GrossSalesDrilldown } from "@/components/gross-sales-drilldown";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 type Props = { employeeName: string; today: string; analytics: ExecutiveAnalytics; remittance: Awaited<ReturnType<typeof getRemittanceDashboard>>; payables: Awaited<ReturnType<typeof getVendorPayables>>; commissions: Awaited<ReturnType<typeof getCommissions>> };
@@ -25,7 +26,7 @@ export function FinanceDashboard({ employeeName, today, analytics, remittance, p
       <MetricTile label="Remittances to Approve" value={r.pendingCount} detail={`${money(r.pendingAmount)} expected`} icon={Clock3} tone={r.pendingCount ? "warning" : "success"} href="/remittances" />
       <MetricTile label="Cash Still With Staff" value={money(r.outstandingAmount)} detail={`${r.outstandingCount} collections not yet remitted`} icon={HandCoins} tone={r.outstandingAmount ? "orange" : "success"} href="/remittances" />
       <MetricTile label="Remittance Discrepancies" value={money(r.discrepancyAmount)} detail="Awaiting reconciliation" icon={AlertTriangle} tone={r.discrepancyAmount ? "danger" : "success"} href="/remittances" />
-      <MetricTile label="Gross Sales (MTD)" value={money(f.grossSales)} detail={`Net ${money(f.netSales)} after commissions`} icon={PhilippinePeso} tone="brand" />
+      <GrossSalesDrilldown label="Gross Sales (MTD)" value={f.grossSales} note={`Net ${money(f.netSales)} after commissions`} from={analytics.from} to={analytics.to} />
       <MetricTile label="Expenses (MTD)" value={money(f.expenses)} detail={`Payroll ${money(f.payroll)} · bills ${money(f.vendorBills)}`} icon={Receipt} tone="orange" href="/expenses" />
       <MetricTile label="Unpaid Vendor Bills" value={money(open.reduce((sum, bill) => sum + bill.balance, 0))} detail={overdue.length ? `${overdue.length} overdue` : `${open.length} open`} icon={FileText} tone={overdue.length ? "danger" : "info"} href="/vendor-payables" />
       <MetricTile label="Pending Commissions" value={money(pendingCommissions.reduce((sum, item) => sum + item.netCommission, 0))} detail={`${pendingCommissions.length} records for payroll`} icon={Landmark} tone="info" href="/commissions" />

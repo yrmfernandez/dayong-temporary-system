@@ -34,6 +34,10 @@ New Sales and Collections validate against the latest data and then write. `with
 4. Each Vercel server instance keeps its own cache. For very large teams, a shared cache (for example Upstash Redis) would let instances share reads; the cache class is the only place that would change.
 5. Watch **IT → System Health → Schema** after every deploy: anything missing means a migration was not run on that database.
 
+## Dashboard loading (October 7, 2026)
+
+The executive analytics (`lib/executive-analytics.ts`) used to read every Sales and Collections row ever saved. They now read Sales and Collections only from the earliest date the view uses (previous period, the year's targets and the 12-month trend), and Collections only the 9 columns the figures need (`readSheetRows(..., { only })` leaves the others blank in place, so position-based code is unchanged). The Finance dashboard calls it with `financeOnly`: only the selected period's sales and collections, and no members, enrollments or programs. Measured on staging: Finance 7.8 s → about 1.5 s on a cold start; executive month-to-date about 7 s → 6 s, year-to-date about 6 s → 4.3 s; figures identical (checked against the Gross Sales breakdown). Further gains for the executive view would come from summing in the database instead of reading 60,000 collections.
+
 ## Account calculations at scale
 
 Status, MAM and Statement of Account look up each account's payments through `paymentsByEnrollment` (`lib/account-rules.ts`) instead of scanning every payment for every account. With 11,372 accounts and 55,792 payments this took the account report from 35 s to about 1 s. Never pass the full payment list to `accountState` inside a loop over accounts. A 12-month MAM range is still about 7 s because every account is recalculated for every month.

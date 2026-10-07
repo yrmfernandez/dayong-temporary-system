@@ -89,7 +89,7 @@ async function load(user: SessionUser, kind: ReturnType<typeof dashboardKind>, p
     return { view: "it" as const, health, name };
   }
   if (kind === "finance") {
-    const [analytics, remittance, payables, commissions, name] = await Promise.all([getExecutiveAnalytics("mtd"), getRemittanceDashboard(), getVendorPayables(), getCommissions(), employeeName(user)]);
+    const [analytics, remittance, payables, commissions, name] = await Promise.all([getExecutiveAnalytics("mtd", { financeOnly: true }), getRemittanceDashboard(), getVendorPayables(), getCommissions(), employeeName(user)]);
     return { view: "finance" as const, analytics, remittance, payables, commissions, name };
   }
   return { view: "operational" as const, data: await getDashboardData(user, kind) };

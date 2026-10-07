@@ -308,15 +308,22 @@ export const sheetsOnDb = {
  * Rows of one tab that match `where`, in the tab's sheet layout (header row first, every column, oldest first), for
  * code written for whole-sheet reads that only needs some rows: the database filters before anything is converted.
  */
-export async function readSheetRows(title: string, where: SQL, { unformatted = true, latest = 0 }: { unformatted?: boolean; latest?: number } = {}) {
+/**
+ * Rows of a tab that match `where`, laid out like the sheet. `only` reads just those columns (by name) and leaves the
+ * others blank in their positions, so position-based code works unchanged while large columns are not transferred.
+ */
+export async function readSheetRows(title: string, where: SQL, { unformatted = true, latest = 0, only }: { unformatted?: boolean; latest?: number; only?: string[] } = {}) {
   const layout = await layoutOf(title);
+  const wanted = only ? layout.columns.filter((column) => only.includes(column.name)) : layout.columns;
+  if (only && wanted.length !== only.length) throw new Error(`${title} has no column ${only.filter((name) => !wanted.some((column) => column.name === name)).join(", ")}.`);
   // latest: only the newest rows (still returned oldest first).
   const order = latest ? sql`order by row_seq desc limit ${latest}` : sql`order by row_seq`;
-  const found = rowsOf<Record<string, unknown>>(await getDb().execute(sql`select ${list(layout.columns.map((column) => column.name))} from ${ident(layout.table)} where ${where} ${order}`));
+  const found = rowsOf<Record<string, unknown>>(await getDb().execute(sql`select ${list(wanted.map((column) => column.name))} from ${ident(layout.table)} where ${where} ${order}`));
   const rows = latest ? found.reverse() : found;
+  const read = new Set(wanted.map((column) => column.name));
   return [
     layout.columns.map((column) => HEADER_NAMES[layout.table]?.[column.name] ?? column.name),
-    ...rows.map((row) => layout.columns.map((column) => toCell(row[column.name], column, { unformatted }))),
+    ...rows.map((row) => layout.columns.map((column) => (read.has(column.name) ? toCell(row[column.name], column, { unformatted }) : ""))),
   ];
 }
 

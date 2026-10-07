@@ -273,6 +273,11 @@ Goal from the owner: other users see changes without reloading, and a change in 
 - **In progress:** production migrations up to 0014 (after the 3:00 PM cutoff).
 - **To do (optional):** retire the text copies in favour of the links; they are a display copy the database keeps current, so this is not needed for correctness. Overall plan, 12 tables store the branch and MAS **name** as text (attendance, bank_deposits, cash_transactions, collections, expenses, member_programs, member_transfers, payroll_runs, remittances, sale_submissions, sales, vendor_payables). For each: add `branch_id` / `mas_employee_id`, fill them from the names with a check that every row matched, switch reads and writes to the IDs, then retire the text column. Afterwards renaming a branch or MAS shows everywhere at once.
 
+## Dashboards (October 7, 2026)
+
+- **Done:** Gross Sales tile opens the entries behind it (system guide, section 10); sales count on their Manila date; Finance dashboard about 5× faster (`financeOnly`, date-limited reads, only needed columns; see deployment-performance.md). 148 tests pass.
+- **To do (optional):** executive dashboard still about 4–6 s; summing in the database would make it fast.
+
 ## Duplicate receipt and form numbers (October 7, 2026)
 
 Owner's rule: the same entry twice → keep the most complete copy and remove the others; different entries sharing a number → mark the later copies " (duplicated)" so authorised users see the warning. `scripts/fix-duplicates.mjs` (dry run by default, `--apply`, counts only, backup in `backups/fix-duplicates-*.json`, one transaction, Audit Log user "fix-duplicates script").
