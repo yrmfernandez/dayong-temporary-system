@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-39 page routes, 55 API handlers, 101 library files, 40 component files; 314 scanned source/configuration/public-text files in total.
+39 page routes, 55 API handlers, 101 library files, 40 component files; 315 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -359,6 +359,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/correct-employee-id.mjs](../scripts/correct-employee-id.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/fill-member-contacts.mjs](../scripts/fill-member-contacts.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-copy-exception-dates.mjs](../scripts/fix-copy-exception-dates.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/fix-duplicates.mjs](../scripts/fix-duplicates.mjs) | `@next/env`, `node:fs`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-or-letters.mjs](../scripts/fix-or-letters.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/generate-code-reference.mjs](../scripts/generate-code-reference.mjs) | `node:fs`, `node:path`, `typescript` | Yes; read source for semantics |
 | [scripts/hash-password.mjs](../scripts/hash-password.mjs) | `bcryptjs` | No flag detected; read source before running |

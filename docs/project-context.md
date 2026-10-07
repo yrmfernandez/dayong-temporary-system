@@ -273,6 +273,15 @@ Goal from the owner: other users see changes without reloading, and a change in 
 - **In progress:** production migrations up to 0014 (after the 3:00 PM cutoff).
 - **To do (optional):** retire the text copies in favour of the links; they are a display copy the database keeps current, so this is not needed for correctness. Overall plan, 12 tables store the branch and MAS **name** as text (attendance, bank_deposits, cash_transactions, collections, expenses, member_programs, member_transfers, payroll_runs, remittances, sale_submissions, sales, vendor_payables). For each: add `branch_id` / `mas_employee_id`, fill them from the names with a check that every row matched, switch reads and writes to the IDs, then retire the text column. Afterwards renaming a branch or MAS shows everywhere at once.
 
+## Duplicate receipt and form numbers (October 7, 2026)
+
+Owner's rule: the same entry twice → keep the most complete copy and remove the others; different entries sharing a number → mark the later copies " (duplicated)" so authorised users see the warning. `scripts/fix-duplicates.mjs` (dry run by default, `--apply`, counts only, backup in `backups/fix-duplicates-*.json`, one transaction, Audit Log user "fix-duplicates script").
+
+- **Found on staging:** 698 OR numbers shared by 1,400 collections and 19 application numbers shared by 80 New Sales, **none of them the same entry twice** (different members, amounts, months, dates): old-workbook receipts reused on different payments. 44 of the sales carry only the series prefix ("2026SP" ×31, "2026SP-" ×13): the number was never typed and needs the paper form. One pair of members has the same name and birthdate (left for review in Exceptions).
+- **Done on staging:** first pass applied: 702 collections and 61 sales marked.
+- **In progress:** the renumbering pass ("(duplicated 2)", "(duplicated 3)" for the 3rd+ copies, so marked copies never match each other: 46 rows) is written and dry-run on staging; the owner runs `node scripts/fix-duplicates.mjs --apply` on staging, then the dry run and `--apply` on production.
+- **To do:** enter the real application numbers for the 44 "2026SP" sales; review the duplicate member pair.
+
 ## Old web app export (dayong.gissolve.com)
 
 The older Dayong web app (Laravel, hosted by its vendor) has no export and we have no database access. It is read with the owner's account from `.env.legacy-site` (`LEGACY_SITE_USERNAME`, `LEGACY_SITE_PASSWORD`; git ignores it). Output goes to `legacy-data/` (git ignores it) and holds personal data: delete it after the import.

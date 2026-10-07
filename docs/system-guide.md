@@ -663,6 +663,10 @@ HR/Administrators prepare or edit Draft audits; only Administrators approve or r
 
 Ordinary reports remain live and can change when source data changes; an approved audit snapshot retains the figures approved at that time. Approval is a review record, not a lock on all underlying transaction sheets.
 
+### Duplicate numbers marked "(duplicated)"
+
+An OR number or application number followed by **(duplicated)**, **(duplicated 2)**, … belongs to an older entry that reused a number already on another entry (cleaned up on October 7, 2026 by `scripts/fix-duplicates.mjs`). The first entry keeps the plain number, so a new payment with that number is still refused as a double entry. The marked entries are real, different payments: check the paper receipt and correct the number (Today's Entries or Exceptions → correct) when it can be found. Exact copies of the same entry were removed instead, keeping the most complete one.
+
 ### Exceptions and system health
 
 Exceptions scans source sheets for impossible/future dates, sequencing problems, wrong amounts, duplicates, missing member details, overdue incentive-deadline cash, and late entries. Imported IDs containing `-LEG-` are hidden by default, with an option to include them. Results cap at 300. The scan generates findings without changing data.
