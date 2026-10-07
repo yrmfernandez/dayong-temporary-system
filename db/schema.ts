@@ -231,7 +231,10 @@ export const member_programs = pgTable("member_programs", {
   date_created: moment("date_created"),
   ...encoder(),
   account_status: text(),
-}, (t) => [
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+  mas_employee_id: text().references(() => employees.employee_id, employeeRef),
+}, (t) => [index("member_programs_branch_id_idx").on(t.branch_id), index("member_programs_mas_employee_id_idx").on(t.mas_employee_id), 
   // A member enrolls in each program once (app/api/sales/route.ts checks first; this stops two racing saves).
   uniqueIndex("member_programs_member_program_key").on(t.member_id, t.program_id),
   index("member_programs_member_idx").on(t.member_id),
@@ -253,7 +256,10 @@ export const member_transfers = pgTable("member_transfers", {
   to_employee_id: text().references(() => employees.employee_id, employeeRef),
   reason: text(),
   ...encoder(),
-}, (t) => [index("member_transfers_enrollment_idx").on(t.enrollment_id)]).enableRLS();
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+  from_employee_id: text().references(() => employees.employee_id, employeeRef),
+}, (t) => [index("member_transfers_branch_id_idx").on(t.branch_id), index("member_transfers_from_employee_id_idx").on(t.from_employee_id), index("member_transfers_enrollment_idx").on(t.enrollment_id)]).enableRLS();
 
 // ---------------------------------------------------------------- remittances (parent of sales and collections links)
 
@@ -284,7 +290,10 @@ export const remittances = pgTable("remittances", {
   remittance_type: text(),
   time_remitted: text(),
   cash_count: text(),
-}, (t) => [
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+  mas_employee_id: text().references(() => employees.employee_id, employeeRef),
+}, (t) => [index("remittances_branch_id_idx").on(t.branch_id), index("remittances_mas_employee_id_idx").on(t.mas_employee_id), 
   index("remittances_status_idx").on(t.status),
   index("remittances_encoder_idx").on(t.encoded_by_employee_id),
   index("remittances_date_idx").on(t.date_remitted),
@@ -340,7 +349,10 @@ export const sales = pgTable("sales", {
   application_key: text().generatedAlwaysAs(entryKey("application_no")),
   /** True only on the second or later copy of an application number that was already duplicated before the move. */
   legacy_duplicate: boolean().notNull().default(false),
-}, (t) => [
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+  mas_employee_id: text().references(() => employees.employee_id, employeeRef),
+}, (t) => [index("sales_branch_id_idx").on(t.branch_id), index("sales_mas_employee_id_idx").on(t.mas_employee_id), 
   uniqueIndex("sales_application_key_unique").on(t.application_key).where(sql`${t.application_key} <> '' and not ${t.legacy_duplicate}`),
   index("sales_encoder_idx").on(t.encoded_by_employee_id, t.encoded_at),
   index("sales_remittance_status_idx").on(t.remittance_status),
@@ -527,7 +539,9 @@ export const expenses = pgTable("expenses", {
   ...encoder(),
   attachments: text(),
   approved_by: text(),
-}, (t) => [index("expenses_date_idx").on(t.expense_date)]).enableRLS();
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+}, (t) => [index("expenses_branch_id_idx").on(t.branch_id), index("expenses_date_idx").on(t.expense_date)]).enableRLS();
 
 export const cash_transactions = pgTable("cash_transactions", {
   ...rowSeq(),
@@ -548,7 +562,9 @@ export const cash_transactions = pgTable("cash_transactions", {
   voided_by_user_id: text(),
   void_reason: text(),
   ...encoder(),
-}, (t) => [index("cash_transactions_date_idx").on(t.transaction_date)]).enableRLS();
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+}, (t) => [index("cash_transactions_branch_id_idx").on(t.branch_id), index("cash_transactions_date_idx").on(t.transaction_date)]).enableRLS();
 
 export const vendor_payables = pgTable("vendor_payables", {
   ...rowSeq(),
@@ -568,7 +584,9 @@ export const vendor_payables = pgTable("vendor_payables", {
   paid_at: moment("paid_at"),
   payment_account: text(),
   ...encoder(),
-}).enableRLS();
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+}, (t) => [index("vendor_payables_branch_id_idx").on(t.branch_id)]).enableRLS();
 
 export const bank_deposits = pgTable("bank_deposits", {
   ...rowSeq(),
@@ -585,7 +603,10 @@ export const bank_deposits = pgTable("bank_deposits", {
   status: text(),
   void_reason: text(),
   created_at: moment("created_at"),
-}, (t) => [index("bank_deposits_employee_idx").on(t.employee_id, t.deposit_date)]).enableRLS();
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+  mas_employee_id: text().references(() => employees.employee_id, employeeRef),
+}, (t) => [index("bank_deposits_branch_id_idx").on(t.branch_id), index("bank_deposits_mas_employee_id_idx").on(t.mas_employee_id), index("bank_deposits_employee_idx").on(t.employee_id, t.deposit_date)]).enableRLS();
 
 export const fidelity = pgTable("fidelity", {
   ...rowSeq(),
@@ -646,7 +667,9 @@ export const attendance = pgTable("attendance", {
   updated_by_user_id: text(),
   updated_by_employee_id: text(),
   updated_by_name: text(),
-}, (t) => [index("attendance_employee_date_idx").on(t.employee_id, t.attendance_date)]).enableRLS();
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+}, (t) => [index("attendance_branch_id_idx").on(t.branch_id), index("attendance_employee_date_idx").on(t.employee_id, t.attendance_date)]).enableRLS();
 
 export const leave_requests = pgTable("leave_requests", {
   ...rowSeq(),
@@ -705,7 +728,9 @@ export const payroll_runs = pgTable("payroll_runs", {
   remarks: text(),
   updated_at: moment("updated_at"),
   ...encoder(),
-}).enableRLS();
+  /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+}, (t) => [index("payroll_runs_branch_id_idx").on(t.branch_id)]).enableRLS();
 
 export const payroll_lines = pgTable("payroll_lines", {
   ...rowSeq(),

@@ -461,6 +461,39 @@ test('renaming a branch or employee updates every copy of the name, logged once'
   assert.deepEqual((await query("select mas, original_mas from collections where collection_id = 'COL-R2'"))[0], { mas: 'Twin One', original_mas: 'Twin Name' }, 'the name-only copy is left alone when the old name was shared');
 });
 
+test('sales, enrollments and attendance link to branch and MAS records, and late registrations link waiting rows', async () => {
+  harness();
+  await seedAccount();
+  await seed('branches', [{ branch_id: 'BR-5', branch_name_code: 'Calinan' }]);
+  await seed('employees', [{ employee_id: 'DPE-0005', full_name: 'Mila Cruz' }]);
+  const [enrollment] = await query('select enrollment_id from member_programs limit 1');
+  await query("update member_programs set branch = 'CALINAN', mas = 'Mila Cruz' where enrollment_id = $1", [enrollment.enrollment_id]);
+  assert.deepEqual((await query('select branch_id, mas_employee_id from member_programs where enrollment_id = $1', [enrollment.enrollment_id]))[0], { branch_id: 'BR-5', mas_employee_id: 'DPE-0005' });
+  await seed('attendance', [{ attendance_id: 'ATT-L1', employee_id: 'DPE-0005', attendance_date: '2026-10-07', branch: 'Calinan' }]);
+  assert.equal((await query("select branch_id from attendance where attendance_id = 'ATT-L1'"))[0].branch_id, 'BR-5');
+  // A name with no employee yet stays unlinked, then links as soon as that employee is registered.
+  await query("update member_programs set mas = 'New Hire' where enrollment_id = $1", [enrollment.enrollment_id]);
+  assert.equal((await query('select mas_employee_id from member_programs where enrollment_id = $1', [enrollment.enrollment_id]))[0].mas_employee_id, null);
+  await seed('employees', [{ employee_id: 'DPE-0006', full_name: 'New Hire' }]);
+  assert.equal((await query('select mas_employee_id from member_programs where enrollment_id = $1', [enrollment.enrollment_id]))[0].mas_employee_id, 'DPE-0006');
+});
+
+test('editing a member updates the copies on their sales, enrollments and collections; renames reach the login account', async () => {
+  harness();
+  await seedAccount();
+  const [member] = await query('select member_id, member_number from members limit 1');
+  await seed('sales', [{ sale_id: 'SAL-C1', member_number: member.member_number, surname: 'Old', first_name: 'Name', address: 'Old address', program_id: 'DP-1', amount_paid: 350 }]);
+  const auditBefore = (await query('select count(*)::int as n from audit_log'))[0].n;
+  await query("update members set surname = 'Santos', first_name = 'Ana', address = 'Blk 3, Toril', claimant_name = 'Pedro Santos', member_number = 'PH-NEW' where member_id = $1", [member.member_id]);
+  assert.deepEqual((await query("select member_number, surname, first_name, address, claimant_name from sales where sale_id = 'SAL-C1'"))[0], { member_number: 'PH-NEW', surname: 'Santos', first_name: 'Ana', address: 'Blk 3, Toril', claimant_name: 'Pedro Santos' });
+  assert.deepEqual([...new Set((await query('select member_number from member_programs where member_id = $1', [member.member_id])).map((row) => row.member_number))], ['PH-NEW']);
+  assert.deepEqual((await query("select table_name from audit_log order by row_seq")).slice(auditBefore).map((row) => row.table_name), ['members'], 'one Audit Log entry, on the member');
+  await seed('employees', [{ employee_id: 'DPE-0044', full_name: 'Joy Tan' }]);
+  await seed('users', [{ user_id: 'U-44', employee_id: 'DPE-0044', full_name: 'Joy Tan', password_hash: 'x', status: 'active' }]);
+  await query("update employees set full_name = 'Joy Tan-Reyes' where employee_id = 'DPE-0044'");
+  assert.equal((await query("select full_name from users where user_id = 'U-44'"))[0].full_name, 'Joy Tan-Reyes', 'the login account shows the new name');
+});
+
 test('master-data CRUD blocks deleting assigned branches', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const crud = h.load('lib/master-data-crud.ts');
