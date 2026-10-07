@@ -28,7 +28,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { todayInManila } from "@/lib/account-rules";
 import type { ProgramStanding } from "@/lib/account-data";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
-import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
+import { BACKDATE_REASON_MIN, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, needsBackdateReason } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { ENTRY_CLOSED_MESSAGE, manilaNow } from "@/lib/remittance-deadline";
 import { useEntryClosed } from "@/lib/use-entry-closed";
@@ -959,6 +959,10 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
       if (blank(sale.applicationNumber)) {
         return "Application Number is required.";
+      }
+
+      if (isIncompleteApplicationNumber(sale.applicationNumber)) {
+        return `Application Number: ${INCOMPLETE_APPLICATION_MESSAGE}`;
       }
 
       if (!sale.orDate) {

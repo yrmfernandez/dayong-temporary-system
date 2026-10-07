@@ -39,3 +39,10 @@ export function controlTotalProblem(controlTotal: unknown, totalRemittance: numb
   const peso = (value: number) => (value / 100).toLocaleString("en-PH", { style: "currency", currency: "PHP" });
   return `The total remittance is ${peso(sum)} but the turnover sheet says ${peso(cents(total))} (${sum > cents(total) ? "over" : "short"} by ${peso(Math.abs(sum - cents(total)))}). Check the amounts, incentives and Fidelity, and look for a missing or repeated entry.`;
 }
+
+/**
+ * An application number that is only the year and series letters ("2026SP", "2026 SP-"): the form number itself was
+ * left out. Such sales were imported before; they are labelled "(need edit)" and new ones are refused.
+ */
+export const isIncompleteApplicationNumber = (value: string) => /^\s*\d{2,4}\s*[A-Za-z]+\s*-?\s*$/.test(value);
+export const INCOMPLETE_APPLICATION_MESSAGE = "enter the whole Application Number, including the number after the series letters (e.g. 2026SP-00154).";

@@ -1,6 +1,6 @@
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
-import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
+import { checkBackdate, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { ENTRY_CLOSED_MESSAGE, entryClosed, manilaNow } from "@/lib/remittance-deadline";
 import { withEncoder } from "@/lib/encoder-context";
@@ -316,6 +316,9 @@ async function saveSales(request: Request, user: SessionUser) {
           { success: false, message: `Sale #${saleNumber}: Application Number is required.` },
           { status: 400 },
         );
+      }
+      if (isIncompleteApplicationNumber(sale.applicationNo)) {
+        return NextResponse.json({ success: false, message: `Sale #${saleNumber}: ${INCOMPLETE_APPLICATION_MESSAGE}` }, { status: 400 });
       }
 
       if (

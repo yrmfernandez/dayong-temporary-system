@@ -100,6 +100,18 @@ for (const [table, idColumn, numberColumn, keyColumn] of [["collections", "colle
   });
 }
 
+// Incomplete application numbers: only the year and series letters ("2026SP", "2026SP-"), the form number left out.
+// Labelled " (need edit)", " (need edit 2)", … in the order they were entered (replacing any "(duplicated)" label), so
+// they are easy to find and correct; the numbering keeps each one distinct. New ones are refused by the New Sales save.
+plan.needEdit = 0;
+const INCOMPLETE = /^\s*\d{2,4}\s*[A-Za-z]+\s*-?\s*$/;
+const baseNumber = (value) => text(value).replace(/\s*\((?:duplicated|need edit)[^)]*\)\s*$/i, "").trim();
+const incomplete = (await sql`select sale_id, application_no from sales where application_no is not null order by row_seq`).filter((row) => INCOMPLETE.test(baseNumber(row.application_no)));
+incomplete.forEach((row, index) => {
+  const label = ` (need edit${index ? ` ${index + 1}` : ""})`, target = baseNumber(row.application_no) + label;
+  if (text(row.application_no) !== target) { plan.needEdit++; plan.changes.push({ table: "sales", id: row.sale_id, action: "renumber", oldNumber: row.application_no, newNumber: target }); }
+});
+
 // Rows marked by earlier runs, so a run that finds nothing new still shows what was done before.
 const [already] = await sql`select (select count(*)::int from collections where or_number ilike '%(duplicated%') as collections, (select count(*)::int from sales where application_no ilike '%(duplicated%') as sales,
   (select count(*)::int from (select or_key from collections where status = 'Posted' and or_key <> '' group by or_key having count(*) > 1) x) as or_groups,
@@ -111,6 +123,7 @@ console.log(`Collections sharing an OR number: ${plan.collections.groups} groups
 console.log(`  same entry twice: ${plan.collections.sameEntry} groups → ${plan.collections.removed} copies removed, ${plan.collections.merged} kept copies completed from them${plan.collections.keptOnRemittance ? `, ${plan.collections.keptOnRemittance} on a remittance marked instead` : ""}`);
 console.log(`  different entries: later copies marked "${MARK.trim()}": ${plan.collections.marked - plan.collections.keptOnRemittance}`);
 console.log(`New Sales sharing an application number: ${plan.sales.groups} groups → ${plan.sales.marked} later copies marked "${MARK.trim()}"`);
+console.log(`New Sales with an incomplete application number (year and series letters only): ${incomplete.length}${plan.needEdit ? ` → ${plan.needEdit} labelled "(need edit)"` : incomplete.length ? ", all labelled \"(need edit)\"" : ""}`);
 if (plan.renumbered) console.log(`Marked copies that still matched each other, numbered "(duplicated 2)", "(duplicated 3)": ${plan.renumbered}`);
 console.log(`Already marked by earlier runs: ${already.collections} collections, ${already.sales} New Sales. OR numbers still shared by posted collections: ${already.or_groups}. Rows flagged as old-data duplicates at the move: ${already.flagged_collections}.`);
 console.log(`Members with the same name and birthdate: ${members.groups} (not changed; review them in Exceptions → Possible duplicates)`);

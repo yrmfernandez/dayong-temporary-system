@@ -283,8 +283,7 @@ Goal from the owner: other users see changes without reloading, and a change in 
 Owner's rule: the same entry twice → keep the most complete copy and remove the others; different entries sharing a number → mark the later copies " (duplicated)" so authorised users see the warning. `scripts/fix-duplicates.mjs` (dry run by default, `--apply`, counts only, backup in `backups/fix-duplicates-*.json`, one transaction, Audit Log user "fix-duplicates script").
 
 - **Found on staging:** 698 OR numbers shared by 1,400 collections and 19 application numbers shared by 80 New Sales, **none of them the same entry twice** (different members, amounts, months, dates): old-workbook receipts reused on different payments. 44 of the sales carry only the series prefix ("2026SP" ×31, "2026SP-" ×13): the number was never typed and needs the paper form. One pair of members has the same name and birthdate (left for review in Exceptions).
-- **Done on staging:** first pass applied: 702 collections and 61 sales marked.
-- **In progress:** the renumbering pass ("(duplicated 2)", "(duplicated 3)" for the 3rd+ copies, so marked copies never match each other: 46 rows) is written and dry-run on staging; the owner runs `node scripts/fix-duplicates.mjs --apply` on staging, then the dry run and `--apply` on production.
+- **Done on staging and production (October 7, 2026):** 702 collections and 61 New Sales marked, the 3rd+ copies numbered "(duplicated 2)", "(duplicated 3)" (46 rows) so marked copies never match each other; no OR number is shared by posted collections any more. Exact copies to remove: none. The dry run reports rows marked by earlier runs.
 - **To do:** enter the real application numbers for the 44 "2026SP" sales; review the duplicate member pair.
 
 ## Old web app export (dayong.gissolve.com)
