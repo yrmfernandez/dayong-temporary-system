@@ -417,6 +417,25 @@ test('every application table announces its changes for live updates, and saves 
   assert.equal((await query("select count(*)::int as n from program_categories where category_id = 'CAT-LIVE'"))[0].n, 1);
 });
 
+test('collection links follow name changes and stay empty for unknown names', async () => {
+  harness();
+  await seedAccount();
+  await seed('branches', [{ branch_id: 'BR-9', branch_name_code: 'Toril' }]);
+  await seed('employees', [{ employee_id: 'DPE-0009', full_name: 'Ana Reyes' }]);
+  const [enrollment] = await query('select enrollment_id, member_id, program_id from member_programs limit 1');
+  await seed('collections', [{ collection_id: 'COL-L1', collection_batch_id: 'CBT-L', enrollment_id: enrollment.enrollment_id, member_id: enrollment.member_id, program_id: enrollment.program_id, branch: ' toril ', mas: 'ANA REYES', amount_collected: 350, status: 'Posted' }]);
+  const links = async () => (await query("select branch_id, mas_employee_id from collections where collection_id = 'COL-L1'"))[0];
+  assert.deepEqual(await links(), { branch_id: 'BR-9', mas_employee_id: 'DPE-0009' }, 'case and spaces are ignored');
+  await query("update collections set mas = 'DTO' where collection_id = 'COL-L1'");
+  assert.deepEqual(await links(), { branch_id: 'BR-9', mas_employee_id: null }, 'a name that matches no employee leaves the link empty');
+  await query("update collections set mas = 'Lito Cruz' where collection_id = 'COL-L1'");
+  assert.equal((await links()).mas_employee_id, null);
+  await seed('employees', [{ employee_id: 'DPE-0010', full_name: 'Lito Cruz' }]);
+  assert.equal((await links()).mas_employee_id, 'DPE-0010', 'registering the employee links collections waiting under that name');
+  await query("update branches set branch_id = 'BR-10' where branch_id = 'BR-9'");
+  assert.equal((await links()).branch_id, 'BR-10', 'a changed branch ID follows through');
+});
+
 test('master-data CRUD blocks deleting assigned branches', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const crud = h.load('lib/master-data-crud.ts');
@@ -600,6 +619,8 @@ test('collection batch is encoded atomically without creating a remittance', asy
   assert.equal(response.status, 201, JSON.stringify(result));
   const written = await query('select * from collections order by or_number');
   assert.equal(written.length, 2);
+  // The database links each collection to its branch and MAS records from their names (migration 0011).
+  assert.deepEqual(written.map((row) => [row.branch_id, row.mas_employee_id]), [['BR-1', 'DPE-0002'], ['BR-1', 'DPE-0002']]);
   assert.deepEqual(written.map((row) => row.collection_id).sort(), [...result.collectionIds].sort());
   // The penalty is stored once, on the batch's first row, so a remittance counts it exactly once.
   assert.deepEqual(written.map((row) => [row.penalty_amount === null ? null : Number(row.penalty_amount), row.penalty_note]), [[50, 'Late turnover'], [null, null]]);

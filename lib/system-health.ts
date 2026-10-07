@@ -28,13 +28,16 @@ export async function getSystemHealth() {
   // Round trip of one tiny query, so the figure reflects the database now.
   const probe = async () => { const started = Date.now(); await db.execute(sql`select 1`); return Date.now() - started; };
   const latencyMs = await probe();
-  const [sizeRows, tableRows, columnRows, migrationRows, connectionRows, auditRows, response] = await Promise.all([
+  const [sizeRows, tableRows, columnRows, migrationRows, unlinkedRows, connectionRows, auditRows, response] = await Promise.all([
     db.execute(sql`select pg_database_size(current_database())::bigint as bytes`),
     db.execute(sql`select c.relname as name, pg_total_relation_size(c.oid)::bigint as bytes, greatest(coalesce(s.n_live_tup, 0), c.reltuples::bigint, 0)::bigint as rows
       from pg_class c join pg_namespace n on n.oid = c.relnamespace left join pg_stat_user_tables s on s.relid = c.oid
       where n.nspname = 'public' and c.relkind = 'r' order by bytes desc`),
     db.execute(sql`select table_name, column_name from information_schema.columns where table_schema = 'public'`),
     db.execute(sql`select created_at::bigint as created_at from drizzle.__drizzle_migrations`).catch(() => null),
+    // Linked tables: names on collections that match no branch or employee record (their link ID stays empty).
+    db.execute(sql`select 'Branch' as kind, branch as name, count(*)::int as rows from collections where branch_id is null and trim(coalesce(branch, '')) <> '' group by branch
+      union all select 'MAS', mas, count(*)::int from collections where mas_employee_id is null and trim(coalesce(mas, '')) <> '' group by mas order by rows desc limit 30`).catch(() => null),
     db.execute(sql`select (select count(*) from pg_stat_activity where datname = current_database())::int as used, current_setting('max_connections')::int as max`),
     db.select({ at: schema.audit_log.logged_at, action: schema.audit_log.action, table: schema.audit_log.table_name, recordId: schema.audit_log.record_id, userName: schema.audit_log.user_name, userId: schema.audit_log.user_id })
       .from(schema.audit_log).orderBy(desc(schema.audit_log.logged_at)).limit(10).catch(() => []),
@@ -72,6 +75,8 @@ export async function getSystemHealth() {
     items: missingTables });
   add({ severity: "critical", title: "Database is missing columns the code uses", detail: "Every query on these tables fails with \"Failed query\". Run npm run db:migrate on this database (production: npm run prod -- npm run db:migrate), before pushing next time.", href: "",
     items: missingColumns });
+  add({ severity: "info", title: "Collections whose branch or MAS name matches no record", detail: "Their link to the branch or employee stays empty until a record with that name exists. Registering the employee (or branch) under exactly that name links these collections at once.", href: "/employees",
+    items: unlinkedRows ? rowsOf<{ kind: string; name: string; rows: number }>(unlinkedRows).map((row) => `${row.kind} "${row.name}" · ${Number(row.rows).toLocaleString("en-PH")} collection${Number(row.rows) === 1 ? "" : "s"}`) : [] });
   add({ severity: "warning", title: "Migrations not recorded as applied", detail: migrationRows ? "These db/migrations files are not in drizzle.__drizzle_migrations. Run npm run db:migrate." : "The migrations table could not be read.", href: "",
     items: migrationRows ? pendingMigrations : ["drizzle.__drizzle_migrations"] });
   add({ severity: "critical", title: "Active accounts for inactive or missing employees", detail: "These people can still sign in. Deactivate the account or correct the employee record.", href: "/user-accounts",

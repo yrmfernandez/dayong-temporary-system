@@ -22,6 +22,8 @@ export const SHEET_TITLES = [
 ] as const;
 /** Database-only columns that are not part of the sheet layout. */
 const HIDDEN = new Set(["row_seq", "or_key", "application_key", "legacy_duplicate", "storage_path"]);
+/** Database-only columns of one table: link IDs the database fills itself (phase 2 of linked tables). */
+const HIDDEN_IN: Record<string, Set<string>> = { collections: new Set(["branch_id", "mas_employee_id"]) };
 /** Sheet header names that differ from the column name. */
 const HEADER_NAMES: Record<string, Record<string, string>> = { audit_log: { table_name: "sheet" } };
 
@@ -42,7 +44,7 @@ function layouts(db: Queryable) {
     const map = new Map<string, Layout>();
     for (const title of SHEET_TITLES) {
       const table = tableOf(title);
-      const columns = rows.filter((row) => row.table_name === table && !HIDDEN.has(row.column_name)).map((row) => ({ name: row.column_name, type: row.data_type, nullable: row.nullable, writable: row.writable }));
+      const columns = rows.filter((row) => row.table_name === table && !HIDDEN.has(row.column_name) && !HIDDEN_IN[table]?.has(row.column_name)).map((row) => ({ name: row.column_name, type: row.data_type, nullable: row.nullable, writable: row.writable }));
       if (columns.length) map.set(title.toLowerCase(), { table, title, columns });
     }
     return map;

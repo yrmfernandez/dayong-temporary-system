@@ -436,6 +436,13 @@ export const collections = pgTable("collections", {
   or_key: text().generatedAlwaysAs(entryKey("or_number")),
   /** True only on the second or later copy of an OR number that was already duplicated before the move. */
   legacy_duplicate: boolean().notNull().default(false),
+  /**
+   * Links to the branch and MAS records (phase 2 of linked tables, October 7, 2026). Filled by the database from the
+   * branch and mas names on every insert or update (trigger fill_collection_links, migration 0011), so every writer is
+   * covered; empty when a name matches no record. Hidden from the Sheets layer (lib/sheets-on-db.ts).
+   */
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+  mas_employee_id: text().references(() => employees.employee_id, employeeRef),
 }, (t) => [
   uniqueIndex("collections_or_key_unique").on(t.or_key).where(sql`${t.or_key} <> '' and ${t.status} = 'Posted' and not ${t.legacy_duplicate}`),
   index("collections_enrollment_idx").on(t.enrollment_id),
@@ -444,6 +451,8 @@ export const collections = pgTable("collections", {
   index("collections_encoder_idx").on(t.encoded_by_employee_id, t.encoded_at),
   index("collections_or_date_idx").on(t.or_date),
   index("collections_created_idx").on(t.created_at),
+  index("collections_branch_id_idx").on(t.branch_id),
+  index("collections_mas_employee_idx").on(t.mas_employee_id),
   index("collections_remittance_status_idx").on(t.remittance_status),
   index("collections_linked_remittance_idx").on(t.linked_remittance_id),
   index("collections_mas_idx").on(t.mas),

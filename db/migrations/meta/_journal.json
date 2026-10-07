@@ -78,6 +78,13 @@
       "when": 1791355292331,
       "tag": "0010_realtime_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791356685391,
+      "tag": "0011_collection_links",
+      "breakpoints": true
     }
   ]
 }

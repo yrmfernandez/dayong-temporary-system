@@ -673,6 +673,10 @@ Sources: [transfer](../lib/member-transfer.ts), [CRUD guards](../lib/master-data
 
 ## 13. Architecture, database, and storage
 
+### Linked tables (from October 7, 2026)
+
+Older tables store a branch or MAS by **name**. They are being linked by ID one table at a time. **Collections** now has `branch_id` and `mas_employee_id`, filled by the database itself from the names on every insert and whenever a name changes (trigger `fill_collection_links`, migration `0011`): matching ignores case and outer spaces, and if two employees share a name the one assigned to the collection's branch wins. A name that matches no record leaves the link empty; registering the employee or branch under exactly that name links those collections at once. IT → System Health lists the names still unlinked. The links follow ID changes (foreign keys with ON UPDATE CASCADE). Reports still read the names; switching them to the links is the next step.
+
 ### Live updates (October 7, 2026)
 
 Open pages refresh themselves when another user saves; nobody needs to reload.
