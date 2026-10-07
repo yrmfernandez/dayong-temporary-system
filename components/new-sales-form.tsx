@@ -1468,8 +1468,6 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                           </Label>
 
                           <Input
-                            inputMode="numeric"
-                            maxLength={13}
                             value={
                               sale.member
                                 .name
@@ -2183,8 +2181,6 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                           </Label>
 
                           <Input
-                            inputMode="numeric"
-                            maxLength={13}
                             value={
                               sale.member
                                 .claimant

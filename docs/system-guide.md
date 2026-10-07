@@ -174,7 +174,7 @@ Sources: [remittance formulas](../lib/remittance.ts), [tier validation/storage](
 ## 4. New Sales workflow
 
 1. Select an active branch and an active accountable employee assigned to it. Staff need not hold a MAS login role to sell as a MAS.
-2. Select an existing member when the person is already registered. Otherwise enter personal, contact, complete address, and claimant information. Beneficiaries are saved separately and each needs surname, first name, and relationship.
+2. Select an existing member when the person is already registered. Otherwise enter personal, contact, complete address, and claimant information. Names (member and claimant) have no length limit and use the normal keyboard; until October 7, 2026 the Surname and the claimant's Complete Name were wrongly capped at 13 characters with a number keypad, copied from a phone field. Beneficiaries are saved separately and each needs surname, first name, and relationship.
 3. Select an active program, DOI, application number/date, payment information, and amount. Registration requirements come from the program rather than the submitted fee flag.
 4. Add more sales if needed. The same new person can enroll in several programs in one batch: the person row is created once, with separate enrollments and Sales rows.
 5. Enter the **control total from the turnover sheet**, plus any batch Fidelity or separately tracked penalty.
