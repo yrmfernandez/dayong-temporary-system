@@ -19,7 +19,9 @@
  *   leaves the whole account out, listed for review.
  * - Programs are mapped by config/legacy-site-map.json; its drafts are added when missing (--apply).
  * - MAS: the config's "mas" entry, else the employee with that full name, or with that surname and first initial
- *   ("Surname, F." from the workbook). Run scripts/merge-employees.mjs first so one person is one employee.
+ *   ("Surname, F." from the workbook). Run scripts/merge-employees.mjs first so one person is one employee. A MAS who
+ *   is not an employee is registered with a temporary LEG-YYYY-NNNN ID (owner's decision October 8, 2026, as on
+ *   October 4): role MAS, active, their branches, no sign-in; replace the ID in Employees → Edit later.
  * - Everything was remitted on the old site: remittance status Remitted, remittance = amount − the old incentive.
  * - Receipt and application numbers already in use are imported flagged legacy_duplicate (shown on Exceptions), as
  *   in the October workbook import. Application numbers never identify a record across systems.
@@ -122,7 +124,7 @@ try {
   const branchFor = (name) => branches.find((b) => norm(b.branch_name_code) === norm(name))?.branch_name_code ?? null;
 
   // MAS: same full name, else the employee whose surname is in the old name and whose first name starts it.
-  const masCache = new Map(), masMissing = new Map();
+  const masCache = new Map();
   function masFor(name) {
     const key = nameKey(name);
     if (!key) return null;
@@ -139,7 +141,6 @@ try {
       return site.some((w) => w === given || (given.length <= 3 && w.startsWith(given)));
     });
     const found = hits.length === 1 ? { id: hits[0].employee_id, name: hits[0].full_name } : null;
-    if (!found) masMissing.set(str(name), (masMissing.get(str(name)) ?? 0) + 1);
     masCache.set(key, found);
     return found;
   }
@@ -267,6 +268,32 @@ try {
   }
   for (const a of accounts.values()) if (a.held) for (const p of a.payments) hold("Collection", p.row.record_id, "its account is left out");
 
+  // ---------------------------------------------------------------- MAS who are not employees yet
+  // Registered like the October 4 workbook MAS (scripts/register-legacy-mas.mjs): a temporary LEG-YYYY-NNNN ID, role MAS,
+  // active, every branch where they sold or collected (primary = the most records), no sign-in. Spellings of one person
+  // (same first name and surname, with or without the middle name) become one employee, named by the fullest spelling.
+  const NOT_PEOPLE = /^(others|dto|none)$|-dto$/i;
+  const used = new Map();
+  for (const a of accounts.values()) {
+    if (a.held || a.done) continue;
+    for (const [name, branch] of [[a.masName, a.branch], ...a.payments.map((p) => [p.mas, a.branch])]) {
+      if (!str(name) || NOT_PEOPLE.test(str(name)) || masFor(name)) continue;
+      const w = words(name), key = `${w[0]} ${w.at(-1)}`;
+      const group = used.get(key) ?? used.set(key, { names: new Set(), branches: new Map(), records: 0 }).get(key);
+      group.names.add(str(name)); group.records++; group.branches.set(branch, (group.branches.get(branch) ?? 0) + 1);
+    }
+  }
+  const year = today.slice(0, 4), legNumber = new RegExp(`^LEG-${year}-(\\d+)$`);
+  let nextLeg = Math.max(0, ...employees.map((e) => Number(legNumber.exec(e.employee_id)?.[1]) || 0)) + 1;
+  const registrations = [...used.values()].sort((x, y) => y.records - x.records).map((group) => {
+    const written = [...group.names].sort((x, y) => words(y).length - words(x).length || y.length - x.length)[0];
+    const employee = { id: `LEG-${year}-${String(nextLeg++).padStart(4, "0")}`, name: titleCase(written), records: group.records, names: group.names,
+      branches: [...group.branches].sort((x, y) => y[1] - x[1]).map(([branch]) => branch) };
+    for (const name of group.names) masCache.set(nameKey(name), { id: employee.id, name: employee.name });
+    return employee;
+  });
+  for (const a of accounts.values()) if (!a.mas) a.mas = masFor(a.masName);
+
   // ---------------------------------------------------------------- rows
   const ready = [...accounts.values()].filter((a) => !a.held && !a.done);
   const neededMembers = new Set(ready.map((a) => a.member.id));
@@ -337,7 +364,10 @@ try {
   console.log(`New Sales without an OR number: ${saleRows.filter((r) => !r.or_number).length}. Collections OR numbers without a branch letter: ${collectionRows.filter((r) => /^\d+$/.test(r.or_number)).length}.`);
   console.log("\nCounts:");
   for (const [label, n] of [...tally].sort((a, b) => a[0].localeCompare(b[0]))) console.log(`  ${String(n).padStart(5)} × ${label}`);
-  if (masMissing.size) console.log(`\nMAS names with no single matching employee (${masMissing.size}; imported with the name as written, add them in Employees or pin them under "mas" in config/legacy-site-map.json): ${[...masMissing].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} (${c})`).join("; ")}`);
+  if (registrations.length) {
+    console.log(`\nMAS to register in Employees (not employees yet; temporary IDs, no sign-in; if one is an employee already, pin the name under "mas" in config/legacy-site-map.json instead):`);
+    for (const r of registrations) console.log(`  ${r.id}  ${r.name}  · ${r.records} record(s) · ${r.branches.join(", ")}${r.names.size > 1 ? ` · also written ${[...r.names].filter((n) => titleCase(n) !== r.name).join(" / ")}` : ""}`);
+  }
   const reportFile = `legacy-data/web-import-report-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
   fs.writeFileSync(reportFile, [`Old web app import, ${project}, ${apply ? "applied" : "dry run"}. Records left out, by old-site record ID (New Sale: /new-sales/edit/ID, Collection: /entries/edit/ID).`, "",
     ...held.map((h) => `${h.kind}\t${h.id}\t${h.reason}`)].join("\r\n"));
@@ -350,13 +380,19 @@ try {
     await tx`select set_config('app.user_name', ${IMPORTED_BY}, true)`;
     const used = new Set(ready.map((a) => a.program.id));
     const drafts = draftsToAdd.filter((p) => used.has(p.id));
+    const branchId = new Map(branches.map((b) => [b.branch_name_code, b.branch_id]));
+    for (const r of registrations) {
+      await tx`insert into employees ${tx({ employee_id: r.id, full_name: r.name, primary_branch: r.branches[0] ?? null, operational_roles: "MAS", employment_status: "active", created_at: identity.encoded_at, ...identity })}`;
+      const assignments = r.branches.filter((b) => branchId.has(b)).map((b, i) => ({ assignment_id: `EBA-${r.id}-${String(i + 1).padStart(2, "0")}`, employee_id: r.id, branch_id: branchId.get(b), ...identity }));
+      if (assignments.length) await tx`insert into employee_branches ${tx(assignments)}`;
+    }
     for (const p of drafts) await tx`insert into programs ${tx({ program_id: p.id, program_code: p.code, program_name: p.code, base_pay: p.basePay, status: "active", description: p.draft.description, pay_balance_total: p.payBalanceTotal, ...identity })}`;
     const insert = async (table, rows) => { for (let i = 0; i < rows.length; i += 500) await tx`insert into ${tx(table)} ${tx(rows.slice(i, i + 500))}`; };
     await insert("members", memberRows);
     await insert("member_programs", enrollmentRows);
     await insert("sales", saleRows);
     await insert("collections", collectionRows);
-    console.log(`\nWritten: ${drafts.length} draft programs, ${memberRows.length} members, ${enrollmentRows.length} accounts, ${saleRows.length} New Sales, ${collectionRows.length} collections.`);
+    console.log(`\nWritten: ${registrations.length} MAS registered, ${drafts.length} draft programs, ${memberRows.length} members, ${enrollmentRows.length} accounts, ${saleRows.length} New Sales, ${collectionRows.length} collections.`);
   });
 } finally {
   await sql.end();
