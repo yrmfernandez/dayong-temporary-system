@@ -763,7 +763,7 @@ if (
   basePay <= 0
 ) {
   alert(
-    "Base Pay must be greater than 0.",
+    form.flexible ? "Minimum monthly payment must be greater than 0." : "Base Pay must be greater than 0.",
   );
   return;
 }
@@ -1916,8 +1916,8 @@ const programForm = (
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>
-              {form.flexible ? "Minimum Monthly Payment *" : "Base Pay *"}
+            <Label htmlFor="program-base-pay">
+              Base Pay{form.flexible ? "" : " *"}
             </Label>
 
             <div className="relative">
@@ -1926,9 +1926,11 @@ const programForm = (
               </span>
 
               <Input
+                id="program-base-pay"
                 type="number"
                 min="0"
                 step="0.01"
+                disabled={form.flexible}
                 value={
                   form.basePay
                 }
@@ -1947,8 +1949,9 @@ const programForm = (
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Used for TMD, Balance,
-              and incentive calculations.
+              {form.flexible
+                ? "Flexible payments are on: Base Pay is the minimum monthly payment, set under Flexible payments below."
+                : "Used for TMD, Balance, and incentive calculations."}
             </p>
           </div>
 
@@ -2031,7 +2034,13 @@ const programForm = (
             <span aria-hidden="true" className={`absolute left-0 top-1 size-4 rounded-full bg-white shadow-sm transition-transform ${form.flexible ? "translate-x-6" : "translate-x-1"}`} />
           </button>
         </div>
-        {form.flexible && <div className="mt-4 grid gap-4 rounded-lg border p-3 md:grid-cols-2">
+        {form.flexible && <div className="mt-4 grid gap-4 rounded-lg border p-3 md:grid-cols-3">
+          {/* The minimum is the program's Base Pay; it is entered here, beside the maximum, while payments are flexible. */}
+          <div className="space-y-2">
+            <Label htmlFor="program-min-monthly-payment">Minimum monthly payment *</Label>
+            <Input id="program-min-monthly-payment" type="number" min="0.01" step="0.01" required value={form.basePay} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("basePay", event.target.value)} placeholder="150" />
+            <p className="text-xs text-muted-foreground">The least a member pays for one month. Saved as the program&apos;s Base Pay.</p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="program-monthly-maximum">Maximum monthly payment?</Label>
             <select id="program-monthly-maximum" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={form.hasMonthlyMaximum ? "yes" : "no"} onChange={(event) => setForm((current) => ({ ...current, hasMonthlyMaximum: event.target.value === "yes" }))}>

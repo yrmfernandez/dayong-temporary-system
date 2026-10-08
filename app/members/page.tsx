@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useEffect, useState } from "react";
+import { AdminDeletePanel } from "@/components/admin-delete";
 import { InlineRow } from "@/components/inline-panel";
 import { SearchSelect } from "@/components/ui/search-select";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,9 @@ export default function MembersPage() {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [canManage, setCanManage] = useState(false);
+  // Administrators delete permanently, with every account, sale and collection (lib/admin-delete.ts).
+  const [canDelete, setCanDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   // Administrators and HR Officers can move an enrollment to another employee in the same branch.
   const [canTransfer, setCanTransfer] = useState(false);
   // New members are added through New Sales, which only encoders can open.
@@ -64,7 +68,7 @@ export default function MembersPage() {
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load members.");
       setError(""); setMembers(result.members); setTotals({ total: result.total, matched: result.matched, pages: result.pages }); setCounts(result.counts ?? {}); setChoices(result.options);
       if (result.page !== page) setPage(result.page);
-      setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanTransfer(Boolean(result.canTransfer)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []);
+      setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanDelete(Boolean(result.canDelete)); setCanTransfer(Boolean(result.canTransfer)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []);
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -116,9 +120,10 @@ export default function MembersPage() {
             <td className="p-3">{unique(member.enrollments.map((enrollment) => enrollment.collector)).join(", ") || "-"}</td>
             <td className="p-3"><span className="flex flex-col items-start gap-1"><StatusBadge status={member.deceased ? "Deceased" : member.status || "Not recorded"} tone={member.deceased ? "danger" : undefined} />{!member.deceased && <span className="text-xs text-muted-foreground">Alive</span>}</span></td>
             <td className="p-3">{member.enrollments.length ? <span className="flex flex-col items-start gap-1">{member.enrollments.map((e) => <span key={e.id} className="flex flex-wrap items-center gap-1"><span>{e.programName}: {e.accountStatus || "Needs review"}</span><StandingBadge enrollment={e} /></span>)}</span> : "No enrollments"}</td>
-            <td className="p-3"><Button variant="outline" aria-expanded={selected?.id === member.id} aria-label={`View ${member.name}`} onClick={() => { setSavedId(""); setEditing(null); setSelected((current) => current?.id === member.id ? null : member); }}>{selected?.id === member.id ? "Collapse" : "View"}</Button></td>
+            <td className="p-3"><Button variant="outline" aria-expanded={selected?.id === member.id} aria-label={`View ${member.name}`} onClick={() => { setSavedId(""); setEditing(null); setDeleting(false); setSelected((current) => current?.id === member.id ? null : member); }}>{selected?.id === member.id ? "Collapse" : "View"}</Button></td>
           </tr>{savedId === member.id && !selected && message && <tr><td colSpan={9} className="px-3 pb-3"><p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{message}</p></td></tr>}{selected?.id === member.id && <InlineRow colSpan={9}><section aria-label="Member details" className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selected.name}</h2><div className="flex gap-2">{canManage && <Button variant={editing?.id === selected.id ? "default" : "outline"} aria-expanded={editing?.id === selected.id} onClick={() => setEditing((current) => current?.id === selected.id ? null : selected)}>{editing?.id === selected.id ? "Editing" : "Edit"}</Button>}{canManage && <Button variant="outline" className="text-destructive" onClick={async () => { if (!window.confirm(`Delete ${selected.name}?`)) return; setSavedId(""); const response = await fetch("/api/members/directory", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selected.id }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member deleted." : result.message || "Unable to delete member."); if (response.ok) { setSelected(null); setRevision((value) => value + 1); } }}>Delete</Button>}<Button variant="ghost" onClick={() => setSelected(null)}>Close details</Button></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selected.name}</h2><div className="flex gap-2">{canManage && <Button variant={editing?.id === selected.id ? "default" : "outline"} aria-expanded={editing?.id === selected.id} onClick={() => setEditing((current) => current?.id === selected.id ? null : selected)}>{editing?.id === selected.id ? "Editing" : "Edit"}</Button>}{canDelete && <Button variant={deleting ? "default" : "outline"} className={deleting ? "" : "text-destructive"} aria-expanded={deleting} onClick={() => setDeleting((value) => !value)}>Delete permanently</Button>}{canManage && !canDelete && <Button variant="outline" className="text-destructive" onClick={async () => { if (!window.confirm(`Delete ${selected.name}?`)) return; setSavedId(""); const response = await fetch("/api/members/directory", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selected.id }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member deleted." : result.message || "Unable to delete member."); if (response.ok) { setSelected(null); setRevision((value) => value + 1); } }}>Delete</Button>}<Button variant="ghost" onClick={() => setSelected(null)}>Close details</Button></div></div>
+      {canDelete && deleting && <div className="rounded-lg border border-red-200 p-3 dark:border-red-900"><AdminDeletePanel kind="member" id={selected.id} onCancel={() => setDeleting(false)} onDeleted={(text) => { setDeleting(false); setSelected(null); setMessage(text); setRevision((value) => value + 1); }} /></div>}
       <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">{[
         ["PH number", selected.number], ["Member status", selected.status], ["Alive / deceased", selected.deceased ? "Deceased" : "Alive"], ["Birthdate", selected.birthdate], ["Birthplace", selected.birthplace],
         ["Gender", selected.gender], ["Civil status", selected.civilStatus], ["Contact", selected.contact], ["Address", selected.address],

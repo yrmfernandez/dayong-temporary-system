@@ -1,4 +1,5 @@
 import { canAccessPath } from "@/lib/access-control";
+import { canDeleteRecords } from "@/lib/admin-delete";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { correctSaleOrCollection } from "@/lib/entry-corrections";
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
     const requested = params.get("mode");
     const mode = isTodayMode(requested) ? requested : defaultMode;
     const result = await getEntriesForDay(date, mode);
-    return Response.json({ success: true, date, today, mode, defaultMode, canEdit: await canManageUsers(), employeeId: user.employeeId, ...result }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, date, today, mode, defaultMode, canEdit: await canManageUsers(), canDelete: canDeleteRecords(user), employeeId: user.employeeId, ...result }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load today's entries." }, { status: 400 });
   }

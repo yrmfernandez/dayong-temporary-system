@@ -1,5 +1,5 @@
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 
 import { currentDb, inTransaction, schema } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
@@ -55,6 +55,77 @@ export async function transferEnrollment(input: { enrollmentId: string; toEmploy
     });
   });
   return { id, enrollmentId, fromMas: enrollment.mas, toMas: target.name };
+}
+
+// ---------------------------------------------------------------- one employee's members, all at once
+
+/** Rows of a raw query: postgres.js returns them as the result itself, PGlite (tests) under .rows. */
+const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
+
+export type EmployeeAccount = { enrollmentId: string; memberNumber: string; memberName: string; program: string; branch: string; status: string; accountStatus: string };
+
+/**
+ * Every account (enrollment) an employee is the MAS of, and the active employees they can go to, with their branches.
+ * Accounts are matched by the employee link, or by name where the link is still empty.
+ */
+export async function employeeAccounts(employeeIdRaw: string) {
+  const employeeId = text(employeeIdRaw);
+  const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
+  const employee = employees.find((item) => item.id === employeeId);
+  if (!employee) throw new Error("Employee not found.");
+  const rows = rowsOf<{ enrollment_id: string; member_number: string; first_name: string; middle_name: string; surname: string; program: string; branch: string; status: string; account_status: string }>(await currentDb().execute(sql`
+    select mp.enrollment_id, mp.member_number, m.first_name, m.middle_name, m.surname, coalesce(p.program_name, mp.program_id) as program, mp.branch, mp.status, mp.account_status
+    from member_programs mp left join members m on m.member_id = mp.member_id left join programs p on p.program_id = mp.program_id
+    where mp.mas_employee_id = ${employeeId} or (mp.mas_employee_id is null and lower(trim(mp.mas)) = lower(trim(${employee.name})))
+    order by mp.branch, m.surname, m.first_name`));
+  const branchName = new Map(branches.map((branch) => [branch.id, branch.name]));
+  const accounts: EmployeeAccount[] = rows.map((row) => ({
+    enrollmentId: row.enrollment_id, memberNumber: text(row.member_number), memberName: [row.first_name, row.middle_name, row.surname].map(text).filter(Boolean).join(" "),
+    program: text(row.program), branch: text(row.branch), status: text(row.status), accountStatus: text(row.account_status),
+  }));
+  const candidates = employees
+    .filter((item) => item.id !== employeeId && item.status.toLowerCase() === "active")
+    .map((item) => ({ employeeId: item.id, name: item.name, roles: item.roles, branches: item.branchIds.map((id) => branchName.get(id) ?? "").filter(Boolean) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { employee: { id: employee.id, name: employee.name }, accounts, candidates };
+}
+
+/**
+ * Moves several of one employee's accounts (or all of them) to another active employee, in one transaction, keeping a
+ * transfer record for each like a single transfer. Collections need the account's MAS to be assigned to the account's
+ * branch, so accounts in branches the new employee is not assigned to are left where they are and reported: assign the
+ * branch in Employees first, then transfer them.
+ */
+export async function transferEmployeeAccounts(input: { fromEmployeeId: string; enrollmentIds: string[]; toEmployeeId: string; reason: string }) {
+  const reason = text(input.reason), toEmployeeId = text(input.toEmployeeId);
+  if (reason.length < 3 || reason.length > 300) throw new Error("Give the reason for the transfer (3–300 characters).");
+  const wanted = new Set(input.enrollmentIds.map(text).filter(Boolean));
+  if (!wanted.size) throw new Error("Choose the members to transfer.");
+  const { employee, accounts, candidates } = await employeeAccounts(input.fromEmployeeId);
+  const target = candidates.find((candidate) => candidate.employeeId === toEmployeeId);
+  if (!target) throw new Error("Choose an active employee other than the current one.");
+  const chosen = accounts.filter((account) => wanted.has(account.enrollmentId));
+  if (chosen.length !== wanted.size) throw new Error("Some of the chosen accounts are no longer this employee's. Reload and try again.");
+  const covered = new Set(target.branches.map((branch) => branch.toLowerCase()));
+  const movable = chosen.filter((account) => covered.has(account.branch.toLowerCase()));
+  const skipped = [...chosen.filter((account) => !covered.has(account.branch.toLowerCase())).reduce((byBranch, account) => byBranch.set(account.branch, (byBranch.get(account.branch) ?? 0) + 1), new Map<string, number>())]
+    .map(([branch, count]) => ({ branch, count }));
+  if (movable.length) {
+    const actor = getEncoder();
+    const ids = movable.map((account) => account.enrollmentId);
+    await inTransaction(async (tx) => {
+      const rows = await tx.select().from(schema.member_programs).where(inArray(schema.member_programs.enrollment_id, ids));
+      await tx.update(schema.member_programs).set({ mas: target.name }).where(inArray(schema.member_programs.enrollment_id, ids));
+      for (let i = 0; i < rows.length; i += 500) {
+        await tx.insert(schema.member_transfers).values(rows.slice(i, i + 500).map((row) => ({
+          transfer_id: createReadableId("MTR"), enrollment_id: row.enrollment_id, member_id: row.member_id, member_number: text(row.member_number), program_id: row.program_id,
+          branch: text(row.branch), from_mas: text(row.mas), to_mas: target.name, to_employee_id: target.employeeId, reason: `Transfer of ${employee.name}'s members: ${reason}`,
+          encoded_by_user_id: actor.userId, encoded_by_employee_id: actor.employeeId, encoded_by_name: actor.name, encoded_at: actor.encodedAt,
+        })));
+      }
+    });
+  }
+  return { from: employee.name, to: target.name, moved: movable.length, skipped };
 }
 
 /** Transfer history per enrollment, newest first, for the member details view. */

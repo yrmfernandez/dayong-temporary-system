@@ -1,3 +1,4 @@
+import { canDeleteRecords } from "@/lib/admin-delete";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { createCashRemittance, decideCashRemittance, getRemittanceDashboard } from "@/lib/remittance-workflow";
@@ -14,7 +15,7 @@ export async function GET(request?: Request) {
   try {
     const canApprove = await canManageUsers();
     const clerk = canApprove ? (request ? new URL(request.url).searchParams.get("clerk")?.trim() ?? "" : "") : user.employeeId;
-    return Response.json({ ...(await getRemittanceDashboard(clerk)), canApprove, clerk });
+    return Response.json({ ...(await getRemittanceDashboard(clerk)), canApprove, canDelete: canDeleteRecords(user), clerk });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to load Remittances." }, { status: 500 });
   }

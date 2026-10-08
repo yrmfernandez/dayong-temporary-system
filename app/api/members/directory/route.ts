@@ -1,4 +1,5 @@
 import { canAccessPath } from "@/lib/access-control";
+import { canDeleteRecords } from "@/lib/admin-delete";
 import { ownMembersScope } from "@/lib/member-scope";
 import { canManageUsers, userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
     const result = await queryMemberDirectory({ filters, sort, descending: value("order") === "desc", page: Number(value("page")) || 1, pageSize: 25, onlyMas: scope });
     const shown = new Set(result.members.flatMap((member) => member.enrollments.map((enrollment) => enrollment.id)));
     const [canTransfer, transfers] = await Promise.all([canTransferMembers(), getTransferHistory()]);
-    return Response.json({ success: true, ...result, canManage: await canManageUsers(), canTransfer, transfers: transfers.filter((transfer) => shown.has(transfer.enrollmentId)), canAddMember: canAccessPath(user, "/new-sales") }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, ...result, canManage: await canManageUsers(), canDelete: canDeleteRecords(user), canTransfer, transfers: transfers.filter((transfer) => shown.has(transfer.enrollmentId)), canAddMember: canAccessPath(user, "/new-sales") }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Member directory error:", error);
     return Response.json({ success: false, message: "Unable to load members. Please retry or check the member records." }, { status: 500 });

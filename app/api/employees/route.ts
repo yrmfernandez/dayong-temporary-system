@@ -1,4 +1,5 @@
 import { canManageAccounts, canManageEmployees, canManageUsers, getSessionUser, userWithPageAccess } from "@/lib/auth-server";
+import { canTransferMembers } from "@/lib/member-transfer";
 import { changeEmployeeId } from "@/lib/employee-id-change";
 import { withEncoder } from "@/lib/encoder-context";
 import { deleteEmployee, getEmployees, getNextEmployeeId, registerEmployee, updateEmployee, updateEmployeeStatus } from "@/lib/employees";
@@ -16,7 +17,7 @@ export async function GET() {
     const nextEmployeeId = canManage ? await getNextEmployeeId() : "";
     // Every role comes from the Roles page, so a role an administrator adds is offered here straight away.
     const operationalRoles = [...new Set(accountRoles.map((role) => role.name))].sort();
-    return Response.json({ success: true, employees:employees.map(employee=>({...employee,roleIds:accounts.find(account=>account.employeeId===employee.id)?.roleIds??[],primaryBranchId:branches.find(branch=>branch.name===employee.branch&&employee.branchIds.includes(branch.id))?.id??employee.branchIds[0]??"",hasAccount:accounts.some(account=>account.employeeId===employee.id)})), branches: branches.filter((branch) => branch.status === "active"), operationalRoles, accountRoles, canRegister: canManage, nextEmployeeId, canManage, canChangeId: await canManageUsers() }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, employees:employees.map(employee=>({...employee,roleIds:accounts.find(account=>account.employeeId===employee.id)?.roleIds??[],primaryBranchId:branches.find(branch=>branch.name===employee.branch&&employee.branchIds.includes(branch.id))?.id??employee.branchIds[0]??"",hasAccount:accounts.some(account=>account.employeeId===employee.id)})), branches: branches.filter((branch) => branch.status === "active"), operationalRoles, accountRoles, canRegister: canManage, nextEmployeeId, canManage, canChangeId: await canManageUsers(), canTransfer: await canTransferMembers() }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Employee directory error:", error);
     return Response.json({ success: false, message: "Unable to load employees. Check the Employees sheet setup." }, { status: 500 });

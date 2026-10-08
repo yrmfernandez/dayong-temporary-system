@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Eye, Pencil, RefreshCw } from "lucide-react";
+import { AlertTriangle, Eye, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { MetricTile } from "@/components/metric-tile";
@@ -15,11 +15,12 @@ import { TODAY_MODE_LABELS, TODAY_MODES, type TodayMode } from "@/lib/today-mode
 import type { DayEntry } from "@/lib/todays-entries";
 import { EntryCorrectionForm } from "@/components/entry-correction-form";
 import { EntryDetails } from "@/components/entry-details";
+import { AdminDeletePanel } from "@/components/admin-delete";
 import { ReceiptPhotoUpload, ReceiptPhotoView } from "@/components/receipt-photo";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Totals = { count: number; amount: number; incentives: number; forfeited: number };
-type Result = { success: boolean; message?: string; date: string; today: string; mode: TodayMode; defaultMode: TodayMode; canEdit: boolean; employeeId: string; entries: DayEntry[]; sales: Totals; collections: Totals };
+type Result = { success: boolean; message?: string; date: string; today: string; mode: TodayMode; defaultMode: TodayMode; canEdit: boolean; canDelete?: boolean; employeeId: string; entries: DayEntry[]; sales: Totals; collections: Totals };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const MODE_HELP: Record<TodayMode, string> = {
@@ -135,18 +136,18 @@ export default function TodaysEntriesPage() {
 
       {data && (
         <>
-          <EntryTable title="New Sales" entries={sales} canEdit={data.canEdit} me={data.employeeId} editing={editing} setEditing={setEditing} onSaved={(text) => { setMessage(text); setEditing(""); void load(date, mode); }} />
-          <EntryTable title="Collections" entries={collections} canEdit={data.canEdit} me={data.employeeId} editing={editing} setEditing={setEditing} onSaved={(text) => { setMessage(text); setEditing(""); void load(date, mode); }} />
+          <EntryTable title="New Sales" entries={sales} canEdit={data.canEdit} canDelete={Boolean(data.canDelete)} me={data.employeeId} editing={editing} setEditing={setEditing} onSaved={(text) => { setMessage(text); setEditing(""); void load(date, mode); }} />
+          <EntryTable title="Collections" entries={collections} canEdit={data.canEdit} canDelete={Boolean(data.canDelete)} me={data.employeeId} editing={editing} setEditing={setEditing} onSaved={(text) => { setMessage(text); setEditing(""); void load(date, mode); }} />
         </>
       )}
     </div>
   );
 }
 
-function EntryTable({ title, entries, canEdit, me, editing, setEditing, onSaved }: {
-  title: string; entries: DayEntry[]; canEdit: boolean; me: string; editing: string; setEditing: (id: string) => void; onSaved: (message: string) => void;
+function EntryTable({ title, entries, canEdit, canDelete, me, editing, setEditing, onSaved }: {
+  title: string; entries: DayEntry[]; canEdit: boolean; canDelete: boolean; me: string; editing: string; setEditing: (id: string) => void; onSaved: (message: string) => void;
 }) {
-  // `editing` holds "view:<id>" or "edit:<id>" for the row whose panel is open.
+  // `editing` holds "view:<id>", "edit:<id>" or "delete:<id>" for the row whose panel is open.
   const columns = 9;
   const toggle = (panel: string) => setEditing(editing === panel ? "" : panel);
   return (
@@ -179,6 +180,7 @@ function EntryTable({ title, entries, canEdit, me, editing, setEditing, onSaved 
                     <td className="p-3"><div className="flex gap-2">
                       <Button type="button" size="sm" variant="outline" onClick={() => toggle(`view:${entry.id}`)}><Eye className="size-3.5" />View</Button>
                       {canEdit && <Button type="button" size="sm" variant="outline" onClick={() => toggle(`edit:${entry.id}`)}><Pencil className="size-3.5" />Edit</Button>}
+                      {canDelete && <Button type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => toggle(`delete:${entry.id}`)}><Trash2 className="size-3.5" />Delete</Button>}
                     </div>
                     {/* Receipt photo: the clerk who encoded it, or an administrator, can add it any time. */}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -187,6 +189,7 @@ function EntryTable({ title, entries, canEdit, me, editing, setEditing, onSaved 
                     </div></td>
                   </tr>
                   {editing === `view:${entry.id}` && <tr className="border-t bg-muted/20"><td colSpan={columns} className="p-3"><EntryDetails entry={entry} onClose={() => setEditing("")} /></td></tr>}
+                  {canDelete && editing === `delete:${entry.id}` && <tr className="border-t bg-muted/20"><td colSpan={columns} className="p-3"><AdminDeletePanel kind={entry.kind === "New Sale" ? "sale" : "collection"} id={entry.id} onCancel={() => setEditing("")} onDeleted={onSaved} /></td></tr>}
                   {canEdit && editing === `edit:${entry.id}` && <tr className="border-t bg-muted/20"><td colSpan={columns} className="p-3"><EntryCorrectionForm entry={entry} endpoint="/api/todays-entries" onCancel={() => setEditing("")} onSaved={onSaved} /></td></tr>}
                 </Fragment>
               ))}
