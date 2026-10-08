@@ -759,3 +759,12 @@ main [data-slot="card"]:nth-child(4) {
     background: #fff !important; color: #000 !important; }
   @page soa { size: A4 portrait; margin: 12mm; }
 }
+
+/* The bar shown while a newly chosen workspace's dashboard loads (components/app-shell.tsx). */
+@keyframes workspace-loading {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [class*="workspace-loading"] { animation: none; width: 100%; }
+}

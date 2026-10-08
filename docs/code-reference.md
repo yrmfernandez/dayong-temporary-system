@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-39 page routes, 57 API handlers, 103 library files, 43 component files; 326 scanned source/configuration/public-text files in total.
+39 page routes, 57 API handlers, 103 library files, 43 component files; 327 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -424,6 +424,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/test-program-payment-limit.mjs](../scripts/test-program-payment-limit.mjs) | `node:assert/strict`, `node:test`, `../lib/program-payment-limit.mjs`, `../lib/account-rules.ts`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/test-remittance.mjs](../scripts/test-remittance.mjs) | `node:assert/strict`, `node:test`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/test-sheets-cache.mjs](../scripts/test-sheets-cache.mjs) | `node:test`, `node:assert/strict`, `../lib/sheets-read-cache.ts` | No flag detected; read source before running |
+| [scripts/time-dashboards.mts](../scripts/time-dashboards.mts) | `@next/env` | No flag detected; read source before running |
 
 ## Configuration and public text files
 

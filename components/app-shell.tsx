@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { executiveRoles, type AccessContext } from "@/lib/access-control";
-import { isInWorkspace, normalizeRole, visibleNavigation } from "@/lib/navigation";
+import { normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { ACTIVE_ROLE_COOKIE, onPreferencesChange, preferenceKeys, readDensity, readPreference, writeActiveRoleCookie, writePreference } from "@/lib/ui-preferences";
 
 const safeDecode = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };
@@ -22,6 +22,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [access, setAccess] = useState<AccessContext>(emptyAccess);
   const [activeRole, setActiveRole] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  // True while the dashboard of a newly chosen workspace is loading, so the old one is not mistaken for it.
+  const [switching, startSwitch] = useTransition();
   const isLogin = pathname === "/login";
 
   // The mouse wheel must never change a number field (amounts, NOP, rates): a focused number input lets go of focus
@@ -78,12 +80,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const roles = useMemo(() => roleOptions(access.roleNames), [access.roleNames]);
   const sections = useMemo(() => activeRole ? visibleNavigation(activeRole, access) : [], [activeRole, access]);
 
+  // Choosing a workspace opens its dashboard (the server draws it for the role in the cookie). Until it arrives the
+  // page shows that it is loading instead of the previous workspace's dashboard.
   function chooseRole(role: string) {
     setActiveRole(role);
     writePreference(preferenceKeys.activeRole, role);
     writeActiveRoleCookie(role);
-    if (!isInWorkspace(role, pathname, access)) router.push("/");
-    else if (pathname === "/") router.refresh();
+    setMobileOpen(false);
+    startSwitch(() => { if (pathname === "/") router.refresh(); else router.push("/"); });
   }
 
   if (isLogin) return <>{children}</>;
@@ -93,7 +97,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar sections={sections} roles={roles} activeRole={activeRole} onRoleChange={chooseRole} user={user} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <main className="app-main min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
         <Topbar sections={sections} activeRole={activeRole} user={user} onMenu={() => setMobileOpen(true)} />
-        <div className="app-content mx-auto w-full max-w-[1920px] px-3 pb-8 pt-4 sm:px-4 md:px-6 md:pt-5">{children}</div>
+        {switching && <div role="status" aria-live="polite" className="sticky top-0 z-30 h-1 w-full overflow-hidden bg-primary/15"><div className="h-full w-1/3 animate-[workspace-loading_1.1s_ease-in-out_infinite] bg-primary" /><span className="sr-only">Opening the {activeRole} dashboard</span></div>}
+        <div className={`app-content mx-auto w-full max-w-[1920px] px-3 pb-8 pt-4 transition-opacity sm:px-4 md:px-6 md:pt-5 ${switching ? "pointer-events-none opacity-50" : ""}`} aria-busy={switching}>
+          {switching && <p className="mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary">Opening the {activeRole} dashboard...</p>}
+          {children}
+        </div>
       </main>
     </div>
   );

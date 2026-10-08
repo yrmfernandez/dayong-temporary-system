@@ -41,3 +41,10 @@ The executive analytics (`lib/executive-analytics.ts`) used to read every Sales 
 ## Account calculations at scale
 
 Status, MAM and Statement of Account look up each account's payments through `paymentsByEnrollment` (`lib/account-rules.ts`) instead of scanning every payment for every account. With 11,372 accounts and 55,792 payments this took the account report from 35 s to about 1 s. Never pass the full payment list to `accountState` inside a loop over accounts. A 12-month MAM range is still about 7 s because every account is recalculated for every month.
+
+
+## Dashboards and the workspace switch (October 8, 2026)
+
+- **Switching workspace** (sidebar) now always opens that workspace's dashboard. While it loads, a bar runs at the top and the page says "Opening the … dashboard..." with the old content dimmed; before, the previous workspace's dashboard stayed on screen until the new one arrived, so the switch looked like it did nothing (`components/app-shell.tsx`, `useTransition` around the refresh / navigation).
+- **Remittance summary** (Remittances page and Finance dashboard): the receipt-photo index is read together with the ledger instead of after it, one database round trip less.
+- **Measuring:** `scripts/time-dashboards.mts` (read-only, timings and table sizes only) times each dashboard's data cold and warm: `npx tsx --tsconfig tsconfig.json scripts/time-dashboards.mts` on staging, `npm run prod -- npx tsx --tsconfig tsconfig.json scripts/time-dashboards.mts` on production. Staging from this PC: Finance about 0.3 s warm (about 2 s on a cold start), executive month-to-date 3.5–4 s. Staging has no recent remittance activity, so production's numbers decide the next step.

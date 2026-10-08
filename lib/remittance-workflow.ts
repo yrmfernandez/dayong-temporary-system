@@ -125,7 +125,8 @@ export type CashRemittance = {
 async function loadLedger() {
   const active = sql`(coalesce(remittance_status, '') <> 'Remitted' or coalesce(encoded_by_employee_id, '') <> '' or linked_remittance_id is not null)`;
   const others = titles.filter((title) => title !== "Collections" && title !== "Sales");
-  const [response, activeCollections, activeSales] = await Promise.all([
+  // The receipt-photo index is read alongside, not after: one round trip less on every Remittances and Finance load.
+  const [response, activeCollections, activeSales, photos] = await Promise.all([
     sheets.spreadsheets.values.batchGet({
       spreadsheetId: GOOGLE_SHEET_ID,
       ranges: others.map((title) => ledgerRanges[title]),
@@ -134,6 +135,7 @@ async function loadLedger() {
     }),
     readSheetRowsNumbered("Collections", active),
     readSheetRowsNumbered("Sales", active),
+    photosByEntry(),
   ]);
   const rows: Record<string, unknown[][]> = Object.fromEntries(others.map((title, index) => [title, response.data.valueRanges?.[index]?.values ?? []]));
   rows.Collections = activeCollections.rows;
@@ -169,7 +171,6 @@ async function loadLedger() {
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${saleDate(row)}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((sale) => sale.id);
   collections.push(...sales);
-  const photos = await photosByEntry();
   for (const item of collections) item.photoId = photos.get(item.id)?.photoId ?? "";
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
     id: text(row[0]), rowNumber: index + 2, branch: text(row[1]), accountableName: text(row[2]), remittanceDate: text(row[3]), remittanceTime: text(row[REMITTANCE_TIME_COLUMN]), cashCount: text(row[CASH_COUNT_COLUMN]), status: text(row[4]) || "Legacy",
