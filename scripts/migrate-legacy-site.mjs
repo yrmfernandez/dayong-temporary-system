@@ -25,7 +25,9 @@
  * - Everything was remitted on the old site: remittance status Remitted, remittance = amount − the old incentive.
  * - Receipt and application numbers already in use are imported flagged legacy_duplicate (shown on Exceptions), as
  *   in the October workbook import. Application numbers never identify a record across systems.
- * IDs carry the old record ID (MEM-WEB-…, ENR-WEB-…, SALE-WEB-…, COL-WEB-…), so a re-run skips what is imported.
+ * IDs carry the old record ID (MEM-WEB-…, ENR-WEB-…, SALE-WEB-…, COL-WEB-…), so a re-run skips what is imported and
+ * adds only what is new: new members and sales, and new payments on accounts imported earlier (checked with every
+ * payment the account has now; a receipt already in the database is skipped).
  *
  * Privacy: prints counts, program codes and employee names only. Accounts left out are listed by old-site record ID
  * (open /new-sales/edit/{id} or /entries/edit/{id} there) in legacy-data/web-import-report-*.txt, which stays local.
@@ -268,6 +270,41 @@ try {
   }
   for (const a of accounts.values()) if (a.held) for (const p of a.payments) hold("Collection", p.row.record_id, "its account is left out");
 
+  // Accounts imported by an earlier run: payments added on the old site since then are checked together with every
+  // payment the account has now (imported, or encoded in this system since) and added after them.
+  const topUps = [...accounts.values()].filter((a) => a.done && a.payments.some((p) => !done.has(p.id)));
+  const stored = topUps.length ? await sql`select collection_id as id, enrollment_id as "enrollmentId", or_date::text as "orDate", or_number as "orNumber", month_from as "monthFrom",
+    month_to as "monthTo", nop_from as "nopFrom", nop_to as "nopTo", amount_collected::float as amount, coalesce(date_remitted::text, '') as "dateRemitted", mas
+    from collections where status = 'Posted' and enrollment_id in ${sql(topUps.map((a) => a.id))}` : [];
+  for (const a of topUps) {
+    const existing = stored.filter((p) => p.enrollmentId === a.id);
+    const fresh = a.payments.filter((p) => !done.has(p.id));
+    const skipped = fresh.filter((p) => p.inDb).length;
+    if (skipped) count("Collections: already in the database (same OR number and date), skipped", skipped);
+    let added = fresh.filter((p) => !p.inDb).sort((x, y) => x.orDate.localeCompare(y.orDate) || Number(x.row.record_id) - Number(y.row.record_id));
+    a.payments = [];
+    if (!added.length) continue;
+    let state;
+    try { state = accountState(asAccount(a), [...existing, ...added], today); }
+    catch {
+      // As with a new account: the new payments follow the last month already covered, each covering what its amount pays.
+      const rate = a.program.basePay, doiIndex = monthIndex(a.doi.slice(0, 7));
+      let next = Math.max(doiIndex, ...existing.map((p) => monthIndex(p.monthTo))) + 1;
+      const renumbered = [];
+      for (const p of added) {
+        const written = monthIndex(p.monthTo) - monthIndex(p.monthFrom) + 1;
+        const months = a.program.flexible ? (written >= 1 && p.amount >= rate * written ? written : Math.floor(p.amount / rate)) : p.amount / rate;
+        if (!Number.isInteger(months) || months < 1) { renumbered.length = 0; break; }
+        renumbered.push({ ...p, monthFrom: monthName(next), monthTo: monthName(next + months - 1), nopFrom: next - doiIndex + 1, nopTo: next + months - doiIndex });
+        next += months;
+      }
+      try { if (!renumbered.length) throw new Error("not whole months"); state = accountState(asAccount(a), [...existing, ...renumbered], today); added = renumbered; count("Repaired: new payments on an imported account renumbered"); }
+      catch { for (const p of added) hold("Collection", p.row.record_id, "a new payment on an imported account does not fit its history"); continue; }
+    }
+    a.payments = added; a.status = state.status; a.topUp = true;
+    count("Collections: new on accounts imported earlier", added.length);
+  }
+
   // ---------------------------------------------------------------- MAS who are not employees yet
   // Registered like the October 4 workbook MAS (scripts/register-legacy-mas.mjs): a temporary LEG-YYYY-NNNN ID, role MAS,
   // active, every branch where they sold or collected (primary = the most records), no sign-in. Spellings of one person
@@ -275,7 +312,7 @@ try {
   const NOT_PEOPLE = /^(others|dto|none)$|-dto$/i;
   const used = new Map();
   for (const a of accounts.values()) {
-    if (a.held || a.done) continue;
+    if (a.held || (a.done && !a.topUp)) continue;
     for (const [name, branch] of [[a.masName, a.branch], ...a.payments.map((p) => [p.mas, a.branch])]) {
       if (!str(name) || NOT_PEOPLE.test(str(name)) || masFor(name)) continue;
       const w = words(name), key = `${w[0]} ${w.at(-1)}`;
@@ -296,6 +333,7 @@ try {
 
   // ---------------------------------------------------------------- rows
   const ready = [...accounts.values()].filter((a) => !a.held && !a.done);
+  const toppedUp = [...accounts.values()].filter((a) => a.topUp);
   const neededMembers = new Set(ready.map((a) => a.member.id));
   const membersToAdd = newMembers.filter((m) => neededMembers.has(m.id));
   const firstDoi = new Map();
@@ -335,17 +373,21 @@ try {
       ...identity, remittance_status: "Remitted", accountable_employee_id: a.mas?.id ?? null, mas_incentive: Number.isFinite(incentive) ? incentive : null,
       remittance_amount: Number.isFinite(amount) ? Math.max(0, amount - (Number.isFinite(incentive) ? incentive : 0)) : null,
       legacy_duplicate: flagged(entryKey(str(r["App No"]) || str(r.app_no)), usedApplications) });
-    for (const p of a.payments) {
+    collectionRows.push(...collectionsOf(a));
+  }
+  for (const a of toppedUp) collectionRows.push(...collectionsOf(a));
+  function collectionsOf(a) {
+    return a.payments.map((p) => {
       const collector = str(p.row.collector_id_value);
       const payMas = masFor(p.mas)?.name ?? p.mas;
-      collectionRows.push({ collection_id: p.id, collection_batch_id: `CBT-WEB-${a.branch.replace(/[^A-Z0-9]+/gi, "")}-${p.dateRemitted}`, enrollment_id: a.id, member_id: a.member.id,
+      return { collection_id: p.id, collection_batch_id: `CBT-WEB-${a.branch.replace(/[^A-Z0-9]+/gi, "")}-${p.dateRemitted}`, enrollment_id: a.id, member_id: a.member.id,
         member_number: numberOf(a.member), program_id: a.program.id, branch: a.branch, mas: payMas, or_number: p.orNumber, or_date: p.orDate, amount_collected: p.amount,
         month_from: p.monthFrom, month_to: p.monthTo, nop_from: p.nopFrom, nop_to: p.nopTo, reactivation: false, transferred: false, suspended: null, original_mas: null,
         status: "Posted", created_at: validDate(p.dateRemitted) ? stamp(p.dateRemitted) : stamp(p.orDate), ...identity, collected_by_role: collector ? "Collector" : "MAS",
         remittance_amount: Math.max(0, p.amount - (Number.isFinite(p.incentive) ? p.incentive : 0)), remittance_status: "Remitted", accountable_employee_id: masFor(p.mas)?.id ?? null,
         accountable_name: payMas, accountable_role: "MAS", remittance_method: "Cash", date_remitted: validDate(p.dateRemitted) ? p.dateRemitted : p.orDate,
-        legacy_duplicate: flagged(entryKey(p.orNumber), usedReceipts) });
-    }
+        legacy_duplicate: flagged(entryKey(p.orNumber), usedReceipts) };
+    });
   }
   /** The member's details as recorded, copied onto a New Sale for a member already in the database. */
   async function existingDetails(memberId) {
@@ -392,6 +434,7 @@ try {
     await insert("member_programs", enrollmentRows);
     await insert("sales", saleRows);
     await insert("collections", collectionRows);
+    for (const a of toppedUp) await tx`update member_programs set account_status = ${a.status} where enrollment_id = ${a.id}`;
     console.log(`\nWritten: ${registrations.length} MAS registered, ${drafts.length} draft programs, ${memberRows.length} members, ${enrollmentRows.length} accounts, ${saleRows.length} New Sales, ${collectionRows.length} collections.`);
   });
 } finally {

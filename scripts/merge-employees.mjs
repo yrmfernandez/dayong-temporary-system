@@ -14,6 +14,10 @@
  * kept employee receives the duplicate's branches; then the duplicate is deleted. A duplicate with its own sign-in
  * (Users) or pay profile is refused while the kept employee also has one: remove one of them first.
  *
+ * Records whose MAS name matches no employee (the employee was renamed or re-added before the name reached them) are
+ * re-linked by the "relink" list in the same file, confirmed by the owner: { "relink": { "Amora, N.": "MD-2026-0040" } }
+ * gives every unlinked record written "Amora, N." that employee's current name, and the database links it.
+ *
  * Then, for everyone: a record linked to an employee but still showing an older name (renamed in Employees before
  * October 7, 2026; since migration 0012 a rename reaches every record) gets the employee's current name, and MAS names
  * that match no employee are listed. Prints employee names and counts only.
@@ -55,10 +59,20 @@ try {
       if (d === 0 || (d === 1 && a.given[0] === b.given[0])) { found++; console.log(`  ${label(a.e)}  ~  ${label(b.e)}`); }
     }
     console.log(`${found} possible pair(s). Same surname is not proof: confirm each with the owner before adding it to config/employee-merges.json.`);
+    // MAS names on accounts that match no employee, with the employees of the same surname.
+    const orphans = await sql`select mas, count(*)::int as n from member_programs where mas_employee_id is null and coalesce(trim(mas), '') <> '' group by mas order by 2 desc`;
+    console.log(`\nAccount MAS names that match no employee (${orphans.length}), with employees of the same surname:`);
+    for (const o of orphans) {
+      const name = parts(o.mas);
+      const same = people.filter((p) => p.surname === name.surname || distance(p.surname ?? "", name.surname ?? "") === 1);
+      console.log(`  ${o.mas} (${o.n} accounts) → ${same.map((p) => label(p.e)).join("  |  ") || "no employee with that surname"}`);
+    }
+    console.log(`Confirmed matches go under "relink" in config/employee-merges.json: { "<name on the accounts>": "<Employee ID>" }.`);
     process.exit(0);
   }
 
-  const merges = fs.existsSync("config/employee-merges.json") ? JSON.parse(fs.readFileSync("config/employee-merges.json", "utf8")).merges ?? [] : [];
+  const config = fs.existsSync("config/employee-merges.json") ? JSON.parse(fs.readFileSync("config/employee-merges.json", "utf8")) : {};
+  const merges = config.merges ?? [], relinks = Object.entries(config.relink ?? {});
   const byId = new Map(employees.map((e) => [e.employee_id, e]));
   const columns = await sql`select table_name, column_name from information_schema.columns where table_schema = 'public' and table_name not in ('employees', 'audit_log')
     and (column_name like '%employee\\_id' or column_name ~ ${NAME_COLUMN.source}) order by table_name, column_name`;
@@ -84,6 +98,19 @@ try {
       await tx`delete from employees where employee_id = ${dup.employee_id}`;
       console.log(`  ${label(dup)} → ${label(kept)}: ${[...changed].map(([t, n]) => `${t} ${n}`).join(", ") || "no linked rows"}`);
     }
+    // Unlinked records written with a name no employee has: the confirmed employee's current name (the database links it).
+    for (const [written, employeeId] of relinks) {
+      const [employee] = await tx`select employee_id, full_name from employees where employee_id = ${employeeId}`;
+      if (!employee) { console.log(`  relink ${written} → ${employeeId}: no such employee, skipped`); continue; }
+      const changed = [];
+      for (const [table, name, link] of LINKED_NAMES) {
+        const rows = await tx`update ${tx(table)} set ${tx(name)} = ${employee.full_name} where ${tx(link)} is null and lower(trim(${tx(name)})) = lower(trim(${written})) returning 1`;
+        if (rows.length) changed.push(`${table}.${name} ${rows.length}`);
+      }
+      const extra = await tx`update collections set original_mas = ${employee.full_name} where lower(trim(original_mas)) = lower(trim(${written})) returning 1`;
+      if (extra.length) changed.push(`collections.original_mas ${extra.length}`);
+      console.log(`  relink ${written} → ${label({ ...employee, login: false, accounts: 0 }).replace(", 0 accounts", "")}: ${changed.join(", ") || "nothing to change"}`);
+    }
     // Linked records showing an older name of their employee (the columns migration 0012's cascade_employee_rename keeps current).
     const synced = [];
     for (const [table, name, link] of LINKED_NAMES) {
@@ -98,7 +125,7 @@ try {
   if (!apply) {
     // Dry run: the same statements in a transaction that is rolled back, so the counts are exact.
     await sql.begin(async (tx) => { await run(tx); throw new Error("dry run"); }).catch((error) => { if (error.message !== "dry run") throw error; });
-    console.log(`\nDry run: ${plan.length} merge(s) and the name corrections shown, nothing was written. Add --apply to merge.`);
+    console.log(`\nDry run: ${plan.length} merge(s), ${relinks.length} relink(s) and the name corrections shown, nothing was written. Add --apply to merge.`);
   } else {
     await sql.begin(async (tx) => { await tx`select set_config('app.user_name', 'Employee merge', true)`; await run(tx); });
     console.log(`\nMerged ${plan.length} employee(s).`);

@@ -58,7 +58,9 @@ async function signIn() {
 /** GET a page as text; signs in again once if the session ran out (redirect to /login). */
 async function getText(url) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await request(url);
+    // A dropped connection (ECONNRESET) is retried after a pause like a server error.
+    const response = await request(url).catch(async () => { await wait(5000 * (attempt + 1)); return null; });
+    if (!response) continue;
     const location = response.headers.get("location") ?? "";
     if (response.status === 302 && new URL(location, BASE).pathname === "/login") { await response.arrayBuffer(); await signIn(); continue; }
     if (response.status >= 500 || response.status === 429) { await response.arrayBuffer(); await wait(5000 * (attempt + 1)); continue; }
