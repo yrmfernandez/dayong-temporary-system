@@ -1,4 +1,4 @@
-import { getPhilippineDate } from "@/lib/attendance";
+import { getPhilippineDate, withDayTotals } from "@/lib/attendance";
 import { getEmployeeAttendance } from "@/lib/attendance-data";
 import { isHistoryPeriod, periodRange, summarizeHistory } from "@/lib/attendance-board";
 import { getSessionUser } from "@/lib/auth-server";
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   try {
     const range = periodRange(period, date);
     const records = await getEmployeeAttendance(user.employeeId, range.from, range.to);
-    return Response.json({ success: true, history: { period, today, ...range, ...summarizeHistory(period, records, today) } }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, history: { period, today, ...range, ...summarizeHistory(period, records.map(withDayTotals), today) } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Attendance history error:", error);
     return Response.json({ success: false, message: "Unable to load your attendance history." }, { status: 500 });

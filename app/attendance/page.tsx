@@ -15,15 +15,17 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AttendanceCalendar } from "@/components/attendance-calendar";
 import { MyAttendanceHistory } from "@/components/my-attendance-history";
-import { BREAK_END, BREAK_START, SCHEDULED_TIME_IN, timeToMinutes } from "@/lib/attendance";
+import { BREAK_END, BREAK_START, dayTotals, SCHEDULED_TIME_IN, SCHEDULED_TIME_OUT, timeToMinutes } from "@/lib/attendance";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type AttendanceRecord = {
   attendanceDate: string;
   branch: string;
   timeIn: string;
   timeOut: string;
+  scheduledTimeOut?: string;
   workedHours: number;
   overtimeHours: number;
   status: string;
@@ -129,18 +131,29 @@ export default function AttendancePage() {
     void loadPage();
   }, []);
 
-  // The session pauses during the 12:00–13:00 lunch break, which is not worked time.
-  const activeSeconds = useMemo(() => {
-    if (!record?.timeIn) return 0;
+  // Live updates: an administrator's correction (e.g. a voided clock-out, so the clock resumes) shows without a reload.
+  useLiveRefresh(["attendance"], loadAttendance);
+
+  // The session pauses during the 12:00–13:00 lunch break, which is not worked time. Regular time stops at 17:00;
+  // total time runs on to clock-out (overtime included).
+  const { regularSeconds, totalSeconds } = useMemo(() => {
+    if (!record?.timeIn) return { regularSeconds: 0, totalSeconds: 0 };
     const start = timeToSeconds(record.timeIn);
     const end = record.timeOut ? timeToSeconds(record.timeOut) : currentPhilippineSeconds(now);
-    const lunch = Math.max(0, Math.min(end, timeToMinutes(BREAK_END) * 60) - Math.max(start, timeToMinutes(BREAK_START) * 60));
-    return Math.max(0, end - start - lunch);
+    const working = (to: number) => {
+      const lunch = Math.max(0, Math.min(to, timeToMinutes(BREAK_END) * 60) - Math.max(start, timeToMinutes(BREAK_START) * 60));
+      return Math.max(0, to - start - lunch);
+    };
+    const scheduledEnd = timeToMinutes(record.scheduledTimeOut || SCHEDULED_TIME_OUT) * 60;
+    return { regularSeconds: working(Math.min(end, scheduledEnd)), totalSeconds: working(end) };
   }, [now, record]);
 
-  const trackedHours = record?.timeOut
-    ? record.workedHours
-    : Number((activeSeconds / 3600).toFixed(2));
+  // A finished day uses the clock times, so a day saved before the lunch-break rule also leaves the break out.
+  const finished = record?.timeOut ? dayTotals(record.timeIn, record.timeOut, record.scheduledTimeOut) : null;
+  const regularHours = finished ? finished.regularHours : Number((regularSeconds / 3600).toFixed(2));
+  const totalHours = finished ? finished.totalHours : Number((totalSeconds / 3600).toFixed(2));
+  const overtimeHours = Math.max(0, Number((totalHours - regularHours).toFixed(2)));
+  const trackedHours = regularHours;
   const progress = Math.min(100, (trackedHours / SHIFT_HOURS) * 100);
   const isClockedIn = Boolean(record?.timeIn && !record.timeOut);
   const isComplete = Boolean(record?.timeOut);
@@ -352,9 +365,16 @@ export default function AttendancePage() {
           <div className="grid grid-cols-2 gap-4">
             <StatCard
               icon={<Clock3 className="size-4" />}
-              label="Hours Tracked"
-              value={trackedHours.toFixed(2)}
-              suffix={`/ ${SHIFT_HOURS} hrs`}
+              label="Regular Hours"
+              value={regularHours.toFixed(2)}
+              suffix={`/ ${SHIFT_HOURS} hrs · to 5 PM`}
+              tone="violet"
+            />
+            <StatCard
+              icon={<CheckCircle2 className="size-4" />}
+              label="Total Hours"
+              value={totalHours.toFixed(2)}
+              suffix={`incl. ${overtimeHours.toFixed(2)} hrs overtime`}
               tone="violet"
             />
             <StatCard
@@ -370,13 +390,6 @@ export default function AttendancePage() {
               value={String(record?.undertimeMinutes ?? 0)}
               suffix="minutes"
               tone="lime"
-            />
-            <StatCard
-              icon={<CheckCircle2 className="size-4" />}
-              label="Overtime"
-              value={(record?.overtimeHours ?? 0).toFixed(2)}
-              suffix="hours"
-              tone="violet"
             />
           </div>
         </div>
@@ -425,7 +438,7 @@ export default function AttendancePage() {
                     }
                     icon={<LogOut className="size-4" />}
                     tone="violet"
-                    duration={`${record.workedHours.toFixed(2)} hrs worked`}
+                    duration={`${regularHours.toFixed(2)} regular · ${totalHours.toFixed(2)} total hrs`}
                   />
                 )}
               </tbody>

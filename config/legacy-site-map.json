@@ -1,0 +1,38 @@
+{
+  "note": "Old web app (dayong.gissolve.com) values mapped to ours for scripts/migrate-legacy-site.mjs. 'map': its program codes, as its lists write them, to our program codes or names. 'drafts': programs added as drafts on --apply when missing; admins then finalize rates, pay-balance totals, registration and incentives in Programs. 'mas': an old MAS name to an Employee ID, for names the automatic match (full name, or surname and first initial) cannot place.",
+  "map": {
+    "D-179": "D-179",
+    "D-210": "D-210 HG",
+    "D-300 (NEW)": "D-300 (NEW)",
+    "D-320": "D-320",
+    "DCA-400": "DCA-400",
+    "DPB-700": "DPB-700",
+    "DS-320": "DS-320",
+    "DS-430 (5Y)": "DS-430",
+    "DS-500 (5Y)": "DS-500 (5Y)"
+  },
+  "drafts": [
+    {
+      "code": "DS-500 (5Y)",
+      "base_pay": 500,
+      "pay_balance_total": 30000,
+      "description": "Dayong Services 30,000 (5 years), from the old web app. Draft: review the monthly rate, pay-balance total, registration, and incentives."
+    },
+    {
+      "code": "DCA-400",
+      "base_pay": 400,
+      "pay_balance_total": 0,
+      "description": "Dayong Cash Assistance (10 years), from the old web app. Draft: review the monthly rate, pay-balance total, registration, and incentives."
+    },
+    {
+      "code": "D-179",
+      "base_pay": 179,
+      "pay_balance_total": 0,
+      "description": "Dayong Special Program, from the old web app. Draft: review the monthly rate, pay-balance total, registration, and incentives."
+    }
+  ],
+  "mas": {
+    "MARY ROSE RATILLA ALLARE": "LEG-2026-0006",
+    "MARY ROSE ALLARE": "LEG-2026-0006"
+  }
+}

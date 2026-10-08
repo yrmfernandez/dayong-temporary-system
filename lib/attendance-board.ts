@@ -77,17 +77,22 @@ export function periodRange(period: HistoryPeriod, date: string) {
   return { from: iso(from), to: iso(to), previous: iso(previous), next: iso(next), label };
 }
 
-export type HistoryTotals = { early: number; onTime: number; late: number; absent: number; leave: number; dayOff: number; workedHours: number; overtimeHours: number; lateMinutes: number; undertimeMinutes: number };
-const emptyTotals = (): HistoryTotals => ({ early: 0, onTime: 0, late: 0, absent: 0, leave: 0, dayOff: 0, workedHours: 0, overtimeHours: 0, lateMinutes: 0, undertimeMinutes: 0 });
+/** workedHours is the total (time-in to time-out); regularHours stops at the scheduled end (17:00). Neither counts the lunch break. */
+export type HistoryTotals = { early: number; onTime: number; late: number; absent: number; leave: number; dayOff: number; regularHours: number; workedHours: number; overtimeHours: number; lateMinutes: number; undertimeMinutes: number };
+const emptyTotals = (): HistoryTotals => ({ early: 0, onTime: 0, late: 0, absent: 0, leave: 0, dayOff: 0, regularHours: 0, workedHours: 0, overtimeHours: 0, lateMinutes: 0, undertimeMinutes: 0 });
 const round = (value: number) => Math.round(value * 100) / 100;
 
-function addTo(totals: HistoryTotals, record: AttendanceRecord, category: BoardCategory) {
+/** A record with its regular hours (`withDayTotals` in lib/attendance.ts); without them regular counts as 0. */
+type HistoryRecord = AttendanceRecord & { regularHours?: number };
+
+function addTo(totals: HistoryTotals, record: HistoryRecord, category: BoardCategory) {
   if (category === "Early") totals.early++;
   else if (category === "On time") totals.onTime++;
   else if (category === "Late") totals.late++;
   else if (category === "Absent" || category === "AWOL") totals.absent++;
   else if (category === "On leave") totals.leave++;
   else if (category === "Day Off") totals.dayOff++;
+  totals.regularHours = round(totals.regularHours + (record.regularHours ?? 0));
   totals.workedHours = round(totals.workedHours + record.workedHours);
   totals.overtimeHours = round(totals.overtimeHours + record.overtimeHours);
   totals.lateMinutes += record.lateMinutes;
@@ -98,7 +103,7 @@ function addTo(totals: HistoryTotals, record: AttendanceRecord, category: BoardC
  * Days with their Early / On time / Late / Absent / … category, totals for the period, and a breakdown: per day for a
  * week, per week (Monday start) for a month, per month for a year. Non-working days are listed but not counted.
  */
-export function summarizeHistory(period: HistoryPeriod, records: AttendanceRecord[], today: string) {
+export function summarizeHistory(period: HistoryPeriod, records: HistoryRecord[], today: string) {
   const days = [...records].sort((a, b) => b.attendanceDate.localeCompare(a.attendanceDate))
     .map((record) => ({ ...record, category: record.status === "Non-working Day" ? "Non-working day" as BoardCategory : boardCategory(record, record.attendanceDate, today) }));
   const totals = emptyTotals();

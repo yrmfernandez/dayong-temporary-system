@@ -54,9 +54,10 @@ export async function GET(request: Request) {
 }
 
 /**
- * Corrects a clocked-in employee's day: late minutes, or (action "clockOut") the time out for someone who forgot to clock
- * out or clocked out at the wrong time. Worked hours, overtime and undertime are recalculated exactly as at clock-out.
- * Every change and its reason are kept in the record's notes.
+ * Corrects a clocked-in employee's day: late minutes, (action "clockOut") the time out for someone who forgot to clock
+ * out or clocked out at the wrong time, or (action "resume") voiding today's clock-out made by mistake so the session
+ * continues. Worked hours, overtime and undertime are recalculated exactly as at clock-out (cleared on resume, until the
+ * employee clocks out again). Every change and its reason are kept in the record's notes.
  */
 export const PATCH = withEncoder(async (request: Request) => {
   const user = await getSessionUser();
@@ -64,6 +65,7 @@ export const PATCH = withEncoder(async (request: Request) => {
   try {
     const body = await request.json();
     if (body.action === "clockOut") return Response.json(await setClockOut(body, user.name));
+    if (body.action === "resume") return Response.json(await resumeClock(body, user.name));
     const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
     const date = typeof body.attendanceDate === "string" ? body.attendanceDate.trim() : "";
     const lateMinutes = Number(body.lateMinutes);
@@ -83,6 +85,27 @@ export const PATCH = withEncoder(async (request: Request) => {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to adjust late time." }, { status: 400 });
   }
 });
+
+/** Voids today's clock-out (clicked by mistake): the session runs on from the time in, and the employee clocks out again later. */
+async function resumeClock(body: Record<string, unknown>, by: string) {
+  const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
+  const date = typeof body.attendanceDate === "string" ? body.attendanceDate.trim() : "";
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (!employeeId || !validDate(date)) throw new Error("Choose the employee and date to resume.");
+  if (reason.length < 3) throw new Error("Enter the reason for resuming the clock.");
+  const today = getPhilippineDate();
+  if (date !== today) throw new Error("Only today's clock-out can be voided. For an earlier day, use Fix clock-out to set the right time.");
+  const { record, rowNumber } = await getAttendanceForEmployeeDate(employeeId, date);
+  if (!record || !rowNumber || !record.timeIn || record.status !== "Present") throw new Error("Only a clocked-in attendance record can be resumed.");
+  if (!record.timeOut) throw new Error("This employee has not clocked out; the clock is still running.");
+  const note = `Clock-out at ${record.timeOut} voided by ${by} on ${today}, clock resumed: ${reason}`;
+  const updated = {
+    ...record, timeOut: "", workedHours: 0, overtimeHours: 0, undertimeMinutes: 0,
+    notes: [record.notes, note].filter(Boolean).join(" | "), updatedAt: new Date().toISOString(),
+  };
+  await updateAttendanceRecord(rowNumber, updated);
+  return { success: true, message: `Clock-out at ${record.timeOut} voided for ${employeeId}. Their clock continues from ${record.timeIn} until they clock out again.`, record: updated };
+}
 
 async function setClockOut(body: Record<string, unknown>, by: string) {
   const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";

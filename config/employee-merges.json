@@ -1,0 +1,7 @@
+{
+  "note": "Employees recorded twice under different names, confirmed by the owner on 2026-10-08. scripts/merge-employees.mjs moves everything from duplicate to keep, then deletes duplicate.",
+  "merges": [
+    { "duplicate": "LEG-2026-0025", "keep": "MD-2026-0035", "names": "Capacite, C. -> Ma. De Corazon B. Capacite" },
+    { "duplicate": "LEG-2026-0005", "keep": "LEG-2026-0006", "names": "Allare, M. -> Allare, R. (Mary Rose Allare)" }
+  ]
+}

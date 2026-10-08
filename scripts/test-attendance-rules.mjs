@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clockOutFigures, lateMinutesFor, workingMinutesBetween } from "../lib/attendance.ts";
+import { clockOutFigures, dayTotals, lateMinutesFor, withDayTotals, workingMinutesBetween } from "../lib/attendance.ts";
 
 test("late starts after the 20-minute grace period and counts from 08:20", () => {
   assert.equal(lateMinutesFor("07:45"), 0);
@@ -26,6 +26,14 @@ test("worked hours leave out the lunch break; overtime and undertime follow the 
   assert.deepEqual(clockOutFigures("12:15", "12:45"), { workedHours: 0, overtimeHours: 0, undertimeMinutes: 240 });
 });
 
+test("regular hours stop at 17:00, total hours run to clock-out; neither counts the lunch break", () => {
+  assert.deepEqual(dayTotals("08:00", "17:00"), { regularHours: 8, totalHours: 8 });
+  assert.deepEqual(dayTotals("08:00", "19:00"), { regularHours: 8, totalHours: 10 });
+  assert.deepEqual(dayTotals("07:30", "12:30"), { regularHours: 4.5, totalHours: 4.5 });
+  assert.deepEqual(dayTotals("12:10", "18:00"), { regularHours: 4, totalHours: 5 });
+  assert.deepEqual(dayTotals("08:00", ""), { regularHours: 0, totalHours: 0 });
+});
+
 test("working minutes are zero for an empty or reversed span", () => {
   assert.equal(workingMinutesBetween(600, 600), 0);
   assert.equal(workingMinutesBetween(700, 600), 0);
@@ -49,9 +57,11 @@ test("history totals count each day once by category and group a year by month",
     day("2026-10-01", { timeIn: "08:35", timeOut: "17:00", workedHours: 7.42, lateMinutes: 15 }),
     day("2026-10-02", { status: "Absent" }),
     day("2026-10-03", { status: "Non-working Day" }),
-  ], "2026-10-07");
+  ].map(withDayTotals), "2026-10-07");
   assert.deepEqual([result.totals.early, result.totals.onTime, result.totals.late, result.totals.absent], [1, 1, 1, 1]);
-  assert.equal(result.totals.workedHours, 23.92);
+  // Hours come from the clock times (a day saved with the break counted is corrected): 8.08 + 8.33 + 7.42.
+  assert.equal(result.totals.workedHours, 23.83);
+  assert.equal(result.totals.regularHours, 23.33);
   assert.equal(result.totals.lateMinutes, 15);
   assert.equal(result.punctuality, 67);
   assert.deepEqual(result.breakdown.map((group) => [group.label, group.totals.early + group.totals.onTime + group.totals.late]), [["Sep", 2], ["Oct", 1]]);

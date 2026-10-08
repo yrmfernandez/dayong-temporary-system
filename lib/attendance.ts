@@ -31,7 +31,7 @@ export function lateMinutesFor(timeIn: string, scheduledTimeIn = SCHEDULED_TIME_
   return workingMinutesBetween(timeToMinutes(scheduledTimeIn) + LATE_GRACE_MINUTES, timeToMinutes(timeIn));
 }
 
-/** Worked hours, overtime hours and undertime minutes for a day, with the lunch break left out of worked and undertime. */
+/** Worked (total) hours, overtime hours and undertime minutes for a day, with the lunch break left out of worked and undertime. */
 export function clockOutFigures(timeIn: string, timeOut: string, scheduledTimeOut = SCHEDULED_TIME_OUT) {
   const start = timeToMinutes(timeIn), end = timeToMinutes(timeOut), scheduledEnd = timeToMinutes(scheduledTimeOut);
   return {
@@ -39,6 +39,30 @@ export function clockOutFigures(timeIn: string, timeOut: string, scheduledTimeOu
     overtimeHours: roundHours(Math.max(0, end - scheduledEnd)),
     undertimeMinutes: workingMinutesBetween(end, scheduledEnd),
   };
+}
+
+/**
+ * The day's two totals, both without the lunch break:
+ *   Regular hours = working time from time-in to the scheduled end (17:00), or to time-out when it is earlier.
+ *   Total hours   = working time from time-in to time-out, overtime included (the saved worked hours).
+ */
+export function dayTotals(timeIn: string, timeOut: string, scheduledTimeOut = SCHEDULED_TIME_OUT) {
+  if (!timeIn || !timeOut) return { regularHours: 0, totalHours: 0 };
+  const start = timeToMinutes(timeIn), end = timeToMinutes(timeOut), scheduledEnd = timeToMinutes(scheduledTimeOut || SCHEDULED_TIME_OUT);
+  return {
+    regularHours: roundHours(workingMinutesBetween(start, Math.min(end, scheduledEnd))),
+    totalHours: roundHours(workingMinutesBetween(start, end)),
+  };
+}
+
+/**
+ * A record with its regular and total hours worked out from its clock times. Days saved before October 7, 2026 kept
+ * the lunch break in their saved worked hours; this leaves it out for them too.
+ */
+export function withDayTotals<T extends { timeIn: string; timeOut: string; scheduledTimeOut?: string; workedHours: number }>(record: T): T & { regularHours: number } {
+  if (!record.timeIn || !record.timeOut) return { ...record, regularHours: 0 };
+  const { regularHours, totalHours } = dayTotals(record.timeIn, record.timeOut, record.scheduledTimeOut);
+  return { ...record, regularHours, workedHours: totalHours };
 }
 
 /*

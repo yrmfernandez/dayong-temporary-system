@@ -52,7 +52,7 @@ export function MyAttendanceHistory() {
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-95 text-violet-60"><History className="size-5" /></div>
           <div>
             <h2 className="text-xl font-bold text-violet-10">My Attendance History</h2>
-            <p className="mt-1 text-xs text-violet-40">Early is clocking in at or before 8:00 AM; late starts after 8:20 AM. Lunch (12–1 PM) is not counted.</p>
+            <p className="mt-1 text-xs text-violet-40">Early is clocking in at or before 8:00 AM; late starts after 8:20 AM. Lunch (12–1 PM) is not counted. Regular hours stop at 5:00 PM; total hours run to clock-out, overtime included.</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -73,11 +73,12 @@ export function MyAttendanceHistory() {
 
       {error && <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
-      <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-4 ${loading ? "opacity-60" : ""}`} aria-busy={loading}>
+      <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-5 ${loading ? "opacity-60" : ""}`} aria-busy={loading}>
         <Tile label="Days present" value={String(data?.present ?? 0)} note={data?.punctuality === null || data?.punctuality === undefined ? "No clock-ins yet" : `${data.punctuality}% early or on time`} tone="tone-success" />
         <Tile label="Late" value={`${t?.late ?? 0} day${t?.late === 1 ? "" : "s"}`} note={`${minutes(t?.lateMinutes ?? 0)} in total`} tone="tone-warning" />
         <Tile label="Absent" value={String(t?.absent ?? 0)} note={`${t?.leave ?? 0} on leave · ${t?.dayOff ?? 0} day off`} tone="tone-danger" />
-        <Tile label="Hours worked" value={(t?.workedHours ?? 0).toFixed(2)} note={`${(t?.overtimeHours ?? 0).toFixed(2)} overtime · ${minutes(t?.undertimeMinutes ?? 0)} undertime`} tone="tone-brand" />
+        <Tile label="Regular hours" value={(t?.regularHours ?? 0).toFixed(2)} note={`Clock-in to 5:00 PM · ${minutes(t?.undertimeMinutes ?? 0)} undertime`} tone="tone-brand" />
+        <Tile label="Total hours" value={(t?.workedHours ?? 0).toFixed(2)} note={`Clock-in to clock-out · ${(t?.overtimeHours ?? 0).toFixed(2)} overtime`} tone="tone-info" />
       </div>
 
       {data && period !== "week" && data.breakdown.length > 0 && (
@@ -90,12 +91,12 @@ export function MyAttendanceHistory() {
             {data.breakdown.map((group) => {
               const total = SEGMENTS.reduce((sum, s) => sum + Number(group.totals[s.key]), 0) || 1;
               return (
-                <li key={group.key} className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-3 text-sm sm:grid-cols-[7rem_minmax(0,1fr)_14rem]">
+                <li key={group.key} className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-3 text-sm sm:grid-cols-[7rem_minmax(0,1fr)_20rem]">
                   <span className="font-semibold text-violet-10">{group.label}</span>
                   <span className="flex h-3 overflow-hidden rounded-full bg-violet-95" role="img" aria-label={SEGMENTS.map((s) => `${group.totals[s.key]} ${s.label.toLowerCase()}`).join(", ")}>
                     {SEGMENTS.map((s) => Number(group.totals[s.key]) > 0 && <span key={s.key} className={`${s.tone} tone-bar h-full`} style={{ width: `${(Number(group.totals[s.key]) / total) * 100}%` }} title={`${group.totals[s.key]} ${s.label}`} />)}
                   </span>
-                  <span className="col-span-2 text-xs text-violet-40 tabular-nums sm:col-span-1 sm:text-right">{group.totals.early + group.totals.onTime + group.totals.late} present · {group.totals.late} late · {group.totals.absent} absent · {group.totals.workedHours.toFixed(1)} h</span>
+                  <span className="col-span-2 text-xs text-violet-40 tabular-nums sm:col-span-1 sm:text-right">{group.totals.early + group.totals.onTime + group.totals.late} present · {group.totals.late} late · {group.totals.absent} absent · {group.totals.regularHours.toFixed(1)} h regular · {group.totals.workedHours.toFixed(1)} h total</span>
                 </li>
               );
             })}
@@ -110,9 +111,9 @@ export function MyAttendanceHistory() {
         </div>
         {daysOpen && (data?.days.length ? (
           <div className="overflow-x-auto rounded-2xl border border-violet-90">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-violet-95/50 text-[11px] font-bold uppercase tracking-wider text-violet-40">
-                <tr>{["Date", "Status", "Time in", "Time out", "Worked", "Late", "Undertime"].map((heading) => <th key={heading} className="px-3 py-2.5">{heading}</th>)}</tr>
+                <tr>{["Date", "Status", "Time in", "Time out", "Regular", "Total", "Late", "Undertime"].map((heading) => <th key={heading} className="px-3 py-2.5">{heading}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-violet-90">
                 {data.days.map((day) => {
@@ -123,6 +124,7 @@ export function MyAttendanceHistory() {
                       <td className="px-3 py-2.5"><span className={`tone-chip ${category.tone} rounded-full px-2 py-0.5 text-[11px] font-bold`}>{category.label}</span></td>
                       <td className="px-3 py-2.5 tabular-nums">{day.timeIn || "—"}</td>
                       <td className="px-3 py-2.5 tabular-nums">{day.timeOut || "—"}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{day.timeOut ? `${day.regularHours.toFixed(2)} h` : "—"}</td>
                       <td className="px-3 py-2.5 tabular-nums">{day.timeOut ? `${day.workedHours.toFixed(2)} h` : "—"}</td>
                       <td className="px-3 py-2.5 tabular-nums">{day.lateMinutes ? minutes(day.lateMinutes) : "—"}</td>
                       <td className="px-3 py-2.5 tabular-nums">{day.undertimeMinutes ? minutes(day.undertimeMinutes) : "—"}</td>

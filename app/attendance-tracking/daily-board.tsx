@@ -40,7 +40,7 @@ export function DailyBoard() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   // One correction form at a time: late minutes, or the clock-out time for someone who forgot to clock out.
-  const [editing, setEditing] = useState<{ employeeId: string; mode: "late" | "clockOut"; hours: string; minutes: string; timeOut: string; reason: string } | null>(null);
+  const [editing, setEditing] = useState<{ employeeId: string; mode: "late" | "clockOut" | "resume"; hours: string; minutes: string; timeOut: string; reason: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -69,6 +69,7 @@ export function DailyBoard() {
     if (!editing) return;
     const body = editing.mode === "late"
       ? { employeeId: editing.employeeId, attendanceDate: date, lateMinutes: (Number(editing.hours) || 0) * 60 + (Number(editing.minutes) || 0), reason: editing.reason }
+      : editing.mode === "resume" ? { action: "resume", employeeId: editing.employeeId, attendanceDate: date, reason: editing.reason }
       : { action: "clockOut", employeeId: editing.employeeId, attendanceDate: date, timeOut: editing.timeOut, reason: editing.reason };
     setSaving(true); setError(""); setMessage("");
     try {
@@ -129,6 +130,7 @@ export function DailyBoard() {
               {isEditing ? <Button type="button" size="sm" variant="outline" onClick={() => setEditing(null)}>Cancel</Button> : <>
                 {board?.canAdjustLate && <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ employeeId: row.employeeId, mode: "late", hours: String(Math.floor((record?.lateMinutes ?? 0) / 60)), minutes: String((record?.lateMinutes ?? 0) % 60), timeOut: "", reason: "" })}>Adjust late</Button>}
                 {board?.canSetClockOut && <Button type="button" size="sm" variant={record?.timeOut ? "outline" : "default"} onClick={() => setEditing({ employeeId: row.employeeId, mode: "clockOut", hours: "", minutes: "", timeOut: record?.timeOut || "17:00", reason: "" })}>{record?.timeOut ? "Fix clock-out" : "Set clock-out"}</Button>}
+                {board?.canSetClockOut && record?.timeOut && board.date === board.today && <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ employeeId: row.employeeId, mode: "resume", hours: "", minutes: "", timeOut: "", reason: "" })}>Resume clock</Button>}
               </>}
             </div></td>}
           </tr>,
@@ -139,6 +141,13 @@ export function DailyBoard() {
               <Button type="button" disabled={saving || !editing.timeOut || editing.reason.trim().length < 3} onClick={() => void saveCorrection()}>{saving ? "Saving..." : "Save clock-out"}</Button>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Time in {record?.timeIn || "—"}{record?.timeOut ? `, currently out at ${record.timeOut}` : ", no clock-out yet"}. Worked hours, overtime and undertime are recalculated, and the change, who made it and the reason are kept in the attendance notes for payroll.</p>
+          </td></tr>,
+          isEditing && editing.mode === "resume" && <tr key={`${row.employeeId}-resume`} className="bg-muted/30 print:hidden"><td colSpan={8} className="p-3">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div className="space-y-1"><Label htmlFor="resume-reason">Reason *</Label><Input id="resume-reason" maxLength={200} placeholder="e.g. Clicked Clock Out by mistake at 10:15" value={editing.reason} onChange={(event) => setEditing({ ...editing, reason: event.target.value })} /></div>
+              <Button type="button" disabled={saving || editing.reason.trim().length < 3} onClick={() => void saveCorrection()}>{saving ? "Saving..." : "Void clock-out and resume"}</Button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Clocked out at {record?.timeOut}. Voiding it clears the clock-out, so their clock runs on from {record?.timeIn} and they clock out again when they leave. The change, who made it and the reason are kept in the attendance notes.</p>
           </td></tr>,
           isEditing && editing.mode === "late" && <tr key={`${row.employeeId}-late`} className="bg-muted/30 print:hidden"><td colSpan={8} className="p-3">
             <div className="grid gap-3 sm:grid-cols-[6rem_6rem_1fr_auto] sm:items-end">
