@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 
 import { currentDb, inTransaction, schema } from "@/lib/db";
 import { getPrograms, programColumns } from "@/lib/google-sheets-data";
@@ -175,10 +175,48 @@ export async function deleteUserAccount(id: string, actorUserId: string) {
   await deleteRowsWhere("Users", (row) => text(row[columns.id]) === id);
 }
 
-export async function updateMemberRecord(id: string, input: { contact: string; status: string }) {
-  const status = input.status.trim();
+/** Every detail of one member, for the Members edit form. */
+export type MemberRecordInput = {
+  memberNumber: string; surname: string; firstName: string; middleName: string; nameExtension: string;
+  birthdate: string; birthplace: string; gender: string; age: string; civilStatus: string; contact: string; address: string;
+  claimantName: string; claimantContact: string; claimantSameAddress: boolean; claimantAddress: string; status: string;
+};
+
+export async function getMemberRecord(id: string): Promise<MemberRecordInput & { id: string }> {
+  const [row] = await currentDb().select().from(schema.members).where(eq(schema.members.member_id, id));
+  if (!row) throw new Error("Member not found.");
+  const t = (value: unknown) => String(value ?? "").trim();
+  return {
+    id: row.member_id, memberNumber: t(row.member_number), surname: t(row.surname), firstName: t(row.first_name), middleName: t(row.middle_name), nameExtension: t(row.name_extension),
+    birthdate: t(row.birthdate).slice(0, 10), birthplace: t(row.birthplace), gender: t(row.gender), age: row.age == null ? "" : String(row.age), civilStatus: t(row.civil_status),
+    contact: t(row.member_contact), address: t(row.address), claimantName: t(row.claimant_name), claimantContact: t(row.claimant_contact),
+    claimantSameAddress: Boolean(row.claimant_same_address), claimantAddress: t(row.claimant_address), status: t(row.status),
+  };
+}
+
+/**
+ * Saves a member's details (October 8, 2026: every field, for Administrators; before, only contact and status). The
+ * database copies them onto the member's New Sale records, and a new PH number onto their accounts, collections and
+ * transfers (trigger cascade_member_change); the Audit Log keeps the previous values.
+ */
+export async function updateMemberRecord(id: string, input: MemberRecordInput) {
+  const t = (value: unknown) => String(value ?? "").trim();
+  const memberNumber = t(input.memberNumber), surname = t(input.surname), firstName = t(input.firstName), status = t(input.status);
+  if (!memberNumber) throw new Error("The PH member number is required.");
+  if (!surname || !firstName) throw new Error("Surname and first name are required.");
   if (!status) throw new Error("Member status is required.");
-  const updated = await currentDb().update(schema.members).set({ member_contact: input.contact.trim() || null, status }).where(eq(schema.members.member_id, id)).returning({ id: schema.members.member_id });
+  const birthdate = t(input.birthdate);
+  if (birthdate && (!/^\d{4}-\d{2}-\d{2}$/.test(birthdate) || Number.isNaN(Date.parse(`${birthdate}T00:00:00Z`)) || birthdate > new Date().toISOString().slice(0, 10))) throw new Error("Enter a valid birthdate (not in the future).");
+  const ageText = t(input.age), age = ageText ? Number(ageText) : null;
+  if (age !== null && (!Number.isInteger(age) || age < 0 || age > 130)) throw new Error("Age must be a whole number from 0 to 130.");
+  const [taken] = await currentDb().select({ id: schema.members.member_id }).from(schema.members).where(and(eq(schema.members.member_number, memberNumber), ne(schema.members.member_id, id)));
+  if (taken) throw new Error(`PH number ${memberNumber} already belongs to another member.`);
+  const updated = await currentDb().update(schema.members).set({
+    member_number: memberNumber, surname, first_name: firstName, middle_name: t(input.middleName) || null, name_extension: t(input.nameExtension) || null,
+    birthdate: birthdate || null, birthplace: t(input.birthplace) || null, gender: t(input.gender) || null, age, civil_status: t(input.civilStatus) || null,
+    member_contact: t(input.contact) || null, address: t(input.address) || null, claimant_name: t(input.claimantName) || null, claimant_contact: t(input.claimantContact) || null,
+    claimant_same_address: Boolean(input.claimantSameAddress), claimant_address: input.claimantSameAddress ? null : t(input.claimantAddress) || null, status,
+  }).where(eq(schema.members.member_id, id)).returning({ id: schema.members.member_id });
   if (!updated.length) throw new Error("Record not found.");
   return { id };
 }

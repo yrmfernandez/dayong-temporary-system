@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useEffect, useState } from "react";
 import { AdminDeletePanel } from "@/components/admin-delete";
+import { MemberEditForm } from "@/components/member-edit-form";
 import { InlineRow } from "@/components/inline-panel";
 import { SearchSelect } from "@/components/ui/search-select";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { readApiResponse } from "@/lib/api-response";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { MemberMam } from "@/components/member-mam";
-import { emptyDirectoryFilters, MEMBER_STATUSES, STANDING_FILTERS, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
+import { emptyDirectoryFilters, STANDING_FILTERS, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
@@ -132,7 +133,7 @@ export default function MembersPage() {
       <h3 className="font-semibold">All program enrollments</h3>
       <EnrollmentTable enrollments={selected.enrollments} canTransfer={canTransfer} transfers={transfers} onTransferred={(enrollmentId, toMas) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, mas: toMas } : item) }); setRevision((value) => value + 1); }} />
       <MemberMam memberId={selected.id} />
-</section>{editing?.id === member.id && <form className="mt-4 space-y-4 border-t pt-4" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch("/api/members/directory", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, contact: form.get("contact"), status: form.get("status") }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member updated." : result.message || "Unable to update member."); if (response.ok) { setSavedId(editing.id); setEditing(null); setSelected(null); setRevision((value) => value + 1); } }}><div className="flex justify-between"><h2 className="font-semibold">Edit {editing.name}</h2><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Contact number<input name="contact" className={fieldClass} defaultValue={editing.contact}/></label><label className="text-sm">Member status<select name="status" required className={fieldClass} defaultValue={editing.status || "Active"}>{unique([...MEMBER_STATUSES, editing.status]).map((status) => <option key={status} value={status}>{status}</option>)}</select><span className="mt-1 block text-xs text-muted-foreground">Choose Deceased when the member has died.</span></label></div><Button type="submit">Save member</Button></form>}</InlineRow>}</Fragment>)}{!visible.length && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">{totals.total ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
+</section>{editing?.id === member.id && <MemberEditForm memberId={editing.id} onCancel={() => setEditing(null)} onSaved={(text) => { setMessage(text); setSavedId(editing.id); setEditing(null); setSelected(null); setRevision((value) => value + 1); }} />}</InlineRow>}</Fragment>)}{!visible.length && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">{totals.total ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
         </table>
       </div>
       <div className="flex items-center justify-end gap-3"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-sm">Page {currentPage} of {pages}</span><Button type="button" variant="outline" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>

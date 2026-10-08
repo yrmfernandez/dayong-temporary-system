@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-39 page routes, 58 API handlers, 104 library files, 43 component files; 335 scanned source/configuration/public-text files in total.
+39 page routes, 58 API handlers, 104 library files, 44 component files; 336 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -33,7 +33,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/mam` | [app/mam/page.tsx](../app/mam/page.tsx) | `@/lib/mam-report`, `@/lib/account-rules`, `@/components/ui/button`, `@/components/ui/badge`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/mas-sales` | [app/mas-sales/page.tsx](../app/mas-sales/page.tsx) | `@/components/new-sales-form` |
 | `/master-data` | [app/master-data/page.tsx](../app/master-data/page.tsx) |  |
-| `/members` | [app/members/page.tsx](../app/members/page.tsx) | `@/components/admin-delete`, `@/components/inline-panel`, `@/components/ui/search-select`, `@/components/ui/input`, `@/lib/api-response`, `@/components/ui/button`, `@/components/status-badge`, `@/components/member-mam`, `@/lib/member-directory`, `@/lib/use-live-refresh` |
+| `/members` | [app/members/page.tsx](../app/members/page.tsx) | `@/components/admin-delete`, `@/components/member-edit-form`, `@/components/inline-panel`, `@/components/ui/search-select`, `@/components/ui/input`, `@/lib/api-response`, `@/components/ui/button`, `@/components/status-badge`, `@/components/member-mam`, `@/lib/member-directory`, `@/lib/use-live-refresh` |
 | `/my-entries` | [app/my-entries/page.tsx](../app/my-entries/page.tsx) | `@/components/entry-details`, `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/todays-entries`, `@/lib/use-live-refresh` |
 | `/new-sales` | [app/new-sales/page.tsx](../app/new-sales/page.tsx) | `@/components/new-sales-form` |
 | `/` | [app/page.tsx](../app/page.tsx) | `@/components/executive-dashboard`, `@/components/finance-dashboard`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/live-router-refresh`, `@/components/system-health-dashboard`, `@/components/ui/card`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auth-server`, `@/lib/dashboard-data`, `@/lib/employees`, `@/lib/executive-analytics`, `@/lib/finance-operations`, `@/lib/remittance-workflow`, `@/lib/system-health`, `@/lib/ui-preferences` |
@@ -168,7 +168,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/gross-sales.ts](../lib/gross-sales.ts) | `GrossSalesEntry`, `getGrossSalesEntries`, `GrossSalesBreakdown`, `filterGrossSales` | `@/lib/db` |
 | [lib/leave-data.ts](../lib/leave-data.ts) | `LeaveApprovalStatus`, `LeaveRequest`, `getLeaveRequestsForEmployee`, `addLeaveRequest`, `getAllLeaveRequests`, `updateLeaveRequestReview` | `@/lib/encoder-sheets`, `@/lib/google-sheets` |
 | [lib/mam-report.ts](../lib/mam-report.ts) | `MamAccount`, `monitoringMonths`, `buildMamReport` | `@/lib/account-rules` |
-| [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `ProgramInput`, `updateProgramRecord`, `ProgramBulkChanges`, `updateProgramsBulk`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/encoder-sheets`, `@/lib/sheet-rows`, `@/lib/users-sheet`, `@/lib/program-incentive-store` |
+| [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `ProgramInput`, `updateProgramRecord`, `ProgramBulkChanges`, `updateProgramsBulk`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `MemberRecordInput`, `getMemberRecord`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/encoder-sheets`, `@/lib/sheet-rows`, `@/lib/users-sheet`, `@/lib/program-incentive-store` |
 | [lib/member-directory-data.ts](../lib/member-directory-data.ts) | `loadMemberDirectory`, `DirectoryQuery`, `queryMemberDirectory` | `@/lib/db`, `@/lib/account-data`, `@/lib/member-directory`, `@/lib/member-scope`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [lib/member-directory.ts](../lib/member-directory.ts) | `DirectoryEnrollment`, `DirectoryMember`, `DECEASED_STATUS`, `MEMBER_STATUSES`, `STANDING_FILTERS`, `Standing`, `matchesStanding`, `DirectoryFilters`, `emptyDirectoryFilters`, `MemberRecord`, `EnrollmentRecord`, `CollectorRecord`, `buildMemberDirectory`, `filterMemberDirectory` | — |
 | [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
@@ -246,6 +246,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/gross-sales-drilldown.tsx](../components/gross-sales-drilldown.tsx) | `GrossSalesDrilldown` | `@/components/executive-charts`, `@/components/ui/input`, `@/lib/gross-sales` |
 | [components/inline-panel.tsx](../components/inline-panel.tsx) | `InlinePanel`, `InlineRow` | `@/lib/utils` |
 | [components/live-router-refresh.tsx](../components/live-router-refresh.tsx) | `LiveRouterRefresh` | `@/lib/use-live-refresh` |
+| [components/member-edit-form.tsx](../components/member-edit-form.tsx) | `MemberEditForm` | `@/components/ui/button`, `@/lib/api-response`, `@/lib/member-directory`, `@/lib/master-data-crud` |
 | [components/member-mam.tsx](../components/member-mam.tsx) | `MemberMam` | `@/components/status-badge` |
 | [components/metric-tile.tsx](../components/metric-tile.tsx) | `MetricTile` | `@/components/status-badge` |
 | [components/my-attendance-history.tsx](../components/my-attendance-history.tsx) | `MyAttendanceHistory` | `@/lib/attendance-board` |

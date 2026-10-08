@@ -3,7 +3,7 @@ import { canDeleteRecords } from "@/lib/admin-delete";
 import { ownMembersScope } from "@/lib/member-scope";
 import { canManageUsers, userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
-import { deleteMemberRecord, updateMemberRecord } from "@/lib/master-data-crud";
+import { deleteMemberRecord, getMemberRecord, updateMemberRecord } from "@/lib/master-data-crud";
 import { queryMemberDirectory } from "@/lib/member-directory-data";
 import { emptyDirectoryFilters, type DirectoryFilters } from "@/lib/member-directory";
 import { canTransferMembers, getTransferHistory } from "@/lib/member-transfer";
@@ -16,6 +16,7 @@ export async function GET(request: Request) {
   if (!user) return Response.json({ success: false, message: "You do not have access to Members." }, { status: 403 });
   try {
     const params = new URL(request.url).searchParams;
+    if (params.get("memberId")) return memberRecord(params.get("memberId")!.trim());
     const value = (key: string) => (params.get(key) ?? "").trim();
     const filters: DirectoryFilters = { ...emptyDirectoryFilters, search: value("search"), branch: value("branch"), mas: value("mas"), program: value("program"), status: value("status"), accountStatus: value("accountStatus"), standing: value("standing") };
     const sort = (SORTS as readonly string[]).includes(value("sort")) ? value("sort") as (typeof SORTS)[number] : "name";
@@ -31,9 +32,25 @@ export async function GET(request: Request) {
   }
 }
 
+/** One member's full record for the Members edit form: ?memberId= (manage-users only). */
+async function memberRecord(id: string) {
+  if (!(await canManageUsers())) return Response.json({ success: false, message: "You are not allowed to edit members." }, { status: 403 });
+  try { return Response.json({ success: true, member: await getMemberRecord(id) }, { headers: { "Cache-Control": "private, no-store" } }); }
+  catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load the member." }, { status: 400 }); }
+}
+
 export const PATCH = withEncoder(async (request: Request) => {
   if (!(await canManageUsers())) return Response.json({ success: false, message: "You are not allowed to update members." }, { status: 403 });
-  try { const body = await request.json(); const id = typeof body.id === "string" ? body.id.trim() : ""; return Response.json({ success: true, member: await updateMemberRecord(id, { contact: typeof body.contact === "string" ? body.contact : "", status: typeof body.status === "string" ? body.status : "" }) }); }
+  try {
+    const body = await request.json();
+    const id = typeof body.id === "string" ? body.id.trim() : "";
+    const text = (key: string) => (typeof body[key] === "string" ? body[key] : "");
+    return Response.json({ success: true, member: await updateMemberRecord(id, {
+      memberNumber: text("memberNumber"), surname: text("surname"), firstName: text("firstName"), middleName: text("middleName"), nameExtension: text("nameExtension"),
+      birthdate: text("birthdate"), birthplace: text("birthplace"), gender: text("gender"), age: text("age"), civilStatus: text("civilStatus"), contact: text("contact"), address: text("address"),
+      claimantName: text("claimantName"), claimantContact: text("claimantContact"), claimantSameAddress: body.claimantSameAddress === true, claimantAddress: text("claimantAddress"), status: text("status"),
+    }) });
+  }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to update member." }, { status: 400 }); }
 });
 

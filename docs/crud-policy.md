@@ -6,7 +6,7 @@ CRUD is implemented according to the type of record and its audit requirements.
 | --- | --- | --- | --- | --- |
 | Branches | Branch form | Branch directory | Full details and status | Delete only when no employee assignment or member enrollment references it; otherwise mark inactive |
 | Programs | Program and incentive form | Program directory | Details, status, base pay, and incentive tiers | Delete only when no member enrollment references it; otherwise mark inactive |
-| Members | New Sales registration | Member directory and MAM | Contact number and master status | Delete only without a program enrollment; enrolled members retain their history. Administrators: permanent delete with every account, sale and collection |
+| Members | New Sales registration | Member directory and MAM | Every member detail for Administrators / manage-users (PH number, name parts, birthdate, birthplace, sex, age, civil status, contact, address, claimant, status; October 8, 2026); copies on New Sales, accounts and collections follow | Delete only without a program enrollment; enrolled members retain their history. Administrators: permanent delete with every account, sale and collection |
 | Employees | Employee registration | Employee directory | Details, roles, branches, and status | Delete only when no login account references the employee |
 | User Accounts | Administrator account form | Account directory | Status, roles, and optional password reset (the Employee ID is the sign-in ID and is not editable) | Administrators cannot delete their current signed-in account |
 | Expenses and Cash Transactions | Finance forms | Finance ledger | Void lifecycle | Posted financial records are voided with a reason |
