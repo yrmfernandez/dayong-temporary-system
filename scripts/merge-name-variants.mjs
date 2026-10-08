@@ -3,6 +3,8 @@
  * "Potenciando" / "Potenciado"). Pairs come from config/name-merges.json, chosen by the owner:
  *   { "merges": [ { "keep": "<enrollment ID>", "other": "<enrollment ID>", "note": "...", "useOtherName": true } ] }
  * useOtherName: the other spelling is the correct one (e.g. "Potenciado", owner October 8, 2026); the kept member takes it.
+ * mas: when the two accounts have different MAS, the owner says which is right ("keep" or "other"); without it the pair is
+ * left as it is (October 8, 2026: Potenciado was merged under the kept account's MAS, but belonged to the other's).
  *
  *   node scripts/merge-name-variants.mjs                      dry run on staging
  *   node scripts/merge-name-variants.mjs --apply              merge on staging
@@ -60,6 +62,9 @@ try {
       if (!keep || !other) return { status: "missing", reason: `${!keep ? "kept" : "other"} account not found (already merged?)` };
       if (keep.program_id !== other.program_id) return { status: "left", reason: "different programs" };
       if (keep.has_sale && other.has_sale) return { status: "left", reason: "both accounts have a New Sale" };
+      const differentMas = text(keep.mas).toLowerCase() !== text(other.mas).toLowerCase();
+      if (differentMas && !["keep", "other"].includes(pair.mas)) return { status: "left", reason: `different MAS ("${keep.mas}" and "${other.mas}"): add "mas": "keep" or "other" to the pair` };
+      const masOfMerged = differentMas && pair.mas === "other" ? other.mas : keep.mas;
       // The kept account takes the other's payments under its own DOI and rate; they must fit as one history.
       const account = { id: keep.enrollment_id, memberId: keep.member_id, memberNumber: "", programId: keep.program_id, doi: keep.doi, branch: "", mas: "",
         basePay: keep.base_pay, payBalanceTotal: keep.pay_balance_total, storedStatus: "", flexible: keep.flexible, maxMonthlyPayment: keep.max_monthly_payment };
@@ -106,7 +111,8 @@ try {
         await tx`delete from members where member_id = ${other.member_id}`;
         memberRemoved = true;
       }
-      await tx`update member_programs set account_status = ${state.status} where enrollment_id = ${keep.enrollment_id}`;
+      // The account keeps the MAS the owner chose; the database relinks it to that employee.
+      await tx`update member_programs set account_status = ${state.status}, mas = ${masOfMerged} where enrollment_id = ${keep.enrollment_id}`;
       await tx`insert into record_corrections ${tx({ correction_id: `COR-MRG-${createHash("sha1").update(`${keep.enrollment_id}|${other.enrollment_id}`).digest("hex").slice(0, 10).toUpperCase()}`,
         module: "Same-person merge", record_id: keep.enrollment_id, reason: `Same person, different spelling: ${other.name} merged into ${keep.name} (owner, October 8, 2026)`,
         before_json: { keep: keep.enrollment_id, other: other.enrollment_id, otherMember: other.member_id, movedCollections: other.payments.map((payment) => payment.id) },
