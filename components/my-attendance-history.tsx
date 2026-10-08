@@ -124,7 +124,7 @@ export function MyAttendanceHistory() {
                       <td className="px-3 py-2.5"><span className={`tone-chip ${category.tone} rounded-full px-2 py-0.5 text-[11px] font-bold`}>{category.label}</span></td>
                       <td className="px-3 py-2.5 tabular-nums">{day.timeIn || "—"}</td>
                       <td className="px-3 py-2.5 tabular-nums">{day.timeOut || "—"}</td>
-                      <td className="px-3 py-2.5 tabular-nums">{day.timeOut ? `${day.regularHours.toFixed(2)} h` : "—"}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{day.timeOut ? `${(day.regularHours ?? 0).toFixed(2)} h` : "—"}</td>
                       <td className="px-3 py-2.5 tabular-nums">{day.timeOut ? `${day.workedHours.toFixed(2)} h` : "—"}</td>
                       <td className="px-3 py-2.5 tabular-nums">{day.lateMinutes ? minutes(day.lateMinutes) : "—"}</td>
                       <td className="px-3 py-2.5 tabular-nums">{day.undertimeMinutes ? minutes(day.undertimeMinutes) : "—"}</td>

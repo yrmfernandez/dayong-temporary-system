@@ -274,7 +274,7 @@ export default function AttendancePage() {
                       {isComplete ? "Total Session" : "Active Session"}
                     </span>
                     <span className="font-mono text-base font-black text-violet-60 sm:text-lg">
-                      {formatDuration(activeSeconds)}
+                      {formatDuration(totalSeconds)}
                     </span>
                   </div>
                 )}
