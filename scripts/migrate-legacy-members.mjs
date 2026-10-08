@@ -67,6 +67,11 @@ const repair = args.includes("--repair");
 const dropExisting = args.includes("--drop-existing");
 const PENDING_PREFIX = "Legacy Pending";
 const sourceArgs = args.filter((a) => !a.startsWith("--"));
+// --source-title=NAME reads a newer download of the same workbook as if it were the file imported before (October 8,
+// 2026: the October 1 import was "Data-Base-Old"). Record IDs come from title, tab and row, so rows already imported
+// keep their IDs and are skipped, and only rows added since are imported. The Google Form tabs only grow at the bottom
+// (checked: 62,881 of 62,890 rows still match their record by timestamp).
+const sourceTitle = args.find((a) => a.startsWith("--source-title="))?.slice("--source-title=".length) ?? "";
 
 const auth = new google.auth.GoogleAuth({ credentials: { client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL, private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n") }, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
 const sheets = google.sheets({ version: "v4", auth });
@@ -248,7 +253,7 @@ const collectionRows = [];
 const col = (keys, ...names) => { for (const n of names) { const i = keys.findIndex((k) => k === n || k.startsWith(n)); if (i >= 0) return i; } return -1; };
 const sources = fromPending
   ? await loadLegacySources([DB], () => sheets, { tabPrefix: PENDING_PREFIX })
-  : await loadLegacySources(sourceArgs, () => sheets);
+  : (await loadLegacySources(sourceArgs, () => sheets)).map((source) => (sourceTitle ? { ...source, title: sourceTitle } : source));
 for (const source of sources) {
   for (const { title: tab, rows: tabRows, firstRow } of source.tabs) {
     const [headers = [], ...rows] = tabRows;
@@ -610,6 +615,74 @@ const entryKey = (value) => String(value ?? "").toUpperCase().replace(/[^A-Z0-9]
 const usedOr = new Set(db.Collections.slice(1).filter((r) => str(r[19]).toLowerCase() === "posted").map((r) => entryKey(r[8])).filter(Boolean));
 const usedApplications = new Set(db.Sales.slice(1).map((r) => entryKey(r[28])).filter(Boolean));
 const duplicateFlags = (rows, keyIndex, used) => rows.map((row) => { const key = entryKey(row[keyIndex]); const duplicate = Boolean(key && used.has(key)); if (key) used.add(key); return { legacy_duplicate: duplicate }; });
+
+// A newer download of the workbook (--source-title, October 8, 2026): new payments on an account already in the database
+// are checked against the payments the database holds for it (repairs or later edits may number them differently from
+// this file). If they do not fit, they are held back and listed instead of written.
+const storedDoi = new Map(db["Member programs"].slice(1).map((r) => [str(r[0]), parseDate(r[4]).date]));
+const storedPayments = new Map();
+for (const r of db.Collections.slice(1)) {
+  if (str(r[19]).toLowerCase() !== "posted" || !str(r[2])) continue;
+  const list = storedPayments.get(str(r[2])) ?? storedPayments.set(str(r[2]), []).get(str(r[2]));
+  list.push({ id: str(r[0]), enrollmentId: str(r[2]), orDate: parseDate(r[9]).date, orNumber: str(r[8]), monthFrom: str(r[11]), monthTo: str(r[12]), nopFrom: Number(r[13]), nopTo: Number(r[14]), amount: Number(r[10]), dateRemitted: "", mas: "" });
+}
+const heldNew = [];
+// An account the database no longer has, with no New Sale and every payment already in the database under another
+// account, was merged into that account (scripts/merge-name-variants.mjs): it is not created again.
+const mergedAway = valid.filter((e) => !existingIds.has(e.id) && !e.sale && e.payments.length && e.payments.every((pay) => existingIds.has(pay.id)));
+if (mergedAway.length) {
+  for (const e of mergedAway) valid.splice(valid.indexOf(e), 1);
+  console.log(`
+${mergedAway.length} account(s) were merged into another account earlier (all their payments are there): not created again.`);
+}
+// A new account some of whose payments the database already has under another account would split one person's history
+// (e.g. a New Sale row added later for someone imported from collections only): held back and listed for review.
+const splitting = valid.filter((e) => !existingIds.has(e.id) && e.payments.some((pay) => existingIds.has(pay.id)));
+if (splitting.length) {
+  for (const e of splitting) valid.splice(valid.indexOf(e), 1);
+  console.log(`
+${splitting.length} new account(s) held back: part of their payments are already in the database under another account (review, e.g. a New Sale added later):`);
+  for (const e of splitting) console.log(`  ${(e.sale ?? e.rows[0]).where}: ${e.payments.filter((pay) => existingIds.has(pay.id)).length} payment(s) already elsewhere, ${e.payments.filter((pay) => !existingIds.has(pay.id)).length} new`);
+}
+// A new row whose receipt (OR number digits, OR date and amount) is already posted in the database was encoded twice,
+// in the old sheet and in this system since October 5: it is skipped, not imported again.
+const digitsOf = (value) => str(value).replace(/\D/g, "").replace(/^0+/, "");
+const postedReceipts = new Set(db.Collections.slice(1).filter((r) => str(r[19]).toLowerCase() === "posted").map((r) => `${digitsOf(r[8])}|${parseDate(r[9]).date}|${Number(r[10])}`));
+let alreadyEncoded = 0;
+for (const e of valid) {
+  const before = e.payments.length;
+  e.payments = e.payments.filter((pay) => existingIds.has(pay.id) || !digitsOf(pay.orNumber) || !postedReceipts.has(`${digitsOf(pay.orNumber)}|${pay.orDate}|${Number(pay.amount)}`));
+  alreadyEncoded += before - e.payments.length;
+}
+if (alreadyEncoded) console.log(`
+${alreadyEncoded} new collection row(s) are already in the database with the same OR number, OR date and amount (encoded in this system too): skipped.`);
+for (const e of valid) {
+  if (!existingIds.has(e.id)) continue;
+  const fresh = e.payments.filter((pay) => !existingIds.has(pay.id));
+  if (!fresh.length) continue;
+  const account = { id: e.id, memberId: e.member.id, memberNumber: "", programId: e.program.id, doi: storedDoi.get(e.id) || e.doi, branch: "", mas: "", basePay: e.program.basePay, payBalanceTotal: e.program.payBalanceTotal, storedStatus: "", flexible: e.program.flexible };
+  try { accountState(account, [...(storedPayments.get(e.id) ?? []), ...fresh], today); }
+  catch (error) {
+    e.payments = e.payments.filter((pay) => existingIds.has(pay.id));
+    heldNew.push(...fresh.map((pay) => `${pay.row.where}: ${error.message.replace(/^(Payment|Account) \S+ /, "")}`));
+  }
+}
+const writtenMembers0 = new Set();
+const newCounts = { members: 0, accounts: 0, sales: 0, payments: 0, paymentsOnExistingAccounts: 0 };
+for (const e of valid) {
+  if (!existingIds.has(e.member.id) && !writtenMembers0.has(e.member.id)) { writtenMembers0.add(e.member.id); newCounts.members++; }
+  if (!existingIds.has(e.id)) newCounts.accounts++;
+  if (e.sale && !existingIds.has(hashId("SALE", e.sale.ref))) newCounts.sales++;
+  const fresh = e.payments.filter((pay) => !existingIds.has(pay.id)).length;
+  newCounts.payments += fresh;
+  if (existingIds.has(e.id)) newCounts.paymentsOnExistingAccounts += fresh;
+}
+console.log(`\nNot yet in the database (would be written): ${newCounts.members} members, ${newCounts.accounts} accounts, ${newCounts.sales} New Sales, ${newCounts.payments} collections (${newCounts.paymentsOnExistingAccounts} of them on accounts already in the database).`);
+if (heldNew.length) {
+  console.log(`New collections held back because they do not fit the account's history in the database (${heldNew.length}):`);
+  for (const line of heldNew.slice(0, 40)) console.log(`  ${line}`);
+  writeFileSync(`backups/legacy-held-new-${stamp}.txt`, heldNew.join("\n"));
+}
 if (!apply) {
   const orRepeats = valid.reduce((count, e) => count + e.payments.filter((pay) => !existingIds.has(pay.id) && usedOr.has(entryKey(pay.orNumber))).length, 0);
   console.log(`\n${orRepeats} payment(s) reuse an OR number already in the database and would be imported flagged as duplicates.`);

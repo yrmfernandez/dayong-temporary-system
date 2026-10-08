@@ -1,0 +1,9 @@
+{
+  "note": "Draft or legacy program -> the finalized program it belongs to, each confirmed by the owner (scripts/list-programs.mjs). Applied by scripts/move-program-accounts.mjs.",
+  "moves": [],
+  "decisions": [
+    "D-270 (300) (DP-0015) is the DC-300 plan at a ₱270 rate; it stays its own program (owner, October 8, 2026: option A). Its 261 accounts all pay ₱270 a month, which does not fit DC-300 at ₱300.",
+    "D-300 and D-300 (BRACKETING) are different programs. DC-300 is its own program.",
+    "Finalized on production (owner): D-180, D-190, D-230, D-280, D-290, D-300, D-300 (BRACKETING); their accounts are already in them, nothing to move."
+  ]
+}

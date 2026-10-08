@@ -31,8 +31,10 @@ if (wrong.length) { console.error(`${FILE}: ${wrong.join(", ")} must point at pr
 
 console.log(`PRODUCTION (${PRODUCTION_REF}): ${command.join(" ")}\n`);
 const env = { ...process.env, ...values };
-// node runs directly so its arguments keep their quoting; npm and npx need a shell on Windows.
+// node runs directly so its arguments keep their quoting; npm and npx need a shell on Windows, so an argument with a
+// space or shell character is quoted again (a file name such as "2026 DATABASE (NS + COLL).xlsx" stays one argument).
+const quote = (arg) => (/^[\w@%+=:,./\-]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '\\"')}"`);
 const result = command[0] === "node"
   ? spawnSync(process.execPath, command.slice(1), { stdio: "inherit", env })
-  : spawnSync(command.join(" "), { stdio: "inherit", shell: true, env });
+  : spawnSync(command.map(quote).join(" "), { stdio: "inherit", shell: true, env });
 process.exit(result.status ?? 1);

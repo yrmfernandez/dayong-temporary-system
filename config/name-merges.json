@@ -1,0 +1,180 @@
+{
+  "note": "Accounts of one person split by a spelling difference (scripts/find-name-variants.mjs). The other account merges into keep. Chosen October 8, 2026: all listed pairs except #9, #10, #11, #21, #23, #27, #28, #42-#49 (likely different people); merge-name-variants.mjs refuses pairs whose payments overlap.",
+  "merges": [
+    {
+      "keep": "ENR-LEG-71245C776C",
+      "other": "ENR-LEG-D64C693273",
+      "note": "#1 EVELYN EBORDER into EVELYN EBORDE (D-210 HG, AGDAO)"
+    },
+    {
+      "keep": "ENR-LEG-E26E4E4A96",
+      "other": "ENR-LEG-F66493612C",
+      "note": "#2 KISHA KAREN POTENCIADO into KISHA KAREN POTENCIANDO (D-300 (BRACKETING), BALIOK) — correct name: Potenciado (owner)",
+      "useOtherName": true
+    },
+    {
+      "keep": "ENR-LEG-DA3F1A7EA7",
+      "other": "ENR-LEG-C8FE9652F5",
+      "note": "#3 RECHILLE MAE HERNANDEZ into RACHILLE MAE HERNANDEZ (D-300 (BRACKETING), BUHANGIN)"
+    },
+    {
+      "keep": "ENR-LEG-33AA22CC59",
+      "other": "ENR-LEG-8E764567E3",
+      "note": "#4 FREDDIE AWIL BETIL into FREDIE AWIL BETEL (D-300 (BRACKETING), CALINAN)"
+    },
+    {
+      "keep": "ENR-LEG-C2C085C46F",
+      "other": "ENR-LEG-4D8ACC102C",
+      "note": "#5 JAMIEN GRACE BARRETE into JASMIEN GRACE BARRETE (D-420, CALINAN)"
+    },
+    {
+      "keep": "ENR-LEG-1A4FCFD58D",
+      "other": "ENR-LEG-8F5134EA1F",
+      "note": "#6 JOEY G. BELTRAN into JOEL G. BELTRAN Jr. (D-210 HG, CALINAN)"
+    },
+    {
+      "keep": "ENR-LEG-777078E53D",
+      "other": "ENR-LEG-C8F684A172",
+      "note": "#7 CARMELITA C. LASCUÑA into CARMELITO C. LASCUÑA (D-210 HG, CALINAN)"
+    },
+    {
+      "keep": "ENR-LEG-AA9DFDE63F",
+      "other": "ENR-LEG-E8A1F61AC9",
+      "note": "#8 VICENT LEONOR into VICENTA LEONOR (DFP-480, CALINAN)"
+    },
+    {
+      "keep": "ENR-LEG-D899FBD407",
+      "other": "ENR-LEG-76B52AB101",
+      "note": "#12 ROSITA PASTOR into ROLITA PASTOR (D-210 HG, MATINA)"
+    },
+    {
+      "keep": "ENR-LEG-8FC03AA22E",
+      "other": "ENR-LEG-72A3508665",
+      "note": "#13 RENANTE CAGUD SACASAN into RENATE CAGUD SACASAN (D-300 (BRACKETING), MATINA)"
+    },
+    {
+      "keep": "ENR-LEG-685B032E4A",
+      "other": "ENR-LEG-C42B9220A6",
+      "note": "#14 DANNY DIGAO into DANNY B. DIGAL (D-210 HG, MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-64DF210402",
+      "other": "ENR-LEG-ED78693B2D",
+      "note": "#15 JHASSELL SOBRERA into JHASSEL P. SOBRERA (D-210 HG, MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-D1BA0B83BB",
+      "other": "ENR-LEG-EEBAEE5D59",
+      "note": "#16 ELMA SALO into ELMA SATO (D-300 (BRACKETING), MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-0B95E50ED7",
+      "other": "ENR-LEG-D569F3B67B",
+      "note": "#17 JILBERT ORTIGA into JOBERT ORTIGA (D-420, MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-FB418CC054",
+      "other": "ENR-LEG-5CB6ABDD01",
+      "note": "#18 ALICIA PONDOC into ALECIA PONDOC (D-230, MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-0A9B944E3F",
+      "other": "ENR-LEG-00A9CD4ADF",
+      "note": "#19 MERNING PRADO into MERING PRADO (D-230, MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-7C75AD02F4",
+      "other": "ENR-LEG-D4615CC819",
+      "note": "#20 EMMALINDA POLACIO into EMMALINDA PALACIO (D-180, MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-2FC52CD081",
+      "other": "ENR-LEG-A418F0117B",
+      "note": "#22 FERLY TABARANZA into FELYN TABARANZA (D-190, MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-3C963952A6",
+      "other": "ENR-LEG-87BA57E0F0",
+      "note": "#24 JAY LORERIANA into JAY LORENIANA (D-280, MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-6E4DDFE41C",
+      "other": "ENR-LEG-1C54304C8D",
+      "note": "#25 ANALYN PAMORIL BAROY into ANANLYN PAMORIL BAROY (D-460 (59B), MONTEVISTA)"
+    },
+    {
+      "keep": "ENR-LEG-05B8EEAF39",
+      "other": "ENR-LEG-91C287BDEC",
+      "note": "#26 LOURDES AGAD ANDAN into LOUDES AGAD ANDAN (D-320, NABUNTURAN) — correct name: the other spelling (owner)",
+      "useOtherName": true
+    },
+    {
+      "keep": "ENR-LEG-FCA4EB7D88",
+      "other": "ENR-LEG-A6A932CC64",
+      "note": "#29 TERESITA JUAB into TERESA JUAB (D-270 (300), NABUNTURAN)"
+    },
+    {
+      "keep": "ENR-LEG-52A93BDFE3",
+      "other": "ENR-LEG-85952F5AAE",
+      "note": "#30 RONA TOLOSA into ROWENA TOLOSA (D-230, TAGUM)"
+    },
+    {
+      "keep": "ENR-LEG-0EBE7286E1",
+      "other": "ENR-LEG-FA593521B4",
+      "note": "#31 MERCIDITA LISONDRA into MERCEDITA LISONDRA (D-320, TIBUNGCO)"
+    },
+    {
+      "keep": "ENR-LEG-5BD44CEA59",
+      "other": "ENR-LEG-CF7960B9C0",
+      "note": "#32 ROLLY BONGATO NAVARRO into ROLLY BONGATO NAVARO (D-350 (5Y), BALIOK)"
+    },
+    {
+      "keep": "ENR-LEG-2BD0070D7A",
+      "other": "ENR-LEG-61EBF8A6FD",
+      "note": "#33 LEONARDO LIZADA BAGISAN into LEONARDO LIZADA BASIGAN (D-350 (5Y), CALINAN)"
+    },
+    {
+      "keep": "ENR-LEG-C507A14B50",
+      "other": "ENR-LEG-55A974670B",
+      "note": "#34 RENATE CAGUD SACASAN into RENANTE CAGUD SACASAN (D-350 (5Y), MATINA)"
+    },
+    {
+      "keep": "ENR-LEG-E4D819AE55",
+      "other": "ENR-LEG-2F8AC34FF8",
+      "note": "#35 AMALIA EROYLA JULIAN into AMALIA ERAYLA JULIAN (D-350 (5Y), MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-A1DAACA239",
+      "other": "ENR-LEG-0E09D8E960",
+      "note": "#36 ALICIA BOLONG PAÑA into ALICIA BOLONG PANA (D-350 (5Y), MINTAL) — correct name: the other spelling (owner)",
+      "useOtherName": true
+    },
+    {
+      "keep": "ENR-LEG-FA296863DC",
+      "other": "ENR-LEG-FBE899566F",
+      "note": "#37 DASSEL JOY NECESARIO PAÑA into DASSEL JOY NECESARIO PANA (D-300 (BRACKETING), MINTAL)"
+    },
+    {
+      "keep": "ENR-LEG-0F1F9197CA",
+      "other": "ENR-LEG-B8FECB6CDA",
+      "note": "#38 ALAIZA MAE DALES MANGCO into ALAILA MAE DALES MANGCO (D-300 (BRACKETING), MINTAL) — correct name: the other spelling (owner)",
+      "useOtherName": true
+    },
+    {
+      "keep": "ENR-LEG-F1022CE836",
+      "other": "ENR-LEG-701099F8FF",
+      "note": "#39 JONALYN TROZO CANONO into JONAYN TROZO CANONO (D-350 (5Y), MONTEVISTA) — correct name: the other spelling (owner)",
+      "useOtherName": true
+    },
+    {
+      "keep": "ENR-LEG-C1D511B0FE",
+      "other": "ENR-LEG-AE2AC894BF",
+      "note": "#40 WINEFREDA TALINIS into WINEFREDA C. TALINES (D-350 (5Y), TIBUNGCO)"
+    },
+    {
+      "keep": "ENR-LEG-EF7730342E",
+      "other": "ENR-LEG-EFD1823D15",
+      "note": "#41 ANTONIO SEVILLIZA HABACON into ANTONIO SEVILLIZA HABALON (D-350 (5Y), TORIL)"
+    }
+  ]
+}
