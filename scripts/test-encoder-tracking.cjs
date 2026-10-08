@@ -28,8 +28,6 @@ beforeEach(async () => {
   const { rows } = await pglite.query("select string_agg(format('%I', tablename), ', ') as names from pg_tables where schemaname = 'public'");
   await pglite.exec(`truncate ${rows[0].names} restart identity cascade`);
   globalThis.dayongTestStorage.clear();
-  // Encoding closes at 3:00 PM Manila: tests run at 9:00 AM Manila unless they set another time.
-  globalThis.dayongTestNow = '2026-10-05T01:00:00Z';
 });
 /** Inserts rows (objects keyed by column name) into a database table. */
 async function seed(table, rows, { skipExisting = false } = {}) {
@@ -654,20 +652,14 @@ for (const existingMember of [false, true]) {
   });
 }
 
-test('nobody saves New Sales or Collections from 3:00 PM until midnight', async () => {
+test('New Sales and Collections can be saved after 3:00 PM (Clearing records the time)', async () => {
   const admin = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
-  const deadline = admin.load('lib/remittance-deadline.ts');
-  assert.equal(deadline.entryClosed(new Date('2026-10-05T06:59:00Z')), false, '2:59 PM Manila is open');
-  assert.equal(deadline.entryClosed(new Date('2026-10-05T07:00:00Z')), true, '3:00 PM Manila is closed');
-  assert.equal(deadline.entryClosed(new Date('2026-10-05T15:59:00Z')), true, '11:59 PM Manila is closed');
-  assert.equal(deadline.entryClosed(new Date('2026-10-05T16:00:00Z')), false, 'midnight Manila opens the next day');
-  globalThis.dayongTestNow = '2026-10-05T07:30:00Z';
   for (const route of ['app/api/sales/route.ts', 'app/api/collections/route.ts']) {
     const response = await admin.load(route).POST(request({}));
-    assert.equal(response.status, 403, route);
-    assert.match((await response.json()).message, /closed after 3:00 PM/);
+    // An empty request is refused for its missing fields, never for the time of day.
+    assert.notEqual(response.status, 403, route);
+    assert.doesNotMatch((await response.json()).message, /closed/i);
   }
-  assert.equal(admin.writes.length, 0);
 });
 
 test('Clearing: no encoding without it, and its time is when the cash was received', async () => {

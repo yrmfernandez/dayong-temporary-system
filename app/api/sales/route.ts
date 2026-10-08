@@ -3,7 +3,7 @@ import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { checkBackdate, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
-import { ENTRY_CLOSED_MESSAGE, entryClosed, manilaNow } from "@/lib/remittance-deadline";
+import { manilaNow } from "@/lib/remittance-deadline";
 import { withEncoder } from "@/lib/encoder-context";
 import type { SessionUser } from "@/lib/auth";
 import { markSubmissionSaved, reviewableSubmission } from "@/lib/sale-submissions";
@@ -109,7 +109,6 @@ export const POST = withEncoder(async function POST(request: Request) {
   const user = await userWithPageAccess("/new-sales");
   if (!user) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
   // Nobody encodes from the 3:00 PM cutoff until midnight.
-  if (entryClosed()) return NextResponse.json({ success: false, message: ENTRY_CLOSED_MESSAGE }, { status: 403 });
   return saveSales(request, user);
 });
 

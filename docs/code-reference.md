@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-40 page routes, 59 API handlers, 105 library files, 44 component files; 341 scanned source/configuration/public-text files in total.
+40 page routes, 59 API handlers, 104 library files, 44 component files; 340 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -20,7 +20,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/branches` | [app/branches/page.tsx](../app/branches/page.tsx) | `@/components/ui/badge`, `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/lib/use-live-refresh` |
 | `/cash-transactions` | [app/cash-transactions/page.tsx](../app/cash-transactions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/clearing` | [app/clearing/page.tsx](../app/clearing/page.tsx) | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/clearing`, `@/lib/use-live-refresh` |
-| `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/remittance-deadline`, `@/lib/use-entry-closed`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/receipt-photo`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance` |
+| `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/receipt-photo`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance` |
 | `/commissions` | [app/commissions/page.tsx](../app/commissions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/bulk-member-transfer`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password`, `@/components/nte-panel`, `@/lib/use-live-refresh` |
 | `/exceptions` | [app/exceptions/page.tsx](../app/exceptions/page.tsx) | `@/components/entry-correction-form`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/api-response`, `@/lib/exceptions`, `@/lib/use-live-refresh` |
@@ -200,7 +200,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/readable-id.ts](../lib/readable-id.ts) | `createReadableId` | — |
 | [lib/receipt-photos.ts](../lib/receipt-photos.ts) | `MAX_PHOTO_BYTES`, `ReceiptPhotoInfo`, `listReceiptPhotos`, `photosByEntry`, `getReceiptPhoto`, `saveReceiptPhoto` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/photo-storage`, `@/lib/readable-id` |
 | [lib/record-corrections.ts](../lib/record-corrections.ts) | `ensureCorrectionsSheet`, `recordCorrection` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
-| [lib/remittance-deadline.ts](../lib/remittance-deadline.ts) | `REMITTANCE_CUTOFF`, `ENTRY_CLOSED_MESSAGE`, `validTime`, `incentiveDeadline`, `keepsIncentive`, `manilaNow`, `manilaDateOf`, `entryClosed`, `formatDeadline` | — |
+| [lib/remittance-deadline.ts](../lib/remittance-deadline.ts) | `REMITTANCE_CUTOFF`, `validTime`, `incentiveDeadline`, `keepsIncentive`, `manilaNow`, `manilaDateOf`, `formatDeadline` | — |
 | [lib/remittance-methods.ts](../lib/remittance-methods.ts) | `PaymentMethod`, `getPaymentMethods`, `findActivePaymentMethod`, `savePaymentMethod` | `@/lib/db`, `@/lib/readable-id` |
 | [lib/remittance-workflow.ts](../lib/remittance-workflow.ts) | `RemittanceKind`, `CashCollection`, `CashRemittance`, `forfeitsIncentive`, `amountDue`, `getRemittanceDashboard`, `CASH_IN_FULL_NOTE`, `createCashRemittance`, `decideCashRemittance`, `submitReadyEntries`, `resubmitReturned` | `@/lib/sheets-on-db`, `@/lib/readable-id`, `@/lib/sheet-ranges`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/remittance-deadline`, `@/lib/cash-count`, `@/lib/receipt-photos`, `@/lib/clearing` |
 | [lib/remittance.ts](../lib/remittance.ts) | `IncentiveTier`, `tiersForBranch`, `SaleIncentiveSetting`, `SaleProgram`, `normalizeSaleIncentive`, `calculateSaleIncentive`, `calculateRemittance` | `./program-payment-limit.mjs` |
@@ -223,7 +223,6 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/todays-entries.ts](../lib/todays-entries.ts) | `DayEntry`, `getEntriesForDay`, `getEntriesForRange` | `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/remittance-deadline`, `@/lib/date-checks`, `@/lib/receipt-photos`, `@/lib/today-mode` |
 | [lib/types.ts](../lib/types.ts) | `Address`, `PersonName`, `Claimant`, `Beneficiary`, `Member`, `Program`, `ProgramEnrollment`, `NewSale`, `Collection` | — |
 | [lib/ui-preferences.ts](../lib/ui-preferences.ts) | `IndicatorStyle`, `TableDensity`, `preferenceKeys`, `ACTIVE_ROLE_COOKIE`, `writeActiveRoleCookie`, `readPreference`, `writePreference`, `removePreference`, `onPreferencesChange`, `readIndicator`, `readDensity` | — |
-| [lib/use-entry-closed.ts](../lib/use-entry-closed.ts) | `useEntryClosed` | `@/lib/remittance-deadline` |
 | [lib/use-form-draft.ts](../lib/use-form-draft.ts) | `useFormDraft`, `clearFormDrafts` | — |
 | [lib/use-live-refresh.ts](../lib/use-live-refresh.ts) | `useLiveRefresh` | — |
 | [lib/users-sheet.ts](../lib/users-sheet.ts) | `USERS_RANGE`, `UserColumns`, `UserRecord`, `userColumns`, `readUserRows`, `loadUsers`, `userCell`, `assertUsernameColumnRemoved` | `@/lib/google-sheets`, `@/lib/encoder-schema`, `@/lib/sheet-headers` |
@@ -253,7 +252,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/member-mam.tsx](../components/member-mam.tsx) | `MemberMam` | `@/components/status-badge` |
 | [components/metric-tile.tsx](../components/metric-tile.tsx) | `MetricTile` | `@/components/status-badge` |
 | [components/my-attendance-history.tsx](../components/my-attendance-history.tsx) | `MyAttendanceHistory` | `@/lib/attendance-board` |
-| [components/new-sales-form.tsx](../components/new-sales-form.tsx) | `NewSalesForm` | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/use-entry-closed`, `@/lib/use-form-draft`, `@/components/remittance-summary`, `@/lib/remittance`, `@/components/ui/select`, `@/components/ui/separator`, `@/components/ui/textarea`, `@/lib/types`, `@/lib/use-live-refresh` |
+| [components/new-sales-form.tsx](../components/new-sales-form.tsx) | `NewSalesForm` | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/use-form-draft`, `@/components/remittance-summary`, `@/lib/remittance`, `@/components/ui/select`, `@/components/ui/separator`, `@/components/ui/textarea`, `@/lib/types`, `@/lib/use-live-refresh` |
 | [components/nte-panel.tsx](../components/nte-panel.tsx) | `NtePanel` | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/nte` |
 | [components/one-time-password.tsx](../components/one-time-password.tsx) | `IssuedPassword`, `OneTimePasswordNotice` | `@/components/ui/button` |
 | [components/print-button.tsx](../components/print-button.tsx) | `PrintButton` | `@/components/ui/button` |
@@ -266,7 +265,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/status-badge.tsx](../components/status-badge.tsx) | `Tone`, `toneForStatus`, `StatusBadge` | — |
 | [components/system-health-dashboard.tsx](../components/system-health-dashboard.tsx) | `SystemHealthDashboard` | `@/components/status-badge`, `@/components/ui/card`, `@/lib/system-health` |
 | [components/theme-toggle.tsx](../components/theme-toggle.tsx) | `useThemePreference`, `ThemeToggle` | `@/lib/theme` |
-| [components/topbar-clock.tsx](../components/topbar-clock.tsx) | `TopbarClock` | `@/lib/remittance-deadline` |
+| [components/topbar-clock.tsx](../components/topbar-clock.tsx) | `TopbarClock` | — |
 | [components/topbar.tsx](../components/topbar.tsx) | `Topbar` | `@/components/app-shell`, `@/components/profile`, `@/components/theme-toggle`, `@/components/topbar-clock`, `@/lib/navigation` |
 | [components/ui/badge.tsx](../components/ui/badge.tsx) | `Badge`, `badgeVariants` | — |
 | [components/ui/button.tsx](../components/ui/button.tsx) | `Button`, `buttonVariants` | — |

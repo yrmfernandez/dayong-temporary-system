@@ -30,8 +30,7 @@ import type { ProgramStanding } from "@/lib/account-data";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { BACKDATE_REASON_MIN, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, needsBackdateReason } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
-import { ENTRY_CLOSED_MESSAGE, manilaNow } from "@/lib/remittance-deadline";
-import { useEntryClosed } from "@/lib/use-entry-closed";
+import { manilaNow } from "@/lib/remittance-deadline";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import { calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
@@ -345,7 +344,6 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     useState("");
 
   const [saving, setSaving] = useState(false);
-  const encodingClosed = useEntryClosed();
   const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
@@ -2911,7 +2909,6 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
           {showPreview && <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div></div>}
 
-          {!masMode && encodingClosed && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm font-medium text-destructive">{ENTRY_CLOSED_MESSAGE}</p>}
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button
               type="button"
@@ -2926,7 +2923,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
               type="button"
               size="lg"
               onClick={() => showPreview ? void (masMode ? submitToClerk() : saveSales()) : setShowPreview(true)}
-              disabled={saving || (!masMode && encodingClosed)}
+              disabled={saving}
             >
               {saving
                 ? (masMode ? "Submitting..." : "Saving...")

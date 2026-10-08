@@ -434,7 +434,6 @@
     --dot: var(--brand-moss);
     position: relative; width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: var(--dot); flex-shrink: 0;
   }
-  .topbar-clock-dot.is-closed { --dot: var(--brand-gold); }
   .topbar-clock-dot::after {
     content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--dot);
     animation: clock-pulse 2s ease-out infinite;

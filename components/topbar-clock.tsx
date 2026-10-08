@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { CalendarDays } from "lucide-react";
 
-import { entryClosed } from "@/lib/remittance-deadline";
 
 const dateFormat = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", weekday: "short", month: "short", day: "numeric", year: "numeric" });
 const timeFormat = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
@@ -29,8 +28,8 @@ export function TopbarClock() {
   }, []);
 
   const time = now ? clockParts(now) : null;
-  const closed = now ? entryClosed() : false;
-  const status = closed ? "Encoding closed until midnight" : "Encoding open until 3:00 PM";
+  // Encoding is open all day; 3:00 PM is only the incentive cutoff (the day after the OR date). Clearing records the time.
+  const status = "Encoding open · incentive cutoff 3:00 PM the day after the OR date";
   return (
     <div className="topbar-clock flex shrink-0 items-center gap-2.5 rounded-full py-1 pl-2.5 pr-3 text-xs" title={`Manila time · ${status}`}>
       <span className="hidden items-center gap-1.5 text-muted-foreground lg:flex">
@@ -39,7 +38,7 @@ export function TopbarClock() {
       </span>
       <span className="topbar-clock-divider hidden h-4 w-px lg:block" aria-hidden />
       <span className="flex items-center gap-2">
-        <span className={`topbar-clock-dot ${closed ? "is-closed" : ""}`} aria-hidden />
+        <span className="topbar-clock-dot" aria-hidden />
         <time className="flex min-w-[5.6rem] items-baseline gap-0.5 font-semibold tabular-nums text-foreground" dateTime={now?.toISOString()} suppressHydrationWarning>
           {time && <>
             <span className="text-sm leading-none">{time.hour}<span className="topbar-clock-colon">:</span>{time.minute}</span>
