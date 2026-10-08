@@ -4,6 +4,7 @@ import { canAccessPath } from "@/lib/access-control";
 import { todayInManila } from "@/lib/account-rules";
 import type { SessionUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { countOpenClearings } from "@/lib/clearing";
 import { listForReview } from "@/lib/sale-submissions";
 
 /**
@@ -16,6 +17,7 @@ import { listForReview } from "@/lib/sale-submissions";
  *   /new-sales          New Sales submitted by MAS waiting to be saved, in the clerk's branches
  *   /mas-sales          the MAS's own submissions returned to them
  *   /attendance-reviews absences the system recorded in the last 7 days that nobody has confirmed or changed yet
+ *   /clearing           MAS and employees cleared but whose entries are not yet sent for approval
  */
 export type NotificationCounts = Record<string, number>;
 
@@ -41,6 +43,7 @@ export async function getNotificationCounts(user: SessionUser): Promise<Notifica
     + (select count(*) from sales s where s.encoded_by_employee_id = ${me} and s.remittance_status = 'Outstanding' and ${noPhoto(sql`s.sale_id`)}) as count`)]);
   if (can("/new-sales")) tasks.push(["/new-sales", listForReview(user).then((list) => list.length).catch(() => 0)]);
   if (can("/mas-sales") && me) tasks.push(["/mas-sales", countOf(sql`select count(*)::int as count from sale_submissions where mas_employee_id = ${me} and status = 'Returned'`)]);
+  if (can("/clearing")) tasks.push(["/clearing", countOpenClearings()]);
   if (can("/attendance-reviews")) {
     const since = new Date(Date.parse(`${todayInManila()}T00:00:00Z`) - 7 * 86400000).toISOString().slice(0, 10);
     tasks.push(["/attendance-reviews", countOf(sql`select count(*)::int as count from attendance

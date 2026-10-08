@@ -361,6 +361,28 @@ export const sales = pgTable("sales", {
 ]).enableRLS();
 
 /**
+ * Clearing (October 8, 2026): after checking a MAS's physical receipts and bank slips, the entry clerk lists them here.
+ * The clearing time is when the cash was received, so entries encoded later keep the incentive they earned
+ * (lib/clearing.ts). Open until that MAS's entries for the day are sent for approval (Encoded) or it is removed.
+ */
+export const clearings = pgTable("clearings", {
+  ...rowSeq(),
+  clearing_id: text().primaryKey(),
+  branch: text().notNull(),
+  employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
+  employee_name: text(),
+  cleared_at: moment("cleared_at").notNull(),
+  cleared_date: day("cleared_date").notNull(),
+  amount: money("amount"),
+  notes: text(),
+  status: text().notNull().default("Open"),
+  remittance_id: text(),
+  closed_at: moment("closed_at"),
+  closed_reason: text(),
+  ...encoder(),
+}, (t) => [index("clearings_employee_date_idx").on(t.employee_id, t.cleared_date), index("clearings_status_idx").on(t.status)]).enableRLS();
+
+/**
  * New Sales a MAS submits from the field (MAS New Sales page). An Entry Clerk assigned to the branch reviews one on New
  * Sales → Submitted by MAS and saves it as a normal New Sales batch (status Saved, sale_ids set in the same transaction),
  * or returns it with a reason. `sales` holds the sale cards exactly as the form keeps them.

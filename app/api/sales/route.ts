@@ -1,3 +1,4 @@
+import { clearingProblem } from "@/lib/clearing";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { checkBackdate, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
@@ -169,6 +170,9 @@ async function saveSales(request: Request, user: SessionUser) {
         selectedBranch &&
         employee.branchIds.includes(selectedBranch.id),
     );
+    // Encoding follows Clearing: the MAS must be cleared for this branch on the Date Remitted.
+    const notCleared = selectedBranch && selectedStaff ? await clearingProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim()) : "";
+    if (notCleared) return NextResponse.json({ success: false, message: notCleared }, { status: 400 });
     if (!selectedBranch || !selectedStaff) {
       return NextResponse.json(
         { success: false, message: "Select an active employee assigned to the selected branch." },

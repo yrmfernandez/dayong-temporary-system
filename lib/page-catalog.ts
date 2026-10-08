@@ -2,6 +2,7 @@
 export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; label: string }> }> = [
   { group: "Operations", pages: [
     { href: "/todays-entries", label: "Today's Entries" },
+    { href: "/clearing", label: "Clearing (receipts checked; required before encoding)" },
     { href: "/my-entries", label: "My Entries (receipt photos)" },
     { href: "/new-sales", label: "New Sales" },
     { href: "/mas-sales", label: "Submit New Sales (MAS, reviewed by the branch clerk)" },

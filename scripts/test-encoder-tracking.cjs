@@ -19,6 +19,8 @@ before(async () => {
   const db = drizzle(pglite);
   await migrate(db, { migrationsFolder: path.resolve('db/migrations') });
   globalThis.dayongTestDb = db;
+  // Tests about other rules treat every MAS as cleared; the Clearing test below switches this off (lib/clearing.ts).
+  globalThis.dayongClearingNotRequired = true;
   // Receipt photo files: an in-memory stand-in for Supabase Storage.
   globalThis.dayongTestStorage = new Map();
 });
@@ -666,6 +668,44 @@ test('nobody saves New Sales or Collections from 3:00 PM until midnight', async 
     assert.match((await response.json()).message, /closed after 3:00 PM/);
   }
   assert.equal(admin.writes.length, 0);
+});
+
+test('Clearing: no encoding without it, and its time is when the cash was received', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1);
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  await seedAccount({ doi: month + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: 'OR-C1', orDate: today };
+  // ₱350 at a ₱50 mark-up and 50% MAS incentive: the MAS keeps ₱150 and remits ₱200.
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'Cash', controlTotal: 200, collections: [entry] };
+  const route = h.load('app/api/collections/route.ts');
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    const refused = await route.POST(request(batch));
+    assert.equal(refused.status, 400);
+    assert.match((await refused.json()).message, /not in Clearing for BR-1/);
+    assert.equal(await count('collections'), 0, 'nothing is saved without a clearing');
+    // Cleared at 10:15 AM Manila today: the batch saves, and that is when the cash counts as received.
+    await seed('clearings', [{ clearing_id: 'CLR-1', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T02:15:00Z`, cleared_date: today, status: 'Open' }]);
+    const saved = await route.POST(request(batch));
+    assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
+    const clearing = h.load('lib/clearing.ts');
+    assert.equal(await clearing.clearedAt('DPE-0002', 'BR-1', today, `${today} 23:00`), `${today} 10:15`);
+    assert.equal(await clearing.clearedAt('DPE-0002', 'BR-9', today), '', 'another branch has no clearing');
+    // Once their entries are on a slip, the clearing is Encoded; a removed clearing does not allow encoding.
+    assert.equal(await clearing.closeClearings('DPE-0002', 'BR-1', today, 'REM-1'), 1);
+    assert.equal((await query("select status, remittance_id from clearings where clearing_id = 'CLR-1'"))[0].status, 'Encoded');
+    assert.equal(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', today), '', 'an Encoded clearing still allows a second batch that day');
+    await query("update clearings set status = 'Removed' where clearing_id = 'CLR-1'");
+    assert.match(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', today), /not in Clearing/);
+  } finally { globalThis.dayongClearingNotRequired = true; }
 });
 
 test('collection batch is encoded atomically without creating a remittance', async () => {

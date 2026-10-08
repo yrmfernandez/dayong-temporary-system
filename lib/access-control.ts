@@ -19,8 +19,8 @@ const roleRoutes: Record<string, string[]> = {
   president: ["/", "/admin-reports", "/mam", "/soa", "/members", "/attendance-tracking", "/attendance", "/settings"],
   "hr officer": ["/", "/todays-entries", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
   hr: ["/", "/todays-entries", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
-  finance: ["/", "/audit", "/members", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
-  "entry clerk": ["/", "/todays-entries", "/my-entries", "/new-sales", "/members", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/settings"],
+  finance: ["/", "/audit", "/members", "/clearing", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
+  "entry clerk": ["/", "/todays-entries", "/clearing", "/my-entries", "/new-sales", "/members", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/settings"],
   // IT builds and runs the system: accounts, roles, configuration, and the audit trail.
   "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/settings"],
   it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/settings"],

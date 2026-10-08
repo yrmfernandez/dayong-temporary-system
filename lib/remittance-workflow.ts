@@ -9,6 +9,7 @@ import { headerMatches } from "@/lib/sheet-headers";
 import { incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime } from "@/lib/remittance-deadline";
 import { cashCountProblem } from "@/lib/cash-count";
 import { photosByEntry } from "@/lib/receipt-photos";
+import { clearedAt, closeClearings } from "@/lib/clearing";
 
 const titles = ["Collections", "Remittances", "Remittance Collections", "Sales"] as const;
 // The same ranges the dashboards and reports read, so one cached copy of each sheet serves them all.
@@ -361,6 +362,8 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
     ...forfeits.flatMap((collection) => forfeitUpdate(sheet, collection, collection.amount, incentiveOf(collection))),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
+  // The person's clearing for that day is done once their entries are on a slip (lib/clearing.ts).
+  await closeClearings(owner.accountableEmployeeId, owner.branch, owner.dateRemitted || input.remittanceDate, id);
   return { id, type: kind, status, expectedAmount: expected, actualAmount: actual, difference, fidelityAmount: Math.round(fidelityAmount*100)/100, forfeitedCount: forfeits.length, forfeitedAmount: forfeitedTotal };
 }
 
@@ -394,11 +397,18 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   return { id: remittance.id, status };
 }
 
-/** When the cash for an item was received: its Date Remitted at the time it was encoded (23:59 when encoded on another day). */
-function receivedAtOf(items: CashCollection[]) {
-  const date = items.map((item) => item.dateRemitted).find(Boolean) || items.map((item) => item.encodedAt.slice(0, 10)).find(Boolean) || manilaNow().date;
+/**
+ * When the cash for a batch was received (owner's rule, October 8, 2026): the time its accountable person was cleared
+ * for that branch on the Date Remitted (lib/clearing.ts); without a clearing, the time it was encoded. The incentive is
+ * kept when this is by 3:00 PM the day after the OR date. (It used to assume 11:59 PM of the Date Remitted when encoded
+ * on a later day, which made cash received on time look late.)
+ */
+async function receivedAtOf(items: CashCollection[]) {
   const encoded = items.map((item) => item.encodedAt).filter(Boolean).sort().at(-1) ?? "";
-  return { date, time: encoded.slice(0, 10) === date ? encoded.slice(11, 16) : "23:59" };
+  const day = items.map((item) => item.dateRemitted).find(Boolean) || encoded.slice(0, 10) || manilaNow().date;
+  const cleared = await clearedAt(items[0].accountableEmployeeId, items[0].branch, day, encoded);
+  const stamp = cleared || encoded || `${manilaNow().date} ${manilaNow().time}`;
+  return { date: stamp.slice(0, 10), time: stamp.slice(11, 16) };
 }
 
 /**
@@ -424,7 +434,7 @@ export async function submitReadyEntries(entryIds: string[]) {
     }
     const created: string[] = [];
     for (const group of groups) {
-      const { date, time } = receivedAtOf(group);
+      const { date, time } = await receivedAtOf(group);
       const clerk = group[0].encodedByName ? ` encoded by ${group[0].encodedByName}` : "";
       const slip = await createCashRemittance({ collectionIds: group.map((item) => item.id), actualAmount: 0, actualIsExpected: true, fidelityAmount: 0, remittanceDate: date, remittanceTime: time, remarks: `Submitted automatically when the receipt photos were attached${clerk}.` });
       created.push(slip.id);

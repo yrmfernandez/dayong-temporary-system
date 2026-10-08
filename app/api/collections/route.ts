@@ -1,4 +1,5 @@
-﻿import { createReadableId } from "@/lib/readable-id";
+import { clearingProblem } from "@/lib/clearing";
+import { createReadableId } from "@/lib/readable-id";
 import { ENTRY_CLOSED_MESSAGE, entryClosed, manilaNow } from "@/lib/remittance-deadline";
 import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
@@ -47,6 +48,9 @@ async function saveCollections(request: Request) {
     const selectedBranch = branches.find((item) => item.name === branch && item.status === "active");
     const accountable = employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active" && selectedBranch && employee.branchIds.includes(selectedBranch.id));
     if (!selectedBranch || !accountable) throw new Error("Select an active accountable employee assigned to the selected branch.");
+    // Encoding follows Clearing: the accountable person must be cleared for this branch on the Date Remitted.
+    const notCleared = await clearingProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted);
+    if (notCleared) throw new Error(notCleared);
     // Batch-level details: who brought the payments in and how the MAS remitted them.
     const collectedBy = String(body.collectedBy ?? "").trim();
     if (!(COLLECTION_CHANNELS as readonly string[]).includes(collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");

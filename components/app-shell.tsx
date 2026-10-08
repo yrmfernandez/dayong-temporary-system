@@ -37,7 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the numbers for the page just opened
   useEffect(() => { void loadCounts(); }, [loadCounts, pathname]);
   useEffect(() => { const timer = window.setInterval(() => { if (!document.hidden) void loadCounts(); }, 120000); return () => window.clearInterval(timer); }, [loadCounts]);
-  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "attendance", "receipt_photos"], loadCounts, 3000);
+  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "attendance", "receipt_photos", "clearings"], loadCounts, 3000);
   // True while the dashboard of a newly chosen workspace is loading, so the old one is not mistaken for it.
   const [switching, startSwitch] = useTransition();
   const isLogin = pathname === "/login";
