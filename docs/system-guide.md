@@ -106,7 +106,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/attendance-reviews` | Management records Absent, AWOL or Day Off where appropriate; filter by branch and role. |
 | `/attendance-tracking` | Staff totals and daily board, with authorized lateness/time-out corrections. |
 | `/leave-requests` | Submit and review your own leave requests. |
-| `/leave-approvals` | Authorized approval/rejection; approved leave creates attendance records. |
+| `/leave-approvals` | Authorized approval/rejection; approved leave creates attendance records. Each request shows the employee's name with their Employee ID, and "Reviewed by" shows the reviewer's name too (October 8, 2026). |
 | `/programs` | Plan details, categories, fees, age/amount rules, incentives, and authorized maintenance. |
 | `/branches` | Branch directory and authorized maintenance. |
 | `/master-data` | Shared overview of master records. |

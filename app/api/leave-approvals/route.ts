@@ -12,6 +12,7 @@ import {
 import {
   recordApprovedLeaveAttendance,
 } from "@/lib/attendance-data";
+import { getEmployees } from "@/lib/employees";
 
 export async function GET() {
   try {
@@ -29,14 +30,17 @@ export async function GET() {
       );
     }
 
-    const requests =
-      await getAllLeaveRequests();
+    const [requests, employees] = await Promise.all([getAllLeaveRequests(), getEmployees()]);
+    // Names beside the IDs, so approvers recognise who asked and who decided.
+    const names = new Map(employees.map((employee) => [employee.id, employee.name]));
 
     return NextResponse.json({
       success: true,
-      requests: requests.map(
-        ({ request }) => request,
-      ),
+      requests: requests.map(({ request }) => ({
+        ...request,
+        employeeName: names.get(request.employeeId) ?? "",
+        reviewedByName: names.get(request.reviewedBy) ?? "",
+      })),
     });
   } catch (error) {
     console.error("Load leave approvals error:", error);

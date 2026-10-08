@@ -18,6 +18,8 @@ import { useLiveRefresh } from "@/lib/use-live-refresh";
 type LeaveRequest = {
   id: string;
   employeeId: string;
+  /** The employee's name from Employees; blank when the ID is not registered. */
+  employeeName?: string;
   leaveType: string;
   startDate: string;
   endDate: string;
@@ -28,6 +30,7 @@ type LeaveRequest = {
     | "Rejected"
     | "Cancelled";
   reviewedBy: string;
+  reviewedByName?: string;
   reviewedAt: string;
 };
 
@@ -162,12 +165,13 @@ export default function LeaveApprovalsPage() {
                 >
                   <div className="flex flex-col justify-between gap-3 sm:flex-row">
                     <div>
-                      <p className="font-medium">
-                        {request.leaveType}
+                      <p className="font-semibold">
+                        {request.employeeName || request.employeeId}
+                        {request.employeeName && <span className="ml-2 text-xs font-normal text-muted-foreground">{request.employeeId}</span>}
                       </p>
 
-                      <p className="text-sm text-muted-foreground">
-                        Employee: {request.employeeId}
+                      <p className="text-sm font-medium">
+                        {request.leaveType}
                       </p>
 
                       <p className="text-sm text-muted-foreground">
@@ -231,7 +235,7 @@ export default function LeaveApprovalsPage() {
 
                   {request.reviewedBy && (
                     <p className="text-xs text-muted-foreground">
-                      Reviewed by {request.reviewedBy}
+                      Reviewed by {request.reviewedByName ? `${request.reviewedByName} (${request.reviewedBy})` : request.reviewedBy}
                     </p>
                   )}
                 </div>
