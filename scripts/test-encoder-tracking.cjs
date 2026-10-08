@@ -688,7 +688,9 @@ test('collection batch is encoded atomically without creating a remittance', asy
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: 'OR-1', orDate: today };
   const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', controlTotal: 580, collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: 'OR-2' }] };
   const route = h.load('app/api/collections/route.ts');
-  assert.match((await (await route.POST(request({ ...batch, paymentReference: '' }))).json()).message, /GCash reference number/);
+  // The reference number is optional since October 8, 2026 (the receipt photo is the proof): a GCash batch without one is
+  // not refused for it, and fails only on the next check (the turnover total).
+  assert.doesNotMatch((await (await route.POST(request({ ...batch, paymentReference: '' }))).json()).message, /reference number/);
   assert.match((await (await route.POST(request({ ...batch, autoApproveRemittance: true, cashReceived: 400 }))).json()).message, /verified in Remittances/);
   // A remittance penalty needs a note saying what it is for.
   assert.match((await (await route.POST(request({ ...batch, penalty: 50, penaltyNote: '' }))).json()).message, /what the penalty is for/);

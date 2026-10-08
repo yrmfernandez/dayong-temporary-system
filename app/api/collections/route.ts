@@ -54,7 +54,7 @@ async function saveCollections(request: Request) {
     const originalMas = collectedBy === "Collector" ? mas : "";
     const paymentMethod = await findActivePaymentMethod(String(body.paymentMethod ?? ""));
     const paymentReference = String(body.paymentReference ?? "").trim();
-    if (paymentMethod.requiresReference && !paymentReference) throw new Error(`Enter the ${paymentMethod.name} reference number.`);
+    // The reference number is optional (October 8, 2026): the receipt photo attached in My Entries is the proof.
     if (paymentReference.length > 100) throw new Error("The payment reference must be 100 characters or fewer.");
     // A remittance penalty is charged to the accountable MAS/Collector (paid from their own money), not to members.
     // It is added once to the batch's total remittance and stored on the batch's first Collection row.

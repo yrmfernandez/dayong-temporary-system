@@ -752,11 +752,6 @@ export default function CollectionsPage() {
       return;
     }
 
-    if (selectedPaymentMethod.requiresReference && !paymentReference.trim()) {
-      setSaveMessage(`Enter the ${selectedPaymentMethod.name} reference number.`);
-      return;
-    }
-
     for (let index = 0; index < collections.length; index++) {
       const error = validateEntry(
         collections[index],
@@ -803,7 +798,7 @@ export default function CollectionsPage() {
           dateRemitted,
           collectedBy,
           paymentMethod,
-          paymentReference: selectedPaymentMethod?.requiresReference ? paymentReference.trim() : "",
+          paymentReference: selectedPaymentMethod && !selectedPaymentMethod.isCash ? paymentReference.trim() : "",
           // Saved first; the approved remittance is created below once the receipt photo is attached.
           autoApproveRemittance: false,
           controlTotal: Number(controlTotal),
@@ -939,15 +934,15 @@ export default function CollectionsPage() {
               <p className="text-xs text-muted-foreground">How the MAS remitted this batch to the office.</p>
             </div>
 
-            {selectedPaymentMethod?.requiresReference ? (
+            {selectedPaymentMethod && !isCashPayment ? (
               <div className="space-y-2">
-                <Label htmlFor="payment-reference">{selectedPaymentMethod.name} reference no. *</Label>
+                <Label htmlFor="payment-reference">{selectedPaymentMethod.name} reference no. (optional)</Label>
                 <Input id="payment-reference" maxLength={100} value={paymentReference} placeholder="Transaction / deposit slip number" onChange={(event) => setPaymentReference(event.target.value)} />
-                <p className="text-xs text-muted-foreground">Finance verifies this before approving the remittance.</p>
+                <p className="text-xs text-muted-foreground">Not required: attach the receipt or transfer screenshot in My Entries instead.</p>
               </div>
             ) : (
               <div className="flex items-center rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-                {isCashPayment ? "Physical cash: an approver checks it against the receipt photo." : "No reference needed for this method."}
+                Physical cash: an approver checks it against the receipt photo.
               </div>
             )}
 

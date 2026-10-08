@@ -9,9 +9,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { TopbarClock } from "@/components/topbar-clock";
 import { locatePage, type NavSection } from "@/lib/navigation";
 
-type TopbarProps = { sections: NavSection[]; activeRole: string; user: ShellUser | null; onMenu: () => void };
+type TopbarProps = { sections: NavSection[]; activeRole: string; user: ShellUser | null; waiting: number; onMenu: () => void };
 
-export function Topbar({ sections, activeRole, user, onMenu }: TopbarProps) {
+export function Topbar({ sections, activeRole, user, waiting, onMenu }: TopbarProps) {
   const pathname = usePathname();
   const location = locatePage(pathname, sections);
 
@@ -19,8 +19,9 @@ export function Topbar({ sections, activeRole, user, onMenu }: TopbarProps) {
     // The sticky wrapper is transparent; the rounded glass bar floats inside the page margins.
     <header className="app-topbar sticky top-0 z-30 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 md:px-6 md:pt-3">
       <div className="glass-bar mx-auto flex h-14 max-w-[1920px] items-center gap-3 px-3 sm:px-4">
-        <button type="button" onClick={onMenu} className="-ml-1 flex size-10 items-center justify-center rounded-xl text-foreground hover:bg-muted md:hidden" aria-label="Open navigation">
+        <button type="button" onClick={onMenu} className="relative -ml-1 flex size-10 items-center justify-center rounded-xl text-foreground hover:bg-muted md:hidden" aria-label={waiting > 0 ? `Open navigation, ${waiting} waiting` : "Open navigation"}>
           <Menu className="size-5" />
+          {waiting > 0 && <span aria-hidden className="absolute right-0.5 top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-red px-1 text-[10px] font-bold leading-none text-white tabular-nums">{waiting > 99 ? "99+" : waiting}</span>}
         </button>
         <nav aria-label="Breadcrumb" className="min-w-0 flex-1">
           <ol className="flex min-w-0 items-center gap-1.5 text-sm">

@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type Method = { id: string; name: string; isCash: boolean; requiresReference: boolean; status: "active" | "inactive" };
-const empty: Method = { id: "", name: "", isCash: false, requiresReference: true, status: "active" };
+// The reference number is optional for every method since October 8, 2026 (receipt photos in My Entries are the proof).
+const empty: Method = { id: "", name: "", isCash: false, requiresReference: false, status: "active" };
 
 /** Administrators manage the remittance methods offered in Collections. */
 export function RemittanceMethodSettings() {
@@ -46,7 +47,6 @@ export function RemittanceMethodSettings() {
     <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-[1.4fr_auto_auto_auto_auto] sm:items-end">
       <div className="space-y-2"><Label htmlFor={`method-name-${values.id || "new"}`}>{values.id ? "Method name" : "New method"}</Label><Input id={`method-name-${values.id || "new"}`} required maxLength={60} placeholder="e.g. Maya" value={values.name} onChange={(event) => change({ ...values, name: event.target.value })} /></div>
       <label className="flex h-10 items-center gap-2 text-sm"><input type="checkbox" checked={values.isCash} onChange={(event) => change({ ...values, isCash: event.target.checked, requiresReference: event.target.checked ? false : values.requiresReference })} />Physical cash</label>
-      <label className="flex h-10 items-center gap-2 text-sm"><input type="checkbox" disabled={values.isCash} checked={values.requiresReference} onChange={(event) => change({ ...values, requiresReference: event.target.checked })} />Requires reference no.</label>
       <select aria-label="Status" className="h-10 rounded-md border bg-background px-3 text-sm" value={values.status} onChange={(event) => change({ ...values, status: event.target.value as Method["status"] })}><option value="active">Active</option><option value="inactive">Inactive</option></select>
       <div className="flex gap-2"><Button type="submit" disabled={busy}>{busy ? "Saving..." : values.id ? "Save" : "Add"}</Button>{extra}</div>
     </form>
@@ -66,7 +66,7 @@ export function RemittanceMethodSettings() {
       <div className="divide-y rounded-lg border">
         {methods.map((method) => <Fragment key={method.id}>
           <button type="button" aria-expanded={editing?.id === method.id} onClick={() => { setMessage(""); setSavedId(""); setEditing((current) => current?.id === method.id ? null : method); }} className={`flex w-full flex-wrap items-center justify-between gap-2 p-3 text-left text-sm hover:bg-muted/50 ${editing?.id === method.id ? "bg-muted/50" : ""}`}>
-            <span><strong>{method.name}</strong> <span className="text-muted-foreground">· {method.isCash ? "Physical cash" : method.requiresReference ? "Reference required" : "No reference"}</span></span>
+            <span><strong>{method.name}</strong> <span className="text-muted-foreground">· {method.isCash ? "Physical cash" : "Reference no. optional"}</span></span>
             <StatusBadge status={method.status} />
           </button>
           {savedId === method.id && !editing && message && <p role="status" className="bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>}

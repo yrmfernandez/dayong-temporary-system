@@ -19,11 +19,13 @@ type SidebarProps = {
   activeRole: string;
   onRoleChange: (role: string) => void;
   user: ShellUser | null;
+  /** Page → how many things wait for the user there (lib/notifications.ts). */
+  counts: Record<string, number>;
   mobileOpen: boolean;
   onMobileClose: () => void;
 };
 
-export function Sidebar({ sections, roles, activeRole, onRoleChange, user, mobileOpen, onMobileClose }: SidebarProps) {
+export function Sidebar({ sections, roles, activeRole, onRoleChange, user, counts, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
@@ -103,7 +105,7 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, mobil
           {filtered.map((section) => <div key={section.title}>
             <p className={`mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-sidebar-muted ${rail}`}>{section.title}</p>
             {collapsed && <div className="mx-auto mb-2 hidden h-px w-6 bg-sidebar-border md:block" />}
-            <div className="space-y-0.5">{section.items.map((item) => <NavLink key={item.href} item={item} pathname={pathname} active={active} collapsed={collapsed} indicator={indicator} forceOpen={!!query} />)}</div>
+            <div className="space-y-0.5">{section.items.map((item) => <NavLink key={item.href} item={item} pathname={pathname} active={active} collapsed={collapsed} indicator={indicator} forceOpen={!!query} counts={counts} />)}</div>
           </div>)}
         </div>
       </nav>
@@ -128,7 +130,7 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, mobil
   </>;
 }
 
-function NavLink({ item, pathname, active, collapsed, indicator, forceOpen }: { item: NavItem; pathname: string; active: string; collapsed: boolean; indicator: IndicatorStyle; forceOpen: boolean }) {
+function NavLink({ item, pathname, active, collapsed, indicator, forceOpen, counts }: { item: NavItem; pathname: string; active: string; collapsed: boolean; indicator: IndicatorStyle; forceOpen: boolean; counts: Record<string, number> }) {
   const Icon = item.icon;
   // Highlight only the most specific matching link (e.g. My Fidelity at /fidelity/me, not Fidelity).
   const inside = item.href === active || !!item.children?.some((child) => child.href === active);
@@ -136,12 +138,16 @@ function NavLink({ item, pathname, active, collapsed, indicator, forceOpen }: { 
   const open = !!item.children?.length && (expanded || inside || forceOpen);
   const exact = item.children ? pathname === item.href : inside;
   const style = linkStyle(exact, indicator);
+  // The page's own number, plus its sub-pages' while they are hidden.
+  const waiting = (counts[item.href] ?? 0) + (open ? 0 : (item.children ?? []).reduce((total, child) => total + (child.href === item.href ? 0 : counts[child.href] ?? 0), 0));
 
   return <div>
     <div className="relative flex items-center">
       <Link href={item.href} title={collapsed ? item.name : undefined} aria-current={exact ? "page" : undefined}
         className={`flex min-h-9 flex-1 items-center gap-3 px-3 py-1.5 text-sm font-medium transition-colors ${style} ${collapsed ? "md:justify-center md:px-0" : ""} ${!exact && inside ? "text-sidebar-accent-foreground" : ""}`}>
-        <Icon className="size-4 shrink-0" /><span className={`truncate ${collapsed ? "md:hidden" : ""}`}>{item.name}</span>
+        <span className="relative shrink-0"><Icon className="size-4" />{waiting > 0 && collapsed && <span className="absolute -right-1.5 -top-1.5 hidden size-2.5 rounded-full bg-brand-red ring-2 ring-sidebar md:block" aria-hidden />}</span>
+        <span className={`truncate ${collapsed ? "md:hidden" : ""}`}>{item.name}</span>
+        {waiting > 0 && <Badge count={waiting} label={item.name} className={`ml-auto ${item.children?.length ? "mr-6" : ""} ${collapsed ? "md:hidden" : ""}`} />}
       </Link>
       {!!item.children?.length && <button type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} ${item.name} pages`}
         className={`absolute right-1 rounded-md p-1 ${exact && indicator === "pill" ? "text-sidebar-primary-foreground/80 hover:bg-black/10" : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"} ${collapsed ? "md:hidden" : ""}`}>
@@ -150,9 +156,15 @@ function NavLink({ item, pathname, active, collapsed, indicator, forceOpen }: { 
     </div>
     {open && <div className={`ml-5 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2 ${collapsed ? "md:hidden" : ""}`}>
       {item.children!.map((child) => <Link key={child.href} href={child.href} aria-current={pathname === child.href ? "page" : undefined}
-        className={`flex min-h-8 items-center rounded-md px-3 text-[13px] transition-colors ${pathname === child.href ? "bg-sidebar-accent font-semibold text-brand-moss" : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}>{child.name}</Link>)}
+        className={`flex min-h-8 items-center rounded-md px-3 text-[13px] transition-colors ${pathname === child.href ? "bg-sidebar-accent font-semibold text-brand-moss" : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}><span className="truncate">{child.name}</span>{(counts[child.href] ?? 0) > 0 && child.href !== item.href && <Badge count={counts[child.href]} label={child.name} className="ml-auto" />}</Link>)}
     </div>}
   </div>;
+}
+
+/** How many things wait on a page: a small red pill ("99+" above 99), read out with the page name. */
+function Badge({ count, label, className = "" }: { count: number; label: string; className?: string }) {
+  return <span className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-brand-red px-1.5 text-[11px] font-bold leading-none text-white tabular-nums ${className}`}
+    title={`${count} waiting in ${label}`} aria-label={`${count} waiting`}>{count > 99 ? "99+" : count}</span>;
 }
 
 function IconAction({ label, href, onClick, active = false, danger = false, children }: { label: string; href?: string; onClick?: () => void; active?: boolean; danger?: boolean; children: React.ReactNode }) {

@@ -26,8 +26,12 @@ export function keepsIncentive(orDate: string, receivedAt: string) {
 }
 
 /** The current Manila date and time as "YYYY-MM-DD" and "HH:MM". */
+// Made once: building an Intl.DateTimeFormat is slow, and dashboards convert thousands of dates (October 8, 2026: the
+// CEO / President dashboard spent about 3 s making one per sale).
+const manilaParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
 export function manilaNow(now = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
+  const parts = manilaParts.formatToParts(now);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
   return { date: `${part("year")}-${part("month")}-${part("day")}`, time: `${part("hour")}:${part("minute")}` };
 }

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { executiveRoles, type AccessContext } from "@/lib/access-control";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { ACTIVE_ROLE_COOKIE, onPreferencesChange, preferenceKeys, readDensity, readPreference, writeActiveRoleCookie, writePreference } from "@/lib/ui-preferences";
 
 const safeDecode = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };
@@ -22,6 +23,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [access, setAccess] = useState<AccessContext>(emptyAccess);
   const [activeRole, setActiveRole] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Sidebar numbers: page → how many things wait for this user there (lib/notifications.ts).
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const loadCounts = useCallback(async () => {
+    if (isLoginPath()) return;
+    try {
+      const response = await fetch("/api/notifications", { cache: "no-store" });
+      const result = await response.json();
+      if (response.ok && result.success) setCounts(result.counts ?? {});
+    } catch { /* the numbers are a convenience; the pages themselves are unaffected */ }
+  }, []);
+  // On sign-in and every page change, when the tables behind the numbers change, and every 2 minutes as a fallback.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the numbers for the page just opened
+  useEffect(() => { void loadCounts(); }, [loadCounts, pathname]);
+  useEffect(() => { const timer = window.setInterval(() => { if (!document.hidden) void loadCounts(); }, 120000); return () => window.clearInterval(timer); }, [loadCounts]);
+  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "attendance", "receipt_photos"], loadCounts, 3000);
   // True while the dashboard of a newly chosen workspace is loading, so the old one is not mistaken for it.
   const [switching, startSwitch] = useTransition();
   const isLogin = pathname === "/login";
@@ -94,9 +110,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh min-h-0 w-full overflow-hidden">
-      <Sidebar sections={sections} roles={roles} activeRole={activeRole} onRoleChange={chooseRole} user={user} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+      <Sidebar sections={sections} roles={roles} activeRole={activeRole} onRoleChange={chooseRole} user={user} counts={counts} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <main className="app-main min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
-        <Topbar sections={sections} activeRole={activeRole} user={user} onMenu={() => setMobileOpen(true)} />
+        <Topbar sections={sections} activeRole={activeRole} user={user} waiting={sections.flatMap((section) => section.items.flatMap((item) => [item, ...(item.children ?? [])])).reduce((total, item, index, all) => all.findIndex((other) => other.href === item.href) === index ? total + (counts[item.href] ?? 0) : total, 0)} onMenu={() => setMobileOpen(true)} />
         {switching && <div role="status" aria-live="polite" className="sticky top-0 z-30 h-1 w-full overflow-hidden bg-primary/15"><div className="h-full w-1/3 animate-[workspace-loading_1.1s_ease-in-out_infinite] bg-primary" /><span className="sr-only">Opening the {activeRole} dashboard</span></div>}
         <div className={`app-content mx-auto w-full max-w-[1920px] px-3 pb-8 pt-4 transition-opacity sm:px-4 md:px-6 md:pt-5 ${switching ? "pointer-events-none opacity-50" : ""}`} aria-busy={switching}>
           {switching && <p className="mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary">Opening the {activeRole} dashboard...</p>}
@@ -106,6 +122,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+const isLoginPath = () => typeof window !== "undefined" && window.location.pathname === "/login";
 
 // Every employee may manage members, so MAS is always offered as a workspace (see docs/access-control.md),
 // except to executives whose only roles are CEO / President: their workspace is the dashboard and attendance.

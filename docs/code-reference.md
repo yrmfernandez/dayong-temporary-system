@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-39 page routes, 57 API handlers, 103 library files, 43 component files; 327 scanned source/configuration/public-text files in total.
+39 page routes, 58 API handlers, 104 library files, 43 component files; 329 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -95,6 +95,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/members/standing` | GET | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) |
 | `/api/members/transfer` | GET, POST | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) |
 | `/api/my-entries` | GET, POST | [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) |
+| `/api/notifications` | GET | [app/api/notifications/route.ts](../app/api/notifications/route.ts) |
 | `/api/nte` | GET, POST, PATCH | [app/api/nte/route.ts](../app/api/nte/route.ts) |
 | `/api/payroll` | GET, POST | [app/api/payroll/route.ts](../app/api/payroll/route.ts) |
 | `/api/profile` | GET | [app/api/profile/route.ts](../app/api/profile/route.ts) |
@@ -156,7 +157,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/entry-controls.ts](../lib/entry-controls.ts) | `BACKDATE_REASON_MIN`, `needsBackdateReason`, `checkBackdate`, `controlTotalProblem`, `isIncompleteApplicationNumber`, `INCOMPLETE_APPLICATION_MESSAGE` | `@/lib/remittance-deadline` |
 | [lib/entry-corrections.ts](../lib/entry-corrections.ts) | `correctSaleOrCollection` | `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/remittance-deadline`, `@/lib/record-corrections` |
 | [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/lib/sheets-on-db`, `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/date-checks` |
-| [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/company-targets`, `@/lib/remittance-deadline`, `@/lib/google-sheets` |
+| [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/db`, `@/lib/company-targets`, `@/lib/remittance-deadline`, `@/lib/google-sheets` |
 | [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList` | — |
 | [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/encoder-sheets`, `@/lib/readable-id` |
 | [lib/finance-access.ts](../lib/finance-access.ts) | `canUseFinance` | `@/lib/auth-server` |
@@ -176,6 +177,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/members.ts](../lib/members.ts) | `getMemberPrograms`, `getProgram`, `getMember` | `./types` |
 | [lib/mock-members.ts](../lib/mock-members.ts) | `mockMembers` | `./types` |
 | [lib/navigation.ts](../lib/navigation.ts) | `NavItem`, `NavSection`, `normalizeRole`, `workspaceFor`, `routeMatches`, `visibleNavigation`, `isInWorkspace`, `locatePage`, `activeHref` | `@/lib/access-control` |
+| [lib/notifications.ts](../lib/notifications.ts) | `NotificationCounts`, `getNotificationCounts` | `@/lib/access-control`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/db`, `@/lib/sale-submissions` |
 | [lib/nte.ts](../lib/nte.ts) | `NTE_DAYS`, `SUSPENSION_THRESHOLD`, `Nte`, `listNtes`, `issueNte`, `withdrawNte` | `@/lib/db`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/page-catalog.ts](../lib/page-catalog.ts) | `pageCatalog`, `pageCatalogRoutes` | — |
 | [lib/passwords.ts](../lib/passwords.ts) | `ONE_TIME_PASSWORD_HOURS`, `generateOneTimePassword`, `hashPassword`, `hashOneTimePassword`, `oneTimePasswordExpiry`, `checkPassword` | — |
@@ -229,7 +231,7 @@ All routes pass through the authentication proxy except the three public auth en
 | File | Exported symbols | Local imports / re-exports |
 | --- | --- | --- |
 | [components/admin-delete.tsx](../components/admin-delete.tsx) | `AdminDeletePanel` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/admin-delete` |
-| [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/ui-preferences` |
+| [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/use-live-refresh`, `@/lib/ui-preferences` |
 | [components/attendance-calendar.tsx](../components/attendance-calendar.tsx) | `AttendanceCalendar` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/philippine-holidays` |
 | [components/brand-logo.tsx](../components/brand-logo.tsx) | `BrandLogo` | — |
 | [components/bulk-member-transfer.tsx](../components/bulk-member-transfer.tsx) | `BulkMemberTransfer` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/member-transfer` |
@@ -313,6 +315,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/account-data` |
 | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/member-transfer` |
 | [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/daily-audit`, `@/lib/remittance-deadline`, `@/lib/todays-entries`, `@/lib/encoder-context`, `@/lib/remittance-workflow` |
+| [app/api/notifications/route.ts](../app/api/notifications/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/notifications` |
 | [app/api/nte/route.ts](../app/api/nte/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/nte` |
 | [app/api/payroll/route.ts](../app/api/payroll/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/access-control`, `@/lib/encoder-context`, `@/lib/payroll` |
 | [app/api/profile/route.ts](../app/api/profile/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/users-sheet` |
