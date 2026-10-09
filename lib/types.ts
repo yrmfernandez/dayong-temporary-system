@@ -45,7 +45,7 @@ export type Member = {
 /**
  * Program master data
  *
- * This represents the programs stored in Google Sheets.
+ * This represents the programs stored in the database.
  * Program Type in New Sales should come from these records.
  */
 export type Program = {

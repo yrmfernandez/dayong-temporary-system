@@ -11,7 +11,8 @@
 //   after staff fix them (rows keep their original source, tab, row, and assigned member, so IDs and members stay stable)
 //   add --repair to fix failing accounts by rule (company decision 2026-10-04), each change listed in "Legacy Repairs":
 //     - AMOUNT COLLECTED unreadable: the program's monthly rate x the months covered (or the usual monthly amount paid
-//       for that program when it has no rate);  OR DATE unreadable: the DATE REMITTED;
+//       for that program when it has no rate);  OR DATE unreadable: the DATE REMITTED (a date before 2000 or after
+//       today counts as unreadable, e.g. 3/7/0226 for 3/7/2026; owner, October 9, 2026), on New Sales and Collections;
 //     - the same OR number twice on one account: one kept;
 //     - missing NOPs, and receipts claiming the same NOP or month: every payment renumbered consecutively in OR-date
 //       order (DATE REMITTED, then the written NOP, break ties), from NOP 2 after a New Sale or from the account's
@@ -81,6 +82,11 @@ const options = { timeout: 60000, retry: false };
 const PROGRAM_FILE = "config/legacy-programs.json";
 if (!existsSync(PROGRAM_FILE)) { console.error(`${PROGRAM_FILE} is missing. Run node scripts/legacy-programs.mjs (and --apply) first.`); process.exit(1); }
 // Optional overrides for old values the database does not recognize: { "branches": { "OLD": "Branch name" }, "agents": { "OLD NAME": "EMPLOYEE-ID" } }.
+// "leaveOut": { "Data-Base-Old|M1-COLL|8871": "reason" } skips rows the owner says do not belong to the account they
+// would join (e.g. a receipt of another, forfeited enrollment); they stay in the pending tabs, listed with the reason.
+// "members": { "MEM-LEG-…": "MEM-LEG-…" } sends pending rows assigned to the first member to the second (an existing
+// member the owner says is the same person). "programs" / "amounts": { "<row ref>": { "program" | "amount": …, "note" } }
+// correct one row's DAYONG PROGRAM or AMOUNT COLLECTED (owner), logged in Legacy Repairs.
 const MAP_FILE = "config/legacy-migration-map.json";
 const overrides = existsSync(MAP_FILE) ? JSON.parse(readFileSync(MAP_FILE, "utf8")) : {};
 const override = (group, value) => Object.entries(overrides[group] ?? {}).find(([k]) => norm(k) === norm(value))?.[1];
@@ -203,6 +209,9 @@ const issues = new Map();
 const issue = (category, where) => { if (!issues.has(category)) issues.set(category, []); issues.get(category).push(where); };
 // --repair: every change made to a row, written to the "Legacy Repairs" tab for the imported accounts.
 const repairs = [];
+/** A date before 2000 or after today is a typo (3/7/0226 for 3/7/2026), as unusable as a blank one. */
+// The year must be four digits: "6/2/0202" is read as "202-06-02", which would otherwise sort between 2000 and today.
+const plausibleDate = (date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? "") && date >= "2000-01-01" && date <= todayInManila();
 const repaired = (row, change, before, after) => { repairs.push({ ref: row.ref, where: row.where, change, before: String(before ?? ""), after: String(after ?? "") }); issue(`Repaired: ${change}`, row.where); };
 
 /* ---------- database lookups ---------- */
@@ -285,7 +294,7 @@ for (const source of sources) {
       const where = `${sourceTitle} › ${sourceTab} row ${rowNumber}`;
       // Keyed by the source's name (not its path) so re-running from a re-downloaded copy skips imported rows.
       const ref = `${sourceTitle}|${sourceTab}|${rowNumber}`;
-      const base = { where, ref, kind, territory: territoryOf(sourceTab), raw: row, headers, legacyMemberId: str(get(origin.member)), timestamp: get(c.timestamp), branch: str(get(c.branch)), agent: str(get(c.agent)), member: str(get(c.member)), orNumber: reference(get(c.orNumber)), orDate: get(c.orDate), amount: get(c.amount), dateRemitted: get(c.dateRemitted), program: str(get(c.program)), status: norm(get(c.status)) };
+      const base = { where, ref, kind, territory: territoryOf(sourceTab), raw: row, headers, legacyMemberId: overrides.members?.[str(get(origin.member))] ?? str(get(origin.member)), timestamp: get(c.timestamp), branch: str(get(c.branch)), agent: str(get(c.agent)), member: str(get(c.member)), orNumber: reference(get(c.orNumber)), orDate: get(c.orDate), amount: get(c.amount), dateRemitted: get(c.dateRemitted), program: str(get(c.program)), status: norm(get(c.status)) };
       if (!base.member) return; // blank or summary rows
       if (kind === "sales") saleRows.push({ ...base, address: str(get(c.address)), civil: str(get(c.civil)), birthdate: get(c.birthdate), age: numberOrBlank(get(keys[c.birthdate + 1] === "age" ? c.birthdate + 1 : -1)), type: norm(get(c.type)), regFee: get(c.regFee), regAmount: numberOrBlank(get(c.regAmount)), applicationNo: str(get(c.applicationNo)), claimantName: str(get(claimantName)), claimantContact: str(get(claimantContact)), beneficiaries: beneficiaryColumns.map((i) => ({ name: str(row[i]), age: numberOrBlank(row[i + 1]), relationship: str(row[i + 2]) })).filter((b) => b.name && !/^N\/?A$/i.test(b.name)) });
       else collectionRows.push({ ...base, monthOf: get(c.monthOf), nop: get(c.nop), reactivation: get(c.reactivation), transferred: get(c.transferred), suspended: str(get(c.suspended)), originalMas: norm(get(c.originalMas)) === "NONE" ? "" : str(get(c.originalMas)) });
@@ -306,6 +315,10 @@ for (const sale of saleRows) {
   sale.doi = doi.date;
   sale.birth = parseDate(sale.birthdate).date;
   if (doi.flag) issue(`OR DATE read as ${doi.flag}`, sale.where);
+  if (repair && !plausibleDate(sale.doi) && plausibleDate(parseDate(sale.dateRemitted).date)) {
+    sale.doi = parseDate(sale.dateRemitted).date;
+    repaired(sale, "OR DATE unreadable: DATE REMITTED used", sale.orDate, sale.doi);
+  }
   if (!sale.program$) { issue("DAYONG PROGRAM not in config/legacy-programs.json or Programs", sale.where); continue; }
   if (!sale.branch$) { issue("BRANCH not found in Branches", sale.where); continue; }
   if (!sale.doi) { issue("OR DATE (used as DOI) missing or unreadable", sale.where); continue; }
@@ -354,6 +367,12 @@ function pickByName(pool, name, row, getName) {
 const pending = [];
 let linkedToSales = 0, nameOnlyMembers = 0;
 for (const row of collectionRows) {
+  const leftOut = overrides.leaveOut?.[row.ref];
+  if (leftOut) { issue(`Left out by the owner: ${leftOut}`, row.where); continue; }
+  // Owner corrections of a single row (October 9, 2026): the right program or amount, recorded as repairs.
+  const program = overrides.programs?.[row.ref]?.program, amount = overrides.amounts?.[row.ref]?.amount;
+  if (program && program !== row.program) { repaired(row, `DAYONG PROGRAM corrected by the owner: ${overrides.programs[row.ref].note}`, row.program, program); row.program = program; }
+  if (amount && Number(amount) !== Number(String(row.amount).replace(/[^0-9.]/g, ""))) { repaired(row, `AMOUNT COLLECTED corrected by the owner: ${overrides.amounts[row.ref].note}`, row.amount, amount); row.amount = amount; }
   row.program$ = findProgram(row.program);
   if (!row.program$) { issue("DAYONG PROGRAM not in config/legacy-programs.json or Programs", row.where); continue; }
   if (row.legacyMemberId) {
@@ -474,7 +493,7 @@ for (const e of enrollments) {
     let amount = parseAmount(row.amount);
     if (repair) {
       const rate = rateFor(e.program);
-      if (!orDate && parseDate(row.dateRemitted).date) { orDate = parseDate(row.dateRemitted).date; repaired(row, "OR DATE unreadable: DATE REMITTED used", row.orDate, orDate); }
+      if (!plausibleDate(orDate) && plausibleDate(parseDate(row.dateRemitted).date)) { orDate = parseDate(row.dateRemitted).date; repaired(row, "OR DATE unreadable: DATE REMITTED used", row.orDate, orDate); }
       if (!(amount > 0) && rate > 0) { amount = Math.round(rate * (nop ? nop.to - nop.from + 1 : 1) * 100) / 100; repaired(row, "AMOUNT COLLECTED unreadable: program rate used", row.amount, amount); }
       // An unreadable NOP is numbered with the others in OR-date order below.
       if (!nop && amount > 0) nop = { from: 0, to: 0, unknown: true };

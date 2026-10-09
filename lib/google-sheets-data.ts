@@ -13,8 +13,8 @@ import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 import { assertUsernameColumnRemoved, loadUsers, readUserRows, USERS_RANGE } from "@/lib/users-sheet";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 
-// Branches, programs and incentive tiers are in the database. Sign-in accounts (Users, Roles, User Roles) are still
-// read from Google Sheets here until they move (docs/supabase-migration-plan.md, status by module).
+// Branches, programs and incentive tiers are in the database. Sign-in accounts (Users, Roles, User Roles) are read
+// through the Sheets-style layer (lib/google-sheets.ts), which is answered by the database too.
 // Members, enrollments, New Sales and beneficiaries moved to the database: lib/member-records.ts.
 
 /* =========================================================

@@ -1,5 +1,5 @@
 /**
- * Shown at once while a server-rendered page (the dashboard above all) loads its data from Google Sheets, so a click
+ * Shown at once while a server-rendered page (the dashboard above all) loads its data, so a click
  * responds immediately instead of appearing to do nothing.
  */
 export default function Loading() {

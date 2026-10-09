@@ -24,7 +24,7 @@ Read sections 1–5 first for daily operations, sections 6–10 for finance and 
 
 ## 1. The main concepts and connections
 
-The system manages member enrollments and payments, employees and attendance, cash turnover, finance, payroll, and reports. Google Sheets is the operational database. Reports are mostly calculated from the stored transactions rather than encoded as separate totals.
+The system manages member enrollments and payments, employees and attendance, cash turnover, finance, payroll, and reports. The data is in a Supabase PostgreSQL database (since October 5, 2026; Google Sheets was disconnected on October 9, 2026). Reports are mostly calculated from the stored transactions rather than encoded as separate totals.
 
 | Term | Meaning in this system |
 | --- | --- |
@@ -95,7 +95,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/admin-reports` | Report Review: the same tabs, read-only, for a chosen Entry Clerk, with the entry checklist and reviewer remarks. |
 | `/audit` | Daily, weekly, monthly, yearly Entry Clerk report audits and audit summaries. |
 | `/history` | Creation history, logged edits/deletions, and authorized transaction corrections. |
-| `/exceptions` | Administrator review of dates, amounts, duplicate entries, missing member details, overdue cash, and backdating. |
+| `/exceptions` | Administrator review of dates, amounts, duplicate entries, missing member details, overdue cash, backdating, OR numbers without a branch letter, application numbers to complete, and **imported receipts sharing a number** (October 9, 2026). |
 | `/expenses` | Company expense forms and posted outflows; authorized voiding with a reason. |
 | `/cash-transactions` | Consolidated cash ledger plus other manual inflows/outflows. |
 | `/vendor-payables` | Vendor invoices, outstanding balances, and partial/full payment tracking. |
@@ -694,6 +694,12 @@ Ordinary reports remain live and can change when source data changes; an approve
 
 An OR number or application number followed by **(duplicated)**, **(duplicated 2)**, … belongs to an older entry that reused a number already on another entry (cleaned up on October 7, 2026 by `scripts/fix-duplicates.mjs`). The first entry keeps the plain number, so a new payment with that number is still refused as a double entry. The marked entries are real, different payments: check the paper receipt and correct the number (Today's Entries or Exceptions → correct) when it can be found. Exact copies of the same entry were removed instead, keeping the most complete one.
 
+### Imported receipts sharing a number (October 9, 2026)
+
+When the old-data imports (old sheet, old web app, and the October 9 receipt fixes) met an OR or application number already on another entry, they kept both and flagged the later one (`legacy_duplicate`). Those not relabelled "(duplicated)" on October 7 are listed in **Exceptions → Imported receipts sharing a number**, old data included, each naming the other entry (ID, member number, date): check the paper and use Correct on whichever number is wrong; once the number is unique the item leaves the list. Staging, October 9: 54 collections and 58 New Sales (`sharedNumbers` in `lib/exceptions.ts`).
+
+**Old-data clean-up finished (October 9, 2026).** Every row of the Legacy Pending NS and COLL tabs is now in the system: payments filed under the wrong program were put on the member's right account (`scripts/check-pending-receipts.mjs`, `scripts/fix-legacy-receipts.mjs`, each confirmed by the owner), typos were corrected by the owner's rules (impossible OR dates take the date remitted; `config/legacy-migration-map.json` holds the per-row corrections), and members split by spelling were merged or confirmed as different people (`config/name-merges.json`). Google Sheets is no longer connected; see section 13.
+
 An application number followed by **(need edit)**, **(need edit 2)**, … was saved with only the year and series letters (for example "2026SP"), without the form number. They are listed in **Exceptions → Application numbers to complete**; find the paper form and use Correct to enter the whole number. New Sales now refuse such numbers: "enter the whole Application Number, including the number after the series letters".
 
 ### Exceptions and system health
@@ -731,7 +737,7 @@ sequenceDiagram
   participant Proxy as Auth/access proxy
   participant API as API handler
   participant Rules as Business/data layer
-  participant Sheets as Google Sheets
+  participant Sheets as PostgreSQL (Supabase)
   Browser->>Proxy: Page or API request with session cookie
   Proxy->>API: Authenticated allowed request
   API->>API: Check page/action permission and input
@@ -742,7 +748,7 @@ sequenceDiagram
   API-->>Browser: JSON for display / saved IDs
 ```
 
-Next.js App Router and React implement pages and components; Tailwind and shared UI components provide styling. The server uses `googleapis` with a service-account credential. Credentials never belong in client components. There is no separate SQL database or ORM configured in this repository.
+Next.js App Router and React implement pages and components; Tailwind and shared UI components provide styling. The server reads and writes a Supabase PostgreSQL database with Drizzle (`lib/db.ts`); modules written for the original Google Sheets keep their Sheets-style calls, which `lib/google-sheets.ts` answers from the database (`lib/sheets-on-db.ts`). Credentials never belong in client components. **Google Sheets is not connected (October 9, 2026):** the old spreadsheet stays in Google Drive as an archive of the data before October 5 and of the Legacy Pending / Legacy Repairs tabs, used only by the old-data scripts in `scripts/`.
 
 | Area | Responsibility |
 | --- | --- |
@@ -803,11 +809,11 @@ Install dependencies from the lockfile with `npm ci`. Put the variables listed i
 | Variable | Purpose |
 | --- | --- |
 | `AUTH_SECRET` | Server signing key for session cookies. |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Google service-account identity. |
-| `GOOGLE_PRIVATE_KEY` | Service-account private key; multiline or escaped line breaks are normalized by the environment helper. |
-| `GOOGLE_SHEET_ID` | Operational workbook ID; the wrapper also accepts a spreadsheet URL. |
+| `DATABASE_URL` / `DIRECT_DATABASE_URL` | Supabase PostgreSQL (staging locally; production only in Vercel and `.env.prod-scripts`). |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | Receipt photo storage. |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Live updates (public by design). |
 
-Enable the relevant Google Sheets API access and share the workbook with the service-account email as Editor. The workbook must have the schema required by each module. Start `npm run dev`, open `http://localhost:3000`, and use a provisioned employee account.
+The `GOOGLE_*` variables are no longer used by the app (October 9, 2026); only the old-data scripts read the archived spreadsheet with them. Run `npm run db:migrate` once so the database has every table. Start `npm run dev`, open `http://localhost:3000`, and use a provisioned employee account.
 
 ```text
 npm run dev       Development
@@ -863,7 +869,7 @@ These are observed behaviors to keep in mind when reviewing the system; they are
 6. **Report bases vary.** Slip difference is actual minus expected; operational difference is expected minus actual. Clerk reports include Fidelity in cash, operational net excludes it, and executive gross includes Sales penalties. Stored-status executive health can lag MAM calculations.
 7. **Dates are partly normalized.** Operational time rules use Manila, but some builders use raw UTC ISO date prefixes or legacy formatted strings. Review transactions around midnight and imported dates when totals disagree.
 8. **Names still participate in joins.** Branch/MAS/encoder names are used in some historical reporting and assignment comparisons. Stable IDs improve many joins but do not eliminate all rename/duplicate-name risks.
-9. **Google Sheets has storage/concurrency limits.** Cached views may lag external edits; locks are process-local; sequential writes can partially succeed; sheet columns must retain their order. Receipt images add workbook cell/storage usage.
+9. **Sheets-style code on a database.** Older modules still read and write through Sheets-style ranges answered by the database, so table columns must keep their order (lib/sheets-on-db.ts); locks are process-local and some multi-step saves are not one transaction. The Supabase Free plan has a 500 MB limit (IT → System Health).
 10. **Audits have defined limits.** Application logging is best-effort and does not capture every external workbook mutation. Approved period audit figures are snapshots, not immutable source transactions.
 11. **Automation is triggered by use.** No background scheduler is configured for account-status synchronization or end-of-day absences. Some read workflows can create system absence/settings records.
 12. **Automatic slips approximate the time received.** They use the batch's Date Remitted with the encoding time (23:59 when encoded on another day), and record actual = expected. The approver confirms the cash against the receipt photos; there is no cash count on automatic slips.

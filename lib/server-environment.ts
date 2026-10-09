@@ -1,8 +1,6 @@
+// Google Sheets is no longer connected (October 9, 2026), so its credentials are not required.
 const REQUIRED_SERVER_VARIABLES = [
   "AUTH_SECRET",
-  "GOOGLE_SERVICE_ACCOUNT_EMAIL",
-  "GOOGLE_PRIVATE_KEY",
-  "GOOGLE_SHEET_ID",
   "DATABASE_URL",
 ] as const;
 
@@ -61,26 +59,4 @@ export function getAuthSecret() {
   const value = readServerVariable("AUTH_SECRET");
   if (!value) throw new ServerConfigurationError(["AUTH_SECRET"]);
   return value;
-}
-
-export function getGooglePrivateKey() {
-  const value = readServerVariable("GOOGLE_PRIVATE_KEY");
-  if (!value) {
-    throw new ServerConfigurationError(["GOOGLE_PRIVATE_KEY"]);
-  }
-
-  return value
-    .replace(/\\r\\n/g, "\n")
-    .replace(/\\n/g, "\n")
-    .replace(/\r\n/g, "\n");
-}
-
-export function getGoogleSheetId() {
-  const value = readServerVariable("GOOGLE_SHEET_ID");
-  if (!value) {
-    throw new ServerConfigurationError(["GOOGLE_SHEET_ID"]);
-  }
-
-  const urlId = value.match(/\/spreadsheets\/d\/([\w-]+)/)?.[1];
-  return urlId ?? value;
 }

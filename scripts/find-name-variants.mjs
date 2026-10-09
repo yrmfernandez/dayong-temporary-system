@@ -9,6 +9,7 @@
  * Writes legacy-data/name-variants-review.csv (git ignores legacy-data/: it holds names) with both members' names,
  * PH numbers, program, branch, whether each has a New Sale, and their collection counts, plus an empty MERGE column:
  * put YES on the pairs that are the same person. Prints counts only.
+ * Pairs already decided in config/name-merges.json (merges and notSamePerson) are left out.
  */
 import fs from "node:fs";
 import nextEnv from "@next/env";
@@ -38,10 +39,15 @@ try {
     from members m join member_programs mp on mp.member_id = m.member_id left join programs p on p.program_id = mp.program_id`;
   const groups = new Map();
   for (const row of rows) { const key = `${row.program_id}|${row.branch}`; (groups.get(key) ?? groups.set(key, []).get(key)).push(row); }
+  // Pairs the owner already decided (config/name-merges.json: merges, and notSamePerson since October 9, 2026) are skipped.
+  const decided = fs.existsSync("config/name-merges.json") ? JSON.parse(fs.readFileSync("config/name-merges.json", "utf8")) : {};
+  const known = new Set([...(decided.merges ?? []), ...(decided.notSamePerson ?? [])].flatMap((pair) => [`${pair.keep}|${pair.other}`, `${pair.other}|${pair.keep}`]));
+  let skipped = 0;
   const pairs = [];
   for (const list of groups.values()) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
     const a = list[i], b = list[j];
     if (a.member_id === b.member_id) continue;
+    if (known.has(`${a.enrollment_id}|${b.enrollment_id}`)) { skipped++; continue; }
     const total = distance(a.surname, b.surname) + distance(a.first, b.first);
     if (total === 0 || total > 2) continue;
     if (a.middle && b.middle && a.middle[0] !== b.middle[0]) continue;
@@ -56,7 +62,7 @@ try {
   fs.mkdirSync("legacy-data", { recursive: true });
   fs.writeFileSync("legacy-data/name-variants-review.csv", `﻿${[header, ...lines].map((line) => line.map(cell).join(",")).join("\r\n")}\r\n`);
   const count = (kind) => pairs.filter((pair) => pair.kind === kind).length;
-  console.log(`Supabase project: ${project}\n${rows.length} accounts checked; ${pairs.length} pairs that may be one person: ${count("no New Sale")} with no New Sale, ${count("one New Sale")} with one, ${count("both have a New Sale")} with both.`);
+  console.log(`Supabase project: ${project}\n${rows.length} accounts checked; ${pairs.length} pairs that may be one person: ${count("no New Sale")} with no New Sale, ${count("one New Sale")} with one, ${count("both have a New Sale")} with both; ${skipped} already decided (config/name-merges.json) left out.`);
   console.log("Review file: legacy-data/name-variants-review.csv (put YES in the MERGE column for the same person).");
 } finally {
   await sql.end();

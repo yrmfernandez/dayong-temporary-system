@@ -4,8 +4,8 @@ import { currentDb, encodedBy, inTransaction, schema, type Transaction } from "@
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
 import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
 
-// Employees and their branch assignments are in the database. Sign-in accounts (Users) are still in Google Sheets until
-// they move, so Employee ID clashes and linked accounts are checked there too.
+// Employees, their branch assignments and sign-in accounts (Users) are all in the database (read through the Sheets-style
+// layer, lib/google-sheets.ts), so Employee ID clashes and linked accounts are checked against Users too.
 
 export const employmentStatuses = ["active", "inactive", "resigned"] as const;
 export type EmploymentStatus = (typeof employmentStatuses)[number];
@@ -40,7 +40,7 @@ async function writeAssignments(tx: Transaction, employeeId: string, branchIds: 
   if (branchIds.length) await tx.insert(assignmentTable).values(branchIds.map((branchId, index) => ({ assignment_id: `EBA-${employeeId}-${Date.now()}-${index + 1}`, employee_id: employeeId, branch_id: branchId, ...encodedBy() })));
 }
 
-/** Users!B: Employee IDs of sign-in accounts (still in Google Sheets). */
+/** Users!B: Employee IDs of sign-in accounts. */
 async function accountEmployeeIds() {
   return ((await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:B" })).data.values ?? []).slice(1).map((row) => String(row[1] ?? "").trim());
 }

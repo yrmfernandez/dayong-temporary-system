@@ -12,7 +12,7 @@ It is a [Next.js](https://nextjs.org) app on a [Supabase](https://supabase.com) 
 | [Documentation index](docs/README.md) | Latest changes and the topic documents. |
 | [Code reference](docs/code-reference.md) | Every page, API, library, component and maintenance script (regenerated with `node scripts/generate-code-reference.mjs`). |
 | [Project context](docs/project-context.md) | The owner's business decisions and what is done, in progress and still to do. |
-| [Migration plan](docs/supabase-migration-plan.md) | The move from Google Sheets to Supabase and the database migrations. |
+| [Migration plan](docs/supabase-migration-plan.md) | The move from Google Sheets to Supabase (finished October 9, 2026: Google is disconnected) and the database migrations. |
 
 Topic documents: [role-based access](docs/access-control.md), [CRUD policy](docs/crud-policy.md), [finance](docs/finance.md), [operational reports](docs/reports.md), [payroll](docs/payroll.md), [encoder tracking](docs/encoder-tracking.md), and the [original specification](docs/dayong-system-specification.md) (historical; the system guide describes the current code).
 
@@ -53,7 +53,7 @@ Maintenance and data-repair scripts are in `scripts/` and listed in the [code re
 
 1. **Schema changes:** migrate production **before** pushing code that uses new tables or columns: `npm run prod -- npm run db:migrate`. IT → System Health lists any missing column or unapplied migration.
 2. Push to `main`; Vercel builds and deploys it.
-3. **Environment:** every variable in `.env.example` must be set in the Vercel **Production** environment. Paste `GOOGLE_PRIVATE_KEY` as a multiline PEM value or with escaped `\\n` line breaks, and share the configured spreadsheet with `GOOGLE_SERVICE_ACCOUNT_EMAIL` as an Editor. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are public by design (live updates). Environment changes take effect only after a new deployment, so redeploy after adding or changing a value.
+3. **Environment:** every variable in `.env.example` must be set in the Vercel **Production** environment. The `GOOGLE_*` variables are no longer needed (Google Sheets was disconnected on October 9, 2026) and can be removed from Vercel. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are public by design (live updates). Environment changes take effect only after a new deployment, so redeploy after adding or changing a value.
 
 ## Conventions
 

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 
+import { getDb } from "@/lib/db";
 import { readSheetRows } from "@/lib/sheets-on-db";
 import type { CorrectableEntry } from "@/components/entry-correction-form";
 import { COLLECTIONS_RANGE, MEMBERS_RANGE, PROGRAMS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
@@ -29,6 +30,7 @@ export const EXCEPTION_CATEGORIES = {
   backdated: "Late entries to review",
   receipts: "OR numbers without a branch letter",
   incomplete: "Application numbers to complete",
+  shared: "Imported receipts sharing a number",
 } as const;
 export type ExceptionCategory = keyof typeof EXCEPTION_CATEGORIES;
 
@@ -49,6 +51,46 @@ export type ExceptionItem = {
 };
 
 const LIMIT = 300;
+const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
+
+/**
+ * Imported entries (old sheet, old web app, and the October 9, 2026 receipt fixes) whose OR or application number was
+ * already on another entry: the import keeps both and flags the later one. Those relabelled "(duplicated…)" on October
+ * 7, 2026 were reviewed then; the rest are listed, old data included, until staff check the paper and correct the
+ * number (a corrected number that is unique ends the listing).
+ */
+async function sharedNumbers(): Promise<ExceptionItem[]> {
+  type Shared = { id: string; member: string | null; program: string | null; number: string | null; or_number: string | null; or_date: string | null; amount: number | null; remittance: string | null; notes: string | null; other: string | null; other_member: string | null; other_date: string | null };
+  const db = getDb();
+  const [collections, sales] = await Promise.all([
+    db.execute(sql`select c.collection_id as id, c.member_number as member, p.program_name as program, c.or_number as number, c.or_number, c.or_date::text as or_date,
+        c.amount_collected::float8 as amount, c.remittance_status as remittance, null as notes, o.collection_id as other, o.member_number as other_member, o.or_date::text as other_date
+      from collections c left join programs p on p.program_id = c.program_id
+      left join lateral (select x.collection_id, x.member_number, x.or_date from collections x where x.or_key = c.or_key and x.collection_id <> c.collection_id and x.status = 'Posted' order by x.row_seq limit 1) o on true
+      where c.legacy_duplicate and c.status = 'Posted' and coalesce(c.or_number, '') not ilike '%(duplicated%'`),
+    db.execute(sql`select s.sale_id as id, s.member_number as member, p.program_name as program, s.application_no as number, s.or_number, s.or_date::text as or_date,
+        s.amount_paid::float8 as amount, s.remittance_status as remittance, s.notes, o.sale_id as other, o.member_number as other_member, o.or_date::text as other_date
+      from sales s left join programs p on p.program_id = s.program_id
+      left join lateral (select x.sale_id, x.member_number, x.or_date from sales x where x.application_key = s.application_key and x.sale_id <> s.sale_id order by x.row_seq limit 1) o on true
+      where s.legacy_duplicate and coalesce(s.application_no, '') not ilike '%(duplicated%'`),
+  ]);
+  const onRemittance = (status: string | null) => !["", "Outstanding"].includes(text(status));
+  const other = (row: Shared, kind: string) => row.other ? ` It is also on ${kind} ${row.other} (member ${row.other_member || "?"}, ${row.other_date || "no date"}).` : "";
+  return [
+    ...rowsOf<Shared>(collections).map((row): ExceptionItem => ({
+      category: "shared", key: `shared-${row.id}`, recordId: row.id, title: `Collection ${row.id} · member ${row.member || "?"} · ${row.program || "?"}`,
+      problem: `OR number ${text(row.number)} was imported although another entry already had it.${other(row, "collection")} Check the paper receipt and correct whichever number is wrong.`,
+      date: text(row.or_date), legacy: false,
+      entry: { kind: "Collection", id: row.id, orNumber: text(row.or_number), orDate: text(row.or_date), amount: number(row.amount), applicationNumber: "", notes: "", onRemittance: onRemittance(row.remittance) },
+    })),
+    ...rowsOf<Shared>(sales).map((row): ExceptionItem => ({
+      category: "shared", key: `shared-${row.id}`, recordId: row.id, title: `New Sale ${row.id} · member ${row.member || "?"} · ${row.program || "?"}`,
+      problem: `Application number ${text(row.number)} was imported although another sale already had it.${other(row, "sale")} Check the paper application and correct whichever number is wrong.`,
+      date: text(row.or_date), legacy: false,
+      entry: { kind: "New Sale", id: row.id, orNumber: text(row.or_number), orDate: text(row.or_date), amount: number(row.amount), applicationNumber: text(row.number), notes: text(row.notes), onRemittance: onRemittance(row.remittance) },
+    })),
+  ];
+}
 
 /**
  * Data problems an administrator should look at, found by reading the sheets: nothing is stored. Each item says what
@@ -59,10 +101,11 @@ export async function findExceptions({ includeLegacy = false } = {}) {
   // checks compare an account's payments); the imported accounts alone are about 59,000 collections.
   // OR numbers without a branch letter are always listed, old data included.
   const newOnly = sql`(enrollment_id in (select enrollment_id from collections where collection_id not like '%-LEG-%') or trim(or_number) ~ '^[0-9]+$')`;
-  const [collections, sales, response] = await Promise.all([
+  const [collections, sales, response, shared] = await Promise.all([
     includeLegacy ? sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: COLLECTIONS_RANGE, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }).then((result) => result.data.values ?? []) : readSheetRows("Collections", newOnly),
     includeLegacy ? sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: SALES_RANGE, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }).then((result) => result.data.values ?? []) : readSheetRows("Sales", sql`sale_id not like '%-LEG-%'`),
     sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [PROGRAMS_RANGE, MEMBERS_RANGE, REMITTANCES_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+    sharedNumbers(),
   ]);
   const [programs, members, remittances] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const now = manilaNow(), today = now.date, nowStamp = `${now.date} ${now.time}`;
@@ -162,6 +205,9 @@ export async function findExceptions({ includeLegacy = false } = {}) {
     const deadline = incentiveDeadline(text(row[30]) || manilaDateOf(text(row[1])));
     if (deadline && deadline < nowStamp) add({ category: "overdue", key: `overdue-${text(row[0])}`, recordId: text(row[0]), title: `${saleTitle(row)} · ${text(row[3])}`, problem: `${peso(number(row[26]))} not remitted; the incentive deadline was ${deadline}.`, date: text(row[30]).slice(0, 10), legacy: isLegacy(text(row[0])), href: "/remittances" });
   }
+
+  // Imported entries whose number another entry already had (always listed, old data included).
+  for (const item of shared) add(item);
 
   // Entries saved with a late date in the last 30 days, with the reason given, for an administrator to review.
   const since = new Date(Date.parse(`${today}T00:00:00Z`) - 30 * 86400000).toISOString().slice(0, 10);

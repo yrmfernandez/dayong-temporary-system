@@ -1,7 +1,7 @@
 type Entry = { expires: number; staleUntil: number; value: unknown; tags: string[] };
 type Snapshot = { generation: number; tags: Map<string, number> };
 
-const BUSY = "Google Sheets is temporarily busy. Please wait one minute before retrying.";
+export const BUSY = "The data service is temporarily busy. Please wait one minute before retrying.";
 
 /**
  * Copy of a cached value, so a caller that mutates what it read never changes another request's data. Sheet data is

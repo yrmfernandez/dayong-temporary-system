@@ -7,6 +7,7 @@ import { readingFresh } from "@/lib/google-sheets";
 import { getLoginUserByEmployeeId } from "@/lib/google-sheets-data";
 import { clearAttempts, clientIp, recordAttempt, retryAfter } from "@/lib/rate-limit";
 import { sessionFor } from "@/lib/session-account";
+import { BUSY } from "@/lib/sheets-read-cache";
 import {
   assertServerConfiguration,
   ServerConfigurationError,
@@ -18,34 +19,6 @@ function vercelEnvironment() {
   if (environment === "preview") return "Vercel Preview environment";
   if (environment === "production") return "Vercel Production environment";
   return environment === "development" ? "Vercel Development environment" : "server environment (.env.local when running locally)";
-}
-
-function googleSheetsLoginMessage(error: unknown) {
-  if (!(error instanceof Error)) return null;
-
-  const message = error.message.toLowerCase();
-  if (
-    message.includes("invalid_grant") ||
-    message.includes("invalid jwt") ||
-    message.includes("decoder routines") ||
-    message.includes("private key")
-  ) {
-    return `Google service account authentication failed. Check GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY in the ${vercelEnvironment()}, then redeploy.`;
-  }
-
-  const status = (error as Error & { code?: number }).code;
-  if (status === 403 || message.includes("permission denied")) {
-    return "The Google Sheet is not shared with the configured service account. Give its email Editor access, then try again.";
-  }
-
-  if (
-    status === 404 ||
-    message.includes("requested entity was not found")
-  ) {
-    return `The configured Google Sheet was not found. Check GOOGLE_SHEET_ID in the ${vercelEnvironment()}.`;
-  }
-
-  return null;
 }
 
 // Failed sign-ins allowed per window before that Employee ID, or that network address, must wait.
@@ -156,14 +129,9 @@ export async function POST(request: Request) {
     if (error instanceof ServerConfigurationError) {
       message = `${error.message} Add it in the ${vercelEnvironment()} and redeploy.`;
       status = 503;
-    } else if (
-      error instanceof Error &&
-      error.message.includes("Google Sheets is temporarily busy")
-    ) {
+    } else if (error instanceof Error && error.message === BUSY) {
       message = error.message;
       status = 503;
-    } else {
-      message = googleSheetsLoginMessage(error) ?? message;
     }
 
     return NextResponse.json(

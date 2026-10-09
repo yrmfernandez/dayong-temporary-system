@@ -9,8 +9,7 @@
     {
       "keep": "ENR-LEG-E26E4E4A96",
       "other": "ENR-LEG-F66493612C",
-      "note": "#2 KISHA KAREN POTENCIADO into KISHA KAREN POTENCIANDO (D-300 (BRACKETING), BALIOK) — correct name: Potenciado (owner)",
-      "useOtherName": true
+      "note": "#2 KISHA KAREN POTENCIADO into KISHA KAREN POTENCIANDO (D-300 (BRACKETING), BALIOK) — correct name: Potenciando (owner, October 9, 2026; the October 8 merge used Potenciado, corrected in Members → Edit)"
     },
     {
       "keep": "ENR-LEG-DA3F1A7EA7",
@@ -28,11 +27,6 @@
       "note": "#5 JAMIEN GRACE BARRETE into JASMIEN GRACE BARRETE (D-420, CALINAN)"
     },
     {
-      "keep": "ENR-LEG-1A4FCFD58D",
-      "other": "ENR-LEG-8F5134EA1F",
-      "note": "#6 JOEY G. BELTRAN into JOEL G. BELTRAN Jr. (D-210 HG, CALINAN)"
-    },
-    {
       "keep": "ENR-LEG-777078E53D",
       "other": "ENR-LEG-C8F684A172",
       "note": "#7 CARMELITA C. LASCUÑA into CARMELITO C. LASCUÑA (D-210 HG, CALINAN)"
@@ -43,19 +37,9 @@
       "note": "#8 VICENT LEONOR into VICENTA LEONOR (DFP-480, CALINAN)"
     },
     {
-      "keep": "ENR-LEG-D899FBD407",
-      "other": "ENR-LEG-76B52AB101",
-      "note": "#12 ROSITA PASTOR into ROLITA PASTOR (D-210 HG, MATINA)"
-    },
-    {
       "keep": "ENR-LEG-8FC03AA22E",
       "other": "ENR-LEG-72A3508665",
       "note": "#13 RENANTE CAGUD SACASAN into RENATE CAGUD SACASAN (D-300 (BRACKETING), MATINA)"
-    },
-    {
-      "keep": "ENR-LEG-685B032E4A",
-      "other": "ENR-LEG-C42B9220A6",
-      "note": "#14 DANNY DIGAO into DANNY B. DIGAL (D-210 HG, MINTAL)"
     },
     {
       "keep": "ENR-LEG-64DF210402",
@@ -66,11 +50,6 @@
       "keep": "ENR-LEG-D1BA0B83BB",
       "other": "ENR-LEG-EEBAEE5D59",
       "note": "#16 ELMA SALO into ELMA SATO (D-300 (BRACKETING), MINTAL)"
-    },
-    {
-      "keep": "ENR-LEG-0B95E50ED7",
-      "other": "ENR-LEG-D569F3B67B",
-      "note": "#17 JILBERT ORTIGA into JOBERT ORTIGA (D-420, MINTAL)"
     },
     {
       "keep": "ENR-LEG-FB418CC054",
@@ -88,11 +67,6 @@
       "note": "#20 EMMALINDA POLACIO into EMMALINDA PALACIO (D-180, MINTAL)"
     },
     {
-      "keep": "ENR-LEG-2FC52CD081",
-      "other": "ENR-LEG-A418F0117B",
-      "note": "#22 FERLY TABARANZA into FELYN TABARANZA (D-190, MINTAL)"
-    },
-    {
       "keep": "ENR-LEG-3C963952A6",
       "other": "ENR-LEG-87BA57E0F0",
       "note": "#24 JAY LORERIANA into JAY LORENIANA (D-280, MINTAL)"
@@ -107,16 +81,6 @@
       "other": "ENR-LEG-91C287BDEC",
       "note": "#26 LOURDES AGAD ANDAN into LOUDES AGAD ANDAN (D-320, NABUNTURAN) — correct name: the other spelling (owner)",
       "useOtherName": true
-    },
-    {
-      "keep": "ENR-LEG-FCA4EB7D88",
-      "other": "ENR-LEG-A6A932CC64",
-      "note": "#29 TERESITA JUAB into TERESA JUAB (D-270 (300), NABUNTURAN)"
-    },
-    {
-      "keep": "ENR-LEG-52A93BDFE3",
-      "other": "ENR-LEG-85952F5AAE",
-      "note": "#30 RONA TOLOSA into ROWENA TOLOSA (D-230, TAGUM)"
     },
     {
       "keep": "ENR-LEG-0EBE7286E1",
@@ -175,6 +139,118 @@
       "keep": "ENR-LEG-EF7730342E",
       "other": "ENR-LEG-EFD1823D15",
       "note": "#41 ANTONIO SEVILLIZA HABACON into ANTONIO SEVILLIZA HABALON (D-350 (5Y), TORIL)"
+    }
+  ],
+  "notSamePerson": [
+    {
+      "keep": "ENR-LEG-685B032E4A",
+      "other": "ENR-LEG-C42B9220A6",
+      "note": "#14 DANNY DIGAO into DANNY B. DIGAL (D-210 HG, MINTAL) — different people (owner, October 9, 2026): Danny Digao has two programs, each with its own MAS"
+    },
+    {
+      "keep": "ENR-LEG-52A93BDFE3",
+      "other": "ENR-LEG-85952F5AAE",
+      "note": "#30 RONA TOLOSA into ROWENA TOLOSA (D-230, TAGUM) — different people (owner, October 9, 2026): Rowena Tolosa is Garcia, L.'s member, Rona Tolosa is Fuentes, P.'s"
+    },
+    {
+      "keep": "ENR-LEG-D899FBD407",
+      "other": "ENR-LEG-76B52AB101",
+      "note": "#12 ROSITA PASTOR into ROLITA PASTOR (D-210 HG, MATINA) — different people (owner, October 9, 2026)"
+    },
+    {
+      "keep": "ENR-LEG-1A4FCFD58D",
+      "other": "ENR-LEG-8F5134EA1F",
+      "note": "#6 JOEY G. BELTRAN into JOEL G. BELTRAN Jr. (D-210 HG, CALINAN) — different people (owner, October 9, 2026)"
+    },
+    {
+      "keep": "ENR-LEG-0B95E50ED7",
+      "other": "ENR-LEG-D569F3B67B",
+      "note": "#17 JILBERT ORTIGA into JOBERT ORTIGA (D-420, MINTAL) — different people (owner, October 9, 2026)"
+    },
+    {
+      "keep": "ENR-LEG-2FC52CD081",
+      "other": "ENR-LEG-A418F0117B",
+      "note": "#22 FERLY TABARANZA into FELYN TABARANZA (D-190, MINTAL) — different people (owner, October 9, 2026)"
+    },
+    {
+      "keep": "ENR-LEG-FCA4EB7D88",
+      "other": "ENR-LEG-A6A932CC64",
+      "note": "#29 TERESITA JUAB into TERESA JUAB (D-270 (300), NABUNTURAN) — different people (owner, October 9, 2026)"
+    },
+    {
+      "keep": "ENR-LEG-6C2969EBF9",
+      "other": "ENR-LEG-42AC3331FC",
+      "note": "D-350 (5Y), CALINAN (both have a New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-LEG-C5750037B9",
+      "other": "ENR-LEG-1747681208",
+      "note": "D-350 (5Y), NABUNTURAN (both have a New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-LEG-B650F9B2D9",
+      "other": "ENR-LEG-7B482721C2",
+      "note": "D-190, MINTAL (no New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-LEG-CDAACB4650",
+      "other": "ENR-LEG-DF122940CF",
+      "note": "D-190, MINTAL (no New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-WEB-618",
+      "other": "ENR-WEB-725",
+      "note": "DS-430, NABUNTURAN (both have a New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-WEB-887",
+      "other": "ENR-WEB-927",
+      "note": "DS-430, MONKAYO (both have a New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-WEB-513",
+      "other": "ENR-WEB-516",
+      "note": "DS-430, AGDAO (both have a New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-WEB-1148",
+      "other": "ENR-WEB-1246",
+      "note": "DCA-400, DIGOS (both have a New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-WEB-1830",
+      "other": "ENR-WEB-1831",
+      "note": "DS-320, TORIL (both have a New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-LEG-ECB25C3493",
+      "other": "ENR-LEG-842379A39D",
+      "note": "D-190, HINATUAN (no New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-LEG-ECB25C3493",
+      "other": "ENR-LEG-85BB62F833",
+      "note": "D-190, HINATUAN (no New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-LEG-268E8FBA06",
+      "other": "ENR-LEG-35DD095577",
+      "note": "DSP-290, NABUNTURAN (both have a New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-LEG-1C8523FD78",
+      "other": "ENR-LEG-785AFD3F13",
+      "note": "D-210 HG, NABUNTURAN (no New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-LEG-01A12A1E7E",
+      "other": "ENR-LEG-EAF2FA98E6",
+      "note": "D-210 HG, NABUNTURAN (no New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
+    },
+    {
+      "keep": "ENR-LEG-09F2F5F770",
+      "other": "ENR-LEG-102F15B0F8",
+      "note": "D-230, HINATUAN (no New Sale): not chosen by the owner on October 8, 2026 (likely different people)"
     }
   ]
 }

@@ -7,7 +7,8 @@ import { getDb, inTransaction, type Queryable } from "@/lib/db";
  * (checked October 5, 2026), and row_seq keeps the rows in the order they were added, so code written for Sheets
  * ("'Remittances'!B5:C5", append to "Collections!A:AO", delete rows 4 to 6) reads and writes the same data here.
  *
- * lib/google-sheets.ts sends every tab listed in SHEET_TITLES here; the Legacy Pending tabs stay in Google Sheets.
+ * lib/google-sheets.ts sends every tab here; since October 9, 2026 Google Sheets is not connected at all (the Legacy
+ * Pending tabs were the last ones there, read only by the old-data import scripts).
  * Writes run in one transaction that names the signed-in user, so the audit trigger records who changed what, and the
  * transaction is passed to every helper explicitly. Reads never join a transaction: they always use the database
  * directly, so a read can never land on another request's transaction (or one that has already ended).
@@ -18,7 +19,7 @@ export const SHEET_TITLES = [
   "Employee Branches", "Record Corrections", "Report Remarks", "Fidelity", "Cash Accounts", "Vendor Payables", "Commissions",
   "Remittance Methods", "Pay Profiles", "Payroll Runs", "Payroll Lines", "Payroll Adjustments", "Audit Log", "Daily Audits",
   "Member Transfers", "Program Categories", "Weekly Audits", "Monthly Audits", "Yearly Audits", "Holidays", "System Settings",
-  "Receipt Photos", "Report Notes", "Bank Deposits",
+  "Receipt Photos", "Report Notes", "Bank Deposits", "Company Targets",
 ] as const;
 /** Database-only columns that are not part of the sheet layout. */
 const HIDDEN = new Set(["row_seq", "or_key", "application_key", "legacy_duplicate", "storage_path"]);

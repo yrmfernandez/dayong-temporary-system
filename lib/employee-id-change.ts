@@ -10,7 +10,7 @@ import { recordCorrection } from "@/lib/record-corrections";
  *
  * In the database, the employee row's new ID carries into every linked table (ON UPDATE CASCADE), and every other
  * column ending in employee_id (who saved a row, who received or decided a remittance) is rewritten in the same
- * transaction. The audit_log keeps the old ID as history. The tabs below cover what is still in Google Sheets.
+ * transaction. The audit_log keeps the old ID as history. The tabs below are read through the Sheets-style layer.
  *
  * Every tab's header row is scanned for Employee ID columns (headers ending in "employee_id" or "Employee ID":
  * employee_id, accountable_employee_id, encoded_by_employee_id, "Encoded By Employee ID", mas_employee_id, …), and

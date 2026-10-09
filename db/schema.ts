@@ -824,6 +824,20 @@ export const report_notes = pgTable("report_notes", {
   updated_by: text(),
 }).enableRLS();
 
+/**
+ * Company sales targets per year ("2026") or quarter ("2026-Q3"), set on the executive dashboard (lib/company-targets.ts).
+ * Until October 9, 2026 they were meant for a Google Sheets tab that never existed, so none had been saved.
+ */
+export const company_targets = pgTable("company_targets", {
+  ...rowSeq(),
+  target_id: text().primaryKey(),
+  period_type: text(),
+  gross_sales_target: money("gross_sales_target"),
+  new_accounts_target: integer(),
+  notes: text(),
+  ...encoder(),
+}).enableRLS();
+
 /** Daily, Weekly, Monthly and Yearly Audits share one layout. */
 const periodAudit = (name: string) => pgTable(name, {
   ...rowSeq(),

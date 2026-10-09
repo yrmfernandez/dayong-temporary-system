@@ -431,8 +431,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
    * Load BOTH Active and Inactive programs.
    *
    * The filtering is intentionally NOT done here.
-   * The Programs API should return all programs from
-   * Google Sheets.
+   * The Programs API should return all programs.
    */
   useEffect(() => {
     let cancelled = false;
@@ -463,8 +462,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         /*
          * DO NOT FILTER BY STATUS HERE.
          *
-         * We want both Active and Inactive programs
-         * from Google Sheets.
+         * We want both Active and Inactive programs.
          */
         const loadedPrograms =
           Array.isArray(result.programs)
@@ -486,7 +484,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
           setProgramError(
             error instanceof Error
               ? error.message
-              : "Unable to load programs from Google Sheets.",
+              : "Unable to load programs.",
           );
         }
       } finally {

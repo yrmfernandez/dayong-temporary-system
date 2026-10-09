@@ -113,7 +113,6 @@ export async function getSystemHealth() {
   const config = [
     { label: "Database", ok: Boolean(project), detail: project === PRODUCTION_REF ? `Production (${project})` : project === STAGING_REF ? `Staging (${project})` : project || "DATABASE_URL missing" },
     { label: "Receipt photo storage", ok: storageReady, detail: storageReady ? "Supabase Storage configured" : "SUPABASE_URL or SUPABASE_SERVICE_KEY missing" },
-    { label: "Google Sheets (Legacy Pending only)", ok: Boolean(readServerVariable("GOOGLE_SERVICE_ACCOUNT_EMAIL") && GOOGLE_SHEET_ID), detail: readServerVariable("GOOGLE_SERVICE_ACCOUNT_EMAIL") && GOOGLE_SHEET_ID ? "Configured" : "Missing; Legacy Pending tabs cannot be read" },
     { label: "Session secret strength", ok: authSecret.length >= 32, detail: authSecret.length >= 32 ? `${authSecret.length} characters` : `Only ${authSecret.length} characters; use 32 or more` },
     { label: "Environment", ok: true, detail: process.env.NODE_ENV === "production" ? "Production (secure cookies on)" : `${process.env.NODE_ENV ?? "unknown"} (cookies not marked secure)` },
     { label: "Node.js", ok: true, detail: process.version },

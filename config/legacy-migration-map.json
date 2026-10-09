@@ -1,0 +1,49 @@
+{
+  "note": "Overrides for scripts/migrate-legacy-members.mjs. leaveOut: old-sheet rows skipped by the importer (handled elsewhere); members: pending rows assigned to the first member go to the second.",
+  "leaveOut": {
+    "Data-Base-Old|M1-COLL|8871": "₱300 D-300 (BRACKETING) payment filed under D-350 (5Y); added to D-300 (BRACKETING) by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|12292": "₱300 D-300 (BRACKETING) payment filed under D-350 (5Y); added to D-300 (BRACKETING) by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M1-COLL|4674": "D-210 HG payment filed under the wrong program; added to D-210 HG by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M1-COLL|7948": "DPB-350 payment filed under the wrong program; added to DPB-350 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M1-COLL|8793": "D-210 HG payment filed under the wrong program; added to D-210 HG by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|1569": "D-190 payment filed under the wrong program; added to D-190 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|4669": "D-230 payment filed under the wrong program; added to D-230 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|9855": "D-230 payment filed under the wrong program; added to D-230 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|10052": "D-230 payment filed under the wrong program; added to D-230 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|12201": "D-210 HG payment filed under the wrong program; added to D-210 HG by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|12850": "D-230 payment filed under the wrong program; added to D-230 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|14302": "D-230 payment filed under the wrong program; added to D-230 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|15320": "D-210 HG payment filed under the wrong program; added to D-210 HG by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|15469": "D-210 HG payment filed under the wrong program; added to D-210 HG by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|15492": "D-350 payment filed under the wrong program; added to D-350 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|15995": "D-320 payment filed under the wrong program; added to D-320 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|16490": "D-210 HG payment filed under the wrong program; added to D-210 HG by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|DAVNOR-COLL|823": "D-300 (BRACKETING) payment filed under the wrong program; added to D-300 (BRACKETING) by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|DAVNOR-COLL|4507": "D-320 payment filed under the wrong program; added to D-320 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|DAVNOR-COLL|8694": "D-210 HG payment filed under the wrong program; added to D-210 HG by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|DDO 2-COLL|2804": "DPB-350 payment filed under the wrong program; added to DPB-350 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|SDS-COLL|565": "D-300 (BRACKETING) payment filed under the wrong program; added to D-300 (BRACKETING) by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|SDS-COLL|1226": "D-180 payment filed under the wrong program; added to D-180 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M1-COLL|6636": "DPB-350 payment filed under the wrong program; added to DPB-350 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M3-COLL|13527": "D-270 (300) payment filed under the wrong program; added to D-270 (300) by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|DDO 1-COLL|1692": "D-350 (5Y) payment filed under the wrong program; added to D-350 (5Y) by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|SDS-COLL|664": "D-210 HG payment filed under the wrong program; added to D-210 HG by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|SDS-COLL|1372": "D-180 payment filed under the wrong program; added to D-180 by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
+    "Data-Base-Old|M1-COLL|8496": "D-210 HG payment filed under the wrong program; added to D-210 HG by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)"
+  },
+  "members": {
+    "MEM-LEG-C7FAC23487": "MEM-LEG-E83C97F09B"
+  },
+  "amounts": {
+    "Data-Base-Old|M3-COLL|12631": {
+      "amount": 230,
+      "note": "OR 20726 C: ₱220 is a typo for ₱230, the member's monthly payment (owner, October 9, 2026)"
+    }
+  },
+  "programs": {
+    "Data-Base-Old|DAVNOR-COLL|446": {
+      "program": "D-300 (BRACKETING)",
+      "note": "OR 00609T is a D-300 (BRACKETING) payment of an account that was then forfeited (owner, October 9, 2026)"
+    }
+  }
+}

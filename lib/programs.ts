@@ -3,7 +3,7 @@ import { getPrograms } from "./google-sheets-data";
 /**
  * Program type used by the application.
  *
- * Program data comes from Google Sheets.
+ * Program data comes from the database (programs table).
  */
 export type Program = {
   id: string;
@@ -34,7 +34,7 @@ export type Program = {
 };
 
 /**
- * Get all active programs from Google Sheets.
+ * Get all active programs.
  *
  * This replaces the old hardcoded:
  *
@@ -42,7 +42,7 @@ export type Program = {
  *
  * The actual data now comes from:
  *
- * Google Sheets → Programs
+ * Programs table
  */
 export async function getActivePrograms(): Promise<
   Program[]
@@ -75,7 +75,7 @@ export async function getActivePrograms(): Promise<
 }
 
 /**
- * Get all programs from Google Sheets.
+ * Get all programs.
  *
  * Use this when the page needs both
  * active and inactive programs.

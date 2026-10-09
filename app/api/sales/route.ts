@@ -222,7 +222,7 @@ async function saveSales(request: Request, user: SessionUser) {
      * STEP 1: PRE-FLIGHT VALIDATION
      * =====================================================
      *
-     * Nothing is written to Google Sheets during this step.
+     * Nothing is written to the database during this step.
      *
      * We first make sure:
      *
@@ -409,8 +409,7 @@ async function saveSales(request: Request, user: SessionUser) {
         }
 
         /*
-         * Check duplicate already stored
-         * in Google Sheets.
+         * Check duplicate already stored.
          */
         const existingEnrollment =
           await findMemberProgramEnrollment(

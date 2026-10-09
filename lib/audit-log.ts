@@ -1,10 +1,11 @@
 import type { sheets_v4 } from "googleapis";
 
 /**
- * Audit trail for edits and deletes. Every app write to Google Sheets passes through lib/google-sheets.ts, which
+ * Audit trail for edits and deletes. Every app write passes through the Sheets-style layer (lib/google-sheets.ts), which
  * wraps it with auditedWrite: the affected rows are read before the write (and again after, for edits), and one
  * "Audit Log" row is appended per changed record with who did it and what changed. Creations are not logged here;
- * each sheet's encoder columns already record who created a row. Writes made by hand in Google Sheets bypass this.
+ * each table's encoder columns already record who created a row. (The database's own audit trigger also records every
+ * change, including ones made outside the app.)
  */
 export const AUDIT_SHEET = "Audit Log";
 export const AUDIT_HEADERS = ["audit_id", "logged_at", "action", "sheet", "record_id", "row_number", "changes_json", "user_id", "employee_id", "user_name"];

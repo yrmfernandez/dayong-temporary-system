@@ -120,6 +120,13 @@
       "when": 1791444789388,
       "tag": "0016_clearings",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791541935535,
+      "tag": "0017_company_targets",
+      "breakpoints": true
     }
   ]
 }

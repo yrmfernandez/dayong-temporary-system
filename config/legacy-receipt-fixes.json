@@ -1,0 +1,221 @@
+{
+  "note": "Applied by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026). Member IDs are the same on staging and production (legacy imports).",
+  "memberMerges": [
+    {
+      "keep": "MEM-LEG-E83C97F09B",
+      "other": "MEM-LEG-7874819EA5",
+      "note": "PH-72171669 and PH-74499089 (CALINAN) are one person with two programs: D-300 (NEW BRACKETING), forfeited, and D-300 (BRACKETING), active (owner, October 9, 2026)"
+    }
+  ],
+  "receipts": [
+    {
+      "row": "Data-Base-Old|M1-COLL|8871",
+      "member": "MEM-LEG-29C200EC11",
+      "program": "D-300 (BRACKETING)",
+      "note": "₱300 August payment of D-300 (BRACKETING) filed under D-350 (5Y) in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|12292",
+      "member": "MEM-LEG-E83C97F09B",
+      "program": "D-300 (BRACKETING)",
+      "note": "₱300 July payment of D-300 (BRACKETING) filed under D-350 (5Y) in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M1-COLL|4674",
+      "member": "MEM-LEG-7047CC0187",
+      "program": "D-210 HG",
+      "note": "₱210 D-210 HG payment filed under D-280 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M1-COLL|7948",
+      "member": "MEM-LEG-2AABED04F9",
+      "program": "DPB-350",
+      "note": "₱350 DPB-350 payment filed under DPB-420 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M1-COLL|8793",
+      "member": "MEM-LEG-186B25FAF5",
+      "program": "D-210 HG",
+      "note": "₱210 D-210 HG payment filed under D-410 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|1569",
+      "member": "MEM-LEG-71BABF4F70",
+      "program": "D-190",
+      "note": "₱190 D-190 payment filed under D-290 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|4669",
+      "member": "MEM-LEG-C60308E45D",
+      "program": "D-230",
+      "note": "₱230 D-230 payment filed under D-300 (BRACKETING) in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|9855",
+      "member": "MEM-LEG-89B44C8136",
+      "program": "D-230",
+      "note": "₱230 D-230 payment filed under D-350 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|10052",
+      "member": "MEM-LEG-669E7024F1",
+      "program": "D-230",
+      "note": "₱690 D-230 payment filed under D-320 in the old sheet (owner, October 9, 2026)",
+      "months": 3
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|12201",
+      "member": "MEM-LEG-A0378CA6D4",
+      "program": "D-210 HG",
+      "note": "₱420 D-210 HG payment filed under D-230 in the old sheet; covers two months (written as two NOPs and months in the sheet) (owner, October 9, 2026)",
+      "months": 2
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|12850",
+      "member": "MEM-LEG-669E7024F1",
+      "program": "D-230",
+      "note": "₱460 D-230 payment filed under D-320 in the old sheet (owner, October 9, 2026)",
+      "months": 2
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|14302",
+      "member": "MEM-LEG-32D6363917",
+      "program": "D-230",
+      "note": "₱230 D-230 payment filed under D-320 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|15320",
+      "member": "MEM-LEG-DADF853290",
+      "program": "D-210 HG",
+      "note": "₱210 D-210 HG payment filed under D-250 FG in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|15469",
+      "member": "MEM-LEG-DDB74CE128",
+      "program": "D-210 HG",
+      "note": "₱420 D-210 HG payment filed under D-250 FG in the old sheet; covers two months (written as two NOPs and months in the sheet) (owner, October 9, 2026)",
+      "months": 2
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|15492",
+      "member": "MEM-LEG-A294DBFB87",
+      "program": "D-350",
+      "note": "₱1050 D-350 payment filed under DPB-420 in the old sheet (owner, October 9, 2026)",
+      "months": 3
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|15995",
+      "member": "MEM-LEG-C790D96148",
+      "program": "D-320",
+      "note": "₱320 D-320 payment filed under D-350 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|16490",
+      "member": "MEM-LEG-B0D053C821",
+      "program": "D-210 HG",
+      "note": "₱210 D-210 HG payment filed under D-250 FG in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|DAVNOR-COLL|823",
+      "member": "MEM-LEG-19C7ABF709",
+      "program": "D-300 (BRACKETING)",
+      "note": "₱300 D-300 (BRACKETING) payment filed under DPB-350 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|DAVNOR-COLL|4507",
+      "member": "MEM-LEG-3EC9F519BB",
+      "program": "D-320",
+      "note": "₱320 D-320 payment filed under D-350 (5Y) in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|DAVNOR-COLL|8694",
+      "member": "MEM-LEG-605B5A97E2",
+      "program": "D-210 HG",
+      "note": "₱210 D-210 HG payment filed under D-270 (300) in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|DDO 2-COLL|2804",
+      "member": "MEM-LEG-656B3424C3",
+      "program": "DPB-350",
+      "note": "₱350 DPB-350 payment filed under DPB-420 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|SDS-COLL|565",
+      "member": "MEM-LEG-56B1631C63",
+      "program": "D-300 (BRACKETING)",
+      "note": "₱900 D-300 (BRACKETING) payment filed under D-350 in the old sheet (owner, October 9, 2026)",
+      "months": 3
+    },
+    {
+      "row": "Data-Base-Old|SDS-COLL|1226",
+      "member": "MEM-LEG-608C5E0A42",
+      "program": "D-180",
+      "note": "₱360 D-180 payment filed under D-190 in the old sheet (owner, October 9, 2026)",
+      "months": 2
+    },
+    {
+      "row": "Data-Base-Old|M1-COLL|6636",
+      "member": "MEM-LEG-D1326E48A8",
+      "program": "DPB-350",
+      "note": "₱350 DPB-350 payment (OR 8324 B, June) filed under DPB-420 in the old sheet; the member has DPB-350 (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M3-COLL|13527",
+      "member": "MEM-LEG-752A6A4701",
+      "program": "D-270 (300)",
+      "note": "OR 20883 C (Jul 31, ₱270) is the July payment of D-270 (300), filed under D-300 (Bracketing) (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|DDO 1-COLL|1692",
+      "member": "MEM-LEG-0F2C33E294",
+      "program": "D-350 (5Y)",
+      "note": "OR 15123 N (Feb 26, ₱700) is two months of D-350 (5Y) after NOP 5–7, filed under DPB-420 (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|SDS-COLL|664",
+      "member": "MEM-LEG-7F5A0B1818",
+      "program": "D-210 HG",
+      "note": "OR 4767 (Feb 16, ₱150) is the January payment of D-210 HG (written NOP 28), filed under D-190 (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|SDS-COLL|1372",
+      "member": "MEM-LEG-7192585309",
+      "program": "D-180",
+      "note": "OR 180 S (Mar 26, ₱180) is the March payment of D-180 (written NOP 82), filed under D-190 (owner, October 9, 2026)"
+    },
+    {
+      "row": "Data-Base-Old|M1-COLL|8496",
+      "member": "MEM-LEG-9A71B66692",
+      "program": "D-210 HG",
+      "note": "OR 12131 B (Aug 11, ₱210) is the July payment of D-210 HG, filed under D-250 FG; 12276 B is August and 14295 B September (owner, October 9, 2026)"
+    }
+  ],
+  "deleteAccounts": [
+    {
+      "enrollment": "ENR-LEG-1CBB9FF8AF",
+      "note": "D-300 (NEW BRACKETING) of PH-72171669 (CALINAN), March 27, 2026, from the old web app, is the same application as the old sheet's D-350 (5Y) New Sale of that day: the member applied for the ₱300 plan and took D-350 (5Y) instead; deleted (owner, October 9, 2026)"
+    },
+    {
+      "enrollment": "ENR-LEG-38C7E43A2C",
+      "note": "D-350 account of MEM-LEG-D1326E48A8 (MATINA) created by the October 1 import only from OR 21866 C, which is a DPB-350 payment; no New Sale; empty once that payment moved (owner, October 9, 2026)"
+    },
+    {
+      "enrollment": "ENR-LEG-342980E3A4",
+      "note": "DPB-350 account created by the October 1 import only from OR 24915 N, a D-350 (5Y) payment; no New Sale; empty once it moved (owner, October 9, 2026)"
+    }
+  ],
+  "moves": [
+    {
+      "collection": "COL-LEG-479F763590",
+      "member": "MEM-LEG-D1326E48A8",
+      "program": "DPB-350",
+      "note": "OR 21866 C (August 18, 2026, ₱350) is the member's DPB-350 payment, filed under D-350 in the old sheet (owner, October 9, 2026)"
+    },
+    {
+      "collection": "COL-LEG-28B1EA0DEC",
+      "member": "MEM-LEG-0F2C33E294",
+      "program": "D-350 (5Y)",
+      "note": "OR 24915 N (Sep 28, ₱350) is a D-350 (5Y) payment; it alone had created a DPB-350 account (stored as NOP 1050 from the 1939 DOI) (owner, October 9, 2026)"
+    }
+  ]
+}

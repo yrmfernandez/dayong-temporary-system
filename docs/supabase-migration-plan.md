@@ -2,7 +2,7 @@
 
 Drafted October 4, 2026; updated October 5, 2026. Moves the operational database from Google Sheets to PostgreSQL on Supabase.
 
-**Status: every page runs on the database on the `supabase` branch (October 5, 2026); ready for cutover** (see [Cutover](#cutover-steps)). The live system (`main`) runs on Google Sheets until the branch is merged. See [Status by module](#status-by-module) for what is done, partly done, and still to do, and [Progress](#progress) for the dated log.
+**Status: finished. Every page runs on the database since the October 5, 2026 cutover, and Google Sheets was disconnected on October 9, 2026** (the app needs no Google credentials; the last Google tabs, Legacy Pending NS / COLL, were emptied by the old-data import). The spreadsheet stays in Google Drive as an archive. See [Status by module](#status-by-module) and [Progress](#progress) for the dated log.
 
 ## Why
 
@@ -266,6 +266,7 @@ The system is not in daily use yet, so cutover needs no quiet window. The owner 
 
 | Date | Step | Result |
 | --- | --- | --- |
+| Oct 9, 2026 | Google Sheets disconnected: `lib/google-sheets.ts` answers every call from the database; `GOOGLE_*` no longer required (sign-in, System Health); `/api/google-sheets/test` removed. Migration `0017_company_targets` adds the Company Targets table (targets could never be saved before: the tab existed nowhere) | Production needs `npm run prod -- npm run db:migrate` before this deploy; the `GOOGLE_*` variables can then be removed from Vercel |
 | Oct 4, 2026 | Phase 0: Supabase projects (production, staging) in Singapore; staging in `.env.local` | Connections and secret key checked |
 | Oct 4, 2026 | Phase 0: `npm run sheets:audit` | 0 errors; 16,901 type warnings, all handled by the copy (see below) |
 | Oct 4, 2026 | Phase 1: `db/schema.ts`, migrations `0000_initial_schema`, `0001_audit_trigger`, applied to staging | 42 tables with row-level security, 41 audit triggers, no API-role access; rules checked in a rolled-back test |
