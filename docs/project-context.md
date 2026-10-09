@@ -266,6 +266,7 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 
 - **Done (owner asked: less scrolling when encoding):** New Sales lists the receipt and program fields first (A. Application and Program), folds finished sales into a one-line summary, and ends in a save bar fixed to the bottom of the screen with the totals, control total and Save. Collections entries are compact (Program; Month from/to; Amount · OR Number · OR Date on one row; status, NOP and remittance on one line) with a save bar fixed to the bottom of the entries panel. Enter moves to the next field on both (`lib/enter-to-next.ts`). Layout only; rules unchanged.
 - **Done (owner):** the Application Date is also the date enrolled (DOI); the separate Date Enrolled field is gone and New Sales save the application date as the DOI. The save bars and the review before saving show the **Total amount collected** in large type with the total remittance.
+- **Done (owner):** Collections take **Months paid** (a quantity) instead of Month from / Month to; the first month is the account's next unpaid month, the last month, NOP and amount follow. The Current Entry card in the history panel is pinned to its bottom.
 
 - **Done:** Clearing lines show their progress instead of staying "Waiting for encoding": Waiting for encoding → Waiting for receipt → For approval → Approved (or Returned), with entry counts. A line leaves the page after 11:59 PM only once Approved (owner); unfinished earlier lines stay. No migration (worked out from the entries).
 

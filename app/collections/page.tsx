@@ -206,6 +206,14 @@ function getMemberDisplayName(member: Member) {
     .join(" ");
 }
 
+/** The month `count - 1` months after `from` ("YYYY-MM"): the last month covered by `count` months starting at `from`. */
+function lastMonthCovered(from: string, count: number) {
+  const [year, month] = from.split("-").map(Number);
+  if (!year || !month || !Number.isInteger(count) || count < 1) return "";
+  const index = year * 12 + (month - 1) + count - 1;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+}
+
 function getMonthDifference(from: string, to: string) {
   if (!from || !to) return 0;
 
@@ -522,34 +530,6 @@ export default function CollectionsPage() {
     }
   }
 
-  function updateMonthFrom(
-    entryId: string,
-    value: string,
-  ) {
-    const entry = collections.find(
-      (item) => item.id === entryId,
-    );
-
-    if (!entry) return;
-
-    const nopFrom = entry.nopFrom;
-
-    const monthCount = getMonthDifference(
-      value,
-      entry.monthTo,
-    );
-
-    updateCollection(entryId, {
-      monthFrom: value,
-      amountCollected: monthCount > 0 ? String(monthCount * (programs.find((p) => p.id === entry.programId)?.basePay ?? 0)) : "",
-      nopFrom,
-      nopTo:
-        nopFrom !== null && monthCount > 0
-          ? nopFrom + monthCount - 1
-          : nopFrom,
-    });
-  }
-
   function updateMonthTo(
     entryId: string,
     value: string,
@@ -573,6 +553,21 @@ export default function CollectionsPage() {
           ? entry.nopFrom + monthCount - 1
           : entry.nopFrom,
     });
+  }
+
+  /**
+   * Months paid (owner, October 9, 2026): the first month is the account's next unpaid month (set when the program is
+   * chosen), so the encoder types only how many months the receipt pays; the last month, NOP and amount follow.
+   */
+  function updateMonthCount(entryId: string, value: string) {
+    const entry = collections.find((item) => item.id === entryId);
+    if (!entry || !entry.monthFrom) return;
+    const count = Math.floor(Number(value));
+    if (!value || !Number.isFinite(count) || count < 1) {
+      updateCollection(entryId, { monthTo: "", amountCollected: "", nopTo: entry.nopFrom });
+      return;
+    }
+    updateMonthTo(entryId, lastMonthCovered(entry.monthFrom, Math.min(count, 120)));
   }
 
   function validateEntry(
@@ -1261,13 +1256,14 @@ export default function CollectionsPage() {
                                 }}
                               />
                             </div>
-                            <div className="space-y-1">
-                              <Label>Month from *</Label>
-                              <Input type="month" value={entry.monthFrom} onChange={(event) => updateMonthFrom(entry.id, event.target.value)} disabled={!entry.programId} />
-                            </div>
-                            <div className="space-y-1">
-                              <Label>Month to *</Label>
-                              <Input type="month" min={entry.monthFrom || undefined} value={entry.monthTo} onChange={(event) => updateMonthTo(entry.id, event.target.value)} disabled={!entry.monthFrom} />
+                            <div className="col-span-2 space-y-1">
+                              <Label htmlFor={`months-${entry.id}`}>Months paid *</Label>
+                              <div className="flex flex-wrap items-center gap-3">
+                                <Input id={`months-${entry.id}`} type="number" min={1} max={120} step={1} className="w-28" disabled={!entry.monthFrom} value={entry.monthTo ? getMonthDifference(entry.monthFrom, entry.monthTo) || "" : ""} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateMonthCount(entry.id, event.target.value)} placeholder={entry.monthFrom ? "1" : "Program first"} />
+                                <span className="text-sm text-muted-foreground">
+                                  {entry.monthFrom ? <>Covers <strong className="text-foreground">{formatMonth(entry.monthFrom)}{entry.monthTo && entry.monthTo !== entry.monthFrom ? ` – ${formatMonth(entry.monthTo)}` : ""}</strong> (next unpaid month onward)</> : "Starts at the account's next unpaid month."}
+                                </span>
+                              </div>
                             </div>
                           </div>
 
@@ -1786,63 +1782,17 @@ export default function CollectionsPage() {
                     </div>
                   )}
 
-                  {/* CURRENT ENTRY CHECK */}
+                  {/* CURRENT ENTRY (October 9, 2026): pinned to the bottom of the panel, so it stays in view beside the history. */}
                   {activeCollection &&
                     activeMember &&
                     activeProgram && (
-                      <div className="rounded-xl border bg-muted/30 p-4">
-                        <p className="text-sm font-semibold">
-                          Current Entry
-                        </p>
-
-                        <div className="mt-3 space-y-2 text-sm">
-                          <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                              Payment Period
-                            </span>
-
-                            <span className="font-medium">
-                              {formatMonth(
-                                activeCollection.monthFrom,
-                              )}{" "}
-                              —{" "}
-                              {formatMonth(
-                                activeCollection.monthTo,
-                              )}
-                            </span>
-                          </div>
-
-                          <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                              NOP
-                            </span>
-
-                            <span className="font-medium">
-                              {activeCollection
-                                .nopFrom ??
-                                "—"}{" "}
-                              —{" "}
-                              {activeCollection
-                                .nopTo ?? "—"}
-                            </span>
-                          </div>
-
-                          <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                              Amount
-                            </span>
-
-                            <span className="font-medium">
-                              {activeCollection
-                                .amountCollected
-                                ? formatCurrency(
-                                    Number(
-                                      activeCollection.amountCollected,
-                                    ),
-                                  )
-                                : "—"}
-                            </span>
-                          </div>
+                      <div className="sticky bottom-0 z-10 rounded-xl border border-primary/40 bg-card p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+                        <p className="text-sm font-semibold">Current Entry</p>
+                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+                          <div><p className="text-xs text-muted-foreground">Months</p><p className="font-medium">{formatMonth(activeCollection.monthFrom)}{activeCollection.monthTo && activeCollection.monthTo !== activeCollection.monthFrom ? ` – ${formatMonth(activeCollection.monthTo)}` : ""}{activeCollection.monthTo ? ` (${getMonthDifference(activeCollection.monthFrom, activeCollection.monthTo)})` : ""}</p></div>
+                          <div><p className="text-xs text-muted-foreground">NOP</p><p className="font-medium">{activeCollection.nopFrom ?? "—"}{activeCollection.nopTo !== null && activeCollection.nopTo !== activeCollection.nopFrom ? `–${activeCollection.nopTo}` : ""}</p></div>
+                          <div><p className="text-xs text-muted-foreground">Amount</p><p className="font-medium">{activeCollection.amountCollected ? formatCurrency(Number(activeCollection.amountCollected)) : "—"}</p></div>
+                          <div><p className="text-xs text-muted-foreground">OR</p><p className="truncate font-medium">{activeCollection.orNumber || "—"}{activeCollection.orDate ? ` · ${activeCollection.orDate}` : ""}</p></div>
                         </div>
                       </div>
                     )}
