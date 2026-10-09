@@ -1,9 +1,15 @@
 {
   "note": "Draft or legacy program -> the finalized program it belongs to, each confirmed by the owner (scripts/list-programs.mjs). Applied by scripts/move-program-accounts.mjs.",
-  "moves": [],
+  "moves": [
+    { "from": "DP-0046", "to": "DP-0064", "doiBefore": "2026-08-01", "note": "DP-0046 is a second program named DSP-290 on production (D-290 on staging); its accounts enrolled before August 2026 are DAYONG 290 (D-290, DP-0064) (owner, October 9, 2026)" },
+    { "from": "DP-0046", "to": "DP-0021", "doiFrom": "2026-08-01", "mergeIntoExisting": true, "remove": true, "note": "DP-0046 accounts enrolled from August 2026 are the real DSP-290 (DP-0021), which began then (owner, October 9, 2026)" },
+    { "from": "D-290 (500)", "to": "DP-0064", "doiBefore": "2026-08-01", "mergeIntoExisting": true, "note": "D-290 (500) is DAYONG 290 (D-290, DP-0064) with its 500 registration fee (owner, October 9, 2026)" },
+    { "from": "D-290 (500)", "to": "DP-0021", "doiFrom": "2026-08-01", "mergeIntoExisting": true, "remove": true, "note": "D-290 (500) registered from August 2026 is DSP-290 (DP-0021), which began then; D-290 is the old program, started 2023 (owner, October 9, 2026)" }
+  ],
   "decisions": [
     "D-270 (300) (DP-0015) is the DC-300 plan at a ₱270 rate; it stays its own program (owner, October 8, 2026: option A). Its 261 accounts all pay ₱270 a month, which does not fit DC-300 at ₱300.",
     "D-300 and D-300 (BRACKETING) are different programs. DC-300 is its own program.",
-    "Finalized on production (owner): D-180, D-190, D-230, D-280, D-290, D-300, D-300 (BRACKETING); their accounts are already in them, nothing to move."
+    "Finalized on production (owner): D-180, D-190, D-230, D-280, D-290, D-300, D-300 (BRACKETING); their accounts are already in them, nothing to move.",
+    "D-290 (DAYONG 290) and DSP-290 are two programs, both with a 500 registration fee; DSP-290 began in August 2026. D-290 (500) belongs to D-290, except accounts enrolled from August 1, 2026, which are DSP-290 (owner, October 9, 2026; replaces the same day's mistaken all-to-DSP-290 move, undone on staging, never run on production). Program IDs are production's: DP-0021 is the real DSP-290, DP-0064 is D-290, and DP-0046 was a second program also named DSP-290 holding 2023 D-290 accounts (on staging DP-0046 is still named D-290 and DP-0064 does not exist, so run this on production)."
   ]
 }

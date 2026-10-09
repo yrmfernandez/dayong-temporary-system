@@ -697,6 +697,13 @@ test('Clearing: no encoding without it, and its time is when the cash was receiv
     assert.equal(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', today), '', 'an Encoded clearing still allows a second batch that day');
     await query("update clearings set status = 'Removed' where clearing_id = 'CLR-1'");
     assert.match(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', today), /not in Clearing/);
+    // Cleared today for cash remitted yesterday: an Open clearing from a later day covers it; the branch ignores case.
+    const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+    await seed('clearings', [{ clearing_id: 'CLR-2', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T03:00:00Z`, cleared_date: today, status: 'Open' }]);
+    assert.equal(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'br-1 ', yesterday), '', 'an Open clearing today covers yesterday');
+    assert.equal(await clearing.clearedEmployee(['DPE-0009', 'DPE-0002'], 'BR-1', today), 'DPE-0002', 'the cleared one of two people with the same name');
+    assert.match(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-9', today), /cleared for BR-1 on/, 'the message says where they are cleared');
+    assert.equal((await clearing.getEncodableClearings()).map((item) => item.id).includes('CLR-2'), true, 'listed for the batch picker');
   } finally { globalThis.dayongClearingNotRequired = true; }
 });
 

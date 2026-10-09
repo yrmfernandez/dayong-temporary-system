@@ -1,5 +1,6 @@
 "use client";
 
+import { ClearingPicker } from "@/components/clearing-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
@@ -245,6 +246,8 @@ export default function CollectionsPage() {
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [branches, setBranches] = useState<Array<{ id: string; name: string; territory?: string; status: string }>>([]);
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
+  // The Clearing entry the batch was filled from (components/clearing-picker.tsx); its employee is the accountable one.
+  const [cleared, setCleared] = useState<{ id: string; employeeId: string; employeeName: string } | null>(null);
   const [histories, setHistories] = useState<Record<string, CollectionHistory[]>>({});
   const selectionVersions = useRef<Record<string, number>>({});
 
@@ -792,7 +795,7 @@ export default function CollectionsPage() {
         body: JSON.stringify({
           branch,
           mas,
-          accountableEmployeeId: masStaff.find((staff) => staff.fullName === mas)?.employeeId ?? "",
+          accountableEmployeeId: (cleared?.employeeName === mas ? cleared.employeeId : "") || (masStaff.find((staff) => staff.fullName === mas)?.employeeId ?? ""),
           dateRemitted,
           collectedBy,
           paymentMethod,
@@ -845,6 +848,7 @@ export default function CollectionsPage() {
     setBranch("");
     setMas("");
     setDateRemitted("");
+    setCleared(null);
     setCollections([firstCollection]);
     setActiveCollectionId("collection-1");
     setNextCollectionId(2);
@@ -878,6 +882,10 @@ export default function CollectionsPage() {
       {/* COLLECTION BATCH HEADER */}
       <Card><CardContent className="p-4">
           <p className="mb-3 text-sm font-semibold">Collection Batch</p>
+          <div className="mb-4"><ClearingPicker value={cleared?.id ?? ""} onPick={(clearing) => {
+            setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName });
+            setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); clearScopedMemberSelections();
+          }} /></div>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label>Branch *</Label>

@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, ne, or, sql } from "drizzle-orm";
 
 import { currentDb, encodedBy, schema } from "@/lib/db";
 import { getEmployees } from "@/lib/employees";
@@ -46,6 +46,15 @@ export async function getClearingPage() {
   };
 }
 
+/** Clearings New Sales and Collections can encode for: every Open one, and today's Encoded ones (a second batch). */
+export async function getEncodableClearings() {
+  const today = manilaNow().date;
+  const rows = await currentDb().select().from(clearings)
+    .where(or(eq(clearings.status, "Open"), and(eq(clearings.cleared_date, today), eq(clearings.status, "Encoded"))))
+    .orderBy(desc(clearings.cleared_at));
+  return rows.map(toClearing);
+}
+
 /** Lists a MAS or employee as cleared now, for one branch. */
 export async function addClearing(input: { branch: string; employeeId: string; amount?: unknown; notes?: unknown }) {
   const branchName = text(input.branch), employeeId = text(input.employeeId), notes = text(input.notes);
@@ -80,16 +89,40 @@ export async function removeClearing(input: { id: string; reason: string }) {
   return { id };
 }
 
+/** The same branch, ignoring case and outer spaces. */
+const sameBranch = (branch: string) => sql`lower(trim(${clearings.branch})) = ${text(branch).toLowerCase()}`;
+
+/**
+ * Clearings that cover a batch of these people, branch and Date Remitted: one made that day (Open, or Encoded for an
+ * earlier handover the same day), or one still Open from a later day (cleared today for cash remitted yesterday).
+ */
+const covering = (employeeIds: string[], branch: string, dateRemitted: string) => and(
+  inArray(clearings.employee_id, employeeIds.map(text)), sameBranch(branch), ne(clearings.status, "Removed"),
+  or(eq(clearings.cleared_date, text(dateRemitted)), and(eq(clearings.status, "Open"), gt(clearings.cleared_date, text(dateRemitted)))),
+);
+
+/** Which of these employees (same name, for example) is cleared for the branch and Date Remitted, or "". */
+export async function clearedEmployee(employeeIds: string[], branch: string, dateRemitted: string) {
+  const ids = employeeIds.map(text).filter(Boolean);
+  if (!ids.length) return "";
+  const [row] = await currentDb().select({ id: clearings.employee_id }).from(clearings).where(covering(ids, branch, dateRemitted)).orderBy(desc(clearings.cleared_at)).limit(1);
+  return row?.id ?? "";
+}
+
 /**
  * Why a batch cannot be saved yet, or "" when its accountable person is cleared for the branch on the Date Remitted
- * (Open, or Encoded for an earlier handover the same day).
+ * (see `covering`). The message says when and where they were cleared instead, so a wrong Date Remitted or branch is
+ * easy to spot.
  */
 export async function clearingProblem(employeeId: string, employeeName: string, branch: string, dateRemitted: string) {
   // Tests about other rules treat everyone as cleared (scripts/test-encoder-tracking.cjs); the clearing test turns this off.
   if ((globalThis as { dayongClearingNotRequired?: boolean }).dayongClearingNotRequired) return "";
-  const [row] = await currentDb().select({ id: clearings.clearing_id }).from(clearings)
-    .where(and(eq(clearings.employee_id, text(employeeId)), eq(clearings.branch, text(branch)), eq(clearings.cleared_date, text(dateRemitted)), ne(clearings.status, "Removed"))).limit(1);
-  return row ? "" : `${employeeName || employeeId} is not in Clearing for ${branch} on ${dateRemitted}. Check their receipts and bank slips, list them in Clearing, then encode.`;
+  if (await clearedEmployee([employeeId], branch, dateRemitted)) return "";
+  const others = await currentDb().select({ branch: clearings.branch, day: clearings.cleared_date, status: clearings.status }).from(clearings)
+    .where(and(eq(clearings.employee_id, text(employeeId)), ne(clearings.status, "Removed"), gte(clearings.cleared_date, manilaNow(new Date(Date.now() - 7 * 86400000)).date)))
+    .orderBy(desc(clearings.cleared_at)).limit(3);
+  const seen = others.length ? ` They are cleared ${others.map((row) => `for ${row.branch} on ${row.day} (${row.status})`).join(", ")}; check the branch and Date Remitted.` : "";
+  return `${employeeName || employeeId} is not in Clearing for ${branch} on ${dateRemitted}.${seen || " Check their receipts and bank slips, list them in Clearing, then encode."}`;
 }
 
 /**
@@ -98,18 +131,18 @@ export async function clearingProblem(employeeId: string, employeeName: string, 
  */
 export async function clearedAt(employeeId: string, branch: string, day: string, encodedAt = "") {
   const rows = await currentDb().select({ at: clearings.cleared_at }).from(clearings)
-    .where(and(eq(clearings.employee_id, text(employeeId)), eq(clearings.branch, text(branch)), eq(clearings.cleared_date, text(day)), ne(clearings.status, "Removed")))
+    .where(covering([employeeId], branch, day))
     .orderBy(clearings.cleared_at);
   const stamps = rows.map((row) => manilaStamp(row.at)).filter(Boolean);
   if (!stamps.length) return "";
   return (encodedAt ? stamps.filter((stamp) => stamp <= encodedAt).at(-1) : undefined) ?? stamps[0];
 }
 
-/** Marks a person's Open clearings for the branch and day as Encoded once their entries are sent for approval. */
+/** Marks a person's Open clearings covering the branch and day as Encoded once their entries are sent for approval. */
 export async function closeClearings(employeeId: string, branch: string, day: string, remittanceId: string) {
   if (!text(employeeId) || !text(day)) return 0;
   const updated = await currentDb().update(clearings).set({ status: "Encoded", remittance_id: remittanceId, closed_at: new Date().toISOString() })
-    .where(and(eq(clearings.employee_id, text(employeeId)), eq(clearings.branch, text(branch)), eq(clearings.cleared_date, text(day)), eq(clearings.status, "Open")))
+    .where(and(covering([employeeId], branch, day), eq(clearings.status, "Open")))
     .returning({ id: clearings.clearing_id });
   return updated.length;
 }

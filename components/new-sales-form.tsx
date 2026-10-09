@@ -53,6 +53,7 @@ import type {
   ProgramEnrollment,
 } from "@/lib/types";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { ClearingPicker } from "@/components/clearing-picker";
 
 type ProgramApiResponse = {
   success: boolean;
@@ -247,6 +248,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const [dateRemitted, setDateRemitted] = useState("");
   // The MAS submission the clerk is reviewing, or the MAS is editing: saving marks it Saved; submitting updates it.
   const [submissionId, setSubmissionId] = useState("");
+  // The Clearing entry the batch was filled from (components/clearing-picker.tsx).
+  const [clearingId, setClearingId] = useState("");
   const [tab, setTab] = useState<"encode" | "submitted">("encode");
   const [masProfile, setMasProfile] = useState<MasProfile | null>(null);
   // Clerk: submissions waiting in their branches. MAS: their own submissions.
@@ -1294,7 +1297,11 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
           </CardTitle>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="space-y-4">
+          <ClearingPicker value={clearingId} disabled={Boolean(submissionId)} onPick={(clearing) => {
+            setClearingId(clearing.id); setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate);
+            setSales((current) => current.map((sale) => ({ ...sale, program: { ...sale.program, branch: clearing.branch, mas: clearing.employeeName } })));
+          }} />
           <div className="grid gap-4 md:grid-cols-3">
             {/* Branch */}
             <div className="space-y-2">
@@ -1329,7 +1336,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
               />
 
               <p className="text-xs text-muted-foreground">
-                Select the actual remittance date.
+                Filled in from Clearing (the day the receipts were cleared).
               </p>
             </div>
           </div>

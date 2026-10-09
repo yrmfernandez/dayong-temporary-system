@@ -1,4 +1,4 @@
-import { clearingProblem } from "@/lib/clearing";
+import { clearedEmployee, clearingProblem } from "@/lib/clearing";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { checkBackdate, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
@@ -162,13 +162,16 @@ async function saveSales(request: Request, user: SessionUser) {
     const selectedBranch = branches.find(
       (branch) => branch.name === body.branch.trim() && branch.status === "active",
     );
-    const selectedStaff = employees.find(
+    // The MAS is chosen by name; when two active employees of the branch share it, the one in Clearing is meant.
+    const sameName = employees.filter(
       (employee) =>
-        employee.name === body.mas.trim() &&
-        employee.status === "active" &&
+        employee.name.trim().toLowerCase() === body.mas.trim().toLowerCase() &&
+        employee.status.toLowerCase() === "active" &&
         selectedBranch &&
         employee.branchIds.includes(selectedBranch.id),
     );
+    const clearedId = selectedBranch && sameName.length > 1 ? await clearedEmployee(sameName.map((employee) => employee.id), selectedBranch.name, body.dateRemitted.trim()) : "";
+    const selectedStaff = sameName.find((employee) => employee.id === clearedId) ?? sameName[0];
     // Encoding follows Clearing: the MAS must be cleared for this branch on the Date Remitted.
     const notCleared = selectedBranch && selectedStaff ? await clearingProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim()) : "";
     if (notCleared) return NextResponse.json({ success: false, message: notCleared }, { status: 400 });
