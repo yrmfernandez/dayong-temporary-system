@@ -1,6 +1,7 @@
 "use client";
 
 import { ClearingPicker } from "@/components/clearing-picker";
+import { enterToNextField } from "@/lib/enter-to-next";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
@@ -867,7 +868,8 @@ export default function CollectionsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    // Enter moves to the next field (lib/enter-to-next.ts).
+    <div className="space-y-4" onKeyDown={enterToNextField}>
       {/* PAGE HEADER */}
       <div className="flex flex-wrap items-end justify-between gap-2 rounded-xl page-hero px-5 py-3">
         <div><h1 className="text-xl font-semibold tracking-tight">
@@ -1154,7 +1156,7 @@ export default function CollectionsPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="space-y-5 p-4">
+                        <div className="space-y-3 p-3">
                           {/* ENTRY TITLE */}
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-2">
@@ -1214,59 +1216,25 @@ export default function CollectionsPage() {
                             )}
                           </div>
 
-                          {/* SELECTED MEMBER */}
+                          {/* SELECTED MEMBER: the details to check against the receipt, in two lines. */}
                           {entryMember && (
-                            <div className="rounded-lg border bg-muted/40 p-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex gap-3">
-                                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-background">
-                                    <User className="size-5 text-muted-foreground" />
-                                  </div>
-
-                                  <div>
-                                    <p className="font-semibold">
-                                      {getMemberDisplayName(
-                                        entryMember,
-                                      )}
-                                    </p>
-
-                                    <p className="text-sm text-muted-foreground">
-                                      PH/Member Number:{" "}
-                                      {
-                                        entryMember.phMemberNumber
-                                      }
-                                    </p>
-
-                                    <p className="text-sm text-muted-foreground">
-                                      Contact:{" "}
-                                      {
-                                        entryMember.contactNumber
-                                      }
-                                    </p>
-
-                                    {/* Details to check against the receipt so the payment goes to the right person. */}
-                                    <p className="text-sm text-muted-foreground">
-                                      Born: {entryMember.birthdate || "not recorded"}{entryMember.age !== null && entryMember.age !== undefined ? ` (age ${entryMember.age})` : ""}
-                                      {entryMember.address?.houseBlockLot ? ` · ${entryMember.address.houseBlockLot}` : ""}
-                                    </p>
-
-                                    {(() => {
-                                      const last = (histories[entry.id] ?? [])[0];
-                                      return last ? <p className="text-sm text-muted-foreground">Last payment: OR {last.orNumber || "—"} on {last.orDate} · {formatCurrency(Number(last.amountCollected) || 0)} · NOP {last.nop}</p> : entry.programId && !entry.accountLoading ? <p className="text-sm text-muted-foreground">No payment recorded yet for this program.</p> : null;
-                                    })()}
-                                  </div>
-                                </div>
-
-                                <Badge>
-                                  Member Selected
-                                </Badge>
-                              </div>
+                            <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                              <p><strong>{getMemberDisplayName(entryMember)}</strong> <span className="text-muted-foreground">· {entryMember.phMemberNumber}{entryMember.contactNumber ? ` · ${entryMember.contactNumber}` : ""}</span></p>
+                              {/* Details to check against the receipt so the payment goes to the right person. */}
+                              <p className="text-xs text-muted-foreground">
+                                Born {entryMember.birthdate || "not recorded"}{entryMember.age !== null && entryMember.age !== undefined ? ` (age ${entryMember.age})` : ""}
+                                {entryMember.address?.houseBlockLot ? ` · ${entryMember.address.houseBlockLot}` : ""}
+                                {(() => {
+                                  const last = (histories[entry.id] ?? [])[0];
+                                  return last ? ` · Last paid OR ${last.orNumber || "—"} on ${last.orDate}, ${formatCurrency(Number(last.amountCollected) || 0)}, NOP ${last.nop}` : entry.programId && !entry.accountLoading ? " · No payment yet for this program" : "";
+                                })()}
+                              </p>
                               {(() => {
                                 // Another member with the same name is the usual way a payment lands on the wrong person.
                                 const nameKey = (member: Member) => `${member.name.firstName} ${member.name.surname}`.trim().toLowerCase().replace(/\s+/g, " ");
                                 const twins = members.filter((member) => member.id !== entryMember.id && nameKey(member) === nameKey(entryMember));
                                 return twins.length ? (
-                                  <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+                                  <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
                                     {twins.length + 1} members are named {getMemberFullName(entryMember)}. Check the member number and birthdate against the receipt: the other {twins.length === 1 ? "is" : "are"} {twins.map((member) => `${member.phMemberNumber || "no number"} (born ${member.birthdate || "?"})`).join(", ")}.
                                   </p>
                                 ) : null;
@@ -1274,237 +1242,65 @@ export default function CollectionsPage() {
                             </div>
                           )}
 
-                          {/* PROGRAM */}
-                          <div className="space-y-2">
-                            <Label>Dayong Program *</Label>
-                            <SearchSelect
-                              aria-label="Dayong Program"
-                              value={entry.programId}
-                              disabled={!entry.memberId}
-                              placeholder={entry.memberId ? "Search program code or name" : "Select a member first"}
-                              emptyText="No enrolled program matches."
-                              options={entryPrograms.map((program) => ({ value: program.id, label: `${program.code} - ${program.name}`, keywords: program.code }))}
-                              onValueChange={(programId) => {
-                                if (programId) { void selectProgram(entry.id, programId); return; }
-                                selectionVersions.current[entry.id] = (selectionVersions.current[entry.id] ?? 0) + 1;
-                                updateCollection(entry.id, { programSearch: "", programId: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" });
-                                setHistories((current) => ({ ...current, [entry.id]: [] }));
-                              }}
-                            />
-                          </div>
-                          {/* PAYMENT PERIOD */}
-                          <div className="space-y-3">
-                            <div>
-                              <Label>
-                                Payment Period *
-                              </Label>
-
-                              <p className="text-xs text-muted-foreground">
-                                Select the first and
-                                last month covered by
-                                this payment.
-                              </p>
+                          {/* RECEIPT FIELDS (October 9, 2026): program, months, amount and OR side by side, in typing order. */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="col-span-2 space-y-1">
+                              <Label>Dayong Program *</Label>
+                              <SearchSelect
+                                aria-label="Dayong Program"
+                                value={entry.programId}
+                                disabled={!entry.memberId}
+                                placeholder={entry.memberId ? "Search program code or name" : "Select a member first"}
+                                emptyText="No enrolled program matches."
+                                options={entryPrograms.map((program) => ({ value: program.id, label: `${program.code} - ${program.name}`, keywords: program.code }))}
+                                onValueChange={(programId) => {
+                                  if (programId) { void selectProgram(entry.id, programId); return; }
+                                  selectionVersions.current[entry.id] = (selectionVersions.current[entry.id] ?? 0) + 1;
+                                  updateCollection(entry.id, { programSearch: "", programId: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" });
+                                  setHistories((current) => ({ ...current, [entry.id]: [] }));
+                                }}
+                              />
                             </div>
-
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label className="text-xs">
-                                  Month From
-                                </Label>
-
-                                <Input
-                                  type="month"
-                                  value={
-                                    entry.monthFrom
-                                  }
-                                  onChange={(
-                                    event,
-                                  ) =>
-                                    updateMonthFrom(
-                                      entry.id,
-                                      event.target
-                                        .value,
-                                    )
-                                  }
-                                  disabled={
-                                    !entry.programId
-                                  }
-                                />
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label className="text-xs">
-                                  Month To
-                                </Label>
-
-                                <Input
-                                  type="month"
-                                  min={
-                                    entry.monthFrom ||
-                                    undefined
-                                  }
-                                  value={
-                                    entry.monthTo
-                                  }
-                                  onChange={(
-                                    event,
-                                  ) =>
-                                    updateMonthTo(
-                                      entry.id,
-                                      event.target
-                                        .value,
-                                    )
-                                  }
-                                  disabled={
-                                    !entry.monthFrom
-                                  }
-                                />
-                              </div>
+                            <div className="space-y-1">
+                              <Label>Month from *</Label>
+                              <Input type="month" value={entry.monthFrom} onChange={(event) => updateMonthFrom(entry.id, event.target.value)} disabled={!entry.programId} />
+                            </div>
+                            <div className="space-y-1">
+                              <Label>Month to *</Label>
+                              <Input type="month" min={entry.monthFrom || undefined} value={entry.monthTo} onChange={(event) => updateMonthTo(entry.id, event.target.value)} disabled={!entry.monthFrom} />
                             </div>
                           </div>
 
-                          <div className="rounded border p-3 text-sm">
-                            Account status: <strong>{entry.accountLoading ? "Loading..." : entry.accountStatus || "Select a program"}</strong>
-                            {entry.temporarilySuspended && <p className="text-amber-700">Temporarily suspended. Select Waiver under If Suspended.</p>}
-                            {entry.accountStatus === "Forfeited" && <p className="text-red-600">Payments are blocked for this program.</p>}
-                            {entry.temporarilySuspended && <label className="mt-2 block">If Suspended *<select className="ml-2 rounded border p-2" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
-                          </div>
-                          {/* NOP */}
-                          <div className="space-y-3">
-                            <div>
-                              <Label>
-                                NOP
-                              </Label>
-
-                              <p className="text-xs text-muted-foreground">
-                                Set automatically from the covered months and the account&apos;s history. For an NS account the New Sale is NOP 1, so the first collection starts at NOP 2.
-                              </p>
-                            </div>
-
-                            <div className="grid gap-4 sm:grid-cols-2">
+                          {/* AMOUNT AND OR */}
+                          {(() => {
+                            const program = programs.find((item) => item.id === entry.programId);
+                            // A flexible program takes any amount from its minimum, so its amount is never locked.
+                            const locked = Boolean(program && !program.collectionAmountEditable && !program.flexible);
+                            // The exact remaining payoff, offered as a button so a locked amount is never typed.
+                            const paid = (histories[entry.id] ?? []).reduce((sum, item) => sum + Math.round((Number(item.amountCollected) || 0) * 100), 0);
+                            const payoff = program?.payBalanceTotal ? Math.max(0, Math.round(program.payBalanceTotal * 100) - paid) / 100 : 0;
+                            const monthly = Math.round((program?.basePay ?? 0) * 100) * getMonthDifference(entry.monthFrom, entry.monthTo) / 100;
+                            return (
                               <div className="space-y-2">
-                                <Label className="text-xs">
-                                  NOP From
-                                </Label>
-
-                                <Input
-                                  type="number"
-                                  value={
-                                    entry.nopFrom ??
-                                    ""
-                                  }
-                                  readOnly
-                                  tabIndex={-1}
-                                  className="bg-muted/50"
-                                  placeholder="Auto"
-                                />
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label className="text-xs">
-                                  NOP To
-                                </Label>
-
-                                <Input
-                                  type="number"
-                                  value={
-                                    entry.nopTo ??
-                                    ""
-                                  }
-                                  readOnly
-                                  tabIndex={-1}
-                                  className="bg-muted/50"
-                                  placeholder="Auto"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* AMOUNT */}
-                          <div className="space-y-2">
-                            <Label>Amount Collected</Label>
-                            {(() => {
-                              const program = programs.find((item) => item.id === entry.programId);
-                              // A flexible program takes any amount from its minimum, so its amount is never locked.
-                              const locked = Boolean(program && !program.collectionAmountEditable && !program.flexible);
-                              // The exact remaining payoff, offered as a button so a locked amount is never typed.
-                              const paid = (histories[entry.id] ?? []).reduce((sum, item) => sum + Math.round((Number(item.amountCollected) || 0) * 100), 0);
-                              const payoff = program?.payBalanceTotal ? Math.max(0, Math.round(program.payBalanceTotal * 100) - paid) / 100 : 0;
-                              const monthly = Math.round((program?.basePay ?? 0) * 100) * getMonthDifference(entry.monthFrom, entry.monthTo) / 100;
-                              return <>
-                                <Input type="number" min="0" step="0.01" readOnly={locked} className={locked ? "bg-muted/50" : undefined} value={entry.amountCollected} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateCollection(entry.id, { amountCollected: event.target.value })} placeholder="0.00" />
-                                <p className="text-xs text-muted-foreground">{locked ? "Fixed by the program: covered months × monthly amount. An administrator can allow editing in Programs." : "Starts with covered months × monthly amount. Edit only when the receipt pays the program's exact remaining payoff balance."}</p>
+                                <div className="grid grid-cols-3 gap-3">
+                                  <div className="space-y-1">
+                                    <Label title={locked ? "Fixed by the program: covered months × monthly amount. An administrator can allow editing in Programs." : "Starts with covered months × monthly amount. Edit only when the receipt pays the program's exact remaining payoff balance."}>Amount{locked ? " (fixed)" : ""}</Label>
+                                    <Input type="number" min="0" step="0.01" readOnly={locked} className={locked ? "bg-muted/50" : undefined} value={entry.amountCollected} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateCollection(entry.id, { amountCollected: event.target.value })} placeholder="0.00" />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label>OR Number *</Label>
+                                    <Input value={entry.orNumber} onChange={(event) => updateCollection(entry.id, { orNumber: event.target.value })} placeholder="OR number" />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label>OR Date *</Label>
+                                    <Input type="date" value={entry.orDate} onChange={(event) => updateCollection(entry.id, { orDate: event.target.value })} />
+                                  </div>
+                                </div>
                                 {locked && payoff > monthly && monthly > 0 && (
                                   Number(entry.amountCollected) === payoff
                                     ? <button type="button" className="text-xs text-primary underline" onClick={() => updateCollection(entry.id, { amountCollected: monthly.toFixed(2) })}>Back to {formatCurrency(monthly)} (covered months)</button>
                                     : <button type="button" className="text-xs text-primary underline" onClick={() => updateCollection(entry.id, { amountCollected: payoff.toFixed(2) })}>Receipt pays the full remaining balance: use {formatCurrency(payoff)}</button>
                                 )}
-                              </>;
-                            })()}
-                            <div className="rounded border p-3 text-sm">
-                              <strong>Incentive reference: {(() => { const quote = quoteEntry(entry); return "remittance" in quote ? formatCurrency(quote.remittance) : "Pending"; })()}</strong>
-                              {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
-                              <p className="text-xs text-muted-foreground">Calculated per NOP using the selected MAS or Collector incentive tier and mark up.</p>
-                            </div>
-                          </div>
-
-                          {/* OR DETAILS */}
-                          <div className="space-y-3">
-                            <div>
-                              <Label>
-                                OR Details
-                              </Label>
-                            </div>
-
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label className="text-xs">
-                                  OR Number *
-                                </Label>
-
-                                <Input
-                                  value={
-                                    entry.orNumber
-                                  }
-                                  onChange={(
-                                    event,
-                                  ) =>
-                                    updateCollection(
-                                      entry.id,
-                                      {
-                                        orNumber:
-                                          event.target
-                                            .value,
-                                      },
-                                    )
-                                  }
-                                  placeholder="Enter OR number"
-                                />
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label className="text-xs">
-                                  OR Date *
-                                </Label>
-
-                                <Input
-                                  type="date"
-                                  value={
-                                    entry.orDate
-                                  }
-                                  onChange={(
-                                    event,
-                                  ) =>
-                                    updateCollection(
-                                      entry.id,
-                                      {
-                                        orDate:
-                                          event.target
-                                            .value,
-                                      },
-                                    )
-                                  }
-                                />
                                 {dateWarnings({ receiptDate: entry.orDate, dateRemitted, today: manilaNow().date }).map((warning) => <p key={warning} className="text-xs font-medium text-amber-800">⚠ {warning}</p>)}
                                 {needsBackdateReason(entry.orDate) && (
                                   <div className="space-y-1">
@@ -1514,30 +1310,19 @@ export default function CollectionsPage() {
                                   </div>
                                 )}
                               </div>
-                            </div>
-                          </div>
+                            );
+                          })()}
 
-                          {/* COLLECTION DATE DISPLAY */}
-                          <div className="rounded-lg border bg-muted/30 p-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-medium">
-                                  Date Remitted
-                                </p>
-
-                                <p className="text-xs text-muted-foreground">
-                                  Shared by this collection batch.
-                                </p>
-                              </div>
-
-                              <Badge variant="secondary">
-                                {dateRemitted
-                                  ? formatDate(
-                                      dateRemitted,
-                                    )
-                                  : "Not set"}
-                              </Badge>
-                            </div>
+                          {/* WORKED OUT BY THE SYSTEM: account status, NOP and the remittance, on one line. */}
+                          <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                            Account <strong className="text-foreground">{entry.accountLoading ? "Loading..." : entry.accountStatus || "—"}</strong>
+                            {" · "}NOP <strong className="text-foreground">{entry.nopFrom ?? "—"}{entry.nopTo !== null && entry.nopTo !== entry.nopFrom ? `–${entry.nopTo}` : ""}</strong>
+                            {" · "}Remittance <strong className="text-foreground">{(() => { const quote = quoteEntry(entry); return "remittance" in quote ? formatCurrency(quote.remittance) : "Pending"; })()}</strong>
+                            <span title="NOP is set from the covered months and the account's history (an NS account's New Sale is NOP 1, so its first collection is NOP 2). The remittance uses the MAS or Collector incentive tier and mark-up."> ⓘ</span>
+                            {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
+                            {entry.temporarilySuspended && <p className="mt-1 text-amber-700">Temporarily suspended. Select Waiver under If Suspended.</p>}
+                            {entry.accountStatus === "Forfeited" && <p className="mt-1 text-red-600">Payments are blocked for this program.</p>}
+                            {entry.temporarilySuspended && <label className="mt-2 block text-foreground">If Suspended *<select className="ml-2 rounded border p-1" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
                           </div>
 
                           {/* MORE DETAILS */}
@@ -1709,62 +1494,44 @@ export default function CollectionsPage() {
                 },
               )}
 
-              {/* CONTROL TOTAL: typed from the MAS's turnover sheet before saving */}
-              <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px] sm:items-center">
-                <div>
-                  <Label htmlFor="control-total">Control total from the turnover sheet (net / total remittance) *</Label>
-                  <p className="text-xs text-muted-foreground">Type the net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary. The batch saves only when it matches the Total remittance.</p>
-                  {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, totalDue); return <p className={`mt-1 text-sm ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the total remittance."}</p>; })()}
-                </div>
-                <Input id="control-total" type="number" min="0" step="0.01" value={controlTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setControlTotal(event.target.value)} placeholder="0.00" />
-              </div>
-
               {/* TOTALS: amount collected, incentives (less Fidelity), penalty, total remittance */}
               <RemittanceSummary collected={totalCollected} remittance={totalRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} />
 
               {/* RECEIPT PHOTO: optional now; it can be added later in Today's Entries or My Entries. */}
-              <div className="space-y-1 rounded-xl border bg-muted/20 p-4">
+              <div className="space-y-1 rounded-xl border bg-muted/20 p-3">
                 <Label>Receipt photo for this batch (optional)</Label>
                 <input type="file" accept="image/*" capture="environment" className="block text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setPhotoError(""); try { setReceiptPhoto(await compressReceiptPhoto(file)); } catch (error) { setReceiptPhoto(null); setPhotoError(error instanceof Error ? error.message : "Unable to read the photo."); } }} />
                 <p className="text-xs text-muted-foreground">{receiptPhoto ? `Photo ready (${Math.round(receiptPhoto.bytes / 1000)} KB). It is attached to every collection in this batch, and the batch goes to Pending Approval.` : "With the photo, the batch goes to Pending Approval right after saving. Without it, add it later in Today's Entries or My Entries."}</p>
                 {photoError && <p className="text-xs text-red-700">{photoError}</p>}
               </div>
 
-              {/* SAVE / RESET */}
-              <div className="space-y-3 border-t pt-4">
-                {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Batch total: {formatCurrency(totalCollected)} · Remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p></div>}
-                {saveMessage && (
-                  <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
-                    {saveMessage}
-                  </div>
-                )}
-
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    type="button"
-                    className="flex-1"
-                    onClick={() => showPreview ? void saveCollections() : setShowPreview(true)}
-                    disabled={saving}
-                  >
-                    <Save className="mr-2 size-4" />
-
-                    {saving
-                      ? "Saving..."
-                      : showPreview ? "Confirm and Save" : "Preview Collections"}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={resetForm}
-                    disabled={saving}
-                  >
-                    <RotateCcw className="mr-2 size-4" />
-                    Reset
-                  </Button>
-                </div>
-              </div>
+              {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Batch total: {formatCurrency(totalCollected)} · Remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p></div>}
             </CardContent>
+
+            {/* SAVE BAR (October 9, 2026): stays at the bottom of the entries panel with the totals, the control total and
+                Save, so a batch is finished without scrolling to the end. */}
+            <div className="sticky bottom-0 z-10 space-y-2 border-t bg-background/95 p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <span className="font-semibold">{collections.length} {collections.length === 1 ? "entry" : "entries"} · {formatCurrency(totalCollected)} collected</span>
+                <span className="text-muted-foreground">To remit {totalDue === null ? "pending" : formatCurrency(totalDue)}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Label htmlFor="control-total" className="whitespace-nowrap" title="The net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary.">Control total *</Label>
+                <Input id="control-total" type="number" min="0" step="0.01" className="w-36" value={controlTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setControlTotal(event.target.value)} placeholder="From turnover sheet" />
+                {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, totalDue); return <span className={`text-xs ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the total remittance."}</span>; })()}
+              </div>
+              {saveMessage && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">{saveMessage}</div>}
+              <div className="flex gap-2">
+                <Button type="button" className="flex-1" onClick={() => showPreview ? void saveCollections() : setShowPreview(true)} disabled={saving}>
+                  <Save className="mr-2 size-4" />
+                  {saving ? "Saving..." : showPreview ? "Confirm and Save" : "Preview Collections"}
+                </Button>
+                <Button type="button" variant="outline" onClick={resetForm} disabled={saving}>
+                  <RotateCcw className="mr-2 size-4" />
+                  Reset
+                </Button>
+              </div>
+            </div>
           </div>
         </Card>
 

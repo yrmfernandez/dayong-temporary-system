@@ -264,6 +264,8 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 
 ## Batch from Clearing (2026-10-09)
 
+- **Done (owner asked: less scrolling when encoding):** New Sales lists the receipt and program fields first (A. Application and Program), folds finished sales into a one-line summary, and ends in a save bar fixed to the bottom of the screen with the totals, control total and Save. Collections entries are compact (Program; Month from/to; Amount · OR Number · OR Date on one row; status, NOP and remittance on one line) with a save bar fixed to the bottom of the entries panel. Enter moves to the next field on both (`lib/enter-to-next.ts`). Layout only; rules unchanged.
+
 - **Done:** Clearing lines show their progress instead of staying "Waiting for encoding": Waiting for encoding → Waiting for receipt → For approval → Approved (or Returned), with entry counts. A line leaves the page after 11:59 PM only once Approved (owner); unfinished earlier lines stay. No migration (worked out from the entries).
 
 - **Done:** New Sales and Collections pick the MAS from Clearing (**From Clearing**); Branch, MAS and Date Remitted are filled in from the clearing. Fixes MAS listed in Clearing but not detected: the check now ignores branch case and spaces, accepts a clearing still waiting for encoding made after the Date Remitted, resolves two employees with the same name to the cleared one, and its message names where and when the person is cleared. No migration.

@@ -54,6 +54,7 @@ import type {
 } from "@/lib/types";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { ClearingPicker } from "@/components/clearing-picker";
+import { enterToNextField } from "@/lib/enter-to-next";
 
 type ProgramApiResponse = {
   success: boolean;
@@ -1228,7 +1229,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    // Enter moves to the next field (lib/enter-to-next.ts).
+    <div className="mx-auto max-w-6xl space-y-5" onKeyDown={enterToNextField}>
       {/* =====================================================
           HEADER
       ====================================================== */}
@@ -1389,7 +1391,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
               <Card>
                 <CardHeader className="border-b">
                   <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <Badge variant="secondary">
                         Sale #{index + 1}
                       </Badge>
@@ -1402,6 +1404,14 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                             sale.member
                               .phMemberNumber
                           }
+                        </span>
+                      )}
+
+                      {/* A folded sale shows what was typed, so the clerk can check it without opening it. */}
+                      {!expanded && (
+                        <span className="truncate text-sm">
+                          <strong>{[sale.member.name.surname, sale.member.name.firstName].filter(Boolean).join(", ") || "No name yet"}</strong>
+                          <span className="text-muted-foreground"> · {sale.program.programCode || "no program"} · {peso(amountPaidOf(sale))} · App {sale.applicationNumber || "—"}</span>
                         </span>
                       )}
                     </div>
@@ -1444,12 +1454,305 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                 </CardHeader>
 
                 {expanded && (
-                  <CardContent className="space-y-8 pt-6">
+                  <CardContent className="space-y-6 pt-5">
+                    {/* A. APPLICATION AND PROGRAM: the receipt fields come first, side by side (October 9, 2026). */}
+                    <section className="space-y-3">
+                      <h2 className="font-semibold">A. Application and Program</h2>
+                      <div className="grid gap-3 md:grid-cols-4">
+                        <div className="space-y-2">
+                          <Label>
+                            Application No. *
+                          </Label>
+
+                          <Input
+                            value={
+                              sale.applicationNumber
+                            }
+                            onChange={(event) =>
+                              updateSale(
+                                sale.id,
+                                (current) => ({
+                                  ...current,
+
+                                  applicationNumber:
+                                    event
+                                      .target
+                                      .value,
+                                }),
+                              )
+                            }
+                            placeholder="Application number"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>
+                            Application Date *
+                          </Label>
+
+                          <Input
+                            type="date"
+                            value={
+                              sale.orDate
+                            }
+                            onChange={(event) =>
+                              updateSale(
+                                sale.id,
+                                (current) => ({
+                                  ...current,
+
+                                  orDate:
+                                    event
+                                      .target
+                                      .value,
+                                }),
+                              )
+                            }
+                          />
+                          {dateWarnings({ receiptDate: sale.orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date }).map((warning) => <p key={warning} className="text-xs font-medium text-amber-800">⚠ {warning}</p>)}
+                          {needsBackdateReason(sale.orDate) && (
+                            <div className="space-y-1">
+                              <Label className="text-xs text-amber-800">Reason for the late entry *</Label>
+                              <Input value={sale.backdateReason ?? ""} onChange={(event) => updateSale(sale.id, (current) => ({ ...current, backdateReason: event.target.value }))} placeholder="e.g. Application turned over late by the MAS" />
+                              <p className="text-xs text-muted-foreground">The application date is more than a day old. Administrators review late entries.</p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label>
+                            Program Type *
+                          </Label>
+
+                          <SearchSelect
+                            aria-label="Program Type"
+                            value={sale.program.programCode}
+                            disabled={programLoading || availablePrograms.length === 0}
+                            placeholder={programLoading ? "Loading programs..." : "Search program code or name"}
+                            options={availablePrograms.map((program) => ({ value: program.code, label: `${program.code} - ${program.name}` }))}
+                            onValueChange={(code) => {
+                              const chosen = availablePrograms.find((program) => program.code === code);
+                              updateSale(sale.id, (current) => ({
+                                ...current,
+                                program: {
+                                  ...current.program,
+                                  programCode: chosen?.code ?? "",
+                                  withRegistrationFee: Boolean(chosen?.registrationFeeRequired),
+                                  registrationAmount: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
+                                  amountPaid: chosen && !chosen.newSaleAmountEditable ? fixedNewSaleAmount(chosen) : chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
+                                },
+                              }));
+                            }}
+                          />
+
+                          {programLoading && (
+                            <p className="text-xs text-muted-foreground">
+                              Loading programs...
+                            </p>
+                          )}
+
+                          {!programLoading &&
+                            programError && (
+                              <p className="text-xs text-destructive">
+                                {programError}
+                              </p>
+                            )}
+
+                          {!programLoading &&
+                            !programError &&
+                            availablePrograms.length ===
+                              0 && (
+                              <p className="text-xs text-destructive">
+                                No program found.
+                              </p>
+                            )}
+                          {selectedProgram && (
+                            <p className="text-xs text-muted-foreground">
+                              {selectedProgram.name} · base pay ₱{Number(selectedProgram.basePay).toLocaleString("en-PH", { minimumFractionDigits: 2 })}{String(selectedProgram.status ?? "").trim().toLowerCase() === "active" ? "" : ` · ${String(selectedProgram.status ?? "Unknown")}`}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
+                      <div className="space-y-2">
+                        <Label>
+                          Amount Paid *
+                        </Label>
+
+                        <Input
+                          type="number"
+                          min="0"
+                          readOnly={Boolean(lockedProgram(sale.program.programCode))}
+                          className={lockedProgram(sale.program.programCode) ? "bg-muted/50" : undefined}
+                          value={
+                            amountPaidOf(sale) ||
+                            ""
+                          }
+                          onWheel={(event) => event.currentTarget.blur()}
+                          onChange={(event) =>
+                            updateSale(
+                              sale.id,
+                              (current) => ({
+                                ...current,
+
+                                program: {
+                                  ...current.program,
+
+                                  amountPaid:
+                                    Number(
+                                      event
+                                        .target
+                                        .value,
+                                    ) || 0,
+                                },
+                              }),
+                            )
+                          }
+                          placeholder="0.00"
+                        />
+                        {lockedProgram(sale.program.programCode) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale.program.programCode)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
+                      </div>
+                        <div className="space-y-2">
+                          <Label>
+                            Date Enrolled *
+                          </Label>
+
+                          <Input
+                            type="date"
+                            disabled={masMode}
+                            value={
+                              masMode ? today : sale.program
+                                .dateEnrolled
+                            }
+                            onChange={(event) =>
+                              updateSale(
+                                sale.id,
+                                (current) => ({
+                                  ...current,
+
+                                  program: {
+                                    ...current.program,
+
+                                    dateEnrolled:
+                                      event
+                                        .target
+                                        .value,
+                                  },
+                                }),
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>
+                            Remittance Method *
+                          </Label>
+
+                          <Select
+                            value={
+                              sale.program
+                                .modeOfPayment
+                            }
+                            onValueChange={(
+                              value,
+                            ) =>
+                              updateSale(
+                                sale.id,
+                                (current) => ({
+                                  ...current,
+
+                                  program: {
+                                    ...current.program,
+
+                                    modeOfPayment:
+                                      value ?? "",
+                                  },
+                                }),
+                              )
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Remittance method" />
+                            </SelectTrigger>
+
+                            <SelectContent>
+                              <SelectItem value="cash">
+                                Cash
+                              </SelectItem>
+
+                              <SelectItem value="gcash">
+                                GCash
+                              </SelectItem>
+
+                              <SelectItem value="maya">
+                                Maya
+                              </SelectItem>
+
+                              <SelectItem value="bank">
+                                Bank
+                              </SelectItem>
+
+                              <SelectItem value="others">
+                                Others
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>
+                            Registration Fee *
+                          </Label>
+
+                          <Select
+                            value={
+                              sale.program
+                                .withRegistrationFee
+                                ? "yes"
+                                : "no"
+                            }
+                            disabled
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Registration fee" />
+                            </SelectTrigger>
+
+                            <SelectContent>
+                              <SelectItem value="yes">
+                                Yes
+                              </SelectItem>
+
+                              <SelectItem value="no">
+                                No
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>
+                            Registration Amount
+                          </Label>
+
+                          <Input
+                            type="number"
+                            min="0"
+                            value={
+                              sale.program
+                                .registrationAmount ||
+                              ""
+                            }
+                            disabled
+                            onWheel={(event) => event.currentTarget.blur()}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                    </section>
+
+                    <Separator />
+
                     {/* PERSONAL DATA */}
                     <section className="space-y-4">
                       <div>
                         <h2 className="font-semibold">
-                          A. Personal Data
+                          B. Personal Data
                         </h2>
 
                         <p className="text-sm text-muted-foreground">
@@ -1992,7 +2295,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                         <div>
                           <h2 className="font-semibold">
-                            B. Beneficiaries
+                            C. Beneficiaries
                           </h2>
 
                           <p className="text-sm text-muted-foreground">
@@ -2178,7 +2481,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                     <section className="space-y-5">
                       <div>
                         <h2 className="font-semibold">
-                          C. Claimant Information
+                          D. Claimant Information
                         </h2>
 
                         <p className="text-sm text-muted-foreground">
@@ -2395,321 +2698,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
                     <Separator />
 
-                    {/* =================================================
-                        PROGRAM DETAILS
-                    ================================================== */}
-                    <section className="space-y-4">
-                      <div>
-                        <h2 className="font-semibold">
-                          D. Program Details
-                        </h2>
-
-                        <p className="text-sm text-muted-foreground">
-                          Programs are loaded
-                          from the Programs
-                          Google Sheet.
-                        </p>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        {/* PROGRAM TYPE */}
-                        <div className="space-y-2">
-                          <Label>
-                            Program Type *
-                          </Label>
-
-                          <SearchSelect
-                            aria-label="Program Type"
-                            value={sale.program.programCode}
-                            disabled={programLoading || availablePrograms.length === 0}
-                            placeholder={programLoading ? "Loading programs..." : "Search program code or name"}
-                            options={availablePrograms.map((program) => ({ value: program.code, label: `${program.code} - ${program.name}` }))}
-                            onValueChange={(code) => {
-                              const chosen = availablePrograms.find((program) => program.code === code);
-                              updateSale(sale.id, (current) => ({
-                                ...current,
-                                program: {
-                                  ...current.program,
-                                  programCode: chosen?.code ?? "",
-                                  withRegistrationFee: Boolean(chosen?.registrationFeeRequired),
-                                  registrationAmount: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
-                                  amountPaid: chosen && !chosen.newSaleAmountEditable ? fixedNewSaleAmount(chosen) : chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
-                                },
-                              }));
-                            }}
-                          />
-
-                          {programLoading && (
-                            <p className="text-xs text-muted-foreground">
-                              Loading programs from
-                              Google Sheets...
-                            </p>
-                          )}
-
-                          {!programLoading &&
-                            programError && (
-                              <p className="text-xs text-destructive">
-                                {programError}
-                              </p>
-                            )}
-
-                          {!programLoading &&
-                            !programError &&
-                            availablePrograms.length ===
-                              0 && (
-                              <p className="text-xs text-destructive">
-                                No program found in
-                                Google Sheets.
-                              </p>
-                            )}
-
-                          {selectedProgram && (
-                            <div className="rounded-md bg-muted/50 p-3 text-sm">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="font-medium">
-                                  {
-                                    selectedProgram.name
-                                  }
-                                </p>
-
-                                <Badge
-                                  variant={
-                                    String(
-                                      selectedProgram.status ??
-                                        "",
-                                    )
-                                      .trim()
-                                      .toLowerCase() ===
-                                      "active"
-                                      ? "default"
-                                      : "secondary"
-                                  }
-                                >
-                                  {String(
-                                    selectedProgram.status ??
-                                      "Unknown",
-                                  )}
-                                </Badge>
-                              </div>
-
-                              {selectedProgram.code && (
-                                <p className="text-muted-foreground">
-                                  Code:{" "}
-                                  {
-                                    selectedProgram.code
-                                  }
-                                </p>
-                              )}
-
-                              <p className="text-muted-foreground">
-                                Base Pay: ₱
-                                {Number(
-                                  selectedProgram.basePay,
-                                ).toLocaleString(
-                                  "en-PH",
-                                  {
-                                    minimumFractionDigits:
-                                      2,
-                                  },
-                                )}
-                              </p>
-
-                              {selectedProgram.description && (
-                                <p className="mt-1 text-muted-foreground">
-                                  {
-                                    selectedProgram.description
-                                  }
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* DATE ENROLLED */}
-                        <div className="space-y-2">
-                          <Label>
-                            Date Enrolled *
-                          </Label>
-
-                          <Input
-                            type="date"
-                            disabled={masMode}
-                            value={
-                              masMode ? today : sale.program
-                                .dateEnrolled
-                            }
-                            onChange={(event) =>
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  program: {
-                                    ...current.program,
-
-                                    dateEnrolled:
-                                      event
-                                        .target
-                                        .value,
-                                  },
-                                }),
-                              )
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-3">
-                        {/* PAYMENT METHOD */}
-                        <div className="space-y-2">
-                          <Label>
-                            Remittance Method *
-                          </Label>
-
-                          <Select
-                            value={
-                              sale.program
-                                .modeOfPayment
-                            }
-                            onValueChange={(
-                              value,
-                            ) =>
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  program: {
-                                    ...current.program,
-
-                                    modeOfPayment:
-                                      value ?? "",
-                                  },
-                                }),
-                              )
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Remittance method" />
-                            </SelectTrigger>
-
-                            <SelectContent>
-                              <SelectItem value="cash">
-                                Cash
-                              </SelectItem>
-
-                              <SelectItem value="gcash">
-                                GCash
-                              </SelectItem>
-
-                              <SelectItem value="maya">
-                                Maya
-                              </SelectItem>
-
-                              <SelectItem value="bank">
-                                Bank
-                              </SelectItem>
-
-                              <SelectItem value="others">
-                                Others
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* REGISTRATION FEE */}
-                        <div className="space-y-2">
-                          <Label>
-                            Registration Fee *
-                          </Label>
-
-                          <Select
-                            value={
-                              sale.program
-                                .withRegistrationFee
-                                ? "yes"
-                                : "no"
-                            }
-                            disabled
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Registration fee" />
-                            </SelectTrigger>
-
-                            <SelectContent>
-                              <SelectItem value="yes">
-                                Yes
-                              </SelectItem>
-
-                              <SelectItem value="no">
-                                No
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* REGISTRATION AMOUNT */}
-                        <div className="space-y-2">
-                          <Label>
-                            Registration Amount
-                          </Label>
-
-                          <Input
-                            type="number"
-                            min="0"
-                            value={
-                              sale.program
-                                .registrationAmount ||
-                              ""
-                            }
-                            disabled
-                            onWheel={(event) => event.currentTarget.blur()}
-                            placeholder="0.00"
-                          />
-                        </div>
-                      </div>
-
-                      {/* AMOUNT PAID */}
-                      <div className="space-y-2">
-                        <Label>
-                          Amount Paid *
-                        </Label>
-
-                        <Input
-                          type="number"
-                          min="0"
-                          readOnly={Boolean(lockedProgram(sale.program.programCode))}
-                          className={lockedProgram(sale.program.programCode) ? "bg-muted/50" : undefined}
-                          value={
-                            amountPaidOf(sale) ||
-                            ""
-                          }
-                          onWheel={(event) => event.currentTarget.blur()}
-                          onChange={(event) =>
-                            updateSale(
-                              sale.id,
-                              (current) => ({
-                                ...current,
-
-                                program: {
-                                  ...current.program,
-
-                                  amountPaid:
-                                    Number(
-                                      event
-                                        .target
-                                        .value,
-                                    ) || 0,
-                                },
-                              }),
-                            )
-                          }
-                          placeholder="0.00"
-                        />
-                        {lockedProgram(sale.program.programCode) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale.program.programCode)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
-                      </div>
-
-                      {/* NOTES */}
+                    {/* E. NOTES */}
+                    <section className="space-y-2">
                       <div className="space-y-2">
                         <Label>
                           Notes
@@ -2741,91 +2731,6 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                         />
                       </div>
                     </section>
-
-                    <Separator />
-
-                    {/* PAYMENT / APPLICATION */}
-                    <section className="space-y-4">
-                      <div>
-                        <h2 className="font-semibold">
-                          E. Payment / Application Details
-                        </h2>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-3">
-                        <div className="space-y-2">
-                          <Label>
-                            Application No. *
-                          </Label>
-
-                          <Input
-                            value={
-                              sale.applicationNumber
-                            }
-                            onChange={(event) =>
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  applicationNumber:
-                                    event
-                                      .target
-                                      .value,
-                                }),
-                              )
-                            }
-                            placeholder="Application number"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>
-                            Application Date *
-                          </Label>
-
-                          <Input
-                            type="date"
-                            value={
-                              sale.orDate
-                            }
-                            onChange={(event) =>
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  orDate:
-                                    event
-                                      .target
-                                      .value,
-                                }),
-                              )
-                            }
-                          />
-                          {dateWarnings({ receiptDate: sale.orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date }).map((warning) => <p key={warning} className="text-xs font-medium text-amber-800">⚠ {warning}</p>)}
-                          {needsBackdateReason(sale.orDate) && (
-                            <div className="space-y-1">
-                              <Label className="text-xs text-amber-800">Reason for the late entry *</Label>
-                              <Input value={sale.backdateReason ?? ""} onChange={(event) => updateSale(sale.id, (current) => ({ ...current, backdateReason: event.target.value }))} placeholder="e.g. Application turned over late by the MAS" />
-                              <p className="text-xs text-muted-foreground">The application date is more than a day old. Administrators review late entries.</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg bg-muted/50 p-4">
-                        <p className="text-sm font-medium">
-                          Date Encoded
-                        </p>
-
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Automatically recorded
-                          when the Entry Clerk
-                          saves the transaction.
-                        </p>
-                      </div>
-                    </section>
                   </CardContent>
                 )}
               </Card>
@@ -2846,12 +2751,13 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         Add New Sale
       </Button>
 
-      {/* PENALTY AND TOTALS: the clerk's batch details */}
+      {/* PENALTY AND FIDELITY (optional) and the totals; the control total and Save are in the bar below. */}
       {!masMode && <Card>
-        <CardContent className="space-y-4 pt-6">
+        <CardContent className="space-y-3 pt-5">
+          <div className="grid gap-3 lg:grid-cols-2">
           <fieldset className={`space-y-2 rounded-lg border p-3 ${penaltyAmount > 0 ? "border-red-300 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20" : ""}`}>
             <legend className="px-1 text-sm font-medium">Remittance penalty (optional)</legend>
-            <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+            <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
               <div className="space-y-1">
                 <Label htmlFor="sales-penalty-amount">Penalty amount</Label>
                 <Input id="sales-penalty-amount" type="number" min="0" step="0.01" value={penalty} placeholder="0.00" onChange={(event) => setPenalty(event.target.value)} />
@@ -2865,80 +2771,48 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
           </fieldset>
           <fieldset className={`space-y-2 rounded-lg border p-3 ${fidelityAmount > 0 ? "border-emerald-300 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20" : ""}`}>
             <legend className="px-1 text-sm font-medium">Fidelity</legend>
-            <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
+            <div className="grid gap-3 sm:grid-cols-[160px_1fr] sm:items-end">
               <div className="space-y-1">
                 <Label htmlFor="sales-fidelity-amount">Fidelity amount</Label>
                 <Input id="sales-fidelity-amount" type="number" min="0" step="0.01" value={fidelity} placeholder="0.00" onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setFidelity(event.target.value)} />
               </div>
-              <p className="text-xs text-muted-foreground">The MAS&apos;s own money handed over for their Fidelity savings; zero is allowed. It is added to this batch&apos;s remittance and does not reduce incentives. There is no limit; the first ₱10,000 of savings is released only when the employee leaves, and anything above it can be withdrawn any time.</p>
+              <p className="text-xs text-muted-foreground">The MAS&apos;s own money for their Fidelity savings (zero is allowed); added to the remittance, incentives unchanged.</p>
             </div>
           </fieldset>
-          {quoteProblem && <p role="alert" className="text-sm text-destructive">{quoteProblem.error}</p>}
-          <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_220px] sm:items-center">
-            <div>
-              <Label htmlFor="sales-control-total">Control total from the turnover sheet (net / total remittance) *</Label>
-              <p className="text-xs text-muted-foreground">Type the net total the MAS wrote on the turnover sheet: amount paid less MAS incentives, plus Fidelity. Not the total collections, and not copied from the summary. The batch saves only when it matches the Total remittance.</p>
-              {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, saleTotalDue); return <p className={`mt-1 text-sm ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the total remittance."}</p>; })()}
-            </div>
-            <Input id="sales-control-total" type="number" min="0" step="0.01" value={controlTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setControlTotal(event.target.value)} placeholder="0.00" />
           </div>
+          {quoteProblem && <p role="alert" className="text-sm text-destructive">{quoteProblem.error}</p>}
           <RemittanceSummary collected={totalPaid} remittance={totalSaleRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} incentiveNote="From each program's New Sale incentive, or its month-1 MAS tier when there is no registration fee." />
         </CardContent>
       </Card>}
 
-      {/* SAVE */}
-      <Card>
-        <CardContent className="flex flex-col justify-between gap-4 pt-6 sm:flex-row sm:items-center">
-          <div>
+      {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div></div>}
+
+      {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
+          batch is finished without scrolling to the end of the page. */}
+      <div className="sticky bottom-0 z-20 rounded-t-xl border bg-background/95 p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] backdrop-blur">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="min-w-0 flex-1 text-sm">
             <p className="font-semibold">
-              {sales.length}{" "}
-              {sales.length === 1
-                ? "Sale"
-                : "Sales"}
+              {sales.length} {sales.length === 1 ? "Sale" : "Sales"} · {peso(totalPaid)} paid{!masMode && saleTotalDue !== null ? ` · ${peso(saleTotalDue)} to remit` : ""}
             </p>
-
-            <p className="text-sm text-muted-foreground">
-              {branch
-                ? `Branch: ${branch}`
-                : "Branch not selected"}{" "}
-              ·{" "}
-              {mas
-                ? `MAS: ${mas}`
-                : "MAS not selected"}
-            </p>
-
-            {saveMessage && (
-              <p className="mt-2 text-sm font-medium">
-                {saveMessage}
-              </p>
-            )}
+            <p className="truncate text-muted-foreground">{branch || "Branch not selected"} · {mas || "MAS not selected"}</p>
+            {saveMessage && <p className="mt-1 font-medium">{saveMessage}</p>}
           </div>
-
-          {showPreview && <div className="w-full rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div></div>}
-
-          <div className="flex flex-col-reverse gap-2 sm:flex-row">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={resetForm}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-
-            <Button
-              type="button"
-              size="lg"
-              onClick={() => showPreview ? void (masMode ? submitToClerk() : saveSales()) : setShowPreview(true)}
-              disabled={saving}
-            >
-              {saving
-                ? (masMode ? "Submitting..." : "Saving...")
-                : showPreview ? (masMode ? "Confirm and Submit" : "Confirm and Save") : "Preview Sales"}
+          {!masMode && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Label htmlFor="sales-control-total" className="whitespace-nowrap" title="The net total the MAS wrote on the turnover sheet: amount paid less MAS incentives, plus Fidelity. Not the total collections, and not copied from the summary.">Control total *</Label>
+              <Input id="sales-control-total" type="number" min="0" step="0.01" className="w-36" value={controlTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setControlTotal(event.target.value)} placeholder="From turnover sheet" />
+              {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, saleTotalDue); return <span className={`max-w-64 text-xs ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the total remittance."}</span>; })()}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={resetForm} disabled={saving}>Cancel</Button>
+            <Button type="button" onClick={() => showPreview ? void (masMode ? submitToClerk() : saveSales()) : setShowPreview(true)} disabled={saving}>
+              {saving ? (masMode ? "Submitting..." : "Saving...") : showPreview ? (masMode ? "Confirm and Submit" : "Confirm and Save") : "Preview Sales"}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {masMode && <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={openSubmission} />}
       </>)}
