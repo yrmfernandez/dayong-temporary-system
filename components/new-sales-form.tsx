@@ -953,12 +953,6 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         return "Each beneficiary needs a surname, first name, and relationship.";
       }
 
-      if (
-        !masMode && !sale.program.dateEnrolled
-      ) {
-        return "Date Enrolled is required.";
-      }
-
       if (blank(sale.applicationNumber)) {
         return "Application Number is required.";
       }
@@ -968,7 +962,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       }
 
       if (!sale.orDate) {
-        return "OR Date is required.";
+        return "Application Date is required.";
       }
     }
 
@@ -1153,7 +1147,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
             registrationFee: sale.program.withRegistrationFee ? "Yes" : "No",
             registrationAmount: String(sale.program.registrationAmount),
             amountPaid: String(amountPaidOf(sale)),
-            doi: sale.program.dateEnrolled,
+            // The application date is the date enrolled (DOI) (owner, October 9, 2026).
+            doi: sale.orDate || sale.program.dateEnrolled,
             programId: selectedProgram?.id ?? "",
             programTerms: sale.program.programTerms,
             beneficiaries: sale.beneficiaries,
@@ -1286,8 +1281,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
               <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{mas || "Loading..."}</p>
             </div>
             <div className="space-y-2">
-              <Label>Date Enrolled</Label>
-              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{today} (the day you submit)</p>
+              <Label>Submitted on</Label>
+              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{today}; each sale&apos;s date enrolled is its application date</p>
             </div>
           </CardContent>
         </Card>
@@ -1508,6 +1503,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                               )
                             }
                           />
+                          <p className="text-xs text-muted-foreground">Also the date enrolled (DOI).</p>
                           {dateWarnings({ receiptDate: sale.orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date }).map((warning) => <p key={warning} className="text-xs font-medium text-amber-800">⚠ {warning}</p>)}
                           {needsBackdateReason(sale.orDate) && (
                             <div className="space-y-1">
@@ -1571,7 +1567,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                           )}
                         </div>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
+                      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
                       <div className="space-y-2">
                         <Label>
                           Amount Paid *
@@ -1610,37 +1606,6 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                         />
                         {lockedProgram(sale.program.programCode) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale.program.programCode)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
                       </div>
-                        <div className="space-y-2">
-                          <Label>
-                            Date Enrolled *
-                          </Label>
-
-                          <Input
-                            type="date"
-                            disabled={masMode}
-                            value={
-                              masMode ? today : sale.program
-                                .dateEnrolled
-                            }
-                            onChange={(event) =>
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  program: {
-                                    ...current.program,
-
-                                    dateEnrolled:
-                                      event
-                                        .target
-                                        .value,
-                                  },
-                                }),
-                              )
-                            }
-                          />
-                        </div>
                         <div className="space-y-2">
                           <Label>
                             Remittance Method *
@@ -2785,15 +2750,17 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         </CardContent>
       </Card>}
 
-      {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.program.dateEnrolled || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div></div>}
+      {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.orDate || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p></div>}
 
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}
       <div className="sticky bottom-0 z-20 rounded-t-xl border bg-background/95 p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] backdrop-blur">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="min-w-0 flex-1 text-sm">
-            <p className="font-semibold">
-              {sales.length} {sales.length === 1 ? "Sale" : "Sales"} · {peso(totalPaid)} paid{!masMode && saleTotalDue !== null ? ` · ${peso(saleTotalDue)} to remit` : ""}
+            <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <span>Total amount collected <strong className="text-lg tabular-nums">{peso(totalPaid)}</strong></span>
+              {!masMode && <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{saleTotalDue === null ? "pending" : peso(saleTotalDue)}</strong></span>}
+              <span className="text-muted-foreground">{sales.length} {sales.length === 1 ? "sale" : "sales"}</span>
             </p>
             <p className="truncate text-muted-foreground">{branch || "Branch not selected"} · {mas || "MAS not selected"}</p>
             {saveMessage && <p className="mt-1 font-medium">{saveMessage}</p>}
