@@ -10,7 +10,7 @@ const PERIODS: { id: HistoryPeriod; label: string }[] = [{ id: "week", label: "W
 const CATEGORY: Record<string, { tone: string; label: string }> = {
   Early: { tone: "tone-teal", label: "Early" }, "On time": { tone: "tone-success", label: "On time" }, Late: { tone: "tone-warning", label: "Late" },
   Absent: { tone: "tone-danger", label: "Absent" }, AWOL: { tone: "tone-danger", label: "AWOL" }, "On leave": { tone: "tone-info", label: "On leave" },
-  "Day Off": { tone: "tone-neutral", label: "Day off" }, "Non-working day": { tone: "tone-neutral", label: "Non-working day" }, "Not clocked in": { tone: "tone-neutral", label: "Not clocked in" },
+  "Day Off": { tone: "tone-neutral", label: "Day off" }, "Not required": { tone: "tone-neutral", label: "No attendance needed" }, "Non-working day": { tone: "tone-neutral", label: "Non-working day" }, "Not clocked in": { tone: "tone-neutral", label: "Not clocked in" },
 };
 const SEGMENTS: { key: keyof HistoryTotals; label: string; tone: string }[] = [
   { key: "early", label: "Early", tone: "tone-teal" }, { key: "onTime", label: "On time", tone: "tone-success" }, { key: "late", label: "Late", tone: "tone-warning" },

@@ -80,7 +80,9 @@ export type AttendanceStatus =
   | "AWOL"
   | "Non-working Day"
   /** An administrator gave the employee the day off: neither worked nor absent. */
-  | "Day Off";
+  | "Day Off"
+  /** Management marked that the employee does not need to clock in that day (e.g. MAS in the field): neither worked nor absent. */
+  | "Not Required";
 
 export function getPhilippineDate(
   date = new Date(),

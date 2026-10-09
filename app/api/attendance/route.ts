@@ -145,7 +145,9 @@ export const POST = withEncoder(async function POST(request: Request) {
         return NextResponse.json({ success: false, message: "You have the day off today; an administrator marked it in Attendance Review." }, { status: 409 });
       }
 
-      if (record) {
+      // Marked "no attendance needed" by management: clocking in anyway replaces the mark with a normal clock-in.
+      const replacesMark = record?.status === "Not Required" && !record.timeIn;
+      if (record && !replacesMark) {
         return NextResponse.json(
           {
             success: false,
@@ -179,11 +181,12 @@ export const POST = withEncoder(async function POST(request: Request) {
         leaveType: "",
         leaveApprovalStatus: "",
         notes: "",
-        createdAt: timestamp,
+        createdAt: record?.createdAt || timestamp,
         updatedAt: timestamp,
       };
 
-      await addAttendanceRecord(newRecord);
+      if (replacesMark && rowNumber) await updateAttendanceRecord(rowNumber, newRecord);
+      else await addAttendanceRecord(newRecord);
 
       return NextResponse.json(
         {

@@ -2252,7 +2252,25 @@ test('an administrator can mark an employee Day Off in Attendance Review', async
   assert.equal(result.record.status, 'Day Off');
   const saved = h.writes.find((write) => String(write.range).startsWith('Attendance!') || String(write.range).startsWith("'Attendance'!"));
   assert.ok(saved && JSON.stringify(saved.requestBody.values).includes('Day Off'), 'the record is saved as Day Off');
-  assert.equal((await route.POST(request({ employeeId: 'MD-5', attendanceDate: '2026-10-05', status: 'Holiday' }))).status, 400, 'only Absent, AWOL and Day Off');
+  assert.equal((await route.POST(request({ employeeId: 'MD-5', attendanceDate: '2026-10-05', status: 'Holiday' }))).status, 400, 'only Absent, AWOL, Day Off and Not Required');
+});
+
+test('the attendance board marks the selected employees together and skips anyone who clocked in', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'MD-1', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true, manageAttendance: true } });
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-5', 'MD-5', 'Ana Cruz', 'x', 'active', '', ''], ['USR-6', 'MD-6', 'Ben Reyes', 'x', 'active', '', ''], ['USR-7', 'MD-7', 'Cora Lim', 'x', 'active', '', '']];
+  h.rows.Employees = [[], ['MD-5', 'Ana Cruz', 'MATINA', 'MAS', 'active'], ['MD-6', 'Ben Reyes', 'MATINA', 'MAS', 'active'], ['MD-7', 'Cora Lim', 'MATINA', 'MAS', 'active']];
+  h.rows.Attendance = [['attendance_id'], ['ATT-20261005-MD-6', 'MD-6', '2026-10-05', 'MATINA', '08:00', '17:00', '08:05', '17:00', 8, 0, 'Present', 0, 0, '', '', '', '', '']];
+  const route = h.load('app/api/attendance-tracking/daily/route.ts');
+  const response = await route.POST(request({ attendanceDate: '2026-10-05', employeeIds: ['MD-5', 'MD-6', 'MD-7'], status: 'Not Required', notes: 'Field work' }));
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(result.marked, 2);
+  assert.deepEqual(result.skipped, [{ employeeId: 'MD-6', reason: 'already clocked in' }]);
+  const saved = JSON.stringify(h.writes.filter((write) => String(write.range).includes('Attendance')).map((write) => write.requestBody.values));
+  assert.ok(saved.includes('MD-5') && saved.includes('MD-7') && saved.includes('Not Required'), 'both are saved as Not Required');
+  assert.ok(saved.includes('No attendance needed marked by Admin') && saved.includes('Field work'), 'who marked it and the note are kept');
+  assert.equal((await route.POST(request({ attendanceDate: '2026-10-05', employeeIds: ['MD-5'], status: 'Present' }))).status, 400, 'only the review statuses');
+  assert.equal((await route.POST(request({ attendanceDate: '2026-10-04', employeeIds: ['MD-5'], status: 'Absent' }))).status, 400, 'not on a Sunday');
 });
 
 test('a flexible program takes any amount from its minimum, counts months as chosen, and is paid off at its total', () => {

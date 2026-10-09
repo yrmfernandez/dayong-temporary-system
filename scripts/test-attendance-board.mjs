@@ -8,6 +8,12 @@ test("recorded days off stay separate from absences on past and current days", (
   assert.equal(boardCategory(record, "2026-10-06", "2026-10-06"), "Day Off");
 });
 
+test("no attendance needed is its own category, never absent", () => {
+  const record = { status: "Not Required", timeIn: "", lateMinutes: 0 };
+  assert.equal(boardCategory(record, "2026-10-05", "2026-10-06"), "Not required");
+  assert.equal(boardCategory(record, "2026-10-06", "2026-10-06"), "Not required");
+});
+
 test("missing attendance keeps the existing past-day and current-day categories", () => {
   assert.equal(boardCategory(null, "2026-10-05", "2026-10-06"), "Absent");
   assert.equal(boardCategory(null, "2026-10-06", "2026-10-06"), "Not clocked in");

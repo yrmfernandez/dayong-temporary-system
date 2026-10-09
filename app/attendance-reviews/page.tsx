@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type AttendanceRecord = {
-  status: "Present" | "Leave" | "Absent" | "AWOL" | "Non-working Day" | "Day Off";
+  status: "Present" | "Leave" | "Absent" | "AWOL" | "Non-working Day" | "Day Off" | "Not Required";
   timeIn: string;
   timeOut: string;
 };
@@ -94,7 +94,7 @@ export default function AttendanceReviewsPage() {
 
   const markAttendance = async (
     employeeId: string,
-    status: "Absent" | "AWOL" | "Day Off",
+    status: "Absent" | "AWOL" | "Day Off" | "Not Required",
   ) => {
     setUpdatingId(employeeId);
     setMessage("");
@@ -131,7 +131,7 @@ export default function AttendanceReviewsPage() {
           Attendance Review
         </h1>
         <p className="text-sm text-muted-foreground">
-          Mark a missing attendance as Absent or AWOL, or give an employee the Day Off (not counted as absent in payroll; they cannot clock in that day). Clocked attendance and approved leave cannot be changed here. Anyone still unmarked after 11:59 PM is recorded Absent by the system and shown as &quot;Absent · by system&quot;; marking them here replaces it.
+          Mark a missing attendance as Absent or AWOL, give an employee the Day Off (not counted as absent in payroll; they cannot clock in that day), or mark No attendance needed for someone who does not have to clock in that day, such as MAS (not counted as absent; a clock-in replaces it). To mark many at once, tick them on the Attendance Tracking daily board. Clocked attendance and approved leave cannot be changed here. Anyone still unmarked after 11:59 PM is recorded Absent by the system and shown as &quot;Absent · by system&quot;; marking them here replaces it.
         </p>
       </div>
 
@@ -205,7 +205,7 @@ export default function AttendanceReviewsPage() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={employee.record?.status === "Present" ? "default" : "secondary"}>
-                        {employee.closed ? "Branch closed" : employee.systemAbsent ? "Absent · by system" : employee.record?.status || "No record"}
+                        {employee.closed ? "Branch closed" : employee.systemAbsent ? "Absent · by system" : employee.record?.status === "Not Required" ? "No attendance needed" : employee.record?.status || "No record"}
                       </Badge>
                       {!locked && (
                         <>
@@ -235,6 +235,15 @@ export default function AttendanceReviewsPage() {
                             onClick={() => void markAttendance(employee.employeeId, "Day Off")}
                           >
                             Mark Day Off
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={updatingId === employee.employeeId || employee.record?.status === "Not Required"}
+                            onClick={() => void markAttendance(employee.employeeId, "Not Required")}
+                          >
+                            No attendance needed
                           </Button>
                         </>
                       )}

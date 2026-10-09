@@ -64,7 +64,7 @@ export function sheetTimeText(value: unknown) {
 
 const statusOf = (value: unknown): AttendanceStatus => {
   const status = String(value ?? "").trim();
-  return status === "Leave" || status === "Absent" || status === "AWOL" || status === "Non-working Day" || status === "Day Off" ? status : "Present";
+  return status === "Leave" || status === "Absent" || status === "AWOL" || status === "Non-working Day" || status === "Day Off" || status === "Not Required" ? status : "Present";
 };
 
 function readAttendanceRow(row: unknown[]): AttendanceRecord {
@@ -140,6 +140,16 @@ export async function addAttendanceRecord(
       values: [attendanceValues(record)],
     },
   });
+}
+
+/** Every record dated `attendanceDate` with its row number, read once (bulk marking on the attendance board). */
+export async function getAttendanceRowsForDate(attendanceDate: string) {
+  const rows = await attendanceRows();
+  const found: Array<{ record: AttendanceRecord; rowNumber: number }> = [];
+  for (let index = 1; index < rows.length; index++) {
+    if (sheetDateText(rows[index][2]) === attendanceDate) found.push({ record: readAttendanceRow(rows[index]), rowNumber: index + 1 });
+  }
+  return found;
 }
 
 /** Appends several records in one request (the system's end-of-day absences). */

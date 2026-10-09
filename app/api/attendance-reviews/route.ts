@@ -17,6 +17,7 @@ import {
 } from "@/lib/attendance";
 import { closureCovers, employeeAttendanceBranches, getClosures } from "@/lib/attendance-calendar";
 import { canManageAttendance } from "@/lib/auth-server";
+import { isMarkStatus } from "@/lib/attendance-board";
 import { getActiveAttendanceEmployees } from "@/lib/google-sheets-data";
 
 function isWorkingDate(date: string) {
@@ -125,8 +126,9 @@ export const POST = withEncoder(async function POST(request: Request) {
       typeof body.attendanceDate === "string"
         ? body.attendanceDate.trim()
         : "";
-    // Day Off: an administrator gives the employee the day off (not counted as absent in payroll).
-    const status = body.status === "AWOL" || body.status === "Absent" || body.status === "Day Off" ? body.status as "AWOL" | "Absent" | "Day Off" : "";
+    // Day Off: an administrator gives the employee the day off; Not Required: the employee need not clock in that day
+    // (e.g. MAS in the field). Neither is counted as absent in payroll.
+    const status = isMarkStatus(body.status) ? body.status : "";
     const notes =
       typeof body.notes === "string" ? body.notes.trim() : "";
 
@@ -210,7 +212,7 @@ export const POST = withEncoder(async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Attendance marked as ${status}.`,
+      message: `Attendance marked as ${status === "Not Required" ? "No attendance needed" : status}.`,
       record: updatedRecord,
     });
   } catch (error) {

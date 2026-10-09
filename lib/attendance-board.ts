@@ -2,7 +2,7 @@ import type { SessionUser } from "@/lib/auth";
 import type { AttendanceRecord } from "@/lib/attendance-data";
 
 /** Where an employee stands on one day. Present covers On time, Late, and Early. */
-export type BoardCategory = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not clocked in" | "Non-working day";
+export type BoardCategory = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not required" | "Not clocked in" | "Non-working day";
 
 const roleNames = (user: Pick<SessionUser, "roleNames">) => user.roleNames.map((role) => role.trim().toLowerCase());
 
@@ -17,6 +17,11 @@ export function canAdjustLateness(user: Pick<SessionUser, "roleNames" | "permiss
     || Boolean(user.permissions.manageAttendance);
 }
 
+/** Statuses management can set for a day with no clock-in (Attendance Review, and in bulk on the daily board). */
+export const MARK_STATUSES = ["Absent", "AWOL", "Day Off", "Not Required"] as const;
+export type MarkStatus = typeof MARK_STATUSES[number];
+export const isMarkStatus = (value: unknown): value is MarkStatus => MARK_STATUSES.includes(value as MarkStatus);
+
 /**
  * A missing record is Absent once the day has passed; today it is only "Not clocked in" yet.
  * A clocked-in employee is Late when late minutes remain (after the 20-minute grace), Early when they clocked in at or
@@ -24,6 +29,7 @@ export function canAdjustLateness(user: Pick<SessionUser, "roleNames" | "permiss
  */
 export function boardCategory(record: AttendanceRecord | null, date: string, today: string): BoardCategory {
   if (record?.status === "Day Off") return "Day Off";
+  if (record?.status === "Not Required") return "Not required";
   if (record?.status === "Leave") return "On leave";
   if (record?.status === "AWOL") return "AWOL";
   if (record?.status === "Absent") return "Absent";
@@ -109,7 +115,7 @@ export function summarizeHistory(period: HistoryPeriod, records: HistoryRecord[]
   const totals = emptyTotals();
   const groups = new Map<string, { key: string; label: string; totals: HistoryTotals }>();
   for (const day of [...days].reverse()) {
-    if (day.category === "Non-working day" || day.category === "Not clocked in") continue;
+    if (day.category === "Non-working day" || day.category === "Not clocked in" || day.category === "Not required") continue;
     addTo(totals, day, day.category);
     const date = utc(day.attendanceDate);
     let key: string, label: string;

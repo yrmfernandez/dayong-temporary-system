@@ -1,16 +1,18 @@
 import { getSessionUser } from "@/lib/auth-server";
 import { closeFinishedAttendanceDaysQuietly, isSystemAbsence } from "@/lib/auto-absence";
 import { withEncoder } from "@/lib/encoder-context";
-import { closureCovers, closureLabel, getClosures } from "@/lib/attendance-calendar";
-import { getAttendanceForEmployeeDate, getAttendanceRecordsForDate, updateAttendanceRecord } from "@/lib/attendance-data";
-import { clockOutFigures, getPhilippineDate, SCHEDULED_TIME_OUT } from "@/lib/attendance";
-import { boardCategory, canAdjustLateness, canViewAttendanceTracking, minutesBetween } from "@/lib/attendance-board";
+import { closureCovers, closureLabel, employeeAttendanceBranches, getClosures } from "@/lib/attendance-calendar";
+import { addAttendanceRecords, getAttendanceForEmployeeDate, getAttendanceRecordsForDate, getAttendanceRowsForDate, updateAttendanceRecord, type AttendanceRecord } from "@/lib/attendance-data";
+import { clockOutFigures, getPhilippineDate, SCHEDULED_TIME_IN, SCHEDULED_TIME_OUT } from "@/lib/attendance";
+import { boardCategory, canAdjustLateness, canViewAttendanceTracking, isMarkStatus, minutesBetween, type MarkStatus } from "@/lib/attendance-board";
 import { getEmployees } from "@/lib/employees";
 import { getActiveAttendanceEmployees, getBranches } from "@/lib/google-sheets-data";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const MAX_LATE_MINUTES = 24 * 60;
 const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+const MAX_MARKS = 1000;
+const markLabel = (status: MarkStatus) => status === "Not Required" ? "No attendance needed" : status;
 
 /** One day's board: every active employee with their record and whether they were on time, late, early, absent, AWOL, or on leave. */
 export async function GET(request: Request) {
@@ -37,14 +39,14 @@ export async function GET(request: Request) {
       return {
         employeeId: employee.employeeId, name: employee.fullName, roles: detail?.roles ?? [],
         branches: (detail?.branchIds ?? []).map((id) => branchNames.get(id) ?? id),
-        category: closed && record?.status !== "Day Off" ? "Non-working day" as const : boardCategory(record, date, today),
+        category: closed && record?.status !== "Day Off" && record?.status !== "Not Required" ? "Non-working day" as const : boardCategory(record, date, today),
         systemAbsent: isSystemAbsence(record),
         earlyMinutes: record?.timeIn && record.scheduledTimeIn ? Math.max(0, minutesBetween(record.timeIn, record.scheduledTimeIn)) : 0,
         record,
       };
     });
     return Response.json({
-      success: true, date, today, canAdjustLate: canAdjustLateness(user), canSetClockOut: canAdjustLateness(user),
+      success: true, date, today, canAdjustLate: canAdjustLateness(user), canSetClockOut: canAdjustLateness(user), canMark: canAdjustLateness(user),
       closedDay: nonWorkingDay ? `Non-working day (${closureLabel(nonWorkingDay)}): ${nonWorkingDay.reason}` : sunday ? "Sunday is not a working day." : "",
       rows,
     }, { headers: { "Cache-Control": "private, no-store" } });
@@ -83,6 +85,61 @@ export const PATCH = withEncoder(async (request: Request) => {
     return Response.json({ success: true, message: `Late time for ${employeeId} set to ${lateMinutes} minutes.`, record: updated });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to adjust late time." }, { status: 400 });
+  }
+});
+
+/**
+ * Marks the selected employees for one day at once: Absent, AWOL, Day Off, or Not Required (no attendance needed, e.g.
+ * MAS in the field). Same rules as Attendance Review: clocked-in days, approved leave and closed branches are skipped
+ * (and reported), and a system absence is replaced. Who marked it and the note are kept in the record's notes.
+ */
+export const POST = withEncoder(async (request: Request) => {
+  const user = await getSessionUser();
+  if (!user || !canAdjustLateness(user)) return Response.json({ success: false, message: "You are not allowed to mark attendance." }, { status: 403 });
+  try {
+    const body = await request.json();
+    const date = typeof body.attendanceDate === "string" ? body.attendanceDate.trim() : "";
+    const status = isMarkStatus(body.status) ? body.status : null;
+    const note = typeof body.notes === "string" ? body.notes.trim().slice(0, 200) : "";
+    const ids: string[] = Array.isArray(body.employeeIds) ? [...new Set(body.employeeIds.filter((id: unknown): id is string => typeof id === "string").map((id: string) => id.trim()).filter(Boolean))] as string[] : [];
+    const today = getPhilippineDate();
+    if (!validDate(date) || date > today || new Date(`${date}T00:00:00Z`).getUTCDay() === 0) throw new Error("Choose a Monday to Saturday date, today or earlier.");
+    if (!status) throw new Error("Choose Absent, AWOL, Day Off or No attendance needed.");
+    if (!ids.length) throw new Error("Select at least one employee.");
+    if (ids.length > MAX_MARKS) throw new Error(`Mark at most ${MAX_MARKS} employees at a time.`);
+
+    const [active, rows, closures, branches] = await Promise.all([getActiveAttendanceEmployees(), getAttendanceRowsForDate(date), getClosures(date, date), employeeAttendanceBranches()]);
+    const activeIds = new Set(active.map((employee) => employee.employeeId));
+    const existing = new Map(rows.map((row) => [row.record.employeeId, row]));
+    const closure = closures[0] ?? null;
+    const timestamp = new Date().toISOString();
+    const notes = `${markLabel(status)} marked by ${user.name} on ${today}${note ? `: ${note}` : ""}`;
+    const skipped: Array<{ employeeId: string; reason: string }> = [];
+    const additions: AttendanceRecord[] = [];
+    let changed = 0;
+    for (const employeeId of ids) {
+      const found = existing.get(employeeId);
+      const record = found?.record ?? null;
+      if (!activeIds.has(employeeId)) { skipped.push({ employeeId, reason: "not an active employee" }); continue; }
+      if (closure && closureCovers(closure, branches.get(employeeId) ?? "")) { skipped.push({ employeeId, reason: "branch closed that day" }); continue; }
+      if (record?.timeIn || record?.timeOut) { skipped.push({ employeeId, reason: "already clocked in" }); continue; }
+      if (record?.status === "Leave") { skipped.push({ employeeId, reason: "on approved leave" }); continue; }
+      if (record?.status === status && !isSystemAbsence(record)) { skipped.push({ employeeId, reason: `already ${markLabel(status)}` }); continue; }
+      const marked: AttendanceRecord = {
+        id: record?.id || `ATT-${date.replaceAll("-", "")}-${employeeId}`, employeeId, attendanceDate: date, branch: "",
+        scheduledTimeIn: SCHEDULED_TIME_IN, scheduledTimeOut: SCHEDULED_TIME_OUT, timeIn: "", timeOut: "", workedHours: 0, overtimeHours: 0,
+        status, lateMinutes: 0, undertimeMinutes: 0, leaveType: "", leaveApprovalStatus: "", notes,
+        createdAt: record?.createdAt || timestamp, updatedAt: timestamp,
+      };
+      if (found) { await updateAttendanceRecord(found.rowNumber, marked); changed++; }
+      else additions.push(marked);
+    }
+    await addAttendanceRecords(additions);
+    const marked = changed + additions.length;
+    const message = `${marked} employee${marked === 1 ? "" : "s"} marked ${markLabel(status)}.${skipped.length ? ` ${skipped.length} skipped.` : ""}`;
+    return Response.json({ success: true, message, marked, skipped });
+  } catch (error) {
+    return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to mark attendance." }, { status: 400 });
   }
 });
 
