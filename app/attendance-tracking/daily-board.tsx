@@ -145,12 +145,12 @@ export function DailyBoard() {
 
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">{tiles.map((tile) => <button key={tile.key} type="button" aria-pressed={focus === tile.key} onClick={() => setFocus(focus === tile.key ? "" : tile.key)} className={`rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary ${focus === tile.key ? "border-primary ring-2 ring-primary/30" : ""}`}><p className="text-xs text-muted-foreground">{tile.label}</p><p className={`text-2xl font-bold tabular-nums ${tile.tone}`}>{tile.value}</p></button>)}</div>
     {board && board.date < board.today && missingClockOuts > 0 && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">{missingClockOuts} employee{missingClockOuts === 1 ? "" : "s"} did not clock out on this day.{board.canSetClockOut ? " Use Set clock-out on their row." : ""}</p>}
-    {canMark && shownIds.size > 0 && <Card className="print:hidden"><CardContent className="space-y-3 p-4">
+    {canMark && board && <Card className="print:hidden"><CardContent className="space-y-3 p-4">
       <div className="flex flex-wrap items-center gap-2">
         <CheckSquare className="size-4 text-primary" /><span className="text-sm font-medium">{chosen.length} selected</span>
-        <Button type="button" size="sm" variant="outline" onClick={() => toggle([...shownIds], true)} disabled={chosen.length === shownIds.size}>Select all ({shownIds.size})</Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => toggle([...shownIds], true)} disabled={!shownIds.size || chosen.length === shownIds.size}>Select all ({shownIds.size})</Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => setSelected(new Set())} disabled={!chosen.length}>Clear</Button>
-        <span className="text-xs text-muted-foreground">Tick employees with no clock-in below, or select all shown, then mark them together.</span>
+        <span className="text-xs text-muted-foreground">{shownIds.size ? "Tick employees with no clock-in below, or select all shown, then mark them together." : "Nobody shown can be marked: everyone shown has clocked in, is on leave, or their branch is closed."}</span>
       </div>
       <div className="grid gap-3 sm:grid-cols-[16rem_1fr_auto] sm:items-end">
         <div className="space-y-1"><Label htmlFor="mark-status">Mark as</Label><select id="mark-status" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={markStatus} onChange={(event) => setMarkStatus(event.target.value as MarkStatus)}>{markOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
