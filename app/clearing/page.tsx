@@ -10,11 +10,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { readApiResponse } from "@/lib/api-response";
-import type { Clearing } from "@/lib/clearing";
+import type { Clearing, ClearingStage } from "@/lib/clearing";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type PageData = { today: string; clearings: Clearing[]; branches: Array<{ id: string; name: string }>; employees: Array<{ id: string; name: string; roles: string[]; branchIds: string[] }> };
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+/** Badge tone for each stage (lib/clearing.ts withProgress). */
+const STAGE_TONE: Record<ClearingStage, "warning" | "orange" | "info" | "danger" | "success" | "neutral"> = {
+  "Waiting for encoding": "warning", "Waiting for receipt": "orange", "For approval": "info", Returned: "danger", Approved: "success", Removed: "neutral",
+};
+const entrySummary = (item: Clearing) => {
+  const entries = item.entries;
+  if (!entries?.total) return "";
+  const parts = [entries.receipt && `${entries.receipt} without receipt`, entries.approval && `${entries.approval} for approval`, entries.returned && `${entries.returned} returned`, entries.approved && `${entries.approved} approved`].filter(Boolean);
+  return `${entries.total} entr${entries.total === 1 ? "y" : "ies"}${parts.length ? ` · ${parts.join(" · ")}` : ""}`;
+};
 const time = (stamp: string) => { if (!stamp) return ""; const [hours, minutes] = stamp.slice(11, 16).split(":").map(Number); return `${((hours + 11) % 12) + 1}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`; };
 
 /**
@@ -43,12 +53,13 @@ export default function ClearingPage() {
   }, []);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load
   useEffect(() => { void load(); }, [load]);
-  useLiveRefresh(["clearings", "remittances"], load);
+  // Entries saved, photos attached and approvals all move a line along, so those tables reload it too.
+  useLiveRefresh(["clearings", "remittances", "collections", "sales", "receipt_photos"], load);
 
   const selectedBranchId = data?.branches.find((item) => item.name === branch)?.id ?? "";
   const people = useMemo(() => (data?.employees ?? []).filter((person) => selectedBranchId && person.branchIds.includes(selectedBranchId)), [data, selectedBranchId]);
-  const open = (data?.clearings ?? []).filter((item) => item.status === "Open");
-  const closedToday = (data?.clearings ?? []).filter((item) => item.status !== "Open" && item.clearedDate === data?.today);
+  const open = (data?.clearings ?? []).filter((item) => item.stage !== "Approved" && item.stage !== "Removed");
+  const closedToday = (data?.clearings ?? []).filter((item) => item.stage === "Approved" || item.stage === "Removed");
 
   async function clear(event: React.FormEvent) {
     event.preventDefault();
@@ -83,8 +94,8 @@ export default function ClearingPage() {
       <td className="p-3 tabular-nums">{item.clearedDate === data?.today ? time(item.clearedAt) : `${item.clearedDate} ${time(item.clearedAt)}`}<span className="block text-xs text-muted-foreground">by {item.clearedBy || "—"}</span></td>
       <td className="p-3 tabular-nums">{item.amount != null ? money(item.amount) : "—"}</td>
       <td className="max-w-64 p-3 text-xs">{item.notes || "—"}{item.closedReason && <span className="block text-muted-foreground">Removed: {item.closedReason}</span>}</td>
-      <td className="p-3"><StatusBadge status={item.status === "Open" ? "Waiting for encoding" : item.status} tone={item.status === "Open" ? "warning" : item.status === "Encoded" ? "success" : "neutral"} />{item.remittanceId && <span className="block font-mono text-[11px] text-muted-foreground">{item.remittanceId}</span>}</td>
-      <td className="p-3 text-right">{item.status === "Open" && <Button type="button" size="sm" variant="outline" onClick={() => setRemoving(removing?.id === item.id ? null : { id: item.id, reason: "" })}>Remove</Button>}</td>
+      <td className="p-3"><StatusBadge status={item.stage ?? "Waiting for encoding"} tone={STAGE_TONE[item.stage ?? "Waiting for encoding"]} />{entrySummary(item) && <span className="mt-1 block text-xs text-muted-foreground">{entrySummary(item)}</span>}{item.remittanceId && <span className="block font-mono text-[11px] text-muted-foreground">{item.remittanceId}</span>}</td>
+      <td className="p-3 text-right">{item.status === "Open" && item.stage === "Waiting for encoding" && <Button type="button" size="sm" variant="outline" onClick={() => setRemoving(removing?.id === item.id ? null : { id: item.id, reason: "" })}>Remove</Button>}</td>
     </tr>
   );
 
@@ -115,12 +126,12 @@ export default function ClearingPage() {
         <Button type="button" variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button>
       </div>}
 
-      <Card><CardHeader><CardTitle>Waiting for encoding ({open.length})</CardTitle><p className="text-sm text-muted-foreground">Cleared, but their entries are not yet sent for approval. A line closes by itself when their entries for that day go on a remittance slip.</p></CardHeader><CardContent>
+      <Card><CardHeader><CardTitle>In progress ({open.length})</CardTitle><p className="text-sm text-muted-foreground">Each line moves by itself: Waiting for encoding → Waiting for receipt (saved in My Entries, receipt photo not attached yet) → For approval (sent for remittance approval) → Approved. Returned means the approver sent entries back. Lines from earlier days stay here until they are approved.</p></CardHeader><CardContent>
         <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-muted/50"><tr>{["MAS / employee", "Branch", "Cleared", "Amount", "Notes", "Status", ""].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>
-          <tbody>{open.map(row)}{!open.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{data ? "Nobody is waiting for encoding." : "Loading..."}</td></tr>}</tbody></table></div>
+          <tbody>{open.map(row)}{!open.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{data ? "Nothing in progress." : "Loading..."}</td></tr>}</tbody></table></div>
       </CardContent></Card>
 
-      {closedToday.length > 0 && <Card><CardHeader><CardTitle>Done today ({closedToday.length})</CardTitle></CardHeader><CardContent>
+      {closedToday.length > 0 && <Card><CardHeader><CardTitle>Approved today ({closedToday.length})</CardTitle><p className="text-sm text-muted-foreground">Every entry saved and approved (or the line removed). These leave the page after 11:59 PM.</p></CardHeader><CardContent>
         <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-muted/50"><tr>{["MAS / employee", "Branch", "Cleared", "Amount", "Notes", "Status", ""].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>
           <tbody>{closedToday.map(row)}</tbody></table></div>
       </CardContent></Card>}

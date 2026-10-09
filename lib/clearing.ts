@@ -15,15 +15,24 @@ import { manilaNow } from "@/lib/remittance-deadline";
  *     are encoded; without a clearing the encoding time is used (lib/remittance-workflow.ts receivedAtOf);
  *   - a clearing stays Open until that person's entries for the day are sent for approval (Encoded), or it is Removed.
  * A person may be cleared again the same day once their earlier clearing is Encoded (a second handover).
+ *
+ * Progress (owner, October 9, 2026): each line also shows how far that person's entries have got, worked out from the
+ * New Sales and Collections it covers (`withProgress`): Waiting for encoding → Waiting for receipt (in My Entries
+ * without a receipt photo) → For approval (sent for remittance approval) → Approved (every entry Remitted), or Returned.
+ * A line leaves the page after 11:59 PM of its day only once Approved (or Removed); anything unfinished stays listed.
  */
 const { clearings } = schema;
 const text = (value: unknown) => String(value ?? "").trim();
 /** "YYYY-MM-DD HH:MM" in Manila for a stored moment. */
 const manilaStamp = (value: string | Date | null | undefined) => { if (!value) return ""; const now = manilaNow(new Date(value)); return `${now.date} ${now.time}`; };
 
+export type ClearingStage = "Waiting for encoding" | "Waiting for receipt" | "For approval" | "Returned" | "Approved" | "Removed";
 export type Clearing = {
   id: string; branch: string; employeeId: string; employeeName: string; clearedAt: string; clearedDate: string;
   amount: number | null; notes: string; status: "Open" | "Encoded" | "Removed"; remittanceId: string; closedAt: string; closedReason: string; clearedBy: string;
+  /** Where its entries stand (getClearingPage only). */
+  stage?: ClearingStage;
+  entries?: { total: number; receipt: number; approval: number; returned: number; approved: number };
 };
 const toClearing = (row: typeof clearings.$inferSelect): Clearing => ({
   id: row.clearing_id, branch: row.branch, employeeId: row.employee_id, employeeName: text(row.employee_name), clearedAt: manilaStamp(row.cleared_at), clearedDate: text(row.cleared_date),
@@ -31,16 +40,69 @@ const toClearing = (row: typeof clearings.$inferSelect): Clearing => ({
   closedReason: text(row.closed_reason), clearedBy: text(row.encoded_by_name),
 });
 
-/** The Clearing page: today's clearings and any still Open from earlier days, with the branches and their people. */
+/** Days back the Clearing page looks for unfinished lines. */
+const UNFINISHED_DAYS = 60;
+const addDays = (date: string, count: number) => new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10);
+
+/**
+ * Adds each clearing's stage from the entries it covers. An entry (New Sale or Collection of that accountable person
+ * and branch) belongs to the latest clearing made on or after its Date Remitted and, when the encoding time is known,
+ * no later than it was encoded. The line's stage is its least advanced entry's: Returned, Waiting for receipt,
+ * For approval, then Approved.
+ */
+export async function withProgress(list: Clearing[]): Promise<Clearing[]> {
+  const live = list.filter((item) => item.status !== "Removed");
+  if (!live.length) return list.map((item) => ({ ...item, stage: item.status === "Removed" ? "Removed" : "Waiting for encoding" }));
+  const ids = [...new Set(live.map((item) => item.employeeId))];
+  const latest = live.map((item) => item.clearedDate).sort().at(-1)!;
+  const earliest = addDays(live.map((item) => item.clearedDate).sort()[0], -UNFINISHED_DAYS);
+  const { collections, sales, receipt_photos: photos } = schema;
+  const [collectionRows, saleRows, photoRows] = await Promise.all([
+    currentDb().select({ id: collections.collection_id, employeeId: collections.accountable_employee_id, branch: collections.branch, dateRemitted: collections.date_remitted, status: collections.remittance_status, encodedAt: collections.encoded_at })
+      .from(collections).where(and(inArray(collections.accountable_employee_id, ids), sql`lower(coalesce(${collections.status}, '')) = 'posted'`, gte(collections.date_remitted, earliest), sql`${collections.date_remitted} <= ${latest}`)),
+    currentDb().select({ id: sales.sale_id, employeeId: sql<string>`coalesce(${sales.accountable_employee_id}, ${sales.mas_employee_id})`, branch: sales.branch, dateRemitted: sales.date_remitted, status: sales.remittance_status, encodedAt: sales.encoded_at })
+      .from(sales).where(and(or(inArray(sales.accountable_employee_id, ids), inArray(sales.mas_employee_id, ids)), gte(sales.date_remitted, earliest), sql`${sales.date_remitted} <= ${latest}`)),
+    currentDb().select({ entryIds: photos.entry_ids }).from(photos).where(sql`${photos.uploaded_at} >= ${`${earliest}T00:00:00+08:00`}`),
+  ]);
+  const photographed = new Set(photoRows.flatMap((row) => text(row.entryIds).split(",").map(text)).filter(Boolean));
+  const empty = () => ({ total: 0, receipt: 0, approval: 0, returned: 0, approved: 0 });
+  const counts = new Map(live.map((item) => [item.id, empty()]));
+  const key = (value: string) => text(value).toLowerCase();
+  for (const entry of [...collectionRows, ...saleRows]) {
+    const dateRemitted = text(entry.dateRemitted), encodedAt = manilaStamp(entry.encodedAt as string | Date | null);
+    const owner = live.filter((item) => item.employeeId === entry.employeeId && key(item.branch) === key(entry.branch ?? "") && item.clearedDate >= dateRemitted && (!encodedAt || item.clearedAt <= encodedAt))
+      .sort((a, b) => b.clearedAt.localeCompare(a.clearedAt))[0];
+    if (!owner) continue;
+    const tally = counts.get(owner.id)!;
+    const status = text(entry.status);
+    tally.total++;
+    if (status === "Remitted") tally.approved++;
+    else if (status === "Returned") tally.returned++;
+    else if (status === "Outstanding" && !photographed.has(entry.id)) tally.receipt++;
+    else tally.approval++;
+  }
+  return list.map((item) => {
+    if (item.status === "Removed") return { ...item, stage: "Removed" as const };
+    const entries = counts.get(item.id)!;
+    const stage: ClearingStage = !entries.total ? "Waiting for encoding" : entries.returned ? "Returned" : entries.receipt ? "Waiting for receipt" : entries.approval ? "For approval" : "Approved";
+    return { ...item, stage, entries };
+  });
+}
+
+/**
+ * The Clearing page: today's clearings, and earlier ones not yet Approved (up to 60 days back), each with its progress;
+ * with the branches and their people. An earlier day's line leaves once Approved or Removed.
+ */
 export async function getClearingPage() {
   const today = manilaNow().date;
   const [rows, branches, employees] = await Promise.all([
-    currentDb().select().from(clearings).where(or(eq(clearings.cleared_date, today), eq(clearings.status, "Open"))).orderBy(desc(clearings.cleared_at)),
+    currentDb().select().from(clearings).where(or(eq(clearings.cleared_date, today), and(ne(clearings.status, "Removed"), gte(clearings.cleared_date, addDays(today, -UNFINISHED_DAYS))))).orderBy(desc(clearings.cleared_at)),
     getBranches(), getEmployees(),
   ]);
+  const listed = (await withProgress(rows.map(toClearing))).filter((item) => item.clearedDate === today || item.stage !== "Approved");
   return {
     today,
-    clearings: rows.map(toClearing),
+    clearings: listed,
     branches: branches.filter((branch) => branch.status === "active").map((branch) => ({ id: branch.id, name: branch.name })),
     employees: employees.filter((employee) => employee.status.toLowerCase() === "active").map((employee) => ({ id: employee.id, name: employee.name, roles: employee.roles, branchIds: employee.branchIds })),
   };

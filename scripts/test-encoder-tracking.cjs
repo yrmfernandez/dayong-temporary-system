@@ -691,6 +691,14 @@ test('Clearing: no encoding without it, and its time is when the cash was receiv
     const clearing = h.load('lib/clearing.ts');
     assert.equal(await clearing.clearedAt('DPE-0002', 'BR-1', today, `${today} 23:00`), `${today} 10:15`);
     assert.equal(await clearing.clearedAt('DPE-0002', 'BR-9', today), '', 'another branch has no clearing');
+    // Progress: saved without a receipt photo, then remitted (approved). The clearing is set just before the encoding.
+    await query("update clearings set cleared_at = now() - interval '1 minute', cleared_date = (now() at time zone 'Asia/Manila')::date where clearing_id = 'CLR-1'");
+    const stageOf = async () => (await clearing.withProgress(await clearing.getEncodableClearings())).find((item) => item.id === 'CLR-1');
+    assert.equal((await stageOf()).stage, 'Waiting for receipt', 'saved in My Entries without a receipt photo');
+    assert.equal((await stageOf()).entries.total, 1);
+    await query("update collections set remittance_status = 'Remitted'");
+    assert.equal((await stageOf()).stage, 'Approved', 'every entry remitted');
+    await query("update collections set remittance_status = 'Outstanding'");
     // Once their entries are on a slip, the clearing is Encoded; a removed clearing does not allow encoding.
     assert.equal(await clearing.closeClearings('DPE-0002', 'BR-1', today, 'REM-1'), 1);
     assert.equal((await query("select status, remittance_id from clearings where clearing_id = 'CLR-1'"))[0].status, 'Encoded');
