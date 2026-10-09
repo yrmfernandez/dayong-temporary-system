@@ -1,48 +1,62 @@
 # Dayong System
 
-Start with the [system guide](docs/system-guide.md) for a code-based explanation of all features, workflows, formulas, data connections, permissions, and known implementation limits. Use the [documentation directory](docs/README.md) to choose a topic, or the [code reference](docs/code-reference.md) to find every page, API, library, component, and maintenance script.
+The Dayong System runs the company's daily operations: member enrollments (New Sales) and payments (Collections), Clearing and remittance approval, staff incentives and Fidelity, company finance and vendor bills, employees, attendance, leave and payroll, and the reports, MAM, SOA and dashboards built from those records.
 
-See [project context](docs/project-context.md) for the core business rules and implementation status, [role-based access](docs/access-control.md) for the current navigation matrix, [CRUD policy](docs/crud-policy.md) for record lifecycle rules, [finance](docs/finance.md) for ledger behavior, [operational reports](docs/reports.md) for report calculations, and the [full supplied specification](docs/dayong-system-specification.md) for the historical reference.
+It is a [Next.js](https://nextjs.org) app on a [Supabase](https://supabase.com) PostgreSQL database (via [Drizzle](https://orm.drizzle.team)), deployed on Vercel. Pages update live when another user saves (Supabase Realtime). Receipt photos are stored in Supabase.
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Documentation
 
-## Getting Started
+| Read this | When you need it |
+| --- | --- |
+| [System guide](docs/system-guide.md) | How every feature works: workflows, formulas, permissions, setup and known limits. Start here. |
+| [Documentation index](docs/README.md) | Latest changes and the topic documents. |
+| [Code reference](docs/code-reference.md) | Every page, API, library, component and maintenance script (regenerated with `node scripts/generate-code-reference.mjs`). |
+| [Project context](docs/project-context.md) | The owner's business decisions and what is done, in progress and still to do. |
+| [Migration plan](docs/supabase-migration-plan.md) | The move from Google Sheets to Supabase and the database migrations. |
 
-First, run the development server:
+Topic documents: [role-based access](docs/access-control.md), [CRUD policy](docs/crud-policy.md), [finance](docs/finance.md), [operational reports](docs/reports.md), [payroll](docs/payroll.md), [encoder tracking](docs/encoder-tracking.md), and the [original specification](docs/dayong-system-specification.md) (historical; the system guide describes the current code).
+
+## Daily flow at a glance
+
+1. **Clearing:** the entry clerk checks a MAS's receipts and bank slips and lists them in Clearing. That time counts as when the cash was received.
+2. **Encoding:** in New Sales or Collections the clerk picks the person **From Clearing**; Branch, MAS and Date Remitted fill in. A batch is saved only for someone cleared.
+3. **My Entries:** the clerk attaches the receipt photos; entries with photos go for remittance approval on their own.
+4. **Remittances:** an approver approves or returns them. The Clearing line follows along (Waiting for encoding → Waiting for receipt → For approval → Approved) and leaves the page after 11:59 PM once approved.
+
+## Getting started
+
+Requirements: Node.js (v24 is used in development) and npm.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # then fill in the values (ask the administrator)
+npm run dev                   # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`.env.example` lists every variable. Locally, `.env.local` points at the **staging** Supabase project, so you can test freely. Production values never go in `.env.local`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Commands
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Development server. |
+| `npm run build` | Production build; run it (and `npm test`) before committing. |
+| `npm test` | All automated tests (`scripts/test-*.mjs` / `.cjs`). |
+| `npm run lint` | ESLint. |
+| `npm run db:generate` | Create a migration from changes to `db/schema.ts`. |
+| `npm run db:migrate` | Apply migrations to the database in `.env.local` (staging). |
+| `npm run prod -- <command>` | Run one command against **production**, e.g. `npm run prod -- npm run db:migrate`. Production values live in `.env.prod-scripts` (never committed); the script refuses values that are not the production project. |
 
-## Learn More
+Maintenance and data-repair scripts are in `scripts/` and listed in the [code reference](docs/code-reference.md). Scripts that change data run as a dry run first and write only with `--apply`; run them on staging, then `npm run prod -- node scripts/<name>.mjs`, then add `--apply`. Recent examples: `move-program-accounts.mjs` (move or merge accounts between programs, driven by `config/program-moves.json`) and `fix-impossible-doi.mjs` (replace DOIs such as 1943 with the OR or remittance date).
 
-To learn more about Next.js, take a look at the following resources:
+## Deploying
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Schema changes:** migrate production **before** pushing code that uses new tables or columns: `npm run prod -- npm run db:migrate`. IT → System Health lists any missing column or unapplied migration.
+2. Push to `main`; Vercel builds and deploys it.
+3. **Environment:** every variable in `.env.example` must be set in the Vercel **Production** environment. Paste `GOOGLE_PRIVATE_KEY` as a multiline PEM value or with escaped `\\n` line breaks, and share the configured spreadsheet with `GOOGLE_SERVICE_ACCOUNT_EMAIL` as an Editor. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are public by design (live updates). Environment changes take effect only after a new deployment, so redeploy after adding or changing a value.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Conventions
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-Before deploying, add every variable listed in `.env.example` to the Vercel
-**Production** environment. Paste `GOOGLE_PRIVATE_KEY` either as a multiline PEM
-value or with escaped `\\n` line breaks. Share the configured spreadsheet with
-`GOOGLE_SERVICE_ACCOUNT_EMAIL` as an Editor. Environment changes only take
-effect after a new deployment, so redeploy after adding or changing a value.
+- Update the matching document in `docs/` with every change, and regenerate the code reference.
+- Member personal data is private: scripts print IDs, codes and counts, not member details.
+- Every data change is recorded in the Audit Log; script corrections also add a summary to Record Corrections.

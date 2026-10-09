@@ -2,7 +2,10 @@
 
 Reviewed against repository code on **October 4, 2026**. Start with the [system guide](system-guide.md): it explains daily operations, calculations with examples, how records connect, staff permissions, setup, and current limitations.
 
-October 9: Attendance Tracking's daily board can mark many employees at once (select all or ticked) and has a new **No attendance needed** mark for employees such as MAS who do not clock in; no migration needed.
+October 9 updates (no migration needed):
+- **Clearing:** New Sales and Collections pick the MAS **From Clearing**, which fills in Branch, MAS and Date Remitted; a MAS listed in Clearing is no longer missed (branch case, an earlier Date Remitted, two employees with the same name). Each Clearing line follows its entries (Waiting for encoding → Waiting for receipt → For approval → Approved, or Returned) and leaves the page after 11:59 PM only once approved.
+- **Attendance:** the daily board and Attendance Review mark many employees at once (select all or ticked); Attendance Review marks one by one from a **Mark as** dropdown; new **No attendance needed** mark for employees such as MAS who do not clock in.
+- **Programs and accounts:** D-290 (500) and a duplicate DSP-290 entry move into D-290 or DSP-290 by DOI (`scripts/move-program-accounts.mjs`, which can now merge an account into the member's existing one); impossible DOIs such as 1943 are replaced with the OR or remittance date (`scripts/fix-impossible-doi.mjs`). Both run on production with `npm run prod --`, dry run first. See [project context](project-context.md).
 
 October 6 updates cover report readability in dark mode, Day Off in attendance tracking, and optional maximum monthly payments on flexible programs. The monthly maximum requires migration `0009_program_monthly_maximum` before deployment; see the [migration plan](supabase-migration-plan.md).
 
