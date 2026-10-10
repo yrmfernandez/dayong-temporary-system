@@ -20,7 +20,8 @@ const project = /postgres\.([a-z0-9]+)[:@]/.exec(url)?.[1] ?? "unknown";
 const sql = postgres(url, { max: 1, onnotice: () => {} });
 const LEFT = "legacy-data/program-moves-left.txt";
 if (!fs.existsSync(LEFT)) throw new Error(`${LEFT} not found: run move-program-accounts.mjs (dry run) first.`);
-const lines = fs.readFileSync(LEFT, "utf8").split(/\r?\n/).filter((line) => line.includes("already has an account"));
+const lines = fs.readFileSync(LEFT, "utf8").split(/\r?\n/).filter((line) => line.includes("already has an account") || line.includes("cannot merge into"));
+// (Also accounts left because merging them would cover a month twice: "cannot merge into ENR-…: overlaps".)
 // The program the account was meant to join, matched by code or name (the finalized D-300 (Bracketing) has the code
 // "300" and the name "D-300 (Bracketing)"; the old draft had it as its code).
 const targetCodes = (target) => /^D-300 \(Bracketing\)$/i.test(target) ? ["d-300 (bracketing)"] : [target.toLowerCase()];
@@ -52,7 +53,8 @@ try {
     const target = route.split("→")[1].trim();
     const a = await describe(enrollmentId.trim());
     if (!a) { missing++; continue; }
-    const [other] = await sql`select mp.enrollment_id from member_programs mp join programs p on p.program_id = mp.program_id
+    const named = /cannot merge into (\S+?):/.exec(line)?.[1];
+    const [other] = named ? [{ enrollment_id: named }] : await sql`select mp.enrollment_id from member_programs mp join programs p on p.program_id = mp.program_id
       where mp.member_id = ${a.member_id} and mp.enrollment_id <> ${a.enrollment_id} and (lower(trim(p.program_code)) in ${sql(targetCodes(target))} or lower(trim(p.program_name)) in ${sql(targetCodes(target))}) order by mp.enrollment_id limit 1`;
     const b = other ? await describe(other.enrollment_id) : null;
     const shared = b ? [...a.months].filter((month) => b.months.has(month)).length : 0;

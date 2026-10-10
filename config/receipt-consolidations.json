@@ -1,0 +1,45 @@
+{
+  "note": "Owner-confirmed receipts that belong on one account of a member (scripts/consolidate-member-receipts.mjs). Each listed OR moves to the member's account in the given program; that account is renumbered in OR-date order; accounts of the member left with no payment are deleted.",
+  "cases": [],
+  "applied": [
+    {
+      "member": "PH-84755298",
+      "program": "DP-0067",
+      "receipts": [
+        "18017N",
+        "18044 N"
+      ],
+      "note": "MONKAYO, application 00307: one D-300 enrollment recorded in both old systems (old sheet D-300 (Bracketing), old web app D-300 (NEW)); 18017N (June 8) and 18044 N (July 24) are its payments; the D-300 (NEW) copy is deleted (owner, October 10, 2026)",
+      "appliedOn": "2026-10-10 (production)"
+    },
+    {
+      "member": "PH-30272255",
+      "program": "DP-0010",
+      "receipts": [
+        "9243 C",
+        "13584 C",
+        "9857 M",
+        "15384 C"
+      ],
+      "note": "CALINAN: these receipts were entered under other programs; the member is registered only to DPB-350 (DP-0010, the final 350) (owner, October 10, 2026)",
+      "appliedOn": "2026-10-10 (production)"
+    },
+    {
+      "member": "PH-33775036",
+      "program": "DP-0010",
+      "receipts": [
+        "13853 C",
+        "10942C",
+        "9241 C",
+        "9861 M",
+        "15388 C",
+        "17106 C",
+        "19618 C",
+        "21671 C",
+        "22138 C"
+      ],
+      "note": "CALINAN: a different person from PH-30272255; these receipts are in different programs, and the member should only be registered to the final 350, DPB-350 (DP-0010) (owner, October 10, 2026)",
+      "appliedOn": "2026-10-10 (production)"
+    }
+  ]
+}

@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 62 API handlers, 110 library files, 47 component files; 367 scanned source/configuration/public-text files in total.
+42 page routes, 62 API handlers, 110 library files, 47 component files; 369 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -395,6 +395,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-pending-receipts.mjs](../scripts/check-pending-receipts.mjs) | `node:fs`, `@next/env`, `googleapis`, `postgres` | No flag detected; read source before running |
 | [scripts/clear-payroll-runs.mjs](../scripts/clear-payroll-runs.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/compare-double-accounts.mjs](../scripts/compare-double-accounts.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/consolidate-member-receipts.mjs](../scripts/consolidate-member-receipts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/copy-legacy-import.mjs](../scripts/copy-legacy-import.mjs) | `node:fs`, `postgres` | Yes; read source for semantics |
 | [scripts/copy-sheets-to-postgres.mjs](../scripts/copy-sheets-to-postgres.mjs) | `@next/env`, `googleapis`, `postgres` | Yes; read source for semantics |
 | [scripts/correct-employee-id.mjs](../scripts/correct-employee-id.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
@@ -476,5 +477,6 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/legacy-site-map.json](../config/legacy-site-map.json)
 - [config/name-merges.json](../config/name-merges.json)
 - [config/program-moves.json](../config/program-moves.json)
+- [config/receipt-consolidations.json](../config/receipt-consolidations.json)
 - [config/sheet-database-schema.json](../config/sheet-database-schema.json)
 - [public/robots.txt](../public/robots.txt)

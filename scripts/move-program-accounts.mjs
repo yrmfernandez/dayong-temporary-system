@@ -72,6 +72,8 @@ try {
     const sources = move.fromMatching
       ? (await sql`select program_id from programs where (program_code ilike ${`%${text(move.fromMatching)}%`} or program_name ilike ${`%${text(move.fromMatching)}%`}) and program_id <> ${targets[0]} order by program_id`).map((row) => row.program_id)
       : (await find(move.from, move.fromFinalized)).filter((id) => id !== targets[0]);
+    // A move given by program ID whose program is gone was already applied (and the program deleted): skip it.
+    if (!sources.length && !move.fromMatching && /^DP-\d+$/i.test(text(move.from))) { console.log(`${move.from} → ${move.to}: ${move.from} no longer exists (already moved and deleted); skipped. Move it under "applied" in config/program-moves.json.`); continue; }
     if (!sources.length) { problems.push(`${move.fromMatching ? `Programs containing "${move.fromMatching}"` : move.from}: none found besides ${move.to}`); continue; }
     if (!move.fromMatching && sources.length > 1) { problems.push(`${move.from}: ${sources.length} programs match; put the right program ID in "from"\n${await describe(sources)}`); continue; }
     for (const source of sources) pairs.push({ ...move, from: source, to: targets[0] });

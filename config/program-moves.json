@@ -2,54 +2,12 @@
   "note": "Draft or legacy program -> the finalized program it belongs to, each confirmed by the owner (scripts/list-programs.mjs). Applied by scripts/move-program-accounts.mjs.",
   "moves": [
     {
-      "from": "DP-0025",
-      "to": "DP-0067",
-      "remove": true,
-      "note": "D-300 (NEW) belongs to D-300 (Bracketing); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
-      "mergeIntoExisting": true
-    },
-    {
-      "from": "DP-0038",
-      "to": "DP-0067",
-      "remove": true,
-      "note": "D-300 (NEW BRACKETING) belongs to D-300 (Bracketing); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
-      "mergeIntoExisting": true
-    },
-    {
-      "from": "DP-0040",
-      "to": "DP-0067",
-      "remove": true,
-      "note": "DN-300 belongs to D-300 (Bracketing); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
-      "mergeIntoExisting": true
-    },
-    {
-      "from": "DP-0051",
-      "to": "DP-0005",
-      "remove": true,
-      "note": "D-150 is D-210 HG (flexible, ₱150 minimum); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
-      "mergeIntoExisting": true
-    },
-    {
       "from": "DP-0065",
       "to": "DP-0067",
       "nextPaymentFrom": 2,
       "nextPaymentTo": 12,
       "mergeIntoExisting": true,
       "note": "D-300 members still in their first year (next payment in months 2-12) go to D-300 (Bracketing), which has rates for those months; D-300 has rates only from month 13 (owner, October 10, 2026)"
-    },
-    {
-      "from": "DP-0050",
-      "to": "DP-0010",
-      "mergeIntoExisting": true,
-      "remove": true,
-      "note": "Two programs named DPB-350 on production: DP-0050 (not finalized) moves into DP-0010 (finalized), merged into a member existing account; DP-0050 is removed once empty (owner, October 10, 2026)"
-    },
-    {
-      "from": "DFP-350",
-      "to": "DP-0010",
-      "mergeIntoExisting": true,
-      "remove": true,
-      "note": "DFP-350 belongs to DPB-350 (DP-0010, the finalized one); a member who already has a DPB-350 account gets the two merged; DFP-350 is deleted once empty (owner, October 10, 2026)"
     }
   ],
   "decisions": [
@@ -135,6 +93,54 @@
       "remove": true,
       "note": "D-300 (BRACKETING) draft (old data) is the finalized D-300 (Bracketing) (owner, October 10, 2026)",
       "applied": "October 10, 2026 on production (all accounts moved, draft deleted)"
+    },
+    {
+      "from": "DP-0038",
+      "to": "DP-0067",
+      "remove": true,
+      "note": "D-300 (NEW BRACKETING) belongs to D-300 (Bracketing); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
+      "mergeIntoExisting": true,
+      "appliedOn": "2026-10-10 (production; program deleted)"
+    },
+    {
+      "from": "DP-0040",
+      "to": "DP-0067",
+      "remove": true,
+      "note": "DN-300 belongs to D-300 (Bracketing); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
+      "mergeIntoExisting": true,
+      "appliedOn": "2026-10-10 (production; program deleted)"
+    },
+    {
+      "from": "DP-0051",
+      "to": "DP-0005",
+      "remove": true,
+      "note": "D-150 is D-210 HG (flexible, ₱150 minimum); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
+      "mergeIntoExisting": true,
+      "appliedOn": "2026-10-10 (production; program deleted)"
+    },
+    {
+      "from": "DP-0025",
+      "to": "DP-0067",
+      "remove": true,
+      "note": "D-300 (NEW) belongs to D-300 (Bracketing); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
+      "mergeIntoExisting": true,
+      "appliedOn": "2026-10-10 (production; program deleted)"
+    },
+    {
+      "from": "DP-0050",
+      "to": "DP-0010",
+      "mergeIntoExisting": true,
+      "remove": true,
+      "note": "Two programs named DPB-350 on production: DP-0050 (not finalized) moves into DP-0010 (finalized), merged into a member existing account; DP-0050 is removed once empty (owner, October 10, 2026)",
+      "appliedOn": "2026-10-10 (production; program deleted)"
+    },
+    {
+      "from": "DFP-350",
+      "to": "DP-0010",
+      "mergeIntoExisting": true,
+      "remove": true,
+      "note": "DFP-350 belongs to DPB-350 (DP-0010, the finalized one); a member who already has a DPB-350 account gets the two merged; DFP-350 is deleted once empty (owner, October 10, 2026)",
+      "appliedOn": "2026-10-10 (production; program deleted)"
     }
   ]
 }
