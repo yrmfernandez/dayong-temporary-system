@@ -173,9 +173,15 @@ incentiveTiers: [
 };
 }
 
+/**
+ * A period end in months. A year counts from its first month at the start of a period and to its last month at the end
+ * (Year 2 → Year 15 = months 13–180). Until October 10, 2026 both ends were year × 12, so "from Year 2" started at
+ * month 24 and months 13–23 had no rate.
+ */
 function periodToMonths(
 value: string,
 unit: PeriodUnit,
+edge: "from" | "to" = "to",
 ) {
 const numericValue = Number(value);
 
@@ -186,9 +192,15 @@ numericValue < 1
 return NaN;
 }
 
-return unit === "year"
-? numericValue * 12
-: numericValue;
+if (unit !== "year") return numericValue;
+return edge === "from" ? (numericValue - 1) * 12 + 1 : numericValue * 12;
+}
+
+/** A stored period end shown back in years when it falls on a year boundary, so an entry in years reopens in years. */
+function monthsToPeriod(months: number, edge: "from" | "to"): { value: string; unit: PeriodUnit } {
+if (edge === "from" && months > 1 && (months - 1) % 12 === 0) return { value: String((months - 1) / 12 + 1), unit: "year" };
+if (edge === "to" && months >= 12 && months < 999999 && months % 12 === 0) return { value: String(months / 12), unit: "year" };
+return { value: String(months), unit: "month" };
 }
 
 function formatPeso(
@@ -569,6 +581,7 @@ for (
     periodToMonths(
       tier.fromValue,
       tier.fromUnit,
+"from",
     );
 
   const toMonth =
@@ -816,6 +829,7 @@ try {
           periodToMonths(
             tier.fromValue,
             tier.fromUnit,
+"from",
           );
 
         const toMonth =
@@ -1064,17 +1078,12 @@ existingTiers.forEach(
     grouped.set(key, {
       branchId: tier.branchId ?? "",
       nonCommissionable: tier.nonCommissionable === true,
-      fromValue: String(
-        tier.fromMonth ?? 1,
-      ),
-
-      fromUnit: "month",
-
-      toValue: String(
-        tier.toMonth ?? 999999,
-      ),
-
-      toUnit: "month",
+      // Shown in years when the months fall on year boundaries (months 13–180 → Year 2 to Year 15).
+      // Month 1 reads as Year 1 when the period ends on a whole year (Year 1 to Year 5).
+      fromValue: (tier.fromMonth ?? 1) === 1 && monthsToPeriod(tier.toMonth ?? 999999, "to").unit === "year" ? "1" : monthsToPeriod(tier.fromMonth ?? 1, "from").value,
+      fromUnit: (tier.fromMonth ?? 1) === 1 && monthsToPeriod(tier.toMonth ?? 999999, "to").unit === "year" ? "year" : monthsToPeriod(tier.fromMonth ?? 1, "from").unit,
+      toValue: monthsToPeriod(tier.toMonth ?? 999999, "to").value,
+      toUnit: monthsToPeriod(tier.toMonth ?? 999999, "to").unit,
 
       incentiveType:
         tier.incentiveType ??
@@ -1864,6 +1873,7 @@ return (
               periodToMonths(
                 tier.fromValue,
                 tier.fromUnit,
+"from",
               ) || 1,
               periodToMonths(
                 tier.toValue,

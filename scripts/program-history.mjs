@@ -29,7 +29,8 @@ try {
   // A tier rewrite deletes the old tiers (logged with their values) and inserts the new ones (not logged): one group per
   // save. So what a save wrote is what the next rewrite deleted, and the last save's tiers are the current ones.
   const tierLabel = (tier) => `${tier.role} ${tier.from_month}-${tier.to_month} ${tier.incentive_type === "fixed" ? `₱${Number(tier.incentive_amount)}` : `${Number(tier.incentive_amount)}%`} mark-up ₱${Number(tier.mark_up ?? 0)}${tier.branch_id ? ` (${tier.branch_id})` : ""}${tier.non_commissionable ? " non-commissionable" : ""}`;
-  const describe = (list) => [...list].sort((a, b) => a.from_month - b.from_month || String(a.role).localeCompare(String(b.role))).map(tierLabel).join(", ");
+  // Sorted fully, so the same rates saved in another order read as unchanged.
+  const describe = (list) => list.map(tierLabel).sort((a, b) => a.localeCompare(b, "en", { numeric: true })).join(", ");
   const deleted = await sql`select date_trunc('second', logged_at) as at, user_name, changes_json from audit_log
     where table_name = 'program_incentives' and action = 'delete' and logged_at > now() - make_interval(days => ${days}) order by logged_at`;
   const saves = new Map();
