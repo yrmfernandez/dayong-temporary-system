@@ -314,6 +314,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### DFP-350, DPB-350, D-300 (NEW) and Transfer members (2026-10-10)
+
+- **Owner:** DFP-350 → DPB-350 (DP-0010) and delete; delete DPB-350 DP-0050 (DP-0010 is the finalized one); D-300 (NEW) → D-300 (Bracketing) and delete; and a feature for administrators to move all or selected members of a program to another with the same pay.
+- **Done:** `config/program-moves.json` has DP-0050 → DP-0010, DFP-350 → DP-0010 and D-300 (NEW) DP-0025 → DP-0067, each merging into a member's existing account and deleting the program once empty (inactive if anything is left, e.g. two accounts that paid the same month). Programs → **Transfer members** ([system guide](system-guide.md#3-programs-rates-and-incentive-rules)), tested (move, merge, left, different pay refused, administrators only).
+- **Fixed on the way:** the October 10 database change for the Audits hang (`max_pipeline: 0`) broke every transaction ("UNSAFE_TRANSACTION", seen when saving a program); transactions now have their own pool. Tested: 10 transactions with 20 heavy reads at once, all fine.
+- **To do (owner):** `npm run prod -- node scripts/move-program-accounts.mjs --apply` (or use Transfer members on Programs once deployed). Accounts left behind are listed in `legacy-data/program-moves-left.txt`.
+
 ### Audits error and pages that hang (2026-10-10)
 
 - **Owner:** Audits shows "Unexpected token 'A', "An error o"... is not valid JSON", and not only there.

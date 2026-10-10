@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+ArrowRightLeft,
 ChevronDown,
 ChevronUp,
 Pencil,
@@ -32,6 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { describeAgeRestriction } from "@/lib/program-age";
 import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 import { ProgramBulkEdit } from "./program-bulk-edit";
+import { ProgramTransfer } from "./program-transfer";
 import { ProgramCategoriesManager, type ProgramCategory } from "./program-categories";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { programSnapshot } from "@/lib/program-snapshot";
@@ -348,6 +350,10 @@ useState(false);
 const [showForm, setShowForm] =
 useState(false);
 const [canManage, setCanManage] = useState(false);
+// Administrators move a program's members to another program with the same pay (./program-transfer.tsx).
+const [canTransfer, setCanTransfer] = useState(false);
+const [transferringId, setTransferringId] = useState<string | null>(null);
+const [transferMessage, setTransferMessage] = useState("");
 // Branches for branch-specific incentive rates, and the editable program categories.
 const [branchOptions, setBranchOptions] = useState<Array<{ id: string; name: string; territory: string; status: string }>>([]);
 const [categories, setCategories] = useState<ProgramCategory[]>([]);
@@ -408,6 +414,7 @@ setLoading(true);
       ? data.programs
       : [];
   setCanManage(Boolean(data.canManage));
+  setCanTransfer(Boolean(data.canTransfer));
 
   setPrograms(
     loadedPrograms.map(
@@ -2240,6 +2247,7 @@ const programForm = (
 );
 
 return ( <div className="mx-auto max-w-7xl space-y-6">
+{transferMessage && <p role="status" className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">{transferMessage}</p>}
 {loadError && <div role="alert" className="rounded-md border border-destructive p-3 text-sm">{loadError}<Button variant="outline" disabled={loading} onClick={() => void loadPrograms()} className="ml-3">Retry</Button></div>}
 {/* PAGE HEADER */} <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
   <div>
@@ -2430,8 +2438,24 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           <Trash2 className="mr-2 size-4" />
                           Delete
                         </Button>}
+
+                        {canTransfer && <Button
+                          type="button"
+                          variant={transferringId === program.id ? "default" : "outline"}
+                          aria-expanded={transferringId === program.id}
+                          onClick={() => { setTransferMessage(""); setTransferringId((current) => current === program.id ? null : program.id); }}
+                        >
+                          <ArrowRightLeft className="mr-2 size-4" />
+                          Transfer members
+                        </Button>}
                       </div>
                     </div>
+
+                    {transferringId === program.id && (
+                      <InlinePanel>
+                        <ProgramTransfer programId={program.id} onClose={() => setTransferringId(null)} onDone={(message) => { setTransferMessage(message); setTransferringId(null); void loadPrograms(); }} />
+                      </InlinePanel>
+                    )}
 
                     {editingId === program.id && (
                       <InlinePanel>

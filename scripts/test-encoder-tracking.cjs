@@ -669,6 +669,43 @@ test('a member without a contact number gets the claimant contact, when it is a 
   assert.equal(memberContactOrClaimant(' ', '0'), '');
 });
 
+test('Programs → Transfer members moves, merges or leaves each account, only to a program with the same pay', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  await seed('programs', [{ program_id: 'DP-OLD', program_name: 'D-300 (NEW)', base_pay: 300 }, { program_id: 'DP-NEW', program_name: 'D-300 (Bracketing)', base_pay: 300 }, { program_id: 'DP-400', program_name: 'D-400', base_pay: 400 }]);
+  await seed('members', [1, 2, 3].map((n) => ({ member_id: `MEM-${n}`, member_number: `PH-${n}`, surname: `S${n}`, first_name: 'A' })));
+  await seed('member_programs', [
+    { enrollment_id: 'E1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-OLD', doi: '2026-06-15', branch: 'BR-1', mas: 'M', status: 'Active' },
+    { enrollment_id: 'E2-OLD', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-OLD', doi: '2026-06-20', branch: 'BR-1', mas: 'M', status: 'Active' },
+    { enrollment_id: 'E2-NEW', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-NEW', doi: '2026-06-10', branch: 'BR-1', mas: 'M', status: 'Active' },
+    { enrollment_id: 'E3-OLD', member_id: 'MEM-3', member_number: 'PH-3', program_id: 'DP-OLD', doi: '2026-06-15', branch: 'BR-1', mas: 'M', status: 'Active' },
+    { enrollment_id: 'E3-NEW', member_id: 'MEM-3', member_number: 'PH-3', program_id: 'DP-NEW', doi: '2026-06-15', branch: 'BR-1', mas: 'M', status: 'Active' },
+  ]);
+  const col = (id, enrollment, member, program, month, nop) => ({ collection_id: id, collection_batch_id: 'CBT', enrollment_id: enrollment, member_id: member, member_number: member.replace('MEM', 'PH'), program_id: program, or_number: id, or_date: `${month}-05`, amount_collected: 300, month_from: month, month_to: month, nop_from: nop, nop_to: nop, status: 'Posted' });
+  await seed('collections', [
+    col('C1', 'E1', 'MEM-1', 'DP-OLD', '2026-07', 2),
+    col('C2a', 'E2-NEW', 'MEM-2', 'DP-NEW', '2026-07', 2), col('C2b', 'E2-NEW', 'MEM-2', 'DP-NEW', '2026-08', 3), col('C2c', 'E2-OLD', 'MEM-2', 'DP-OLD', '2026-09', 2),
+    col('C3a', 'E3-NEW', 'MEM-3', 'DP-NEW', '2026-07', 2), col('C3b', 'E3-OLD', 'MEM-3', 'DP-OLD', '2026-07', 2),
+  ]);
+  const route = h.load('app/api/programs/transfer/route.ts');
+  const options = await (await route.GET(new Request('http://localhost/api/programs/transfer?program=DP-OLD'))).json();
+  assert.deepEqual(options.targets.map((item) => item.id), ['DP-NEW'], 'only programs with the same pay');
+  assert.equal(options.accounts.length, 3);
+  const post = (body) => route.POST(request(body));
+  assert.equal((await post({ from: 'DP-OLD', to: 'DP-400', all: true, reason: 'test' })).status, 400, 'a different pay is refused');
+  const response = await post({ from: 'DP-OLD', to: 'DP-NEW', all: true, removeWhenEmpty: true, reason: 'Same plan' });
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  assert.deepEqual([result.moved, result.merged, result.left.map((item) => item.enrollmentId), result.removal], [1, 1, ['E3-OLD'], 'inactive']);
+  const enrollments = await query("select enrollment_id, program_id, doi::text as doi from member_programs order by enrollment_id");
+  assert.deepEqual(enrollments.map((row) => [row.enrollment_id, row.program_id]), [['E1', 'DP-NEW'], ['E2-NEW', 'DP-NEW'], ['E3-NEW', 'DP-NEW'], ['E3-OLD', 'DP-OLD']], 'E2-OLD merged away; E3-OLD left (same month paid on both)');
+  assert.equal(enrollments.find((row) => row.enrollment_id === 'E2-NEW').doi, '2026-06-10', 'the earlier DOI is kept');
+  const merged = await query("select collection_id, enrollment_id, nop_from from collections where member_id = 'MEM-2' order by month_from");
+  assert.deepEqual(merged.map((row) => [row.collection_id, row.enrollment_id, row.nop_from]), [['C2a', 'E2-NEW', 2], ['C2b', 'E2-NEW', 3], ['C2c', 'E2-NEW', 4]], 'payments joined and numbered on from NOP 2');
+  assert.equal((await query("select status from programs where program_id = 'DP-OLD'"))[0].status, 'inactive', 'still used by the account left behind');
+  h.setUser({ userId: 'USR-1', employeeId: 'DPE-1', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await route.GET(new Request('http://localhost/api/programs/transfer?program=DP-NEW'))).status, 403, 'administrators only');
+});
+
 test('all mutation routes reject unauthenticated requests before writing', async () => {
   const h = harness(null);
   for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals', 'finance-options', 'vendor-payables', 'commissions']) {

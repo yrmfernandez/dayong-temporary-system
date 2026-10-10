@@ -1,6 +1,6 @@
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
-import { canManageConfiguration } from "@/lib/auth-server";
+import { canManageConfiguration, canManageUsers } from "@/lib/auth-server";
 import { deleteProgramRecord, type ProgramBulkChanges, type ProgramInput, updateProgramRecord, updateProgramsBulk } from "@/lib/master-data-crud";
 import { validateIncentiveTiers } from "@/lib/program-incentive-store";
 import { programSnapshot } from "@/lib/program-snapshot";
@@ -33,6 +33,8 @@ export async function GET() {
       success: true,
       programs,
       canManage: await canManageConfiguration(),
+      // Moving members between programs (Transfer members) is for administrators only.
+      canTransfer: await canManageUsers(),
     });
   } catch (error) {
     console.error(

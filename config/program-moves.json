@@ -43,6 +43,13 @@
       "mergeIntoExisting": true,
       "remove": true,
       "note": "Two programs named DPB-350 on production: DP-0050 (not finalized) moves into DP-0010 (finalized), merged into a member existing account; DP-0050 is removed once empty (owner, October 10, 2026)"
+    },
+    {
+      "from": "DFP-350",
+      "to": "DP-0010",
+      "mergeIntoExisting": true,
+      "remove": true,
+      "note": "DFP-350 belongs to DPB-350 (DP-0010, the finalized one); a member who already has a DPB-350 account gets the two merged; DFP-350 is deleted once empty (owner, October 10, 2026)"
     }
   ],
   "decisions": [

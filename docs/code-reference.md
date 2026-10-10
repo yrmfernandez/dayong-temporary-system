@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 61 API handlers, 109 library files, 47 component files; 364 scanned source/configuration/public-text files in total.
+42 page routes, 62 API handlers, 110 library files, 47 component files; 367 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -107,6 +107,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/program-categories` | GET, POST, PUT, DELETE | [app/api/program-categories/route.ts](../app/api/program-categories/route.ts) |
 | `/api/program-incentives` | GET, POST | [app/api/program-incentives/route.ts](../app/api/program-incentives/route.ts) |
 | `/api/programs` | GET, POST, PUT, PATCH, DELETE | [app/api/programs/route.ts](../app/api/programs/route.ts) |
+| `/api/programs/transfer` | GET, POST | [app/api/programs/transfer/route.ts](../app/api/programs/transfer/route.ts) |
 | `/api/receipt-photos` | GET, POST | [app/api/receipt-photos/route.ts](../app/api/receipt-photos/route.ts) |
 | `/api/remittance-methods` | GET, POST | [app/api/remittance-methods/route.ts](../app/api/remittance-methods/route.ts) |
 | `/api/remittances/entries` | GET | [app/api/remittances/entries/route.ts](../app/api/remittances/entries/route.ts) |
@@ -204,6 +205,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/program-incentive-store.ts](../lib/program-incentive-store.ts) | `StoredTier`, `validateIncentiveTiers`, `writeProgramIncentives` | `@/lib/db`, `@/lib/readable-id` |
 | [lib/program-payment-limit.mjs](../lib/program-payment-limit.mjs) | `normalizeMonthlyMaximum`, `validateMonthlyMaximum` | — |
 | [lib/program-snapshot.ts](../lib/program-snapshot.ts) | `ProgramSnapshotSource`, `programSnapshot` | — |
+| [lib/program-transfer.ts](../lib/program-transfer.ts) | `TransferAccount`, `programTransferOptions`, `transferProgramAccounts` | `@/lib/account-rules`, `@/lib/db`, `@/lib/readable-id`, `@/lib/encoder-context` |
 | [lib/programs.ts](../lib/programs.ts) | `Program`, `getActivePrograms`, `getAllPrograms` | `./google-sheets-data` |
 | [lib/rate-limit.ts](../lib/rate-limit.ts) | `retryAfter`, `recordAttempt`, `clearAttempts`, `clientIp` | — |
 | [lib/readable-id.ts](../lib/readable-id.ts) | `createReadableId` | — |
@@ -339,6 +341,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/program-categories/route.ts](../app/api/program-categories/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-categories` |
 | [app/api/program-incentives/route.ts](../app/api/program-incentives/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
 | [app/api/programs/route.ts](../app/api/programs/route.ts) | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/program-incentive-store`, `@/lib/program-snapshot`, `@/lib/program-payment-limit.mjs`, `@/lib/google-sheets-data` |
+| [app/api/programs/transfer/route.ts](../app/api/programs/transfer/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-transfer` |
 | [app/api/receipt-photos/route.ts](../app/api/receipt-photos/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/db`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/receipt-photos` |
 | [app/api/remittance-methods/route.ts](../app/api/remittance-methods/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-methods` |
 | [app/api/remittances/entries/route.ts](../app/api/remittances/entries/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/remittance-workflow` |
@@ -367,6 +370,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/loading.tsx](../app/loading.tsx) | `Loading`, `default` | — |
 | [app/programs/program-bulk-edit.tsx](../app/programs/program-bulk-edit.tsx) | `ProgramBulkEdit` | `@/components/ui/button`, `@/components/ui/input`, `./program-categories` |
 | [app/programs/program-categories.tsx](../app/programs/program-categories.tsx) | `ProgramCategory`, `ProgramCategoriesManager` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input` |
+| [app/programs/program-transfer.tsx](../app/programs/program-transfer.tsx) | `ProgramTransfer` | `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/program-transfer` |
 | [components.json](../components.json) | — | — |
 | [eslint.config.mjs](../eslint.config.mjs) | — | — |
 | [next.config.ts](../next.config.ts) | — | — |

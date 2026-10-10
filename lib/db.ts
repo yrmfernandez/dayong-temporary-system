@@ -16,28 +16,37 @@ export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 export type Queryable = Database | Transaction;
 
 // Shared across route bundles and hot reloads, like the Sheets cache. Tests set dayongTestDb to an in-process PGlite.
-const shared = globalThis as typeof globalThis & { dayongDb?: Database; dayongTestDb?: Database };
+const shared = globalThis as typeof globalThis & { dayongDb?: Database; dayongTxDb?: Database; dayongTestDb?: Database };
 
 /**
- * The application database. Connects through Supabase's transaction pooler (DATABASE_URL, port 6543), which does not
- * support prepared statements, so they are switched off.
+ * Supabase's transaction pooler (DATABASE_URL, port 6543) does not support prepared statements, so they are off, and it
+ * stalls when a second query is sent on a connection before the first has answered (seen October 5, 2026; and on
+ * October 10 the Audits page, which builds every clerk's report at once, hung until Vercel cut it off, once even reading
+ * one query's reply as another's rows). postgres.js counts only the queries waiting behind the running one, so
+ * max_pipeline 1 still sends two; 0 sends one at a time (measured: 30 page loads at once, 3.5 s, none failed).
+ * But postgres.js reserves a connection for a transaction from a hook that only runs when pipelining is allowed, so with
+ * 0 every transaction failed ("UNSAFE_TRANSACTION: Only use sql.begin, sql.reserved or max: 1", e.g. saving a program).
+ * Hence two pools: reads use max_pipeline 0; transactions (inTransaction) use their own pool with max_pipeline 1,
+ * where the reserved connection only carries that one save's queries.
+ * max_pipeline is a postgres.js option its TypeScript types do not list.
  */
+function connect(maxPipeline: number, max: number): Database {
+  const url = readServerVariable("DATABASE_URL");
+  if (!url) throw new ServerConfigurationError(["DATABASE_URL"]);
+  const options = { prepare: false, max, max_pipeline: maxPipeline, idle_timeout: 20, connect_timeout: 10 } as postgres.Options<Record<string, never>>;
+  return drizzle(postgres(url, options), { schema }) as unknown as Database;
+}
+
+/** The application database for reads and single statements. */
 export function getDb(): Database {
   if (shared.dayongTestDb) return shared.dayongTestDb;
-  if (!shared.dayongDb) {
-    const url = readServerVariable("DATABASE_URL");
-    if (!url) throw new ServerConfigurationError(["DATABASE_URL"]);
-    // max_pipeline 0: Supabase's transaction pooler stalls when a second query is sent on a connection before the first
-    // has answered (seen October 5, 2026: concurrent reads never returned). postgres.js counts only the queries waiting
-    // behind the running one, so max_pipeline 1 still allowed two at a time; the Audits page (every clerk's report at
-    // once) hung until Vercel cut it off, and one reply was even read as another query's rows (October 10, 2026).
-    // 0 sends one query at a time per connection; measured: 30 page loads at once, 3.5 s, none failed.
-    // max_pipeline is a postgres.js option its TypeScript types do not list.
-    const options = { prepare: false, max: 10, max_pipeline: 0, idle_timeout: 20, connect_timeout: 10 } as postgres.Options<Record<string, never>>;
-    const client = postgres(url, options);
-    shared.dayongDb = drizzle(client, { schema }) as unknown as Database;
-  }
-  return shared.dayongDb;
+  return (shared.dayongDb ??= connect(0, 10));
+}
+
+/** The pool transactions run on (see above). */
+function transactionDb(): Database {
+  if (shared.dayongTestDb) return shared.dayongTestDb;
+  return (shared.dayongTxDb ??= connect(1, 5));
 }
 
 const activeTransaction = new AsyncLocalStorage<Transaction>();
@@ -54,7 +63,7 @@ export function inTransaction<T>(work: (tx: Transaction) => Promise<T>): Promise
   const open = activeTransaction.getStore();
   if (open) return work(open);
   const actor = currentEncoder();
-  return getDb().transaction(async (tx) => {
+  return transactionDb().transaction(async (tx) => {
     if (actor) await tx.execute(sql`select set_config('app.user_id', ${actor.userId}, true), set_config('app.employee_id', ${actor.employeeId}, true), set_config('app.user_name', ${actor.name}, true)`);
     return activeTransaction.run(tx, () => work(tx));
   }).finally(() => {
