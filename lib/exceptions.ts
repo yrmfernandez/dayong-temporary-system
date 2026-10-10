@@ -111,7 +111,7 @@ export async function findExceptions({ includeLegacy = false } = {}) {
   const now = manilaNow(), today = now.date, nowStamp = `${now.date} ${now.time}`;
   const programById = new Map(programs.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), {
     name: text(row[2]) || text(row[1]), basePay: number(row[3]), registrationFeeRequired: /^yes$/i.test(text(row[10])) || row[10] === true,
-    registrationAmount: number(row[11]), payBalanceTotal: number(row[12]), newSaleAmountEditable: isTrue(row[19]), flexible: isTrue(row[21]),
+    registrationAmount: number(row[11]), payBalanceTotal: number(row[12]), newSaleAmountEditable: isTrue(row[19]), flexible: isTrue(row[21]), maxMonthly: number(row[22]),
   }]));
   const items: ExceptionItem[] = [];
   const add = (item: ExceptionItem) => { if (includeLegacy || !item.legacy) items.push(item); };
@@ -155,7 +155,8 @@ export async function findExceptions({ includeLegacy = false } = {}) {
     if (warnings.length) add({ category: "sequence", key: `sequence-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: warnings.join(" "), date: text(row[30]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: saleEntry(row) });
   }
 
-  // Amounts: a collection must be whole installments, or more only when it pays the program off exactly.
+  // Amounts: a collection must be whole installments, or more only when it pays the program off exactly. A flexible
+  // program (e.g. D-210 HG, minimum ₱150) takes any amount from its minimum up to its monthly maximum, if it has one.
   const byEnrollment = new Map<string, unknown[][]>();
   for (const row of posted) byEnrollment.set(text(row[2]), [...(byEnrollment.get(text(row[2])) ?? []), row]);
   for (const rows of byEnrollment.values()) {
@@ -166,7 +167,14 @@ export async function findExceptions({ includeLegacy = false } = {}) {
       if (!program?.basePay || !/^\d{4}-\d{2}$/.test(text(row[11])) || !/^\d{4}-\d{2}$/.test(text(row[12]))) continue;
       const months = monthCount(text(row[11]), text(row[12])), expected = cents(program.basePay) * months;
       if (months < 1) continue;
-      const short = cents(amount) < expected, overButNotPayoff = cents(amount) > expected && !(program.payBalanceTotal && paid === cents(program.payBalanceTotal));
+      const payoff = Boolean(program.payBalanceTotal && paid === cents(program.payBalanceTotal));
+      if (program.flexible) {
+        const maximum = program.maxMonthly ? cents(program.maxMonthly) * months : 0;
+        const below = cents(amount) < expected, above = maximum > 0 && cents(amount) > maximum && !payoff;
+        if (below || above) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `${peso(amount)} for ${months} month${months === 1 ? "" : "s"}; this flexible program takes ${below ? `at least ${peso(expected / 100)}` : `at most ${peso(maximum / 100)}`}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: collectionEntry(row) });
+        continue;
+      }
+      const short = cents(amount) < expected, overButNotPayoff = cents(amount) > expected && !payoff;
       if (short || overButNotPayoff) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `${peso(amount)} for ${months} month${months === 1 ? "" : "s"}; the program expects ${peso(expected / 100)}${overButNotPayoff ? " (more is allowed only when it pays the program off exactly)" : ""}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: collectionEntry(row) });
     }
   }

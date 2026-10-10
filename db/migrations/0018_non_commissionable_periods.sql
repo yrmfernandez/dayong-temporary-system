@@ -1,0 +1,1 @@
+ALTER TABLE "program_incentives" ADD COLUMN "non_commissionable" boolean DEFAULT false NOT NULL;

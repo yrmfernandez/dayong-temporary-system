@@ -10,6 +10,8 @@ export type IncentiveTier = {
   incentiveAmount: number;
   /** Blank = the program's base tier for every branch; otherwise the tier applies to that branch only. */
   branchId?: string;
+  /** Non-commissionable period: only the Collector earns; the MAS gets nothing and remits the gross (owner, October 10, 2026). */
+  nonCommissionable?: boolean;
 };
 
 /**
@@ -65,10 +67,13 @@ export function calculateSaleIncentive(program: SaleProgram, amountPaid: number)
 /**
  * `flexible`: the program's basePay is only the minimum; each NOP's installment is its share of the amount actually
  * collected, so incentives follow what was paid.
+ * `role` is who collected (owner, October 10, 2026): "MAS" earns the MAS incentive of the period, "Collector" the
+ * Collector incentive, and "DTO" (Direct to Office) earns nothing, so the whole installment is remitted. In a
+ * non-commissionable period only the Collector earns; a MAS collection is remitted in full.
  */
 export function calculateRemittance(basePay: number, tiers: IncentiveTier[], role: string, nopFrom: number, nopTo: number, amountCollected?: number, flexible = false, maxMonthlyPayment?: number | null) {
   if (!Number.isFinite(basePay) || basePay <= 0 || !Number.isInteger(nopFrom) || !Number.isInteger(nopTo) || nopFrom < 1 || nopTo < nopFrom || nopTo - nopFrom > 1199) throw new Error("Select a valid program and NOP range to calculate remittance.");
-  if (role !== "MAS" && role !== "Collector") throw new Error("Select the collection role.");
+  if (role !== "MAS" && role !== "Collector" && role !== "DTO") throw new Error("Select the collection role.");
   const count = nopTo - nopFrom + 1;
   const paidCents = amountCollected === undefined ? NaN : Math.round(amountCollected * 100);
   const flexibleShares = flexible && Number.isFinite(paidCents);
@@ -79,6 +84,11 @@ export function calculateRemittance(basePay: number, tiers: IncentiveTier[], rol
   for (let nop = nopFrom; nop <= nopTo; nop++) {
     const index = nop - nopFrom;
     const baseCents = flexibleShares ? Math.floor(paidCents / count) + (index < paidCents % count ? 1 : 0) : minimumCents;
+    // Direct to Office: nobody earns an incentive, the company receives the whole installment.
+    if (role === "DTO") {
+      breakdown.push({ nop, tierId: "", role, basePay: baseCents / 100, markUp: 0, incentiveType: "fixed" as const, incentiveAmount: 0, incentive: 0, remittance: baseCents / 100 });
+      continue;
+    }
     const matches = tiers.filter((tier) => tier.role === role && nop >= tier.fromMonth && nop <= tier.toMonth);
     if (matches.length !== 1) throw new Error(`Configure exactly one ${role} incentive tier for NOP ${nop}.`);
     const tier = matches[0];
@@ -87,7 +97,8 @@ export function calculateRemittance(basePay: number, tiers: IncentiveTier[], rol
     const incentiveBase = baseCents - markUpCents;
     // Remittance = ((base pay - mark-up) - incentive) + mark-up. The incentive is what the MAS/Collector keeps for
     // this NOP: a fixed amount, or a percentage of (base pay - mark-up). The mark-up always goes to the company.
-    const incentiveCents = tier.incentiveType === "percentage" ? Math.round(incentiveBase * tier.incentiveAmount / 100) : Math.round(tier.incentiveAmount * 100);
+    const earns = !(tier.nonCommissionable && role === "MAS");
+    const incentiveCents = !earns ? 0 : tier.incentiveType === "percentage" ? Math.round(incentiveBase * tier.incentiveAmount / 100) : Math.round(tier.incentiveAmount * 100);
     if (incentiveCents > incentiveBase) throw new Error(`The incentive for NOP ${nop} is more than the installment less mark-up.`);
     const remittanceCents = (incentiveBase - incentiveCents) + markUpCents;
     breakdown.push({ nop, tierId: tier.id ?? "", role, basePay: baseCents / 100, markUp: markUpCents / 100,

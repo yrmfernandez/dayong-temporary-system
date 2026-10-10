@@ -7,7 +7,7 @@ import { createReadableId } from "@/lib/readable-id";
  * Program incentive tiers (program_incentives). A blank branch_id is the program's base tier for every branch; a
  * branch's own tiers replace the base tiers for that role in that branch (lib/remittance.ts tiersForBranch).
  */
-export type StoredTier = { role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number; branchId?: string };
+export type StoredTier = { role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number; branchId?: string; nonCommissionable?: boolean };
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -40,7 +40,7 @@ export async function writeProgramIncentives(programId: string, tiers: StoredTie
     await tx.insert(schema.program_incentives).values(tiers.map((tier) => ({
       incentive_id: createReadableId("INC"), program_id: programId, role: tier.role, from_month: tier.fromMonth, to_month: tier.toMonth,
       incentive_type: tier.incentiveType, mark_up: Number(tier.markUp) || 0, incentive_amount: Number(tier.incentiveAmount) || 0,
-      branch_id: text(tier.branchId) || null, ...identity,
+      branch_id: text(tier.branchId) || null, non_commissionable: tier.nonCommissionable === true, ...identity,
     })));
   });
 }

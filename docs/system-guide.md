@@ -34,7 +34,7 @@ The system manages member enrollments and payments, employees and attendance, ca
 | DOI | Enrollment's Date of Inception; it determines the initial month and the day used for advance-coverage timing. |
 | MAS | Employee responsible for the enrollment. Operational responsibility is separate from login permissions. |
 | Collector | A collection channel using Collector incentive tiers. The batch still uses its assigned MAS and recorded accountable employee. |
-| DTO | Direct to Office collection channel; calculations use MAS incentive tiers. |
+| DTO | Direct to Office collection channel: **no incentive**, the whole gross is remitted (owner, October 10, 2026; it used the MAS tiers before). |
 | Encoder | The signed-in person saving the transaction. The server records their identity and timestamp. |
 | NOP | Payment position / installment number. Current code starts new accounts at 1 for the New Sale; first Collection starts at 2. |
 | TMD | Monthly program amount multiplied by the account's current NOP. |
@@ -120,6 +120,10 @@ Sources: [page catalog](../lib/page-catalog.ts), [navigation](../lib/navigation.
 
 ## 3. Programs, rates, and incentive rules
 
+**Who collected decides the incentive (owner, October 10, 2026).** A Collection batch is collected by **MAS** (the period's MAS incentive), **Collector** (the period's Collector incentive) or **DTO**, Direct to Office (no incentive: the remittance is the whole gross). New Sales use the MAS side. **Non-commissionable period:** each incentive period in Programs can be ticked *Non-commissionable*: only the Collector earns in it (the Collector share defaults to 10% and can be changed); the MAS share is set to 0, so a MAS collection in that period is remitted in full. Stored as `program_incentives.non_commissionable` (migration `0018_non_commissionable_periods`), applied in `calculateRemittance` (`lib/remittance.ts`), which every save, preview and New Sale uses; the program card shows "Non-commissionable (Collector only)".
+
+**Editing a program safely (October 10, 2026).** Programs → Edit saves every setting and incentive tier of the program at once, so a form left open used to write its older values back over someone else's newer save ("my edit is gone"). The form now remembers the program as it was when opened (`lib/program-snapshot.ts`) and the save is refused, with a message to reopen the program, if it changed in the meantime. Two settings are cleared on purpose when saved: the New Sale incentive when the program has no registration fee, and the monthly maximum when the program is not flexible. `scripts/program-history.mjs` lists who changed which program setting and when (from the Audit Log), including settings set back by someone else.
+
 A program contains a stable ID, code/name, monthly `basePay`, status, description, category, registration-fee rule and amount, optional `payBalanceTotal`, age restriction, New Sale incentive, and amount-editability flags. Despite its name, program `basePay` means a **member's monthly installment**, not an employee salary.
 
 **Flexible programs** (Programs → *Flexible payments* switch, column `programs.flexible`, migration `0007`; first used for D-210): `basePay` is the **minimum monthly payment** (D-210: ₱150) and `payBalanceTotal` is the **total amount payable** (D-210: ₱25,200).
@@ -128,7 +132,7 @@ A program contains a stable ID, code/name, monthly `basePay`, status, descriptio
 - A New Sale that pays the first month follows the same monthly maximum. Registration-fee payments are separate and do not use the monthly limit. Existing payment history is not invalidated when an administrator adds or lowers a maximum.
 - Incentives and the company's share are computed on the amount actually paid per month, not on `basePay` ([remittance.ts](../lib/remittance.ts) `calculateRemittance(…, flexible)`).
 - Status (U, ADV, 60D…, suspension, forfeiture) follows the covered months as for any program; the account is **Paid** once its collections reach the total payable ([account-rules.ts](../lib/account-rules.ts)).
-- Exceptions does not flag amounts above the minimum on flexible programs.
+- Exceptions does not flag amounts above the minimum on flexible programs (only below the minimum, or above the monthly maximum when one is set). Until October 10, 2026 it did flag them for collections: the Programs range it read (A:U) stopped before the flexible and maximum columns (V:W), so about 14,000 valid D-210 HG payments were listed; `PROGRAMS_RANGE` is now A:W.
 - The legacy import (`scripts/migrate-legacy-members.mjs`) reads the flag too: on a flexible program each payment of at least the minimum is one month.
 
 **OR numbers carry the branch letter**, written with a space ("12345 S"). Digits-only OR numbers are listed in Exceptions under *OR numbers without a branch letter*; `scripts/fix-or-letters.mjs` fixes only the certain cases: every lettered OR within 50 numbers in the same branch has one letter (same booklet), or the branch uses one letter for at least 95% of its ORs; a result equal to another receipt is skipped. Since October 8, 2026 it also covers New Sales OR numbers, with the lettered ORs of both Collections and New Sales as the reference. Staging after the imports: 567 fixed (561 collections, 6 New Sales); 601 left for staff (491 uncertain, 110 would equal another receipt). Application numbers are text (they contain letters).

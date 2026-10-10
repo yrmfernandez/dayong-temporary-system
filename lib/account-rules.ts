@@ -126,7 +126,8 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
 /** Who brought the payment in. DTO (Direct to Office) is paid at the office and keeps the current (MAS) incentive tier. */
 export const COLLECTION_CHANNELS = ["MAS", "Collector", "DTO"] as const;
 export type CollectionChannel = (typeof COLLECTION_CHANNELS)[number];
-export const incentiveRoleFor = (channel: string): "MAS" | "Collector" => channel === "Collector" ? "Collector" : "MAS";
+/** MAS collections earn the MAS incentive, Collector collections the Collector incentive, DTO none (owner, October 10, 2026). */
+export const incentiveRoleFor = (channel: string): "MAS" | "Collector" | "DTO" => channel === "Collector" ? "Collector" : channel === "DTO" ? "DTO" : "MAS";
 
 export type PaymentInput = { monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; amount: number; orDate: string; orNumber: string; waiver: string; collectedByRole: string; originalMas: string };
 export function validatePayment(account: Account, history: AccountPayment[], input: PaymentInput, today = todayInManila()) {

@@ -127,6 +127,13 @@
       "when": 1791541935535,
       "tag": "0017_company_targets",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791593345086,
+      "tag": "0018_non_commissionable_periods",
+      "breakpoints": true
     }
   ]
 }

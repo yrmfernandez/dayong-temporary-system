@@ -381,6 +381,27 @@ test('master-data CRUD updates programs and blocks deleting referenced records',
   assert.match((await deleted.json()).error, /member enrollments/i);
 });
 
+test('a program form left open cannot write its older values over a newer edit', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
+  const route = h.load('app/api/programs/route.ts');
+  const { programSnapshot } = h.load('lib/program-snapshot.ts');
+  h.rows.Programs = [[], ['DP-0001', 'P1', 'Plan One', 350, 'active', '']];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-0001', 'MAS', 1, 12, 'percentage', 50, 30]];
+  await h.sync();
+  // Two people open the same program: both forms remember it as it is now.
+  const programs = await (await route.GET()).json();
+  const opened = programSnapshot(programs.programs.find((program) => program.id === 'DP-0001'));
+  const tiers = [{ role: 'MAS', fromMonth: 1, toMonth: 12, incentiveType: 'percentage', markUp: 50, incentiveAmount: 30 }];
+  const put = (body) => route.PUT(new Request('http://localhost/api/programs?id=DP-0001', { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+  const first = await put({ code: 'P1', name: 'Plan One', basePay: 350, status: 'active', description: '', registrationFeeRequired: true, registrationAmount: 500, incentiveTiers: tiers, expectedSnapshot: opened });
+  assert.equal(first.status, 200, 'the first save goes through');
+  const second = await put({ code: 'P1', name: 'Plan One renamed', basePay: 350, status: 'active', description: '', registrationFeeRequired: false, incentiveTiers: tiers, expectedSnapshot: opened });
+  assert.equal(second.status, 409, 'the form opened before that save is refused');
+  assert.match((await second.json()).error, /changed by someone else/);
+  const [row] = await query("select program_name, registration_fee_required, registration_amount from programs where program_id = 'DP-0001'");
+  assert.deepEqual([row.program_name, row.registration_fee_required, Number(row.registration_amount)], ['Plan One', true, 500], 'the first edit is kept');
+});
+
 test('programs bulk edit sets only the chosen settings on every selected program, all or nothing', async () => {
   const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
   const route = h.load('app/api/programs/route.ts');
@@ -743,6 +764,8 @@ test('collection batch is encoded atomically without creating a remittance', asy
   assert.match((await (await route.POST(request({ ...batch, penalty: 50, penaltyNote: '' }))).json()).message, /what the penalty is for/);
   assert.match((await (await route.POST(request({ ...batch, penalty: -5, penaltyNote: 'x' }))).json()).message, /zero or a positive/);
   // Fidelity is the employee's own money: no limit and any batch (covered by the Fidelity tests below).
+  // Direct to Office earns no incentive: the turnover total is the whole gross, 2 × ₱350 (owner, October 10, 2026).
+  assert.match((await (await route.POST(request(batch))).json()).message, /700/, 'a DTO batch expects the gross as its total');
   assert.equal((await query('select count(*)::int as n from collections'))[0].n, 0, 'rejected batches save nothing');
   const response = await route.POST(request({ ...batch, collectedBy: 'Collector', originalMasOfficerName: 'ignored', penalty: 50, penaltyNote: 'Late turnover' }));
   const result = await response.json();

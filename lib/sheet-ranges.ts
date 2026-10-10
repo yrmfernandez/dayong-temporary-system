@@ -8,5 +8,6 @@ export const COLLECTIONS_RANGE = "'Collections'!A:AO";
 export const SALES_RANGE = "'Sales'!A:AS";
 export const REMITTANCES_RANGE = "'Remittances'!A:AB";
 export const REMITTANCE_LINKS_RANGE = "'Remittance Collections'!A:I";
-export const PROGRAMS_RANGE = "'Programs'!A:U";
+// A:W since October 10, 2026: V (flexible) and W (monthly maximum) were outside A:U, so Exceptions never saw them.
+export const PROGRAMS_RANGE = "'Programs'!A:W";
 export const MEMBERS_RANGE = "'Members'!A:V";

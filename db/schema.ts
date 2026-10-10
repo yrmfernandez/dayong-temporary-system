@@ -183,6 +183,8 @@ export const program_incentives = pgTable("program_incentives", {
   incentive_amount: money("incentive_amount"),
   ...encoder(),
   branch_id: text().references(() => branches.branch_id, { onUpdate: "cascade" }),
+  /** Non-commissionable period (owner, October 10, 2026): only the Collector earns; the MAS gets nothing (lib/remittance.ts). */
+  non_commissionable: boolean().notNull().default(false),
 }, (t) => [index("program_incentives_program_idx").on(t.program_id)]).enableRLS();
 
 // ---------------------------------------------------------------- members

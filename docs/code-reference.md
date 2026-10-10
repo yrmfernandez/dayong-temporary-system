@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-40 page routes, 59 API handlers, 105 library files, 45 component files; 347 scanned source/configuration/public-text files in total.
+40 page routes, 59 API handlers, 106 library files, 45 component files; 349 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -39,7 +39,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/new-sales` | [app/new-sales/page.tsx](../app/new-sales/page.tsx) | `@/components/new-sales-form` |
 | `/` | [app/page.tsx](../app/page.tsx) | `@/components/executive-dashboard`, `@/components/finance-dashboard`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/live-router-refresh`, `@/components/system-health-dashboard`, `@/components/ui/card`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auth-server`, `@/lib/dashboard-data`, `@/lib/employees`, `@/lib/executive-analytics`, `@/lib/finance-operations`, `@/lib/remittance-workflow`, `@/lib/system-health`, `@/lib/ui-preferences` |
 | `/payroll` | [app/payroll/page.tsx](../app/payroll/page.tsx) | `@/components/inline-panel`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/payroll-calc`, `@/lib/payslip`, `@/lib/use-live-refresh` |
-| `/programs` | [app/programs/page.tsx](../app/programs/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/program-age`, `@/lib/program-payment-limit.mjs`, `@/lib/use-live-refresh` |
+| `/programs` | [app/programs/page.tsx](../app/programs/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/program-age`, `@/lib/program-payment-limit.mjs`, `@/lib/use-live-refresh`, `@/lib/program-snapshot` |
 | `/remittances` | [app/remittances/page.tsx](../app/remittances/page.tsx) | `@/components/admin-delete`, `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/use-live-refresh` |
 | `/reports/daily` | [app/reports/daily/page.tsx](../app/reports/daily/page.tsx) |  |
 | `/reports/monthly` | [app/reports/monthly/page.tsx](../app/reports/monthly/page.tsx) |  |
@@ -196,6 +196,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/program-categories.ts](../lib/program-categories.ts) | `ProgramCategory`, `getProgramCategories`, `createProgramCategory`, `updateProgramCategory`, `deleteProgramCategory` | `@/lib/db`, `@/lib/readable-id` |
 | [lib/program-incentive-store.ts](../lib/program-incentive-store.ts) | `StoredTier`, `validateIncentiveTiers`, `writeProgramIncentives` | `@/lib/db`, `@/lib/readable-id` |
 | [lib/program-payment-limit.mjs](../lib/program-payment-limit.mjs) | `normalizeMonthlyMaximum`, `validateMonthlyMaximum` | — |
+| [lib/program-snapshot.ts](../lib/program-snapshot.ts) | `ProgramSnapshotSource`, `programSnapshot` | — |
 | [lib/programs.ts](../lib/programs.ts) | `Program`, `getActivePrograms`, `getAllPrograms` | `./google-sheets-data` |
 | [lib/rate-limit.ts](../lib/rate-limit.ts) | `retryAfter`, `recordAttempt`, `clearAttempts`, `clientIp` | — |
 | [lib/readable-id.ts](../lib/readable-id.ts) | `createReadableId` | — |
@@ -327,7 +328,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/profile/route.ts](../app/api/profile/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/users-sheet` |
 | [app/api/program-categories/route.ts](../app/api/program-categories/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-categories` |
 | [app/api/program-incentives/route.ts](../app/api/program-incentives/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
-| [app/api/programs/route.ts](../app/api/programs/route.ts) | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/program-incentive-store`, `@/lib/program-payment-limit.mjs`, `@/lib/google-sheets-data` |
+| [app/api/programs/route.ts](../app/api/programs/route.ts) | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/program-incentive-store`, `@/lib/program-snapshot`, `@/lib/program-payment-limit.mjs`, `@/lib/google-sheets-data` |
 | [app/api/receipt-photos/route.ts](../app/api/receipt-photos/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/receipt-photos`, `@/lib/sheet-ranges` |
 | [app/api/remittance-methods/route.ts](../app/api/remittance-methods/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-methods` |
 | [app/api/remittances/route.ts](../app/api/remittances/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/admin-delete`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-workflow`, `@/lib/access-control` |
@@ -430,6 +431,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/move-photos-to-storage.mjs](../scripts/move-photos-to-storage.mjs) | `@next/env`, `@supabase/supabase-js`, `postgres` | Yes; read source for semantics |
 | [scripts/move-program-accounts.mjs](../scripts/move-program-accounts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/prod.mjs](../scripts/prod.mjs) | `node:child_process`, `node:fs` | No flag detected; read source before running |
+| [scripts/program-history.mjs](../scripts/program-history.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/register-legacy-mas.mjs](../scripts/register-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/remove-blank-rows.mjs](../scripts/remove-blank-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/repair-branch-ids.mjs](../scripts/repair-branch-ids.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |

@@ -82,3 +82,32 @@ test("a branch's own tiers replace the base tiers for that role only", () => {
   assert.deepEqual(tiersForBranch(tiers, "BR-1"), base, "other branches use the base rates");
   assert.deepEqual(tiersForBranch(tiers, ""), base, "no branch means base rates");
 });
+
+test("who collected decides the incentive: MAS and Collector earn their own tier, DTO earns nothing (owner, October 10, 2026)", () => {
+  const tiers = [
+    { role: "MAS", fromMonth: 1, toMonth: 12, incentiveType: "percentage", markUp: 50, incentiveAmount: 50 },
+    { role: "Collector", fromMonth: 1, toMonth: 12, incentiveType: "percentage", markUp: 50, incentiveAmount: 20 },
+  ];
+  assert.equal(calculateRemittance(350, tiers, "MAS", 2, 2).remittance, 200, "MAS keeps 150 of (350 - 50)");
+  assert.equal(calculateRemittance(350, tiers, "Collector", 2, 2).remittance, 290, "Collector keeps 60 of (350 - 50)");
+  const dto = calculateRemittance(350, tiers, "DTO", 2, 3);
+  assert.equal(dto.remittance, 700, "Direct to Office: the whole gross is remitted");
+  assert.deepEqual(dto.breakdown.map((item) => item.incentive), [0, 0]);
+  assert.equal(calculateRemittance(350, [], "DTO", 1, 1).remittance, 350, "DTO needs no incentive tier");
+});
+
+test("a non-commissionable period pays only the Collector; a MAS collection is remitted in full", () => {
+  const tiers = [
+    { role: "MAS", fromMonth: 1, toMonth: 6, incentiveType: "percentage", markUp: 0, incentiveAmount: 30 },
+    { role: "Collector", fromMonth: 1, toMonth: 6, incentiveType: "percentage", markUp: 0, incentiveAmount: 20 },
+    { role: "MAS", fromMonth: 7, toMonth: 60, incentiveType: "percentage", markUp: 0, incentiveAmount: 30, nonCommissionable: true },
+    { role: "Collector", fromMonth: 7, toMonth: 60, incentiveType: "percentage", markUp: 0, incentiveAmount: 10, nonCommissionable: true },
+  ];
+  assert.equal(calculateRemittance(300, tiers, "MAS", 6, 6).remittance, 210, "before it, the MAS keeps 30%");
+  assert.equal(calculateRemittance(300, tiers, "MAS", 7, 7).remittance, 300, "the MAS earns nothing in a non-commissionable period");
+  assert.equal(calculateRemittance(300, tiers, "Collector", 7, 7).remittance, 270, "the Collector still earns 10%");
+  assert.equal(calculateRemittance(300, tiers, "MAS", 6, 7).remittance, 510, "a receipt spanning both periods: 210 + 300");
+  // A New Sale without a registration fee pays month 1 at the MAS tier: nothing when month 1 is non-commissionable.
+  const sale = calculateSaleIncentive({ basePay: 300, registrationFeeRequired: false, saleIncentiveType: "", saleIncentiveAmount: 0, incentiveTiers: tiers.map((tier) => ({ ...tier, nonCommissionable: true })) }, 300);
+  assert.deepEqual([sale.incentive, sale.remittance], [0, 300]);
+});

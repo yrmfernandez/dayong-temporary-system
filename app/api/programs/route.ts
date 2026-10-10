@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { canManageConfiguration } from "@/lib/auth-server";
 import { deleteProgramRecord, type ProgramBulkChanges, type ProgramInput, updateProgramRecord, updateProgramsBulk } from "@/lib/master-data-crud";
 import { validateIncentiveTiers } from "@/lib/program-incentive-store";
+import { programSnapshot } from "@/lib/program-snapshot";
 import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 
 import {
@@ -431,7 +432,7 @@ function programInput(body: Record<string, unknown>): ProgramInput {
     ageRestricted: body.ageRestricted,
     minAge: body.minAge,
     maxAge: body.maxAge,
-    incentiveTiers: tiers.map((value) => { const tier = value as Record<string, unknown>; return { role: tier.role === "Collector" ? "Collector" : "MAS", fromMonth: Number(tier.fromMonth), toMonth: Number(tier.toMonth), incentiveType: tier.incentiveType === "fixed" ? "fixed" : "percentage", markUp: Number(tier.markUp), incentiveAmount: Number(tier.incentiveAmount), branchId: typeof tier.branchId === "string" ? tier.branchId.trim() : "" }; }),
+    incentiveTiers: tiers.map((value) => { const tier = value as Record<string, unknown>; return { role: tier.role === "Collector" ? "Collector" : "MAS", fromMonth: Number(tier.fromMonth), toMonth: Number(tier.toMonth), incentiveType: tier.incentiveType === "fixed" ? "fixed" : "percentage", markUp: Number(tier.markUp), incentiveAmount: Number(tier.incentiveAmount), branchId: typeof tier.branchId === "string" ? tier.branchId.trim() : "", nonCommissionable: tier.nonCommissionable === true }; }),
   };
 }
 
@@ -440,6 +441,13 @@ export const PUT = withEncoder(async (request: Request) => {
   try {
     const id = new URL(request.url).searchParams.get("id")?.trim() ?? "";
     const body = await request.json();
+    // A form left open must not write its older values over a newer edit (October 10, 2026, "my edit is gone").
+    if (typeof body.expectedSnapshot === "string") {
+      const current = (await getPrograms()).find((program) => program.id === id);
+      if (current && programSnapshot(current) !== body.expectedSnapshot) {
+        return NextResponse.json({ success: false, error: "This program was changed by someone else after you opened it, so your save was stopped to keep their change. Close the form, open the program again to see the latest settings, then make your change." }, { status: 409 });
+      }
+    }
     return NextResponse.json({ success: true, program: await updateProgramRecord(id, programInput(body)) });
   } catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unable to update program." }, { status: 400 }); }
 });

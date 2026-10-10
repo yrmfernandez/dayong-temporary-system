@@ -34,6 +34,7 @@ import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 import { ProgramBulkEdit } from "./program-bulk-edit";
 import { ProgramCategoriesManager, type ProgramCategory } from "./program-categories";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { programSnapshot } from "@/lib/program-snapshot";
 
 type IncentiveType = "percentage" | "fixed";
 
@@ -52,6 +53,8 @@ markUp: number;
 incentiveAmount: number;
 /** Blank = base rates for every branch; otherwise rates for that branch only. */
 branchId?: string;
+/** Only the Collector earns in this period. */
+nonCommissionable?: boolean;
 };
 
 type IncentiveTierForm = {
@@ -69,6 +72,8 @@ markUp: string;
 totalIncentive: string;
 masIncentive: string;
 collectorIncentive: string;
+/** Non-commissionable period: only the Collector earns (default 10%, editable); the MAS gets nothing. */
+nonCommissionable: boolean;
 };
 
 type Program = {
@@ -134,6 +139,7 @@ markUp: "0",
 totalIncentive: "50",
 masIncentive: "30",
 collectorIncentive: "20",
+nonCommissionable: false,
 
 };
 }
@@ -317,6 +323,8 @@ createEmptyForm(),
 
 const [editingId, setEditingId] =
 useState<string | null>(null);
+// The program as it was when Edit opened; the save is refused if it changed since (lib/program-snapshot.ts).
+const [openedSnapshot, setOpenedSnapshot] = useState("");
 
 const [loadError, setLoadError] = useState("");
 const [loading, setLoading] =
@@ -437,6 +445,7 @@ useLiveRefresh(["program_categories", "branches"], loadReference);
 function resetForm() {
 setForm(createEmptyForm());
 setEditingId(null);
+setOpenedSnapshot("");
 setShowForm(false);
 }
 
@@ -463,6 +472,20 @@ setForm((current) => ({
 }));
 }
 
+/**
+ * Non-commissionable period (owner, October 10, 2026): only the Collector earns. Ticking it sets the MAS share to 0
+ * and the Collector to the default 10% (editable); unticking leaves the amounts for the user to set.
+ */
+function setNonCommissionable(index: number, on: boolean) {
+  setForm((current) => {
+    const tiers = [...current.incentiveTiers];
+    tiers[index] = on
+      ? { ...tiers[index], nonCommissionable: true, incentiveType: "percentage", masIncentive: "0", collectorIncentive: "10", totalIncentive: "10" }
+      : { ...tiers[index], nonCommissionable: false };
+    return { ...current, incentiveTiers: tiers };
+  });
+}
+
 function updateTier(
 index: number,
 field: keyof IncentiveTierForm,
@@ -476,6 +499,7 @@ const tiers = [
   tiers[index] = {
     ...tiers[index],
     [field]: value,
+    ...(tiers[index].nonCommissionable && field === "collectorIncentive" ? { totalIncentive: value, masIncentive: "0" } : {}),
   };
 
   return {
@@ -870,7 +894,7 @@ try {
 
     // Each form period becomes a MAS and a Collector tier, both for the period\'s branch.
 
-    incentiveTiers: incentiveTiers.map((item, position) => ({ ...item, branchId: form.incentiveTiers[Math.floor(position / 2)]?.branchId ?? "" })),
+    incentiveTiers: incentiveTiers.map((item, position) => ({ ...item, branchId: form.incentiveTiers[Math.floor(position / 2)]?.branchId ?? "", nonCommissionable: form.incentiveTiers[Math.floor(position / 2)]?.nonCommissionable === true })),
 
     categoryId: form.categoryId,
 
@@ -891,6 +915,9 @@ try {
     maxAge: form.ageRestricted ? form.maxAge.trim() : "",
 
     status: form.status,
+
+    // Only an edit: the server refuses the save if someone changed the program after this form opened.
+    ...(editingId ? { expectedSnapshot: openedSnapshot } : {}),
   };
 
   const response = await fetch(
@@ -965,6 +992,7 @@ if (editingId === program.id) {
   return;
 }
 setEditingId(program.id);
+setOpenedSnapshot(programSnapshot(program));
 setShowForm(false);
 
 const existingTiers =
@@ -992,6 +1020,7 @@ existingTiers.forEach(
       tier.incentiveType,
       tier.markUp,
       tier.branchId ?? "",
+      tier.nonCommissionable ? "nc" : "",
     ].join("|");
 
     const existing =
@@ -1034,6 +1063,7 @@ existingTiers.forEach(
 
     grouped.set(key, {
       branchId: tier.branchId ?? "",
+      nonCommissionable: tier.nonCommissionable === true,
       fromValue: String(
         tier.fromMonth ?? 1,
       ),
@@ -1604,6 +1634,11 @@ return (
         </div>
       </div>
 
+      <label className="flex items-start gap-2 rounded-lg border border-dashed p-3 text-sm">
+        <input type="checkbox" className="mt-0.5" checked={tier.nonCommissionable} onChange={(event) => setNonCommissionable(index, event.target.checked)} />
+        <span><strong>Non-commissionable period</strong><span className="block text-xs text-muted-foreground">Only the Collector earns in this period (default 10%, can be changed). The MAS gets nothing and remits the full amount; a DTO collection never has an incentive.</span></span>
+      </label>
+
       <div className="grid gap-4 md:grid-cols-2">
         {/* MAS */}
         <div className="rounded-lg border p-4">
@@ -1625,6 +1660,8 @@ return (
               value={
                 tier.masIncentive
               }
+              disabled={tier.nonCommissionable}
+              title={tier.nonCommissionable ? "Non-commissionable period: the MAS gets nothing." : undefined}
               onChange={(event) =>
                 updateTier(
                   index,
@@ -2517,6 +2554,7 @@ const collectorRemittance = calculateRemittanceFor(program.basePay, baseTier.mar
                                       {formatPeso(
                                         baseTier.markUp,
                                       )}
+                                      {baseTier.nonCommissionable && <span className="ml-1 font-semibold text-amber-700">• Non-commissionable (Collector only)</span>}
                                     </p>
                                   </div>
 

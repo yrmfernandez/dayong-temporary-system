@@ -45,8 +45,8 @@ const collectionChannels: Array<{ value: CollectionChannel; label: string; hint:
   { value: "Collector", label: "Collector", hint: "Collected on the MAS's behalf" },
   { value: "DTO", label: "DTO", hint: "Direct to Office" },
 ];
-// DTO keeps the current (MAS) incentive tier; only Collector batches use the Collector tier.
-const incentiveRoleFor = (channel: CollectionChannel) => channel === "Collector" ? "Collector" : "MAS";
+// Who collected decides the incentive: MAS → MAS tier, Collector → Collector tier, DTO → none, the gross is remitted.
+const incentiveRoleFor = (channel: CollectionChannel) => channel === "Collector" ? "Collector" : channel === "DTO" ? "DTO" : "MAS";
 
 type ProgramOption = {
   id: string;

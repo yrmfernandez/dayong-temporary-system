@@ -167,6 +167,8 @@ const toIncentive = (row: typeof incentiveTable.$inferSelect) => ({
   incentiveAmount: row.incentive_amount ?? 0,
   // Blank for the base tiers, else the branch the tier is for.
   branchId: clean(row.branch_id),
+  // Only the Collector earns in this period.
+  nonCommissionable: row.non_commissionable === true,
 });
 
 /** Incentive tiers of one program, or of every program. */
