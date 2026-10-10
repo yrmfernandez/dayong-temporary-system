@@ -314,6 +314,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### Company Reports for administrators (2026-10-10)
+
+- **Owner:** Reports in the admin workspace repeated Report Review (both showed the Entry Clerk report); admins should see the actual company report.
+- **Done:** in the Administrator workspace, Reports (now "Company Reports" in the sidebar) shows the company report built by `/api/reports`: period, branch / program / MAS filters, totals, cash picture and breakdowns by branch, program, MAS / Collector, day and Entry Clerk, with CSV and print. Entry Clerks (and an admin in the Entry Clerk workspace) keep their own report. No database change.
+- **Could do later (if wanted):** comparison with the previous period, or a chart by month.
+
 ### Cash to approval, receipts per batch, Clearing by kind, View entries (2026-10-10)
 
 - **Owner:** cash entries go to Pending Approval on their own; the receipt is added per batch (Collections / New Sales), not per member; in Clearing the clerk ticks New Sales, Collections or both so each is tracked apart (one can be wrong while the other is right); an approver can click a remittance and see all its entries; Clearing is not seen by everyone: each clerk sees only what they cleared.

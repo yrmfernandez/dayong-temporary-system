@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-41 page routes, 61 API handlers, 108 library files, 46 component files; 358 scanned source/configuration/public-text files in total.
+41 page routes, 61 API handlers, 108 library files, 47 component files; 359 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -44,7 +44,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/remittances` | [app/remittances/page.tsx](../app/remittances/page.tsx) | `@/components/admin-delete`, `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/remittance-entries`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/use-live-refresh` |
 | `/reports/daily` | [app/reports/daily/page.tsx](../app/reports/daily/page.tsx) |  |
 | `/reports/monthly` | [app/reports/monthly/page.tsx](../app/reports/monthly/page.tsx) |  |
-| `/reports` | [app/reports/page.tsx](../app/reports/page.tsx) | `@/components/report-tabs` |
+| `/reports` | [app/reports/page.tsx](../app/reports/page.tsx) | `@/components/company-reports`, `@/components/report-tabs`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/ui-preferences` |
 | `/reports/weekly` | [app/reports/weekly/page.tsx](../app/reports/weekly/page.tsx) |  |
 | `/reports/yearly` | [app/reports/yearly/page.tsx](../app/reports/yearly/page.tsx) |  |
 | `/roles` | [app/roles/page.tsx](../app/roles/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/lib/access-control`, `@/lib/page-catalog`, `@/lib/use-live-refresh` |
@@ -246,6 +246,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/bulk-member-transfer.tsx](../components/bulk-member-transfer.tsx) | `BulkMemberTransfer` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/member-transfer` |
 | [components/clearing-picker.tsx](../components/clearing-picker.tsx) | `ClearingPicker` | `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/use-live-refresh` |
 | [components/clerk-report.tsx](../components/clerk-report.tsx) | `ClerkReport` | `@/components/brand-logo`, `@/components/entry-details`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/clerk-report`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
+| [components/company-reports.tsx](../components/company-reports.tsx) | `CompanyReports` | `@/components/metric-tile`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/reports`, `@/lib/use-live-refresh` |
 | [components/company-targets.tsx](../components/company-targets.tsx) | `CompanyTargets` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label` |
 | [components/entry-correction-form.tsx](../components/entry-correction-form.tsx) | `CorrectableEntry`, `EntryCorrectionForm` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response` |
 | [components/entry-details.tsx](../components/entry-details.tsx) | `EntryDetails` | `@/components/receipt-photo`, `@/components/ui/button`, `@/lib/todays-entries` |
