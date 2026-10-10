@@ -141,6 +141,14 @@
       "remove": true,
       "note": "DFP-350 belongs to DPB-350 (DP-0010, the finalized one); a member who already has a DPB-350 account gets the two merged; DFP-350 is deleted once empty (owner, October 10, 2026)",
       "appliedOn": "2026-10-10 (production; program deleted)"
+    },
+    {
+      "from": "DPB-490",
+      "to": "D-490",
+      "mergeIntoExisting": true,
+      "remove": true,
+      "note": "DPB-490 belongs to D-490, the true program; the owner moved its accounts with Transfer members and 3 stayed (October 10, 2026). A member who already has a D-490 account gets the two merged; DPB-490 is deleted once empty",
+      "appliedOn": "2026-10-10 (production; program deleted)"
     }
   ]
 }

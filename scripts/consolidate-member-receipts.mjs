@@ -1,9 +1,10 @@
 /**
  * Puts a member's receipts onto their one right account (owner, October 10, 2026), from config/receipt-consolidations.json:
- * { member: "PH-…", program: "DP-…", receipts: ["OR …", …] }.
+ * { member: "PH-…", program: "DP-…", receipts: ["OR …", …], fromAccounts: ["ENR-…"] } (fromAccounts: every posted receipt of those accounts).
  *   - Each listed OR (matched ignoring spaces and case) must be a posted collection of that member; it moves to the
  *     member's account in `program` (which must exist), whatever program it was entered under.
- *   - That account's posted payments are then renumbered in OR-date order: from NOP 2 (NOP 1 is the New Sale), each
+ *   - That account's posted payments are then renumbered in OR-date order, from the earliest NOP any of them was
+ *     recorded with (the months before it were paid before these records; "startNop" sets it; never below 2), each
  *     payment as many months as it already covered, or its amount at the program rate when it came from another
  *     program; months follow from the DOI (the October 4 repair rule). Its payment status is recalculated.
  *   - Any other account of the member left with no collection is deleted: its transfer records move to the kept
@@ -49,7 +50,11 @@ try {
         from member_programs mp join programs p on p.program_id = mp.program_id where mp.member_id = ${member.member_id} and mp.program_id = ${text(item.program)}`;
       if (!target) { console.log(`${label}: the member has no account in ${item.program}.\n`); problems++; continue; }
       if (!target.doi) { console.log(`${label}: account ${target.enrollment_id} has no DOI, so its months cannot be worked out.\n`); problems++; continue; }
-      const wanted = [...new Set((item.receipts ?? []).map(key).filter(Boolean))];
+      // "fromAccounts": every posted receipt of these accounts of the member, besides any listed in "receipts".
+      const fromAccounts = (item.fromAccounts ?? []).map(text).filter(Boolean);
+      const ofAccounts = fromAccounts.length ? (await tx`select or_key from collections where enrollment_id in ${tx(fromAccounts)} and member_id = ${member.member_id} and lower(coalesce(status, '')) = 'posted' and coalesce(or_key, '') <> ''`).map((row) => row.or_key) : [];
+      const wanted = [...new Set([...(item.receipts ?? []).map(key), ...ofAccounts].filter(Boolean))];
+      if (!wanted.length) { console.log(`${label}: no receipt to move (already done?).\n`); continue; }
       const found = await tx`select c.collection_id, c.or_number, c.or_key, c.or_date::text as or_date, c.amount_collected::float8 as amount, c.nop_from, c.nop_to, c.enrollment_id, c.member_id, c.program_id, coalesce(p.program_code, p.program_name, c.program_id) as program
         from collections c left join programs p on p.program_id = c.program_id where c.or_key in ${tx(wanted)} and lower(coalesce(c.status, '')) = 'posted'`;
       console.log(`${label} (${target.program_name}, account ${target.enrollment_id}, DOI ${target.doi}, ${peso(target.rate)}/month)`);
@@ -63,10 +68,14 @@ try {
       const sources = [...new Set(mine.filter((row) => row.enrollment_id !== target.enrollment_id).map((row) => row.enrollment_id))];
       if (movedIds.size) await tx`update collections set enrollment_id = ${target.enrollment_id}, program_id = ${target.program_id} where collection_id in ${tx([...movedIds])}`;
 
-      // Renumber the kept account in OR-date order from NOP 2; months follow from the DOI.
+      // Renumber the kept account in OR-date order, starting from the earliest NOP any of these receipts was recorded
+      // with (months before it were paid before these records), or "startNop" from the config; never below 2 (NOP 1
+      // is the New Sale). Months follow from the DOI.
       const payments = await tx`select collection_id, or_number, or_date::text as or_date, amount_collected::float8 as amount, nop_from, nop_to from collections
         where enrollment_id = ${target.enrollment_id} and lower(coalesce(status, '')) = 'posted' order by or_date, collection_id`;
-      let next = 2, failed = "";
+      const recorded = payments.map((p) => Number(p.nop_from)).filter((n) => n > 0);
+      const start = Math.max(2, Number(item.startNop) || (recorded.length ? Math.min(...recorded) : 2));
+      let next = start, failed = "";
       const renumbered = payments.map((p) => {
         const byAmount = target.flexible ? 1 : Math.round(p.amount * 100) / Math.round(target.rate * 100);
         const kept = p.nop_to >= p.nop_from && p.nop_from > 0 ? p.nop_to - p.nop_from + 1 : 0;

@@ -74,8 +74,9 @@ export async function getStatementOfAccount(enrollmentId: string) {
       monthsPaid: state.nop, lastCoveredMonth: state.lastCoveredMonth, nextMonth: state.nextMonth, nextNop: state.nextNop,
       unpaidMonths: state.unpaidMonths, amountDue: state.balance, suspendedAt: state.suspendedAt, forfeitedAt: state.forfeitedAt,
       totalPaid, totalPaidBasis: account.flexible ? "every amount paid" : `NOP ${state.nop} × ${account.basePay}`, collectionsPaid,
-      // Remaining toward the program's pay-the-balance total, when the program has one.
-      remainingBalance: account.payBalanceTotal > 0 ? Math.max(0, round(account.payBalanceTotal - collectionsPaid)) : null,
+      // Remaining toward the program's pay-the-balance total, when the program has one: that total less Total paid
+      // (owner, October 10, 2026; it used to subtract the collections only).
+      remainingBalance: account.payBalanceTotal > 0 ? Math.max(0, round(account.payBalanceTotal - totalPaid)) : null,
     },
     // preparedBy is the signed-in user, filled in by the route.
     signatories: { collectionHead: text(collectionHead), preparedBy: "" },

@@ -26,10 +26,11 @@ try {
   const [{ flag }] = await sql`select exists (select 1 from information_schema.columns where table_name = 'program_incentives' and column_name = 'non_commissionable') as flag`;
   const [{ reply }] = await sql`select exists (select 1 from information_schema.columns where table_name = 'notices_to_explain' and column_name = 'explanation') as reply`;
   const [{ covers }] = await sql`select exists (select 1 from information_schema.columns where table_name = 'clearings' and column_name = 'covers') as covers`;
+  const [{ reviewed }] = await sql`select exists (select 1 from information_schema.columns where table_name = 'notices_to_explain' and column_name = 'reviewed_at') as reviewed`;
   console.log(`Tables: ${tables.n} (expected ${expectedTables})`);
   console.log(`Migrations applied: ${migrations.n} of ${expected}`);
-  console.log(`company_targets table (0017): ${targets ? "present" : "MISSING"} · program_incentives.non_commissionable (0018): ${flag ? "present" : "MISSING"} · notices_to_explain.explanation (0019): ${reply ? "present" : "MISSING"} · clearings.covers (0020): ${covers ? "present" : "MISSING"}`);
-  console.log(tables.n === expectedTables && migrations.n === expected && targets && flag && reply && covers ? "OK: every migration is applied." : "NOT READY: run npm run db:migrate again, then this check.");
+  console.log(`company_targets table (0017): ${targets ? "present" : "MISSING"} · program_incentives.non_commissionable (0018): ${flag ? "present" : "MISSING"} · notices_to_explain.explanation (0019): ${reply ? "present" : "MISSING"} · clearings.covers (0020): ${covers ? "present" : "MISSING"} · notices_to_explain.reviewed_at (0021): ${reviewed ? "present" : "MISSING"}`);
+  console.log(tables.n === expectedTables && migrations.n === expected && targets && flag && reply && covers && reviewed ? "OK: every migration is applied." : "NOT READY: run npm run db:migrate again, then this check.");
 } catch (error) {
   console.log(`ERROR: ${error.message}`);
   process.exitCode = 1;

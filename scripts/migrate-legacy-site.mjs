@@ -400,6 +400,12 @@ try {
   console.log("Programs:");
   for (const [site, program] of programCache) console.log(`  ${site} → ${program ? `${program.code} (${program.id}, ₱${program.basePay}/month)${program.draft ? " · NEW DRAFT" : ""}` : "not mapped"}`);
   console.log(`\nTo import: ${memberRows.length} new members, ${enrollmentRows.length} accounts with their New Sales (${ready.filter((a) => a.member.existing).length} for members already in the database), ${collectionRows.length} collections.`);
+  // Which programs the new accounts go to, so a new draft program is noticed before --apply.
+  if (ready.length) {
+    const perProgram = new Map();
+    for (const a of ready) { const label = `${a.program.code} (${a.program.id}${a.program.draft ? ", NEW DRAFT" : ""})`; perProgram.set(label, (perProgram.get(label) ?? 0) + 1); }
+    console.log(`New accounts by program: ${[...perProgram].map(([label, count]) => `${label} ${count}`).join(" · ")}`);
+  }
   console.log(`Account statuses: ${[...statuses].sort((a, b) => b[1] - a[1]).map(([s, n]) => `${s} ${n}`).join(" · ") || "none"}`);
   const dupSales = saleRows.filter((r) => r.legacy_duplicate).length, dupCollections = collectionRows.filter((r) => r.legacy_duplicate).length;
   if (dupSales || dupCollections) console.log(`Flagged as duplicates (number already used): ${dupSales} application numbers, ${dupCollections} OR numbers.`);

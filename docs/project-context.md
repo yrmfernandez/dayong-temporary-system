@@ -314,11 +314,24 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### Old web app records left out; executive dashboard (2026-10-10)
+
+- **Done:** `scripts/web-left-out-sheet.mjs` writes `legacy-data/web-left-out.csv` (52 rows: 28 New Sales, 24 collections the import left out) with member, branch, MAS, program, application/OR numbers, dates, amount, reason and the old-site link, for staff to check one by one (stays on this PC).
+- **Executive dashboard:** measured on staging after the October 10 fixes: about 0.7–1 s for its data (the slowest query runs in 0.02 s in the database, using the OR-date index); the earlier 4–6 s came from queries waiting behind each other on the pooler and from the US region. No further change; owner to check after deploying.
+
+### DPB-490 into D-490, and a numbering correction (2026-10-10)
+
+- **Owner:** moved all DPB-490 accounts to D-490 (the true program) with Transfer members; 3 stayed.
+- **Found:** PH-47180831, PH-01234567 (MONTEVISTA) and PH-06682054 (COMPOSTELA) each have one enrollment split across DPB-490 and D-490 in the old sheet (same DOI, different receipts, NOPs overlapping).
+- **Done:** `config/receipt-consolidations.json` puts every receipt of each DPB-490 account on the member's D-490 account (`fromAccounts`, new) and deletes the DPB-490 account; `config/program-moves.json` then deletes DPB-490 (DP-0034).
+- **Correction:** the consolidation script renumbered from NOP 2; the October 4 rule keeps the earliest NOP recorded (months before it were paid before these records). Fixed (earliest recorded NOP, or `startNop`). The two CALINAN accounts done earlier today (PH-30272255, PH-33775036) were put one month early (NOP 2–10 from December 2025); their first receipt was NOP 3 (January 2026) in the old sheet, so they are renumbered NOP 3–11 (January–September 2026).
+- **Applied on production (October 10):** the three members' receipts are on their D-490 accounts (60D each) and DPB-490 (DP-0034) is deleted; the two CALINAN accounts are NOP 3–11, January–September 2026 (60D). The old web app's latest records (3 members and New Sales, 4 collections) are imported; a re-run finds nothing new. Both configs keep these under `applied`.
+
 ### Smoother scrolling; latest old web app data (2026-10-10)
 
 - **Owner:** scrolling looked wavy and tired the eyes; get the latest data from the old system, migrate it and fix it.
 - **Done (scrolling):** cards and page headers no longer use a live backdrop blur (re-blurring the gradient under every card on every scrolled frame made it shimmer); they use a slightly more opaque fill. Only the sidebar and the top bar keep the blur. The body background is no longer `fixed` (the page scrolls inside `.app-main`).
-- **Done (old web app):** `scripts/legacy-site-export.mjs` re-run: 3 new members with their New Sales and 4 new collections since October 8 (2,142 members and sales, 1,126 collections in all). `config/legacy-site-map.json` now sends the old site's D-300 (NEW) to D-300 (Bracketing) (D-300 (NEW) was deleted on production).
+- **Done (old web app):** `scripts/legacy-site-export.mjs` re-run: 3 new members with their New Sales and 4 new collections since October 8 (2,142 members and sales, 1,126 collections in all). `config/legacy-site-map.json` now sends the old site's D-300 (NEW) to D-300 (Bracketing) and DS-500 (5Y) to DS-500 (both deleted on production in favour of the finalized programs; the DS-500 (5Y) draft is no longer added). The import's dry run now lists the programs the new accounts go to and flags a new draft program.
 - **To do (owner):** `npm run prod -- node scripts/migrate-legacy-site.mjs` (dry run; counts only), then `--apply`. Records it leaves out are listed by old-site record ID in `legacy-data/web-import-report-*.txt`.
 
 ### The last three accounts that would not merge (2026-10-10)
@@ -352,7 +365,7 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 
 - **Owner:** on the SOA, Total paid is the latest NOP times the monthly pay; for a flexible program, all the amounts paid added up.
 - **Done:** `lib/statement-of-account.ts` (it was the New Sale amount, registration fee included, plus every collection). The SOA shows how it was worked out under the figure. No database change.
-- **Open question:** Program balance still subtracts the collections paid from the pay-the-balance total; say if it should subtract Total paid instead.
+- **Decided (owner, October 10):** Program balance = total payable less Total paid (it subtracted the collections only). Done.
 
 ### Clear payroll runs (2026-10-10)
 
@@ -397,7 +410,7 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** an NTE issued by an administrator was invisible to the employee.
 - **Done:** My Notices page for every employee (only their own notices), a sidebar number and a banner on every page until they confirm receipt and send their explanation; the administrator's NTE table shows whether each was read and the reply. Migration `0019_nte_employee_reply` (three columns, no data change); applied on staging.
 - **To do (owner):** `npm run prod -- npm run db:migrate`, then `npm run prod -- node scripts/check-database.mjs` (expects 20 of 20), **before** pushing this commit.
-- **Could do later (if wanted):** a "reviewed" mark for administrators so new explanations show as a number on Employees.
+- **Done (owner, October 10):** a "reviewed" mark: unread explanations count on Employees for administrators; Mark reviewed in the NTE table (migration `0021_nte_reviewed`, applied on staging).
 
 Administrators, HR, the CEO and President (and anyone with manage-attendance) can correct a clocked-in day on the Attendance Tracking daily board: **Adjust late**, and **Set clock-out / Fix clock-out** for an employee who forgot to clock out or clocked out at the wrong time. Worked hours, overtime and undertime are recalculated exactly as at clock-out, and the change, who made it and the reason are appended to the attendance notes. Past days list anyone who did not clock out. **Resume clock** (today only, since October 8, 2026) voids a clock-out clicked by mistake: the time out and the day's worked hours, overtime and undertime are cleared, so the employee's clock runs on from the time in and they clock out again when they leave; the reason, who did it and the voided time are kept in the notes, and the employee's open clock-in page updates by itself.
 

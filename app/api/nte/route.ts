@@ -1,6 +1,6 @@
-import { canManageUsers } from "@/lib/auth-server";
+import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
-import { issueNte, listNtes, withdrawNte } from "@/lib/nte";
+import { issueNte, listNtes, markNteReviewed, withdrawNte } from "@/lib/nte";
 
 /** Notices to Explain: administrators only. */
 export async function GET() {
@@ -17,6 +17,11 @@ export const POST = withEncoder(async (request: Request) => {
 
 export const PATCH = withEncoder(async (request: Request) => {
   if (!(await canManageUsers())) return Response.json({ success: false, message: "Only administrators withdraw Notices to Explain." }, { status: 403 });
-  try { const body = await request.json(); return Response.json({ success: true, ...await withdrawNte(String(body.id ?? ""), String(body.reason ?? "")), message: "Notice withdrawn." }); }
+  try {
+    const body = await request.json();
+    // { id, action: "reviewed" } marks the employee's explanation as read; otherwise { id, reason } withdraws the notice.
+    if (body.action === "reviewed") return Response.json({ success: true, ...await markNteReviewed(String(body.id ?? ""), (await getSessionUser())?.name ?? ""), message: "Explanation marked as reviewed." });
+    return Response.json({ success: true, ...await withdrawNte(String(body.id ?? ""), String(body.reason ?? "")), message: "Notice withdrawn." });
+  }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to withdraw the notice." }, { status: 400 }); }
 });

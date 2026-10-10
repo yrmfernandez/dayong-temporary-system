@@ -91,7 +91,10 @@ export function NtePanel({ employees }: { employees: Array<{ id: string; name: s
               <td className="p-2">{nte.reason}{nte.details && <span className="block text-xs text-muted-foreground">{nte.details}</span>}{nte.withdrawnReason && <span className="block text-xs text-muted-foreground">Withdrawn: {nte.withdrawnReason}</span>}</td>
               <td className="p-2"><StatusBadge status={nte.status} tone={nte.status === "Active" ? "warning" : undefined} /></td>
               <td className="p-2 max-w-xs">{nte.explanation
-                ? <><span className="block whitespace-pre-wrap">{nte.explanation}</span><span className="block text-xs text-muted-foreground">Explained {when(nte.explainedAt)}</span></>
+                ? <><span className="block whitespace-pre-wrap">{nte.explanation}</span><span className="block text-xs text-muted-foreground">Explained {when(nte.explainedAt)}</span>
+                  {nte.reviewedAt
+                    ? <span className="block text-xs text-emerald-700">Reviewed {when(nte.reviewedAt)}{nte.reviewedBy ? ` by ${nte.reviewedBy}` : ""}</span>
+                    : <Button type="button" size="sm" variant="outline" className="mt-1" disabled={busy} onClick={() => void send("PATCH", { id: nte.id, action: "reviewed" })}>Mark reviewed</Button>}</>
                 : nte.acknowledgedAt ? <span className="text-xs text-muted-foreground">Read {when(nte.acknowledgedAt)}; no explanation yet</span>
                 : <span className="text-xs text-amber-700">Not yet read by the employee</span>}</td>
               <td className="p-2">{nte.issuedBy || "-"}</td>

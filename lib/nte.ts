@@ -19,7 +19,7 @@ const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Da
 const addDays = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
 export type Nte = { id: string; employeeId: string; employeeName: string; issuedOn: string; expiresOn: string; reason: string; details: string; status: "Active" | "Expired" | "Withdrawn"; withdrawnReason: string; issuedBy: string;
-  acknowledgedAt: string; explanation: string; explainedAt: string };
+  acknowledgedAt: string; explanation: string; explainedAt: string; reviewedAt: string; reviewedBy: string };
 export const EXPLANATION_MAX = 5000;
 
 /** Every notice with its standing today, and per employee the notices in force and whether they are subject to suspension. */
@@ -28,6 +28,7 @@ const toNte = (row: typeof notices.$inferSelect, today: string, names: Map<strin
   reason: row.reason, details: text(row.details), status: row.status === "Withdrawn" ? "Withdrawn" : row.expires_on < today ? "Expired" : "Active",
   withdrawnReason: text(row.withdrawn_reason), issuedBy: text(row.encoded_by_name),
   acknowledgedAt: text(row.acknowledged_at), explanation: text(row.explanation), explainedAt: text(row.explained_at),
+  reviewedAt: text(row.reviewed_at), reviewedBy: text(row.reviewed_by_name),
 });
 
 export async function listNtes() {
@@ -86,9 +87,18 @@ export async function explainNte(id: string, employeeId: string, explanation: st
   const reply = text(explanation);
   if (reply.length < 3) throw new Error("Write your explanation (at least 3 characters).");
   if (reply.length > EXPLANATION_MAX) throw new Error(`Your explanation must be ${EXPLANATION_MAX.toLocaleString("en-US")} characters or fewer.`);
-  const updated = await getDb().update(notices).set({ explanation: reply, explained_at: sql`now()`, acknowledged_at: sql`coalesce(${notices.acknowledged_at}, now())` })
+  // A new or revised explanation waits for an administrator to read it again.
+  const updated = await getDb().update(notices).set({ explanation: reply, explained_at: sql`now()`, acknowledged_at: sql`coalesce(${notices.acknowledged_at}, now())`, reviewed_at: null, reviewed_by_name: null })
     .where(and(eq(notices.nte_id, text(id)), eq(notices.employee_id, employeeId), eq(notices.status, "Active"), sql`${notices.expires_on} >= ${manilaNow().date}::date`))
     .returning({ id: notices.nte_id });
   if (!updated.length) throw new Error("This notice is not yours, or it is no longer in force (expired or withdrawn).");
+  return { id };
+}
+
+/** An administrator has read the employee's explanation (it leaves the number on Employees until it is revised). */
+export async function markNteReviewed(id: string, reviewerName: string) {
+  const updated = await getDb().update(notices).set({ reviewed_at: sql`now()`, reviewed_by_name: text(reviewerName) || null })
+    .where(and(eq(notices.nte_id, text(id)), sql`${notices.explanation} is not null`)).returning({ id: notices.nte_id });
+  if (!updated.length) throw new Error("Notice not found, or it has no explanation to review yet.");
   return { id };
 }

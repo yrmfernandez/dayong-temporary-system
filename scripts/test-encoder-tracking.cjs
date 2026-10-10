@@ -344,7 +344,7 @@ test('statement of account lists the new sale and every collection with running 
   assert.equal(statement.summary.monthsPaid, 3);
   assert.equal(statement.summary.nextNop, 4);
   assert.equal(statement.summary.nextMonth, '2026-09');
-  assert.equal(statement.summary.remainingBalance, 18560, 'pay-the-balance total less collections');
+  assert.equal(statement.summary.remainingBalance, 18240, 'pay-the-balance total less Total paid (₱19,200 − ₱960)');
   // A flexible program has no fixed monthly amount: every amount paid is added up.
   await query("update programs set flexible = true where program_id = 'DP-1'");
   const flexible = (await (await route.GET(new Request('http://localhost/api/soa?account=ENR-1'))).json()).statement;
@@ -656,6 +656,13 @@ test('an employee sees a Notice to Explain issued to them, confirms receipt and 
   h.setUser(admin);
   const all = await (await h.load('app/api/nte/route.ts').GET()).json();
   assert.equal(all.notices.find((nte) => nte.id === id).explanation, 'The bank was closed on the due date.');
+  // The explanation shows as a number on Employees until an administrator marks it reviewed.
+  const adminCounts = () => h.load('lib/notifications.ts').getNotificationCounts(admin);
+  assert.equal((await adminCounts())['/employees'], 1);
+  const reviewed = await h.load('app/api/nte/route.ts').PATCH(new Request('http://localhost/api/nte', { method: 'PATCH', body: JSON.stringify({ id, action: 'reviewed' }), headers: { 'Content-Type': 'application/json' } }));
+  assert.equal(reviewed.status, 200, JSON.stringify(await reviewed.clone().json()));
+  assert.equal((await adminCounts())['/employees'], undefined, 'reviewed explanations leave the number');
+  assert.ok((await (await h.load('app/api/nte/route.ts').GET()).json()).notices.find((nte) => nte.id === id).reviewedAt);
   await h.load('app/api/nte/route.ts').PATCH(new Request('http://localhost/api/nte', { method: 'PATCH', body: JSON.stringify({ id, reason: 'Issued by mistake' }), headers: { 'Content-Type': 'application/json' } }));
   h.setUser(employee);
   assert.equal((await patch({ id, action: 'explain', explanation: 'A revised reply.' })).status, 400);

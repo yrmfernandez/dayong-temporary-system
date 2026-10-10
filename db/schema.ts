@@ -936,5 +936,8 @@ export const notices_to_explain = pgTable("notices_to_explain", {
   acknowledged_at: moment("acknowledged_at"),
   explanation: text(),
   explained_at: moment("explained_at"),
+  // An administrator marked the explanation as read (it then leaves the number on Employees); a revised explanation clears it.
+  reviewed_at: moment("reviewed_at"),
+  reviewed_by_name: text(),
   ...encoder(),
 }, (t) => [index("notices_to_explain_employee_idx").on(t.employee_id, t.expires_on)]).enableRLS();

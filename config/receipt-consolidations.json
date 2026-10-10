@@ -40,6 +40,64 @@
       ],
       "note": "CALINAN: a different person from PH-30272255; these receipts are in different programs, and the member should only be registered to the final 350, DPB-350 (DP-0010) (owner, October 10, 2026)",
       "appliedOn": "2026-10-10 (production)"
+    },
+    {
+      "member": "PH-47180831",
+      "program": "DP-0037",
+      "fromAccounts": [
+        "ENR-LEG-6E6978C401"
+      ],
+      "note": "MONTEVISTA: one enrollment split across DPB-490 and D-490 in the old sheet (same member and DOI, different receipts); every receipt goes to the D-490 account (D-490 is the true program) in OR-date order, and the DPB-490 account is deleted (owner, October 10, 2026)",
+      "appliedOn": "2026-10-10 (production)"
+    },
+    {
+      "member": "PH-01234567",
+      "program": "DP-0037",
+      "fromAccounts": [
+        "ENR-LEG-B77C47B4D8"
+      ],
+      "note": "MONTEVISTA: one enrollment split across DPB-490 and D-490 in the old sheet (same member and DOI, different receipts); every receipt goes to the D-490 account (D-490 is the true program) in OR-date order, and the DPB-490 account is deleted (owner, October 10, 2026)",
+      "appliedOn": "2026-10-10 (production)"
+    },
+    {
+      "member": "PH-06682054",
+      "program": "DP-0037",
+      "fromAccounts": [
+        "ENR-LEG-82FE3B1D83"
+      ],
+      "note": "COMPOSTELA: one enrollment split across DPB-490 and D-490 in the old sheet (same member and DOI, different receipts); every receipt goes to the D-490 account (D-490 is the true program) in OR-date order, and the DPB-490 account is deleted (owner, October 10, 2026)",
+      "appliedOn": "2026-10-10 (production)"
+    },
+    {
+      "member": "PH-30272255",
+      "program": "DP-0010",
+      "receipts": [
+        "9243 C",
+        "13584 C",
+        "9857 M",
+        "15384 C"
+      ],
+      "startNop": 3,
+      "note": "Correction of the October 10 consolidation: the first receipt (January 5, 2026) was recorded as NOP 3 (January) in the old sheet; the script had renumbered from NOP 2, putting every payment one month early. Renumbered from NOP 3.",
+      "appliedOn": "2026-10-10 (production)"
+    },
+    {
+      "member": "PH-33775036",
+      "program": "DP-0010",
+      "receipts": [
+        "13853 C",
+        "10942C",
+        "9241 C",
+        "9861 M",
+        "15388 C",
+        "17106 C",
+        "19618 C",
+        "21671 C",
+        "22138 C"
+      ],
+      "startNop": 3,
+      "note": "Correction of the October 10 consolidation: the first receipt (January 5, 2026) was recorded as NOP 3 (January) in the old sheet; the script had renumbered from NOP 2, putting every payment one month early. Renumbered from NOP 3.",
+      "appliedOn": "2026-10-10 (production)"
     }
   ]
 }
