@@ -1,0 +1,1 @@
+ALTER TABLE "clearings" ADD COLUMN "covers" text DEFAULT 'Both' NOT NULL;

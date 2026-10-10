@@ -381,6 +381,8 @@ export const clearings = pgTable("clearings", {
   remittance_id: text(),
   closed_at: moment("closed_at"),
   closed_reason: text(),
+  /** What the person is remitting (owner, October 10, 2026): "Both", "New Sales" or "Collections"; each is tracked on its own. */
+  covers: text().notNull().default("Both"),
   ...encoder(),
 }, (t) => [index("clearings_employee_date_idx").on(t.employee_id, t.cleared_date), index("clearings_status_idx").on(t.status)]).enableRLS();
 

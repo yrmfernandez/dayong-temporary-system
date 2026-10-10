@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { readApiResponse } from "@/lib/api-response";
-import type { Clearing, ClearingStage } from "@/lib/clearing";
+import type { Clearing, ClearingCovers, ClearingStage } from "@/lib/clearing";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type PageData = { today: string; clearings: Clearing[]; branches: Array<{ id: string; name: string }>; employees: Array<{ id: string; name: string; roles: string[]; branchIds: string[] }> };
@@ -19,8 +19,7 @@ const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "curren
 const STAGE_TONE: Record<ClearingStage, "warning" | "orange" | "info" | "danger" | "success" | "neutral"> = {
   "Waiting for encoding": "warning", "Waiting for receipt": "orange", "For approval": "info", Returned: "danger", Approved: "success", Removed: "neutral",
 };
-const entrySummary = (item: Clearing) => {
-  const entries = item.entries;
+const entrySummary = (entries: Clearing["entries"]) => {
   if (!entries?.total) return "";
   const parts = [entries.receipt && `${entries.receipt} without receipt`, entries.approval && `${entries.approval} for approval`, entries.returned && `${entries.returned} returned`, entries.approved && `${entries.approved} approved`].filter(Boolean);
   return `${entries.total} entr${entries.total === 1 ? "y" : "ies"}${parts.length ? ` · ${parts.join(" · ")}` : ""}`;
@@ -38,6 +37,8 @@ export default function ClearingPage() {
   const [employeeId, setEmployeeId] = useState("");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
+  // What the person is remitting; each kind is tracked on its own (lib/clearing.ts).
+  const [covers, setCovers] = useState<ClearingCovers>("Both");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -65,10 +66,10 @@ export default function ClearingPage() {
     event.preventDefault();
     setBusy(true); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/clearing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ branch, employeeId, amount, notes }) });
+      const response = await fetch("/api/clearing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ branch, employeeId, amount, notes, covers }) });
       const result = await readApiResponse(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to clear.");
-      setMessage(result.message || "Cleared."); setEmployeeId(""); setAmount(""); setNotes("");
+      setMessage(result.message || "Cleared."); setEmployeeId(""); setAmount(""); setNotes(""); setCovers("Both");
       await load();
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to clear."); }
     finally { setBusy(false); }
@@ -94,7 +95,10 @@ export default function ClearingPage() {
       <td className="p-3 tabular-nums">{item.clearedDate === data?.today ? time(item.clearedAt) : `${item.clearedDate} ${time(item.clearedAt)}`}<span className="block text-xs text-muted-foreground">by {item.clearedBy || "—"}</span></td>
       <td className="p-3 tabular-nums">{item.amount != null ? money(item.amount) : "—"}</td>
       <td className="max-w-64 p-3 text-xs">{item.notes || "—"}{item.closedReason && <span className="block text-muted-foreground">Removed: {item.closedReason}</span>}</td>
-      <td className="p-3"><StatusBadge status={item.stage ?? "Waiting for encoding"} tone={STAGE_TONE[item.stage ?? "Waiting for encoding"]} />{entrySummary(item) && <span className="mt-1 block text-xs text-muted-foreground">{entrySummary(item)}</span>}{item.remittanceId && <span className="block font-mono text-[11px] text-muted-foreground">{item.remittanceId}</span>}</td>
+      <td className="p-3">{item.kinds?.length
+        ? <div className="space-y-2">{item.kinds.map((part) => <div key={part.kind}><span className="block text-xs font-medium">{part.kind}</span><StatusBadge status={part.stage} tone={STAGE_TONE[part.stage]} />{entrySummary(part.entries) && <span className="mt-0.5 block text-xs text-muted-foreground">{entrySummary(part.entries)}</span>}</div>)}</div>
+        : <><StatusBadge status={item.stage ?? "Waiting for encoding"} tone={STAGE_TONE[item.stage ?? "Waiting for encoding"]} /><span className="block text-xs text-muted-foreground">{item.covers === "Both" ? "New Sales and Collections" : `${item.covers} only`}</span></>}
+        {item.remittanceId && <span className="block font-mono text-[11px] text-muted-foreground">{item.remittanceId}</span>}</td>
       <td className="p-3 text-right">{item.status === "Open" && item.stage === "Waiting for encoding" && <Button type="button" size="sm" variant="outline" onClick={() => setRemoving(removing?.id === item.id ? null : { id: item.id, reason: "" })}>Remove</Button>}</td>
     </tr>
   );
@@ -114,8 +118,12 @@ export default function ClearingPage() {
           <div className="space-y-1"><Label htmlFor="clearing-amount">Amount</Label><Input id="clearing-amount" type="number" min="0" step="0.01" placeholder="Optional" value={amount} onChange={(event) => setAmount(event.target.value)} /></div>
           <div className="space-y-1"><Label htmlFor="clearing-notes">Notes</Label><Input id="clearing-notes" maxLength={300} placeholder="e.g. 12 receipts, 1 bank slip" value={notes} onChange={(event) => setNotes(event.target.value)} /></div>
           <Button type="submit" disabled={busy || !branch || !employeeId}>{busy ? "Saving..." : "Mark cleared"}</Button>
+          <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 md:col-span-5">
+            <legend className="mb-1 text-sm font-medium">Remitting *</legend>
+            {([["Both", "New Sales and Collections"], ["New Sales", "New Sales only"], ["Collections", "Collections only"]] as const).map(([value, label]) => <label key={value} className="flex items-center gap-2 text-sm"><input type="radio" name="clearing-covers" value={value} checked={covers === value} onChange={() => setCovers(value)} />{label}</label>)}
+          </fieldset>
         </form>
-        <p className="mt-3 text-xs text-muted-foreground">The time is recorded when you press the button. The incentive is kept when this is by 3:00 PM the day after the OR date. Without a clearing, New Sales and Collections for that MAS, branch and day cannot be saved.</p>
+        <p className="mt-3 text-xs text-muted-foreground">The time is recorded when you press the button. The incentive is kept when this is by 3:00 PM the day after the OR date. Without a clearing, New Sales and Collections for that MAS, branch and day cannot be saved. Tick only what the person is remitting: only that can be encoded, and New Sales and Collections each show their own status, so a wrong New Sales batch does not hold back correct Collections.</p>
       </CardContent></Card>
 
       {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
@@ -126,7 +134,7 @@ export default function ClearingPage() {
         <Button type="button" variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button>
       </div>}
 
-      <Card><CardHeader><CardTitle>In progress ({open.length})</CardTitle><p className="text-sm text-muted-foreground">Each line moves by itself: Waiting for encoding → Waiting for receipt (saved in My Entries, receipt photo not attached yet) → For approval (sent for remittance approval) → Approved. Returned means the approver sent entries back. Lines from earlier days stay here until they are approved.</p></CardHeader><CardContent>
+      <Card><CardHeader><CardTitle>In progress ({open.length})</CardTitle><p className="text-sm text-muted-foreground">New Sales and Collections each move by themselves: Waiting for encoding → Waiting for receipt (bank or e-wallet batch saved, receipt photo not attached yet; cash skips this) → For approval → Approved. Returned means the approver sent that batch back. Lines from earlier days stay here until everything ticked is approved.</p></CardHeader><CardContent>
         <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-muted/50"><tr>{["MAS / employee", "Branch", "Cleared", "Amount", "Notes", "Status", ""].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>
           <tbody>{open.map(row)}{!open.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{data ? "Nothing in progress." : "Loading..."}</td></tr>}</tbody></table></div>
       </CardContent></Card>

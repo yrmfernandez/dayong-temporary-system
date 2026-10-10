@@ -1,4 +1,5 @@
 import { clearingProblem } from "@/lib/clearing";
+import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
@@ -48,7 +49,7 @@ async function saveCollections(request: Request) {
     const accountable = employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active" && selectedBranch && employee.branchIds.includes(selectedBranch.id));
     if (!selectedBranch || !accountable) throw new Error("Select an active accountable employee assigned to the selected branch.");
     // Encoding follows Clearing: the accountable person must be cleared for this branch on the Date Remitted.
-    const notCleared = await clearingProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted);
+    const notCleared = await clearingProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections");
     if (notCleared) throw new Error(notCleared);
     // Batch-level details: who brought the payments in and how the MAS remitted them.
     const collectedBy = String(body.collectedBy ?? "").trim();
@@ -143,7 +144,9 @@ async function saveCollections(request: Request) {
       await commitCollections(tx, rows, [...touched.values()], payments);
       return { ids: rows.map((row) => row.collection_id), grossCents };
     });
-    return Response.json({ success: true, collectionIds: saved.ids, grossCollection: saved.grossCents / 100, message: `${saved.ids.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}. The cash remains outstanding until an approved remittance covers it.` }, { status: 201 });
+    // Paid in cash: straight to Pending Approval (lib/entry-batches.ts); other methods wait for the receipt photo.
+    const slips = await submitCashAfterSave(saved.ids);
+    return Response.json({ success: true, collectionIds: saved.ids, slips, grossCollection: saved.grossCents / 100, message: `${saved.ids.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}. ${slips.length ? `Cash sent for approval: ${slips.join(", ")}.` : "Attach the receipt photo in My Entries to send them for approval."}` }, { status: 201 });
   } catch (error) {
     // Another save used the same OR Number at the same moment; the database's unique rule refused this one.
     if (isUniqueViolation(error, "collections_or_key_unique")) return Response.json({ success: false, message: "One of these OR Numbers was just recorded by another save. Each OR Number is used once; check the receipts and try again." }, { status: 409 });

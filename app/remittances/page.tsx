@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, BarChart3, CheckCircle2, Clock3, FileCheck2, LayoutDashboard, RefreshCw, Search, Wallet } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ChevronDown, ChevronUp, Clock3, FileCheck2, LayoutDashboard, List, RefreshCw, Search, Wallet } from "lucide-react";
 
 import { AdminDeletePanel } from "@/components/admin-delete";
 import { MetricTile } from "@/components/metric-tile";
 import { ReceiptPhotoView } from "@/components/receipt-photo";
+import { RemittanceEntries } from "@/components/remittance-entries";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +17,7 @@ import { parseJsonResponse } from "@/lib/api-response";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Kind = "Collections" | "New Sales";
-type Item = { kind: Kind; id: string; memberNumber: string; branch: string; accountableName: string; accountableRole: string; orNumber: string; orDate: string; amount: number; remittanceAmount: number; remittanceStatus: string; daysOutstanding: number; photoId: string; encodedByEmployeeId: string; encodedByName: string; encodedAt: string; linkedRemittanceId: string };
+type Item = { kind: Kind; id: string; memberNumber: string; branch: string; accountableName: string; accountableRole: string; orNumber: string; orDate: string; amount: number; remittanceAmount: number; remittanceStatus: string; daysOutstanding: number; photoId: string; cash: boolean; encodedByEmployeeId: string; encodedByName: string; encodedAt: string; linkedRemittanceId: string };
 type Remittance = {
   type: Kind; id: string; branch: string; accountableName: string; accountableRole: string; remittanceDate: string; remittanceTime: string; cashCount: string; status: string;
   expectedAmount: number; actualAmount: number; difference: number; fidelityAmount: number; collectionCount: number; decisionByName: string; decisionAt: string; remarks: string; decisionReason: string;
@@ -88,11 +89,14 @@ export default function RemittancesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- matches depends only on term
     [data, term]);
   const records = (data?.remittances ?? []).filter((item) => ["Approved", "Rejected"].includes(item.status) && matches(item.id, item.accountableName, item.branch, ...item.clerkNames));
-  const waitingForPhotos = (data?.outstanding ?? []).filter((item) => item.remittanceStatus === "Outstanding" && !item.photoId && matches(item.id, item.accountableName, item.branch, item.encodedByName));
+  const waitingForPhotos = (data?.outstanding ?? []).filter((item) => item.remittanceStatus === "Outstanding" && !item.photoId && !item.cash && matches(item.id, item.accountableName, item.branch, item.encodedByName));
   const returned = (data?.outstanding ?? []).filter((item) => item.remittanceStatus === "Returned" && matches(item.id, item.accountableName, item.branch, item.encodedByName));
   const canApprove = Boolean(data?.canApprove);
   const canDelete = Boolean(data?.canDelete);
   const [deletingId, setDeletingId] = useState("");
+  // The remittance whose entries are shown (click its ID or View entries).
+  const [viewingId, setViewingId] = useState("");
+  const toggleView = (id: string) => setViewingId((current) => current === id ? "" : id);
   const deletePanel = (id: string) => deletingId === id && <div className="mt-3 rounded-lg border border-red-200 p-3 dark:border-red-900"><AdminDeletePanel kind="remittance" id={id} onCancel={() => setDeletingId("")} onDeleted={(text) => { setDeletingId(""); setMessage(text); void load(clerk); }} /></div>;
   const approvable = pending.filter((item) => !item.missingPhotos.length).map((item) => item.id);
 
@@ -121,7 +125,7 @@ export default function RemittancesPage() {
         <div>
           <span className="rounded-md bg-violet-95 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-violet-30">Finance</span>
           <h1 className="mt-2 text-3xl font-black tracking-tight">Remittance</h1>
-          <p className="text-sm text-violet-30/80">{canApprove ? "Entries reach Pending Approval on their own once their receipt photos are attached. Approve or reject them here." : "Your entries go to Pending Approval on their own once their receipt photos are attached in My Entries."}</p>
+          <p className="text-sm text-violet-30/80">{canApprove ? "Cash batches reach Pending Approval as soon as they are saved; bank and e-wallet batches once their receipt photo is attached. Click a remittance to see every entry on it, then approve or reject it here." : "Your cash batches go to Pending Approval as soon as they are saved; bank and e-wallet batches once their receipt photo is attached in My Entries."}</p>
         </div>
         <Button type="button" variant="outline" onClick={() => void load(clerk)} disabled={loading}><RefreshCw className={`mr-2 size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
       </div>
@@ -163,7 +167,7 @@ export default function RemittancesPage() {
       {view === "approval" && (
         <Card>
           <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div><CardTitle>Pending Approval ({pending.length})</CardTitle><p className="text-sm text-muted-foreground">Check each remittance against its receipt photos. Rejected entries go back to the Entry Clerk with the reason.</p></div>
+            <div><CardTitle>Pending Approval ({pending.length})</CardTitle><p className="text-sm text-muted-foreground">Open View entries to check each remittance entry by entry (cash against the count at Clearing, bank and e-wallet against the receipt photo). Rejected entries go back to the Entry Clerk with the reason.</p></div>
             {canApprove && pending.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" disabled={saving || !selected.length} onClick={() => void decide(selected.filter((id) => approvable.includes(id)), "approve")}>Approve selected ({selected.filter((id) => approvable.includes(id)).length})</Button>
@@ -184,7 +188,7 @@ export default function RemittancesPage() {
                   <div className="flex-1 space-y-1">
                     <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                       <div>
-                        <p className="font-mono text-sm font-semibold">{item.id}</p>
+                        <button type="button" className="font-mono text-sm font-semibold hover:underline" aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}>{item.id}</button>
                         <p className="text-sm">{item.accountableName} · {item.branch} · {item.collectionCount} {item.type === "New Sales" ? "New Sale(s)" : "Collection(s)"}</p>
                         <p className="text-xs text-muted-foreground">Encoded by {item.clerkNames.join(", ") || "—"} · received {item.remittanceDate}{item.remittanceTime ? ` ${item.remittanceTime}` : ""}</p>
                         <p className="text-xs text-muted-foreground">Expected {money(item.expectedAmount)} · Actual {money(item.actualAmount)} · Difference {money(item.difference)}</p>
@@ -198,7 +202,9 @@ export default function RemittancesPage() {
                       <StatusBadge status={item.status} /><StatusBadge status={`${item.type} slip`} tone={item.type === "New Sales" ? "info" : "neutral"} />
                       {item.missingPhotos.length ? <span className="font-semibold text-amber-800">Receipt photos missing for {item.missingPhotos.join(", ")}.</span> : null}
                       {item.photoIds.map((photoId, index) => <ReceiptPhotoView key={photoId} photoId={photoId} label={`Receipt ${index + 1}`} />)}
+                      <Button type="button" size="sm" variant={viewingId === item.id ? "default" : "outline"} aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}><List className="size-3.5" />{viewingId === item.id ? "Hide entries" : `View entries (${item.collectionIds.length})`}{viewingId === item.id ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}</Button>
                     </div>
+                    {viewingId === item.id && <div className="pt-2"><RemittanceEntries remittanceId={item.id} /></div>}
                     {deletePanel(item.id)}
                   </div>
                 </div>
@@ -213,11 +219,12 @@ export default function RemittancesPage() {
         <div className="space-y-6">
           <Card><CardHeader><CardTitle>Outstanding Cash Aging</CardTitle><p className="text-sm text-muted-foreground">Entries not yet approved, by how long since the OR date.</p></CardHeader><CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-3"><Field label="From OR date"><Input type="date" value={reportFrom} onChange={(event) => setReportFrom(event.target.value)} /></Field><Field label="To OR date"><Input type="date" value={reportTo} onChange={(event) => setReportTo(event.target.value)} /></Field><Field label="Branch"><SearchSelect aria-label="Branch" className="h-9" clearable placeholder="All branches" value={reportBranch} onValueChange={setReportBranch} options={[...new Set((data?.outstanding ?? []).map((item) => item.branch))].filter(Boolean).sort().map((branch) => ({ value: branch, label: branch }))} /></Field></div>
-            <DataTable headers={["Entry", "Collector / MAS", "Branch", "OR date", "Age", "Status", "Remittance due"]} rows={(data?.outstanding ?? []).filter((item) => (!reportFrom || item.orDate >= reportFrom) && (!reportTo || item.orDate <= reportTo) && (!reportBranch || item.branch === reportBranch) && matches(item.id, item.accountableName, item.branch, item.encodedByName)).map((item) => [item.id, item.accountableName, item.branch, item.orDate, `${item.daysOutstanding} days`, item.remittanceStatus === "Outstanding" && !item.photoId ? "Needs receipt photo" : item.remittanceStatus, money(item.remittanceAmount)])} empty="No outstanding cash matches these filters." />
+            <DataTable headers={["Entry", "Collector / MAS", "Branch", "OR date", "Age", "Status", "Remittance due"]} rows={(data?.outstanding ?? []).filter((item) => (!reportFrom || item.orDate >= reportFrom) && (!reportTo || item.orDate <= reportTo) && (!reportBranch || item.branch === reportBranch) && matches(item.id, item.accountableName, item.branch, item.encodedByName)).map((item) => [item.id, item.accountableName, item.branch, item.orDate, `${item.daysOutstanding} days`, item.remittanceStatus === "Outstanding" && !item.photoId && !item.cash ? "Needs receipt photo" : item.remittanceStatus, money(item.remittanceAmount)])} empty="No outstanding cash matches these filters." />
           </CardContent></Card>
           <Card><CardHeader><CardTitle>Remittance Records</CardTitle><p className="text-sm text-muted-foreground">Approved and rejected remittances.</p></CardHeader><CardContent>
             {deletingId && records.some((item) => item.id === deletingId) && <div className="mb-3">{deletePanel(deletingId)}</div>}
-            <DataTable headers={["Remittance", "Slip", "Received", "Accountable person", "Encoded by", "Expected", "Actual", "Difference", "Status", "Remarks / Reason", "Decision by", ...(canDelete ? [""] : [])]} rows={records.map((item) => [item.id, item.type, item.remittanceTime ? `${item.remittanceDate} ${item.remittanceTime}` : item.remittanceDate, item.accountableName, item.clerkNames.join(", ") || "—", money(item.expectedAmount), money(item.actualAmount), money(item.difference), <StatusBadge key="status" status={item.status} />, item.decisionReason || item.remarks || "—", item.decisionByName,
+            {viewingId && records.some((item) => item.id === viewingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Entries on {viewingId}</p><Button type="button" size="sm" variant="ghost" onClick={() => setViewingId("")}>Close</Button></div><RemittanceEntries remittanceId={viewingId} /></div>}
+            <DataTable headers={["Remittance", "Slip", "Received", "Accountable person", "Encoded by", "Expected", "Actual", "Difference", "Status", "Remarks / Reason", "Decision by", ...(canDelete ? [""] : [])]} rows={records.map((item) => [<button key="id" type="button" className="font-mono text-left hover:underline" title="View the entries on this remittance" aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}>{item.id}</button>, item.type, item.remittanceTime ? `${item.remittanceDate} ${item.remittanceTime}` : item.remittanceDate, item.accountableName, item.clerkNames.join(", ") || "—", money(item.expectedAmount), money(item.actualAmount), money(item.difference), <StatusBadge key="status" status={item.status} />, item.decisionReason || item.remarks || "—", item.decisionByName,
               ...(canDelete ? [<Button key="delete" type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => setDeletingId(deletingId === item.id ? "" : item.id)}>Delete</Button>] : [])])} empty="No approved or rejected remittances." />
           </CardContent></Card>
         </div>

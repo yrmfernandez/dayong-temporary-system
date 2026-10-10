@@ -728,19 +728,20 @@ test('Clearing: no encoding without it, and its time is when the cash was receiv
   h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
   h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
-  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, false, 'active']];
   await seedAccount({ doi: month + '-01' });
   await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
   await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: 'OR-C1', orDate: today };
-  // ₱350 at a ₱50 mark-up and 50% MAS incentive: the MAS keeps ₱150 and remits ₱200.
-  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'Cash', controlTotal: 200, collections: [entry] };
+  // ₱350 at a ₱50 mark-up and 50% MAS incentive: the MAS keeps ₱150 and remits ₱200. Paid by GCash, so it waits for
+  // its receipt photo (cash would go to approval at once).
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] };
   const route = h.load('app/api/collections/route.ts');
   globalThis.dayongClearingNotRequired = false;
   try {
     const refused = await route.POST(request(batch));
     assert.equal(refused.status, 400);
-    assert.match((await refused.json()).message, /not in Clearing for BR-1/);
+    assert.match((await refused.json()).message, /not in Clearing for Collections in BR-1/);
     assert.equal(await count('collections'), 0, 'nothing is saved without a clearing');
     // Cleared at 10:15 AM Manila today: the batch saves, and that is when the cash counts as received.
     await seed('clearings', [{ clearing_id: 'CLR-1', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T02:15:00Z`, cleared_date: today, status: 'Open' }]);
@@ -752,8 +753,18 @@ test('Clearing: no encoding without it, and its time is when the cash was receiv
     // Progress: saved without a receipt photo, then remitted (approved). The clearing is set just before the encoding.
     await query("update clearings set cleared_at = now() - interval '1 minute', cleared_date = (now() at time zone 'Asia/Manila')::date where clearing_id = 'CLR-1'");
     const stageOf = async () => (await clearing.withProgress(await clearing.getEncodableClearings())).find((item) => item.id === 'CLR-1');
+    // Both ticked: the Collections wait for their receipt, the New Sales are not encoded yet, so the line waits for encoding.
+    assert.deepEqual((await stageOf()).kinds.map((part) => [part.kind, part.stage]), [['New Sales', 'Waiting for encoding'], ['Collections', 'Waiting for receipt']], 'each kind has its own stage');
+    assert.equal((await stageOf()).stage, 'Waiting for encoding');
+    await query("update clearings set covers = 'Collections' where clearing_id = 'CLR-1'");
+    assert.deepEqual((await stageOf()).kinds.map((part) => part.kind), ['Collections'], 'a Collections-only clearing tracks only Collections');
     assert.equal((await stageOf()).stage, 'Waiting for receipt', 'saved in My Entries without a receipt photo');
     assert.equal((await stageOf()).entries.total, 1);
+    assert.match(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', today, 'New Sales'), /not in Clearing for New Sales in BR-1/, 'New Sales cannot be encoded on a Collections-only clearing');
+    assert.equal(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', today, 'Collections'), '');
+    await query("update collections set remittance_method = 'Cash'");
+    assert.equal((await stageOf()).stage, 'For approval', 'cash skips Waiting for receipt');
+    await query("update collections set remittance_method = 'GCash'");
     await query("update collections set remittance_status = 'Remitted'");
     assert.equal((await stageOf()).stage, 'Approved', 'every entry remitted');
     await query("update collections set remittance_status = 'Outstanding'");
@@ -924,7 +935,8 @@ test('pending approval does not clear cash accountability', async () => {
 
 test('administrator who is also an Entry Clerk may approve own remittance', async () => {
   const h = harness({ userId: 'USR-1', employeeId: 'DPE-1', name: 'admin', roleNames: ['Administrator', 'Entry Clerk'], permissions: { manageUsers: true } });
-  const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[10] = 350; collection[19] = 'Posted'; collection[28] = 'Pending Remittance Approval'; collection[29] = 'REM-1';
+  // Paid by e-wallet: only cash (counted at Clearing) is approved without a receipt photo.
+  const collection = Array(34).fill(''); collection[0] = 'COL-1'; collection[10] = 350; collection[19] = 'Posted'; collection[28] = 'Pending Remittance Approval'; collection[29] = 'REM-1'; collection[33] = 'GCash';
   const remittance = Array(24).fill(''); remittance[0] = 'REM-1'; remittance[4] = 'Pending Approval'; remittance[6] = 'USR-1'; remittance[10] = 350; remittance[11] = 350;
   const collectionHeader = Array(33).fill(''); collectionHeader[28] = 'Remittance Status';
   const remittanceHeader = Array(24).fill(''); remittanceHeader[12] = 'Difference';
@@ -2220,9 +2232,9 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
 });
 
 test('entries go to Pending Approval on their own once every receipt photo is attached, and clerks see only theirs', async () => {
-  const setup = (photos) => {
+  const setup = (photos, method = 'GCash') => {
     const h = harness({ userId: 'USR-7', employeeId: 'DPE-7', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
-    const collection = (id, encoder) => { const row = Array(41).fill(''); Object.assign(row, { 0: id, 1: 'CBT-1', 6: 'BR-1', 7: 'Maria', 9: '2026-09-25', 10: 350, 19: 'Posted', 22: encoder, 23: encoder === 'DPE-7' ? 'Clerk' : 'Other', 24: '2026-09-25T02:00:00.000Z', 26: 300, 28: 'Outstanding', 30: 'DPE-2', 31: 'Maria', 32: 'MAS', 40: '2026-09-25' }); return row; };
+    const collection = (id, encoder) => { const row = Array(41).fill(''); Object.assign(row, { 0: id, 1: 'CBT-1', 6: 'BR-1', 7: 'Maria', 9: '2026-09-25', 10: 350, 19: 'Posted', 22: encoder, 23: encoder === 'DPE-7' ? 'Clerk' : 'Other', 24: '2026-09-25T02:00:00.000Z', 26: 300, 28: 'Outstanding', 30: 'DPE-2', 31: 'Maria', 32: 'MAS', 33: method, 40: '2026-09-25' }); return row; };
     const other = collection('COL-X', 'DPE-8'); other[1] = 'CBT-2';
     const collectionsHeader = Array(41).fill(''); collectionsHeader[28] = 'Remittance Status';
     const remittancesHeader = Array(28).fill(''); remittancesHeader[12] = 'Difference';
@@ -2238,6 +2250,12 @@ test('entries go to Pending Approval on their own once every receipt photo is at
   await partial.sync();
   assert.deepEqual(await partial.load('lib/remittance-workflow.ts').submitReadyEntries(['COL-A']), []);
   assert.equal(partial.writes.length, 0);
+  // Cash needs no receipt photo (counted at Clearing): the batch goes at once.
+  const cash = setup([], 'Cash');
+  await cash.sync();
+  assert.equal((await cash.load('lib/remittance-workflow.ts').submitReadyEntries(['COL-A'])).length, 1);
+  const cashRow = cash.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.match(cashRow[22], /as cash counted at Clearing/);
   // With both photos the batch goes as one slip, expecting exactly the company share.
   const ready = setup(['COL-A,COL-B']);
   await ready.sync();
@@ -2255,6 +2273,35 @@ test('entries go to Pending Approval on their own once every receipt photo is at
   const all = await (await ready.load('app/api/remittances/route.ts').GET()).json();
   assert.deepEqual(all.outstanding.map((item) => item.id).sort(), ['COL-A', 'COL-B', 'COL-X']);
   assert.deepEqual(all.clerks.map((item) => item.employeeId), ['DPE-7', 'DPE-8']);
+  // View entries: the approver sees every entry on the slip; another clerk cannot open it.
+  // (The test sheets record writes without applying them, so the slip is put in place here.)
+  const slipRow = Array(28).fill(''); Object.assign(slipRow, { 0: 'REM-T', 1: 'BR-1', 2: 'Maria', 4: 'Pending Approval', 10: 600, 11: 600 });
+  ready.rows.Remittances = [ready.rows.Remittances[0], slipRow];
+  ready.rows['Remittance Collections'] = [ready.rows['Remittance Collections'][0], ['RCL-1', 'REM-T', 'COL-A', 300, ''], ['RCL-2', 'REM-T', 'COL-B', 300, '']];
+  const entriesRoute = ready.load('app/api/remittances/entries/route.ts');
+  const shown = await (await entriesRoute.GET(new Request('http://localhost/api/remittances/entries?id=REM-T'))).json();
+  assert.deepEqual(shown.entries.map((entry) => [entry.id, entry.remittanceAmount, entry.photoId ? 'photo' : 'none']).sort(), [['COL-A', 300, 'photo'], ['COL-B', 300, 'photo']]);
+  ready.setUser({ userId: 'USR-8', employeeId: 'DPE-8', name: 'Other', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await entriesRoute.GET(new Request('http://localhost/api/remittances/entries?id=REM-T'))).status, 400);
+});
+
+test('a clerk sees, picks and removes only the clearings they made; administrators see all', async () => {
+  const h = harness({ userId: 'USR-7', employeeId: 'DPE-7', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  const today = h.load('lib/account-rules.ts').todayInManila();
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }], { skipExisting: true });
+  await seed('clearings', [
+    { clearing_id: 'CLR-MINE', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T01:00:00Z`, cleared_date: today, status: 'Open', encoded_by_employee_id: 'DPE-7' },
+    { clearing_id: 'CLR-THEIRS', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T01:30:00Z`, cleared_date: today, status: 'Open', encoded_by_employee_id: 'DPE-8' },
+  ]);
+  const ids = (list) => list.map((item) => item.id).filter((id) => id.startsWith('CLR-MINE') || id.startsWith('CLR-THEIRS')).sort();
+  const page = await (await h.load('app/api/clearing/route.ts').GET()).json();
+  assert.deepEqual(ids(page.clearings), ['CLR-MINE']);
+  assert.deepEqual(ids((await (await h.load('app/api/clearing/open/route.ts').GET()).json()).clearings), ['CLR-MINE']);
+  const remove = (id) => h.load('app/api/clearing/route.ts').PATCH(new Request('http://localhost/api/clearing', { method: 'PATCH', body: JSON.stringify({ id, reason: 'Listed by mistake' }), headers: { 'Content-Type': 'application/json' } }));
+  assert.equal((await remove('CLR-THEIRS')).status, 400, 'not their clearing');
+  h.setUser({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  assert.deepEqual(ids((await (await h.load('app/api/clearing/route.ts').GET()).json()).clearings), ['CLR-MINE', 'CLR-THEIRS']);
+  await query("delete from clearings where clearing_id in ('CLR-MINE', 'CLR-THEIRS')");
 });
 
 test('the Sheets API answered from the database reads, appends, updates and deletes like a sheet tab', async () => {

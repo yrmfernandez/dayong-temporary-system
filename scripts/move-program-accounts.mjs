@@ -2,7 +2,9 @@
  * Moves accounts from draft or legacy programs to the finalized program the owner says they belong to (October 8,
  * 2026). The matches come from config/program-moves.json, confirmed one by one by the owner after
  * scripts/list-programs.mjs:  { "moves": [ { "from": "DP-0009", "to": "DP-0061", "note": "D-350 (5Y) is D-350 5 years" } ] }
- * "from" and "to" are a program ID or its exact code or name. "fromMatching": "290" instead moves every program whose
+ * "from" and "to" are a program ID or its exact code or name. When two programs share a code (e.g. two DPB-350),
+ * "fromFinalized": false / "toFinalized": true pick the one that is not / is finalized (incentive tiers set and a total
+ * amount payable, as in list-programs.mjs); exactly one must match. "fromMatching": "290" instead moves every program whose
  * code or name contains that text (except the "to" program). "doiFrom" / "doiBefore" (YYYY-MM-DD) move only the
  * accounts enrolled on or after / before that date, so one program can be split by DOI over two moves (run
  * scripts/fix-impossible-doi.mjs first, so a typo DOI such as 1943 does not decide the program); an account
@@ -50,7 +52,10 @@ try {
   // Accounts each "from" program gives up in this run, so a later move of the same program (a DOI split) skips them.
   const claimed = new Map();
   // A program by ID, or by its exact code or name (ignoring case and outer spaces).
-  const find = async (key) => (await sql`select program_id from programs where program_id = ${text(key)} or lower(trim(program_code)) = ${text(key).toLowerCase()} or lower(trim(program_name)) = ${text(key).toLowerCase()} order by program_id`).map((row) => row.program_id);
+  // With `finalized` true / false, only programs that are / are not finalized (incentive tiers and a total payable).
+  const find = async (key, finalized) => (await sql`select program_id, coalesce(pay_balance_total, 0) > 0 and exists (select 1 from program_incentives i where i.program_id = programs.program_id) as finalized
+      from programs where program_id = ${text(key)} or lower(trim(program_code)) = ${text(key).toLowerCase()} or lower(trim(program_name)) = ${text(key).toLowerCase()} order by program_id`)
+    .filter((row) => typeof finalized !== "boolean" || row.finalized === finalized).map((row) => row.program_id);
   const pairs = [];
   // Every move must name exactly one program on each side; otherwise nothing is moved, and the matches are described
   // (code, name, rate, accounts, DOI range) so the owner can put the right program ID in config/program-moves.json.
@@ -62,11 +67,11 @@ try {
     from programs p where p.program_id in ${sql(ids)} order by p.program_id`)
     .map((p) => `    ${p.program_id}: code ${p.program_code || "(none)"} · name ${p.program_name} · ₱${p.rate}/mo · ${p.status} · ${p.accounts} account(s)${p.accounts ? ` · DOI ${p.first_doi} to ${p.last_doi}` : ""}`).join("\n");
   for (const move of moves) {
-    const targets = await find(move.to);
-    if (targets.length !== 1) { problems.push(`${move.to}: ${targets.length ? `${targets.length} programs match; put the right program ID in "to"\n${await describe(targets)}` : "program not found"}`); continue; }
+    const targets = await find(move.to, move.toFinalized);
+    if (targets.length !== 1) { problems.push(`${move.to}: ${targets.length ? `${targets.length} programs match; put the right program ID in "to"\n${await describe(targets)}` : `${typeof move.toFinalized === "boolean" ? (move.toFinalized ? "finalized " : "not-finalized ") : ""}program not found`}`); continue; }
     const sources = move.fromMatching
       ? (await sql`select program_id from programs where (program_code ilike ${`%${text(move.fromMatching)}%`} or program_name ilike ${`%${text(move.fromMatching)}%`}) and program_id <> ${targets[0]} order by program_id`).map((row) => row.program_id)
-      : await find(move.from);
+      : (await find(move.from, move.fromFinalized)).filter((id) => id !== targets[0]);
     if (!sources.length) { problems.push(`${move.fromMatching ? `Programs containing "${move.fromMatching}"` : move.from}: none found besides ${move.to}`); continue; }
     if (!move.fromMatching && sources.length > 1) { problems.push(`${move.from}: ${sources.length} programs match; put the right program ID in "from"\n${await describe(sources)}`); continue; }
     for (const source of sources) pairs.push({ ...move, from: source, to: targets[0] });

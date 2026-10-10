@@ -6,6 +6,7 @@ import { readSheetRows } from "@/lib/sheets-on-db";
 import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-deadline";
 import { dateWarnings } from "@/lib/date-checks";
 import { photosByEntry } from "@/lib/receipt-photos";
+import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import type { TodayMode } from "@/lib/today-mode";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -19,6 +20,8 @@ const manilaTime = (stamp: string) => {
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
   return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
 };
+// Only a real timestamp (as the remittance ledger reads it) makes a New Sales batch key.
+const isoManila = (stamp: string) => (/T\d{2}:/.test(stamp) && !Number.isNaN(Date.parse(stamp)) ? manilaTime(stamp) : "");
 
 export type DayEntry = {
   kind: "New Sale" | "Collection";
@@ -62,6 +65,11 @@ export type DayEntry = {
   penalty: number;
   /** The receipt photo attached to this entry, if any. */
   photoId: string;
+  /** The saved batch it belongs to (Collections batch ID, or the New Sales saved together; lib/entry-batches.ts); blank on imported rows. */
+  batchId: string;
+  /** How it was paid; cash needs no receipt photo (counted at Clearing). */
+  paymentMethod: string;
+  cash: boolean;
   /** Why the approver returned it (rejected its remittance); blank unless Returned. */
   returnReason: string;
 };
@@ -107,7 +115,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
   // Member names only for the members on these collections.
   const memberIds = [...new Set(collections.slice(1).map((row) => text(row[3])).filter(Boolean))];
   const members = memberIds.length ? await readSheetRows("Members", sql`member_id in (${sql.join(memberIds.map((id) => sql`${id}`), sql`, `)})`) : [[]];
-  const photos = await photosByEntry();
+  const [photos, cashNames] = await Promise.all([photosByEntry(), cashMethodNames()]);
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const memberNames = new Map(members.slice(1).map((row) => [text(row[0]), `${text(row[3])} ${text(row[2])}`.trim()]));
   const slipRows = new Map(remittances.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), row]));
@@ -116,7 +124,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
   const money = (value: unknown) => (text(value) === "" ? "" : peso(number(value)));
   const today = manilaNow().date;
 
-  type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings" | "photoId" | "returnReason">;
+  type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings" | "photoId" | "returnReason" | "cash">;
   const entry = (values: Base): DayEntry => {
     const slipDate = text(slipRows.get(values.remittanceId)?.[3]).slice(0, 10);
     return {
@@ -129,6 +137,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
       warnings: dateWarnings({ receiptDate: values.orDate, receiptLabel: values.kind === "New Sale" ? "application date" : "OR date", dateRemitted: values.dateRemitted, slipDate, recordedOn: values.recordedOn, today }),
       details: values.details.filter(([, value]) => value !== ""),
       photoId: photos.get(values.id)?.photoId ?? "",
+      cash: isCashMethod(values.paymentMethod, cashNames),
     };
   };
   const all: DayEntry[] = [
@@ -143,6 +152,9 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
         amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[43]),
         remittanceStatus: text(row[35]), remittanceId: text(row[36]), encodedBy: text(row[33]), encodedAt: manilaTime(text(row[34]) || text(row[1])),
         dateRemitted, recordedOn, encodedByEmployeeId: text(row[32]), remittanceAmount: remittance, fidelity: number(row[42]), penalty: number(row[38]),
+        paymentMethod: text(row[23]) || "Cash",
+        // Same key as the remittance ledger (lib/remittance-workflow.ts), so the photo and the slip cover the same sales.
+        batchId: saleBatchKey({ encodedByEmployeeId: text(row[32]), encodedAt: isoManila(text(row[34]) || text(row[1])), accountableEmployeeId: text(row[37]), branch: text(row[2]), dateRemitted }),
         details: [
           ["Sale ID", text(row[0])], ["Member", [memberName, text(row[5])].filter(Boolean).join(" · ")],
           ["Program", programNames.get(text(row[21])) || text(row[21])], ["Branch", text(row[2])], ["MAS", text(row[3])],
@@ -173,6 +185,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
         amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[38]),
         remittanceStatus: text(row[28]), remittanceId: text(row[29]), encodedBy: text(row[23]), encodedAt: manilaTime(text(row[24]) || text(row[20])),
         dateRemitted, recordedOn, encodedByEmployeeId: text(row[22]), remittanceAmount: remittance, fidelity: number(row[37]), penalty: number(row[35]),
+        paymentMethod: text(row[33]) || "Cash", batchId: text(row[1]),
         details: [
           ["Collection ID", text(row[0])], ["Batch", text(row[1])], ["Member", [memberName, text(row[4])].filter(Boolean).join(" · ")],
           ["Program", programNames.get(text(row[5])) || text(row[5])], ["Branch", text(row[6])], ["MAS", text(row[7])],

@@ -1,4 +1,5 @@
 import { clearedEmployee, clearingProblem } from "@/lib/clearing";
+import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { checkBackdate, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
@@ -170,10 +171,10 @@ async function saveSales(request: Request, user: SessionUser) {
         selectedBranch &&
         employee.branchIds.includes(selectedBranch.id),
     );
-    const clearedId = selectedBranch && sameName.length > 1 ? await clearedEmployee(sameName.map((employee) => employee.id), selectedBranch.name, body.dateRemitted.trim()) : "";
+    const clearedId = selectedBranch && sameName.length > 1 ? await clearedEmployee(sameName.map((employee) => employee.id), selectedBranch.name, body.dateRemitted.trim(), "New Sales") : "";
     const selectedStaff = sameName.find((employee) => employee.id === clearedId) ?? sameName[0];
     // Encoding follows Clearing: the MAS must be cleared for this branch on the Date Remitted.
-    const notCleared = selectedBranch && selectedStaff ? await clearingProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim()) : "";
+    const notCleared = selectedBranch && selectedStaff ? await clearingProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim(), "New Sales") : "";
     if (notCleared) return NextResponse.json({ success: false, message: notCleared }, { status: 400 });
     if (!selectedBranch || !selectedStaff) {
       return NextResponse.json(
@@ -797,11 +798,14 @@ async function saveSales(request: Request, user: SessionUser) {
       if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId));
     });
 
+    // Paid in cash: straight to Pending Approval (lib/entry-batches.ts); other methods wait for the receipt photo.
+    const slips = await submitCashAfterSave(savedSales.map((saved) => saved.saleId));
     return NextResponse.json({
       success: true,
       message:
-        "All new sales were saved successfully.",
+        `All new sales were saved successfully.${slips.length ? ` Cash sent for approval: ${slips.join(", ")}.` : " Attach the receipt photo in My Entries to send them for approval."}`,
       savedSales,
+      slips,
     });
   } catch (error: unknown) {
     const conflict = isUniqueViolation(error, "sales_application_key_unique") ? "An Application Number in this batch was just recorded by another save."

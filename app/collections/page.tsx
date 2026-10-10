@@ -879,7 +879,7 @@ export default function CollectionsPage() {
       {/* COLLECTION BATCH HEADER */}
       <Card><CardContent className="p-4">
           <p className="mb-3 text-sm font-semibold">Collection Batch</p>
-          <div className="mb-4"><ClearingPicker value={cleared?.id ?? ""} onPick={(clearing) => {
+          <div className="mb-4"><ClearingPicker kind="Collections" value={cleared?.id ?? ""} onPick={(clearing) => {
             setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName });
             setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); clearScopedMemberSelections();
           }} /></div>

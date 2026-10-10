@@ -1293,7 +1293,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <ClearingPicker value={clearingId} disabled={Boolean(submissionId)} onPick={(clearing) => {
+          <ClearingPicker kind="New Sales" value={clearingId} disabled={Boolean(submissionId)} onPick={(clearing) => {
             setClearingId(clearing.id); setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate);
             setSales((current) => current.map((sale) => ({ ...sale, program: { ...sale.program, branch: clearing.branch, mas: clearing.employeeName } })));
           }} />

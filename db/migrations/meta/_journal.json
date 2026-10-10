@@ -141,6 +141,13 @@
       "when": 1791600826177,
       "tag": "0019_nte_employee_reply",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791602640200,
+      "tag": "0020_clearing_covers",
+      "breakpoints": true
     }
   ]
 }
