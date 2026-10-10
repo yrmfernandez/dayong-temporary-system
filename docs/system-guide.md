@@ -28,7 +28,7 @@ The system manages member enrollments and payments, employees and attendance, ca
 
 | Term | Meaning in this system |
 | --- | --- |
-| Member | A person and their contact, address, and claimant details. One person can have several programs. A member recorded without a contact number uses the claimant's number (filled October 6, 2026 by `scripts/fill-member-contacts.mjs`; the legacy import does the same). |
+| Member | A person and their contact, address, and claimant details. One person can have several programs. A member recorded without a contact number uses the claimant's number (filled October 6, 2026 by `scripts/fill-member-contacts.mjs`; the legacy import does the same; since October 10, 2026 New Sales and member edits fill it automatically when the claimant number has at least 7 digits, `memberContactOrClaimant` in [member-records.ts](../lib/member-records.ts)). |
 | Member Program / enrollment | One member's account in one program. DOI, assigned branch/MAS, NOP, payment history, and account standing belong here. |
 | Program | A plan's monthly rate, registration rule, total payable, age rules, categories, and incentives. |
 | DOI | Enrollment's Date of Inception; it determines the initial month and the day used for advance-coverage timing. |
@@ -582,6 +582,8 @@ For example, a September receipt covering October–December shows money receive
 SOA selects **one enrollment**, shows member/program/DOI/branch/MAS, New Sale separately, Collections with OR, covered month and NOP ranges, and running Collection totals. Its current status uses the same `accountState` logic as MAM/Collections.
 
 Printed layout, top to bottom: header (company, branch, **Date**, account ID); **Member** and **Account** blocks (program, program **category**, MAS, DOI, application no., monthly due); Payment History; **Summary** (account status, total paid, **program balance** = payoff remaining, or "No fixed total" for programs without one, amount due now, paid through, next due, months behind); then signature lines for **Prepared by** (the signed-in user) and **Collection Department Head**. The department head is one company-wide name kept in System Settings (`soa_collection_head`); administrators and IT set it on the SOA page (`PATCH /api/soa`), and a blank name prints an empty signature line.
+
+**Total paid (owner, October 10, 2026)** = the latest NOP paid × the monthly due (e.g. NOP 12 × ₱350 = ₱4,200), shown under the figure as "12 months × ₱350"; a New Sale's registration fee is not counted. For a **flexible** program there is no fixed monthly amount, so Total paid is every amount paid added up (the New Sale and each collection). The payment history keeps every receipt's actual amount and running total. Program balance is unchanged (pay-the-balance total less collections).
 
 ```text
 Total paid shown       = New Sale paid + Collections paid

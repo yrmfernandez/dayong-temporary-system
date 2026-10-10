@@ -45,10 +45,20 @@ export type MemberSheetData = {
 };
 export type MemberDetails = Omit<MemberSheetData, "memberId" | "memberNumber" | "status">;
 
+/**
+ * A member without a contact number gets their claimant's (owner, October 6 and 10, 2026), when it is a real number
+ * (at least 7 digits, not "N/A" or "0"). Used for new members, member edits and New Sale records alike;
+ * scripts/fill-member-contacts.mjs does the same for records saved before.
+ */
+export function memberContactOrClaimant(contact: unknown, claimantContact: unknown) {
+  const own = String(contact ?? "").trim(), claimant = String(claimantContact ?? "").trim();
+  return own || (claimant.replace(/[^0-9]/g, "").length >= 7 ? claimant : "");
+}
+
 const memberColumns = (details: MemberDetails) => ({
   surname: text(details.surname), first_name: text(details.firstName), middle_name: optional(details.middleName), name_extension: optional(details.nameExtension),
   birthdate: optionalDate(details.birthdate), birthplace: optional(details.birthplace), gender: optional(details.gender), age: optionalInteger(details.age),
-  civil_status: optional(details.civilStatus), member_contact: optional(details.contactNumber), address: optional(details.addressHouse),
+  civil_status: optional(details.civilStatus), member_contact: optional(memberContactOrClaimant(details.contactNumber, details.claimantContact)), address: optional(details.addressHouse),
   claimant_name: optional(details.claimantName), claimant_contact: optional(details.claimantContact), claimant_same_address: yes(details.claimantSameAsMember),
   claimant_address: optional(details.claimantAddressHouse),
 });

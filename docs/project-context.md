@@ -314,6 +314,24 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### SOA total paid (2026-10-10)
+
+- **Owner:** on the SOA, Total paid is the latest NOP times the monthly pay; for a flexible program, all the amounts paid added up.
+- **Done:** `lib/statement-of-account.ts` (it was the New Sale amount, registration fee included, plus every collection). The SOA shows how it was worked out under the figure. No database change.
+- **Open question:** Program balance still subtracts the collections paid from the pay-the-balance total; say if it should subtract Total paid instead.
+
+### Clear payroll runs (2026-10-10)
+
+- **Owner:** clear the payroll runs (the ones made so far are tests).
+- **Done:** `scripts/clear-payroll-runs.mjs` (dry run; `--apply`; `--only=PAY-...`) deletes each run's adjustments, lines and the run; for a Paid run also its payroll cash-out, and the commissions it paid go back to Pending. One transaction; the Audit Log keeps every row. Staging: 3 runs (2 Void, 1 Draft) cleared.
+- **To do (owner):** `npm run prod -- node scripts/clear-payroll-runs.mjs` (look at the list), then add `--apply`.
+
+### Member contact from the claimant (2026-10-10)
+
+- **Owner:** members with no contact number use the claimant's contact number (as decided October 6).
+- **Done:** New Sales and member edits now fill it on their own when the member's number is blank and the claimant's has at least 7 digits. Records saved since October 6 are filled by rerunning `scripts/fill-member-contacts.mjs --apply` (only blank member contacts change; the Audit Log keeps the edit). Staging: 8,375 members without a number, only 8 with a usable claimant number; the rest have neither.
+- **To do (owner):** `npm run prod -- node scripts/fill-member-contacts.mjs --apply`.
+
 ### Slow sections (2026-10-10)
 
 - **Owner:** some sections sometimes take too long to load.

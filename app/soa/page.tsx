@@ -139,7 +139,7 @@ function StatementContent() {
         <h2 className="mb-3 font-semibold">Summary</h2>
         <div className="grid gap-3 sm:grid-cols-4">
           <Figure label="Account status" value={<span className="flex flex-wrap items-center gap-2"><StatusBadge status={s.status} tone={["U", "ADV", "Paid"].includes(s.status) ? "success" : s.status === "NS" ? "info" : s.status === "Forfeited" ? "neutral" : "danger"} /><span className="text-xs font-normal text-muted-foreground">{statusText[s.status] ?? s.status}</span></span>} />
-          <Figure label="Total paid" value={money(s.totalPaid)} />
+          <Figure label="Total paid" value={<span>{money(s.totalPaid)}<span className="block text-xs font-normal text-muted-foreground">{s.totalPaidBasis.startsWith("NOP") ? `${s.monthsPaid} month${s.monthsPaid === 1 ? "" : "s"} × ${money(statement.account.monthlyDue)}` : "Flexible: every amount paid"}</span></span>} />
           <Figure label="Program balance" value={s.remainingBalance === null ? "No fixed total" : money(s.remainingBalance)} />
           <Figure label="Amount due now" value={s.amountDue === null ? "Forfeited" : money(s.amountDue)} strong />
         </div>

@@ -53,6 +53,10 @@ export async function getStatementOfAccount(enrollmentId: string) {
   });
   const collectionsPaid = round(payments.reduce((sum, payment) => sum + payment.amount, 0));
   const salePaid = sale?.amount_paid ?? 0;
+  // Total paid (owner, October 10, 2026): the latest NOP paid times the monthly due, so a New Sale's registration fee
+  // and any rounding on old receipts do not inflate it. A flexible program has no fixed monthly amount, so there it is
+  // every amount paid added up (the New Sale and each collection).
+  const totalPaid = account.flexible ? round(salePaid + collectionsPaid) : round(state.nop * account.basePay);
   return {
     statementDate: today,
     member: {
@@ -69,7 +73,7 @@ export async function getStatementOfAccount(enrollmentId: string) {
       status: state.status, temporarilySuspended: state.temporarilySuspended,
       monthsPaid: state.nop, lastCoveredMonth: state.lastCoveredMonth, nextMonth: state.nextMonth, nextNop: state.nextNop,
       unpaidMonths: state.unpaidMonths, amountDue: state.balance, suspendedAt: state.suspendedAt, forfeitedAt: state.forfeitedAt,
-      totalPaid: round(salePaid + collectionsPaid), collectionsPaid,
+      totalPaid, totalPaidBasis: account.flexible ? "every amount paid" : `NOP ${state.nop} × ${account.basePay}`, collectionsPaid,
       // Remaining toward the program's pay-the-balance total, when the program has one.
       remainingBalance: account.payBalanceTotal > 0 ? Math.max(0, round(account.payBalanceTotal - collectionsPaid)) : null,
     },

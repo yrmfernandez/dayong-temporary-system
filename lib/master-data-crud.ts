@@ -8,6 +8,7 @@ import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { deleteRowsWhere } from "@/lib/sheet-rows";
 import { loadUsers, userCell } from "@/lib/users-sheet";
 import { type StoredTier, validateIncentiveTiers, writeProgramIncentives } from "@/lib/program-incentive-store";
+import { memberContactOrClaimant } from "@/lib/member-records";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -214,7 +215,7 @@ export async function updateMemberRecord(id: string, input: MemberRecordInput) {
   const updated = await currentDb().update(schema.members).set({
     member_number: memberNumber, surname, first_name: firstName, middle_name: t(input.middleName) || null, name_extension: t(input.nameExtension) || null,
     birthdate: birthdate || null, birthplace: t(input.birthplace) || null, gender: t(input.gender) || null, age, civil_status: t(input.civilStatus) || null,
-    member_contact: t(input.contact) || null, address: t(input.address) || null, claimant_name: t(input.claimantName) || null, claimant_contact: t(input.claimantContact) || null,
+    member_contact: memberContactOrClaimant(input.contact, input.claimantContact) || null, address: t(input.address) || null, claimant_name: t(input.claimantName) || null, claimant_contact: t(input.claimantContact) || null,
     claimant_same_address: Boolean(input.claimantSameAddress), claimant_address: input.claimantSameAddress ? null : t(input.claimantAddress) || null, status,
   }).where(eq(schema.members.member_id, id)).returning({ id: schema.members.member_id });
   if (!updated.length) throw new Error("Record not found.");

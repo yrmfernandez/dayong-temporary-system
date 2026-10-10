@@ -328,7 +328,8 @@ test('statement of account lists the new sale and every collection with running 
   await seedAccount({ programName: 'DS-320', basePay: 320, payBalanceTotal: 19200, doi: '2026-06-15', branch: 'MINTAL', mas: 'Maria', accountStatus: 'U' });
   await query("update members set member_contact = '0917', address = 'Mintal, Davao City' where member_id = 'MEM-1'");
   await seed('collections', [{ collection_id: 'COL-1', collection_batch_id: 'CBT-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', mas: 'Maria', or_number: 'OR-100', or_date: '2026-07-10', amount_collected: 640, month_from: '2026-07', month_to: '2026-08', nop_from: 2, nop_to: 3, status: 'Posted' }]);
-  await seed('sales', [{ sale_id: 'SAL-1', member_number: 'PH-1', program_id: 'DP-1', amount_paid: 320, application_no: 'APP-1', or_date: '2026-06-15' }]);
+  // ₱320 month 1 plus a ₱500 registration fee.
+  await seed('sales', [{ sale_id: 'SAL-1', member_number: 'PH-1', program_id: 'DP-1', amount_paid: 820, registration_amount: 500, application_no: 'APP-1', or_date: '2026-06-15' }]);
   const route = h.load('app/api/soa/route.ts');
   const list = await (await route.GET(new Request('http://localhost/api/soa'))).json();
   assert.deepEqual(list.accounts.map((item) => [item.id, item.memberName, item.programName]), [['ENR-1', 'Santos, Ana', 'DS-320']]);
@@ -337,13 +338,18 @@ test('statement of account lists the new sale and every collection with running 
   assert.equal(response.status, 200);
   assert.equal(statement.member.name, 'Ana Santos');
   assert.equal(statement.member.address, 'Mintal, Davao City');
-  assert.deepEqual(statement.newSale.amount, 320);
+  assert.deepEqual(statement.newSale.amount, 820);
   assert.deepEqual(statement.history.map((row) => [row.orNumber, row.monthFrom, row.monthTo, row.nopFrom, row.nopTo, row.runningTotal]), [['OR-100', '2026-07', '2026-08', 2, 3, 640]]);
-  assert.equal(statement.summary.totalPaid, 960, 'the new sale plus collections');
+  assert.equal(statement.summary.totalPaid, 960, 'latest NOP 3 × ₱320; the registration fee is not counted');
   assert.equal(statement.summary.monthsPaid, 3);
   assert.equal(statement.summary.nextNop, 4);
   assert.equal(statement.summary.nextMonth, '2026-09');
   assert.equal(statement.summary.remainingBalance, 18560, 'pay-the-balance total less collections');
+  // A flexible program has no fixed monthly amount: every amount paid is added up.
+  await query("update programs set flexible = true where program_id = 'DP-1'");
+  const flexible = (await (await route.GET(new Request('http://localhost/api/soa?account=ENR-1'))).json()).statement;
+  assert.equal(flexible.summary.totalPaid, 1460, 'flexible: the New Sale and every collection');
+  await query("update programs set flexible = false where program_id = 'DP-1'");
   h.setUser({ userId: 'U3', employeeId: 'DPE-0003', name: 'finance', roleNames: ['Finance'], permissions: {} });
   assert.equal((await route.GET(new Request('http://localhost/api/soa'))).status, 403);
 });
@@ -653,6 +659,14 @@ test('an employee sees a Notice to Explain issued to them, confirms receipt and 
   await h.load('app/api/nte/route.ts').PATCH(new Request('http://localhost/api/nte', { method: 'PATCH', body: JSON.stringify({ id, reason: 'Issued by mistake' }), headers: { 'Content-Type': 'application/json' } }));
   h.setUser(employee);
   assert.equal((await patch({ id, action: 'explain', explanation: 'A revised reply.' })).status, 400);
+});
+
+test('a member without a contact number gets the claimant contact, when it is a real number', () => {
+  const { memberContactOrClaimant } = harness().load('lib/member-records.ts');
+  assert.equal(memberContactOrClaimant('', '0917 123 4567'), '0917 123 4567');
+  assert.equal(memberContactOrClaimant('09181112222', '0917 123 4567'), '09181112222', 'the member own number wins');
+  assert.equal(memberContactOrClaimant('', 'N/A'), '');
+  assert.equal(memberContactOrClaimant(' ', '0'), '');
 });
 
 test('all mutation routes reject unauthenticated requests before writing', async () => {
