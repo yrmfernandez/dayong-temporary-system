@@ -819,6 +819,8 @@ Sources: [Sheets wrapper](../lib/google-sheets.ts), [cache and locks](../lib/she
 
 ## 14. Setup, maintenance, and troubleshooting
 
+**Speed (measured October 10, 2026, on staging).** Collections is the large table (about 61,000 rows, 63 MB); reading all of it takes about 5–8 seconds, so no everyday action should. Fixed: attaching a receipt photo read all Sales and Collections to find who encoded the entries (7.7 s, now 0.16 s); a payroll run summed incentives over all collections in JavaScript (now one database sum for the period); the administrators' Members directory read members after enrollments (now together, about 4.1 s → 1.8 s). Live updates on heavy pages now wait longer before reloading after someone saves (Members, MAM and Company Reports 15 s, Exceptions 30 s, Audit 15 s, SOA, Audit Log and clerk reports 10 s, Remittances 5 s), so a busy encoding hour does not keep them reloading. The database is in Singapore (`ap-southeast-1`); `vercel.json` runs the server code in Singapore too (`sin1`), since each database query from Vercel's default US region costs about 0.2 s more. Still heavy by design: Exceptions with old data included, and MAM for all branches at once (about 6 s; the page asks for a branch first).
+
 ### Run locally
 
 Install dependencies from the lockfile with `npm ci`. Put the variables listed in [.env.example](../.env.example) in `.env.local`; never commit real values:

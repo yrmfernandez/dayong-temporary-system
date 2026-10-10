@@ -314,6 +314,20 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### Slow sections (2026-10-10)
+
+- **Owner:** some sections sometimes take too long to load.
+- **Found (timed on staging):** reading the whole Collections table costs 5–8 s; receipt photo upload did that on every upload (7.7 s); payroll runs did it for the incentive reference; the admin Members directory took about 4 s (two big reads one after the other); heavy pages (Members, Exceptions, MAM, Audit, Remittances, SOA, reports) reloaded 1.2 s after anyone's save, so busy hours kept them reloading; every query also pays the trip to the database in Singapore, and Vercel runs in the US unless set otherwise.
+- **Done:** receipt photo upload reads only its entries (0.16 s); payroll sums incentives in the database; Members directory reads in parallel (1.8 s); longer live-update waits on heavy pages; `vercel.json` sets the server region to Singapore (`sin1`).
+- **To do (owner):** after deploying, check Vercel → Project → Settings → Functions shows Singapore (sin1). If pages still feel slow at certain times, note which page and when.
+- **Could do later:** paginate the Members directory on the server instead of sending every member to the browser.
+
+### Checking a member transfer (2026-10-10)
+
+- **Owner:** transferred RACHO K's members to RACHO KRISTINE and wants to be sure all of them moved.
+- **Done:** `scripts/check-member-transfer.mjs --from=... --to=...` (read-only; names or Employee IDs): lists employees with a similar name, the transfers recorded between the two, accounts now under the new employee and accounts still under the old one by branch and status, flags branches the new employee is not assigned to (the transfer skips those) and names that disagree with the employee link. Counts only; enrollment IDs left go to `legacy-data/transfer-left.txt`. A transfer updates both the MAS name and the employee link (trigger `fill_links`).
+- **To do (owner):** `npm run prod -- node scripts/check-member-transfer.mjs --from="RACHO K" --to="RACHO KRISTINE"` (use the Employee IDs it lists if the names do not match exactly).
+
 ### Company Reports for administrators (2026-10-10)
 
 - **Owner:** Reports in the admin workspace repeated Report Review (both showed the Entry Clerk report); admins should see the actual company report.

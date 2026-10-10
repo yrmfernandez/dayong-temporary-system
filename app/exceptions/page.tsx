@@ -54,7 +54,7 @@ export default function ExceptionsPage() {
     void load(false);
   }, [load]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["sales", "collections", "remittances"], () => load(includeLegacy));
+  useLiveRefresh(["sales", "collections", "remittances"], () => load(includeLegacy), 30000);
 
   const current = data?.categories.find((item) => item.category === category);
 

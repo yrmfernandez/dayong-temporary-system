@@ -59,7 +59,7 @@ export default function DailyAuditPage() {
     if (tab !== "summary") void load(date, period);
   }, [date, period, tab, load]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["daily_audits", "weekly_audits", "monthly_audits", "yearly_audits", "sales", "collections", "remittances", "expenses"], () => { if (tab !== "summary") void load(date, period); });
+  useLiveRefresh(["daily_audits", "weekly_audits", "monthly_audits", "yearly_audits", "sales", "collections", "remittances", "expenses"], () => { if (tab !== "summary") void load(date, period); }, 15000);
 
   function toggle(row: Row) {
     setMessage("");

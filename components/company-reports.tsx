@@ -84,7 +84,7 @@ export function CompanyReports() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the chosen period and filters
     void load();
   }, [load]);
-  useLiveRefresh(["sales", "collections", "remittances", "expenses", "cash_transactions"], load);
+  useLiveRefresh(["sales", "collections", "remittances", "expenses", "cash_transactions"], load, 15000);
 
   const choose = (next: Period) => { setPeriod(next); if (next !== "custom") setRange(rangeFor(next, todayInManila())); };
   const rows = useMemo(() => {

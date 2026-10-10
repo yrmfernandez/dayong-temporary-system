@@ -1,10 +1,11 @@
+import { inArray } from "drizzle-orm";
+
 import { canAccessPath } from "@/lib/access-control";
+import { getDb, schema } from "@/lib/db";
 import { resubmitReturned, submitReadyEntries } from "@/lib/remittance-workflow";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { getReceiptPhoto, saveReceiptPhoto } from "@/lib/receipt-photos";
-import { COLLECTIONS_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
 
 const text = (value: unknown) => String(value ?? "").trim();
 // Pages where receipt photos are shown; anyone who can open one of them may view a photo.
@@ -32,17 +33,23 @@ export const POST = withEncoder(async (request: Request) => {
   try {
     const body = await request.json() as Record<string, unknown>;
     const entryIds = Array.isArray(body.entryIds) ? body.entryIds.map(text).filter(Boolean) : [];
-    const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [SALES_RANGE, COLLECTIONS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
-    const [sales, collections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
-    // Entry ID → Employee ID of whoever encoded it (Sales AG, Collections W).
-    const encoders = new Map([...sales.slice(1).map((row) => [text(row[0]), text(row[32])] as const), ...collections.slice(1).map((row) => [text(row[0]), text(row[22])] as const)]);
+    // Only these entries, not the whole Sales and Collections tables (reading all 60,000 collections took about 8 seconds
+    // on every upload; October 10, 2026).
+    const { sales, collections } = schema;
+    const [saleRows, collectionRows] = entryIds.length ? await Promise.all([
+      getDb().select({ id: sales.sale_id, by: sales.encoded_by_employee_id, status: sales.remittance_status }).from(sales).where(inArray(sales.sale_id, entryIds)),
+      getDb().select({ id: collections.collection_id, by: collections.encoded_by_employee_id, status: collections.remittance_status }).from(collections).where(inArray(collections.collection_id, entryIds)),
+    ]) : [[], []];
+    const found = [...saleRows, ...collectionRows];
+    // Entry ID → Employee ID of whoever encoded it.
+    const encoders = new Map(found.map((row) => [row.id, text(row.by)] as const));
     const unknown = entryIds.filter((id) => !encoders.has(id));
     if (unknown.length) throw new Error(`Entry not found: ${unknown.join(", ")}.`);
     if (!(await canManageUsers()) && entryIds.some((id) => encoders.get(id) !== user.employeeId)) throw new Error("You can add receipt photos only to entries you encoded.");
     const saved = await saveReceiptPhoto({ entryIds, dataUrl: text(body.dataUrl), width: Number(body.width), height: Number(body.height) });
     // With the photo attached, entries that now have everything go to Pending Approval on their own; a Returned entry
     // given a new photo is resubmitted.
-    const statuses = new Map([...sales.slice(1).map((row) => [text(row[0]), text(row[35])] as const), ...collections.slice(1).map((row) => [text(row[0]), text(row[28])] as const)]);
+    const statuses = new Map(found.map((row) => [row.id, text(row.status)] as const));
     const returned = entryIds.filter((id) => statuses.get(id) === "Returned");
     let slips: string[] = [];
     try {

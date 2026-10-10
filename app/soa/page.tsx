@@ -52,7 +52,7 @@ function StatementContent() {
   useEffect(() => { void loadAccounts(); }, [loadAccounts]);
   // Live updates (lib/use-live-refresh.ts): the account list and the open statement reload when payments or enrollments change.
   const [liveRevision, setLiveRevision] = useState(0);
-  useLiveRefresh(["member_programs", "members", "collections", "sales", "programs", "system_settings"], () => { void loadAccounts(); setLiveRevision((value) => value + 1); });
+  useLiveRefresh(["member_programs", "members", "collections", "sales", "programs", "system_settings"], () => { void loadAccounts(); setLiveRevision((value) => value + 1); }, 10000);
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;

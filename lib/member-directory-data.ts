@@ -17,10 +17,15 @@ const text = (value: string | null | undefined) => (value ?? "").trim();
 export async function loadMemberDirectory(onlyMas: string | null = null) {
   const db = currentDb();
   const masCondition = onlyMas === null ? undefined : sql`lower(trim(${memberPrograms.mas})) = ${onlyMas.trim().toLowerCase()}`;
-  const enrollmentRows = await db.select().from(memberPrograms).where(masCondition);
+  // Everyone's directory (administrators) needs every member anyway, so both tables are read at the same time instead of
+  // one after the other (about 1 second each; October 10, 2026). A MAS's directory reads only their own members.
+  const [enrollmentRows, allMembers] = await Promise.all([
+    db.select().from(memberPrograms).where(masCondition),
+    onlyMas === null ? db.select().from(members) : Promise.resolve(null),
+  ]);
   const memberIds = [...new Set(enrollmentRows.map((row) => row.member_id))];
   const [memberRows, programRows, collectorRows] = await Promise.all([
-    onlyMas !== null && !memberIds.length ? [] : db.select().from(members).where(onlyMas === null ? undefined : inArray(members.member_id, memberIds)),
+    allMembers ?? (!memberIds.length ? [] : db.select().from(members).where(inArray(members.member_id, memberIds))),
     db.select({ id: programs.program_id, name: programs.program_name, code: programs.program_code }).from(programs),
     // The latest posted Collector collection per member number and program (the directory shows that Collector).
     db.selectDistinctOn([collections.member_number, collections.program_id], {

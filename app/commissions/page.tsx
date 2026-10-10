@@ -48,7 +48,7 @@ export default function CommissionsPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
   useEffect(() => { void load(); }, [load]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["commissions", "collections", "sales"], load);
+  useLiveRefresh(["commissions", "collections", "sales"], load, 15000);
   const earnerIds = useMemo(() => new Set(earned.map((x) => x.employeeId).filter(Boolean)), [earned]);
   const roleOf = useMemo(() => new Map(earned.map((x) => [x.employeeId, x.role])), [earned]);
   // Any employee with sales earns incentives, so the role filter offers whatever roles this period's earners hold.

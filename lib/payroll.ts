@@ -1,5 +1,7 @@
 import { getAttendanceRecordsForRange } from "@/lib/attendance-data";
-import { COLLECTIONS_RANGE } from "@/lib/sheet-ranges";
+import { sql } from "drizzle-orm";
+
+import { getDb } from "@/lib/db";
 import { closeFinishedAttendanceDaysQuietly } from "@/lib/auto-absence";
 import { getEncoder } from "@/lib/encoder-context";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
@@ -148,18 +150,16 @@ export async function getPayrollRun(runId: string) {
 
 /** Earned incentive reference: gross less company remittance on remitted collections, by accountable employee. */
 async function earnedIncentives(from: string, to: string) {
-  // Same range as Reports and the dashboards, so all share one cached copy of this large sheet.
-  const collections = await rows(COLLECTIONS_RANGE);
-  const byEmployee = new Map<string, number>();
-  for (const row of collections.slice(1)) {
-    const orDate = text(row[9]).slice(0, 10);
-    if (!text(row[0]) || text(row[19]).toLowerCase() !== "posted" || text(row[28]) !== "Remitted" || orDate < from || orDate > to) continue;
-    const employeeId = text(row[30]);
-    // A blank company share (imported rows) means no incentive was recorded, not that the whole amount was incentive.
-    if (text(row[26]) === "") continue;
-    byEmployee.set(employeeId, centavos((byEmployee.get(employeeId) ?? 0) + Math.max(0, num(row[10]) - num(row[26]))));
-  }
-  return byEmployee;
+  // Summed by the database for the period only (reading all 60,000 collections took several seconds; October 10, 2026).
+  // A blank company share (imported rows) means no incentive was recorded, not that the whole amount was incentive.
+  const result = await getDb().execute(sql`select coalesce(accountable_employee_id, '') as employee_id,
+      sum(greatest(0, coalesce(amount_collected, 0) - remittance_amount))::float8 as earned
+    from collections
+    where lower(coalesce(status, '')) = 'posted' and remittance_status = 'Remitted' and remittance_amount is not null
+      and or_date between ${from}::date and ${to}::date
+    group by 1`);
+  const rowsOfResult = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ employee_id: string; earned: number }>;
+  return new Map(rowsOfResult.map((row) => [text(row.employee_id), centavos(Number(row.earned) || 0)] as const));
 }
 
 async function calculateLines(run: Pick<PayrollRun, "id" | "periodFrom" | "periodTo" | "settings">) {

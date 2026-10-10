@@ -75,7 +75,7 @@ export default function MembersPage() {
     return () => controller.abort();
   }, [revision, search, branch, mas, program, status, accountStatus, standing, sort, descending, page]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["members", "member_programs", "beneficiaries", "member_transfers", "collections", "sales"], () => { if (!editing) setRevision((value) => value + 1); });
+  useLiveRefresh(["members", "member_programs", "beneficiaries", "member_transfers"], () => { if (!editing) setRevision((value) => value + 1); }, 15000);
   const visible = members;
   const pages = totals.pages;
   const currentPage = page;

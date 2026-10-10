@@ -65,7 +65,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
     void load();
   }, [load]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["sales", "collections", "remittances", "remittance_collections", "expenses", "cash_transactions", "bank_deposits", "daily_audits", "report_remarks", "report_notes"], load, 3000);
+  useLiveRefresh(["sales", "collections", "remittances", "remittance_collections", "expenses", "cash_transactions", "bank_deposits", "daily_audits", "report_remarks", "report_notes"], load, 10000);
 
   /** Sends one of the clerk's own report actions, then reloads the report. */
   const act = async (body: Record<string, unknown>) => {
