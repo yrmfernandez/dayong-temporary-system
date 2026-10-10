@@ -1,6 +1,6 @@
 import {
   BadgeCheck, BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
-  ClipboardList, CreditCard, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
+  ClipboardList, CreditCard, FileWarning, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
   LayoutDashboard, Banknote, Camera, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -39,6 +39,8 @@ const page = {
   leaveApprovals: { name: "Leave Approvals", href: "/leave-approvals", icon: CalendarCheck },
   attendance: { name: "My Attendance", href: "/attendance", icon: CalendarCheck },
   leaveRequests: { name: "Leave Requests", href: "/leave-requests", icon: ClipboardList },
+  // Every employee's own Notices to Explain (lib/nte.ts).
+  myNotices: { name: "My Notices", href: "/my-notices", icon: FileWarning },
   programs: { name: "Programs", href: "/programs", icon: Database },
   branches: { name: "Branches", href: "/branches", icon: Building2 },
   masterData: { name: "Master Data", href: "/master-data", icon: Database },
@@ -52,8 +54,8 @@ const page = {
 } satisfies Record<string, NavItem>;
 
 // Personal self-service. MAS lists My Fidelity under My Portfolio instead.
-const myHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests, page.myFidelity] };
-const masHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests] };
+const myHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests, page.myFidelity, page.myNotices] };
+const masHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests, page.myNotices] };
 
 /**
  * Sidebar workspace per role. Sections follow each role's daily workflow:
@@ -76,7 +78,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Reports", items: [page.userReports, page.mam, page.soa] },
     { title: "Directory", items: [page.members] },
     { title: "People", items: [page.attendanceTracking] },
-    { title: "My HR", items: [page.attendance] },
+    { title: "My HR", items: [page.attendance, page.myNotices] },
   ],
   finance: [
     { title: "Overview", items: [page.dashboard] },

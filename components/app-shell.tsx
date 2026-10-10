@@ -1,5 +1,7 @@
 "use client";
 
+import { FileWarning } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -37,7 +39,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the numbers for the page just opened
   useEffect(() => { void loadCounts(); }, [loadCounts, pathname]);
   useEffect(() => { const timer = window.setInterval(() => { if (!document.hidden) void loadCounts(); }, 120000); return () => window.clearInterval(timer); }, [loadCounts]);
-  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "attendance", "receipt_photos", "clearings"], loadCounts, 3000);
+  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "attendance", "receipt_photos", "clearings", "notices_to_explain"], loadCounts, 3000);
+  // A page that just cleared something (e.g. My Notices) asks for the numbers at once.
+  useEffect(() => { const refresh = () => void loadCounts(); window.addEventListener("notifications:refresh", refresh); return () => window.removeEventListener("notifications:refresh", refresh); }, [loadCounts]);
   // True while the dashboard of a newly chosen workspace is loading, so the old one is not mistaken for it.
   const [switching, startSwitch] = useTransition();
   const isLogin = pathname === "/login";
@@ -116,6 +120,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {switching && <div role="status" aria-live="polite" className="sticky top-0 z-30 h-1 w-full overflow-hidden bg-primary/15"><div className="h-full w-1/3 animate-[workspace-loading_1.1s_ease-in-out_infinite] bg-primary" /><span className="sr-only">Opening the {activeRole} dashboard</span></div>}
         <div className={`app-content mx-auto w-full max-w-[1920px] px-3 pb-8 pt-4 transition-opacity sm:px-4 md:px-6 md:pt-5 ${switching ? "pointer-events-none opacity-50" : ""}`} aria-busy={switching}>
           {switching && <p className="mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary">Opening the {activeRole} dashboard...</p>}
+          {(counts["/my-notices"] ?? 0) > 0 && pathname !== "/my-notices" && <Link href="/my-notices" role="alert" className="mb-4 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"><FileWarning className="size-4 shrink-0" />You have {counts["/my-notices"] === 1 ? "a Notice to Explain" : `${counts["/my-notices"]} Notices to Explain`} waiting for you. Open My Notices to read and answer.</Link>}
           {children}
         </div>
       </main>

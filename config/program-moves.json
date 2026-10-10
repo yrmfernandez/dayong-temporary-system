@@ -1,15 +1,126 @@
 {
   "note": "Draft or legacy program -> the finalized program it belongs to, each confirmed by the owner (scripts/list-programs.mjs). Applied by scripts/move-program-accounts.mjs.",
   "moves": [
-    { "from": "DP-0046", "to": "DP-0064", "doiBefore": "2026-08-01", "note": "DP-0046 is a second program named DSP-290 on production (D-290 on staging); its accounts enrolled before August 2026 are DAYONG 290 (D-290, DP-0064) (owner, October 9, 2026)" },
-    { "from": "DP-0046", "to": "DP-0021", "doiFrom": "2026-08-01", "mergeIntoExisting": true, "remove": true, "note": "DP-0046 accounts enrolled from August 2026 are the real DSP-290 (DP-0021), which began then (owner, October 9, 2026)" },
-    { "from": "D-290 (500)", "to": "DP-0064", "doiBefore": "2026-08-01", "mergeIntoExisting": true, "note": "D-290 (500) is DAYONG 290 (D-290, DP-0064) with its 500 registration fee (owner, October 9, 2026)" },
-    { "from": "D-290 (500)", "to": "DP-0021", "doiFrom": "2026-08-01", "mergeIntoExisting": true, "remove": true, "note": "D-290 (500) registered from August 2026 is DSP-290 (DP-0021), which began then; D-290 is the old program, started 2023 (owner, October 9, 2026)" }
+    {
+      "from": "DP-0025",
+      "to": "DP-0067",
+      "remove": true,
+      "note": "D-300 (NEW) belongs to D-300 (Bracketing); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
+      "mergeIntoExisting": true
+    },
+    {
+      "from": "DP-0038",
+      "to": "DP-0067",
+      "remove": true,
+      "note": "D-300 (NEW BRACKETING) belongs to D-300 (Bracketing); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
+      "mergeIntoExisting": true
+    },
+    {
+      "from": "DP-0040",
+      "to": "DP-0067",
+      "remove": true,
+      "note": "DN-300 belongs to D-300 (Bracketing); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
+      "mergeIntoExisting": true
+    },
+    {
+      "from": "DP-0051",
+      "to": "DP-0005",
+      "remove": true,
+      "note": "D-150 is D-210 HG (flexible, ₱150 minimum); a member who already has an account there gets the two merged when no month was paid on both (owner, October 10, 2026: one enrollment recorded twice, 129 of 130)",
+      "mergeIntoExisting": true
+    },
+    {
+      "from": "DP-0065",
+      "to": "DP-0067",
+      "nextPaymentFrom": 2,
+      "nextPaymentTo": 12,
+      "mergeIntoExisting": true,
+      "note": "D-300 members still in their first year (next payment in months 2-12) go to D-300 (Bracketing), which has rates for those months; D-300 has rates only from month 13 (owner, October 10, 2026)"
+    }
   ],
   "decisions": [
     "D-270 (300) (DP-0015) is the DC-300 plan at a ₱270 rate; it stays its own program (owner, October 8, 2026: option A). Its 261 accounts all pay ₱270 a month, which does not fit DC-300 at ₱300.",
     "D-300 and D-300 (BRACKETING) are different programs. DC-300 is its own program.",
     "Finalized on production (owner): D-180, D-190, D-230, D-280, D-290, D-300, D-300 (BRACKETING); their accounts are already in them, nothing to move.",
-    "D-290 (DAYONG 290) and DSP-290 are two programs, both with a 500 registration fee; DSP-290 began in August 2026. D-290 (500) belongs to D-290, except accounts enrolled from August 1, 2026, which are DSP-290 (owner, October 9, 2026; replaces the same day's mistaken all-to-DSP-290 move, undone on staging, never run on production). Program IDs are production's: DP-0021 is the real DSP-290, DP-0064 is D-290, and DP-0046 was a second program also named DSP-290 holding 2023 D-290 accounts (on staging DP-0046 is still named D-290 and DP-0064 does not exist, so run this on production)."
+    "D-290 (DAYONG 290) and DSP-290 are two programs, both with a 500 registration fee; DSP-290 began in August 2026. D-290 (500) belongs to D-290, except accounts enrolled from August 1, 2026, which are DSP-290 (owner, October 9, 2026; replaces the same day's mistaken all-to-DSP-290 move, undone on staging, never run on production). Program IDs are production's: DP-0021 is the real DSP-290, DP-0064 is D-290, and DP-0046 was a second program also named DSP-290 holding 2023 D-290 accounts (on staging DP-0046 is still named D-290 and DP-0064 does not exist, so run this on production).",
+    "Own programs, not moved (owner, October 10, 2026): D-390 (300) (another program; \"(300)\" marks its ₱300 registration fee in the old sheet), DC-180 (not D-180), D-270 (300) and DC-300 (not the same), D-320 (not chosen as DS-320).",
+    "Kept as separate programs (owner, October 10, 2026): D-350, D-350 (5Y) and DPB-350 are the same plan with different incentives, as are D-420 and DPB-420, so each stays its own program; D-460 and D-460 (59B) are different programs."
+  ],
+  "applied": [
+    {
+      "from": "DP-0046",
+      "to": "DP-0064",
+      "doiBefore": "2026-08-01",
+      "note": "DP-0046 is a second program named DSP-290 on production (D-290 on staging); its accounts enrolled before August 2026 are DAYONG 290 (D-290, DP-0064) (owner, October 9, 2026)",
+      "applied": "October 9–10, 2026 on production"
+    },
+    {
+      "from": "DP-0046",
+      "to": "DP-0021",
+      "doiFrom": "2026-08-01",
+      "mergeIntoExisting": true,
+      "remove": true,
+      "note": "DP-0046 accounts enrolled from August 2026 are the real DSP-290 (DP-0021), which began then (owner, October 9, 2026)",
+      "applied": "October 9–10, 2026 on production"
+    },
+    {
+      "from": "D-290 (500)",
+      "to": "DP-0064",
+      "doiBefore": "2026-08-01",
+      "mergeIntoExisting": true,
+      "note": "D-290 (500) is DAYONG 290 (D-290, DP-0064) with its 500 registration fee (owner, October 9, 2026)",
+      "applied": "October 9–10, 2026 on production"
+    },
+    {
+      "from": "D-290 (500)",
+      "to": "DP-0021",
+      "doiFrom": "2026-08-01",
+      "mergeIntoExisting": true,
+      "remove": true,
+      "note": "D-290 (500) registered from August 2026 is DSP-290 (DP-0021), which began then; D-290 is the old program, started 2023 (owner, October 9, 2026)",
+      "applied": "October 9–10, 2026 on production"
+    },
+    {
+      "from": "DP-0014",
+      "to": "DP-0061",
+      "remove": true,
+      "note": "D-180 draft (old data) is the finalized D-180 (owner, October 10, 2026)",
+      "applied": "October 10, 2026 on production (all accounts moved, draft deleted)"
+    },
+    {
+      "from": "DP-0008",
+      "to": "DP-0062",
+      "remove": true,
+      "note": "D-190 draft (old data) is the finalized D-190 (owner, October 10, 2026)",
+      "applied": "October 10, 2026 on production (all accounts moved, draft deleted)"
+    },
+    {
+      "from": "DP-0007",
+      "to": "DP-0063",
+      "remove": true,
+      "note": "D-230 draft (old data) is the finalized D-230 (owner, October 10, 2026)",
+      "applied": "October 10, 2026 on production (all accounts moved, draft deleted)"
+    },
+    {
+      "from": "DP-0012",
+      "to": "DP-0066",
+      "remove": true,
+      "note": "D-280 draft (old data) is the finalized D-280 (owner, October 10, 2026)",
+      "applied": "October 10, 2026 on production (all accounts moved, draft deleted)"
+    },
+    {
+      "from": "DP-0033",
+      "to": "DP-0065",
+      "remove": true,
+      "note": "D-300 draft (old data) is the finalized D-300 (owner, October 10, 2026)",
+      "applied": "October 10, 2026 on production (all accounts moved, draft deleted)"
+    },
+    {
+      "from": "DP-0006",
+      "to": "DP-0067",
+      "remove": true,
+      "note": "D-300 (BRACKETING) draft (old data) is the finalized D-300 (Bracketing) (owner, October 10, 2026)",
+      "applied": "October 10, 2026 on production (all accounts moved, draft deleted)"
+    }
   ]
 }

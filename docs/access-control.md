@@ -14,7 +14,7 @@ Role names are read from the live `Roles` and `User Roles` sheets during login a
 Administrators choose which pages each role can open in **Roles → Page access**. The selection is stored as comma-separated routes in `Roles` column L (`page_access`) and copied into the signed session at sign-in, so changes apply the next time affected users sign in.
 
 - A blank `page_access` means the role still uses its built-in defaults from `lib/access-control.ts`; the editor pre-fills those defaults.
-- Dashboard and Settings are always allowed. Administrator always has every page and cannot be restricted.
+- Dashboard, Settings and My Notices (the user's own Notices to Explain, since October 10, 2026) are always allowed. Administrator always has every page and cannot be restricted.
 - A user receives the combined pages of all their roles. Action permissions (`manage_users`, `manage_attendance`, `view_attendance_reports`) still add the pages their APIs need.
 - In the sidebar, a configured role shows only its granted pages. A granted page outside the role's usual workspace joins the section where it belongs: the role's section that already holds related pages, else the section of the same name, else a new section named as in the Administrator workspace (placed before My HR).
 

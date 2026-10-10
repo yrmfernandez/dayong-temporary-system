@@ -18,6 +18,7 @@ import { listForReview } from "@/lib/sale-submissions";
  *   /mas-sales          the MAS's own submissions returned to them
  *   /attendance-reviews absences the system recorded in the last 7 days that nobody has confirmed or changed yet
  *   /clearing           MAS and employees cleared but whose entries are not yet sent for approval
+ *   /my-notices         the user's own Notices to Explain in force that they have not confirmed or not yet explained
  */
 export type NotificationCounts = Record<string, number>;
 
@@ -44,6 +45,9 @@ export async function getNotificationCounts(user: SessionUser): Promise<Notifica
   if (can("/new-sales")) tasks.push(["/new-sales", listForReview(user).then((list) => list.length).catch(() => 0)]);
   if (can("/mas-sales") && me) tasks.push(["/mas-sales", countOf(sql`select count(*)::int as count from sale_submissions where mas_employee_id = ${me} and status = 'Returned'`)]);
   if (can("/clearing")) tasks.push(["/clearing", countOpenClearings()]);
+  const today = todayInManila();
+  if (me) tasks.push(["/my-notices", countOf(sql`select count(*)::int as count from notices_to_explain
+    where employee_id = ${me} and status = 'Active' and expires_on >= ${today}::date and (acknowledged_at is null or explanation is null)`)]);
   if (can("/attendance-reviews")) {
     const since = new Date(Date.parse(`${todayInManila()}T00:00:00Z`) - 7 * 86400000).toISOString().slice(0, 10);
     tasks.push(["/attendance-reviews", countOf(sql`select count(*)::int as count from attendance

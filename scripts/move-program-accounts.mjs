@@ -6,7 +6,8 @@
  * code or name contains that text (except the "to" program). "doiFrom" / "doiBefore" (YYYY-MM-DD) move only the
  * accounts enrolled on or after / before that date, so one program can be split by DOI over two moves (run
  * scripts/fix-impossible-doi.mjs first, so a typo DOI such as 1943 does not decide the program); an account
- * without a DOI matches neither and stays. "remove": true then deletes the "from" program and its incentive tiers once
+ * without a DOI matches neither and stays. "nextPaymentFrom" / "nextPaymentTo" (NOP numbers) move only the accounts
+ * whose next payment falls in that range (e.g. members still in their first year). "remove": true then deletes the "from" program and its incentive tiers once
  * nothing is left in it; one that still has accounts, New Sales, collections or transfers is set inactive instead.
  * "mergeIntoExisting": true merges an account whose member already has one in the "to" program into that account
  * (owner, October 9, 2026): its collections join it, the combined payments are renumbered NOP 1, 2, 3… in month order
@@ -81,11 +82,15 @@ try {
       const [to] = await tx`select program_id, program_name, base_pay::float8 as rate, coalesce(pay_balance_total, 0)::float8 as total, flexible, max_monthly_payment::float8 as max from programs where program_id = ${move.to}`;
       if (!from || !to) return { line: `${move.from} → ${move.to}: program not found` };
       const all = await tx`select mp.enrollment_id, mp.member_id, mp.member_number, mp.doi::text as doi,
-          (select o.enrollment_id from member_programs o where o.member_id = mp.member_id and o.program_id = ${to.program_id} order by o.enrollment_id limit 1) as target_enrollment
+          (select o.enrollment_id from member_programs o where o.member_id = mp.member_id and o.program_id = ${to.program_id} order by o.enrollment_id limit 1) as target_enrollment,
+          coalesce((select max(c.nop_to) from collections c where c.enrollment_id = mp.enrollment_id and c.status = 'Posted'), 1) + 1 as next_nop
         from member_programs mp where mp.program_id = ${from.program_id}`;
       const taken = claimed.get(from.program_id) ?? claimed.set(from.program_id, new Set()).get(from.program_id);
       const inDoi = (doi) => (!move.doiFrom || (doi && doi >= move.doiFrom)) && (!move.doiBefore || (doi && doi < move.doiBefore));
-      const accounts = all.filter((account) => !taken.has(account.enrollment_id) && inDoi(account.doi));
+      // "nextPaymentFrom" / "nextPaymentTo": only accounts whose next payment (NOP) falls in that range, e.g. members
+      // still in their first year (owner, October 10, 2026: D-300 members in months 2–12 go to D-300 (Bracketing)).
+      const inNext = (nop) => (!move.nextPaymentFrom || nop >= move.nextPaymentFrom) && (!move.nextPaymentTo || nop <= move.nextPaymentTo);
+      const accounts = all.filter((account) => !taken.has(account.enrollment_id) && inDoi(account.doi) && inNext(Number(account.next_nop)));
       const payments = new Map();
       for (const row of await tx`select collection_id, enrollment_id, or_date::text as or_date, or_number, month_from, month_to, nop_from, nop_to, amount_collected::float8 as amount
           from collections where program_id = ${from.program_id} and lower(coalesce(status, '')) = 'posted'`) {
@@ -173,7 +178,8 @@ try {
         }
         removal = ` · program ${stays ? `${apply ? "set" : "would be set"} inactive (still in use)` : apply ? "deleted" : "would be deleted"}`;
       }
-      const doiNote = move.doiFrom || move.doiBefore ? ` with DOI${move.doiFrom ? ` from ${move.doiFrom}` : ""}${move.doiBefore ? ` before ${move.doiBefore}` : ""}` : "";
+      const doiNote = (move.doiFrom || move.doiBefore ? ` with DOI${move.doiFrom ? ` from ${move.doiFrom}` : ""}${move.doiBefore ? ` before ${move.doiBefore}` : ""}` : "")
+        + (move.nextPaymentFrom || move.nextPaymentTo ? ` with the next payment in NOP ${move.nextPaymentFrom ?? 1}-${move.nextPaymentTo ?? "..."}` : "");
       return { line: `${from.program_name} (${from.program_id}) → ${to.program_name} (${to.program_id}): ${accounts.length} account(s)${doiNote} · ${apply ? "moved" : "would move"} ${counts.moved}${move.mergeIntoExisting ? ` · ${apply ? "merged" : "would merge"} ${counts.merged} into the member's existing account` : ""} · left: ${counts.alreadyInTarget} already in ${to.program_name}, ${counts.paymentsDoNotFit} payments do not fit ₱${to.rate}/month${removal}` };
     });
     console.log(outcome.line);

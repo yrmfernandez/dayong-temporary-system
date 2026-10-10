@@ -12,10 +12,12 @@ import type { Nte } from "@/lib/nte";
 type Standing = { employeeId: string; employeeName: string; active: number; subjectToSuspension: boolean; nextExpiry: string };
 type Data = { notices: Nte[]; standing: Standing[]; today: string; days: number; threshold: number };
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
+const when = (value: string) => value ? new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "";
 
 /**
  * Notices to Explain, for administrators (the panel hides itself for anyone else). A notice is in force for 90 days;
- * an employee with 3 or more in force is flagged as subject to suspension.
+ * an employee with 3 or more in force is flagged as subject to suspension. The employee sees the notice in My Notices;
+ * the table shows whether they have read it and their explanation.
  */
 export function NtePanel({ employees }: { employees: Array<{ id: string; name: string }> }) {
   const [data, setData] = useState<Data | null>(null);
@@ -78,7 +80,7 @@ export function NtePanel({ employees }: { employees: Array<{ id: string; name: s
     </div>
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-left text-sm">
-        <thead className="bg-muted"><tr>{["Employee", "Issued", "Expires", "Reason", "Status", "Issued by", ""].map((label, index) => <th key={index} scope="col" className="p-2">{label}</th>)}</tr></thead>
+        <thead className="bg-muted"><tr>{["Employee", "Issued", "Expires", "Reason", "Status", "Employee's reply", "Issued by", ""].map((label, index) => <th key={index} scope="col" className="p-2">{label}</th>)}</tr></thead>
         <tbody>
           {shown.map((nte) => {
             const count = data?.standing.find((item) => item.employeeId === nte.employeeId)?.active ?? 0;
@@ -88,11 +90,15 @@ export function NtePanel({ employees }: { employees: Array<{ id: string; name: s
               <td className="p-2">{nte.expiresOn}</td>
               <td className="p-2">{nte.reason}{nte.details && <span className="block text-xs text-muted-foreground">{nte.details}</span>}{nte.withdrawnReason && <span className="block text-xs text-muted-foreground">Withdrawn: {nte.withdrawnReason}</span>}</td>
               <td className="p-2"><StatusBadge status={nte.status} tone={nte.status === "Active" ? "warning" : undefined} /></td>
+              <td className="p-2 max-w-xs">{nte.explanation
+                ? <><span className="block whitespace-pre-wrap">{nte.explanation}</span><span className="block text-xs text-muted-foreground">Explained {when(nte.explainedAt)}</span></>
+                : nte.acknowledgedAt ? <span className="text-xs text-muted-foreground">Read {when(nte.acknowledgedAt)}; no explanation yet</span>
+                : <span className="text-xs text-amber-700">Not yet read by the employee</span>}</td>
               <td className="p-2">{nte.issuedBy || "-"}</td>
               <td className="p-2 text-right">{nte.status === "Active" && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { const reason = window.prompt(`Withdraw the notice to ${nte.employeeName}? Give the reason:`); if (reason) void send("PATCH", { id: nte.id, reason }); }}>Withdraw</Button>}</td>
             </tr>;
           })}
-          {!shown.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{data ? "No notices." : "Loading..."}</td></tr>}
+          {!shown.length && <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">{data ? "No notices." : "Loading..."}</td></tr>}
         </tbody>
       </table>
     </div>

@@ -30,8 +30,9 @@ const roleRoutes: Record<string, string[]> = {
 // Every signed-in employee's shared workspace, added to roles that still use default access.
 const employeeRoutes = ["/programs", "/branches", "/master-data", "/members", "/mam", "/fidelity", "/attendance", "/leave-requests"];
 export const executiveRoles = ["ceo", "president"];
-// Always reachable so nobody is locked out of their dashboard or password change.
-const alwaysAllowed = ["/", "/settings"];
+// Always reachable so nobody is locked out of their dashboard or password change, nor kept from seeing a Notice to
+// Explain issued to them (My Notices shows only their own).
+const alwaysAllowed = ["/", "/settings", "/my-notices"];
 
 export const normalizeRoleName = (role: string) => role.trim().toLowerCase();
 export const isAdministratorRole = (role: string) => ["administrator", "admin"].includes(normalizeRoleName(role));

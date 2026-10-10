@@ -618,6 +618,43 @@ test('attendance tracking lets Finance review one employee across a date range',
   assert.equal(result.records[0].lateMinutes, 5);
 });
 
+test('an employee sees a Notice to Explain issued to them, confirms receipt and explains; others never see it', async () => {
+  const admin = { userId: 'USR-9', employeeId: 'MD-2099-0900', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } };
+  const h = harness(admin);
+  h.rows.Employees = [[], ['MD-2099-0900', 'Admin Person', 'BR-1', 'Administrator', 'active'], ['MD-2099-0901', 'Rina Cruz', 'BR-1', 'MAS', 'active'], ['MD-2099-0902', 'Other Person', 'BR-1', 'MAS', 'active']];
+  const issued = await h.load('app/api/nte/route.ts').POST(request({ employeeId: 'MD-2099-0901', reason: 'Late remittance', details: 'Remitted two days late.' }));
+  assert.equal(issued.status, 201, JSON.stringify(await issued.clone().json()));
+  const { id } = await issued.json();
+  const mine = h.load('app/api/nte/mine/route.ts');
+  const counts = async () => h.load('lib/notifications.ts').getNotificationCounts({ ...employee, permissions: {} });
+  const patch = (body) => mine.PATCH(new Request('http://localhost/api/nte/mine', { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+  const employee = { userId: 'USR-10', employeeId: 'MD-2099-0901', name: 'rina', roleNames: ['MAS'], permissions: {} };
+
+  h.setUser(employee);
+  let list = await (await mine.GET()).json();
+  assert.deepEqual(list.notices.map((nte) => [nte.id, nte.reason, nte.acknowledgedAt]), [[id, 'Late remittance', '']]);
+  assert.equal((await counts())['/my-notices'], 1);
+  assert.equal((await patch({ id, action: 'acknowledge' })).status, 200);
+  assert.equal((await patch({ id, action: 'explain', explanation: 'x' })).status, 400);
+  assert.equal((await patch({ id, action: 'explain', explanation: 'The bank was closed on the due date.' })).status, 200);
+  list = await (await mine.GET()).json();
+  assert.ok(list.notices[0].acknowledgedAt && list.notices[0].explainedAt);
+  assert.equal((await counts())['/my-notices'], undefined);
+
+  // Another employee neither sees nor answers it.
+  h.setUser({ ...employee, userId: 'USR-11', employeeId: 'MD-2099-0902' });
+  assert.equal((await (await mine.GET()).json()).notices.length, 0);
+  assert.equal((await patch({ id, action: 'explain', explanation: 'Not mine to answer.' })).status, 400);
+
+  // The administrator reads the reply; a withdrawn notice can no longer be answered.
+  h.setUser(admin);
+  const all = await (await h.load('app/api/nte/route.ts').GET()).json();
+  assert.equal(all.notices.find((nte) => nte.id === id).explanation, 'The bank was closed on the due date.');
+  await h.load('app/api/nte/route.ts').PATCH(new Request('http://localhost/api/nte', { method: 'PATCH', body: JSON.stringify({ id, reason: 'Issued by mistake' }), headers: { 'Content-Type': 'application/json' } }));
+  h.setUser(employee);
+  assert.equal((await patch({ id, action: 'explain', explanation: 'A revised reply.' })).status, 400);
+});
+
 test('all mutation routes reject unauthenticated requests before writing', async () => {
   const h = harness(null);
   for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals', 'finance-options', 'vendor-payables', 'commissions']) {

@@ -918,6 +918,7 @@ export const audit_log = pgTable("audit_log", {
 /**
  * Notices to Explain issued to employees. A notice is in force for 90 days from the date issued (expires_on); three or
  * more in force at once make the employee subject to suspension (lib/nte.ts). Withdrawn notices no longer count.
+ * The employee sees their own notices in My Notices, confirms receipt and writes their explanation.
  */
 export const notices_to_explain = pgTable("notices_to_explain", {
   ...rowSeq(),
@@ -929,5 +930,9 @@ export const notices_to_explain = pgTable("notices_to_explain", {
   details: text(),
   status: text().notNull().default("Active"),
   withdrawn_reason: text(),
+  // The employee's side (My Notices, October 10, 2026): when they opened and confirmed receipt, and their written explanation.
+  acknowledged_at: moment("acknowledged_at"),
+  explanation: text(),
+  explained_at: moment("explained_at"),
   ...encoder(),
 }, (t) => [index("notices_to_explain_employee_idx").on(t.employee_id, t.expires_on)]).enableRLS();
