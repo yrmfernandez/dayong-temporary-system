@@ -1,5 +1,7 @@
 # Dayong System
 
+[![Architecture diagram](https://gitdiagram.com/diagram-badge.svg)](https://gitdiagram.com/yrmfernandez/dayong-temporary-system?utm_source=readme&utm_medium=badge)
+
 The Dayong System runs the company's daily operations: member enrollments (New Sales) and payments (Collections), Clearing and remittance approval, staff incentives and Fidelity, company finance and vendor bills, employees, attendance, leave and payroll, and the reports, MAM, SOA and dashboards built from those records.
 
 It is a [Next.js](https://nextjs.org) app on a [Supabase](https://supabase.com) PostgreSQL database (via [Drizzle](https://orm.drizzle.team)), deployed on Vercel. Pages update live when another user saves (Supabase Realtime). Receipt photos are stored in Supabase.
