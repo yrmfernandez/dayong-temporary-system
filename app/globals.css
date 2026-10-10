@@ -164,6 +164,8 @@
   /* Glass: translucent fill, heavy blur, a light edge that catches the top-left light, soft elevation. */
   --glass-fill: linear-gradient(135deg, rgb(255 255 255 / 66%), rgb(255 255 255 / 40%));
   --glass-fill-strong: linear-gradient(135deg, rgb(255 255 255 / 86%), rgb(255 255 255 / 72%));
+  /* Cards and page headers inside the scrolling page: no live blur (see "Scrolling" below), so a little more opaque. */
+  --glass-fill-content: linear-gradient(135deg, rgb(255 255 255 / 84%), rgb(255 255 255 / 70%));
   --glass-edge: linear-gradient(135deg, rgb(255 255 255 / 95%), rgb(255 255 255 / 25%) 45%, rgb(123 51 199 / 18%));
   --glass-border: rgb(255 255 255 / 55%);
   --glass-blur: blur(28px) saturate(170%);
@@ -261,6 +263,7 @@
   /* Dark glass from the reference: rgba(30,30,30,.45), blur 45px, 15% white edge, deep shadow. */
   --glass-fill: linear-gradient(135deg, rgb(44 40 54 / 52%), rgb(24 22 30 / 38%));
   --glass-fill-strong: linear-gradient(135deg, rgb(40 36 50 / 82%), rgb(22 20 28 / 74%));
+  --glass-fill-content: linear-gradient(135deg, rgb(40 36 50 / 88%), rgb(24 22 30 / 82%));
   --glass-edge: linear-gradient(135deg, rgb(255 255 255 / 22%), rgb(255 255 255 / 5%) 45%, rgb(180 138 242 / 20%));
   --glass-border: rgb(255 255 255 / 12%);
   --glass-blur: blur(40px) saturate(150%);
@@ -294,7 +297,7 @@
     @apply bg-background text-foreground;
     /* Brand gradient mesh behind the glass; switches with the theme. */
     background-image: var(--page-mesh);
-    background-attachment: fixed;
+    /* The page scrolls inside .app-main, so the body (and its mesh) never moves; "fixed" only added repaints. */
   }
   html {
     @apply font-sans;
@@ -332,12 +335,17 @@
    * Frosted glass card. The 1px gradient edge is drawn by a masked ::before so it can follow
    * the rounded corners (border-image cannot), brightest at the top-left like the reference.
    */
+  /*
+   * Scrolling (owner, October 10, 2026: scrolling looked wavy and tired the eyes). A live backdrop blur on every card
+   * re-blurred the gradient under each one on every scrolled frame, which shimmered. Surfaces that scroll with the page
+   * (cards, page headers) are now a slightly more opaque fill without blur; only the sidebar and top bar, which stay
+   * put, keep the live blur.
+   */
   .glass-card {
     position: relative;
-    background: var(--glass-fill);
+    background: var(--glass-fill-content);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
-    backdrop-filter: var(--glass-blur);
   }
 
   .glass-card::before {
@@ -364,10 +372,9 @@
     background:
       radial-gradient(circle at 94% -10%, var(--glow-gold), transparent 15rem),
       radial-gradient(circle at 70% 120%, var(--glow-lime), transparent 16rem),
-      var(--glass-fill);
+      var(--glass-fill-content);
     padding: 1.25rem;
     box-shadow: var(--glass-shadow);
-    backdrop-filter: var(--glass-blur);
     color: var(--foreground);
   }
 
@@ -525,9 +532,8 @@ main table tbody tr:hover {
 /* Every card is frosted glass (same recipe as .glass-card). */
 main [data-slot="card"] {
   position: relative;
-  background: var(--glass-fill);
+  background: var(--glass-fill-content);
   border-radius: 1.25rem;
-  backdrop-filter: var(--glass-blur);
 }
 
 main [data-slot="card"]::before {

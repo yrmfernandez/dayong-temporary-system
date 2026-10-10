@@ -1,9 +1,9 @@
 {
-  "note": "Old web app (dayong.gissolve.com) values mapped to ours for scripts/migrate-legacy-site.mjs. 'map': its program codes, as its lists write them, to our program codes or names. 'drafts': programs added as drafts on --apply when missing; admins then finalize rates, pay-balance totals, registration and incentives in Programs. 'mas': an old MAS name to an Employee ID, for names the automatic match (full name, or surname and first initial) cannot place.",
+  "note": "Old web app (dayong.gissolve.com) values mapped to ours for scripts/migrate-legacy-site.mjs. 'map': its program codes, as its lists write them, to our program codes or names. 'drafts': programs added as drafts on --apply when missing; admins then finalize rates, pay-balance totals, registration and incentives in Programs. 'mas': an old MAS name to an Employee ID, for names the automatic match (full name, or surname and first initial) cannot place. D-300 (NEW) maps to D-300 (Bracketing) since October 10, 2026: the owner said D-300 (NEW) belongs to D-300 (Bracketing), and D-300 (NEW) was deleted on production.",
   "map": {
     "D-179": "D-179",
     "D-210": "D-210 HG",
-    "D-300 (NEW)": "D-300 (NEW)",
+    "D-300 (NEW)": "D-300 (Bracketing)",
     "D-320": "D-320",
     "DCA-400": "DCA-400",
     "DPB-700": "DPB-700",

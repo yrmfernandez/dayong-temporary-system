@@ -314,6 +314,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### Smoother scrolling; latest old web app data (2026-10-10)
+
+- **Owner:** scrolling looked wavy and tired the eyes; get the latest data from the old system, migrate it and fix it.
+- **Done (scrolling):** cards and page headers no longer use a live backdrop blur (re-blurring the gradient under every card on every scrolled frame made it shimmer); they use a slightly more opaque fill. Only the sidebar and the top bar keep the blur. The body background is no longer `fixed` (the page scrolls inside `.app-main`).
+- **Done (old web app):** `scripts/legacy-site-export.mjs` re-run: 3 new members with their New Sales and 4 new collections since October 8 (2,142 members and sales, 1,126 collections in all). `config/legacy-site-map.json` now sends the old site's D-300 (NEW) to D-300 (Bracketing) (D-300 (NEW) was deleted on production).
+- **To do (owner):** `npm run prod -- node scripts/migrate-legacy-site.mjs` (dry run; counts only), then `--apply`. Records it leaves out are listed by old-site record ID in `legacy-data/web-import-report-*.txt`.
+
 ### The last three accounts that would not merge (2026-10-10)
 
 - **Found (production dry run):** three accounts stayed because merging would cover a month twice: ENR-WEB-33 (D-300 (NEW), PH-84755298, MONKAYO) with the member's D-300 (Bracketing) account, both application 00307; and the two DP-0050 accounts of PH-30272255 and PH-33775036 (CALINAN), each holding one March 5, 2026 receipt numbered NOP 5. DP-0038, DP-0040 and DP-0051 were already moved and deleted (now under `applied`; the move script now skips a move whose program is gone instead of stopping).
