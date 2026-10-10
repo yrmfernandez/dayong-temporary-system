@@ -1,0 +1,9 @@
+{
+  "note": "Owner decisions on Exceptions → Possible duplicates (scripts/fix-duplicates.mts).",
+  "deleteCollections": [
+    { "id": "COL-WEB-1460", "note": "OR 16023 B (TORIL, PH-70850331, October 5, 2026) is one receipt, for September; the old web app recorded it again for October (owner, October 10, 2026)" }
+  ],
+  "applications": [
+    { "application": "06202600077", "note": "Application 06202600077 (BUHANGIN, PH-02261895) is on the member's 320 and DCA-400 New Sales; it belongs to the program that is being paid; the other sale's number is marked (need edit) for staff (owner, October 10, 2026)" }
+  ]
+}

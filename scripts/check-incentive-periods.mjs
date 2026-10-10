@@ -53,7 +53,20 @@ try {
     if (gaps.length) console.log(`   no rate for ${blocked.join(", ")}`);
     if (yearStarts.length) console.log(`   starts on a multiple of 12 (likely "from Year N" entered before the fix): ${yearStarts.join(", ")}`);
   }
-  console.log(`\n${problems} group(s) with months without a rate; ${blockedAccounts.size} open account(s) whose next collection would be refused (each counted once, MAS and Collector together).`);
+  // Programs with accounts but no rate at all never form a group above, yet every collection of theirs is refused.
+  const withoutRates = await sql`select p.program_id, coalesce(p.program_code, p.program_name) as code, p.status,
+      (select count(*)::int from member_programs mp where mp.program_id = p.program_id) as accounts,
+      (select count(*)::int from member_programs mp where mp.program_id = p.program_id and coalesce(mp.account_status, '') not in ('Forfeited', 'Paid')) as open
+    from programs p where not exists (select 1 from program_incentives i where i.program_id = p.program_id)
+      and exists (select 1 from member_programs mp where mp.program_id = p.program_id) order by 5 desc, 2`;
+  if (withoutRates.length) {
+    console.log(`\nPrograms with accounts but NO incentive rate at all (every collection is refused):`);
+    for (const row of withoutRates) {
+      console.log(`  ${row.code} (${row.program_id})${row.status === "inactive" ? " (inactive)" : ""} · ${row.accounts} account(s), ${row.open} open`);
+      for (const account of nextNop.filter((n) => n.program_id === row.program_id)) blockedAccounts.add(account.enrollment_id);
+    }
+  }
+  console.log(`\n${problems} group(s) with months without a rate${withoutRates.length ? `, ${withoutRates.length} program(s) with no rate at all` : ""}; ${blockedAccounts.size} open account(s) whose next collection would be refused (each counted once, MAS and Collector together).`);
 } finally {
   await sql.end();
 }

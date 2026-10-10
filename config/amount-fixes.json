@@ -1,0 +1,9 @@
+{
+  "note": "Exceptions → Amounts that do not match the program (all from the old web app); owner decisions, October 10, 2026 (scripts/fix-amounts.mjs).",
+  "zeroSales": ["SALE-WEB-1975", "SALE-WEB-367", "SALE-WEB-385", "SALE-WEB-102"],
+  "multiMonth": ["COL-WEB-1462", "COL-WEB-1240", "COL-WEB-746", "COL-WEB-606"],
+  "saleAmounts": [{ "id": "SALE-WEB-297", "amount": 500, "note": "₱50 on DS-500: a zero left off (owner's best guess)" }],
+  "saleWithNextMonth": [{ "id": "SALE-WEB-322", "note": "₱860 New Sale on DS-430 = the New Sale plus the next month paid ahead (owner's best guess)" }],
+  "moveAccount": [{ "collection": "COL-WEB-1411", "program": "DCA-400", "note": "₱1,200 for 3 months = 3 × ₱400: the account is DCA-400 (owner's best guess)" }],
+  "staffCheck": ["SALE-WEB-2172", "SALE-WEB-1956", "SALE-WEB-1443", "SALE-WEB-1055", "SALE-WEB-1048", "SALE-WEB-984", "SALE-WEB-902", "SALE-WEB-266", "COL-WEB-1236", "COL-WEB-839", "COL-WEB-1044"]
+}

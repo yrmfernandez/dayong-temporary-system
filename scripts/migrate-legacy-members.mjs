@@ -58,6 +58,11 @@ import { accountState, monthIndex, monthName, todayInManila } from "../lib/accou
 import { loadLegacySources } from "./legacy-sources.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
+// This script reads whole tables (about 60,000 collections) several at once; Supabase's transaction pooler (port 6543)
+// drops such long transfers ("CONNECTION_CLOSED", October 10, 2026), so it uses the session connection (port 5432).
+if (process.env.DIRECT_DATABASE_URL) process.env.DATABASE_URL = process.env.DIRECT_DATABASE_URL;
+// Parsing the workbook keeps the CPU busy long enough for an idle connection to be closed under a query (lib/db.ts).
+process.env.DAYONG_DB_IDLE_TIMEOUT = "0";
 const args = process.argv.slice(2);
 const apply = args.includes("--apply");
 const skipInvalid = args.includes("--skip-invalid");
@@ -219,7 +224,21 @@ const dbTitles = ["Programs", "Branches", "Employees", "Members", "Member progra
 const { sheetsOnDb, appendSheetRows } = await import("../lib/sheets-on-db.ts");
 const databaseRef = /postgres\.([a-z0-9]+)[:@]/.exec(process.env.DATABASE_URL ?? "")?.[1] ?? "unknown";
 console.log(`Application data: Supabase project ${databaseRef}.`);
-const dbResponse = await sheetsOnDb.spreadsheets.values.batchGet({ ranges: dbTitles.map((t) => `'${t}'`), valueRenderOption: "UNFORMATTED_VALUE" });
+// Reading every table at once sometimes loses the connection ("CONNECTION_CLOSED", October 10, 2026): read them one at
+// a time, retrying a dropped read up to three times (reads only, so a retry is safe).
+async function readTable(range) {
+  for (let attempt = 1; ; attempt++) {
+    try { return (await sheetsOnDb.spreadsheets.values.get({ range, valueRenderOption: "UNFORMATTED_VALUE" })).data; }
+    catch (error) {
+      const dropped = /CONNECTION_CLOSED|ECONNRESET|CONNECTION_ENDED/.test(`${error?.message} ${error?.cause?.code} ${error?.cause?.message}`);
+      if (!dropped || attempt >= 4) throw error;
+      console.log(`  (the connection dropped while reading ${range}; trying again, attempt ${attempt + 1} of 4)`);
+      await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+    }
+  }
+}
+const dbResponse = { data: { valueRanges: [] } };
+for (const title of dbTitles) dbResponse.data.valueRanges.push(await readTable(`'${title}'`));
 const db = Object.fromEntries(dbTitles.map((t, i) => [t, dbResponse.data.valueRanges[i].values ?? []]));
 // Programs column 22 (V) is flexible: basePay is then the minimum monthly payment (lib/account-rules.ts).
 const programs = db.Programs.slice(1).filter((r) => str(r[0])).map((r) => ({ id: str(r[0]), code: str(r[1]), name: str(r[2]), basePay: Number(r[3]), payBalanceTotal: Number(r[12]) || 0, flexible: r[21] === true || /^(true|yes)$/i.test(str(r[21])) }));
@@ -231,11 +250,13 @@ const usedMemberNumbers = new Set(db.Members.slice(1).map((r) => str(r[1])));
 
 const programAliases = new Map(Object.entries(JSON.parse(readFileSync(PROGRAM_FILE, "utf8")).aliases).map(([k, v]) => [norm(k), norm(v)]));
 const programCache = new Map();
+const unknownLabels = new Set();
 const findProgram = (v) => {
   const key = norm(v);
-  if (!programCache.has(key)) { const code = programAliases.get(key) ?? key; programCache.set(key, programs.find((p) => norm(p.code) === code || norm(p.name) === code)); }
+  if (!programCache.has(key)) { const code = programAliases.get(key) ?? key; programCache.set(key, programs.find((p) => norm(p.id) === code || norm(p.code) === code || norm(p.name) === code)); }
   return programCache.get(key);
 };
+const isD290500 = (label) => norm(label).replace(/\s+/g, "") === "D-290(500)";
 const findBranch = (v) => { const o = override("branches", v); return branches.find((b) => [b.id, b.name].some((x) => norm(x) === norm(o ?? v))); };
 // Old agents are written "SURNAME, I." : the employee with that surname whose first name starts with the initial.
 const agentCache = new Map();
@@ -319,7 +340,10 @@ for (const sale of saleRows) {
     sale.doi = parseDate(sale.dateRemitted).date;
     repaired(sale, "OR DATE unreadable: DATE REMITTED used", sale.orDate, sale.doi);
   }
-  if (!sale.program$) { issue("DAYONG PROGRAM not in config/legacy-programs.json or Programs", sale.where); continue; }
+  // D-290 (500) is two programs by DOI (owner, October 9, 2026): D-290 before August 2026, DSP-290 from then.
+  if (isD290500(sale.program) && sale.doi) sale.program$ = findProgram(sale.doi >= "2026-08-01" ? "DSP-290" : "D-290");
+  if (!sale.program$) unknownLabels.add(sale.program);
+  if (!sale.program$) { issue(`DAYONG PROGRAM "${sale.program}" not in config/legacy-programs.json or Programs`, sale.where); continue; }
   if (!sale.branch$) { issue("BRANCH not found in Branches", sale.where); continue; }
   if (!sale.doi) { issue("OR DATE (used as DOI) missing or unreadable", sale.where); continue; }
   if (!sale.agent$) issue("MARKETING AGENT not in Employees (old name kept; no accountable employee)", sale.where);
@@ -366,6 +390,13 @@ function pickByName(pool, name, row, getName) {
 }
 const pending = [];
 let linkedToSales = 0, nameOnlyMembers = 0;
+// D-290 (500) payments of a member with no New Sale in the sheet: the member's earliest such payment stands for the DOI.
+const firstD290500 = new Map();
+for (const row of collectionRows) {
+  if (!isD290500(row.program) || !row.legacyMemberId) continue;
+  const date = parseDate(row.orDate).date;
+  if (date && (!firstD290500.has(row.legacyMemberId) || date < firstD290500.get(row.legacyMemberId))) firstD290500.set(row.legacyMemberId, date);
+}
 for (const row of collectionRows) {
   const leftOut = overrides.leaveOut?.[row.ref];
   if (leftOut) { issue(`Left out by the owner: ${leftOut}`, row.where); continue; }
@@ -374,7 +405,17 @@ for (const row of collectionRows) {
   if (program && program !== row.program) { repaired(row, `DAYONG PROGRAM corrected by the owner: ${overrides.programs[row.ref].note}`, row.program, program); row.program = program; }
   if (amount && Number(amount) !== Number(String(row.amount).replace(/[^0-9.]/g, ""))) { repaired(row, `AMOUNT COLLECTED corrected by the owner: ${overrides.amounts[row.ref].note}`, row.amount, amount); row.amount = amount; }
   row.program$ = findProgram(row.program);
-  if (!row.program$) { issue("DAYONG PROGRAM not in config/legacy-programs.json or Programs", row.where); continue; }
+  // A D-290 (500) payment follows the member's D-290 or DSP-290 account from the New Sales (split by DOI above).
+  if (isD290500(row.program)) {
+    const d290 = [findProgram("D-290"), findProgram("DSP-290")].filter(Boolean).map((p) => p.id);
+    const owner = row.legacyMemberId ? membersById.get(row.legacyMemberId) : undefined;
+    const account = owner ? [...owner.enrollments.values()].find((e) => d290.includes(e.program.id)) : undefined;
+    const firstPaid = row.legacyMemberId ? firstD290500.get(row.legacyMemberId) : undefined;
+    row.program$ = account?.program ?? (firstPaid ? findProgram(firstPaid >= "2026-08-01" ? "DSP-290" : "D-290") : undefined);
+    if (!row.program$) { issue(`DAYONG PROGRAM "${row.program}": no D-290 or DSP-290 New Sale or dated payment of this member to tell which (by DOI)`, row.where); continue; }
+  }
+  if (!row.program$) unknownLabels.add(row.program);
+  if (!row.program$) { issue(`DAYONG PROGRAM "${row.program}" not in config/legacy-programs.json or Programs`, row.where); continue; }
   if (row.legacyMemberId) {
     let member = membersById.get(row.legacyMemberId);
     if (!member) { member = { id: row.legacyMemberId, name: row.member, birthdate: "", territory: row.territory, parsed: parseName(row.member), first: null, enrollments: new Map() }; members.push(member); membersById.set(member.id, member); nameOnlyMembers++; }
@@ -656,7 +697,43 @@ ${mergedAway.length} account(s) were merged into another account earlier (all th
 }
 // A new account some of whose payments the database already has under another account would split one person's history
 // (e.g. a New Sale row added later for someone imported from collections only): held back and listed for review.
-const splitting = valid.filter((e) => !existingIds.has(e.id) && e.payments.some((pay) => existingIds.has(pay.id)));
+let splitting = valid.filter((e) => !existingIds.has(e.id) && e.payments.some((pay) => existingIds.has(pay.id)));
+// Accounts moved or merged in this system since the first import (October 8–10, 2026: draft programs into finalized
+// ones, merges) are in another program, so their ID no longer matches: when every payment the database already has
+// sits in one account, that account is this one; new payments go there (and are checked against its history below).
+const enrollmentOfPayment = new Map(db.Collections.slice(1).map((r) => [str(r[0]), str(r[2])]));
+const storedAccount = new Map(db["Member programs"].slice(1).map((r) => [str(r[0]), { memberId: str(r[1]), number: str(r[2]), programId: str(r[3]) }]));
+let redirected = 0;
+const redirect = (e, target) => {
+  const stored = storedAccount.get(target);
+  if (!stored) return false;
+  e.id = target;
+  e.redirect = stored;
+  e.program = programs.find((p) => p.id === stored.programId) ?? e.program;
+  for (const pay of e.payments) pay.enrollmentId = target;
+  redirected++;
+  return true;
+};
+// The account a stored New Sale belongs to now (its member number and program, moves included), and each member's
+// account per program: one member has one account per program, so a "new" one would be a second copy.
+const saleAccount = new Map(db.Sales.slice(1).map((r) => [str(r[0]), `${str(r[5])}|${str(r[21])}`]));
+const accountByNumberProgram = new Map(db["Member programs"].slice(1).map((r) => [`${str(r[2])}|${str(r[3])}`, str(r[0])]));
+const accountByMemberProgram = new Map(db["Member programs"].slice(1).map((r) => [`${str(r[1])}|${str(r[3])}`, str(r[0])]));
+for (const e of valid.filter((item) => !existingIds.has(item.id))) {
+  // 1. Its New Sale is already stored: the account that sale belongs to now.
+  const saleId = e.sale ? hashId("SALE", e.sale.ref) : "";
+  if (saleId && saleAccount.has(saleId)) { const target = accountByNumberProgram.get(saleAccount.get(saleId)); if (target && redirect(e, target)) continue; }
+  // 2. The member already has an account in this program.
+  const own = existingIds.has(e.member.id) ? accountByMemberProgram.get(`${e.member.id}|${e.program.id}`) : undefined;
+  if (own && redirect(e, own)) continue;
+  // 3. Every payment the database already has sits in one account.
+  const targets = new Set(e.payments.filter((pay) => existingIds.has(pay.id)).map((pay) => enrollmentOfPayment.get(pay.id)).filter(Boolean));
+  const saleIsNew = e.sale && !existingIds.has(saleId);
+  if (targets.size === 1 && !saleIsNew) redirect(e, [...targets][0]);
+}
+splitting = splitting.filter((e) => !e.redirect);
+if (redirected) console.log(`
+${redirected} account(s) moved or merged in this system since the first import: their new payments go to the account they are in now.`);
 if (splitting.length) {
   for (const e of splitting) valid.splice(valid.indexOf(e), 1);
   console.log(`
@@ -689,12 +766,22 @@ for (const e of valid) {
 const writtenMembers0 = new Set();
 const newCounts = { members: 0, accounts: 0, sales: 0, payments: 0, paymentsOnExistingAccounts: 0 };
 for (const e of valid) {
-  if (!existingIds.has(e.member.id) && !writtenMembers0.has(e.member.id)) { writtenMembers0.add(e.member.id); newCounts.members++; }
+  if (!e.redirect && !existingIds.has(e.member.id) && !writtenMembers0.has(e.member.id)) { writtenMembers0.add(e.member.id); newCounts.members++; }
   if (!existingIds.has(e.id)) newCounts.accounts++;
   if (e.sale && !existingIds.has(hashId("SALE", e.sale.ref))) newCounts.sales++;
   const fresh = e.payments.filter((pay) => !existingIds.has(pay.id)).length;
   newCounts.payments += fresh;
   if (existingIds.has(e.id)) newCounts.paymentsOnExistingAccounts += fresh;
+}
+// Unknown program labels: the programs here that carry the same number, so the right one can be put in
+// config/legacy-programs.json (aliases).
+if (unknownLabels.size) {
+  console.log("\nProgram labels not found, and the programs on this database with the same number:");
+  for (const label of [...unknownLabels].sort()) {
+    const digits = /\d{3,}/.exec(str(label))?.[0] ?? "";
+    const near = digits ? programs.filter((p) => `${p.code} ${p.name}`.replace(/\D/g, " ").split(" ").includes(digits)) : [];
+    console.log(`  "${label}" → ${near.length ? near.map((p) => `${p.id} code "${p.code}" name "${p.name}"`).join("; ") : "none"}`);
+  }
 }
 console.log(`\nNot yet in the database (would be written): ${newCounts.members} members, ${newCounts.accounts} accounts, ${newCounts.sales} New Sales, ${newCounts.payments} collections (${newCounts.paymentsOnExistingAccounts} of them on accounts already in the database).`);
 if (heldNew.length) {
@@ -726,8 +813,9 @@ const memberNumberFor = (member) => {
 const out = { Members: [], "Member programs": [], Sales: [], Beneficiaries: [], Collections: [] };
 const writtenMembers = new Set();
 for (const e of valid) {
-  const m = e.member, s = e.sale, number = memberNumberFor(m);
-  if (!existingIds.has(m.id) && !writtenMembers.has(m.id)) {
+  // A redirected account (moved or merged since) keeps its own member and PH number.
+  const m = e.redirect ? { ...e.member, id: e.redirect.memberId } : e.member, s = e.sale, number = e.redirect ? e.redirect.number : memberNumberFor(m);
+  if (!e.redirect && !existingIds.has(m.id) && !writtenMembers.has(m.id)) {
     writtenMembers.add(m.id);
     const p = m.parsed, f = m.first;
     // The old tabs have no member contact: the claimant's number is used (owner's decision 2026-10-06).

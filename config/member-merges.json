@@ -1,0 +1,38 @@
+{
+  "note": "One person registered as two members (Exceptions: same name and birthdate), merged by scripts/merge-members.mjs. keep / other: PH numbers. The old-sheet member (older PH number) is kept; with useOtherName the kept member takes the other's name (the full middle name).",
+  "merges": [
+    {
+      "keep": "PH-49932331",
+      "other": "PH-46025352",
+      "note": "FLORENCIO DELA PEÑA PAL (MAWAB, born 1969-06-17): old-sheet 350 account and old web app 320 account (owner confirmed, October 10, 2026: same person, two programs)"
+    },
+    {
+      "keep": "PH-91356999",
+      "other": "PH-34868084",
+      "note": "EVANGELINE ALAYAO ANTAO (CALINAN, born 1969-04-13): old-sheet 350 and D-350 accounts and old web app DCA-400 account (owner confirmed, October 10, 2026: same person, two programs); the right spelling is ALAYAO (owner), so the kept member takes the other record's name",
+      "useOtherName": true
+    },
+    {
+      "keep": "PH-75758031",
+      "other": "PH-56308911",
+      "note": "LUDEL ESTAPON DISTOR (CALINAN, born 1980-04-01): two old web app records, DCA-400 and DS-430 (owner confirmed, October 10, 2026: same person, two programs)"
+    },
+    {
+      "keep": "PH-91911865",
+      "other": "PH-01584085",
+      "note": "WENNIE ANSANO DELOS REYES (CALINAN, born 1984-06-17): two old web app records, DCA-400 and 320 (owner confirmed, October 10, 2026: same person, two programs)"
+    },
+    {
+      "keep": "PH-53902048",
+      "other": "PH-74332056",
+      "useOtherName": true,
+      "note": "BERNADETH CASTILLO ABELLA (NABUNTURAN, born 1964-09-03): old-sheet 350 account and old web app DS-430 account; full middle name kept (owner confirmed, October 10, 2026: same person, two programs)"
+    },
+    {
+      "keep": "PH-93037258",
+      "other": "PH-22071856",
+      "useOtherName": true,
+      "note": "GETOLIO GALVE CALABIO (NABUNTURAN, born 1958-06-10): old-sheet 350 account and old web app DS-430 account; full middle name kept (owner confirmed, October 10, 2026: same person, two programs)"
+    }
+  ]
+}

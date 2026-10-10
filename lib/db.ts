@@ -33,7 +33,10 @@ const shared = globalThis as typeof globalThis & { dayongDb?: Database; dayongTx
 function connect(maxPipeline: number, max: number): Database {
   const url = readServerVariable("DATABASE_URL");
   if (!url) throw new ServerConfigurationError(["DATABASE_URL"]);
-  const options = { prepare: false, max, max_pipeline: maxPipeline, idle_timeout: 20, connect_timeout: 10 } as postgres.Options<Record<string, never>>;
+  // idle_timeout closes a connection unused for 20 s. A script that keeps the CPU busy for longer (parsing a large
+  // workbook) can have it fire just as a query is sent ("CONNECTION_CLOSED"), so scripts may turn it off (0).
+  const idle = Number(process.env.DAYONG_DB_IDLE_TIMEOUT ?? 20);
+  const options = { prepare: false, max, max_pipeline: maxPipeline, idle_timeout: Number.isFinite(idle) ? idle : 20, connect_timeout: 10 } as postgres.Options<Record<string, never>>;
   return drizzle(postgres(url, options), { schema }) as unknown as Database;
 }
 
