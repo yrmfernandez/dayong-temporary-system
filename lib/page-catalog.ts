@@ -19,7 +19,8 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
     { href: "/fidelity", label: "Fidelity" },
   ] },
   { group: "Reports", pages: [
-    { href: "/reports", label: "Reports (daily to yearly)" },
+    { href: "/reports", label: "Reports (own encoding, daily to yearly)" },
+    { href: "/company-reports", label: "Company Reports (every branch)" },
     { href: "/soa", label: "Statement of Account" },
     { href: "/audit", label: "Audits" },
     { href: "/admin-reports", label: "Report Review" },

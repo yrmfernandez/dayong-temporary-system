@@ -8,8 +8,9 @@ import { addReportRemark, getReportRemarks } from "@/lib/report-remarks";
 export async function GET(request: Request) {
   const user = await getSessionUser();
   if (!user) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
-  // Report Review (/admin-reports) reads the same report, so its viewers (e.g. CEO/President) may load it.
-  if (!canAccessPath(user, "/reports") && !canAccessPath(user, "/admin-reports")) return Response.json({ success: false, message: "You do not have access to reports." }, { status: 403 });
+  // The company-wide report: Company Reports, and Report Review's viewers (e.g. CEO/President). An Entry Clerk's own
+  // report comes from /api/clerk-report instead.
+  if (!canAccessPath(user, "/company-reports") && !canAccessPath(user, "/admin-reports")) return Response.json({ success: false, message: "You do not have access to Company Reports." }, { status: 403 });
   try {
     const query = new URL(request.url).searchParams;
     // Report Review shows only what Entry Clerks encoded, and its encoder filter lists only Entry Clerks.

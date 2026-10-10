@@ -27,10 +27,13 @@ export function getDb(): Database {
   if (!shared.dayongDb) {
     const url = readServerVariable("DATABASE_URL");
     if (!url) throw new ServerConfigurationError(["DATABASE_URL"]);
-    // max_pipeline 1: Supabase's transaction pooler can stall when several queries are pipelined on one connection
-    // (seen October 5, 2026: concurrent reads never returned). One query at a time per connection avoids it.
+    // max_pipeline 0: Supabase's transaction pooler stalls when a second query is sent on a connection before the first
+    // has answered (seen October 5, 2026: concurrent reads never returned). postgres.js counts only the queries waiting
+    // behind the running one, so max_pipeline 1 still allowed two at a time; the Audits page (every clerk's report at
+    // once) hung until Vercel cut it off, and one reply was even read as another query's rows (October 10, 2026).
+    // 0 sends one query at a time per connection; measured: 30 page loads at once, 3.5 s, none failed.
     // max_pipeline is a postgres.js option its TypeScript types do not list.
-    const options = { prepare: false, max: 10, max_pipeline: 1, idle_timeout: 20, connect_timeout: 10 } as postgres.Options<Record<string, never>>;
+    const options = { prepare: false, max: 10, max_pipeline: 0, idle_timeout: 20, connect_timeout: 10 } as postgres.Options<Record<string, never>>;
     const client = postgres(url, options);
     shared.dayongDb = drizzle(client, { schema }) as unknown as Database;
   }

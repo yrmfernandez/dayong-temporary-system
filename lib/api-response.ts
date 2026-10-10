@@ -1,8 +1,9 @@
+import { explainServerFailure } from "@/lib/friendly-api-errors";
+
 export async function readApiResponse(response: Response) {
   if (!response.headers.get("content-type")?.includes("application/json")) {
-    if (response.status === 404) throw new Error("This API route is unavailable. Restart the development server and refresh this page.");
     if (response.redirected) throw new Error("Your session may have expired. Sign in again and refresh this page.");
-    throw new Error(`The server returned an unexpected response (${response.status}). Please refresh or check the server logs.`);
+    throw new Error(explainServerFailure(response.status, await response.text().catch(() => "")));
   }
   return response.json();
 }

@@ -55,6 +55,13 @@ test("HR and Finance receive separate workspaces", () => {
   assert.equal(access(["HR Officer"], "/attendance-tracking"), true);
 });
 
+test("Company Reports is for administrators, CEO and President by default, not Entry Clerks", () => {
+  assert.equal(access(["Administrator"], "/company-reports"), true);
+  assert.equal(access(["CEO"], "/company-reports"), true);
+  assert.equal(access(["Entry Clerk"], "/company-reports"), false);
+  assert.equal(access(["Entry Clerk"], "/reports"), true, "their own report stays on Reports");
+});
+
 test("every role opens My Notices, even when its page access was configured without it", () => {
   for (const role of ["MAS", "Entry Clerk", "Finance", "HR Officer", "IT Clerk", "CEO", "President"]) assert.equal(access([role], "/my-notices"), true, role);
   assert.equal(canAccessPath({ roleNames: ["MAS"], permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false }, rolePages: { mas: ["/mas-sales"] } }, "/my-notices"), true);
@@ -62,7 +69,7 @@ test("every role opens My Notices, even when its page access was configured with
 
 test("CEO and President open the dashboard, User Report Review, MAM, Members, and attendance pages", () => {
   for (const role of ["CEO", "President"]) {
-    for (const path of ["/", "/admin-reports", "/mam", "/members", "/attendance", "/attendance-tracking", "/settings"]) assert.equal(access([role], path), true, `${role} ${path}`);
+    for (const path of ["/", "/company-reports", "/admin-reports", "/mam", "/members", "/attendance", "/attendance-tracking", "/settings"]) assert.equal(access([role], path), true, `${role} ${path}`);
     for (const path of ["/reports", "/remittances", "/programs", "/fidelity", "/leave-requests", "/payroll"]) assert.equal(access([role], path), false, `${role} ${path}`);
   }
 });

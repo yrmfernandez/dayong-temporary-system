@@ -9,7 +9,11 @@ import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { executiveRoles, type AccessContext } from "@/lib/access-control";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
+import { installFriendlyApiErrors } from "@/lib/friendly-api-errors";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+
+// Plain-text server failures read as a clear message on every page, not "Unexpected token" (lib/friendly-api-errors.ts).
+installFriendlyApiErrors();
 import { ACTIVE_ROLE_COOKIE, onPreferencesChange, preferenceKeys, readDensity, readPreference, writeActiveRoleCookie, writePreference } from "@/lib/ui-preferences";
 
 const safeDecode = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };

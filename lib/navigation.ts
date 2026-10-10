@@ -28,8 +28,8 @@ const page = {
   myFidelity: { name: "My Fidelity", href: "/fidelity/me", icon: PiggyBank },
   // Daily, Weekly, Monthly and Yearly are tabs on the Reports page.
   reports: { name: "Reports", href: "/reports", icon: ChartNoAxesColumnIncreasing },
-  // The same page in the Administrator workspace shows the company's report (app/reports/page.tsx).
-  companyReports: { name: "Company Reports", href: "/reports", icon: ChartNoAxesColumnIncreasing },
+  // Every branch's figures for a period (app/company-reports/page.tsx); Reports is the user's own encoding report.
+  companyReports: { name: "Company Reports", href: "/company-reports", icon: BarChart3 },
   userReports: { name: "Report Review", href: "/admin-reports", icon: FileSearch },
   soa: { name: "Statement of Account", href: "/soa", icon: ScrollText },
   dailyAudit: { name: "Audits", href: "/audit", icon: ClipboardCheck },
@@ -69,7 +69,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Overview", items: [page.dashboard, page.todaysEntries, page.exceptions] },
     { title: "Operations", items: [page.clearing, page.newSales, page.masSales, page.collections, page.myEntries, page.remittances, page.mam] },
     { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.payroll, page.fidelity] },
-    { title: "Reports", items: [page.companyReports, page.soa, page.dailyAudit, page.userReports] },
+    { title: "Reports", items: [page.reports, page.companyReports, page.soa, page.dailyAudit, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
     { title: "Master Data", items: [page.members, page.programs, page.branches] },
     { title: "Administration", items: [page.userAccounts, page.roles, page.auditLog] },
@@ -77,7 +77,7 @@ const workspaces: Record<string, NavSection[]> = {
   ],
   executive: [
     { title: "Overview", items: [page.dashboard] },
-    { title: "Reports", items: [page.userReports, page.mam, page.soa] },
+    { title: "Reports", items: [page.companyReports, page.userReports, page.mam, page.soa] },
     { title: "Directory", items: [page.members] },
     { title: "People", items: [page.attendanceTracking] },
     { title: "My HR", items: [page.attendance, page.myNotices] },

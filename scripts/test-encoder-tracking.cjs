@@ -1201,8 +1201,8 @@ test('pages granted to a role appear in the section where they belong, not under
   const { visibleNavigation } = harness().load('lib/navigation.ts');
   const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };
   const titles = (sections) => Object.fromEntries(sections.map((section) => [section.title, section.items.map((item) => item.href)]));
-  // CEO / President list the Statement of Account under Reports by default.
-  assert.deepEqual(titles(visibleNavigation('CEO', { roleNames: ['CEO'], permissions })).Reports, ['/admin-reports', '/mam', '/soa']);
+  // CEO / President list Company Reports and the Statement of Account under Reports by default.
+  assert.deepEqual(titles(visibleNavigation('CEO', { roleNames: ['CEO'], permissions })).Reports, ['/company-reports', '/admin-reports', '/mam', '/soa']);
   // Configured page access: SOA joins Reports, Expenses opens a Finance section, Programs joins Members in Directory.
   const configured = titles(visibleNavigation('President', { roleNames: ['President'], permissions, rolePages: { president: ['/admin-reports', '/members', '/expenses', '/programs', '/attendance'] } }));
   assert.equal(configured.More, undefined);

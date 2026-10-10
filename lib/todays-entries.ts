@@ -97,6 +97,10 @@ function prefilter(kind: "sales" | "collections", from: string, to: string, mode
   if (encodedBy) conditions.push(sql`encoded_by_employee_id = ${encodedBy}`);
   if (person) conditions.push(kind === "sales" ? sql`lower(trim(mas)) = ${person.toLowerCase()}` : sql`lower(trim(coalesce(nullif(trim(accountable_name), ''), mas))) = ${person.toLowerCase()}`);
   const created = kind === "sales" ? sql`coalesce(encoded_at, date_created)` : sql`coalesce(encoded_at, created_at)`;
+  // "By date encoded" means encoded in this system. Imported old data has no encoder and carries its import date
+  // (about 60,000 rows on October 1, 4 and 8, 2026), so it is left out here: before this, any range covering those days
+  // read every imported row and could take minutes (October 10, 2026).
+  if (mode === "encoded" && !encodedBy) conditions.push(sql`coalesce(encoded_by_employee_id, '') <> ''`);
   if (from > "2000-01-01" || mode !== "encoded") {
     if (mode === "encoded") conditions.push(sql`(${created})::date between ${low} and ${high}`);
     else if (mode === "or") conditions.push(kind === "sales" ? sql`coalesce(or_date, (date_created)::date) between ${low} and ${high}` : sql`or_date between ${low} and ${high}`);

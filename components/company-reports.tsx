@@ -53,10 +53,10 @@ function group(sales: ReportLine[], collections: ReportLine[], key: (line: Repor
 const csvCell = (value: string | number) => { const text = String(value); return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; };
 
 /**
- * The company's own report for administrators (owner, October 10, 2026): every branch's New Sales and Collections for
- * a period (from /api/reports, lib/reports.ts), with the cash picture (company share, expenses, approved remittances,
- * bank deposits) and breakdowns by branch, program, MAS/Collector, day and Entry Clerk. Entry Clerks' own reports are
- * reviewed in Report Review, so this page no longer repeats them for administrators.
+ * The company's own report (owner, October 10, 2026; page /company-reports for administrators, CEO and President):
+ * every branch's New Sales and Collections for a period (from /api/reports, lib/reports.ts), with the cash picture
+ * (company share, expenses, approved remittances, bank deposits) and breakdowns by branch, program, MAS/Collector, day
+ * and Entry Clerk. Each user's own encoding report stays on Reports.
  */
 export function CompanyReports() {
   const [period, setPeriod] = useState<Period>("month");

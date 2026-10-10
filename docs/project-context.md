@@ -314,6 +314,19 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### Audits error and pages that hang (2026-10-10)
+
+- **Owner:** Audits shows "Unexpected token 'A', "An error o"... is not valid JSON", and not only there.
+- **Found:** the server never answered (Vercel's plain-text error page). The database driver pipelined two queries per connection (`max_pipeline: 1` allows two), which Supabase's transaction pooler stalls on; Audits builds every clerk's report at once and hung (on staging it never finished; once a reply was read as another query's rows). Also, "by date encoded" ranges read every imported row (about 60,000, dated by their import on October 1, 4 and 8).
+- **Done:** `max_pipeline: 0` in `lib/db.ts` (Audits about 2 s; 30 page loads at once 3.5 s, none failed, before about 5 minutes with failures); imported rows left out of "by date encoded" views; every page shows a plain message when the server fails instead of the JSON error.
+- **To do (owner):** deploy, then open Audits (daily, weekly, monthly). If any page still fails, note the page and the time.
+
+### Reports and Company Reports (2026-10-10)
+
+- **Owner:** keep Reports (the admin's own encoding report) and Company Reports both; Company Reports must be in Roles and given to CEO / President.
+- **Done:** Company Reports moved to its own page `/company-reports` (sidebar for Administrator and CEO / President; Roles → Page access lists it). Reports is back to the user's own report for everyone. `/api/reports` (company figures) now needs Company Reports or Report Review access.
+- **To do (owner):** if CEO or President has page access configured in Roles, tick "Company Reports (every branch)" there (defaults apply only to roles without a configured list).
+
 ### SOA total paid (2026-10-10)
 
 - **Owner:** on the SOA, Total paid is the latest NOP times the monthly pay; for a flexible program, all the amounts paid added up.
