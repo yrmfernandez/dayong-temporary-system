@@ -1,6 +1,7 @@
 import { getDeposits, getReportNotes, type BankDeposit } from "@/lib/clerk-cash";
 import { periodSpan, type AuditPeriod } from "@/lib/daily-audit";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { expectedByMas, type Expected } from "@/lib/mas-expected";
 import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
 
 /**
@@ -13,7 +14,8 @@ import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
  * - The cash summary: Cash Beg/Pending COH (the clerk's remaining cash on hand before the period), Sales Net, Collection
  *   Net, Fidelity Bond, Pending cash to be encoded, Total Cash In; Expenses, Cash forwarded to bank, Total Cash Out;
  *   Remaining Cash on Hand = Total Cash In - Total Cash Out.
- * - The clerk's remarks, and the per-MAS summary sheet (New Member and Collection by Marketing Account Staff).
+ * - The clerk's remarks, and the per-MAS summary sheet (New Member and Collection by Marketing Account Staff), whose
+ *   CVE (%) columns compare each MAS's collections with what their accounts owed in the period (lib/mas-expected.ts).
  *
  * The clerk sees only their own; Report Review and Audits open any clerk's.
  */
@@ -123,8 +125,15 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
     addTo(entry.kind === "New Sale" ? row.sales : row.collections, entry);
     byMas.set(name, row);
   }
-  const masRows = [...byMas.values()].sort((a, b) => a.name.localeCompare(b.name));
   const branches = [...new Set(entries.map((entry) => entry.branch).filter(Boolean))];
+  // CVE (%): what each MAS was expected to collect in the period (lib/mas-expected.ts); CVE% = Collection GROSS ÷ CVE GROSS.
+  const expected = await expectedByMas(start, end, branches.length ? branches : [clerk.branch ?? ""]);
+  const cveOf = (name: string, collected: number) => {
+    const due: Expected = expected.get(name.trim().toLowerCase()) ?? { accounts: 0, gross: 0 };
+    return { accounts: due.accounts, gross: due.gross, percent: due.gross > 0 ? round((collected / due.gross) * 100) : null };
+  };
+  const masRows = [...byMas.values()].sort((a, b) => a.name.localeCompare(b.name)).map((row) => ({ ...row, cve: cveOf(row.name, row.collections.gross) }));
+  const cveTotal = masRows.reduce((total, row) => ({ accounts: total.accounts + row.cve.accounts, gross: round(total.gross + row.cve.gross) }), { accounts: 0, gross: 0 });
 
   return {
     company: COMPANY, kind, from: start, to: end, ...headings(kind, start, end),
@@ -139,7 +148,8 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
       expenses: expenseTotal, forwardedToBank: depositTotal, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,
     },
     notes,
-    masSummary: { title: `REPORT FOR ${MONTHS[parts(start).month - 1].toUpperCase()} ${parts(start).year}`, rows: masRows, total: { sales: sum(sales), collections: sum(collections) } },
+    masSummary: { title: `REPORT FOR ${MONTHS[parts(start).month - 1].toUpperCase()} ${parts(start).year}`, rows: masRows, total: { sales: sum(sales), collections: sum(collections),
+      cve: { ...cveTotal, percent: cveTotal.gross > 0 ? round((sum(collections).gross / cveTotal.gross) * 100) : null } } },
     // Kept for audits, which store these totals with their findings.
     totals: { accounts: entries.length, gross: round(newSales.total.gross + collection.total.gross), incentives: round(newSales.total.incentives + collection.total.incentives), net: round(newSales.total.net + collection.total.net), fidelity },
     checks: {

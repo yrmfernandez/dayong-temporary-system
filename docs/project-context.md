@@ -314,6 +314,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### Per-MAS report CVE (%) (2026-10-11)
+
+- **Owner:** add the per-MAS "New Member and Collection" report (weekly, monthly, yearly) for Entry Clerks; the sheet's CVE% is G/J (Collection GROSS ÷ CVE GROSS).
+- **Found:** the sheet already exists on the Weekly, Monthly and Yearly tabs of Reports and Report Review (below the main report, printed on its own page); only CVE was blank.
+- **Done:** CVE ACCTS / GROSS = the MAS's open accounts in the report's branch with a monthly due in the period and those dues; CVE% = Collection GROSS ÷ CVE GROSS × 100. Tested.
+
 ### Latest old Google Sheet download (2026-10-10)
 
 - **Owner:** uploaded the latest `legacy-data/old-data/2026 DATABASE (NS + COLL).xlsx`; migrate the new rows.

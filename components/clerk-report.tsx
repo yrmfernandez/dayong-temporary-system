@@ -297,6 +297,8 @@ function Check({ label, value }: { label: string; value: string }) {
 /** The summary sheet: New Member and Collection by Marketing Account Staff for the period. */
 function MasSummary({ report }: { report: Report }) {
   const line = (sales: ReportLine, collections: ReportLine) => [String(sales.accounts || ""), money(sales.gross), money(sales.incentives), String(collections.accounts || ""), money(collections.gross), money(collections.incentives)];
+  // CVE (%): accounts due and amount due in the period, and Collection GROSS ÷ CVE GROSS (the sheet's G/J).
+  const cve = (value: { accounts: number; gross: number; percent: number | null }) => [String(value.accounts || ""), value.gross ? money(value.gross) : "", value.percent === null ? "—" : `${value.percent.toFixed(2)}%`];
   return (
     <div className="clerk-report-sheet overflow-x-auto rounded-xl border bg-card p-3 text-[13px] text-card-foreground print:break-before-page print:border-0">
       <div className="min-w-[760px] space-y-2">
@@ -318,10 +320,10 @@ function MasSummary({ report }: { report: Report }) {
           </thead>
           <tbody>
             {report.masSummary.rows.map((row, index) => (
-              <tr key={row.name}><td className="border p-1 text-center">{index + 1}</td><td className="border p-1 font-semibold">{row.name}</td>{line(row.sales, row.collections).map((value, cell) => <td key={cell} className="border p-1 text-right tabular-nums">{value}</td>)}<td className="border p-1 text-center text-muted-foreground" colSpan={3}>—</td></tr>
+              <tr key={row.name}><td className="border p-1 text-center">{index + 1}</td><td className="border p-1 font-semibold">{row.name}</td>{[...line(row.sales, row.collections), ...cve(row.cve)].map((value, cell) => <td key={cell} className="border p-1 text-right tabular-nums">{value}</td>)}</tr>
             ))}
             {!report.masSummary.rows.length && <tr><td colSpan={11} className="border p-3 text-center text-muted-foreground">Nothing encoded in this period.</td></tr>}
-            <tr className="bg-blue-950 font-bold text-white"><td colSpan={2} className="p-1.5 text-center">Total</td>{line(report.masSummary.total.sales, report.masSummary.total.collections).map((value, cell) => <td key={cell} className="p-1.5 text-right tabular-nums">{value}</td>)}<td colSpan={3} className="p-1.5 text-center">—</td></tr>
+            <tr className="bg-blue-950 font-bold text-white"><td colSpan={2} className="p-1.5 text-center">Total</td>{line(report.masSummary.total.sales, report.masSummary.total.collections).map((value, cell) => <td key={cell} className="p-1.5 text-right tabular-nums">{value}</td>)}{cve(report.masSummary.total.cve).map((value, cell) => <td key={`cve-${cell}`} className="p-1.5 text-right tabular-nums">{value}</td>)}</tr>
           </tbody>
         </table>
       </div>

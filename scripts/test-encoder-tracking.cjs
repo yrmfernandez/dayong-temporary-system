@@ -713,6 +713,26 @@ test('Programs → Transfer members moves, merges or leaves each account, only t
   assert.equal((await route.GET(new Request('http://localhost/api/programs/transfer?program=DP-NEW'))).status, 403, 'administrators only');
 });
 
+test('per-MAS report CVE: what each MAS was expected to collect in the period', async () => {
+  const h = harness();
+  const { duesIn, expectedByMas } = h.load('lib/mas-expected.ts');
+  // Monthly dues on the DOI's day from the month after the DOI (the last day of a shorter month).
+  assert.deepEqual(duesIn('2026-01-31', '2026-02-01', '2026-04-30'), ['2026-02-28', '2026-03-31', '2026-04-30']);
+  assert.deepEqual(duesIn('2026-10-03', '2026-10-01', '2026-10-31'), [], 'the DOI month is the New Sale');
+  assert.deepEqual(duesIn('2026-08-05', '2026-10-05', '2026-10-11'), ['2026-10-05'], 'a week holds the dues that fall in it');
+  await seed('programs', [{ program_id: 'DP-1', program_name: 'P', base_pay: 300 }]);
+  await seed('members', [1, 2, 3].map((n) => ({ member_id: `M${n}`, member_number: `PH-${n}`, surname: 'S', first_name: 'A' })));
+  await seed('member_programs', [
+    { enrollment_id: 'E1', member_id: 'M1', member_number: 'PH-1', program_id: 'DP-1', doi: '2026-06-10', branch: 'BUHANGIN', mas: 'INTAS, BELLOSA', status: 'Active', account_status: 'U' },
+    { enrollment_id: 'E2', member_id: 'M2', member_number: 'PH-2', program_id: 'DP-1', doi: '2026-09-20', branch: 'Buhangin', mas: 'Intas, Bellosa', status: 'Active', account_status: '60D' },
+    { enrollment_id: 'E3', member_id: 'M3', member_number: 'PH-3', program_id: 'DP-1', doi: '2026-05-01', branch: 'BUHANGIN', mas: 'INTAS, BELLOSA', status: 'Active', account_status: 'Forfeited' },
+  ]);
+  const month = await expectedByMas('2026-10-01', '2026-10-31', ['BUHANGIN']);
+  assert.deepEqual(month.get('intas, bellosa'), { accounts: 2, gross: 600 }, 'two open accounts due in October; the forfeited one is not expected');
+  const year = await expectedByMas('2026-01-01', '2026-12-31', ['BUHANGIN']);
+  assert.deepEqual(year.get('intas, bellosa'), { accounts: 2, gross: 300 * (6 + 3) }, 'yearly adds every month due (July–December and October–December)');
+});
+
 test('all mutation routes reject unauthenticated requests before writing', async () => {
   const h = harness(null);
   for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals', 'finance-options', 'vendor-payables', 'commissions']) {
