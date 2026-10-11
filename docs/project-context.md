@@ -314,6 +314,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### Clearing lines that never finished (2026-10-11)
+
+- **Owner:** Jenny's clearings are only for New Sales and Jo-ann's only for Collections, but their existing lines (made before Clearing asked what is remitted) count as both, so they wait for the other kind forever.
+- **Done:** `scripts/set-clearing-covers.mjs --clerk=<name or ID> --covers=NewSales|Collections|Both` (dry run; `--apply`) sets every clearing a clerk made (not Removed) to that kind; each line then follows only its own entries and leaves once they are approved.
+- **To do (owner):** `npm run prod -- node scripts/set-clearing-covers.mjs --clerk=JENNY --covers=NewSales` and `--clerk=JO-ANN --covers=Collections`, then each with `--apply`. From now on they tick the right kind when clearing.
+
 ### Per-MAS report CVE (%) (2026-10-11)
 
 - **Owner:** add the per-MAS "New Member and Collection" report (weekly, monthly, yearly) for Entry Clerks; the sheet's CVE% is G/J (Collection GROSS ÷ CVE GROSS).
