@@ -810,7 +810,7 @@ test('Clearing: no encoding without it, and its time is when the cash was receiv
   await seedAccount({ doi: month + '-01' });
   await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
   await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
-  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: 'OR-C1', orDate: today };
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 C', orDate: today };
   // ₱350 at a ₱50 mark-up and 50% MAS incentive: the MAS keeps ₱150 and remits ₱200. Paid by GCash, so it waits for
   // its receipt photo (cash would go to approval at once).
   const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] };
@@ -879,8 +879,8 @@ test('collection batch is encoded atomically without creating a remittance', asy
   h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, true, 'active']];
   // The New Sale is NOP 1 (DOI month), so the first collection is NOP 2 for the following month.
   const afterNext = h.load('lib/account-rules.ts').monthName(h.load('lib/account-rules.ts').monthIndex(month) + 2);
-  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: 'OR-1', orDate: today };
-  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', controlTotal: 580, collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: 'OR-2' }] };
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 B', orDate: today };
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', controlTotal: 580, collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: '1002 B' }] };
   const route = h.load('app/api/collections/route.ts');
   // The reference number is optional since October 8, 2026 (the receipt photo is the proof): a GCash batch without one is
   // not refused for it, and fails only on the next check (the turnover total).
@@ -921,7 +921,11 @@ test('collection batch is encoded atomically without creating a remittance', asy
   // The status change is in the Audit Log with the signed-in user, written by the database itself.
   assert.deepEqual(await query('select action, table_name, record_id, employee_id from audit_log'), [{ action: 'update', table_name: 'member_programs', record_id: 'ENR-1', employee_id: 'DPE-0001' }]);
   // Paying the same months again is refused against the saved payments.
-  assert.equal((await route.POST(request({ ...batch, collections: [{ ...entry, orNumber: 'OR-3' }], controlTotal: 200 }))).status, 400);
+  assert.equal((await route.POST(request({ ...batch, collections: [{ ...entry, orNumber: '1003 B' }], controlTotal: 200 }))).status, 400);
+  // An OR number must end with its branch letter (lib/or-number.ts).
+  const bare = await route.POST(request({ ...batch, collections: [{ ...entry, orNumber: '1004' }], controlTotal: 200 }));
+  assert.equal(bare.status, 400);
+  assert.match((await bare.json()).message, /needs the branch letter/);
   assert.equal(result.remittanceId, undefined);
   assert.equal(result.grossCollection, 700);
   assert.match(result.message, /₱50.00 penalty/);

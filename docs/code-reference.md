@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 62 API handlers, 111 library files, 47 component files; 382 scanned source/configuration/public-text files in total.
+42 page routes, 62 API handlers, 112 library files, 47 component files; 383 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -20,7 +20,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/branches` | [app/branches/page.tsx](../app/branches/page.tsx) | `@/components/ui/badge`, `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/lib/use-live-refresh` |
 | `/cash-transactions` | [app/cash-transactions/page.tsx](../app/cash-transactions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/clearing` | [app/clearing/page.tsx](../app/clearing/page.tsx) | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/clearing`, `@/lib/use-live-refresh` |
-| `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/clearing-picker`, `@/lib/enter-to-next`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/receipt-photo`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance` |
+| `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/clearing-picker`, `@/lib/enter-to-next`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/receipt-photo`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance`, `@/lib/or-number` |
 | `/commissions` | [app/commissions/page.tsx](../app/commissions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/company-reports` | [app/company-reports/page.tsx](../app/company-reports/page.tsx) | `@/components/company-reports` |
 | `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/bulk-member-transfer`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password`, `@/components/nte-panel`, `@/lib/use-live-refresh` |
@@ -166,7 +166,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/enter-to-next.ts](../lib/enter-to-next.ts) | `enterToNextField` | — |
 | [lib/entry-batches.ts](../lib/entry-batches.ts) | `saleBatchKey`, `cashMethodNames`, `isCashMethod` | `@/lib/remittance-methods` |
 | [lib/entry-controls.ts](../lib/entry-controls.ts) | `BACKDATE_REASON_MIN`, `needsBackdateReason`, `checkBackdate`, `controlTotalProblem`, `isIncompleteApplicationNumber`, `INCOMPLETE_APPLICATION_MESSAGE` | `@/lib/remittance-deadline` |
-| [lib/entry-corrections.ts](../lib/entry-corrections.ts) | `correctSaleOrCollection` | `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/remittance-deadline`, `@/lib/record-corrections` |
+| [lib/entry-corrections.ts](../lib/entry-corrections.ts) | `correctSaleOrCollection` | `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/remittance-deadline`, `@/lib/record-corrections`, `@/lib/or-number` |
 | [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/lib/db`, `@/lib/sheets-on-db`, `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/date-checks` |
 | [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/db`, `@/lib/company-targets`, `@/lib/remittance-deadline`, `@/lib/google-sheets` |
 | [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList` | — |
@@ -192,6 +192,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/navigation.ts](../lib/navigation.ts) | `NavItem`, `NavSection`, `normalizeRole`, `workspaceFor`, `routeMatches`, `visibleNavigation`, `isInWorkspace`, `locatePage`, `activeHref` | `@/lib/access-control` |
 | [lib/notifications.ts](../lib/notifications.ts) | `NotificationCounts`, `getNotificationCounts` | `@/lib/access-control`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/db`, `@/lib/clearing`, `@/lib/sale-submissions` |
 | [lib/nte.ts](../lib/nte.ts) | `NTE_DAYS`, `SUSPENSION_THRESHOLD`, `Nte`, `EXPLANATION_MAX`, `listNtes`, `issueNte`, `withdrawNte`, `listMyNtes`, `acknowledgeNte`, `explainNte`, `markNteReviewed` | `@/lib/db`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
+| [lib/or-number.ts](../lib/or-number.ts) | `OR_NUMBER_EXAMPLE`, `isValidOrNumber`, `orNumberProblem`, `normalizeOrNumber` | — |
 | [lib/page-catalog.ts](../lib/page-catalog.ts) | `pageCatalog`, `pageCatalogRoutes` | — |
 | [lib/passwords.ts](../lib/passwords.ts) | `ONE_TIME_PASSWORD_HOURS`, `generateOneTimePassword`, `hashPassword`, `hashOneTimePassword`, `oneTimePasswordExpiry`, `checkPassword` | — |
 | [lib/payroll-calc.ts](../lib/payroll-calc.ts) | `WORKING_DAYS_PER_YEAR`, `BaseType`, `PayProfile`, `PayrollSettings`, `defaultPayrollSettings`, `AttendanceDay`, `CommissionItem`, `PayrollLine`, `Adjustment`, `COMPANY_PROGRAM_CATEGORY`, `ADJUSTMENT_CATEGORIES`, `dailyRateOf`, `scheduledWorkingDays`, `computePayrollLine`, `lineTotals`, `runTotals` | — |
@@ -313,7 +314,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/clearing/open/route.ts](../app/api/clearing/open/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing` |
 | [app/api/clearing/route.ts](../app/api/clearing/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing`, `@/lib/encoder-context` |
 | [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clerk-report`, `@/lib/daily-audit`, `@/lib/employees`, `@/lib/remittance-deadline`, `@/lib/report-remarks`, `@/lib/clerk-cash`, `@/lib/encoder-context`, `@/lib/finance-data` |
-| [app/api/collections/route.ts](../app/api/collections/route.ts) | `GET`, `POST` | `@/lib/clearing`, `@/lib/remittance-workflow`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/db`, `@/lib/account-data`, `@/lib/account-rules`, `@/lib/remittance-methods`, `@/lib/remittance`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/duplicate-entries` |
+| [app/api/collections/route.ts](../app/api/collections/route.ts) | `GET`, `POST` | `@/lib/clearing`, `@/lib/or-number`, `@/lib/remittance-workflow`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/db`, `@/lib/account-data`, `@/lib/account-rules`, `@/lib/remittance-methods`, `@/lib/remittance`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/duplicate-entries` |
 | [app/api/commissions/route.ts](../app/api/commissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/earned-commissions`, `@/lib/encoder-context`, `@/lib/finance-operations` |
 | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/company-targets`, `@/lib/encoder-context` |
 | [app/api/dashboard/gross-sales/route.ts](../app/api/dashboard/gross-sales/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/gross-sales` |

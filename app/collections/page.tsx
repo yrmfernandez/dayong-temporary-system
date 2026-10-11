@@ -37,6 +37,7 @@ import {
 
 import type { Member } from "@/lib/types";
 import { calculateRemittance, tiersForBranch, type IncentiveTier } from "@/lib/remittance";
+import { isValidOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
 
 type CollectionChannel = "MAS" | "Collector" | "DTO";
 type PaymentMethodOption = { id: string; name: string; isCash: boolean; requiresReference: boolean };
@@ -619,8 +620,8 @@ export default function CollectionsPage() {
       return "Amount Collected must be greater than zero.";
     }
 
-    if (!entry.orNumber.trim()) {
-      return "OR Number is required.";
+    if (orNumberProblem(entry.orNumber)) {
+      return orNumberProblem(entry.orNumber);
     }
 
     // Each OR Number is one receipt; the server also checks every earlier batch.
@@ -1285,7 +1286,8 @@ export default function CollectionsPage() {
                                   </div>
                                   <div className="space-y-1">
                                     <Label>OR Number *</Label>
-                                    <Input value={entry.orNumber} onChange={(event) => updateCollection(entry.id, { orNumber: event.target.value })} placeholder="OR number" />
+                                    <Input value={entry.orNumber} onChange={(event) => updateCollection(entry.id, { orNumber: event.target.value })} placeholder={`e.g. ${OR_NUMBER_EXAMPLE}`} aria-invalid={Boolean(entry.orNumber.trim()) && !isValidOrNumber(entry.orNumber)} />
+                                    {entry.orNumber.trim() !== "" && !isValidOrNumber(entry.orNumber) && <p className="text-xs text-red-700">{orNumberProblem(entry.orNumber)}</p>}
                                   </div>
                                   <div className="space-y-1">
                                     <Label>OR Date *</Label>

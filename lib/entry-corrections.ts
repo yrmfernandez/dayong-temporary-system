@@ -2,6 +2,7 @@ import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/d
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { recordCorrection } from "@/lib/record-corrections";
+import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
@@ -32,10 +33,12 @@ export async function correctSaleOrCollection(body: Record<string, unknown>) {
   if (onRemittance && Math.round(amount * 100) !== Math.round(currentAmount * 100)) throw new Error(`This ${isSale ? "New Sale" : "Collection"} is on a Remittance, so its amount is corrected through reconciliation. OR number and OR date can still be fixed.`);
 
   const changesOr = !isSale || "orNumber" in body || "orDate" in body;
-  const orNumber = changesOr ? text(body.orNumber) : text(row[isSale ? 29 : 8]);
+  const orNumber = changesOr ? (isSale ? text(body.orNumber) : normalizeOrNumber(text(body.orNumber))) : text(row[isSale ? 29 : 8]);
   const orDate = changesOr ? text(body.orDate) : text(row[isSale ? 30 : 9]);
   if (changesOr) {
     if (!isSale && !orNumber) throw new Error("OR number is required.");
+    // A corrected OR number ends with its branch letter too (lib/or-number.ts); an unchanged old one may stay as it is.
+    if (!isSale && entryKey(orNumber) !== entryKey(row[8]) && orNumberProblem(orNumber)) throw new Error(orNumberProblem(orNumber));
     if ((!isSale || orDate) && (!validDate(orDate) || orDate > today)) throw new Error("Enter a valid OR date, today or earlier.");
     // Each OR number is one receipt; a correction must not reuse another entry's.
     if (!isSale && entryKey(orNumber) !== entryKey(row[8])) {

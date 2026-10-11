@@ -1,4 +1,5 @@
 import { clearingProblem } from "@/lib/clearing";
+import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -101,9 +102,12 @@ async function saveCollections(request: Request) {
         if (account.branch !== branch || account.mas !== mas) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch and MAS.`);
         const input = {
           monthFrom: String(entry.monthFrom ?? ""), monthTo: String(entry.monthTo ?? ""), nopFrom: Number(entry.nopFrom), nopTo: Number(entry.nopTo), amount: Number(entry.amountCollected),
-          orDate: String(entry.orDate ?? ""), orNumber: String(entry.orNumber ?? "").trim(), waiver: String(entry.ifSuspended ?? ""),
+          orDate: String(entry.orDate ?? ""), orNumber: normalizeOrNumber(String(entry.orNumber ?? "")), waiver: String(entry.ifSuspended ?? ""),
           collectedByRole: collectedBy, originalMas,
         };
+        // The OR number ends with the branch letter (lib/or-number.ts).
+        const orProblem = orNumberProblem(input.orNumber);
+        if (orProblem) throw new Error(`Collection for ${account.memberNumber}: ${orProblem}`);
         const backdateReason = String(entry.backdateReason ?? "").trim().slice(0, 300);
         checkBackdate(input.orDate, backdateReason, `Collection for ${account.memberNumber}`);
         const dateProblem = blockingDateProblem({ receiptDate: input.orDate, dateRemitted, today: manilaNow().date });

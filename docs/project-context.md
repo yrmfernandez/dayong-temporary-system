@@ -314,6 +314,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Done:** Attendance Review has tick boxes, Select all (respects the branch and role filters, so all MAS can be marked in one go) and Mark selected as; each row's four mark buttons became one **Mark as...** dropdown. The daily board always shows its selection bar to those who may mark.
 - **To do (if wanted):** a permanent per-employee setting ("never requires attendance") so MAS do not have to be marked each day; today it is a per-day mark.
 
+### OR numbers must end with a letter (2026-10-12)
+
+- **Owner:** the encoder must put one letter at the end of the OR number.
+- **Done:** Collections (form and save) and corrections of an OR number accept only digits followed by one letter (`12345 C` / `12345C`; the letter saved in capitals). New Sales have no OR number (they use the application number). Tested.
+
 ### Clearing lines that never finished (2026-10-11)
 
 - **Owner:** Jenny's clearings are only for New Sales and Jo-ann's only for Collections, but their existing lines (made before Clearing asked what is remitted) count as both, so they wait for the other kind forever.
