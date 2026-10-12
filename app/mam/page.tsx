@@ -195,6 +195,7 @@ export default function MamPage() {
         "Amount Received",
         "Covered Amount",
         "NOP",
+        "Month Of",
         "TMD",
         "Balance",
         "Suspended",
@@ -214,6 +215,7 @@ export default function MamPage() {
           period.collected,
           period.coveredAmount,
           period.state?.nop,
+          period.state ? period.state.lastCoveredMonth || row.doi.slice(0, 7) : "",
           period.state?.tmd,
           period.state?.balance,
           period.state?.temporarilySuspended ? "Yes" : "No",
@@ -557,6 +559,8 @@ export default function MamPage() {
                               <span className="text-right font-medium">
                                 {period.state.nop} / {money(period.state.tmd)}
                               </span>
+                              <span className="text-muted-foreground">Month of:</span>
+                              <span className="text-right font-medium">{monthLabel(period.state.lastCoveredMonth || row.doi.slice(0, 7))}</span>
                               <span className="font-semibold">Balance:</span>
                               <span className="text-right font-bold">
                                 {period.state.balance === null ? "—" : money(period.state.balance)}

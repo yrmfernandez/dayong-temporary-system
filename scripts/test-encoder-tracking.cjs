@@ -2216,6 +2216,7 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
     collection('COL-2', 'DPE-7', '2026-06-16T02:00:00.000Z', 700, 600),
     collection('COL-3', 'DPE-9', '2026-06-16T02:00:00.000Z', 999, 999),
   ];
+  h.rows.Collections[2][35] = 50; // a ₱50 penalty on COL-2, collected with the batch
   const sale = Array(44).fill(''); Object.assign(sale, { 0: 'SAL-1', 1: '2026-06-15T03:00:00.000Z', 2: 'AGDAO', 3: 'Maria', 21: 'DP-1', 26: 500, 30: '2026-06-15', 32: 'DPE-7', 33: 'Clerk', 34: '2026-06-15T03:00:00.000Z', 35: 'Outstanding', 41: 450 });
   h.rows.Sales = [[], sale];
   h.rows.Programs = [[], ['DP-1', 'CODE', 'Program']];
@@ -2227,14 +2228,14 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   assert.equal(report.reportName, 'WEEKLY REPORT');
   assert.equal(report.dateLine, 'WEEK 3 JUNE 15-21, 2026');
   assert.equal(report.summaryLabel, '3RD WEEKLY REPORT');
-  assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity]), [['6/15/2026', 1, 350, 50, 300, 20], ['6/16/2026', 1, 700, 100, 600, 0]], 'by date; the other clerk\'s COL-3 is not counted');
+  assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity, row.penalty]), [['6/15/2026', 1, 350, 50, 300, 20, 0], ['6/16/2026', 1, 700, 100, 600, 0, 50]], 'by date; the other clerk\'s COL-3 is not counted');
   assert.deepEqual([report.newSales.total.accounts, report.newSales.total.gross, report.newSales.total.incentives], [1, 500, 50]);
-  assert.deepEqual(report.cash, { cashBeg: 0, salesNet: 450, collectionNet: 900, fidelity: 20, pendingCash: 0, totalCashIn: 1370, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1270, totals: 1370 });
+  assert.deepEqual(report.cash, { cashBeg: 0, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, pendingCash: 0, totalCashIn: 1420, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
   assert.deepEqual(report.masSummary.rows.map((row) => [row.name, row.sales.accounts, row.collections.accounts, row.collections.gross]), [['Maria', 1, 2, 1050]]);
   // The next week starts with what was left: Cash Beg carries the remaining cash on hand.
   const next = await buildClerkReport('weekly', '2026-06-24', { employeeId: 'DPE-7', name: 'Clerk' });
-  assert.equal(next.cash.cashBeg, 1270);
-  assert.equal(next.cash.remainingCashOnHand, 1270);
+  assert.equal(next.cash.cashBeg, 1320, 'the penalty stays in the cash carried forward');
+  assert.equal(next.cash.remainingCashOnHand, 1320);
   assert.equal(report.checks.withPhoto, 0);
   const daily = await buildClerkReport('daily', '2026-06-15', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.deepEqual(daily.collection.rows.map((row) => row.label), ['Maria'], 'a day is grouped by MAS');

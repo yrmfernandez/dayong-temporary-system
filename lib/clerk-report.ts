@@ -12,7 +12,7 @@ import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
  * - Expenses / Other Cash Out (expenses the clerk encoded) and Cash Flow Transactions (cash the clerk forwarded to the
  *   bank, lib/clerk-cash.ts).
  * - The cash summary: Cash Beg/Pending COH (the clerk's remaining cash on hand before the period), Sales Net, Collection
- *   Net, Fidelity Bond, Pending cash to be encoded, Total Cash In; Expenses, Cash forwarded to bank, Total Cash Out;
+ *   Net, Fidelity Bond, Penalty (since October 12, 2026), Pending cash to be encoded, Total Cash In; Expenses, Cash forwarded to bank, Total Cash Out;
  *   Remaining Cash on Hand = Total Cash In - Total Cash Out.
  * - The clerk's remarks, and the per-MAS summary sheet (New Member and Collection by Marketing Account Staff), whose
  *   CVE (%) columns compare each MAS's collections with what their accounts owed in the period (lib/mas-expected.ts).
@@ -56,11 +56,12 @@ function whenLabel(kind: AuditPeriod, date: string) {
   return shortDate(date);
 }
 
-export type ReportLine = { label: string; accounts: number; gross: number; incentives: number; net: number; fidelity: number };
-const empty = (label: string): ReportLine => ({ label, accounts: 0, gross: 0, incentives: 0, net: 0, fidelity: 0 });
+// penalty: charged to the MAS/Collector and collected with the batch, separate from the member's payment (October 12, 2026).
+export type ReportLine = { label: string; accounts: number; gross: number; incentives: number; net: number; fidelity: number; penalty: number };
+const empty = (label: string): ReportLine => ({ label, accounts: 0, gross: 0, incentives: 0, net: 0, fidelity: 0, penalty: 0 });
 const addTo = (line: ReportLine, entry: DayEntry) => {
   line.accounts += 1; line.gross = round(line.gross + entry.amount); line.incentives = round(line.incentives + entry.incentive);
-  line.net = round(line.gross - line.incentives); line.fidelity = round(line.fidelity + entry.fidelity);
+  line.net = round(line.gross - line.incentives); line.fidelity = round(line.fidelity + entry.fidelity); line.penalty = round(line.penalty + entry.penalty);
 };
 const sum = (entries: DayEntry[]) => { const line = empty("TOTAL"); for (const entry of entries) addTo(line, entry); return line; };
 
@@ -108,11 +109,13 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const newSales = section(kind, sales), collection = section(kind, collections);
 
   // Cash Beg: what the clerk still held before the period (cash in less cash out), pending cash excluded.
-  const priorIn = before.reduce((total, entry) => total + entry.amount - entry.incentive + entry.fidelity, 0);
+  const priorIn = before.reduce((total, entry) => total + entry.amount - entry.incentive + entry.fidelity + entry.penalty, 0);
   const priorOut = expensesAll.filter((item) => item.date < start).reduce((total, item) => total + item.amount, 0) + depositsAll.filter((item) => item.date < start).reduce((total, item) => total + item.amount, 0);
   const cashBeg = round(priorIn - priorOut);
   const fidelity = round(newSales.total.fidelity + collection.total.fidelity);
-  const totalCashIn = round(cashBeg + newSales.total.net + collection.total.net + fidelity + notes.pendingCash);
+  // Penalties are cash the clerk receives with the batch (the turnover control total includes them), so they count in.
+  const penalty = round(newSales.total.penalty + collection.total.penalty);
+  const totalCashIn = round(cashBeg + newSales.total.net + collection.total.net + fidelity + penalty + notes.pendingCash);
   const expenseTotal = round(expenses.reduce((total, item) => total + item.amount, 0));
   const depositTotal = round(deposits.reduce((total, item) => total + item.amount, 0));
   const totalCashOut = round(expenseTotal + depositTotal);
@@ -144,7 +147,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
     expenses: expenses.map((item): ExpenseRow => ({ ...item, when: whenLabel(kind, item.date) })), expenseTotal,
     deposits: deposits.map((item: BankDeposit) => ({ ...item, when: whenLabel(kind, item.date) })), depositTotal,
     cash: {
-      cashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, pendingCash: notes.pendingCash, totalCashIn,
+      cashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, pendingCash: notes.pendingCash, totalCashIn,
       expenses: expenseTotal, forwardedToBank: depositTotal, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,
     },
     notes,

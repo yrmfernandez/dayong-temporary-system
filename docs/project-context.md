@@ -319,6 +319,16 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the encoder must put one letter at the end of the OR number.
 - **Done:** Collections (form and save) and corrections of an OR number accept only digits followed by one letter (`12345 C` / `12345C`; the letter saved in capitals). New Sales have no OR number (they use the application number). Tested.
 
+### Penalty in the clerk report (2026-10-12)
+
+- **Owner:** the report has no penalty; add it.
+- **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
+
+### NOP and Month of in MAM (2026-10-12)
+
+- **Owner:** a member's own MAM should show NOP and Month of; the MAM page should show Month of.
+- **Done:** Month of = the month the latest NOP pays for (the DOI's month for a New Sale only). Member MAM: NOP and Month of in the header and per month, and each receipt's NOP range. MAM page: Month of in each month cell and the CSV.
+
 ### Clearing lines that never finished (2026-10-11)
 
 - **Owner:** Jenny's clearings are only for New Sales and Jo-ann's only for Collections, but their existing lines (made before Clearing asked what is remitted) count as both, so they wait for the other kind forever.

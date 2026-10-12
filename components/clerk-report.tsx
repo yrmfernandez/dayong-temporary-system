@@ -136,6 +136,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 <Cash label="Sales Net" value={report.cash.salesNet} />
                 <Cash label="Collection Net" value={report.cash.collectionNet} />
                 <Cash label="Fidelity Bond" value={report.cash.fidelity} />
+                <Cash label="Penalty" value={report.cash.penalty} />
                 <Cash label="Pending cash, to be encoded" value={report.cash.pendingCash} />
                 <Cash label="Total Cash In" value={report.cash.totalCashIn} color={tone.cashIn} strong />
                 <div className="h-2" />
@@ -238,17 +239,17 @@ function ReportHeader({ report }: { report: Report }) {
 }
 
 function EntryTable({ title, color, groupLabel, rows, total }: { title: string; color: string; groupLabel: string; rows: ReportLine[]; total: ReportLine }) {
-  const cells = (line: ReportLine) => [String(line.accounts || "-"), money(line.gross), money(line.incentives), money(line.net), money(line.fidelity)];
+  const cells = (line: ReportLine) => [String(line.accounts || "-"), money(line.gross), money(line.incentives), money(line.net), money(line.fidelity), money(line.penalty)];
   const filler = Math.max(0, 5 - rows.length);
   return (
     <table className="w-full border-collapse border text-[12px]">
       <thead>
-        <tr><th colSpan={6} className={`p-1 text-center font-bold ${color}`}>{title}</th></tr>
-        <tr className="border-b">{[groupLabel, "Accts", "Gross", "Inc", "Net", "Fid/ bond"].map((header, index) => <th key={header} className={`border-r p-1 font-semibold ${index ? "text-right" : "text-left"} ${index === 5 ? "text-[10px] italic" : ""}`}>{header}</th>)}</tr>
+        <tr><th colSpan={7} className={`p-1 text-center font-bold ${color}`}>{title}</th></tr>
+        <tr className="border-b">{[groupLabel, "Accts", "Gross", "Inc", "Net", "Fid/ bond", "Penalty"].map((header, index) => <th key={header} className={`border-r p-1 font-semibold ${index ? "text-right" : "text-left"} ${index === 5 ? "text-[10px] italic" : ""}`}>{header}</th>)}</tr>
       </thead>
       <tbody>
         {rows.map((line) => <tr key={line.label} className="border-b"><td className="border-r p-1 font-medium">{line.label}</td>{cells(line).map((value, index) => <td key={index} className="border-r p-1 text-right tabular-nums">{value}</td>)}</tr>)}
-        {Array.from({ length: filler }, (_, index) => <tr key={`filler-${index}`} className="h-6 border-b">{Array.from({ length: 6 }, (__, cell) => <td key={cell} className="border-r" />)}</tr>)}
+        {Array.from({ length: filler }, (_, index) => <tr key={`filler-${index}`} className="h-6 border-b">{Array.from({ length: 7 }, (__, cell) => <td key={cell} className="border-r" />)}</tr>)}
         <tr className={`font-bold ${color}`}><td className="p-1.5 text-center">Total</td>{cells(total).map((value, index) => <td key={index} className="p-1.5 text-right tabular-nums">{value}</td>)}</tr>
       </tbody>
     </table>

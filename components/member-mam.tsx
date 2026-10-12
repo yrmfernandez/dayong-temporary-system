@@ -4,11 +4,16 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 
-type Receipt = { id: string; orNumber: string; orDate: string; amount: number; monthFrom: string; monthTo: string };
-type Period = { month: string; projected: boolean; error: string; collected: number; coveredAmount: number; receipts: Receipt[]; state: { status: string; temporarilySuspended: boolean; nop: number; balance: number | null } | null };
+type Receipt = { id: string; orNumber: string; orDate: string; amount: number; monthFrom: string; monthTo: string; nopFrom: number; nopTo: number };
+type Period = { month: string; projected: boolean; error: string; collected: number; coveredAmount: number; receipts: Receipt[]; state: { status: string; temporarilySuspended: boolean; nop: number; lastCoveredMonth: string; balance: number | null } | null };
 type Row = { id: string; programName: string; doi: string; mas: string; basePay: number; periods: Period[] };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
+// "Month of": the month the account's latest NOP pays for (the DOI's month while only the New Sale is in).
+const monthOf = (state: { lastCoveredMonth: string } | null, doi: string) => {
+  const month = state ? state.lastCoveredMonth || doi.slice(0, 7) : "";
+  return /^\d{4}-\d{2}$/.test(month) ? new Intl.DateTimeFormat("en-PH", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`)) : "—";
+};
 const statusTone = (status: string) => status === "U" || status === "ADV" || status === "Paid" ? "success" : status === "Forfeited" ? "danger" : status === "NS" ? "neutral" : "warning";
 
 /** A member's MAM, collapsed until opened; it loads that member's accounts only when first expanded. */
@@ -47,16 +52,18 @@ export function MemberMam({ memberId }: { memberId: string }) {
             <strong>{row.programName}</strong>
             {latest && <StatusBadge status={latest.status} tone={statusTone(latest.status)} />}
             {latest?.temporarilySuspended && <span className="text-xs text-amber-700">Temporarily suspended</span>}
-            <span className="text-xs text-muted-foreground">DOI {row.doi || "—"} · Monthly {money(row.basePay)} · NOP {latest?.nop ?? "—"} · Balance today {latest ? latest.balance === null ? "—" : money(latest.balance) : "—"} · MAS {row.mas || "—"}</span>
+            <span className="text-xs text-muted-foreground">DOI {row.doi || "—"} · Monthly {money(row.basePay)} · NOP {latest?.nop ?? "—"} · Month of {monthOf(latest ?? null, row.doi)} · Balance today {latest ? latest.balance === null ? "—" : money(latest.balance) : "—"} · MAS {row.mas || "—"}</span>
           </div>
-          <div className="max-h-80 overflow-auto rounded-md border"><table className="w-full min-w-[560px] text-xs">
-            <thead className="sticky top-0 bg-muted text-left"><tr>{["Month", "Status", "Collected", "Covered", "Receipts"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead>
+          <div className="max-h-80 overflow-auto rounded-md border"><table className="w-full min-w-[680px] text-xs">
+            <thead className="sticky top-0 bg-muted text-left"><tr>{["Month", "Status", "NOP", "Month of", "Collected", "Covered", "Receipts"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead>
             <tbody>{[...row.periods].reverse().map((period) => <tr key={period.month} className="border-t align-top">
               <td className="p-2 font-medium">{period.month}</td>
               <td className="p-2">{period.error ? <span className="text-destructive">Needs review</span> : period.state ? <StatusBadge status={period.state.status} tone={statusTone(period.state.status)} /> : <span className="text-muted-foreground">Not enrolled</span>}</td>
+              <td className="p-2 tabular-nums">{period.state?.nop ?? "—"}</td>
+              <td className="p-2">{period.state ? monthOf(period.state, row.doi) : "—"}</td>
               <td className="p-2 tabular-nums">{money(period.collected)}</td>
               <td className="p-2 tabular-nums">{money(period.coveredAmount)}</td>
-              <td className="p-2">{period.receipts.length ? period.receipts.map((receipt) => <span key={receipt.id} className="block">OR {receipt.orNumber || "—"} · {receipt.orDate} · {money(receipt.amount)} · covers {receipt.monthFrom}{receipt.monthTo !== receipt.monthFrom ? ` to ${receipt.monthTo}` : ""}</span>) : <span className="text-muted-foreground">—</span>}</td>
+              <td className="p-2">{period.receipts.length ? period.receipts.map((receipt) => <span key={receipt.id} className="block">OR {receipt.orNumber || "—"} · {receipt.orDate} · {money(receipt.amount)} · covers {receipt.monthFrom}{receipt.monthTo !== receipt.monthFrom ? ` to ${receipt.monthTo}` : ""}{receipt.nopFrom ? ` (NOP ${receipt.nopFrom}${receipt.nopTo !== receipt.nopFrom ? `-${receipt.nopTo}` : ""})` : ""}</span>) : <span className="text-muted-foreground">—</span>}</td>
             </tr>)}</tbody>
           </table></div>
         </section>;

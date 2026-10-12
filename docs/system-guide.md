@@ -536,15 +536,16 @@ Today's Entries combines New Sales and posted Collections, with amount, incentiv
 - **New Sales and Collections sections** side by side, with Accts, Gross, Inc, Net, and Fid/bond. Rows are by MAS (daily), date (weekly), week of the month (monthly), or month (yearly).
 - **Expenses/Other Cash Out:** posted expenses the clerk encoded in the period (expense date, encoder Employee ID).
 - **Cash Flow Transaction and Other Cash Ins:** cash the clerk forwarded to the bank (`Bank Deposits` sheet; voided deposits excluded).
+- **Penalty** (owner, October 12, 2026): each New Sales and Collections line has a Penalty column (penalties the clerk encoded), and the cash summary a Penalty line after Fidelity Bond; it is cash received, so it is in Total Cash In and carries into the next Cash Beg.
 - **Cash summary** and the **Specific Rmks, Pending Transactions, and Other Comments** boxes (`Report Notes` sheet).
 - **Summary sheet** for weekly, monthly, and yearly: New Member and Collection by Marketing Account Staff (CVE columns are shown but not yet defined).
 
 ```text
 Sales Net / Collection Net = gross member payments − incentives (each section)
-Total Cash In   = Cash Beg + Sales Net + Collection Net + Fidelity Bond + Pending cash to be encoded
+Total Cash In   = Cash Beg + Sales Net + Collection Net + Fidelity Bond + Penalty + Pending cash to be encoded
 Total Cash Out  = Expenses + Cash forwarded to bank
 Remaining Cash on Hand = Total Cash In − Total Cash Out
-Cash Beg        = the clerk's (net + Fidelity) before the period − their expenses and deposits before the period
+Cash Beg        = the clerk's (net + Fidelity + penalty) before the period − their expenses and deposits before the period
 ```
 
 Pending cash is counted only in its own report; it is not carried into the next Cash Beg because those entries are encoded later. Cash Beg starts at zero from the clerk's first encoded entry.
@@ -578,6 +579,8 @@ Earlier operational-report documentation describes monthly seven-day bands; the 
 ### MAM
 
 MAM joins member, enrollment, program, New Sale reference, and real posted Collections. Each selected month contains calculated state, receipt list, actual collected total, and covered installment amount. The range allows up to 120 months; a member-detail view shows at most the last 36 months.
+
+**NOP and Month of (owner, October 12, 2026).** Each month shows the account's NOP and **Month of**: the month its latest NOP pays for (the DOI's month while only the New Sale is in), from `accountState().lastCoveredMonth`. The MAM page shows Month of under NOP / TMD in every month cell and in the CSV (Month Of column). A member's own MAM (Members → member → MAM) shows NOP and Month of in its header (today) and as columns per month, and each receipt lists its NOP range.
 
 Past months calculate state at month end, current month at today. Future columns are marked projections based only on already received receipts. Historical calculations do not inherit today's stored Forfeited marker. Invalid histories produce explicit review errors.
 
