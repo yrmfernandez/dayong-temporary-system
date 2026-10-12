@@ -2223,7 +2223,9 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   const expense = Array(21).fill(''); Object.assign(expense, { 0: 'EXP-1', 1: '2026-06-16', 2: 'Fare', 4: 100, 11: 'Posted', 18: 'DPE-7' });
   h.rows.Expenses = [[], expense];
   await h.sync();
-  const { buildClerkReport } = h.load('lib/clerk-report.ts');
+  const { buildClerkReport, weekOfMonth } = h.load('lib/clerk-report.ts');
+  // Week N is the week of the month's Nth Monday; days before the first Monday are week 1.
+  assert.deepEqual(['2026-10-01', '2026-10-04', '2026-10-05', '2026-10-12', '2026-09-30', '2026-06-01', '2026-06-15'].map(weekOfMonth), [1, 1, 1, 2, 4, 1, 3]);
   const report = await buildClerkReport('weekly', '2026-06-17', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.equal(report.reportName, 'WEEKLY REPORT');
   assert.equal(report.dateLine, 'WEEK 3 JUNE 15-21, 2026');

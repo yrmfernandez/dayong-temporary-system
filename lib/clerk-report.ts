@@ -32,10 +32,15 @@ const longDate = (date: string) => `${MONTHS[parts(date).month - 1]} ${parts(dat
 const weekday = (date: string) => WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()];
 const shortDate = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}/${date.slice(0, 4)}`;
 
-/** Week of the month, weeks starting Monday: the 1st to the first Sunday is week 1. */
+/**
+ * Week of the month as the company's sheets count it (owner, October 12, 2026): weeks start Monday and week N is the
+ * week of the month's Nth Monday (October 12, 2026 is the 2ND WEEK; September 30, 2026 the 4TH). Days before the
+ * month's first Monday belong to week 1.
+ */
 export function weekOfMonth(date: string) {
   const firstWeekday = (new Date(`${date.slice(0, 7)}-01T00:00:00Z`).getUTCDay() + 6) % 7;
-  return Math.floor((parts(date).day - 1 + firstWeekday) / 7) + 1;
+  const firstMonday = firstWeekday === 0 ? 1 : 8 - firstWeekday;
+  return Math.max(1, Math.floor((parts(date).day - firstMonday) / 7) + 1);
 }
 
 function headings(kind: AuditPeriod, start: string, end: string) {

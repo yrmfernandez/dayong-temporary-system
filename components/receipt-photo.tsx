@@ -1,7 +1,7 @@
 "use client";
 
-import { Camera, ImageIcon, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { Camera, ImageIcon, RotateCw, X, ZoomIn, ZoomOut } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -75,11 +75,40 @@ export function ReceiptPhotoUpload({ entryIds, label = "Add receipt photo", repl
   );
 }
 
-/** "View receipt": loads the photo only when asked, so lists stay light. */
+/**
+ * "View receipt": loads the photo only when asked, so lists stay light. It opens full screen, fitted to the screen;
+ * zoom in (button or a click on the photo) to read small print and scroll around, rotate a sideways photo, Esc closes.
+ */
 export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId: string; label?: string }) {
   const [photo, setPhoto] = useState<{ dataUrl: string; uploadedAt: string; uploadedByName: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [zoom, setZoom] = useState(1);
+
+  const close = () => { setPhoto(null); setZoom(1); };
+  // Rotating redraws the photo turned a quarter, so fitting and zooming treat it as an upright photo.
+  const rotate = async () => {
+    if (!photo) return;
+    const image = new Image();
+    image.src = photo.dataUrl;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalHeight; canvas.height = image.naturalWidth;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.translate(canvas.width, 0);
+    context.rotate(Math.PI / 2);
+    context.drawImage(image, 0, 0);
+    setPhoto({ ...photo, dataUrl: canvas.toDataURL("image/png") });
+  };
+  useEffect(() => {
+    if (!photo) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = overflow; };
+  }, [photo]);
 
   const open = async () => {
     setBusy(true); setError("");
@@ -95,19 +124,31 @@ export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId:
     }
   };
 
+  // Fitted: the whole photo as large as the screen below the toolbar allows (small photos are enlarged too). Zoomed:
+  // wider than the screen, scrolled.
+  const size = zoom === 1 ? { width: "100%", height: "calc(100dvh - 3.5rem)" } : { width: `${zoom * 100}%`, maxWidth: "none" };
+
   return (
     <>
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void open()}><ImageIcon className="size-3.5" />{busy ? "Loading..." : label}</Button>
       {error && <span className="text-xs text-red-700">{error}</span>}
       {photo && (
-        <div role="dialog" aria-modal="true" aria-label="Receipt photo" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPhoto(null)}>
-          <div className="max-h-full max-w-3xl space-y-2 overflow-auto rounded-xl bg-background p-3" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">Uploaded {new Date(photo.uploadedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {photo.uploadedByName}</p>
-              <Button type="button" size="icon" variant="ghost" aria-label="Close" onClick={() => setPhoto(null)}><X className="size-4" /></Button>
+        <div role="dialog" aria-modal="true" aria-label="Receipt photo" className="fixed inset-0 z-50 flex flex-col bg-black/95 text-white">
+          <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2">
+            <p className="min-w-0 truncate text-xs text-white/70">Uploaded {new Date(photo.uploadedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {photo.uploadedByName}</p>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Zoom out" disabled={zoom === 1} onClick={() => setZoom((value) => Math.max(1, value - 1))}><ZoomOut className="size-5" /></Button>
+              <span className="w-10 text-center text-xs tabular-nums">{zoom === 1 ? "Fit" : `${zoom}×`}</span>
+              <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Zoom in" disabled={zoom === 4} onClick={() => setZoom((value) => Math.min(4, value + 1))}><ZoomIn className="size-5" /></Button>
+              <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Rotate" onClick={() => void rotate()}><RotateCw className="size-5" /></Button>
+              <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Close" onClick={close}><X className="size-6" /></Button>
             </div>
+          </div>
+          <div className={`flex min-h-0 flex-1 overflow-auto ${zoom === 1 ? "items-center justify-center" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
             {/* eslint-disable-next-line @next/next/no-img-element -- a data URL from the sheet, not an optimizable file */}
-            <img src={photo.dataUrl} alt="Receipt" className="h-auto max-w-full rounded" />
+            <img src={photo.dataUrl} alt="Receipt" style={size}
+              className={`m-auto h-auto object-contain ${zoom === 1 ? "cursor-zoom-in" : "cursor-zoom-out"}`}
+              onClick={() => setZoom((value) => (value === 1 ? 2 : 1))} />
           </div>
         </div>
       )}

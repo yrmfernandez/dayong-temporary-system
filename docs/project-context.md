@@ -324,6 +324,16 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Receipt photo viewer (2026-10-12)
+
+- **Owner:** a photo should open big on the screen so it can be read.
+- **Done:** View receipt (every page that shows receipt photos) opens full screen on a dark background, the photo fitted as large as the screen allows (small photos enlarged). Zoom in and out (buttons, or click the photo for 2×; up to 4×, scrolled), rotate a sideways photo, close with ×, Esc or a click beside the photo.
+
+### Week of the month in reports (2026-10-12)
+
+- **Owner:** October 12 showed as the 3RD WEEK; it is the 2nd.
+- **Done:** week N is the week of the month's Nth Monday (as the company sheets count: October 12 = 2ND WEEK, September 30 = 4TH); days before the first Monday are week 1. Before, the partial week from the 1st counted as week 1. Tested.
+
 ### NOP and Month of in MAM (2026-10-12)
 
 - **Owner:** a member's own MAM should show NOP and Month of; the MAM page should show Month of.
