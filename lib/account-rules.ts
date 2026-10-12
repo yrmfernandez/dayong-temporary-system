@@ -107,8 +107,10 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   if (paid) status = "Paid";
   else if (forfeited) status = "Forfeited";
   else if (payments.length) {
+    // The current month's due alone is not late (owner, October 12, 2026): 60D is two unpaid months, 90D three,
+    // 120D four, 150D five or more.
     status = unpaidMonths === 0 ? (lastCoveredMonth > currentMonth ? "ADV" : "U")
-      : (["60D", "90D", "120D", "150D"] as const)[Math.min(unpaidMonths, 4) - 1];
+      : unpaidMonths === 1 ? "U" : (["60D", "90D", "120D", "150D"] as const)[Math.min(unpaidMonths, 5) - 2];
   }
   // The New Sale itself is NOP 1 (the DOI month), so an NS account's first Collection is NOP 2, the month after DOI.
   const nop = Math.max(1, ...[...coverage.values()].map((value) => value.nop));

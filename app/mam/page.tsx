@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
+import { paidInMonth } from "@/lib/mam-format";
 import type { buildMamReport } from "@/lib/mam-report";
 import { todayInManila } from "@/lib/account-rules";
 import { Button } from "@/components/ui/button";
@@ -215,7 +216,7 @@ export default function MamPage() {
           period.collected,
           period.coveredAmount,
           period.state?.nop,
-          period.state ? period.state.lastCoveredMonth || row.doi.slice(0, 7) : "",
+          paidInMonth(period.receipts).monthOf,
           period.state?.tmd,
           period.state?.balance,
           period.state?.temporarilySuspended ? "Yes" : "No",
@@ -560,7 +561,7 @@ export default function MamPage() {
                                 {period.state.nop} / {money(period.state.tmd)}
                               </span>
                               <span className="text-muted-foreground">Month of:</span>
-                              <span className="text-right font-medium">{monthLabel(period.state.lastCoveredMonth || row.doi.slice(0, 7))}</span>
+                              <span className="text-right font-medium">{paidInMonth(period.receipts).monthOf || "—"}</span>
                               <span className="font-semibold">Balance:</span>
                               <span className="text-right font-bold">
                                 {period.state.balance === null ? "—" : money(period.state.balance)}

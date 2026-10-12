@@ -324,6 +324,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### MAM rows and 60D (2026-10-12)
+
+- **Owner:** a member's MAM repeated the month before's NOP and Month of in months with no payment (e.g. PH-52925058 looked like many repeated entries); old-sheet receipts covering several NOPs showed only one. 60D should mean two unpaid months, not one.
+- **Done:** per month, NOP paid and Month of come from that month's receipts (ranges for multi-month receipts, — when none); months before the DOI are not listed; the MAM page's Month of works the same. Status: one unpaid month (this month) is still U; 60D = 2, 90D = 3, 120D = 4, 150D = 5 or more unpaid months (the displayed balance multipliers already matched this). Tested.
+- **To do (owner):** after deploying, run MAM → Sync current statuses so the stored statuses (member lists, dashboards) follow the new 60D rule.
+
 ### Edit a returned batch (2026-10-12)
 
 - **Owner:** when the approver returns a batch, the Entry Clerk can edit the whole batch as they encoded it, only while it is returned.

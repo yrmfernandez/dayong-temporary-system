@@ -264,16 +264,16 @@ Only posted Collections with OR date on/before the calculation date count. With 
 | Status | Meaning | Displayed balance multiplier |
 | --- | --- | --- |
 | NS | No Collection yet; new-account state. | 1 × monthly rate |
-| U | Collections cover all due months through this month. | 1 × monthly rate |
+| U | Collections cover every month before this one (this month may still be unpaid). | 1 × monthly rate |
 | ADV | No due month unpaid, and latest covered month is after this month. | 0 |
-| 60D | One unpaid month. | 2 × monthly rate |
-| 90D | Two unpaid months. | 3 × monthly rate |
-| 120D | Three unpaid months. | 4 × monthly rate |
-| 150D | Four or more unpaid months; label caps here. | 5 × monthly rate |
+| 60D | Two unpaid months (counting this month; owner, October 12, 2026). | 2 × monthly rate |
+| 90D | Three unpaid months. | 3 × monthly rate |
+| 120D | Four unpaid months. | 4 × monthly rate |
+| 150D | Five or more unpaid months; label caps here. | 5 × monthly rate |
 | Paid | Positive payoff total reached by sum of qualifying Collections. | 0 |
 | Forfeited | Stored forfeiture marker or timing threshold reached, unless Paid takes precedence. | `null`, displayed as unavailable |
 
-**Displayed balance is a status-based figure, not an exact arrears ledger.** At PHP 350, 60D displays PHP 700 despite representing one unpaid month. TMD is also not the sum of Collections. Read SOA history and unpaid-month count when reconciling real payments.
+**Displayed balance is a status-based figure, not an exact arrears ledger.** At PHP 350, 60D displays PHP 700 (two unpaid months); past five unpaid months 150D still shows five. TMD is also not the sum of Collections. Read SOA history and unpaid-month count when reconciling real payments.
 
 The payoff calculation uses Collections, **excluding the New Sale amount**. Current `validatePayment` explicitly blocks Forfeited but has no separate Paid-account block; status labels are not a substitute for checking remaining balance.
 
@@ -580,7 +580,7 @@ Earlier operational-report documentation describes monthly seven-day bands; the 
 
 MAM joins member, enrollment, program, New Sale reference, and real posted Collections. Each selected month contains calculated state, receipt list, actual collected total, and covered installment amount. The range allows up to 120 months; a member-detail view shows at most the last 36 months.
 
-**NOP and Month of (owner, October 12, 2026).** Each month shows the account's NOP and **Month of**: the month its latest NOP pays for (the DOI's month while only the New Sale is in), from `accountState().lastCoveredMonth`. The MAM page shows Month of under NOP / TMD in every month cell and in the CSV (Month Of column). A member's own MAM (Members → member → MAM) shows NOP and Month of in its header (today) and as columns per month, and each receipt lists its NOP range.
+**NOP and Month of (owner, October 12, 2026).** Month of is what that month's own receipts paid: the months they cover, as a range when one receipt (often an old-sheet row) covers several ([mam-format.ts](../lib/mam-format.ts)); a month with no receipt shows —, not the month before's. The MAM page shows it under NOP / TMD in every month cell and in the CSV (Month Of column). A member's own MAM (Members → member → MAM) shows in its header the NOP and month paid up to today, and per month the NOP paid and Month of from that month's receipts (— when nothing was paid); months before the DOI are not listed. Each receipt lists its NOP range.
 
 Past months calculate state at month end, current month at today. Future columns are marked projections based only on already received receipts. Historical calculations do not inherit today's stored Forfeited marker. Invalid histories produce explicit review errors.
 

@@ -71,8 +71,10 @@ test("programs are isolated and missing-month statuses stop at 150D", () => {
   // Another program's payment is ignored: this account is still NS at NOP 1 (its New Sale).
   const isolated = accountState(account, [payment({ enrollmentId: "OTHER" })], "2026-01-20");
   assert.deepEqual([isolated.status, isolated.nop, isolated.nextNop], ["NS", 1, 2]);
-  assert.equal(accountState(account, [payment()], "2026-02-20").status, "60D");
-  assert.equal(accountState(account, [payment()], "2026-03-20").status, "90D");
-  assert.equal(accountState(account, [payment()], "2026-05-20").status, "150D");
+  // This month's due alone is not late; 60D is two unpaid months (owner, October 12, 2026).
+  assert.equal(accountState(account, [payment()], "2026-02-20").status, "U");
+  assert.equal(accountState(account, [payment()], "2026-03-20").status, "60D");
+  assert.equal(accountState(account, [payment()], "2026-04-20").status, "90D");
+  assert.equal(accountState(account, [payment()], "2026-05-20").status, "120D");
   assert.equal(accountState(account, [payment()], "2026-06-20").status, "150D");
 });
