@@ -2506,3 +2506,70 @@ test('a flexible program takes any amount from its minimum, counts months as cho
   // A fixed program is unchanged: every month is the base pay, and only an exact payoff may exceed it.
   assert.throws(() => validatePayment({ ...account, flexible: false, basePay: 210 }, history.map((item) => ({ ...item, amount: 210 * (item.nopTo - item.nopFrom + 1) })), input(500), '2026-05-06'), /must exactly pay the remaining program balance/);
 });
+
+test('a returned Collections batch can be edited by its clerk, and only while it is returned', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1), after = rules.monthName(rules.monthIndex(month) + 2);
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, false, 'active']];
+  await seedAccount({ doi: month + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 C', orDate: today };
+  const saved = await h.load('app/api/collections/route.ts').POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] }));
+  assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
+  const [{ collection_id: id }] = await query('select collection_id from collections');
+  const route = h.load('app/api/my-entries/batch/route.ts');
+  const open = async () => route.GET(new Request(`http://localhost/api/my-entries/batch?ids=${id}`));
+  const edit = (changes, batch = {}) => route.POST(request({ ids: [id], dateRemitted: today, paymentMethod: 'GCash', collectedBy: 'MAS', ...batch, entries: [{ id, ...changes }] }));
+
+  // Not returned: nothing can be edited.
+  assert.match((await (await open()).json()).message, /Only a batch the approver returned/);
+  await query(`update collections set remittance_status = 'Returned'`);
+  const loaded = await (await open()).json();
+  assert.equal(loaded.success, true, JSON.stringify(loaded));
+  assert.deepEqual([loaded.batch.kind, loaded.batch.entries[0].orNumber, loaded.batch.entries[0].nopFrom, loaded.batch.paymentMethod], ['Collection', '1001 C', 2, 'GCash']);
+
+  // Two months instead of one: ₱700, NOP 2-3; a new OR number; the company share follows (₱200 a month).
+  assert.match((await (await edit({ amount: 350, monthTo: after })).json()).message, /at least 700/);
+  assert.match((await (await edit({ orNumber: '1002' })).json()).message, /letter/);
+  const fixed = await edit({ orNumber: '1002 c', orDate: today, amount: 700, monthTo: after }, { paymentMethod: 'Cash', penalty: 20, penaltyNote: 'late turnover' });
+  assert.equal(fixed.status, 200, JSON.stringify(await fixed.clone().json()));
+  const [row] = await query('select or_number, month_to, nop_to, amount_collected::float8 as amount, remittance_amount::float8 as remit, remittance_method, penalty_amount::float8 as penalty, remittance_status, encoded_by_employee_id from collections');
+  assert.deepEqual(row, { or_number: '1002 C', month_to: after, nop_to: 3, amount: 700, remit: 400, remittance_method: 'Cash', penalty: 20, remittance_status: 'Returned', encoded_by_employee_id: 'DPE-0001' });
+
+  // Another clerk cannot edit it.
+  h.setUser({ userId: 'USR-2', employeeId: 'DPE-0005', name: 'Other', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.match((await (await edit({ amount: 700, monthTo: after })).json()).message, /only batches you encoded/);
+});
+
+test('a returned New Sales batch: application number, date and amount can be fixed, and an entry removed', async () => {
+  const h = harness();
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0, '', '', '', '', '', '', 'TRUE', 'FALSE']];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+  const sale = (applicationNo, surname) => ({ existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo, surname, firstName: 'Ana', addressHouse: 'Complete Address', beneficiaries: [] });
+  const saved = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 400, sales: [sale('APP-1', 'Uno'), sale('APP-2', 'Dos')] }));
+  assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
+  await query(`update sales set remittance_status = 'Returned'`);
+  const ids = (await query('select sale_id from sales order by row_seq')).map((row) => row.sale_id);
+  const route = h.load('app/api/my-entries/batch/route.ts');
+  const loaded = await (await route.GET(new Request(`http://localhost/api/my-entries/batch?ids=${ids.join(',')}`))).json();
+  assert.equal(loaded.success, true, JSON.stringify(loaded));
+  assert.deepEqual(loaded.batch.entries.map((entry) => entry.applicationNumber), ['APP-1', 'APP-2']);
+  const edit = (entries) => route.POST(request({ ids, dateRemitted: '2026-09-25', paymentMethod: 'Cash', entries }));
+  assert.match((await (await edit([{ id: ids[0], applicationNumber: 'APP-2' }, { id: ids[1] }])).json()).message, /entered twice/);
+  const fixed = await edit([{ id: ids[0], applicationNumber: 'APP-10', amount: 700 }, { id: ids[1], remove: true }]);
+  assert.equal(fixed.status, 200, JSON.stringify(await fixed.clone().json()));
+  const rows = await query('select application_no, amount_paid::float8 as amount, remittance_amount::float8 as remit, remittance_status from sales');
+  assert.deepEqual(rows, [{ application_no: 'APP-10', amount: 700, remit: 550, remittance_status: 'Returned' }], 'the removed sale is gone; the kept one is fixed');
+  assert.equal(await count('members'), 1, 'the removed sale\'s new member went with it');
+});

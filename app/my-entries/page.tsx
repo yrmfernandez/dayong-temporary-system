@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, Eye, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, Eye, Pencil, RefreshCw, Send } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
+import { BatchEditor } from "@/components/batch-editor";
 import { EntryDetails } from "@/components/entry-details";
 import { MetricTile } from "@/components/metric-tile";
 import { ReceiptPhotoUpload, ReceiptPhotoView } from "@/components/receipt-photo";
@@ -36,6 +37,8 @@ export default function MyEntriesPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [open, setOpen] = useState("");
+  // The returned batch being edited (its key).
+  const [editing, setEditing] = useState("");
 
   const load = useCallback(async (nextFrom: string, nextTo: string, nextEmployee: string) => {
     setLoading(true);
@@ -80,7 +83,7 @@ export default function MyEntriesPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">My Entries</h1>
-        <p className="text-sm text-muted-foreground">The New Sales and Collections you encoded, by the date you encoded them, one card per saved batch. A batch paid in cash goes to Pending Approval as soon as it is saved (the cash was counted at Clearing). A batch paid by bank or e-wallet needs one receipt photo for the whole batch; it then goes to Pending Approval on its own. Batches the approver returns show the reason; fix them and resubmit.</p>
+        <p className="text-sm text-muted-foreground">The New Sales and Collections you encoded, by the date you encoded them, one card per saved batch. A batch paid in cash goes to Pending Approval as soon as it is saved (the cash was counted at Clearing). A batch paid by bank or e-wallet needs one receipt photo for the whole batch; it then goes to Pending Approval on its own. Batches the approver returns show the reason: press Edit batch to fix the batch and its entries (or remove an entry), then Resubmit batch.</p>
       </div>
 
       <Card>
@@ -155,9 +158,11 @@ export default function MyEntriesPage() {
                         {batch.canAttach && <ReceiptPhotoUpload entryIds={ids} label="Add receipt photo for this batch" replace={batch.photoIds.length > 0} onSaved={saved} />}
                       </>}
                     {batch.readyToSend && <Button type="button" size="sm" onClick={() => void send(ids)}><Send className="size-3.5" />Send for approval</Button>}
+                    {isReturned && <Button type="button" size="sm" variant={editing === batch.key ? "default" : "outline"} onClick={() => setEditing(editing === batch.key ? "" : batch.key)}><Pencil className="size-3.5" />Edit batch</Button>}
                     {isReturned && <Button type="button" size="sm" variant="outline" onClick={() => void resubmit(ids)}>Resubmit batch</Button>}
                   </div>
                 </div>
+                {isReturned && editing === batch.key && <BatchEditor entryIds={batch.entries.filter((entry) => entry.remittanceStatus === "Returned").map((entry) => entry.id)} onClose={() => setEditing("")} onSaved={(text) => { setEditing(""); saved(text); }} />}
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[760px] text-sm">
                     <thead className="text-left text-xs uppercase text-muted-foreground"><tr><th className="p-2 pl-3">Entry</th><th className="p-2">Member</th><th className="p-2">OR / Application</th><th className="p-2">Method</th><th className="p-2 text-right">Amount</th><th className="p-2" /></tr></thead>

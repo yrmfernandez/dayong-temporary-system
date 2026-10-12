@@ -324,6 +324,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Edit a returned batch (2026-10-12)
+
+- **Owner:** when the approver returns a batch, the Entry Clerk can edit the whole batch as they encoded it, only while it is returned.
+- **Chosen (owner):** an editor on My Entries rather than reopening the encoding forms; members and programs stay, a wrong entry is removed and encoded again.
+- **Done:** Edit batch on Returned batches: batch details and every entry, remove entries; same checks as encoding; IDs, photos and encoder kept; Record Corrections keeps each change; then Resubmit batch. Tested (Collections and New Sales).
+
 ### Receipt photo viewer (2026-10-12)
 
 - **Owner:** a photo should open big on the screen so it can be read.
