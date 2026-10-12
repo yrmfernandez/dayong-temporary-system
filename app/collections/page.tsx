@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { manilaNow } from "@/lib/remittance-deadline";
+import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { compressReceiptPhoto } from "@/components/receipt-photo";
@@ -239,6 +240,9 @@ function getMonthDifference(from: string, to: string) {
 
 export default function CollectionsPage() {
   const [branch, setBranch] = useState("");
+  // Late dates skip Sundays and the branch's declared non-working days, as the server does (lib/working-days.ts).
+  const offDays = useDeclaredNonWorkingDays();
+  const isLateDate = (date: string) => needsBackdateReason(date, undefined, { days: offDays, branch });
   const [mas, setMas] = useState("");
   const [dateRemitted, setDateRemitted] = useState("");
 
@@ -637,8 +641,8 @@ export default function CollectionsPage() {
     const dateProblem = blockingDateProblem({ receiptDate: entry.orDate, dateRemitted, today: manilaNow().date });
     if (dateProblem) return dateProblem;
 
-    if (needsBackdateReason(entry.orDate) && (entry.backdateReason ?? "").trim().length < BACKDATE_REASON_MIN) {
-      return "The OR date is more than a day old. Enter the reason it is being encoded late.";
+    if (isLateDate(entry.orDate) && (entry.backdateReason ?? "").trim().length < BACKDATE_REASON_MIN) {
+      return "The OR date is more than one working day old. Enter the reason it is being encoded late.";
     }
 
     return null;
@@ -888,29 +892,22 @@ export default function CollectionsPage() {
             <div className="space-y-2">
               <Label>Branch *</Label>
 
-              <SearchSelect aria-label="Branch" value={branch} placeholder="Search branch" options={branches.map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))} onValueChange={(value) => { setBranch(value); setMas(""); clearScopedMemberSelections(); }}/>
+              <SearchSelect aria-label="Branch" value={branch} disabled placeholder="From Clearing" options={branches.map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))} onValueChange={(value) => { setBranch(value); setMas(""); clearScopedMemberSelections(); }}/>
             </div>
 
             <div className="space-y-2">
               <Label>MAS *</Label>
 
-              <SearchSelect aria-label="MAS" value={mas} placeholder={branch ? "Search employee / MAS" : "Select a branch first"} disabled={!branch} options={masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(value) => { setMas(value); clearScopedMemberSelections(); }}/>
+              <SearchSelect aria-label="MAS" value={mas} placeholder="From Clearing" disabled options={masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(value) => { setMas(value); clearScopedMemberSelections(); }}/>
             </div>
 
             <div className="space-y-2">
               <Label>Date Remitted *</Label>
 
-              <Input
-                type="date"
-                value={dateRemitted}
-                onChange={(event) =>
-                  setDateRemitted(
-                    event.target.value,
-                  )
-                }
-              />
+              {/* Locked to the clearing (owner, October 12, 2026): Branch, MAS and Date Remitted come only from Clearing. */}
+              <Input type="date" value={dateRemitted} readOnly disabled aria-label="Date Remitted" />
 
-              <p className="text-xs text-muted-foreground">Shared by every entry in this batch.</p>
+              <p className="text-xs text-muted-foreground">Shared by every entry in this batch. Branch, MAS and Date Remitted come from Clearing; choose another person above to change them.</p>
             </div>
           </div>
 
@@ -1300,11 +1297,11 @@ export default function CollectionsPage() {
                                     : <button type="button" className="text-xs text-primary underline" onClick={() => updateCollection(entry.id, { amountCollected: payoff.toFixed(2) })}>Receipt pays the full remaining balance: use {formatCurrency(payoff)}</button>
                                 )}
                                 {dateWarnings({ receiptDate: entry.orDate, dateRemitted, today: manilaNow().date }).map((warning) => <p key={warning} className="text-xs font-medium text-amber-800">⚠ {warning}</p>)}
-                                {needsBackdateReason(entry.orDate) && (
+                                {isLateDate(entry.orDate) && (
                                   <div className="space-y-1">
                                     <Label className="text-xs text-amber-800">Reason for the late entry *</Label>
                                     <Input value={entry.backdateReason ?? ""} onChange={(event) => updateCollection(entry.id, { backdateReason: event.target.value })} placeholder="e.g. Receipt turned over late by the MAS" />
-                                    <p className="text-xs text-muted-foreground">The OR date is more than a day old. Administrators review late entries.</p>
+                                    <p className="text-xs text-muted-foreground">The OR date is more than one working day old. Administrators review late entries.</p>
                                   </div>
                                 )}
                               </div>

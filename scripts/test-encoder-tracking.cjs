@@ -2042,7 +2042,7 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
   assert.match((await post({ controlTotal: 200, sale: { applicationNo: '2026SP-' } })).body.message, /whole Application Number/);
   assert.match((await post({ controlTotal: 200, sale: { applicationNo: '2026 SP' } })).body.message, /whole Application Number/);
   const late = await post({ controlTotal: 350, sale: { orDate: '2026-01-05' } });
-  assert.match(late.body.message, /more than a day old/);
+  assert.match(late.body.message, /more than one working day old/);
   assert.equal(await count('sales'), 0, 'nothing is saved');
   const explained = await post({ controlTotal: 200, sale: { orDate: '2026-01-05', backdateReason: 'MAS turned in the form late' } });
   assert.equal(explained.status, 200, JSON.stringify(explained.body));
@@ -2572,4 +2572,21 @@ test('a returned New Sales batch: application number, date and amount can be fix
   const rows = await query('select application_no, amount_paid::float8 as amount, remittance_amount::float8 as remit, remittance_status from sales');
   assert.deepEqual(rows, [{ application_no: 'APP-10', amount: 700, remit: 550, remittance_status: 'Returned' }], 'the removed sale is gone; the kept one is fixed');
   assert.equal(await count('members'), 1, 'the removed sale\'s new member went with it');
+});
+
+test('entry deadlines skip Sundays and declared non-working days', async () => {
+  const h = harness();
+  const { needsBackdateReason } = h.load('lib/entry-controls.ts');
+  const { incentiveDeadline } = h.load('lib/remittance-deadline.ts');
+  // 2026-10-10 is a Saturday, 10-11 a Sunday, 10-12 a Monday.
+  assert.equal(incentiveDeadline("2026-10-10"), "2026-10-12 15:00", "a Saturday OR is due Monday 3:00 PM");
+  assert.equal(incentiveDeadline("2026-10-08"), "2026-10-09 15:00", "a Thursday OR is due Friday");
+  assert.equal(needsBackdateReason("2026-10-10", "2026-10-12"), false, "on Monday a Saturday OR is not late");
+  assert.equal(needsBackdateReason("2026-10-09", "2026-10-12"), true, "on Monday a Friday OR is late");
+  // Monday declared non-working for BR-1 only: Saturday's OR is due Tuesday there, Monday elsewhere.
+  const closed = { days: [{ date: "2026-10-12", allBranches: false, branchNames: ["BR-1"] }] };
+  assert.equal(incentiveDeadline("2026-10-10", { ...closed, branch: "BR-1" }), "2026-10-13 15:00");
+  assert.equal(incentiveDeadline("2026-10-10", { ...closed, branch: "BR-2" }), "2026-10-12 15:00");
+  assert.equal(needsBackdateReason("2026-10-10", "2026-10-13", { ...closed, branch: "br-1" }), false, "Tuesday after a closed Monday: Saturday is still on time");
+  assert.equal(needsBackdateReason("2026-10-10", "2026-10-13", { ...closed, branch: "BR-2" }), true);
 });

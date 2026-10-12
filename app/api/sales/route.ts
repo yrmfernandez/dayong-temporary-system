@@ -4,6 +4,7 @@ import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { checkBackdate, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
+import { loadWorkCalendar } from "@/lib/work-calendar";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { withEncoder } from "@/lib/encoder-context";
 import type { SessionUser } from "@/lib/auth";
@@ -546,10 +547,12 @@ async function saveSales(request: Request, user: SessionUser) {
      * The batch's Fidelity is the MAS's own money: it leaves these incentives untouched and is added to the remittance.
      */
     // Late application dates need a reason; the control total is checked once the remittances are calculated below.
+    // Late application dates skip Sundays and the branch's declared non-working days (lib/working-days.ts).
+    const calendar = await loadWorkCalendar(selectedBranch?.name ?? "");
     for (const [index, prepared] of preparedSales.entries()) {
       const dateProblem = blockingDateProblem({ receiptDate: String(prepared.sale.orDate ?? "").trim(), receiptLabel: "application date", dateRemitted: String(body.dateRemitted ?? "").trim(), today: manilaNow().date });
       if (dateProblem) return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${dateProblem}` }, { status: 400 });
-      try { checkBackdate(String(prepared.sale.orDate ?? "").trim(), String(prepared.sale.backdateReason ?? ""), `Sale #${index + 1}`); }
+      try { checkBackdate(String(prepared.sale.orDate ?? "").trim(), String(prepared.sale.backdateReason ?? ""), `Sale #${index + 1}`, manilaNow().date, calendar); }
       catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Enter the reason for the late date." }, { status: 400 }); }
     }
     const quotes: Array<{ incentive: number; remittance: number }> = [];

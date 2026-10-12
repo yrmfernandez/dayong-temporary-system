@@ -13,6 +13,8 @@ import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { recordCorrection } from "@/lib/record-corrections";
+import { loadWorkCalendar } from "@/lib/work-calendar";
+import type { WorkCalendar } from "@/lib/working-days";
 import { calculateRemittance, calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
 import { findActivePaymentMethod } from "@/lib/remittance-methods";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -177,6 +179,7 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
   }
   const branch = (await getBranches()).find((item) => item.name.trim().toLowerCase() === branchName.toLowerCase());
   const corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> = [];
+  const calendar = await loadWorkCalendar(branchName);
 
   await inTransaction(async (tx) => {
     // Removed entries leave the rejected slip first, so the usual delete takes them with what belongs to them.
@@ -188,8 +191,8 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
       await removeEntry(tx, kind, id, plan);
       corrections.push({ module: `Delete ${kind}`, id, before: { title: plan.title, deleted: plan.effects }, after: { deleted: true } });
     }
-    if (batch.kind === "New Sale") await saveSales(tx, kept as typeof batch.sales, changes, { dateRemitted, method: method.name, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
-    else await saveCollections(tx, kept as typeof batch.collections, changes, { dateRemitted, method: method.name, reference: text(input.paymentReference), collectedBy: text(input.collectedBy), penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
+    if (batch.kind === "New Sale") await saveSales(tx, kept as typeof batch.sales, changes, { calendar, dateRemitted, method: method.name, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
+    else await saveCollections(tx, kept as typeof batch.collections, changes, { calendar, dateRemitted, method: method.name, reference: text(input.paymentReference), collectedBy: text(input.collectedBy), penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
   });
   // The saved batch stands even if the correction log cannot be written; the Audit Log has every change as well.
   for (const change of corrections) await recordCorrection(change.module, change.id, reason, change.before, change.after).catch(() => {});
@@ -221,7 +224,7 @@ async function removeEntry(tx: Transaction, kind: "sale" | "collection", id: str
   }
 }
 
-type Common = { dateRemitted: string; method: string; penalty: number; penaltyNote: string; fidelity: number; encodedOn: string; today: string; branchId: string; corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> };
+type Common = { calendar: WorkCalendar; dateRemitted: string; method: string; penalty: number; penaltyNote: string; fidelity: number; encodedOn: string; today: string; branchId: string; corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> };
 
 async function saveSales(tx: Transaction, rows: Array<typeof sales.$inferSelect>, changes: Map<string, EntryInput>, common: Common) {
   const programList = await getPrograms();
@@ -254,7 +257,7 @@ async function saveSales(tx: Transaction, rows: Array<typeof sales.$inferSelect>
     if (orDate && (!/^\d{4}-\d{2}-\d{2}$/.test(orDate) || orDate > common.today)) throw new Error(`${label}: enter a valid application date, today or earlier.`);
     const dateProblem = blockingDateProblem({ receiptDate: orDate, receiptLabel: "application date", dateRemitted: common.dateRemitted, today: common.today });
     if (dateProblem) throw new Error(`${label}: ${dateProblem}`);
-    checkBackdate(orDate, backdateReason, label, common.encodedOn);
+    checkBackdate(orDate, backdateReason, label, common.encodedOn, common.calendar);
     const program = programList.find((item) => item.id === row.program_id);
     if (!program || !Number.isFinite(amount) || amount < 0) throw new Error(`${label}: enter a valid amount paid.`);
     if (program.flexible && cents(amount) < cents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
@@ -321,7 +324,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
     if (used && !ids.includes(used.collectionId)) throw new Error(`OR Number ${orNumber} is already recorded (collection ${used.collectionId}). Each OR Number is used once.`);
     if (inBatch.has(entryKey(orNumber))) throw new Error(`OR Number ${orNumber} is entered twice in this batch.`);
     inBatch.set(entryKey(orNumber), row.collection_id);
-    checkBackdate(orDate, backdateReason, label, common.encodedOn);
+    checkBackdate(orDate, backdateReason, label, common.encodedOn, common.calendar);
     const dateProblem = blockingDateProblem({ receiptDate: orDate, dateRemitted: common.dateRemitted, today: common.today });
     if (dateProblem) throw new Error(`${label}: ${dateProblem}`);
     const paymentChanged = cents(amount) !== cents(Number(row.amount_collected)) || monthTo !== text(row.month_to).slice(0, 7) || orDate !== day(row.or_date);

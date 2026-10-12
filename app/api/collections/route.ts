@@ -4,6 +4,7 @@ import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
+import { loadWorkCalendar } from "@/lib/work-calendar";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { withEncoder } from "@/lib/encoder-context";
 import { userWithPageAccess } from "@/lib/auth-server";
@@ -80,6 +81,8 @@ async function saveCollections(request: Request) {
       throw new Error("Receipt photos are required before a remittance is approved. Save the batch, attach the receipt photo, then approve it.");
     }
     const entries: Array<Record<string, unknown>> = body.collections;
+    // Late OR dates skip Sundays and the branch's declared non-working days (lib/working-days.ts).
+    const calendar = await loadWorkCalendar(selectedBranch.name);
     const saved = await inTransaction(async (tx) => {
       // The batch's accounts stay locked until it is saved: a concurrent batch for the same account, on any server, waits
       // and then validates against this batch's payments.
@@ -109,7 +112,7 @@ async function saveCollections(request: Request) {
         const orProblem = orNumberProblem(input.orNumber);
         if (orProblem) throw new Error(`Collection for ${account.memberNumber}: ${orProblem}`);
         const backdateReason = String(entry.backdateReason ?? "").trim().slice(0, 300);
-        checkBackdate(input.orDate, backdateReason, `Collection for ${account.memberNumber}`);
+        checkBackdate(input.orDate, backdateReason, `Collection for ${account.memberNumber}`, manilaNow().date, calendar);
         const dateProblem = blockingDateProblem({ receiptDate: input.orDate, dateRemitted, today: manilaNow().date });
         if (dateProblem) throw new Error(`Collection for ${account.memberNumber}: ${dateProblem}`);
         const receipt = entryKey(input.orNumber);

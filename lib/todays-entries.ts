@@ -4,6 +4,7 @@ import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { PROGRAMS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
 import { readSheetRows } from "@/lib/sheets-on-db";
 import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-deadline";
+import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { dateWarnings } from "@/lib/date-checks";
 import { photosByEntry } from "@/lib/receipt-photos";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
@@ -119,7 +120,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
   // Member names only for the members on these collections.
   const memberIds = [...new Set(collections.slice(1).map((row) => text(row[3])).filter(Boolean))];
   const members = memberIds.length ? await readSheetRows("Members", sql`member_id in (${sql.join(memberIds.map((id) => sql`${id}`), sql`, `)})`) : [[]];
-  const [photos, cashNames] = await Promise.all([photosByEntry(), cashMethodNames()]);
+  const [photos, cashNames, offDays] = await Promise.all([photosByEntry(), cashMethodNames(), declaredNonWorkingDays()]);
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const memberNames = new Map(members.slice(1).map((row) => [text(row[0]), `${text(row[3])} ${text(row[2])}`.trim()]));
   const slipRows = new Map(remittances.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), row]));
@@ -137,7 +138,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
       remittedAt: values.remittanceStatus === "Returned" ? "" : slipStamp(values.remittanceId) || values.dateRemitted,
       onRemittance: !["", "Outstanding", "Returned"].includes(values.remittanceStatus),
       returnReason: values.remittanceStatus === "Returned" ? text(slipRows.get(values.remittanceId)?.[23]) : "",
-      incentiveDeadline: incentiveDeadline(values.orDate),
+      incentiveDeadline: incentiveDeadline(values.orDate, { days: offDays, branch: values.branch }),
       warnings: dateWarnings({ receiptDate: values.orDate, receiptLabel: values.kind === "New Sale" ? "application date" : "OR date", dateRemitted: values.dateRemitted, slipDate, recordedOn: values.recordedOn, today }),
       details: values.details.filter(([, value]) => value !== ""),
       photoId: photos.get(values.id)?.photoId ?? "",

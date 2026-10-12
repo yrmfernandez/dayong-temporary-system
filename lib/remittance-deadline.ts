@@ -6,22 +6,26 @@
  *   3:00 PM lock on saving New Sales and Collections was removed.
  * Times are Manila wall-clock times written "YYYY-MM-DD HH:MM", so they compare as text.
  */
+import { nextWorkingDay, type WorkCalendar } from "@/lib/working-days";
+
 export const REMITTANCE_CUTOFF = "15:00";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 export const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 
-/** 3:00 PM the day after the OR date, or "" when the OR date is not a valid date (the rule is then not applied). */
-export function incentiveDeadline(orDate: string) {
+/**
+ * 3:00 PM the next working day after the OR date (Sundays and declared non-working days are skipped, lib/working-days.ts;
+ * owner, October 12, 2026), or "" when the OR date is not a valid date (the rule is then not applied).
+ */
+export function incentiveDeadline(orDate: string, calendar?: WorkCalendar) {
   const day = orDate.slice(0, 10);
   if (!validDate(day)) return "";
-  const next = new Date(Date.parse(`${day}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
-  return `${next} ${REMITTANCE_CUTOFF}`;
+  return `${nextWorkingDay(day, calendar)} ${REMITTANCE_CUTOFF}`;
 }
 
 /** True when cash received at `receivedAt` ("YYYY-MM-DD HH:MM", Manila) still earns the incentive. */
-export function keepsIncentive(orDate: string, receivedAt: string) {
-  const deadline = incentiveDeadline(orDate);
+export function keepsIncentive(orDate: string, receivedAt: string, calendar?: WorkCalendar) {
+  const deadline = incentiveDeadline(orDate, calendar);
   return !deadline || receivedAt <= deadline;
 }
 

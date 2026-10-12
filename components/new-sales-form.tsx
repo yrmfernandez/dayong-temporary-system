@@ -28,6 +28,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { todayInManila } from "@/lib/account-rules";
 import type { ProgramStanding } from "@/lib/account-data";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { BACKDATE_REASON_MIN, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, needsBackdateReason } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -244,6 +245,9 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // Birthdates cannot be in the future.
   const today = todayInManila();
   const [branch, setBranch] = useState("");
+  // Late dates skip Sundays and the branch's declared non-working days, as the server does (lib/working-days.ts).
+  const offDays = useDeclaredNonWorkingDays();
+  const isLateDate = (date: string) => needsBackdateReason(date, undefined, { days: offDays, branch });
   const [mas, setMas] = useState("");
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
   const [dateRemitted, setDateRemitted] = useState("");
@@ -976,9 +980,9 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       return `Sale #${impossible + 1}: ${blockingDateProblem({ receiptDate: sales[impossible].orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date })}`;
     }
 
-    const late = sales.findIndex((sale) => needsBackdateReason(sale.orDate) && (sale.backdateReason ?? "").trim().length < BACKDATE_REASON_MIN);
+    const late = sales.findIndex((sale) => isLateDate(sale.orDate) && (sale.backdateReason ?? "").trim().length < BACKDATE_REASON_MIN);
     if (late >= 0) {
-      return `Sale #${late + 1}: the application date is more than a day old. Enter the reason it is being encoded late.`;
+      return `Sale #${late + 1}: the application date is more than one working day old. Enter the reason it is being encoded late.`;
     }
 
     return "";
@@ -1304,7 +1308,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                 Branch *
               </Label>
 
-              <SearchSelect aria-label="Branch" value={branch} disabled={Boolean(submissionId)} placeholder="Search branch" options={branches.filter((item) => item.status === "active").map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))} onValueChange={(selected) => { setBranch(selected); setMas(""); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,branch:selected,mas:""}}))); }}/>
+              <SearchSelect aria-label="Branch" value={branch} disabled placeholder="From Clearing" options={branches.filter((item) => item.status === "active").map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))} onValueChange={(selected) => { setBranch(selected); setMas(""); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,branch:selected,mas:""}}))); }}/>
             </div>
 
             {/* MAS */}
@@ -1313,7 +1317,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                 Marketing Account Staff *
               </Label>
 
-              <SearchSelect aria-label="Marketing Account Staff" value={mas} placeholder={branch ? "Search employee / MAS" : "Select a branch first"} disabled={!branch || Boolean(submissionId)} options={masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(selected) => { setMas(selected); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,mas:selected}}))); }}/>
+              <SearchSelect aria-label="Marketing Account Staff" value={mas} placeholder="From Clearing" disabled options={masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(selected) => { setMas(selected); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,mas:selected}}))); }}/>
             </div>
 
             {/* Date Remitted */}
@@ -1322,16 +1326,20 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                 Date Remitted *
               </Label>
 
+              {/* Locked to the clearing (owner, October 12, 2026). A MAS submission has no clearing pick, so its date stays open. */}
               <Input
                 type="date"
+                aria-label="Date Remitted"
                 value={dateRemitted}
+                readOnly={!submissionId}
+                disabled={!submissionId}
                 onChange={(event) =>
                   setDateRemitted(event.target.value)
                 }
               />
 
               <p className="text-xs text-muted-foreground">
-                Filled in from Clearing (the day the receipts were cleared).
+                {submissionId ? "The day this MAS was cleared for New Sales." : "Branch, MAS and Date Remitted come from Clearing (the day the receipts were cleared); choose another person above to change them."}
               </p>
             </div>
           </div>
@@ -1503,11 +1511,11 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                           />
                           <p className="text-xs text-muted-foreground">Also the date enrolled (DOI).</p>
                           {dateWarnings({ receiptDate: sale.orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date }).map((warning) => <p key={warning} className="text-xs font-medium text-amber-800">⚠ {warning}</p>)}
-                          {needsBackdateReason(sale.orDate) && (
+                          {isLateDate(sale.orDate) && (
                             <div className="space-y-1">
                               <Label className="text-xs text-amber-800">Reason for the late entry *</Label>
                               <Input value={sale.backdateReason ?? ""} onChange={(event) => updateSale(sale.id, (current) => ({ ...current, backdateReason: event.target.value }))} placeholder="e.g. Application turned over late by the MAS" />
-                              <p className="text-xs text-muted-foreground">The application date is more than a day old. Administrators review late entries.</p>
+                              <p className="text-xs text-muted-foreground">The application date is more than one working day old. Administrators review late entries.</p>
                             </div>
                           )}
                         </div>

@@ -10,6 +10,7 @@ import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { isoDate } from "@/lib/program-age";
 import { fixedNewSaleAmount, isTrue } from "@/lib/program-amount-lock";
 import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-deadline";
+import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { dateWarnings } from "@/lib/date-checks";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -204,13 +205,14 @@ export async function findExceptions({ includeLegacy = false } = {}) {
     if (missing.length) add({ category: "members", key: `member-${text(row[0])}`, recordId: text(row[0]), title: `Member ${text(row[1]) || text(row[0])} · ${text(row[3])} ${text(row[2])}`, problem: `Missing ${missing.join(", ")}.`, date: "", legacy: isLegacy(text(row[0])), href: `/members?search=${encodeURIComponent(text(row[1]) || text(row[0]))}` });
   }
 
-  // Cash still with staff after the incentive deadline: the incentive is lost once it is remitted.
+  // Cash still with staff after the incentive deadline (next working day, lib/working-days.ts): the incentive is lost once it is remitted.
+  const offDays = await declaredNonWorkingDays();
   for (const row of posted.filter((item) => text(item[28]) === "Outstanding")) {
-    const deadline = incentiveDeadline(text(row[9]));
+    const deadline = incentiveDeadline(text(row[9]), { days: offDays, branch: text(row[6]) });
     if (deadline && deadline < nowStamp) add({ category: "overdue", key: `overdue-${text(row[0])}`, recordId: text(row[0]), title: `${collectionTitle(row)} · ${text(row[31]) || text(row[7])}`, problem: `${peso(number(row[10]))} not remitted; the incentive deadline was ${deadline}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), href: "/remittances" });
   }
   for (const row of sales.slice(1).filter((item) => text(item[0]) && text(item[35]) === "Outstanding")) {
-    const deadline = incentiveDeadline(text(row[30]) || manilaDateOf(text(row[1])));
+    const deadline = incentiveDeadline(text(row[30]) || manilaDateOf(text(row[1])), { days: offDays, branch: text(row[2]) });
     if (deadline && deadline < nowStamp) add({ category: "overdue", key: `overdue-${text(row[0])}`, recordId: text(row[0]), title: `${saleTitle(row)} · ${text(row[3])}`, problem: `${peso(number(row[26]))} not remitted; the incentive deadline was ${deadline}.`, date: text(row[30]).slice(0, 10), legacy: isLegacy(text(row[0])), href: "/remittances" });
   }
 

@@ -1,4 +1,5 @@
 import { manilaNow } from "@/lib/remittance-deadline";
+import { previousWorkingDay, type WorkCalendar } from "@/lib/working-days";
 
 /**
  * Data-entry controls shared by the New Sales and Collections forms and their saves.
@@ -13,14 +14,15 @@ import { manilaNow } from "@/lib/remittance-deadline";
  */
 export const BACKDATE_REASON_MIN = 5;
 
-const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+/**
+ * True when the date is earlier than the last working day before today (Manila): on a Monday a Saturday OR is on time,
+ * as is one dated before a declared non-working day (lib/working-days.ts; owner, October 12, 2026).
+ */
+export const needsBackdateReason = (date: string, today = manilaNow().date, calendar?: WorkCalendar) => /^\d{4}-\d{2}-\d{2}$/.test(date) && date < previousWorkingDay(today, calendar);
 
-/** True when the date is earlier than yesterday (Manila). */
-export const needsBackdateReason = (date: string, today = manilaNow().date) => /^\d{4}-\d{2}-\d{2}$/.test(date) && date < dayBefore(today);
-
-export function checkBackdate(date: string, reason: string, label: string, today = manilaNow().date) {
-  if (needsBackdateReason(date, today) && reason.trim().length < BACKDATE_REASON_MIN) {
-    throw new Error(`${label}: the date ${date} is more than a day old. Enter the reason it is being encoded late.`);
+export function checkBackdate(date: string, reason: string, label: string, today = manilaNow().date, calendar?: WorkCalendar) {
+  if (needsBackdateReason(date, today, calendar) && reason.trim().length < BACKDATE_REASON_MIN) {
+    throw new Error(`${label}: the date ${date} is more than one working day old. Enter the reason it is being encoded late.`);
   }
 }
 

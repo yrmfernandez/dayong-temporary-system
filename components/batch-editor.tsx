@@ -93,7 +93,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
       {batch && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1"><Label htmlFor="edit-date-remitted">Date Remitted</Label><Input id="edit-date-remitted" type="date" className={field} value={form.dateRemitted} onChange={(event) => set("dateRemitted", event.target.value)} /></div>
+            <div className="space-y-1"><Label htmlFor="edit-date-remitted">Date Remitted (from Clearing)</Label><Input id="edit-date-remitted" type="date" className={field} value={form.dateRemitted} readOnly disabled /></div>
             <div className="space-y-1">
               <Label htmlFor="edit-method">Remittance method</Label>
               <select id="edit-method" className="h-8 w-full rounded-md border bg-background px-2 text-sm" value={form.paymentMethod} onChange={(event) => set("paymentMethod", event.target.value)}>

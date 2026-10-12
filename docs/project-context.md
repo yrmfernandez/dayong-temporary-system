@@ -324,6 +324,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Batch information locked; working days for late dates (2026-10-12)
+
+- **Owner:** lock Branch, MAS and Date Remitted in Batch information, since Clearing fills them. An OR one or more days old can be on time when Sundays or other non-working days fall between.
+- **Done:** the three fields are read-only on New Sales, Collections and the returned-batch editor; they change only by choosing another person in From Clearing (a MAS submission keeps its Date Remitted editable). Late-entry reason: needed only when the date is before the last working day before today. Incentive deadline: 3:00 PM the next working day after the OR date (Remittances, Today's Entries, Exceptions). Non-working = Sundays plus the days declared non-working in the attendance calendar for the branch. Tested.
+- **To do (owner):** declare holidays the office is closed as non-working days in the attendance calendar (Attendance), so they count.
+
 ### MAM rows and 60D (2026-10-12)
 
 - **Owner:** a member's MAM repeated the month before's NOP and Month of in months with no payment (e.g. PH-52925058 looked like many repeated entries); old-sheet receipts covering several NOPs showed only one. 60D should mean two unpaid months, not one.

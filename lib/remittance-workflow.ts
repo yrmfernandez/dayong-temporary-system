@@ -9,6 +9,7 @@ import { getEncoder, runAsSystem } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
 import { incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime } from "@/lib/remittance-deadline";
+import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { cashCountProblem } from "@/lib/cash-count";
 import { photosByEntry } from "@/lib/receipt-photos";
 import { clearedAt, closeClearings } from "@/lib/clearing";
@@ -132,7 +133,7 @@ async function loadLedger() {
   const active = sql`(coalesce(remittance_status, '') <> 'Remitted' or coalesce(encoded_by_employee_id, '') <> '' or linked_remittance_id is not null)`;
   const others = titles.filter((title) => title !== "Collections" && title !== "Sales");
   // The receipt-photo index is read alongside, not after: one round trip less on every Remittances and Finance load.
-  const [response, activeCollections, activeSales, photos, cashNames] = await Promise.all([
+  const [response, activeCollections, activeSales, photos, cashNames, offDays] = await Promise.all([
     sheets.spreadsheets.values.batchGet({
       spreadsheetId: GOOGLE_SHEET_ID,
       ranges: others.map((title) => ledgerRanges[title]),
@@ -143,7 +144,10 @@ async function loadLedger() {
     readSheetRowsNumbered("Sales", active),
     photosByEntry(),
     cashMethodNames(),
+    declaredNonWorkingDays(),
   ]);
+  // The incentive deadline skips Sundays and the branch's declared non-working days (lib/working-days.ts).
+  const deadline = (date: string, branch: string) => incentiveDeadline(date, { days: offDays, branch });
   const rows: Record<string, unknown[][]> = Object.fromEntries(others.map((title, index) => [title, response.data.valueRanges?.[index]?.values ?? []]));
   rows.Collections = activeCollections.rows;
   rows.Sales = activeSales.rows;
@@ -159,7 +163,7 @@ async function loadLedger() {
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
     kind: "Collections" as const, photoId: "", cash: false, encodedByEmployeeId: text(row[22]), encodedByName: text(row[23]), encodedAt: manilaStamp(text(row[24])), dateRemitted: text(row[40]).slice(0, 10), id: text(row[0]), batchId: text(row[1]), rowNumber: activeCollections.rowNumbers[index], memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
-    orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), forfeitedIncentive: number(row[FORFEIT_COLUMN.Collections]), incentiveDeadline: incentiveDeadline(text(row[9])), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
+    orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), forfeitedIncentive: number(row[FORFEIT_COLUMN.Collections]), incentiveDeadline: deadline(text(row[9]), text(row[6])), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
     collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]), fidelity: number(row[37]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${text(row[9])}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((collection, index) => collection.id && text(rows.Collections[index + 1]?.[19]).toLowerCase() === "posted");
@@ -172,7 +176,7 @@ async function loadLedger() {
     kind: "New Sales" as const, photoId: "", cash: false, encodedByEmployeeId: text(row[32]), encodedByName: text(row[33]), encodedAt: manilaStamp(text(row[34]) || text(row[1])), dateRemitted: text(row[4]).slice(0, 10), id: text(row[0]), batchId: "", rowNumber: activeSales.rowNumbers[index], memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
     accountableEmployeeId: text(row[37]), accountableName: text(row[3]), accountableRole: "MAS",
     orNumber: text(row[29]) || (text(row[28]) ? `App ${text(row[28])}` : ""), orDate: saleDate(row), amount: number(row[26]), remittanceAmount: text(row[41]) === "" ? number(row[26]) : number(row[41]),
-    forfeitedIncentive: number(row[FORFEIT_COLUMN["New Sales"]]), incentiveDeadline: incentiveDeadline(saleDate(row)),
+    forfeitedIncentive: number(row[FORFEIT_COLUMN["New Sales"]]), incentiveDeadline: deadline(saleDate(row), text(row[2])),
     remittanceStatus: text(row[35]) || "Needs Historical Review", linkedRemittanceId: text(row[36]),
     collectedBy: "MAS", paymentMethod: text(row[23]) || "Cash", paymentReference: "", penalty: number(row[38]), penaltyNote: text(row[39]), fidelity: number(row[42]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${saleDate(row)}T00:00:00Z`).getTime()) / 86400000)) || 0,
@@ -206,14 +210,18 @@ async function loadLedger() {
 /** The incentive the accountable person keeps on an item (amount less the company remittance). */
 const incentiveOf = (item: Pick<CashCollection, "amount" | "remittanceAmount">) => Math.max(0, Math.round((item.amount - item.remittanceAmount) * 100) / 100);
 
-/** True when cash received at `receivedAt` ("YYYY-MM-DD HH:MM") is too late to keep this item's incentive. */
-export const forfeitsIncentive = (item: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate">, receivedAt: string) => incentiveOf(item) > 0 && !keepsIncentive(item.orDate, receivedAt);
+/**
+ * True when cash received at `receivedAt` ("YYYY-MM-DD HH:MM") is too late to keep this item's incentive: after the
+ * item's deadline (3:00 PM the next working day after its OR date, worked out when the ledger is read).
+ */
+export const forfeitsIncentive = (item: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate" | "incentiveDeadline">, receivedAt: string) =>
+  incentiveOf(item) > 0 && (item.incentiveDeadline ? receivedAt > item.incentiveDeadline : !keepsIncentive(item.orDate, receivedAt));
 
 /**
  * What the accountable person must turn over for one item: the company remittance, or the full amount once the
  * incentive deadline has passed. A batch's Fidelity is added on top of it; a penalty is tracked separately.
  */
-export const amountDue = (collection: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate">, receivedAt = "") =>
+export const amountDue = (collection: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate" | "incentiveDeadline">, receivedAt = "") =>
   receivedAt && forfeitsIncentive(collection, receivedAt) ? collection.amount : collection.remittanceAmount;
 
 /**
