@@ -2789,3 +2789,21 @@ test('Clearing shows who approved or returned each kind', async () => {
   assert.equal(line.stage, 'Approved');
   assert.deepEqual(line.kinds[0].decisions, [{ status: 'Approved', by: 'BAUTISTA, JO-ANN E.', at: `${today} 10:15` }]);
 });
+
+test('a clearing for both kinds still covers an earlier Date Remitted for the kind not yet encoded', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila();
+  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  await seedAccount({ doi: yesterday });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  // Cleared today for both; the Collections (Date Remitted moved to yesterday) went for approval, so it is Encoded.
+  await seed('clearings', [{ clearing_id: 'CLR-B', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T00:30:00Z`, cleared_date: today, status: 'Encoded', covers: 'Both' }]);
+  await seed('collections', [{ collection_id: 'COL-B', collection_batch_id: 'CBT-B', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', or_number: '5001 C', amount_collected: 350, status: 'Posted', remittance_status: 'Pending Remittance Approval', accountable_employee_id: 'DPE-0002', date_remitted: yesterday, encoded_at: `${today}T01:00:00Z`, remittance_method: 'Cash' }]);
+  const clearing = h.load('lib/clearing.ts');
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    assert.equal(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', yesterday, 'New Sales'), '', 'its New Sales are still waiting');
+    assert.match(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', yesterday, 'Collections'), /not in Clearing for Collections/, 'its Collections are already encoded');
+  } finally { globalThis.dayongClearingNotRequired = true; }
+});

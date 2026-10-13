@@ -241,6 +241,21 @@ export async function clearedEmployee(employeeIds: string[], branch: string, dat
 }
 
 /**
+ * A later day's Encoded clearing of this person and branch whose `kind` is still waiting for encoding (owner, October 13,
+ * 2026). Sending one kind for approval marks a clearing for both Encoded, so after SUYMAN, NELSON's Collections (Date
+ * Remitted moved to the day before, an entry clerks' meeting) went for approval, his New Sales for that day were refused:
+ * an earlier Date Remitted was covered only while the clearing was Open. Same per-kind check as getEncodableClearings.
+ */
+async function waitingLaterClearing(employeeId: string, branch: string, dateRemitted: string, kind: ClearingKind) {
+  const rows = await currentDb().select().from(clearings).where(and(
+    eq(clearings.employee_id, text(employeeId)), sameBranch(branch), eq(clearings.status, "Encoded"), inArray(clearings.covers, ["Both", kind]),
+    gt(clearings.cleared_date, text(dateRemitted)), sql`${clearings.cleared_date} <= ${addDays(text(dateRemitted), UNFINISHED_DAYS)}`,
+  ));
+  if (!rows.length) return false;
+  return (await withProgress(rows.map(toClearing))).some((item) => item.kinds?.some((part) => part.kind === kind && part.stage === "Waiting for encoding"));
+}
+
+/**
  * Why a batch cannot be saved yet, or "" when its accountable person is cleared for the branch on the Date Remitted
  * (see `covering`). The message says when and where they were cleared instead, so a wrong Date Remitted or branch is
  * easy to spot.
@@ -249,6 +264,7 @@ export async function clearingProblem(employeeId: string, employeeName: string, 
   // Tests about other rules treat everyone as cleared (scripts/test-encoder-tracking.cjs); the clearing test turns this off.
   if ((globalThis as { dayongClearingNotRequired?: boolean }).dayongClearingNotRequired) return "";
   if (await clearedEmployee([employeeId], branch, dateRemitted, kind)) return "";
+  if (kind && await waitingLaterClearing(employeeId, branch, dateRemitted, kind)) return "";
   const others = await currentDb().select({ branch: clearings.branch, day: clearings.cleared_date, status: clearings.status, covers: clearings.covers }).from(clearings)
     .where(and(eq(clearings.employee_id, text(employeeId)), ne(clearings.status, "Removed"), gte(clearings.cleared_date, manilaNow(new Date(Date.now() - 7 * 86400000)).date)))
     .orderBy(desc(clearings.cleared_at)).limit(3);

@@ -324,6 +324,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### New Sales refused although the MAS is in Clearing (2026-10-13)
+
+- **Owner:** CABALLERO, JENNY cleared SUYMAN, NELSON (MINTAL, both kinds) but New Sales says he is not in Clearing for New Sales.
+- **Cause:** his Collections were saved with Date Remitted October 12 (reason: entry clerks' meeting) and, being cash, went for approval at once, which marked the October 13 clearing Encoded. A later day's clearing covered an earlier Date Remitted only while Open, so his New Sales for October 12 were refused.
+- **Done:** a later day's Encoded clearing still covers an earlier Date Remitted for a kind it covers that is still waiting for encoding (same per-kind check as From Clearing); a kind already encoded stays refused. Checked against production (New Sales Oct 12 allowed, Collections Oct 12 refused). Tested.
+
 ### ORC and reactivation incentives (2026-10-13)
 
 - **Owner:** ORC (outright commission): both the Collector and the MAS get their incentives, with a Yes/No; reactivation: whoever collected (MAS, Collector or ORC) gets only 10%. Owner's answers: ORC both incentives deducted, set per batch; reactivation 10% of (base pay − mark-up), per entry; reactivation and ORC cannot go together.
