@@ -324,6 +324,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Collections: account not found when the MAS name differs in capitals (2026-10-13)
+
+- **Owner:** Collections says A unique program enrollment was not found for PH-88659933 (DS-500) although the program is selected; the history shows 0 collections.
+- **Cause:** the account's MAS is Nagliba, Marissa; the employee and the Clearing pick are NAGLIBA, MARISSA. Collections compared the names exactly (loading the account and saving). About 250 of her accounts are spelled the other way; other MAS can have the same mix.
+- **Done:** Collections compares branch and MAS ignoring capitals and extra spaces, as the account loading already did. Tested.
+- **Optional (owner):** make account MAS names match the employee's spelling, so every page shows one name.
+
 ### OR No. in a member's MAM (2026-10-13)
 
 - **Owner:** adjust the individual MAM first, add the OR number, to compare records more easily (checking whether PH-36482213 and PH-88659933 are the same person: names and birthdates differ, so nothing is merged until the owner decides).
