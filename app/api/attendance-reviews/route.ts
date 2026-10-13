@@ -1,5 +1,5 @@
 import { withEncoder } from "@/lib/encoder-context";
-import { closeFinishedAttendanceDaysQuietly, isSystemAbsence } from "@/lib/auto-absence";
+import { closeFinishedAttendanceDaysQuietly, isSystemAbsence, systemAbsencesWaiting } from "@/lib/auto-absence";
 import { NextResponse } from "next/server";
 import { getEmployees } from "@/lib/employees";
 
@@ -61,12 +61,14 @@ export async function GET(request: Request) {
     }
 
     await closeFinishedAttendanceDaysQuietly();
-    const [employees, records, closures, branches, register] = await Promise.all([
+    const [employees, records, closures, branches, register, waiting] = await Promise.all([
       getActiveAttendanceEmployees(),
       getAttendanceRecordsForDate(attendanceDate),
       getClosures(attendanceDate, attendanceDate),
       employeeAttendanceBranches(),
       getEmployees(),
+      // Days of the last week with system absences still unmarked (the sidebar number), to jump to.
+      systemAbsencesWaiting(),
     ]);
     // Operational roles, for the review's role filter.
     const rolesOf = new Map(register.map((employee) => [employee.id, employee.roles]));
@@ -79,6 +81,7 @@ export async function GET(request: Request) {
       success: true,
       attendanceDate,
       nonWorkingDay: closure,
+      waiting,
       employees: employees.map((employee) => {
         const branch = branches.get(employee.employeeId) ?? "";
         return {

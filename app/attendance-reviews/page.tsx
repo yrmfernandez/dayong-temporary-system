@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchSelect } from "@/components/ui/search-select";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type AttendanceRecord = {
@@ -56,11 +57,16 @@ export default function AttendanceReviewsPage() {
   const [updatingId, setUpdatingId] = useState("");
   const [message, setMessage] = useState("");
   const [nonWorkingDay, setNonWorkingDay] = useState<NonWorkingDay | null>(null);
+  // Days of the last week whose system absences are not marked yet; together they are the sidebar number.
+  const [waiting, setWaiting] = useState<Array<{ date: string; count: number }>>([]);
   const [branchFilter, setBranchFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  // One employee, searched by name or ID (owner, October 13, 2026); the list follows the branch and role filters.
+  const [employeeFilter, setEmployeeFilter] = useState("");
   const branchChoices = [...new Set(employees.map((employee) => employee.branch).filter(Boolean))].sort();
   const roleChoices = [...new Set(employees.flatMap((employee) => employee.roles ?? []))].sort();
-  const shown = employees.filter((employee) => (!branchFilter || employee.branch === branchFilter) && (!roleFilter || (employee.roles ?? []).includes(roleFilter)));
+  const filtered = employees.filter((employee) => (!branchFilter || employee.branch === branchFilter) && (!roleFilter || (employee.roles ?? []).includes(roleFilter)));
+  const shown = filtered.filter((employee) => !employeeFilter || employee.employeeId === employeeFilter);
   // Ticked employees, marked together through the attendance board's bulk mark (POST /api/attendance-tracking/daily).
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<MarkStatus>("Not Required");
@@ -72,13 +78,13 @@ export default function AttendanceReviewsPage() {
   const sunday = new Date(`${attendanceDate}T00:00:00Z`).getUTCDay() === 0;
   const toggle = (ids: string[], on: boolean) => setSelected((current) => { const next = new Set(current); for (const id of ids) { if (on) next.add(id); else next.delete(id); } return next; });
 
-  const loadReview = async () => {
+  const loadReview = async (date = attendanceDate) => {
     setLoading(true);
     setMessage("");
 
     try {
       const response = await fetch(
-        `/api/attendance-reviews?date=${encodeURIComponent(attendanceDate)}`,
+        `/api/attendance-reviews?date=${encodeURIComponent(date)}`,
         { cache: "no-store" },
       );
       const result = await response.json();
@@ -89,6 +95,7 @@ export default function AttendanceReviewsPage() {
 
       setEmployees(result.employees ?? []);
       setNonWorkingDay(result.nonWorkingDay ?? null);
+      setWaiting(result.waiting ?? []);
     } catch (error) {
       setEmployees([]);
       setMessage(
@@ -106,7 +113,8 @@ export default function AttendanceReviewsPage() {
     void loadReview();
   }, []);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["attendance", "leave_requests", "holidays"], loadReview);
+  useLiveRefresh(["attendance", "leave_requests", "holidays"], () => loadReview());
+  const openDay = (date: string) => { setAttendanceDate(date); setSelected(new Set()); void loadReview(date); };
 
   const markAttendance = async (
     employeeId: string,
@@ -195,19 +203,37 @@ export default function AttendanceReviewsPage() {
             </Button>
             <div className="space-y-2">
               <Label htmlFor="attendance-branch">Branch</Label>
-              <select id="attendance-branch" className="h-9 rounded-md border bg-background px-3 text-sm" value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)}>
+              <select id="attendance-branch" className="h-9 rounded-md border bg-background px-3 text-sm" value={branchFilter} onChange={(event) => { setBranchFilter(event.target.value); setEmployeeFilter(""); }}>
                 <option value="">All branches</option>
                 {branchChoices.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
               </select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="attendance-role">Role</Label>
-              <select id="attendance-role" className="h-9 rounded-md border bg-background px-3 text-sm" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+              <select id="attendance-role" className="h-9 rounded-md border bg-background px-3 text-sm" value={roleFilter} onChange={(event) => { setRoleFilter(event.target.value); setEmployeeFilter(""); }}>
                 <option value="">All roles</option>
                 {roleChoices.map((role) => <option key={role} value={role}>{role}</option>)}
               </select>
             </div>
+            <div className="min-w-56 flex-1 space-y-2">
+              <Label htmlFor="attendance-employee">Employee</Label>
+              <SearchSelect id="attendance-employee" aria-label="Employee" clearable className="h-9" value={employeeFilter} onValueChange={setEmployeeFilter}
+                placeholder="All employees · search name or ID" emptyText="No employee matches."
+                options={filtered.map((employee) => ({ value: employee.employeeId, label: employee.fullName || employee.employeeId, description: [employee.employeeId, employee.branch].filter(Boolean).join(" · ") }))} />
+            </div>
           </div>
+
+          {waiting.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <span className="font-medium">Absent by system, not marked yet:</span>
+              {waiting.map((day) => (
+                <Button key={day.date} type="button" size="sm" variant={day.date === attendanceDate ? "default" : "outline"} onClick={() => openDay(day.date)}>
+                  {new Intl.DateTimeFormat("en-PH", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${day.date}T00:00:00Z`))} ({day.count})
+                </Button>
+              ))}
+              <span className="text-xs">Mark them (Absent confirms the system&apos;s record) to clear the number in the sidebar. Only the last 7 days are counted.</span>
+            </div>
+          )}
 
           {nonWorkingDay && (
             <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
@@ -254,7 +280,7 @@ export default function AttendanceReviewsPage() {
 
           {!loading && !nonWorkingDay?.allBranches && employees.length > 0 && (
             <div className="divide-y rounded-lg border">
-              {shown.length === 0 && <p className="p-4 text-sm text-muted-foreground">No employee matches this branch and role.</p>}
+              {shown.length === 0 && <p className="p-4 text-sm text-muted-foreground">No employee matches these filters.</p>}
               {shown.map((employee) => {
                 const locked = isLocked(employee);
 

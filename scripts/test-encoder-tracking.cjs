@@ -2629,3 +2629,21 @@ test('Collections find the account when its MAS name differs only in capitals', 
   const saved = await route.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] }));
   assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
 });
+
+test('the Attendance Review number counts unmarked system absences of listed employees only', async () => {
+  const h = harness();
+  h.rows.Users = [[]];
+  h.rows.Employees = [[], ['DPE-0002', 'Active One', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Active Two', 'BR-1', 'MAS', 'active'], ['DPE-0004', 'Left', 'BR-1', 'MAS', 'inactive']];
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Active One', employment_status: 'Active' }, { employee_id: 'DPE-0003', full_name: 'Active Two', employment_status: 'Active' }, { employee_id: 'DPE-0004', full_name: 'Left', employment_status: 'Inactive' }]);
+  const { systemAbsencesWaiting, SYSTEM_ABSENCE_NOTE } = h.load('lib/auto-absence.ts');
+  const absent = (id, employee, date) => ({ attendance_id: id, employee_id: employee, attendance_date: date, attendance_status: 'Absent', notes: SYSTEM_ABSENCE_NOTE });
+  await seed('attendance', [
+    absent('A1', 'DPE-0002', '2026-10-12'), absent('A2', 'DPE-0003', '2026-10-12'),
+    absent('A3', 'DPE-0004', '2026-10-12'),                       // no longer active: not listed in the review, not counted
+    absent('A4', 'DPE-0002', '2026-10-08'), absent('A5', 'DPE-0002', '2026-10-08'), // a repeated system row counts once
+    absent('A6', 'DPE-0003', '2026-10-08'),
+    { attendance_id: 'A7', employee_id: 'DPE-0003', attendance_date: '2026-10-08', attendance_status: 'Not Required', notes: 'No attendance needed marked by admin on 2026-10-13' }, // marked: replaces it
+    absent('A8', 'DPE-0002', '2026-10-01'),                       // older than a week
+  ]);
+  assert.deepEqual(await systemAbsencesWaiting('2026-10-13'), [{ date: '2026-10-12', count: 2 }, { date: '2026-10-08', count: 1 }]);
+});

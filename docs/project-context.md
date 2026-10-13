@@ -324,6 +324,14 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Leave Approvals tabs; Attendance Review search and its sidebar number (2026-10-13)
+
+- **Owner:** arrange Leave Approvals as Pending, Approved, Rejected; add a search/dropdown in Attendance Review; its sidebar number always says 99+ even after marking almost everyone.
+- **Cause of 99+:** the number counted Absent by system records of the last 7 days, while the page shows one day. On October 13 all 90 marks were No attendance needed for today, but October 6, 7, 8 and 12 still had about 90 unmarked system absences each (about 85 of the 95 on October 12 are MAS); about 49 a day belonged to employees no longer active, who cannot be marked at all.
+- **Done:** Leave Approvals in tabs with counts. Attendance Review: Employee search dropdown; a bar of the waiting days with counts, click to open. The sidebar number counts only active employees the page lists, once per person and day, and not when a manager's mark exists. Tested.
+- **To do (owner):** mark the waiting days (filter role MAS, Select all, Mark selected as No attendance needed) to bring the number down.
+- **Open question:** MAS must be marked No attendance needed by hand every day, or the system records them Absent. A standing setting (e.g. per role or per employee: no attendance needed) would stop that.
+
 ### Collections: account not found when the MAS name differs in capitals (2026-10-13)
 
 - **Owner:** Collections says A unique program enrollment was not found for PH-88659933 (DS-500) although the program is selected; the history shows 0 collections.
@@ -333,8 +341,9 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 
 ### OR No. in a member's MAM (2026-10-13)
 
-- **Owner:** adjust the individual MAM first, add the OR number, to compare records more easily (checking whether PH-36482213 and PH-88659933 are the same person: names and birthdates differ, so nothing is merged until the owner decides).
+- **Owner:** adjust the individual MAM first, add the OR number, to compare records more easily (to check whether PH-36482213 and PH-88659933 were the same person).
 - **Done:** the member's MAM table has OR No. and OR Date columns, one line per receipt.
+- **Decided (owner, after comparing):** PH-36482213 (DENNIS, D-350 (5Y)) and PH-88659933 (ARIES, DS-500) are different people; not merged. OR 23296 N stays on ARIES's DS-500 account. Recorded under `notSamePerson` in `config/name-merges.json`.
 
 ### DS-320 missing from New Sales; one code per program (2026-10-13)
 
@@ -347,7 +356,7 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 
 - **Owner:** let the Date Remitted be edited, but ask why it was changed: sometimes there is work but it cannot be encoded because of meetings and other reasons.
 - **Done:** New Sales, Collections and the returned-batch editor: Date Remitted is editable (starts on the clearing day); a day other than the clearing day needs a reason (5+ characters), checked in the browser and on the server, and kept with each entry (`date_remitted_reason`, migration `0022`). Branch and MAS stay locked to Clearing. The new day must still be covered by a clearing (an Open clearing covers earlier days). Tested.
-- **To do (owner):** run `npm run prod -- npm run db:migrate` then `npm run prod -- node scripts/check-database.mjs` on production BEFORE pushing; until then saving New Sales and Collections fails because the column is missing.
+- **Production:** the code went live before the migration on October 13, 2026, so New Sales and Collections saves failed (column date_remitted_reason missing) until `npm run prod -- npm run db:migrate` was run the same day; check-database: 23 of 23 migrations, OK.
 - **Not yet:** the reasons are stored but not listed anywhere (Exceptions lists late OR dates only); say if administrators should review them there.
 
 ### Batch information locked; working days for late dates (2026-10-12)

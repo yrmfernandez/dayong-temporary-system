@@ -1,6 +1,9 @@
+import { sql } from "drizzle-orm";
+
 import { closureCovers, employeeAttendanceBranches, getClosures, type Closure } from "@/lib/attendance-calendar";
 import { addAttendanceRecords, getAllAttendanceForRange, type AttendanceRecord } from "@/lib/attendance-data";
 import { getPhilippineDate, SCHEDULED_TIME_IN, SCHEDULED_TIME_OUT } from "@/lib/attendance";
+import { getDb } from "@/lib/db";
 import { runAsSystem } from "@/lib/encoder-context";
 import { withWriteLock } from "@/lib/google-sheets";
 import { getActiveAttendanceEmployees } from "@/lib/google-sheets-data";
@@ -76,4 +79,27 @@ export function closeFinishedAttendanceDays() {
 export async function closeFinishedAttendanceDaysQuietly() {
   try { await closeFinishedAttendanceDays(); }
   catch (error) { console.error("Auto absence: could not close finished days.", error); }
+}
+
+/** How far back Attendance Review asks management to look at system absences (the sidebar number counts these). */
+export const SYSTEM_ABSENCE_REVIEW_DAYS = 7;
+
+/**
+ * Days of the last week with system absences nobody has marked yet, newest first (owner, October 13, 2026). Only the
+ * employees Attendance Review lists count (active ones; someone who has left cannot be marked there), once per person
+ * and day, and not when another record that day (a manager's mark) replaces the system absence.
+ */
+export async function systemAbsencesWaiting(today = getPhilippineDate()): Promise<Array<{ date: string; count: number }>> {
+  const since = addDays(today, -SYSTEM_ABSENCE_REVIEW_DAYS);
+  const [active, result] = await Promise.all([
+    getActiveAttendanceEmployees(),
+    getDb().execute(sql`select distinct a.employee_id, a.attendance_date::text as day from attendance a
+      where a.attendance_status = 'Absent' and coalesce(a.notes, '') like 'Absent by system%' and a.attendance_date >= ${since}::date and a.attendance_date <= ${today}::date
+        and not exists (select 1 from attendance b where b.employee_id = a.employee_id and b.attendance_date = a.attendance_date and coalesce(b.notes, '') not like 'Absent by system%')`),
+  ]);
+  const listed = new Set(active.map((employee) => employee.employeeId));
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ employee_id: string; day: string }>;
+  const byDay = new Map<string, number>();
+  for (const row of rows) if (listed.has(row.employee_id)) byDay.set(row.day, (byDay.get(row.day) ?? 0) + 1);
+  return [...byDay].map(([date, count]) => ({ date, count })).sort((a, b) => b.date.localeCompare(a.date));
 }

@@ -34,6 +34,15 @@ type LeaveRequest = {
   reviewedAt: string;
 };
 
+// Tabs in review order (owner, October 13, 2026): what still needs a decision first, then the decided ones.
+const TABS = ["Pending", "Approved", "Rejected", "Cancelled"] as const;
+type Tab = typeof TABS[number];
+
+/** Pending: the soonest leave first. Decided: the latest reviewed first. */
+const ordered = (list: LeaveRequest[], tab: Tab) => [...list].sort((a, b) => tab === "Pending"
+  ? a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate)
+  : (b.reviewedAt || b.startDate).localeCompare(a.reviewedAt || a.startDate));
+
 export default function LeaveApprovalsPage() {
   const [requests, setRequests] = useState<
     LeaveRequest[]
@@ -42,6 +51,11 @@ export default function LeaveApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState("");
   const [message, setMessage] = useState("");
+  const [tab, setTab] = useState<Tab>("Pending");
+  const counts = Object.fromEntries(TABS.map((status) => [status, requests.filter((request) => request.approvalStatus === status).length])) as Record<Tab, number>;
+  // Cancelled shows only when there are any (or while it is open).
+  const tabs = TABS.filter((status) => status !== "Cancelled" || counts.Cancelled > 0 || tab === "Cancelled");
+  const shown = ordered(requests.filter((request) => request.approvalStatus === tab), tab);
 
   const loadRequests = async () => {
     try {
@@ -148,17 +162,26 @@ export default function LeaveApprovalsPage() {
             </p>
           )}
 
+          <div role="tablist" aria-label="Leave request status" className="mb-4 flex flex-wrap gap-2">
+            {tabs.map((status) => (
+              <Button key={status} type="button" role="tab" size="sm" aria-selected={tab === status} variant={tab === status ? "default" : "outline"} onClick={() => setTab(status)}>
+                {status}
+                <span className={`ml-1.5 rounded-full px-1.5 text-xs ${tab === status ? "bg-white/20" : "bg-muted"}`}>{counts[status]}</span>
+              </Button>
+            ))}
+          </div>
+
           {loading ? (
             <p className="text-sm text-muted-foreground">
               Loading leave requests...
             </p>
-          ) : requests.length === 0 ? (
+          ) : shown.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No leave requests found.
+              {requests.length === 0 ? "No leave requests found." : `No ${tab.toLowerCase()} leave requests.`}
             </p>
           ) : (
             <div className="divide-y rounded-lg border">
-              {requests.map((request) => (
+              {shown.map((request) => (
                 <div
                   key={request.id}
                   className="space-y-3 p-4"
@@ -181,10 +204,11 @@ export default function LeaveApprovalsPage() {
 
                     <Badge
                       variant={
-                        request.approvalStatus ===
-                        "Approved"
+                        request.approvalStatus === "Approved"
                           ? "default"
-                          : "secondary"
+                          : request.approvalStatus === "Rejected"
+                            ? "destructive"
+                            : "secondary"
                       }
                     >
                       {request.approvalStatus}
