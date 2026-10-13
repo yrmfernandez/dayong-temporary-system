@@ -324,6 +324,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Collapsible sections that fit the screen (2026-10-13)
+
+- **Owner:** in Audits, Entries by program collapsible, each list (New Sales, Collections) in its own scrolling card; Every entry still too wide, make it fit and collapsible.
+- **Done:** Audits → Entries by program folds open/closed; New Sales and Collections lists each scroll in their own card (max about 18 rows high). The report's Every entry is a list instead of an 11-column table (each entry one row: entry and encoding time; OR / application, OR date and Date Remitted; member, PH number and MAS; amount and incentive; status, receipt and Details), wrapping on narrow screens, folding open/closed and scrolling in its own card; printing shows it in full.
+
 ### Audits match the clerk's report; one Fidelity list (2026-10-13)
 
 - **Owner:** the audits report and the Entry Clerk's report are not the same; the Fidelity received total and Fidelity Bond should be the same.
@@ -731,3 +736,6 @@ Fixed receipt-time lookup so a later-day clearing covering an earlier Date Remit
 
 ### October 13, 2026: GOTUAL daily incentive correction
 Owner confirmed MD-2026-0053's incentive for October 13 must be PHP 196.50. Corrected today's stored collection snapshot only: OR 17111B (D-350 (5Y), NOP 9) PHP 122.50, plus OR 17112B (D-370, NOP 44-45) PHP 74.00. The first payment had been calculated at a zero Collector rate; this correction records a 35% snapshot without changing program-wide tiers. Pending slip REM-20261013085527-WKVX and its mapping now agree at PHP 915.00 including PHP 21.50 Fidelity. scripts/fix-gotual-incentives.mjs ran as a production dry run before applying and verifies the daily total, balanced slip, mappings and Record Corrections. Staging did not have the same pending entries. All changes retained in Audit Log and Record Corrections.
+
+### October 13, 2026: TANGAL incentive correction
+Owner subsequently requested fixing TANGAL, MARY JEAN's MATINA entry encoded by ABESIA, DARYL JANE, superseding the earlier leave-as-is decision. OR 17552B (COL-20261013081610-4ARZ), D-320 NOP 29, kept its encoded Collector role and was recalculated using the now-configured 10% tier: PHP 32.00 incentive, PHP 288.00 remittance. Pending slip REM-20261013081611-ZVKX and its mapping were updated together in one audited transaction, with a Record Corrections summary. scripts/fix-tangal-incentives.mjs passed a production rollback dry run before applying; readback verified incentive, balanced slip/mapping and correction record. Staging did not have this entry.

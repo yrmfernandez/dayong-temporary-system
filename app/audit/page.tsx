@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ClipboardCheck, Printer } from "lucide-react";
+import { ChevronDown, ClipboardCheck, Printer } from "lucide-react";
 
 import { ClerkReport } from "@/components/clerk-report";
 import { MetricTile } from "@/components/metric-tile";
@@ -158,17 +158,18 @@ export default function DailyAuditPage() {
                     <div key={String(label)} className="rounded-lg border bg-background p-2"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold tabular-nums">{value}</p></div>)}
                 </div>
           </section>}
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Entries by program</h3>
+          {/* Folds open and closed; New Sales and Collections each scroll in their own card (owner, October 13, 2026). */}
+          <details open className="group space-y-2">
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold"><ChevronDown className="size-4 transition-transform group-open:rotate-180" />Entries by program</summary>
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div><p className="mb-1 text-sm font-semibold">New Sales ({row.figures.sales.length})</p>
-                    {row.figures.sales.length ? <ul className="divide-y rounded-lg border bg-background text-sm">{row.figures.sales.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s)</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>
+                    {row.figures.sales.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border bg-background text-sm">{row.figures.sales.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s)</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>
                       : <p className="text-sm text-muted-foreground">No new sales encoded.</p>}</div>
                   <div><p className="mb-1 text-sm font-semibold">Collections ({row.figures.collections.length})</p>
-                    {row.figures.collections.length ? <ul className="divide-y rounded-lg border bg-background text-sm">{row.figures.collections.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s) · remit {money(line.expectedRemittance)}</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>
+                    {row.figures.collections.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border bg-background text-sm">{row.figures.collections.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s) · remit {money(line.expectedRemittance)}</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>
                       : <p className="text-sm text-muted-foreground">No collections encoded.</p>}</div>
                 </div>
-          </section>
+          </details>
           <section className="space-y-2">
             <h3 className="text-sm font-semibold">Report and every entry</h3>
                 <details className="rounded-lg border bg-background p-3">

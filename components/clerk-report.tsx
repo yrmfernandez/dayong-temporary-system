@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, Eye, Printer, RefreshCw } from "lucide-react";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { AlertTriangle, ChevronDown, Eye, Printer, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { EntryDetails } from "@/components/entry-details";
@@ -204,37 +204,47 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       )}
 
       {report && showEntries && (
-        <div className="space-y-2 print:break-before-page">
-          <p className="font-semibold">Every entry ({report.checks.entryCount}){report.entriesTruncated ? ", first 1,000 shown" : ""}</p>
-          <div className="rounded-lg border">
-            <table className="w-full table-auto break-words text-xs sm:text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                <tr><th className="p-2">Encoded</th><th className="p-2">Entry</th><th className="p-2">OR / App · date</th><th className="p-2">Date remitted</th><th className="p-2">Member</th><th className="p-2">MAS / Collector</th><th className="p-2 text-right">Amount</th><th className="p-2 text-right">Incentive</th><th className="p-2">Status</th><th className="p-2">Receipt</th><th className="p-2" /></tr>
-              </thead>
-              <tbody>
-                {report.entries.map((entry) => (
-                  <Fragment key={entry.id}>
-                    <tr className="border-t align-top">
-                      <td className="p-2 text-xs">{entry.encodedAt}</td>
-                      <td className="p-2"><span className="block text-xs font-semibold">{entry.kind}</span><span className="font-mono text-xs">{entry.id}</span>{entry.warnings.length > 0 && <span className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-800"><AlertTriangle className="size-3" />{entry.warnings.length} date warning{entry.warnings.length === 1 ? "" : "s"}</span>}</td>
-                      <td className="p-2">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}<span className="block text-xs text-muted-foreground">{entry.orDate}</span></td>
-                      <td className="p-2">{entry.dateRemitted || "—"}</td>
-                      <td className="p-2">{entry.memberName || "—"}<span className="block text-xs text-muted-foreground">{entry.memberNumber}</span></td>
-                      <td className="p-2">{entry.person}</td>
-                      <td className="p-2 text-right">{money(entry.amount)}</td>
-                      <td className="p-2 text-right">{money(entry.incentive)}</td>
-                      <td className="p-2"><StatusBadge status={entry.remittanceStatus || "Not set"} /></td>
-                      <td className="p-2">{entry.photoId ? <ReceiptPhotoView photoId={entry.photoId} label="View" /> : <StatusBadge status="Missing" tone="warning" />}</td>
-                      <td className="p-2 print:hidden"><Button type="button" size="sm" variant="ghost" onClick={() => setOpen(open === entry.id ? "" : entry.id)}><Eye className="size-3.5" />Details</Button></td>
-                    </tr>
-                    {open === entry.id && <tr className="border-t bg-muted/20"><td colSpan={11} className="p-3"><EntryDetails entry={entry} onClose={() => setOpen("")} /></td></tr>}
-                  </Fragment>
-                ))}
-                {!report.entries.length && <tr><td colSpan={11} className="p-6 text-center text-muted-foreground">Nothing encoded in this period.</td></tr>}
-              </tbody>
-            </table>
+        // Every entry (owner, October 13, 2026): fits the screen (each entry one row whose parts wrap), folds open and
+        // closed, and scrolls inside its own card.
+        <details open className="group rounded-lg border print:break-before-page">
+          <summary className="flex cursor-pointer items-center justify-between gap-2 p-3 font-semibold">
+            <span>Every entry ({report.checks.entryCount}){report.entriesTruncated ? ", first 1,000 shown" : ""}</span>
+            <ChevronDown className="size-4 transition-transform group-open:rotate-180 print:hidden" />
+          </summary>
+          <div className="max-h-[36rem] divide-y overflow-y-auto border-t text-xs sm:text-sm print:max-h-none print:overflow-visible">
+            {report.entries.map((entry) => (
+              <div key={entry.id} className="p-2">
+                <div className="grid items-start gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,0.8fr)_auto]">
+                  <div className="min-w-0">
+                    <span className="block text-xs font-semibold">{entry.kind}</span>
+                    <span className="block break-all font-mono text-xs">{entry.id}</span>
+                    <span className="block text-xs text-muted-foreground">Encoded {entry.encodedAt}</span>
+                    {entry.warnings.length > 0 && <span className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-800"><AlertTriangle className="size-3" />{entry.warnings.length} date warning{entry.warnings.length === 1 ? "" : "s"}</span>}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span>
+                    <span className="block text-xs text-muted-foreground">OR / app date {entry.orDate || "—"} · remitted {entry.dateRemitted || "—"}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block break-words">{entry.memberName || "—"}</span>
+                    <span className="block text-xs text-muted-foreground">{entry.memberNumber} · {entry.person}</span>
+                  </div>
+                  <div className="min-w-0 tabular-nums lg:text-right">
+                    <span className="block">{money(entry.amount)}</span>
+                    <span className="block text-xs text-muted-foreground">Incentive {money(entry.incentive)}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                    <StatusBadge status={entry.remittanceStatus || "Not set"} />
+                    {entry.photoId ? <ReceiptPhotoView photoId={entry.photoId} label="View" /> : <StatusBadge status="Missing" tone="warning" />}
+                    <Button type="button" size="sm" variant="ghost" className="print:hidden" onClick={() => setOpen(open === entry.id ? "" : entry.id)}><Eye className="size-3.5" />Details</Button>
+                  </div>
+                </div>
+                {open === entry.id && <div className="mt-2 rounded-lg bg-muted/20 p-3"><EntryDetails entry={entry} onClose={() => setOpen("")} /></div>}
+              </div>
+            ))}
+            {!report.entries.length && <p className="p-6 text-center text-muted-foreground">Nothing encoded in this period.</p>}
           </div>
-        </div>
+        </details>
       )}
 
       {data && review && (
