@@ -24,7 +24,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
   const [batch, setBatch] = useState<EditableBatch | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [methods, setMethods] = useState<Method[]>([]);
-  const [form, setForm] = useState({ dateRemitted: "", paymentMethod: "", paymentReference: "", collectedBy: "MAS", penalty: "", penaltyNote: "", fidelity: "", note: "" });
+  const [form, setForm] = useState({ dateRemitted: "", dateRemittedReason: "", paymentMethod: "", paymentReference: "", collectedBy: "MAS", penalty: "", penaltyNote: "", fidelity: "", note: "" });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -45,7 +45,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
         const loaded = result.batch;
         setBatch(loaded);
         setEntries(loaded.entries.map((entry) => ({ ...entry, remove: false, amountText: String(entry.amount) })));
-        setForm({ dateRemitted: loaded.dateRemitted, paymentMethod: loaded.paymentMethod, paymentReference: loaded.paymentReference, collectedBy: loaded.collectedBy || "MAS",
+        setForm({ dateRemitted: loaded.dateRemitted, dateRemittedReason: "", paymentMethod: loaded.paymentMethod, paymentReference: loaded.paymentReference, collectedBy: loaded.collectedBy || "MAS",
           penalty: loaded.penalty ? String(loaded.penalty) : "", penaltyNote: loaded.penaltyNote, fidelity: loaded.fidelity ? String(loaded.fidelity) : "", note: "" });
       } catch (caught) {
         if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : "Unable to open the batch.");
@@ -59,6 +59,8 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
   const kept = entries.filter((entry) => !entry.remove);
   const total = kept.reduce((sum, entry) => sum + (Number(entry.amountText) || 0), 0);
   const isSale = batch?.kind === "New Sale";
+  // A changed Date Remitted needs a clearing that covers it and a reason (owner, October 13, 2026).
+  const dateRemittedChanged = Boolean(batch && form.dateRemitted !== batch.dateRemitted);
 
   const save = async () => {
     setSaving(true); setError("");
@@ -93,7 +95,13 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
       {batch && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1"><Label htmlFor="edit-date-remitted">Date Remitted (from Clearing)</Label><Input id="edit-date-remitted" type="date" className={field} value={form.dateRemitted} readOnly disabled /></div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-date-remitted">Date Remitted</Label>
+              <Input id="edit-date-remitted" type="date" className={field} value={form.dateRemitted} onChange={(event) => set("dateRemitted", event.target.value)} />
+              {dateRemittedChanged
+                ? <Input aria-label="Reason for changing the Date Remitted" className={field} maxLength={300} placeholder="Why was the Date Remitted changed? *" value={form.dateRemittedReason} onChange={(event) => set("dateRemittedReason", event.target.value)} />
+                : batch.dateRemittedReason && <p className="text-xs text-muted-foreground">Changed before: {batch.dateRemittedReason}</p>}
+            </div>
             <div className="space-y-1">
               <Label htmlFor="edit-method">Remittance method</Label>
               <select id="edit-method" className="h-8 w-full rounded-md border bg-background px-2 text-sm" value={form.paymentMethod} onChange={(event) => set("paymentMethod", event.target.value)}>

@@ -324,6 +324,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Date Remitted can be changed, with a reason (2026-10-13)
+
+- **Owner:** let the Date Remitted be edited, but ask why it was changed: sometimes there is work but it cannot be encoded because of meetings and other reasons.
+- **Done:** New Sales, Collections and the returned-batch editor: Date Remitted is editable (starts on the clearing day); a day other than the clearing day needs a reason (5+ characters), checked in the browser and on the server, and kept with each entry (`date_remitted_reason`, migration `0022`). Branch and MAS stay locked to Clearing. The new day must still be covered by a clearing (an Open clearing covers earlier days). Tested.
+- **To do (owner):** run `npm run prod -- npm run db:migrate` then `npm run prod -- node scripts/check-database.mjs` on production BEFORE pushing; until then saving New Sales and Collections fails because the column is missing.
+- **Not yet:** the reasons are stored but not listed anywhere (Exceptions lists late OR dates only); say if administrators should review them there.
+
 ### Batch information locked; working days for late dates (2026-10-12)
 
 - **Owner:** lock Branch, MAS and Date Remitted in Batch information, since Clearing fills them. An OR one or more days old can be on time when Sundays or other non-working days fall between.

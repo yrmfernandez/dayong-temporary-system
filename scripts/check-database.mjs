@@ -21,16 +21,17 @@ try {
   // Tables in the public schema: 45, clearings (0016, October 8, 2026) and company_targets (0017, October 10, 2026).
   const expectedTables = 47;
   // The latest additions, checked by name: Company Targets (0017), non-commissionable periods (0018) and the
-  // employee's reply to a Notice to Explain (0019), what a clearing covers (0020).
+  // employee's reply to a Notice to Explain (0019), what a clearing covers (0020), why a Date Remitted was changed (0022).
   const [{ targets }] = await sql`select to_regclass('public.company_targets') is not null as targets`;
   const [{ flag }] = await sql`select exists (select 1 from information_schema.columns where table_name = 'program_incentives' and column_name = 'non_commissionable') as flag`;
   const [{ reply }] = await sql`select exists (select 1 from information_schema.columns where table_name = 'notices_to_explain' and column_name = 'explanation') as reply`;
   const [{ covers }] = await sql`select exists (select 1 from information_schema.columns where table_name = 'clearings' and column_name = 'covers') as covers`;
   const [{ reviewed }] = await sql`select exists (select 1 from information_schema.columns where table_name = 'notices_to_explain' and column_name = 'reviewed_at') as reviewed`;
+  const [{ moved }] = await sql`select count(*) = 2 as moved from information_schema.columns where table_name in ('sales', 'collections') and column_name = 'date_remitted_reason'`;
   console.log(`Tables: ${tables.n} (expected ${expectedTables})`);
   console.log(`Migrations applied: ${migrations.n} of ${expected}`);
-  console.log(`company_targets table (0017): ${targets ? "present" : "MISSING"} · program_incentives.non_commissionable (0018): ${flag ? "present" : "MISSING"} · notices_to_explain.explanation (0019): ${reply ? "present" : "MISSING"} · clearings.covers (0020): ${covers ? "present" : "MISSING"} · notices_to_explain.reviewed_at (0021): ${reviewed ? "present" : "MISSING"}`);
-  console.log(tables.n === expectedTables && migrations.n === expected && targets && flag && reply && covers && reviewed ? "OK: every migration is applied." : "NOT READY: run npm run db:migrate again, then this check.");
+  console.log(`company_targets table (0017): ${targets ? "present" : "MISSING"} · program_incentives.non_commissionable (0018): ${flag ? "present" : "MISSING"} · notices_to_explain.explanation (0019): ${reply ? "present" : "MISSING"} · clearings.covers (0020): ${covers ? "present" : "MISSING"} · notices_to_explain.reviewed_at (0021): ${reviewed ? "present" : "MISSING"} · date_remitted_reason (0022): ${moved ? "present" : "MISSING"}`);
+  console.log(tables.n === expectedTables && migrations.n === expected && targets && flag && reply && covers && reviewed && moved ? "OK: every migration is applied." : "NOT READY: run npm run db:migrate again, then this check.");
 } catch (error) {
   console.log(`ERROR: ${error.message}`);
   process.exitCode = 1;

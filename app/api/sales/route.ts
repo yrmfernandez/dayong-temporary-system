@@ -1,4 +1,4 @@
-import { clearedEmployee, clearingProblem } from "@/lib/clearing";
+import { clearedEmployee, clearingProblem, dateRemittedReasonProblem } from "@/lib/clearing";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
@@ -25,6 +25,8 @@ type SalePayload = {
   branch: string;
   mas: string;
   dateRemitted: string;
+  /** Why the Date Remitted is not the day the MAS was cleared (lib/clearing.ts dateRemittedReasonProblem). */
+  dateRemittedReason?: string;
   sales: SalePayloadItem[];
   /** The total written on the MAS's turnover sheet; the batch must add up to it exactly. */
   controlTotal?: number | string;
@@ -177,6 +179,10 @@ async function saveSales(request: Request, user: SessionUser) {
     // Encoding follows Clearing: the MAS must be cleared for this branch on the Date Remitted.
     const notCleared = selectedBranch && selectedStaff ? await clearingProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim(), "New Sales") : "";
     if (notCleared) return NextResponse.json({ success: false, message: notCleared }, { status: 400 });
+    // A Date Remitted moved off the clearing day (encoding delayed by meetings and the like) needs a reason, kept on each sale.
+    const dateRemittedReason = String(body.dateRemittedReason ?? "").trim().slice(0, 300);
+    const reasonProblem = selectedBranch && selectedStaff ? await dateRemittedReasonProblem(selectedStaff.id, selectedBranch.name, body.dateRemitted.trim(), dateRemittedReason, "New Sales") : "";
+    if (reasonProblem) return NextResponse.json({ success: false, message: reasonProblem }, { status: 400 });
     if (!selectedBranch || !selectedStaff) {
       return NextResponse.json(
         { success: false, message: "Select an active employee assigned to the selected branch." },
@@ -779,6 +785,7 @@ async function saveSales(request: Request, user: SessionUser) {
           orDate:
             sale.orDate,
           backdateReason: String(sale.backdateReason ?? "").trim().slice(0, 300),
+          dateRemittedReason,
         };
 
         const quote = quotes[savedSales.length];

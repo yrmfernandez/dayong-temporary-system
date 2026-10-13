@@ -3,7 +3,7 @@ import { and, desc, eq, gt, gte, inArray, ne, or, sql } from "drizzle-orm";
 import { currentDb, encodedBy, schema } from "@/lib/db";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
-import { CLEARING_COVERS, coveredKinds, type ClearingCovers, type ClearingKind } from "@/lib/clearing-kinds";
+import { CLEARING_COVERS, coveredKinds, DATE_REMITTED_REASON_MIN, type ClearingCovers, type ClearingKind } from "@/lib/clearing-kinds";
 import { cashMethodNames, isCashMethod } from "@/lib/entry-batches";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -216,6 +216,20 @@ export async function clearingProblem(employeeId: string, employeeName: string, 
     .orderBy(desc(clearings.cleared_at)).limit(3);
   const seen = others.length ? ` They are cleared ${others.map((row) => `for ${row.branch} on ${row.day} (${row.covers === "Both" ? "New Sales and Collections" : `${row.covers} only`}, ${row.status})`).join(", ")}; check the branch, the Date Remitted and what was ticked in Clearing.` : "";
   return `${employeeName || employeeId} is not in Clearing for ${kind ? `${kind} in ` : ""}${branch} on ${dateRemitted}.${seen || " Check their receipts and bank slips, list them in Clearing, then encode."}`;
+}
+
+/**
+ * Why a batch cannot be saved yet, or "": a Date Remitted that is not a day the person was cleared (an earlier day an
+ * Open clearing covers) needs a reason, since encoding can wait for meetings and the like (owner, October 13, 2026).
+ */
+export async function dateRemittedReasonProblem(employeeId: string, branch: string, dateRemitted: string, reason: string, kind?: ClearingKind) {
+  if ((globalThis as { dayongClearingNotRequired?: boolean }).dayongClearingNotRequired) return "";
+  if (text(reason).length >= DATE_REMITTED_REASON_MIN) return "";
+  const [sameDay] = await currentDb().select({ id: clearings.clearing_id }).from(clearings).where(and(
+    eq(clearings.employee_id, text(employeeId)), sameBranch(branch), ne(clearings.status, "Removed"),
+    kind ? inArray(clearings.covers, ["Both", kind]) : undefined, eq(clearings.cleared_date, text(dateRemitted)),
+  )).limit(1);
+  return sameDay ? "" : `The Date Remitted ${dateRemitted} is not the day they were cleared. Enter the reason the Date Remitted was changed.`;
 }
 
 /**

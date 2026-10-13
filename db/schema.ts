@@ -347,6 +347,8 @@ export const sales = pgTable("sales", {
   fidelity_amount: money("fidelity_amount"),
   forfeited_incentive: money("forfeited_incentive"),
   backdate_reason: text(),
+  /** Why the Date Remitted is not the day the MAS was cleared (owner, October 13, 2026). */
+  date_remitted_reason: text(),
   /** Normalized application_no; one sale per application number. */
   application_key: text().generatedAlwaysAs(entryKey("application_no")),
   /** True only on the second or later copy of an application number that was already duplicated before the move. */
@@ -470,6 +472,8 @@ export const collections = pgTable("collections", {
   forfeited_incentive: money("forfeited_incentive"),
   backdate_reason: text(),
   date_remitted: day("date_remitted"),
+  /** Why the Date Remitted is not the day the accountable person was cleared (owner, October 13, 2026). */
+  date_remitted_reason: text(),
   /** Normalized or_number; a receipt is used by one posted collection only. */
   or_key: text().generatedAlwaysAs(entryKey("or_number")),
   /** True only on the second or later copy of an OR number that was already duplicated before the move. */

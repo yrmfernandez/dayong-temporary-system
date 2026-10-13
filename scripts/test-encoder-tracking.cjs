@@ -859,6 +859,13 @@ test('Clearing: no encoding without it, and its time is when the cash was receiv
     assert.equal(await clearing.clearedEmployee(['DPE-0009', 'DPE-0002'], 'BR-1', today), 'DPE-0002', 'the cleared one of two people with the same name');
     assert.match(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-9', today), /cleared for BR-1 on/, 'the message says where they are cleared');
     assert.equal((await clearing.getEncodableClearings()).map((item) => item.id).includes('CLR-2'), true, 'listed for the batch picker');
+    // A Date Remitted moved off the clearing day needs the reason it was changed; the clearing day itself does not.
+    assert.match(await clearing.dateRemittedReasonProblem('DPE-0002', 'BR-1', yesterday, '', 'Collections'), /Enter the reason the Date Remitted was changed/);
+    assert.equal(await clearing.dateRemittedReasonProblem('DPE-0002', 'BR-1', yesterday, 'Meeting all day', 'Collections'), '');
+    assert.equal(await clearing.dateRemittedReasonProblem('DPE-0002', 'br-1', today, '', 'Collections'), '', 'the clearing day needs no reason');
+    const moved = await route.POST(request({ ...batch, dateRemitted: yesterday }));
+    assert.equal(moved.status, 400);
+    assert.match((await moved.json()).message, /not the day they were cleared/, 'the save asks why the Date Remitted was changed');
   } finally { globalThis.dayongClearingNotRequired = true; }
 });
 

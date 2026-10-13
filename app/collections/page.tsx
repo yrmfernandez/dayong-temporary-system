@@ -1,6 +1,7 @@
 "use client";
 
 import { ClearingPicker } from "@/components/clearing-picker";
+import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { enterToNextField } from "@/lib/enter-to-next";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -261,7 +262,10 @@ export default function CollectionsPage() {
   const [branches, setBranches] = useState<Array<{ id: string; name: string; territory?: string; status: string }>>([]);
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
   // The Clearing entry the batch was filled from (components/clearing-picker.tsx); its employee is the accountable one.
-  const [cleared, setCleared] = useState<{ id: string; employeeId: string; employeeName: string } | null>(null);
+  const [cleared, setCleared] = useState<{ id: string; employeeId: string; employeeName: string; clearedDate?: string } | null>(null);
+  // A Date Remitted moved off the clearing day needs a reason (encoding delayed by meetings and the like; lib/clearing.ts).
+  const [dateRemittedReason, setDateRemittedReason] = useState("");
+  const dateRemittedChanged = Boolean(cleared?.clearedDate && dateRemitted && dateRemitted !== cleared.clearedDate);
   const [histories, setHistories] = useState<Record<string, CollectionHistory[]>>({});
   const selectionVersions = useRef<Record<string, number>>({});
 
@@ -289,11 +293,13 @@ export default function CollectionsPage() {
   // The unsaved batch survives leaving the page and coming back (member search results included, so picks still show).
   useFormDraft(
     "collections",
-    { branch, mas, dateRemitted, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity },
+    { branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity },
     (draft) => {
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
       setDateRemitted(draft.dateRemitted ?? "");
+      setCleared(draft.cleared ?? null);
+      setDateRemittedReason(draft.dateRemittedReason ?? "");
       if (Array.isArray(draft.collections) && draft.collections.length) setCollections(draft.collections);
       if (draft.activeCollectionId) setActiveCollectionId(draft.activeCollectionId);
       if (draft.nextCollectionId) setNextCollectionId(draft.nextCollectionId);
@@ -739,6 +745,11 @@ export default function CollectionsPage() {
       return;
     }
 
+    if (dateRemittedChanged && dateRemittedReason.trim().length < DATE_REMITTED_REASON_MIN) {
+      setSaveMessage("The Date Remitted is not the day they were cleared. Enter the reason it was changed.");
+      return;
+    }
+
     if (Number(penalty) < 0) {
       setSaveMessage("The penalty must be zero or a positive amount.");
       return;
@@ -798,6 +809,7 @@ export default function CollectionsPage() {
           mas,
           accountableEmployeeId: (cleared?.employeeName === mas ? cleared.employeeId : "") || (masStaff.find((staff) => staff.fullName === mas)?.employeeId ?? ""),
           dateRemitted,
+          dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "",
           collectedBy,
           paymentMethod,
           paymentReference: selectedPaymentMethod && !selectedPaymentMethod.isCash ? paymentReference.trim() : "",
@@ -850,6 +862,7 @@ export default function CollectionsPage() {
     setMas("");
     setDateRemitted("");
     setCleared(null);
+    setDateRemittedReason("");
     setCollections([firstCollection]);
     setActiveCollectionId("collection-1");
     setNextCollectionId(2);
@@ -885,8 +898,8 @@ export default function CollectionsPage() {
       <Card><CardContent className="p-4">
           <p className="mb-3 text-sm font-semibold">Collection Batch</p>
           <div className="mb-4"><ClearingPicker kind="Collections" value={cleared?.id ?? ""} onPick={(clearing) => {
-            setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName });
-            setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); clearScopedMemberSelections();
+            setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName, clearedDate: clearing.clearedDate });
+            setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setDateRemittedReason(""); clearScopedMemberSelections();
           }} /></div>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
@@ -904,10 +917,19 @@ export default function CollectionsPage() {
             <div className="space-y-2">
               <Label>Date Remitted *</Label>
 
-              {/* Locked to the clearing (owner, October 12, 2026): Branch, MAS and Date Remitted come only from Clearing. */}
-              <Input type="date" value={dateRemitted} readOnly disabled aria-label="Date Remitted" />
+              {/* Branch and MAS come only from Clearing (owner, October 12, 2026). The Date Remitted starts on the clearing day
+                  and can be changed with a reason, since encoding can wait for meetings and the like (owner, October 13, 2026). */}
+              <Input type="date" value={dateRemitted} disabled={!cleared} max={manilaNow().date} aria-label="Date Remitted" onChange={(event) => setDateRemitted(event.target.value)} />
 
-              <p className="text-xs text-muted-foreground">Shared by every entry in this batch. Branch, MAS and Date Remitted come from Clearing; choose another person above to change them.</p>
+              <p className="text-xs text-muted-foreground">Shared by every entry in this batch. Starts on the day they were cleared; Branch and MAS come from Clearing.</p>
+
+              {dateRemittedChanged && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-amber-800">Why was the Date Remitted changed? *</Label>
+                  <Input aria-label="Reason for changing the Date Remitted" value={dateRemittedReason} maxLength={300} onChange={(event) => setDateRemittedReason(event.target.value)} placeholder="e.g. Remitted on this day; encoding delayed by a meeting" />
+                  <p className="text-xs text-muted-foreground">Cleared on {cleared?.clearedDate}. The reason is kept with every entry of the batch.</p>
+                </div>
+              )}
             </div>
           </div>
 

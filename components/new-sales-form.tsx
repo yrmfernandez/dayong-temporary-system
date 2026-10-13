@@ -55,6 +55,7 @@ import type {
 } from "@/lib/types";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { ClearingPicker } from "@/components/clearing-picker";
+import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { enterToNextField } from "@/lib/enter-to-next";
 
 type ProgramApiResponse = {
@@ -255,6 +256,11 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const [submissionId, setSubmissionId] = useState("");
   // The Clearing entry the batch was filled from (components/clearing-picker.tsx).
   const [clearingId, setClearingId] = useState("");
+  // The Date Remitted starts on the clearing day; moved off it (encoding delayed by meetings and the like), it needs a
+  // reason (owner, October 13, 2026; lib/clearing.ts dateRemittedReasonProblem). A MAS submission has no clearing pick.
+  const [clearedDate, setClearedDate] = useState("");
+  const [dateRemittedReason, setDateRemittedReason] = useState("");
+  const dateRemittedChanged = Boolean(clearedDate && dateRemitted && dateRemitted !== clearedDate);
   const [tab, setTab] = useState<"encode" | "submitted">("encode");
   const [masProfile, setMasProfile] = useState<MasProfile | null>(null);
   // Clerk: submissions waiting in their branches. MAS: their own submissions.
@@ -297,12 +303,15 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // The unsaved form survives leaving the page (e.g. to Collections) and coming back.
   useFormDraft(
     masMode ? "mas-sales" : "new-sales",
-    { branch, mas, dateRemitted, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId },
+    { branch, mas, dateRemitted, clearingId, clearedDate, dateRemittedReason, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId },
     (draft) => {
       setSubmissionId(draft.submissionId ?? "");
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
       setDateRemitted(draft.dateRemitted ?? "");
+      setClearingId(draft.clearingId ?? "");
+      setClearedDate(draft.clearedDate ?? "");
+      setDateRemittedReason(draft.dateRemittedReason ?? "");
       if (Array.isArray(draft.sales) && draft.sales.length) setSales(draft.sales);
       setExpandedSales(draft.expandedSales ?? {});
       setPenalty(draft.penalty ?? "");
@@ -1082,6 +1091,11 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       return;
     }
 
+    if (dateRemittedChanged && dateRemittedReason.trim().length < DATE_REMITTED_REASON_MIN) {
+      setSaveMessage("The Date Remitted is not the day the MAS was cleared. Enter the reason it was changed.");
+      return;
+    }
+
     const cardProblem = saleCardProblem();
     if (cardProblem) {
       setSaveMessage(cardProblem);
@@ -1171,6 +1185,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
             branch,
             mas,
             dateRemitted,
+            dateRemittedReason: dateRemittedChanged || submissionId ? dateRemittedReason.trim() : "",
             sales:
               preparedSales,
             penalty: penaltyAmount,
@@ -1298,7 +1313,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
         <CardContent className="space-y-4">
           <ClearingPicker kind="New Sales" value={clearingId} disabled={Boolean(submissionId)} onPick={(clearing) => {
-            setClearingId(clearing.id); setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate);
+            setClearingId(clearing.id); setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setClearedDate(clearing.clearedDate); setDateRemittedReason("");
             setSales((current) => current.map((sale) => ({ ...sale, program: { ...sale.program, branch: clearing.branch, mas: clearing.employeeName } })));
           }} />
           <div className="grid gap-4 md:grid-cols-3">
@@ -1326,21 +1341,30 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                 Date Remitted *
               </Label>
 
-              {/* Locked to the clearing (owner, October 12, 2026). A MAS submission has no clearing pick, so its date stays open. */}
+              {/* Starts on the clearing day and can be changed with a reason (owner, October 13, 2026). A MAS submission has
+                  no clearing pick, so its date is typed in. */}
               <Input
                 type="date"
                 aria-label="Date Remitted"
                 value={dateRemitted}
-                readOnly={!submissionId}
-                disabled={!submissionId}
+                max={manilaNow().date}
+                disabled={!submissionId && !clearedDate}
                 onChange={(event) =>
                   setDateRemitted(event.target.value)
                 }
               />
 
               <p className="text-xs text-muted-foreground">
-                {submissionId ? "The day this MAS was cleared for New Sales." : "Branch, MAS and Date Remitted come from Clearing (the day the receipts were cleared); choose another person above to change them."}
+                {submissionId ? "The day this MAS was cleared for New Sales." : "Starts on the day the receipts were cleared; Branch and MAS come from Clearing."}
               </p>
+
+              {(dateRemittedChanged || Boolean(submissionId)) && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-amber-800">{submissionId ? "Reason, if the Date Remitted is not the day the MAS was cleared" : "Why was the Date Remitted changed? *"}</Label>
+                  <Input aria-label="Reason for changing the Date Remitted" value={dateRemittedReason} maxLength={300} onChange={(event) => setDateRemittedReason(event.target.value)} placeholder="e.g. Remitted on this day; encoding delayed by a meeting" />
+                  {!submissionId && <p className="text-xs text-muted-foreground">Cleared on {clearedDate}. The reason is kept with every sale of the batch.</p>}
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

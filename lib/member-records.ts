@@ -234,6 +234,8 @@ export type SaleSheetData = {
   orDate: string;
   /** Why an application date more than a day old was encoded late. */
   backdateReason?: string;
+  /** Why the Date Remitted is not the day the MAS was cleared. */
+  dateRemittedReason?: string;
 };
 
 /**
@@ -255,7 +257,7 @@ export async function addSale(
     or_date: optionalDate(sale.orDate), ...encoded(), remittance_status: "Outstanding", accountable_employee_id: accountableEmployeeId,
     penalty_amount: penalty.amount > 0 ? penalty.amount : null, penalty_note: penalty.amount > 0 ? penalty.note : null,
     mas_incentive: quote.incentive, remittance_amount: quote.remittance, fidelity_amount: quote.fidelity > 0 ? quote.fidelity : null,
-    backdate_reason: optional(sale.backdateReason),
+    backdate_reason: optional(sale.backdateReason), date_remitted_reason: optional(sale.dateRemittedReason),
   });
 }
 

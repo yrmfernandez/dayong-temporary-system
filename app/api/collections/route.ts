@@ -1,4 +1,4 @@
-import { clearingProblem } from "@/lib/clearing";
+import { clearingProblem, dateRemittedReasonProblem } from "@/lib/clearing";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
@@ -53,6 +53,10 @@ async function saveCollections(request: Request) {
     // Encoding follows Clearing: the accountable person must be cleared for this branch on the Date Remitted.
     const notCleared = await clearingProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections");
     if (notCleared) throw new Error(notCleared);
+    // A Date Remitted moved off the clearing day (encoding delayed by meetings and the like) needs a reason, kept on each row.
+    const dateRemittedReason = String(body.dateRemittedReason ?? "").trim().slice(0, 300);
+    const reasonProblem = await dateRemittedReasonProblem(accountable.id, selectedBranch.name, dateRemitted, dateRemittedReason, "Collections");
+    if (reasonProblem) throw new Error(reasonProblem);
     // Batch-level details: who brought the payments in and how the MAS remitted them.
     const collectedBy = String(body.collectedBy ?? "").trim();
     if (!(COLLECTION_CHANNELS as readonly string[]).includes(collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");
@@ -141,7 +145,7 @@ async function saveCollections(request: Request) {
           collected_by_role: input.collectedByRole, remittance_amount: quote.remittance, remittance_breakdown: quote.breakdown, remittance_status: "Outstanding",
           accountable_employee_id: accountableEmployeeId, accountable_name: mas, accountable_role: "MAS", remittance_method: paymentMethod.name, payment_reference: paymentReference || null,
           penalty_amount: first && penalty > 0 ? penalty : null, penalty_note: first && penalty > 0 ? penaltyNote : null, fidelity_amount: first && fidelity > 0 ? fidelity : null,
-          backdate_reason: backdateReason || null, date_remitted: dateRemitted,
+          backdate_reason: backdateReason || null, date_remitted: dateRemitted, date_remitted_reason: dateRemittedReason || null,
         });
       }
       // The batch's total remittance (server calculation, plus Fidelity) must equal the net total on the turnover sheet.

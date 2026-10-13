@@ -4,3 +4,5 @@ export type ClearingCovers = "Both" | ClearingKind;
 export const CLEARING_COVERS: ClearingCovers[] = ["Both", "New Sales", "Collections"];
 /** The kinds a clearing lets the clerk encode. */
 export const coveredKinds = (covers: ClearingCovers): ClearingKind[] => covers === "Both" ? ["New Sales", "Collections"] : [covers];
+/** At least this many characters explain a Date Remitted that is not the clearing day (lib/clearing.ts). */
+export const DATE_REMITTED_REASON_MIN = 5;

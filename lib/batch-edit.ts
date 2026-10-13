@@ -4,6 +4,7 @@ import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, monthCount, paymen
 import { loadAccountData } from "@/lib/account-data";
 import { planDeletion } from "@/lib/admin-delete";
 import { clearingProblem } from "@/lib/clearing";
+import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { currentDb, inTransaction, schema, type Transaction } from "@/lib/db";
 import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/duplicate-entries";
@@ -43,6 +44,8 @@ export type EditableBatch = {
   person: string;
   returnReason: string;
   dateRemitted: string;
+  /** Why the Date Remitted is not the clearing day, when it was changed (owner, October 13, 2026). */
+  dateRemittedReason: string;
   paymentMethod: string;
   paymentReference: string;
   collectedBy: string;
@@ -106,7 +109,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
     const first = rows[0];
     return {
       kind: "New Sale", branch: text(first.branch), person: text(first.mas), returnReason: await returnReason(first.linked_remittance_id),
-      dateRemitted: day(first.date_remitted), paymentMethod: text(first.payment_method) || "Cash", paymentReference: "", collectedBy: "",
+      dateRemitted: day(first.date_remitted), dateRemittedReason: text(first.date_remitted_reason), paymentMethod: text(first.payment_method) || "Cash", paymentReference: "", collectedBy: "",
       penalty: rows.reduce((sum, row) => sum + Number(row.penalty_amount ?? 0), 0), penaltyNote: rows.map((row) => text(row.penalty_note)).find(Boolean) ?? "",
       fidelity: rows.reduce((sum, row) => sum + Number(row.fidelity_amount ?? 0), 0),
       entries: rows.map((row) => ({
@@ -124,7 +127,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
   const first = rows[0];
   return {
     kind: "Collection", branch: text(first.branch), person: text(first.accountable_name) || text(first.mas), returnReason: await returnReason(first.linked_remittance_id),
-    dateRemitted: day(first.date_remitted), paymentMethod: text(first.remittance_method) || "Cash", paymentReference: text(first.payment_reference), collectedBy: text(first.collected_by_role) || "MAS",
+    dateRemitted: day(first.date_remitted), dateRemittedReason: text(first.date_remitted_reason), paymentMethod: text(first.remittance_method) || "Cash", paymentReference: text(first.payment_reference), collectedBy: text(first.collected_by_role) || "MAS",
     penalty: rows.reduce((sum, row) => sum + Number(row.penalty_amount ?? 0), 0), penaltyNote: rows.map((row) => text(row.penalty_note)).find(Boolean) ?? "",
     fidelity: rows.reduce((sum, row) => sum + Number(row.fidelity_amount ?? 0), 0),
     entries: rows.map((row) => {
@@ -142,7 +145,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
 type EntryInput = { id: string; remove?: boolean; orNumber?: string; orDate?: string; amount?: number; monthTo?: string; backdateReason?: string; applicationNumber?: string; notes?: string };
 export type BatchEditInput = {
   ids: string[];
-  dateRemitted: string; paymentMethod: string; paymentReference?: string; collectedBy?: string;
+  dateRemitted: string; dateRemittedReason?: string; paymentMethod: string; paymentReference?: string; collectedBy?: string;
   penalty?: number; penaltyNote?: string; fidelity?: number;
   entries: EntryInput[];
   note?: string;
@@ -173,9 +176,14 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
   const accountableId = text(first.accountable_employee_id);
   const accountableName = "accountable_name" in first ? text(first.accountable_name) || text(first.mas) : text(first.mas);
   const branchName = text(first.branch);
+  // A changed Date Remitted needs a clearing that covers it and the reason it was changed (owner, October 13, 2026);
+  // otherwise each row keeps the reason it has.
+  let dateRemittedReason: string | null = null;
   if (dateRemitted !== day(first.date_remitted)) {
     const notCleared = await clearingProblem(accountableId, accountableName, branchName, dateRemitted, batch.kind === "New Sale" ? "New Sales" : "Collections");
     if (notCleared) throw new Error(notCleared);
+    dateRemittedReason = text(input.dateRemittedReason).slice(0, 300);
+    if (dateRemittedReason.length < DATE_REMITTED_REASON_MIN) throw new Error("Enter the reason the Date Remitted was changed.");
   }
   const branch = (await getBranches()).find((item) => item.name.trim().toLowerCase() === branchName.toLowerCase());
   const corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> = [];
@@ -191,8 +199,8 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
       await removeEntry(tx, kind, id, plan);
       corrections.push({ module: `Delete ${kind}`, id, before: { title: plan.title, deleted: plan.effects }, after: { deleted: true } });
     }
-    if (batch.kind === "New Sale") await saveSales(tx, kept as typeof batch.sales, changes, { calendar, dateRemitted, method: method.name, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
-    else await saveCollections(tx, kept as typeof batch.collections, changes, { calendar, dateRemitted, method: method.name, reference: text(input.paymentReference), collectedBy: text(input.collectedBy), penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
+    if (batch.kind === "New Sale") await saveSales(tx, kept as typeof batch.sales, changes, { calendar, dateRemitted, dateRemittedReason, method: method.name, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
+    else await saveCollections(tx, kept as typeof batch.collections, changes, { calendar, dateRemitted, dateRemittedReason, method: method.name, reference: text(input.paymentReference), collectedBy: text(input.collectedBy), penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
   });
   // The saved batch stands even if the correction log cannot be written; the Audit Log has every change as well.
   for (const change of corrections) await recordCorrection(change.module, change.id, reason, change.before, change.after).catch(() => {});
@@ -224,7 +232,7 @@ async function removeEntry(tx: Transaction, kind: "sale" | "collection", id: str
   }
 }
 
-type Common = { calendar: WorkCalendar; dateRemitted: string; method: string; penalty: number; penaltyNote: string; fidelity: number; encodedOn: string; today: string; branchId: string; corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> };
+type Common = { calendar: WorkCalendar; dateRemitted: string; dateRemittedReason: string | null; method: string; penalty: number; penaltyNote: string; fidelity: number; encodedOn: string; today: string; branchId: string; corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> };
 
 async function saveSales(tx: Transaction, rows: Array<typeof sales.$inferSelect>, changes: Map<string, EntryInput>, common: Common) {
   const programList = await getPrograms();
@@ -273,13 +281,13 @@ async function saveSales(tx: Transaction, rows: Array<typeof sales.$inferSelect>
     const firstRow = index === 0;
     const after = {
       application_no: applicationNumber, or_date: orDate || null, doi: doi || null, amount_paid: amount, notes: notes || null, backdate_reason: backdateReason || null,
-      date_remitted: common.dateRemitted, payment_method: common.method, mas_incentive: quote.incentive, remittance_amount: quote.remittance,
+      date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), payment_method: common.method, mas_incentive: quote.incentive, remittance_amount: quote.remittance,
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
     };
     const before = {
       application_no: row.application_no, or_date: day(row.or_date) || null, doi: day(row.doi) || null, amount_paid: Number(row.amount_paid ?? 0), notes: row.notes || null, backdate_reason: row.backdate_reason || null,
-      date_remitted: day(row.date_remitted), payment_method: row.payment_method, mas_incentive: Number(row.mas_incentive ?? 0), remittance_amount: Number(row.remittance_amount ?? 0),
+      date_remitted: day(row.date_remitted), date_remitted_reason: row.date_remitted_reason || null, payment_method: row.payment_method, mas_incentive: Number(row.mas_incentive ?? 0), remittance_amount: Number(row.remittance_amount ?? 0),
       penalty_amount: row.penalty_amount === null ? null : Number(row.penalty_amount), penalty_note: row.penalty_note || null, fidelity_amount: row.fidelity_amount === null ? null : Number(row.fidelity_amount),
     };
     if (JSON.stringify(before) === JSON.stringify(after)) continue;
@@ -344,14 +352,14 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
     const firstRow = row === rows[0];
     const after = {
       or_number: orNumber, or_date: orDate, amount_collected: amount, month_to: monthTo, nop_to: nopTo, backdate_reason: backdateReason || null,
-      date_remitted: common.dateRemitted, remittance_method: common.method, payment_reference: common.reference || null, collected_by_role: common.collectedBy,
+      date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), remittance_method: common.method, payment_reference: common.reference || null, collected_by_role: common.collectedBy,
       original_mas: common.collectedBy === "Collector" ? text(row.mas) : null, remittance_amount: quote.remittance, remittance_breakdown: quote.breakdown,
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
     };
     const before = {
       or_number: row.or_number, or_date: day(row.or_date), amount_collected: Number(row.amount_collected), month_to: text(row.month_to).slice(0, 7), nop_to: row.nop_to, backdate_reason: row.backdate_reason || null,
-      date_remitted: day(row.date_remitted), remittance_method: row.remittance_method, payment_reference: row.payment_reference || null, collected_by_role: row.collected_by_role,
+      date_remitted: day(row.date_remitted), date_remitted_reason: row.date_remitted_reason || null, remittance_method: row.remittance_method, payment_reference: row.payment_reference || null, collected_by_role: row.collected_by_role,
       original_mas: row.original_mas || null, remittance_amount: Number(row.remittance_amount ?? 0), remittance_breakdown: row.remittance_breakdown,
       penalty_amount: row.penalty_amount === null ? null : Number(row.penalty_amount), penalty_note: row.penalty_note || null, fidelity_amount: row.fidelity_amount === null ? null : Number(row.fidelity_amount),
     };
