@@ -27,7 +27,8 @@ export function ClearingPicker({ value, onPick, disabled, kind }: { value: strin
       const result = await readApiResponse(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load Clearing.");
       // Only clearings ticked for this kind (New Sales or Collections) can be encoded here.
-      setClearings(((result.clearings ?? []) as Clearing[]).filter((clearing) => coveredKinds(clearing.covers ?? "Both").includes(kind))); setError("");
+      // An earlier day's Encoded clearing is listed only for the kind still waiting for encoding.
+      setClearings(((result.clearings ?? []) as Clearing[]).filter((clearing) => coveredKinds(clearing.covers ?? "Both").includes(kind) && (!clearing.waitingKinds || clearing.waitingKinds.includes(kind)))); setError("");
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to load Clearing."); }
   }, [kind]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load
@@ -39,7 +40,7 @@ export function ClearingPicker({ value, onPick, disabled, kind }: { value: strin
     <Label className="flex items-center gap-2"><BadgeCheck className="size-4 text-primary" />From Clearing *</Label>
     <SearchSelect aria-label="From Clearing" value={value} disabled={disabled} placeholder={clearings.length ? "Search the MAS or employee listed in Clearing" : `Nobody is in Clearing for ${kind} yet`}
       emptyText={`Nobody in Clearing for ${kind} matches. List them in Clearing (with ${kind} ticked) first.`}
-      options={clearings.map((clearing) => ({ value: clearing.id, label: clearing.employeeName || clearing.employeeId, description: `${clearing.branch} · cleared ${clearing.clearedDate} ${time(clearing.clearedAt)}${clearing.status === "Encoded" ? " · already encoded once" : ""}`, keywords: clearing.employeeId }))}
+      options={clearings.map((clearing) => ({ value: clearing.id, label: clearing.employeeName || clearing.employeeId, description: `${clearing.branch} · cleared ${clearing.clearedDate} ${time(clearing.clearedAt)}${clearing.waitingKinds ? ` · ${kind} not encoded yet` : clearing.status === "Encoded" ? " · already encoded once" : ""}`, keywords: clearing.employeeId }))}
       onValueChange={(id) => { const clearing = clearings.find((item) => item.id === id); if (clearing) onPick(clearing); }} />
     <p className="text-xs text-muted-foreground">{error || "Choose the person whose receipts were cleared; Branch, MAS and Date Remitted are filled in from the clearing."}</p>
   </div>;

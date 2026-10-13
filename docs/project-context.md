@@ -324,6 +324,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### From Clearing: MAS cleared but not listed (2026-10-13)
+
+- **Owner:** a MAS is in Clearing but does not show in New Sales or Collections.
+- **Cause found:** sending one kind for approval (cash Collections go at once on save) marks the whole clearing Encoded, even one ticked for both; From Clearing listed only Open clearings and today's Encoded ones, so from the next day the person was missing from the other kind's list (e.g. on October 13 PAÑARES, NIMFA had Collections but no New Sales yet; GARCIA, JASPER the other way round).
+- **Done:** an earlier day's Encoded clearing stays in From Clearing, under the kind still waiting for encoding only, marked not encoded yet. Tested.
+- **Other reasons someone is not listed (by design):** a clerk sees only the clearings they made (October 10); a clearing ticked for one kind shows only under that kind; Removed clearings are not listed.
+
 ### Clerk report: Cash Beg can be typed (2026-10-13)
 
 - **Owner:** Cash Beg is the cash received, so the clerk should be able to edit it; it must not be affected by everything else, it is case by case.
@@ -635,3 +642,6 @@ The Collections page lists a member only under their account's branch and MAS, a
 - **Done:** `scripts/assign-mas-branches.mjs` (dry run; `--apply`) adds the missing Employee Branches rows so each MAS is assigned to the branches of their active accounts; accounts and primary branches are not changed. Staging: 34 assignments added; a re-run finds none.
 - **Wrong MAS after three merges (found October 8):** the same-person merge kept the kept account's MAS, but 3 of the 27 merged pairs had two different MAS: Kisha Karen Potenciando (now "Bautista, T.", belongs to **Jo-Ann Bautista**, owner), Lourdes Agad Andan ("Tigao, R." vs "Jumawid, Rufina") and Jonalyn Trozo Canono ("Grado, Carlos" vs "Pacios, C."). Owner: put back their previous MAS (the other account's). Kisha was transferred in the app; `scripts/fix-merge-mas.mjs` (dry run; `--apply`) does the other two from the merge records: sets the merged-away account's MAS, writes a Member Transfers row, and assigns that MAS to the account's branch if needed; it skips accounts transferred since the merge. Staging: Andan → Jumawid, Rufina and Canono → Pacios, C., both visible in Collections. `merge-name-variants.mjs` now leaves a pair whose accounts have different MAS unless the pair says `"mas": "keep"` or `"other"`.
 - **Done on production (owner, October 9):** `fix-merge-mas.mjs` (Kisha Karen Potenciando → Jo-Ann Bautista, Andan → Jumawid, Rufina, Canono → Pacios, C.) and then `assign-mas-branches.mjs`, both applied. Kisha's surname is POTENCIANDO (owner, October 9), corrected in Members → Edit (PH-61713918).
+
+### October 13, 2026: member program correction
+PH-25541018 is enrolled only in D-350 (5Y) (DP-0009). Production correction moved OR 09522 B to that account and deleted the empty D-350 assignment. Payments now run NOP 2–5 in OR-date order (OR 14368 B is NOP 5, August 2026); status recalculated to 60D. Staging and production dry runs passed before applying; production readback verified the result. Audit Log and Record Corrections retain the changes; config/receipt-consolidations.json records the applied case.

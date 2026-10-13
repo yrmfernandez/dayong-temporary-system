@@ -2676,3 +2676,26 @@ test('the Attendance Review number counts unmarked system absences of listed emp
   ]);
   assert.deepEqual(await systemAbsencesWaiting('2026-10-13'), [{ date: '2026-10-12', count: 2 }, { date: '2026-10-08', count: 1 }]);
 });
+
+test('a clearing for both kinds stays in the New Sales list while only its Collections are encoded', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila();
+  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  await seedAccount({ doi: yesterday });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }, { employee_id: 'DPE-0003', full_name: 'MAS-3' }]);
+  await seed('clearings', [
+    // Both, cleared yesterday; its cash Collections went for approval, which marked it Encoded. No New Sales yet.
+    { clearing_id: 'CLR-HALF', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${yesterday}T01:00:00Z`, cleared_date: yesterday, status: 'Encoded', covers: 'Both' },
+    // Collections only, yesterday, encoded: nothing left to encode.
+    { clearing_id: 'CLR-DONE', branch: 'BR-1', employee_id: 'DPE-0003', employee_name: 'MAS-3', cleared_at: `${yesterday}T01:00:00Z`, cleared_date: yesterday, status: 'Encoded', covers: 'Collections' },
+  ]);
+  await seed('collections', [
+    { collection_id: 'COL-H1', collection_batch_id: 'CBT-H', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', or_number: '2001 C', amount_collected: 350, status: 'Posted', remittance_status: 'Pending Remittance Approval', accountable_employee_id: 'DPE-0002', date_remitted: yesterday, encoded_at: `${yesterday}T02:00:00Z`, remittance_method: 'Cash' },
+    { collection_id: 'COL-D1', collection_batch_id: 'CBT-D', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', or_number: '2002 C', amount_collected: 350, status: 'Posted', remittance_status: 'Pending Remittance Approval', accountable_employee_id: 'DPE-0003', date_remitted: yesterday, encoded_at: `${yesterday}T02:00:00Z`, remittance_method: 'Cash' },
+  ]);
+  const clearing = h.load('lib/clearing.ts');
+  const listed = await clearing.getEncodableClearings('');
+  assert.deepEqual(listed.map((item) => [item.id, item.waitingKinds]), [['CLR-HALF', ['New Sales']]], 'listed for New Sales only; the finished one is not listed');
+  assert.equal(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', yesterday, 'New Sales'), '', 'its New Sales can still be saved for that day');
+});

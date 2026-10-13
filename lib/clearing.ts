@@ -49,6 +49,8 @@ export type Clearing = {
   stage?: ClearingStage;
   entries?: Tally;
   kinds?: Array<{ kind: ClearingKind; stage: ClearingStage; entries: Tally }>;
+  /** getEncodableClearings, an Encoded clearing of an earlier day: the kinds still waiting for encoding (only these can be picked). */
+  waitingKinds?: ClearingKind[];
 };
 const toClearing = (row: typeof clearings.$inferSelect): Clearing => ({
   id: row.clearing_id, branch: row.branch, employeeId: row.employee_id, employeeName: text(row.employee_name), clearedAt: manilaStamp(row.cleared_at), clearedDate: text(row.cleared_date),
@@ -136,13 +138,25 @@ export async function getClearingPage(clearedBy = "") {
   };
 }
 
-/** Clearings New Sales and Collections can encode for: every Open one, and today's Encoded ones (a second batch). */
+/**
+ * Clearings New Sales and Collections can encode for: every Open one, today's Encoded ones (a second batch), and an
+ * earlier day's Encoded one while a kind it covers is still waiting for encoding (owner, October 13, 2026). Sending one
+ * kind for approval marks the whole clearing Encoded, so a person cleared for both who had only their Collections
+ * encoded dropped out of New Sales the next day; now they stay listed there until their New Sales are encoded.
+ */
 export async function getEncodableClearings(clearedBy = "") {
   const today = manilaNow().date;
   const rows = await currentDb().select().from(clearings)
-    .where(and(mine(clearedBy), or(eq(clearings.status, "Open"), and(eq(clearings.cleared_date, today), eq(clearings.status, "Encoded")))))
+    .where(and(mine(clearedBy), or(eq(clearings.status, "Open"), and(eq(clearings.status, "Encoded"), gte(clearings.cleared_date, addDays(today, -UNFINISHED_DAYS))))))
     .orderBy(desc(clearings.cleared_at));
-  return rows.map(toClearing);
+  const list = rows.map(toClearing);
+  const earlier = list.filter((item) => item.status === "Encoded" && item.clearedDate !== today);
+  const progress = new Map((await withProgress(earlier)).map((item) => [item.id, item]));
+  return list.flatMap((item) => {
+    if (item.status === "Open" || item.clearedDate === today) return [item];
+    const waitingKinds = (progress.get(item.id)?.kinds ?? []).filter((part) => part.stage === "Waiting for encoding").map((part) => part.kind);
+    return waitingKinds.length ? [{ ...item, waitingKinds }] : [];
+  });
 }
 
 /** Lists a MAS or employee as cleared now, for one branch. */
