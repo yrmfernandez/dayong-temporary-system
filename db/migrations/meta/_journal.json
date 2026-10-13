@@ -162,6 +162,13 @@
       "when": 1791847743133,
       "tag": "0022_date_remitted_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791855627504,
+      "tag": "0023_report_cash_beg",
+      "breakpoints": true
     }
   ]
 }

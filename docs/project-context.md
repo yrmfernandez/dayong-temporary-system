@@ -324,6 +324,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Clerk report: Cash Beg can be typed (2026-10-13)
+
+- **Owner:** Cash Beg is the cash received, so the clerk should be able to edit it; it must not be affected by everything else, it is case by case.
+- **Done:** on their own report the clerk types Cash Beg for this report with a reason; the summary shows it with the calculated figure; it applies to that report only (kind and period), nothing recalculates it, and other reports keep their own; Use calculated clears it. Migration `0023` adds four columns to `report_notes`. Tested.
+- **To do (owner):** run `npm run prod -- npm run db:migrate` and `npm run prod -- node scripts/check-database.mjs` (24 of 24) BEFORE pushing; otherwise the clerk report cannot be read on production.
+- **Open question:** bank and GCash batches count as cash on hand in the report unless a matching cash forwarded to bank is recorded.
+
 ### Leave Approvals tabs; Attendance Review search and its sidebar number (2026-10-13)
 
 - **Owner:** arrange Leave Approvals as Pending, Approved, Rejected; add a search/dropdown in Attendance Review; its sidebar number always says 99+ even after marking almost everyone.

@@ -10,14 +10,17 @@ import { createReadableId } from "@/lib/readable-id";
  *   employee_name, branch, bank_account_name, amount, transfer_type, mas, remarks, status, void_reason, created_at.
  * - "Report Notes": per clerk and period, the cash received but not yet encoded and the three remark boxes. Columns:
  *   note_key (employee|kind|start), employee_id, period_kind, period_start, pending_cash, specific_remarks,
- *   pending_transactions, other_comments, updated_at, updated_by.
+ *   pending_transactions, other_comments, updated_at, updated_by, and (October 13, 2026) cash_beg, cash_beg_reason,
+ *   cash_beg_updated_at, cash_beg_updated_by: the Cash Beg the clerk typed for the period, blank for the calculated one.
  *
  * Both sheets are created on first use. They feed the clerk report only; the finance cash ledger is not changed.
  */
 const DEPOSITS = "Bank Deposits";
 const NOTES = "Report Notes";
 const DEPOSIT_HEADERS = ["deposit_id", "deposit_date", "employee_id", "employee_name", "branch", "bank_account_name", "amount", "transfer_type", "mas", "remarks", "status", "void_reason", "created_at"];
-const NOTE_HEADERS = ["note_key", "employee_id", "period_kind", "period_start", "pending_cash", "specific_remarks", "pending_transactions", "other_comments", "updated_at", "updated_by"];
+const NOTE_HEADERS = ["note_key", "employee_id", "period_kind", "period_start", "pending_cash", "specific_remarks", "pending_transactions", "other_comments", "updated_at", "updated_by", "cash_beg", "cash_beg_reason", "cash_beg_updated_at", "cash_beg_updated_by"];
+/** At least this many characters explain a typed Cash Beg. */
+export const CASH_BEG_REASON_MIN = 5;
 const text = (value: unknown) => String(value ?? "").trim();
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 const column = (count: number) => String.fromCharCode(64 + count);
@@ -74,12 +77,46 @@ export async function voidDeposit(id: string, reason: string, by: { employeeId: 
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!K${index + 1}:L${index + 1}`, valueInputOption: "RAW", requestBody: { values: [["Voided", reason.trim().slice(0, 200)]] } });
 }
 
-export type ReportNotes = { pendingCash: number; specificRemarks: string; pendingTransactions: string; otherComments: string; updatedAt: string; updatedBy: string };
+export type CashBegEdit = { amount: number; reason: string; updatedAt: string; updatedBy: string };
+export type ReportNotes = { pendingCash: number; specificRemarks: string; pendingTransactions: string; otherComments: string; updatedAt: string; updatedBy: string; cashBeg: CashBegEdit | null };
+/** Columns K-N of a notes row: the typed Cash Beg, or null when it is blank. */
+const cashBegOf = (row: unknown[] | undefined): CashBegEdit | null => text(row?.[10]) === "" || !Number.isFinite(Number(row?.[10])) ? null
+  : { amount: Number(row?.[10]), reason: text(row?.[11]), updatedAt: text(row?.[12]), updatedBy: text(row?.[13]) };
 const noteKey = (employeeId: string, kind: string, start: string) => `${employeeId}|${kind}|${start}`;
 
 export async function getReportNotes(employeeId: string, kind: string, start: string): Promise<ReportNotes> {
   const row = (await rows(NOTES, NOTE_HEADERS.length)).find((item) => text(item[0]) === noteKey(employeeId, kind, start));
-  return { pendingCash: Number(row?.[4]) || 0, specificRemarks: text(row?.[5]), pendingTransactions: text(row?.[6]), otherComments: text(row?.[7]), updatedAt: text(row?.[8]), updatedBy: text(row?.[9]) };
+  return { pendingCash: Number(row?.[4]) || 0, specificRemarks: text(row?.[5]), pendingTransactions: text(row?.[6]), otherComments: text(row?.[7]), updatedAt: text(row?.[8]), updatedBy: text(row?.[9]), cashBeg: cashBegOf(row) };
+}
+
+/** Every Cash Beg the clerk typed, with the report it belongs to (kind and start day), oldest first. */
+export async function getCashBegEdits(employeeId: string): Promise<Array<CashBegEdit & { kind: string; start: string }>> {
+  return (await rows(NOTES, NOTE_HEADERS.length)).slice(1)
+    .filter((row) => text(row[1]) === employeeId && cashBegOf(row))
+    .map((row) => { const [, kind = "", start = ""] = text(row[0]).split("|"); return { ...cashBegOf(row)!, kind, start }; })
+    .filter((edit) => validDate(edit.start))
+    .sort((a, b) => a.start.localeCompare(b.start) || a.updatedAt.localeCompare(b.updatedAt));
+}
+
+/**
+ * The clerk types the Cash Beg of their own report for one period: the cash actually received at its start (owner,
+ * October 13, 2026: case by case), with the reason. It is that report's alone; other reports are not changed. A blank
+ * amount goes back to the calculated Cash Beg. Only columns K-N change, so the notes stay as they are.
+ */
+export async function saveCashBeg(employeeId: string, kind: string, start: string, input: Record<string, unknown>) {
+  const blank = input.cashBeg === null || input.cashBeg === undefined || text(input.cashBeg) === "";
+  const amount = blank ? null : Math.round(Number(input.cashBeg) * 100) / 100;
+  const reason = text(input.reason).slice(0, 300);
+  if (amount !== null && (!Number.isFinite(amount) || amount < 0)) throw new Error("Cash Beg must be zero or a positive amount.");
+  if (amount !== null && reason.length < CASH_BEG_REASON_MIN) throw new Error("Enter the reason for the Cash Beg (at least 5 characters).");
+  const actor = getEncoder();
+  await ensure(NOTES, NOTE_HEADERS);
+  const key = noteKey(employeeId, kind, start);
+  const cash = amount === null ? ["", "", "", ""] : [amount, reason, actor.encodedAt, actor.name];
+  const all = await rows(NOTES, NOTE_HEADERS.length);
+  const index = all.findIndex((row, position) => position > 0 && text(row[0]) === key);
+  if (index < 0) await sheets.spreadsheets.values.append({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!A:N`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values: [[key, employeeId, kind, start, 0, "", "", "", actor.encodedAt, actor.name, ...cash]] } });
+  else await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!K${index + 1}:N${index + 1}`, valueInputOption: "RAW", requestBody: { values: [cash] } });
 }
 
 /** The clerk saves the notes of their own report for one period. */

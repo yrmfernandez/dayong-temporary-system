@@ -5,7 +5,7 @@ import { asAuditPeriod, auditedEmployees, periodSpan } from "@/lib/daily-audit";
 import { getEmployees } from "@/lib/employees";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { getReportRemarks } from "@/lib/report-remarks";
-import { addDeposit, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
+import { addDeposit, saveCashBeg, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense } from "@/lib/finance-data";
 
@@ -64,6 +64,12 @@ export const POST = withEncoder(async (request: Request) => {
         const kind = asAuditPeriod(body.kind);
         await saveReportNotes(user.employeeId, kind, periodSpan(kind, String(body.date ?? "")).start, body);
         return Response.json({ success: true, message: "Report notes saved." });
+      }
+      case "save-cash-beg": {
+        // The clerk's own report only: the Cash Beg they received for this period, with the reason (lib/clerk-cash.ts).
+        const kind = asAuditPeriod(body.kind);
+        await saveCashBeg(user.employeeId, kind, periodSpan(kind, String(body.date ?? "")).start, body);
+        return Response.json({ success: true, message: body.cashBeg === "" || body.cashBeg === null ? "Cash Beg is calculated again." : "Cash Beg saved." });
       }
       default:
         return Response.json({ success: false, message: "Unknown report action." }, { status: 400 });
