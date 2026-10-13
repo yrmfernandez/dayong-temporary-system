@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 
 import { currentDb } from "@/lib/db";
 import { getBranches } from "@/lib/google-sheets-data";
+import { createFidelitySlip, editFidelitySlip, voidFidelitySlip } from "@/lib/remittance-workflow";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const same = (a: unknown, b: unknown) => text(a).toLowerCase() === text(b).toLowerCase();
@@ -32,6 +33,14 @@ async function clerkBranches(employeeId: string) {
   const encodedFor = ((Array.isArray(encoded) ? encoded : (encoded as { rows?: unknown[] }).rows ?? []) as Array<{ branch: string }>).map((row) => row.branch);
   const names = [...new Map([employee?.branch ?? "", ...assigned, ...encodedFor].map(text).filter(Boolean).map((name) => [name.toLowerCase(), name])).values()];
   return { primary: employee?.branch ?? "", names, active: branches.filter((branch) => branch.status === "active").map((branch) => branch.name) };
+}
+
+/** Active employees assigned to the branch (every active employee when no branch), for a Fidelity entry's MAS. */
+async function masChoices(branchName: string) {
+  const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
+  const branch = branches.find((item) => same(item.name, branchName));
+  return employees.filter((employee) => employee.status.toLowerCase() === "active" && (!branch || employee.branchIds.includes(branch.id)))
+    .map((employee) => ({ id: employee.id, name: employee.name })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -60,7 +69,7 @@ export async function GET(request: Request) {
     const remarks = (await getReportRemarks(report.from, report.to)).filter((remark) => remark.scope === report.encoder.name);
     // Only the clerk records expenses, deposits and notes, on their own report.
     const isOwn = report.encoder.employeeId === user.employeeId;
-    return Response.json({ success: true, report, remarks, canChoose, isOwn, branch: branch || "all", branchChoices, clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, report, remarks, canChoose, isOwn, branch: branch || "all", branchChoices, masChoices: isOwn ? await masChoices(branch) : [], clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to build the report." }, { status: 400 });
   }
@@ -91,6 +100,23 @@ export const POST = withEncoder(async (request: Request) => {
         const saved = await addDeposit(body, clerk);
         return Response.json({ success: true, message: `Deposit ${saved.id} saved.` });
       }
+      // Fidelity handed in after the MAS's entries were encoded: its own slip, approved in Remittances (October 13, 2026).
+      case "add-fidelity":
+      case "edit-fidelity": {
+        if (!clerk.branch) throw new Error("Choose the branch of the report.");
+        const mas = employees.find((employee) => employee.id === text(body.masEmployeeId));
+        if (!mas) throw new Error("Choose the MAS whose Fidelity this is.");
+        const input = { masEmployeeId: mas.id, masName: mas.name, amount: Number(body.amount), date: text(body.date), remarks: text(body.remarks) };
+        if (body.action === "add-fidelity") {
+          const saved = await createFidelitySlip({ ...input, branch: clerk.branch });
+          return Response.json({ success: true, message: `Fidelity ${saved.id} saved; it counts in ${mas.name}'s Fidelity once approved in Remittances.` });
+        }
+        await editFidelitySlip(text(body.id), input, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+        return Response.json({ success: true, message: "Fidelity updated." });
+      }
+      case "void-fidelity":
+        await voidFidelitySlip(text(body.id), text(body.reason), { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+        return Response.json({ success: true, message: "Fidelity voided." });
       case "edit-deposit":
         await editDeposit(String(body.id ?? ""), body, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
         return Response.json({ success: true, message: "Deposit updated." });

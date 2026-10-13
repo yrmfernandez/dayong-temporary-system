@@ -8,7 +8,7 @@ import { COLLECTIONS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE, SALES_RAN
 import { getEncoder, runAsSystem } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
-import { incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime } from "@/lib/remittance-deadline";
+import { INCENTIVE_GRACE_DAYS, incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime } from "@/lib/remittance-deadline";
 import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { cashCountProblem } from "@/lib/cash-count";
 import { photosByEntry } from "@/lib/receipt-photos";
@@ -24,6 +24,8 @@ const ledgerRanges = { Collections: COLLECTIONS_RANGE, Remittances: REMITTANCES_
  * "items" owed by an accountable person; each kind keeps its remittance status in its own sheet and columns.
  */
 export type RemittanceKind = "Collections" | "New Sales";
+/** A slip's type: Collections or New Sales, or a Fidelity slip (Fidelity handed in after the MAS's entries were encoded). */
+export type SlipType = RemittanceKind | "Fidelity";
 const itemSheet = { Collections: { status: 28 }, "New Sales": { status: 35 } } as const;
 // Incentive forfeited because the cash came in after the deadline: Collections AM, Sales AR. Remittances AA holds the
 // time the cash was received, next to its date in D.
@@ -80,8 +82,8 @@ export type CashCollection = {
 };
 
 export type CashRemittance = {
-  /** What this slip covers: Collections or New Sales (blank rows written before New Sales remittances are Collections). */
-  type: RemittanceKind;
+  /** What this slip covers: Collections, New Sales, or Fidelity alone (blank rows written before New Sales remittances are Collections). */
+  type: SlipType;
   id: string;
   rowNumber: number;
   branch: string;
@@ -190,7 +192,7 @@ async function loadLedger() {
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByName: text(row[20]), decisionAt: text(row[21]),
-    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : "Collections") as RemittanceKind, collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [], photoIds: [], missingPhotos: [], clerkIds: [], clerkNames: [],
+    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : text(row[25]) === "Fidelity" ? "Fidelity" : "Collections") as SlipType, collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [], photoIds: [], missingPhotos: [], clerkIds: [], clerkNames: [],
   })).filter((remittance) => remittance.id);
   const byId = new Map(collections.map((collection) => [collection.id, collection]));
   for (const remittance of remittances) {
@@ -215,7 +217,8 @@ const incentiveOf = (item: Pick<CashCollection, "amount" | "remittanceAmount">) 
  * item's deadline (3:00 PM the next working day after its OR date, worked out when the ledger is read).
  */
 export const forfeitsIncentive = (item: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate" | "incentiveDeadline">, receivedAt: string) =>
-  incentiveOf(item) > 0 && (item.incentiveDeadline ? receivedAt > item.incentiveDeadline : !keepsIncentive(item.orDate, receivedAt));
+  // Cash received on a grace day keeps every incentive (lib/remittance-deadline.ts INCENTIVE_GRACE_DAYS).
+  incentiveOf(item) > 0 && !INCENTIVE_GRACE_DAYS.includes(receivedAt.slice(0, 10)) && (item.incentiveDeadline ? receivedAt > item.incentiveDeadline : !keepsIncentive(item.orDate, receivedAt));
 
 /**
  * What the accountable person must turn over for one item: the company remittance, or the full amount once the
@@ -438,7 +441,8 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   if (decision === "reject" && !text(reason)) throw new Error("A rejection reason is required.");
   if (decision === "approve" && remittance.difference !== 0 && !text(reason)) throw new Error("Explain how the remittance discrepancy was resolved before approval.");
   const linked = remittance.collectionIds.map((id) => ledger.collections.find((collection) => collection.id === id));
-  if (!linked.length || linked.some((collection) => !collection)) throw new Error("The Remittance links are incomplete.");
+  // A Fidelity slip has no entries: only the slip itself is decided.
+  if (remittance.type !== "Fidelity" && (!linked.length || linked.some((collection) => !collection))) throw new Error("The Remittance links are incomplete.");
   if (decision === "approve" && linked.some((collection) => collection?.linkedRemittanceId !== remittance.id || collection.remittanceStatus !== "Pending Remittance Approval")) {
     throw new Error(`A linked ${remittance.type === "New Sales" ? "New Sale" : "Collection"} changed before approval. Refresh and investigate it.`);
   }
@@ -456,6 +460,64 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
   return { id: remittance.id, status };
+}
+
+/**
+ * Fidelity handed in after the MAS's entries were encoded (owner, October 13, 2026): the clerk records it from their
+ * report as a Fidelity slip, a remittance with no entries whose expected and actual amount is the Fidelity. It is cash
+ * the clerk received (the report's Fidelity Bond line); an approver approves it in Remittances, and then it counts in
+ * the MAS's Fidelity savings (lib/fidelity.ts reads approved slips' Fidelity). Until then the clerk may edit or void it.
+ */
+export async function createFidelitySlip(input: { masEmployeeId: string; masName: string; branch: string; amount: number; date: string; remarks?: string }) {
+  const actor = getEncoder();
+  const amount = Math.round(Number(input.amount) * 100) / 100;
+  if (!text(input.masEmployeeId) || !text(input.masName)) throw new Error("Choose the MAS whose Fidelity this is.");
+  if (!text(input.branch)) throw new Error("Choose the branch of the report.");
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter the Fidelity amount.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.date > manilaNow().date) throw new Error("Enter the date received (today or earlier).");
+  const id = createReadableId("REM");
+  const timestamp = actor.encodedAt;
+  const row = [id, text(input.branch), text(input.masName), input.date, "Pending Approval", timestamp, actor.userId, actor.employeeId, actor.name, timestamp, amount, amount, 0,
+    text(input.masEmployeeId), "MAS", 0, actor.employeeId, actor.name, "", "", "", "", text(input.remarks).slice(0, 300) || "Fidelity handed in after encoding", "", amount, "Fidelity", "", ""];
+  const sheet = await sheetIds();
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [{ appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } }] } });
+  return { id };
+}
+
+/** The Fidelity slip, if `by` (its clerk, or an administrator) may still change it: pending, not decided. */
+async function openFidelitySlip(id: string, by: { employeeId: string; isAdmin: boolean }) {
+  const slip = (await loadLedger()).remittances.find((item) => item.id === text(id));
+  if (!slip || slip.type !== "Fidelity") throw new Error("Fidelity entry not found.");
+  if (!["Pending Approval", "Discrepancy"].includes(slip.status)) throw new Error(`This Fidelity entry is ${slip.status} and can no longer be changed.`);
+  if (!by.isAdmin && slip.receivedByEmployeeId !== by.employeeId && slip.submittedByEmployeeId !== by.employeeId) throw new Error("You can change only Fidelity entries you recorded.");
+  return slip;
+}
+
+export async function editFidelitySlip(id: string, input: { masEmployeeId: string; masName: string; amount: number; date: string; remarks?: string }, by: { employeeId: string; isAdmin: boolean }) {
+  getEncoder();
+  const slip = await openFidelitySlip(id, by);
+  const amount = Math.round(Number(input.amount) * 100) / 100;
+  if (!text(input.masEmployeeId) || !text(input.masName)) throw new Error("Choose the MAS whose Fidelity this is.");
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter the Fidelity amount.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.date > manilaNow().date) throw new Error("Enter the date received (today or earlier).");
+  const sheet = await sheetIds();
+  const range = (start: number, end: number) => ({ sheetId: sheet.remittances, startRowIndex: slip.rowNumber - 1, endRowIndex: slip.rowNumber, startColumnIndex: start, endColumnIndex: end });
+  const update = (start: number, values: Array<string | number>) => ({ updateCells: { range: range(start, start + values.length), rows: [{ values: values.map(cell) }], fields: "userEnteredValue" } });
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [
+    update(2, [text(input.masName), input.date]), update(10, [amount, amount, 0, text(input.masEmployeeId)]), update(22, [text(input.remarks).slice(0, 300) || slip.remarks]), update(24, [amount]),
+  ] } });
+}
+
+export async function voidFidelitySlip(id: string, reason: string, by: { employeeId: string; isAdmin: boolean }) {
+  getEncoder();
+  if (text(reason).length < 3) throw new Error("Give the reason for voiding the Fidelity entry.");
+  const slip = await openFidelitySlip(id, by);
+  const sheet = await sheetIds();
+  const range = (start: number, end: number) => ({ sheetId: sheet.remittances, startRowIndex: slip.rowNumber - 1, endRowIndex: slip.rowNumber, startColumnIndex: start, endColumnIndex: end });
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [
+    { updateCells: { range: range(4, 5), rows: [{ values: [cell("Voided")] }], fields: "userEnteredValue" } },
+    { updateCells: { range: range(23, 24), rows: [{ values: [cell(text(reason).slice(0, 300))] }], fields: "userEnteredValue" } },
+  ] } });
 }
 
 /**

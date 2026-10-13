@@ -9,6 +9,12 @@
 import { nextWorkingDay, type WorkCalendar } from "@/lib/working-days";
 
 export const REMITTANCE_CUTOFF = "15:00";
+/**
+ * Days (Manila) when cash received keeps every incentive, however late (owner, October 13, 2026: "allow all entries only
+ * for today to have incentives, even the clearing is after 3 PM"). On any other day the 3:00 PM deadline applies. Add a
+ * day only on the owner's instruction.
+ */
+export const INCENTIVE_GRACE_DAYS: readonly string[] = ["2026-10-13"];
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 export const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
@@ -25,6 +31,7 @@ export function incentiveDeadline(orDate: string, calendar?: WorkCalendar) {
 
 /** True when cash received at `receivedAt` ("YYYY-MM-DD HH:MM", Manila) still earns the incentive. */
 export function keepsIncentive(orDate: string, receivedAt: string, calendar?: WorkCalendar) {
+  if (INCENTIVE_GRACE_DAYS.includes(receivedAt.slice(0, 10))) return true;
   const deadline = incentiveDeadline(orDate, calendar);
   return !deadline || receivedAt <= deadline;
 }

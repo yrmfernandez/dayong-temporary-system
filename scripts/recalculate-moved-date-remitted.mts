@@ -10,6 +10,7 @@
  *
  *   npm run prod -- npx tsx --tsconfig tsconfig.json scripts/recalculate-moved-date-remitted.mts           preview
  *   npm run prod -- npx tsx --tsconfig tsconfig.json scripts/recalculate-moved-date-remitted.mts --apply   apply
+ *   ... --slips=REM-…,REM-…   other pending slips (also used for the October 13 incentive grace day)
  */
 import { sql } from "drizzle-orm";
 
@@ -18,8 +19,12 @@ import { runAsSystem } from "@/lib/encoder-context";
 import { keepsIncentive } from "@/lib/remittance-deadline";
 import { decideCashRemittance, receivedAtOf, resubmitReturned } from "@/lib/remittance-workflow";
 
-const SLIPS = ["REM-20261013061728-IUZM", "REM-20261013065406-0AG5"];
-const REASON = "Recalculated: the Date Remitted was moved to the day the MAS remitted (entry clerks' meeting), so the cash counts as received that day (owner, October 13, 2026)";
+// --slips=ID,ID picks other pending slips (e.g. the October 13 grace day: every incentive kept, lib/remittance-deadline.ts).
+const chosen = process.argv.find((arg) => arg.startsWith("--slips="))?.slice("--slips=".length).split(",").map((id) => id.trim()).filter(Boolean);
+const SLIPS = chosen?.length ? chosen : ["REM-20261013061728-IUZM", "REM-20261013065406-0AG5"];
+const REASON = chosen?.length
+  ? "Recalculated: on October 13, 2026 every incentive is kept, even with the clearing after 3:00 PM (owner)"
+  : "Recalculated: the Date Remitted was moved to the day the MAS remitted (entry clerks' meeting), so the cash counts as received that day (owner, October 13, 2026)";
 const apply = process.argv.includes("--apply");
 const rowsOf = <T,>(result: unknown) => (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as T[];
 

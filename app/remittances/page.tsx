@@ -19,7 +19,7 @@ import { useLiveRefresh } from "@/lib/use-live-refresh";
 type Kind = "Collections" | "New Sales";
 type Item = { kind: Kind; id: string; memberNumber: string; branch: string; accountableName: string; accountableRole: string; orNumber: string; orDate: string; amount: number; remittanceAmount: number; remittanceStatus: string; daysOutstanding: number; photoId: string; cash: boolean; encodedByEmployeeId: string; encodedByName: string; encodedAt: string; linkedRemittanceId: string };
 type Remittance = {
-  type: Kind; id: string; branch: string; accountableName: string; accountableRole: string; remittanceDate: string; remittanceTime: string; cashCount: string; status: string;
+  type: Kind | "Fidelity"; id: string; branch: string; accountableName: string; accountableRole: string; remittanceDate: string; remittanceTime: string; cashCount: string; status: string;
   expectedAmount: number; actualAmount: number; difference: number; fidelityAmount: number; collectionCount: number; decisionByName: string; decisionAt: string; remarks: string; decisionReason: string;
   collectionIds: string[]; paymentMethods: string[]; paymentReferences: string[]; penaltyAmount: number; penaltyNotes: string[]; photoIds: string[]; missingPhotos: string[]; clerkIds: string[]; clerkNames: string[];
 };
@@ -189,7 +189,7 @@ export default function RemittancesPage() {
                     <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                       <div>
                         <button type="button" className="font-mono text-sm font-semibold hover:underline" aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}>{item.id}</button>
-                        <p className="text-sm">{item.accountableName} · {item.branch} · {item.collectionCount} {item.type === "New Sales" ? "New Sale(s)" : "Collection(s)"}</p>
+                        <p className="text-sm">{item.accountableName} · {item.branch} · {item.type === "Fidelity" ? "Fidelity only (handed in after encoding)" : `${item.collectionCount} ${item.type === "New Sales" ? "New Sale(s)" : "Collection(s)"}`}</p>
                         <p className="text-xs text-muted-foreground">Encoded by {item.clerkNames.join(", ") || "—"} · received {item.remittanceDate}{item.remittanceTime ? ` ${item.remittanceTime}` : ""}</p>
                         <p className="text-xs text-muted-foreground">Expected {money(item.expectedAmount)} · Actual {money(item.actualAmount)} · Difference {money(item.difference)}</p>
                       </div>
@@ -199,10 +199,10 @@ export default function RemittancesPage() {
                     {item.fidelityAmount > 0 && <p className="text-xs font-semibold text-emerald-700">Fidelity {money(item.fidelityAmount)} included in the expected amount</p>}
                     {item.remarks && <p className="text-xs text-muted-foreground">{item.remarks}</p>}
                     <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-                      <StatusBadge status={item.status} /><StatusBadge status={`${item.type} slip`} tone={item.type === "New Sales" ? "info" : "neutral"} />
+                      <StatusBadge status={item.status} /><StatusBadge status={`${item.type} slip`} tone={item.type === "New Sales" ? "info" : item.type === "Fidelity" ? "success" : "neutral"} />
                       {item.missingPhotos.length ? <span className="font-semibold text-amber-800">Receipt photos missing for {item.missingPhotos.join(", ")}.</span> : null}
                       {item.photoIds.map((photoId, index) => <ReceiptPhotoView key={photoId} photoId={photoId} label={`Receipt ${index + 1}`} />)}
-                      <Button type="button" size="sm" variant={viewingId === item.id ? "default" : "outline"} aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}><List className="size-3.5" />{viewingId === item.id ? "Hide entries" : `View entries (${item.collectionIds.length})`}{viewingId === item.id ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}</Button>
+                      {item.type !== "Fidelity" && <Button type="button" size="sm" variant={viewingId === item.id ? "default" : "outline"} aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}><List className="size-3.5" />{viewingId === item.id ? "Hide entries" : `View entries (${item.collectionIds.length})`}{viewingId === item.id ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}</Button>}
                     </div>
                     {viewingId === item.id && <div className="pt-2"><RemittanceEntries remittanceId={item.id} /></div>}
                     {deletePanel(item.id)}

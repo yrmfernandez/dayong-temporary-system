@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
+
 import { getCashBegEdits, getDeposits, getReportNotes, type BankDeposit } from "@/lib/clerk-cash";
+import { getDb } from "@/lib/db";
 import { periodSpan, type AuditPeriod } from "@/lib/daily-audit";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { expectedByMas, type Expected } from "@/lib/mas-expected";
@@ -103,14 +106,23 @@ async function clerkExpenses(employeeId: string, to: string) {
  * (Audits). Entries, expenses and deposits are that branch's; notes and Cash Beg are kept per branch, and the ones saved
  * before reports were split belong to the clerk's primary branch.
  */
+/** Fidelity slips the clerk recorded (Fidelity handed in after encoding; lib/remittance-workflow.ts createFidelitySlip), not voided or rejected. */
+async function clerkFidelitySlips(employeeId: string, from: string, to: string) {
+  const result = await getDb().execute(sql`select remittance_id as id, branch, mas as "masName", accountable_employee_id as "masEmployeeId", date_remitted::text as date, coalesce(fidelity_amount, 0)::float8 as amount, status, coalesce(remarks, '') as remarks
+    from remittances where remittance_type = 'Fidelity' and coalesce(received_by_employee_id, encoded_by_employee_id) = ${employeeId} and status not in ('Voided', 'Rejected')
+      and date_remitted between ${from}::date and ${to}::date order by date_remitted, remittance_id`);
+  return (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; branch: string; masName: string; masEmployeeId: string; date: string; amount: number; status: string; remarks: string }>;
+}
+
 export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: { employeeId: string; name: string; branch?: string }, branch = "") {
   const { start, end } = periodSpan(kind, date);
   const sameBranch = (value: string) => !branch || text(value).toLowerCase() === branch.trim().toLowerCase();
   const primary = Boolean(branch) && text(clerk.branch).toLowerCase() === branch.trim().toLowerCase();
   // What the clerk recorded in the period; nothing before it counts (Cash Beg is typed, not carried).
-  const [{ entries: history }, expensesAll, depositsAll, notes, cashBegEdits] = await Promise.all([
+  const [{ entries: history }, expensesAll, depositsAll, notes, cashBegEdits, fidelityAll] = await Promise.all([
     getEntriesForRange(start, end, "encoded", { encodedBy: clerk.employeeId }), clerkExpenses(clerk.employeeId, end),
     getDeposits(clerk.employeeId, end), getReportNotes(clerk.employeeId, kind, start, branch, primary), getCashBegEdits(clerk.employeeId),
+    clerkFidelitySlips(clerk.employeeId, start, end),
   ]);
   const inPeriod = (day: string) => day >= start && day <= end;
   const encoded = history.filter((entry) => inPeriod(entry.encodedAt.slice(0, 10)));
@@ -119,6 +131,9 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const entries = encoded.filter((entry) => sameBranch(entry.branch));
   const expenses = expensesAll.filter((item) => inPeriod(item.date) && sameBranch(item.branch));
   const deposits = depositsAll.filter((item) => inPeriod(item.date) && sameBranch(item.branch));
+  // Fidelity handed in after encoding (its own slips): cash received, so it is in the Fidelity Bond line.
+  const fidelitySlips = fidelityAll.filter((item) => sameBranch(item.branch)).map((item) => ({ ...item, amount: Number(item.amount) || 0 }));
+  const fidelityLater = round(fidelitySlips.reduce((total, item) => total + item.amount, 0));
 
   const sales = entries.filter((entry) => entry.kind === "New Sale"), collections = entries.filter((entry) => entry.kind === "Collection");
   const newSales = section(kind, sales), collection = section(kind, collections);
@@ -131,7 +146,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const forBranch = (edit: { branch: string }) => (edit.branch ? sameBranch(edit.branch) && Boolean(branch) : !branch || primary);
   const typedCashBeg = cashBegEdits.filter((edit) => edit.start === start && edit.kind === kind && forBranch(edit)).at(-1) ?? null;
   const cashBeg = typedCashBeg ? round(typedCashBeg.amount) : 0;
-  const fidelity = round(newSales.total.fidelity + collection.total.fidelity);
+  const fidelity = round(newSales.total.fidelity + collection.total.fidelity + fidelityLater);
   // Penalties are cash the clerk receives with the batch (the turnover control total includes them), so they count in.
   const penalty = round(newSales.total.penalty + collection.total.penalty);
   const totalCashIn = round(cashBeg + newSales.total.net + collection.total.net + fidelity + penalty + notes.pendingCash);
@@ -165,6 +180,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
     newSales, collection,
     expenses: expenses.map((item): ExpenseRow => ({ ...item, when: whenLabel(kind, item.date) })), expenseTotal,
     deposits: deposits.map((item: BankDeposit) => ({ ...item, when: whenLabel(kind, item.date) })), depositTotal,
+    fidelitySlips: fidelitySlips.map((item) => ({ ...item, when: whenLabel(kind, item.date) })), fidelityLater,
     cash: {
       cashBeg, cashBegEdit: typedCashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, pendingCash: notes.pendingCash, totalCashIn,
       expenses: expenseTotal, forwardedToBank: depositTotal, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,

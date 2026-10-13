@@ -324,6 +324,17 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Every incentive kept on October 13 only (2026-10-13)
+
+- **Owner:** allow all entries only for today to have incentives, even the clearing is after 3 PM.
+- **Done:** `INCENTIVE_GRACE_DAYS = ["2026-10-13"]`: cash received that day forfeits nothing; the 3:00 PM deadline applies again from October 14. Tested.
+- **Applied on production:** today's two pending slips that had forfeits were returned and re-sent (`scripts/recalculate-moved-date-remitted.mts --slips=…`): BALAIS, MARICEL (PANTUKAN) REM-20261013021513-EPS9 ₱1,590 → REM-20261013082941-W8SA ₱1,392.90; ANIB, NORMA (TAGUM) REM-20261013035052-M0CE ₱2,080 → REM-20261013082959-XV8W ₱1,824.10; ₱453 of incentive kept; no forfeits left on slips received October 13.
+
+### Fidelity handed in after encoding (2026-10-13)
+
+- **Owner:** allow Fidelity after the entries are encoded (MAS sometimes add Fidelity later); add something for Fidelity in the report. Owner's choice: its own entry, confirmed by an approver.
+- **Done:** Reports → Add Fidelity (MAS, date, amount, remarks) saves a Fidelity slip (Remittances, type Fidelity, no entries); the report lists it and counts it in Fidelity Bond at once; approval in Remittances makes it count in the MAS's Fidelity savings; Edit / Void until approved. Remittances shows it as a Fidelity slip (no View entries). Tested.
+
 ### Forfeited accounts today only; deposits can be edited (2026-10-13)
 
 - **Owner:** allow entries for forfeited accounts just today; in reports allow editing even beyond 3 PM: instead of only void, they can edit or void.
@@ -695,3 +706,6 @@ Removed clearing CLR-20261013022919-CXXZ (NABUNTURAN, DNDO-2026-0042, PHP 900, n
 
 ### October 13, 2026: duplicate employee MD-2026-0084
 Owner confirmed MD-2026-0084 duplicates MD-2026-0063. scripts/merge-employee-pair.mjs performs a scoped, audited transaction with dry-run rollback and --verify; retains the original login and permissions, reassigns employee/user references and matching names, and refuses conflicting attendance/pay profiles/report-note keys. Staging lacked the duplicate. Production dry run succeeded before applying: removed the duplicate employee, login USR-0071, redundant branch assignment and identical October 13 Day Off attendance row. Original MD-2026-0063 and login USR-0060 retained. No transaction references needed reassignment; all were already under the original. Audit Log and Record Corrections retain the merge; config/employee-merges.json records the applied pair.
+
+### October 13, 2026: incentives follow Clearing receipt time
+Fixed receipt-time lookup so a later-day clearing covering an earlier Date Remitted remains usable after it becomes Encoded. Remittances totals use each outstanding/returned batch's receipt time and retain pending slips' saved amounts, rather than forfeiting incentives as the clock advances. Tests cover late encoding, the exact 3 PM cutoff, both entry kinds, Removed/future clearings and stable pending totals. All 127 encoder/remittance tests, TypeScript and targeted lint passed. scripts/restore-clearing-incentives.mts previewed staging (no cases) and production before applying seven pending-slip corrections: PHP 1,840.50 restored, original slips retained as Rejected, replacement slips Pending Approval. Production readback verified zero forfeiture and balanced totals on all seven, with Record Corrections summaries. Two genuinely late slips were unchanged.

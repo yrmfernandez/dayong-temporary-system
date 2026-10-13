@@ -2886,3 +2886,49 @@ test('a clerk can edit their own deposit (not a voided one, not another clerk\'s
   await assert.rejects(() => runAsSystem(() => editDeposit('DEP-2', changes, { employeeId: 'DPE-7', isAdmin: false })), /voided deposit cannot be edited/);
   await assert.rejects(() => runAsSystem(() => editDeposit('DEP-1', { ...changes, amount: 0 }, { employeeId: 'DPE-7', isAdmin: false })), /amount deposited/);
 });
+
+test('Fidelity handed in after encoding: its own slip, in the report at once, approved like any slip', async () => {
+  const h = harness();
+  deadlineHeaders(h);
+  const { createFidelitySlip, decideCashRemittance } = h.load('lib/remittance-workflow.ts');
+  const { runAsSystem } = h.load('lib/encoder-context.ts');
+  await runAsSystem(() => createFidelitySlip({ masEmployeeId: 'DPE-0002', masName: 'MAS-2', branch: 'MINTAL', amount: 30, date: '2026-10-13', remarks: 'For the Oct 12 collections' }));
+  const values = h.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
+  assert.deepEqual([values[1], values[2], values[3], values[4], values[10], values[11], values[13], values[15], values[24], values[25]],
+    ['MINTAL', 'MAS-2', '2026-10-13', 'Pending Approval', 30, 30, 'DPE-0002', 0, 30, 'Fidelity'], 'a slip with no entries whose amount is the Fidelity');
+  await assert.rejects(() => runAsSystem(() => createFidelitySlip({ masEmployeeId: 'DPE-0002', masName: 'MAS-2', branch: 'MINTAL', amount: 0, date: '2026-10-13' })), /Fidelity amount/);
+
+  // The clerk's report: Fidelity slips the clerk recorded in the period and branch are cash in (Fidelity Bond).
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }, { employee_id: 'DPE-7', full_name: 'Clerk' }]);
+  await seed('remittances', [
+    { remittance_id: 'REM-F1', branch: 'MINTAL', mas: 'MAS-2', date_remitted: '2026-10-13', status: 'Pending Approval', remittance_type: 'Fidelity', fidelity_amount: 30, accountable_employee_id: 'DPE-0002', received_by_employee_id: 'DPE-7', encoded_by_employee_id: 'DPE-7', remarks: 'Late Fidelity' },
+    { remittance_id: 'REM-F2', branch: 'MINTAL', mas: 'MAS-2', date_remitted: '2026-10-13', status: 'Voided', remittance_type: 'Fidelity', fidelity_amount: 99, accountable_employee_id: 'DPE-0002', received_by_employee_id: 'DPE-7', encoded_by_employee_id: 'DPE-7' },
+    { remittance_id: 'REM-F3', branch: 'TORIL', mas: 'MAS-2', date_remitted: '2026-10-13', status: 'Pending Approval', remittance_type: 'Fidelity', fidelity_amount: 40, accountable_employee_id: 'DPE-0002', received_by_employee_id: 'DPE-7', encoded_by_employee_id: 'DPE-7' },
+  ]);
+  const { buildClerkReport } = h.load('lib/clerk-report.ts');
+  const report = await buildClerkReport('daily', '2026-10-13', { employeeId: 'DPE-7', name: 'Clerk', branch: 'MINTAL' }, 'MINTAL');
+  assert.deepEqual(report.fidelitySlips.map((item) => [item.id, item.amount]), [['REM-F1', 30]], 'not the voided one, not another branch');
+  assert.equal(report.cash.fidelity, 30);
+
+  // Approving a Fidelity slip needs no entries.
+  const remittancesHeader = Array(28).fill(''); remittancesHeader[12] = 'Difference'; remittancesHeader[26] = 'time_remitted'; remittancesHeader[27] = 'cash_count';
+  const collectionsHeader = Array(39).fill(''); collectionsHeader[28] = 'Remittance Status'; collectionsHeader[38] = 'forfeited_incentive';
+  h.rows.Collections = [collectionsHeader];
+  h.rows.Remittances = [remittancesHeader, ['REM-F1', 'MINTAL', 'MAS-2', '2026-10-13', 'Pending Approval', '', 'U9', 'DPE-7', 'Clerk', '', 30, 30, 0, 'DPE-0002', 'MAS', 0, 'DPE-7', 'Clerk', '', '', '', '', 'Late Fidelity', '', 30, 'Fidelity', '', '']];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  await h.sync();
+  const decided = await runAsSystem(() => decideCashRemittance('REM-F1', 'approve', '', true));
+  assert.equal(decided.status, 'Approved');
+});
+
+test('on a grace day every incentive is kept, however late the cash (October 13, 2026)', () => {
+  const h = harness();
+  const { keepsIncentive } = h.load('lib/remittance-deadline.ts');
+  const { forfeitsIncentive } = h.load('lib/remittance-workflow.ts');
+  assert.equal(keepsIncentive('2026-10-08', '2026-10-12 16:00'), false, 'a normal day: after 3:00 PM the next working day it is late');
+  assert.equal(keepsIncentive('2026-10-08', '2026-10-13 16:00'), true, 'received on the grace day: kept');
+  assert.equal(keepsIncentive('2026-10-08', '2026-10-14 09:00'), false, 'the day after: late again');
+  const item = { amount: 350, remittanceAmount: 200, orDate: '2026-10-08', incentiveDeadline: '2026-10-09 15:00' };
+  assert.equal(forfeitsIncentive(item, '2026-10-13 16:00'), false);
+  assert.equal(forfeitsIncentive(item, '2026-10-14 09:00'), true);
+});

@@ -16,7 +16,7 @@ import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
 type Remark = { id: string; comment: string; createdAt: string; encodedBy: string };
-type Result = { success: boolean; message?: string; report: Report; remarks: Remark[]; canChoose: boolean; isOwn: boolean; branch: string; branchChoices: string[]; clerks: Array<{ employeeId: string; name: string; branch: string }> };
+type Result = { success: boolean; message?: string; report: Report; remarks: Remark[]; canChoose: boolean; isOwn: boolean; branch: string; branchChoices: string[]; masChoices: Array<{ id: string; name: string }>; clerks: Array<{ employeeId: string; name: string; branch: string }> };
 
 const money = (value: number) => (value ? new Intl.NumberFormat("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) : "-");
 const todayInManila = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
@@ -51,6 +51,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   const [remark, setRemark] = useState("");
   // A deposit opened for editing in the record panel (owner, October 13, 2026: edit it, or void it).
   const [editingDeposit, setEditingDeposit] = useState<Report["deposits"][number] | null>(null);
+  // A Fidelity entry (handed in after encoding) opened for editing (October 13, 2026).
+  const [editingFidelity, setEditingFidelity] = useState<Report["fidelitySlips"][number] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,6 +147,14 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 action={own ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this deposit being voided?"); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
             </div>
 
+            {(report.fidelitySlips.length > 0 || own) && (
+              <Grid title="Fidelity received after encoding" color={tone.cashFlow}
+                headers={["MAS", report.whenLabel, "Amount", "Status", "Rmks", "Ref"]}
+                rows={report.fidelitySlips.map((item) => [item.masName, item.when, money(item.amount), item.status, item.remarks, item.id])}
+                total={report.fidelityLater}
+                action={own ? (index) => { const item = report.fidelitySlips[index]; return ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this Fidelity entry being voided?"); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
+            )}
+
             <div className="grid grid-cols-[1.1fr_0.8fr_1.6fr] gap-3">
               <dl className="space-y-0.5">
                 <Cash label="Cash Beg/Pending COH" value={report.cash.cashBeg} color={tone.cashBeg} />
@@ -175,7 +185,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
       {report && kind !== "daily" && <MasSummary report={report} />}
 
-      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}`} report={report} act={act} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)} />}
+      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}`} report={report} act={act} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
+        masChoices={data?.masChoices ?? []} editingFidelity={editingFidelity} onFidelityDone={() => setEditingFidelity(null)} />}
       {report && own && data?.branch === "all" && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">Choose one branch to record expenses, deposits, Cash Beg and notes for it.</p>}
 
       {report && (
@@ -350,13 +361,17 @@ function MasSummary({ report }: { report: Report }) {
 }
 
 /** The clerk records what the report needs besides New Sales and Collections. */
-function RecordPanel({ report, act, editing, onEditDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; editing: Report["deposits"][number] | null; onEditDone: () => void }) {
+function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFidelity, onFidelityDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; editing: Report["deposits"][number] | null; onEditDone: () => void;
+  masChoices: Array<{ id: string; name: string }>; editingFidelity: Report["fidelitySlips"][number] | null; onFidelityDone: () => void }) {
   const today = todayInManila();
   const inPeriod = today >= report.from && today <= report.to ? today : report.to;
   const [expense, setExpense] = useState({ category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
   const [deposit, setDeposit] = useState(editing
     ? { date: editing.date, bankAccount: editing.bankAccount, amount: String(editing.amount), transferType: editing.transferType, mas: editing.mas, remarks: editing.remarks }
     : { date: inPeriod, bankAccount: "DSRDPI", amount: "", transferType: "", mas: "", remarks: "" });
+  const [fidelity, setFidelity] = useState(editingFidelity
+    ? { masEmployeeId: editingFidelity.masEmployeeId, amount: String(editingFidelity.amount), date: editingFidelity.date, remarks: editingFidelity.remarks }
+    : { masEmployeeId: "", amount: "", date: inPeriod, remarks: "" });
   const [cashBeg, setCashBeg] = useState({ amount: report.cash.cashBegEdit ? String(report.cash.cashBegEdit.amount) : "", reason: report.cash.cashBegEdit?.reason ?? "" });
   const [notes, setNotes] = useState({ pendingCash: String(report.notes.pendingCash || ""), specificRemarks: report.notes.specificRemarks, pendingTransactions: report.notes.pendingTransactions, otherComments: report.notes.otherComments });
   const masNames = report.masSummary.rows.map((row) => row.name);
@@ -401,6 +416,29 @@ function RecordPanel({ report, act, editing, onEditDone }: { report: Report; act
       </form>
 
       <div className="space-y-4">
+      {/* Fidelity handed in after the MAS's entries were encoded: its own slip, approved in Remittances (October 13, 2026). */}
+      <form id="fidelity-form" className={`space-y-2 rounded-lg border p-3 ${editingFidelity ? "border-primary/40 bg-primary/5" : ""}`} onSubmit={async (event) => {
+        event.preventDefault();
+        const body = { ...fidelity, amount: Number(fidelity.amount) };
+        if (editingFidelity) { if (await act({ action: "edit-fidelity", id: editingFidelity.id, ...body })) onFidelityDone(); return; }
+        if (await act({ action: "add-fidelity", ...body })) setFidelity((current) => ({ ...current, masEmployeeId: "", amount: "", remarks: "" }));
+      }}>
+        <p className="font-semibold">{editingFidelity ? `Edit Fidelity ${editingFidelity.id}` : "Add Fidelity (handed in after encoding)"}</p>
+        <Label className="text-xs">MAS<select className={field} value={fidelity.masEmployeeId} onChange={(event) => setFidelity({ ...fidelity, masEmployeeId: event.target.value })}>
+          <option value="">Choose the MAS</option>{masChoices.map((mas) => <option key={mas.id} value={mas.id}>{mas.name}</option>)}
+        </select></Label>
+        <div className="grid grid-cols-2 gap-2">
+          <Label className="text-xs">Date received<Input type="date" max={todayInManila()} value={fidelity.date} onChange={(event) => setFidelity({ ...fidelity, date: event.target.value })} /></Label>
+          <Label className="text-xs">Amount<Input type="number" min="0" step="0.01" value={fidelity.amount} onChange={(event) => setFidelity({ ...fidelity, amount: event.target.value })} /></Label>
+        </div>
+        <Label className="text-xs">Remarks<Input maxLength={300} placeholder="e.g. Fidelity for the Oct 12 collections" value={fidelity.remarks} onChange={(event) => setFidelity({ ...fidelity, remarks: event.target.value })} /></Label>
+        <div className="flex gap-2">
+          <Button type="submit" size="sm" disabled={!fidelity.masEmployeeId || !(Number(fidelity.amount) > 0)}>{editingFidelity ? "Save changes" : "Save Fidelity"}</Button>
+          {editingFidelity && <Button type="button" size="sm" variant="outline" onClick={onFidelityDone}>Cancel</Button>}
+        </div>
+        <p className="text-xs text-muted-foreground">Counts as cash in (Fidelity Bond) on this report at once, and in the MAS&apos;s Fidelity once approved in Remittances. Edit or void it until then.</p>
+      </form>
+
       {/* Cash Beg is the cash received (owner, October 13, 2026): the clerk can type it, with the reason; blank = calculated. */}
       <form className="space-y-2 rounded-lg border bg-muted/30 p-3" onSubmit={(event) => { event.preventDefault(); void act({ action: "save-cash-beg", cashBeg: cashBeg.amount === "" ? "" : Number(cashBeg.amount), reason: cashBeg.reason }); }}>
         <p className="font-semibold">Cash Beg for this report</p>
