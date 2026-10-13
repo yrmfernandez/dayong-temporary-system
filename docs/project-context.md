@@ -330,6 +330,7 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Cause found:** sending one kind for approval (cash Collections go at once on save) marks the whole clearing Encoded, even one ticked for both; From Clearing listed only Open clearings and today's Encoded ones, so from the next day the person was missing from the other kind's list (e.g. on October 13 PAÑARES, NIMFA had Collections but no New Sales yet; GARCIA, JASPER the other way round).
 - **Done:** an earlier day's Encoded clearing stays in From Clearing, under the kind still waiting for encoding only, marked not encoded yet. Tested.
 - **Other reasons someone is not listed (by design):** a clerk sees only the clearings they made (October 10); a clearing ticked for one kind shows only under that kind; Removed clearings are not listed.
+- **SACAY, HANELYN (STA. CRUZ, GARCIA, JASPER):** today's clearing was ticked New Sales only, so she was not in Collections; clearing her again for Collections was refused while that one was open (and it could not be removed, 2 New Sales are saved on it). **Done:** a second open clearing the same day is refused only for a kind already open. Tested. Her October 12 cash collection (OR 12958 B) is Outstanding and on no slip after its slip was rejected (wrong mode of payment); the clerk fixes and sends it from My Entries.
 
 ### Clerk report: Cash Beg can be typed (2026-10-13)
 

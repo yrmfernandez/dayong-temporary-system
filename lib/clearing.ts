@@ -174,9 +174,12 @@ export async function addClearing(input: { branch: string; employeeId: string; a
   if (!employee) throw new Error("Choose an active MAS or employee.");
   if (!employee.branchIds.includes(branch.id)) throw new Error(`${employee.name} is not assigned to ${branch.name}. Add the branch in Employees → Edit first.`);
   const now = new Date(), day = manilaNow(now).date;
-  const [open] = await currentDb().select({ id: clearings.clearing_id }).from(clearings)
+  // One Open clearing per person, branch, day and kind (owner, October 13, 2026): someone cleared for New Sales only can
+  // still be cleared for Collections the same day, and the other way round.
+  const open = await currentDb().select({ id: clearings.clearing_id, covers: clearings.covers }).from(clearings)
     .where(and(eq(clearings.employee_id, employee.id), eq(clearings.branch, branch.name), eq(clearings.cleared_date, day), eq(clearings.status, "Open")));
-  if (open) throw new Error(`${employee.name} is already cleared for ${branch.name} today and not yet encoded.`);
+  const overlap = open.flatMap((row) => coveredKinds((CLEARING_COVERS as string[]).includes(text(row.covers)) ? row.covers as ClearingCovers : "Both")).filter((kind) => coveredKinds(covers).includes(kind));
+  if (overlap.length) throw new Error(`${employee.name} is already cleared for ${[...new Set(overlap)].join(" and ")} in ${branch.name} today and not yet encoded.`);
   const id = createReadableId("CLR");
   await currentDb().insert(clearings).values({
     clearing_id: id, branch: branch.name, employee_id: employee.id, employee_name: employee.name, cleared_at: now.toISOString(), cleared_date: day,

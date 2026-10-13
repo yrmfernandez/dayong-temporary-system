@@ -2699,3 +2699,20 @@ test('a clearing for both kinds stays in the New Sales list while only its Colle
   assert.deepEqual(listed.map((item) => [item.id, item.waitingKinds]), [['CLR-HALF', ['New Sales']]], 'listed for New Sales only; the finished one is not listed');
   assert.equal(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', yesterday, 'New Sales'), '', 'its New Sales can still be saved for that day');
 });
+
+test('a person cleared for New Sales only can be cleared for Collections the same day, not twice for one kind', async () => {
+  const h = harness();
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  await seed('branches', [{ branch_id: 'BR-1', branch_name_code: 'BR-1', status: 'active' }]);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2', employment_status: 'Active' }]);
+  await seed('employee_branches', [{ assignment_id: 'EBA-1', employee_id: 'DPE-0002', branch_id: 'BR-1' }]);
+  const clearing = h.load('lib/clearing.ts');
+  const { runAsSystem } = h.load('lib/encoder-context.ts');
+  await runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'New Sales' }));
+  await runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Collections' }));
+  await assert.rejects(() => runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Both' })), /already cleared for New Sales and Collections in BR-1 today/);
+  await assert.rejects(() => runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Collections' })), /already cleared for Collections in BR-1 today/);
+  assert.deepEqual((await query("select covers from clearings where status = 'Open' order by covers")).map((row) => row.covers), ['Collections', 'New Sales']);
+});
