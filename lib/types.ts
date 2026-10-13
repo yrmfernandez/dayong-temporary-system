@@ -82,6 +82,9 @@ export type Program = {
 export type ProgramEnrollment = {
   id: string;
   memberId: string;
+  /** The chosen program. Codes are not unique (production has two programs coded 320 and two coded 350), so the ID
+   *  decides; older drafts and MAS submissions without it fall back to the code. */
+  programId?: string;
   programCode: string;
   dateEnrolled: string;
   modeOfPayment: string;

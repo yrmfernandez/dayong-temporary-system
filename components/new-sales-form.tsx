@@ -143,6 +143,7 @@ function emptyProgram(): ProgramEnrollment {
   return {
     id: createId("ENR"),
     memberId: "",
+    programId: "",
     programCode: "",
     dateEnrolled: "",
     modeOfPayment: "",
@@ -325,8 +326,10 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   >([]);
 
   // A program whose New Sale amount is locked always charges its fixed amount, whatever a saved draft holds.
-  const lockedProgram = (code: string) => { const program = programs.find((item) => item.code === code); return program && !program.newSaleAmountEditable && !program.flexible ? program : null; };
-  const amountPaidOf = (sale: (typeof sales)[number]) => { const locked = lockedProgram(sale.program.programCode); return locked ? fixedNewSaleAmount(locked) : Number(sale.program.amountPaid) || 0; };
+  // The sale's program: by ID, since two programs can share a code (DS-320 and D-320 are both 320); by code for older drafts.
+  const programOf = (sale: (typeof sales)[number]) => (sale.program.programId && programs.find((item) => item.id === sale.program.programId)) || programs.find((item) => item.code === sale.program.programCode);
+  const lockedProgram = (sale: (typeof sales)[number]) => { const program = programOf(sale); return program && !program.newSaleAmountEditable && !program.flexible ? program : null; };
+  const amountPaidOf = (sale: (typeof sales)[number]) => { const locked = lockedProgram(sale); return locked ? fixedNewSaleAmount(locked) : Number(sale.program.amountPaid) || 0; };
   const totalPaid = sales.reduce((sum, sale) => sum + Math.round(amountPaidOf(sale) * 100), 0) / 100;
 
   const [branches, setBranches] = useState<
@@ -337,7 +340,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // A branch's own incentive tiers replace the program's base tiers there.
   const branchId = branches.find((item) => item.name === branch)?.id ?? "";
   const saleQuotes = sales.map((sale) => {
-    const program = programs.find((item) => item.code === sale.program.programCode);
+    const program = programOf(sale);
     if (!program) return null;
     try {
       return calculateSaleIncentive({ basePay: program.basePay, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, amountPaidOf(sale));
@@ -1133,9 +1136,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     try {
       const preparedSales =
         sales.map((sale) => {
-          const selectedProgram = programs.find(
-            (program) => program.code === sale.program.programCode,
-          );
+          const selectedProgram = programOf(sale);
 
           return {
             memberNumber: sale.member.phMemberNumber,
@@ -1381,12 +1382,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
               expandedSales[sale.id] ??
               true;
 
-            const selectedProgram =
-              programs.find(
-                (program) =>
-                  program.code ===
-                  sale.program.programCode,
-              );
+            const selectedProgram = programOf(sale);
 
             const matchingMembers =
               memberSearchResults[sale.id] ?? [];
@@ -1436,7 +1432,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                       {!expanded && (
                         <span className="truncate text-sm">
                           <strong>{[sale.member.name.surname, sale.member.name.firstName].filter(Boolean).join(", ") || "No name yet"}</strong>
-                          <span className="text-muted-foreground"> · {sale.program.programCode || "no program"} · {peso(amountPaidOf(sale))} · App {sale.applicationNumber || "—"}</span>
+                          <span className="text-muted-foreground"> · {programOf(sale)?.name || sale.program.programCode || "no program"} · {peso(amountPaidOf(sale))} · App {sale.applicationNumber || "—"}</span>
                         </span>
                       )}
                     </div>
@@ -1550,16 +1546,17 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
                           <SearchSelect
                             aria-label="Program Type"
-                            value={sale.program.programCode}
+                            value={programOf(sale)?.id ?? ""}
                             disabled={programLoading || availablePrograms.length === 0}
                             placeholder={programLoading ? "Loading programs..." : "Search program code or name"}
-                            options={availablePrograms.map((program) => ({ value: program.code, label: `${program.code} - ${program.name}` }))}
-                            onValueChange={(code) => {
-                              const chosen = availablePrograms.find((program) => program.code === code);
+                            options={availablePrograms.map((program) => ({ value: program.id, label: program.name && program.name !== program.code ? `${program.code} - ${program.name}` : program.code }))}
+                            onValueChange={(id) => {
+                              const chosen = availablePrograms.find((program) => program.id === id);
                               updateSale(sale.id, (current) => ({
                                 ...current,
                                 program: {
                                   ...current.program,
+                                  programId: chosen?.id ?? "",
                                   programCode: chosen?.code ?? "",
                                   withRegistrationFee: Boolean(chosen?.registrationFeeRequired),
                                   registrationAmount: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
@@ -1606,8 +1603,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                         <Input
                           type="number"
                           min="0"
-                          readOnly={Boolean(lockedProgram(sale.program.programCode))}
-                          className={lockedProgram(sale.program.programCode) ? "bg-muted/50" : undefined}
+                          readOnly={Boolean(lockedProgram(sale))}
+                          className={lockedProgram(sale) ? "bg-muted/50" : undefined}
                           value={
                             amountPaidOf(sale) ||
                             ""
@@ -1634,7 +1631,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                           }
                           placeholder="0.00"
                         />
-                        {lockedProgram(sale.program.programCode) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale.program.programCode)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
+                        {lockedProgram(sale) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
                       </div>
                         <div className="space-y-2">
                           <Label>
@@ -2780,7 +2777,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         </CardContent>
       </Card>}
 
-      {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programs.find((item) => item.code === sale.program.programCode); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.orDate || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p></div>}
+      {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.orDate || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p></div>}
 
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}

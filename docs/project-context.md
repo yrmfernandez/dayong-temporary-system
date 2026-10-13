@@ -324,6 +324,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### DS-320 missing from New Sales; one code per program (2026-10-13)
+
+- **Owner:** New Sales does not show all programs; DS-320 cannot be picked.
+- **Cause:** on production, DS-320 (DP-0004) and D-320 (DP-0011) both have code `320`, and D-350 (5Y) (DP-0009) and DPB-350 (DP-0010) both have `350`. The program list was keyed by code, so only one of each pair showed. A clerk who picked 320 could get D-320 when they meant DS-320. Accounts link to programs by ID, so their data is not affected.
+- **Done:** New Sales picks the program by ID (older drafts and MAS submissions fall back to the code); Programs refuses a new or changed code that another program already uses. Tested.
+- **To do (owner):** in Programs, give the four programs their own codes (for example DS-320, D-320, D-350, DPB-350). The app now uses IDs, but the program lists show the same code twice and `scripts/fix-legacy-receipts.mjs` still matches programs by code, so unique codes avoid mix-ups.
+
 ### Date Remitted can be changed, with a reason (2026-10-13)
 
 - **Owner:** let the Date Remitted be edited, but ask why it was changed: sometimes there is work but it cannot be encoded because of meetings and other reasons.

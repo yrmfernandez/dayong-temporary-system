@@ -1,7 +1,7 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 
 import { currentDb, inTransaction, schema } from "@/lib/db";
-import { getPrograms, programColumns } from "@/lib/google-sheets-data";
+import { assertProgramCodeFree, getPrograms, programColumns } from "@/lib/google-sheets-data";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } from "@/lib/passwords";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
@@ -32,6 +32,9 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
   await validateIncentiveTiers(input.incentiveTiers, input.basePay);
   // The program and its tiers change together.
   await inTransaction(async (tx) => {
+    // A changed code must be free; an unchanged one is left alone, so the existing duplicates can still be edited (and renamed).
+    const [current] = await tx.select({ code: schema.programs.program_code }).from(schema.programs).where(eq(schema.programs.program_id, id));
+    if (current && String(current.code ?? "").trim().toLowerCase() !== input.code.trim().toLowerCase()) await assertProgramCodeFree(tx, input.code, id);
     const updated = await tx.update(schema.programs).set(columns).where(eq(schema.programs.program_id, id)).returning({ id: schema.programs.program_id });
     if (!updated.length) throw new Error("Record not found.");
     await writeProgramIncentives(id, input.incentiveTiers);

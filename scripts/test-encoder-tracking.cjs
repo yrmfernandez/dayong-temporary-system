@@ -2597,3 +2597,14 @@ test('entry deadlines skip Sundays and declared non-working days', async () => {
   assert.equal(needsBackdateReason("2026-10-10", "2026-10-13", { ...closed, branch: "br-1" }), false, "Tuesday after a closed Monday: Saturday is still on time");
   assert.equal(needsBackdateReason("2026-10-10", "2026-10-13", { ...closed, branch: "BR-2" }), true);
 });
+
+test('a program code is used by one program only', async () => {
+  const h = harness();
+  await seed('programs', [{ program_id: 'DP-0004', program_code: '320', program_name: 'DS-320', base_pay: 320 }, { program_id: 'DP-0011', program_code: 'D-320', program_name: 'D-320', base_pay: 320 }]);
+  const { assertProgramCodeFree } = h.load('lib/google-sheets-data.ts');
+  const { currentDb } = h.load('lib/db.ts');
+  await assert.rejects(assertProgramCodeFree(currentDb(), ' 320 '), /Program code 320 is already used by DS-320/);
+  await assert.rejects(assertProgramCodeFree(currentDb(), 'd-320', 'DP-0004'), /already used by D-320/, 'case does not matter');
+  await assertProgramCodeFree(currentDb(), '320', 'DP-0004');
+  await assertProgramCodeFree(currentDb(), 'DS-320');
+});

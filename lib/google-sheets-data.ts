@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 
 import { currentDb, encodedBy, inTransaction, schema } from "@/lib/db";
 import { isTrue } from "@/lib/program-amount-lock";
@@ -247,9 +247,20 @@ export function programColumns(data: Pick<CreateProgramData, "code" | "name" | "
   };
 }
 
+/**
+ * Refuses a program code another program already uses (ignoring case and outer spaces). New Sales, Collections and the
+ * imports pick programs by code, so two programs coded 320 (DS-320 and D-320 on production) were confused.
+ */
+export async function assertProgramCodeFree(db: Pick<ReturnType<typeof currentDb>, "select">, code: string, exceptId = "") {
+  const [taken] = await db.select({ name: programTable.program_name }).from(programTable)
+    .where(and(sql`lower(trim(${programTable.program_code})) = ${code.trim().toLowerCase()}`, exceptId ? ne(programTable.program_id, exceptId) : undefined)).limit(1);
+  if (taken) throw new Error(`Program code ${code.trim()} is already used by ${taken.name || "another program"}. Give each program its own code.`);
+}
+
 /** Saves a new program (DP-0001, DP-0002, …) and its incentive tiers in one transaction. */
 export async function createProgram(data: CreateProgramData) {
   return inTransaction(async (tx) => {
+    await assertProgramCodeFree(tx, data.code);
     const ids = (await tx.select({ id: programTable.program_id }).from(programTable)).map((row) => row.id);
     const [row] = await tx.insert(programTable).values({ program_id: nextId("DP", ids), ...programColumns(data), ...encodedBy() }).returning();
     // Base tiers (blank branch) and branch-specific tiers.
