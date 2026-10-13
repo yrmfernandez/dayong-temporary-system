@@ -234,21 +234,35 @@ export async function getRemittanceDashboard(clerkId = "") {
   const ledger = clerkId
     ? { ...all, collections: all.collections.filter((item) => item.encodedByEmployeeId === clerkId), remittances: all.remittances.filter((remittance) => remittance.clerkIds.includes(clerkId)) }
     : all;
-  const now = manilaNow(), today = now.date, at = `${now.date} ${now.time}`;
+  const today = manilaNow().date;
   const available = ledger.collections.filter((collection) => ["Outstanding", "Returned"].includes(collection.remittanceStatus));
   const accountable = ledger.collections.filter((collection) => ["Outstanding", "Returned", "Pending Remittance Approval"].includes(collection.remittanceStatus));
   const pending = ledger.remittances.filter((remittance) => ["Pending Approval", "Discrepancy"].includes(remittance.status));
   const approvedToday = ledger.remittances.filter((remittance) => remittance.status === "Approved" && remittance.decisionAt.slice(0, 10) === today);
+  // Receipt photos and approval may come after 3 PM; cash already cleared on time keeps its incentive.
+  // Resolve one receipt time per saved batch, and keep pending slips at the amounts already recorded on them.
+  const batches = new Map<string, CashCollection[]>();
+  for (const item of available) {
+    const key = JSON.stringify([item.kind, item.batchId || item.id, item.accountableEmployeeId, item.branch, item.dateRemitted]);
+    const group = batches.get(key) ?? [];
+    group.push(item); batches.set(key, group);
+  }
+  const receivedTimes = new Map<string, string>();
+  await Promise.all([...batches.values()].map(async (group) => {
+    const received = await receivedAtOf(group);
+    for (const item of group) receivedTimes.set(item.id, `${received.date} ${received.time}`);
+  }));
+  const due = (item: CashCollection) => amountDue(item, receivedTimes.get(item.id) ?? "") + item.fidelity;
   // Entry Clerks with encoded items, for the approvers' filter.
   const clerks = [...new Map(all.collections.filter((item) => item.encodedByEmployeeId).map((item) => [item.encodedByEmployeeId, item.encodedByName] as const)).entries()].map(([employeeId, name]) => ({ employeeId, name })).sort((a, b) => a.name.localeCompare(b.name));
   const accountability = [...new Set(accountable.map((collection) => `${collection.accountableEmployeeId}\u0000${collection.accountableName}\u0000${collection.accountableRole}\u0000${collection.branch}`))].map((key) => {
     const [employeeId, name, role, branch] = key.split("\u0000");
     const owned = accountable.filter((collection) => collection.accountableEmployeeId === employeeId && collection.accountableName === name && collection.branch === branch);
-    return { employeeId, name, role, branch, collectionCount: owned.length, outstandingAmount: owned.reduce((sum, collection) => sum + amountDue(collection, at) + collection.fidelity, 0) };
+    return { employeeId, name, role, branch, collectionCount: owned.length, outstandingAmount: owned.reduce((sum, collection) => sum + due(collection), 0) };
   });
   return {
     summary: {
-      outstandingAmount: accountable.reduce((sum, collection) => sum + amountDue(collection, at) + collection.fidelity, 0), outstandingCount: accountable.length,
+      outstandingAmount: accountable.reduce((sum, collection) => sum + due(collection), 0), outstandingCount: accountable.length,
       pendingAmount: pending.reduce((sum, remittance) => sum + remittance.expectedAmount, 0), pendingCount: pending.length,
       approvedTodayAmount: approvedToday.reduce((sum, remittance) => sum + remittance.actualAmount, 0), approvedTodayCount: approvedToday.length,
       discrepancyAmount: pending.reduce((sum, remittance) => sum + Math.abs(remittance.difference), 0),

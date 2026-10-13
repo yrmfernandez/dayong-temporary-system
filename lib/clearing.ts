@@ -288,11 +288,19 @@ export async function dateRemittedReasonProblem(employeeId: string, branch: stri
 
 /**
  * When the cash of a batch was received: the latest clearing of that person, branch and day at or before `encodedAt`
- * ("YYYY-MM-DD HH:MM"), else their earliest that day; "" when there is none.
+ * ("YYYY-MM-DD HH:MM"), else their earliest that day; "" when there is none. A later-day clearing that covered an
+ * earlier Date Remitted remains evidence of receipt after it becomes Encoded; that status only limits new encoding.
  */
 export async function clearedAt(employeeId: string, branch: string, day: string, encodedAt = "", kind?: ClearingKind) {
   const rows = await currentDb().select({ at: clearings.cleared_at }).from(clearings)
-    .where(covering([employeeId], branch, day, kind))
+    .where(and(
+      eq(clearings.employee_id, text(employeeId)), sameBranch(branch), ne(clearings.status, "Removed"),
+      kind ? inArray(clearings.covers, ["Both", kind]) : undefined,
+      or(eq(clearings.cleared_date, text(day)), encodedAt ? and(
+        gt(clearings.cleared_date, text(day)),
+        sql`${clearings.cleared_at} <= ${`${encodedAt.slice(0, 10)}T${encodedAt.slice(11, 16)}:59.999+08:00`}::timestamptz`,
+      ) : undefined),
+    ))
     .orderBy(clearings.cleared_at);
   const stamps = rows.map((row) => manilaStamp(row.at)).filter(Boolean);
   if (!stamps.length) return "";

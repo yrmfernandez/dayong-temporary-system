@@ -2826,6 +2826,48 @@ test('a Date Remitted moved earlier with a reason counts the cash as received th
   assert.equal(h.load('lib/remittance-deadline.ts').keepsIncentive('2026-10-11', '2026-10-12 00:00'), true);
 });
 
+test('the clearing receipt time survives Encoded status and late encoding for either kind', async () => {
+  const h = harness();
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('clearings', [
+    { clearing_id: 'CLR-RECEIPT', branch: 'BR-1', employee_id: 'DPE-0002', cleared_at: '2026-09-26T06:59:00Z', cleared_date: '2026-09-26', status: 'Open', covers: 'Both' },
+    { clearing_id: 'CLR-FUTURE', branch: 'BR-1', employee_id: 'DPE-0002', cleared_at: '2026-09-27T01:00:00Z', cleared_date: '2026-09-27', status: 'Encoded', covers: 'Both' },
+  ]);
+  const { clearedAt } = h.load('lib/clearing.ts');
+  for (const kind of ['Collections', 'New Sales']) {
+    assert.equal(await clearedAt('DPE-0002', ' br-1 ', '2026-09-25', '2026-09-26 16:00', kind), '2026-09-26 14:59');
+  }
+  await query("update clearings set status='Encoded' where clearing_id='CLR-RECEIPT'");
+  for (const kind of ['Collections', 'New Sales']) {
+    assert.equal(await clearedAt('DPE-0002', 'BR-1', '2026-09-25', '2026-09-26 16:00', kind), '2026-09-26 14:59', 'Encoded does not erase when cash was received');
+  }
+  await query("update clearings set status='Removed' where clearing_id='CLR-RECEIPT'");
+  assert.equal(await clearedAt('DPE-0002', 'BR-1', '2026-09-25', '2026-09-26 16:00', 'Collections'), '', 'neither a removed nor a future clearing counts');
+});
+
+test('remittance totals and automatic submission keep incentives for on-time clearing after 3 PM', async () => {
+  const h = harness();
+  deadlineHeaders(h);
+  h.rows.Remittances[0][12] = 'Difference';
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At']];
+  await seedAccount({ doi: '2026-09-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }, { employee_id: 'DPE-0003', full_name: 'Late MAS' }]);
+  await seed('clearings', [{ clearing_id: 'CLR-ONTIME', branch: 'BR-1', employee_id: 'DPE-0002', cleared_at: '2026-09-26T07:00:00Z', cleared_date: '2026-09-26', status: 'Encoded', covers: 'Both' }]);
+  await seed('remittances', [{ remittance_id: 'REM-PENDING', status: 'Pending Approval' }]);
+  const row = (id, extra = {}) => ({ collection_id: id, collection_batch_id: `CBT-${id}`, enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', mas: 'MAS-2', accountable_name: 'MAS-2', or_number: `${id} C`, or_date: '2026-09-25', amount_collected: 350, remittance_amount: 270, status: 'Posted', remittance_status: 'Outstanding', accountable_employee_id: 'DPE-0002', date_remitted: '2026-09-26', encoded_at: '2026-09-26T08:00:00Z', remittance_method: 'Cash', ...extra });
+  await seed('collections', [row('ONTIME'), row('PENDING', { remittance_status: 'Pending Remittance Approval', linked_remittance_id: 'REM-PENDING' }), row('LATE', { accountable_employee_id: 'DPE-0003', accountable_name: 'Late MAS' })]);
+  const workflow = h.load('lib/remittance-workflow.ts');
+  const dashboard = await workflow.getRemittanceDashboard();
+  assert.equal(dashboard.summary.outstandingAmount, 890, '270 on-time + 270 pending as recorded + 350 genuinely late');
+  assert.equal(dashboard.accountability.find((item) => item.employeeId === 'DPE-0002').outstandingAmount, 540, 'waiting for approval never makes cleared cash late');
+  assert.equal((await workflow.submitReadyEntries(['ONTIME'])).length, 1);
+  const requests = h.writes.at(-1).requestBody.requests;
+  const slip = requests[0].appendCells.rows[0].values.map((cell) => cell.userEnteredValue.stringValue ?? cell.userEnteredValue.numberValue);
+  assert.equal(slip[10], 270, 'encoding at 4 PM keeps the incentive when cleared by 3 PM');
+  assert.equal(slip[26], '15:00', 'the slip records the clearing time, including the exact cutoff');
+  assert.equal(requests.some((request) => request.updateCells?.range.startColumnIndex === 38), false, 'no forfeiture is written');
+});
+
 test('a clerk can edit their own deposit (not a voided one, not another clerk\'s)', async () => {
   const h = harness();
   h.rows['Bank Deposits'] = [[],
