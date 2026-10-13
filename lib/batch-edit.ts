@@ -179,8 +179,11 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
   // A changed Date Remitted needs a clearing that covers it and the reason it was changed (owner, October 13, 2026);
   // otherwise each row keeps the reason it has.
   let dateRemittedReason: string | null = null;
+  // A DTO batch (paid at the office, the receiving clerk accountable) has no clearing to check.
+  const dtoBatch = "accountable_role" in first && text(first.accountable_role) === "DTO";
   if (dateRemitted !== day(first.date_remitted)) {
-    const notCleared = await clearingProblem(accountableId, accountableName, branchName, dateRemitted, batch.kind === "New Sale" ? "New Sales" : "Collections");
+    if (dtoBatch && dateRemitted > today) throw new Error("The Date Remitted cannot be in the future.");
+    const notCleared = dtoBatch ? "" : await clearingProblem(accountableId, accountableName, branchName, dateRemitted, batch.kind === "New Sale" ? "New Sales" : "Collections");
     if (notCleared) throw new Error(notCleared);
     dateRemittedReason = text(input.dateRemittedReason).slice(0, 300);
     if (dateRemittedReason.length < DATE_REMITTED_REASON_MIN) throw new Error("Enter the reason the Date Remitted was changed.");

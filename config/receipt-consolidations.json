@@ -98,6 +98,15 @@
       "startNop": 3,
       "note": "Correction of the October 10 consolidation: the first receipt (January 5, 2026) was recorded as NOP 3 (January) in the old sheet; the script had renumbered from NOP 2, putting every payment one month early. Renumbered from NOP 3.",
       "appliedOn": "2026-10-10 (production)"
+    },
+    {
+      "member": "PH-25541018",
+      "program": "DP-0009",
+      "receipts": [
+        "09522 B"
+      ],
+      "note": "Owner confirmed October 13, 2026: member enrolled only in D-350 (5Y); move OR 09522 B from D-350 and remove the erroneous D-350 assignment.",
+      "appliedOn": "2026-10-13 (production)"
     }
   ]
 }

@@ -82,7 +82,8 @@ export async function withProgress(list: Clearing[]): Promise<Clearing[]> {
   const { collections, sales, receipt_photos: photos } = schema;
   const [collectionRows, saleRows, photoRows, cashNames] = await Promise.all([
     currentDb().select({ id: collections.collection_id, employeeId: collections.accountable_employee_id, branch: collections.branch, dateRemitted: collections.date_remitted, status: collections.remittance_status, encodedAt: collections.encoded_at, method: collections.remittance_method })
-      .from(collections).where(and(inArray(collections.accountable_employee_id, ids), sql`lower(coalesce(${collections.status}, '')) = 'posted'`, gte(collections.date_remitted, earliest), sql`${collections.date_remitted} <= ${latest}`)),
+      // DTO collections (accountable: the receiving clerk) belong to no clearing, even when that clerk was cleared too.
+      .from(collections).where(and(inArray(collections.accountable_employee_id, ids), sql`lower(coalesce(${collections.status}, '')) = 'posted'`, sql`coalesce(${collections.accountable_role}, '') <> 'DTO'`, gte(collections.date_remitted, earliest), sql`${collections.date_remitted} <= ${latest}`)),
     currentDb().select({ id: sales.sale_id, employeeId: sql<string>`coalesce(${sales.accountable_employee_id}, ${sales.mas_employee_id})`, branch: sales.branch, dateRemitted: sales.date_remitted, status: sales.remittance_status, encodedAt: sales.encoded_at, method: sales.payment_method })
       .from(sales).where(and(or(inArray(sales.accountable_employee_id, ids), inArray(sales.mas_employee_id, ids)), gte(sales.date_remitted, earliest), sql`${sales.date_remitted} <= ${latest}`)),
     currentDb().select({ entryIds: photos.entry_ids }).from(photos).where(sql`${photos.uploaded_at} >= ${`${earliest}T00:00:00+08:00`}`),

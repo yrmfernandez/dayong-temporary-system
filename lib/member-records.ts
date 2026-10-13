@@ -123,15 +123,25 @@ export async function listMembersForMas(branch: string, mas: string) {
   return findMembers("", branch, mas, 1000);
 }
 
+/** A DTO batch (Collections): members with an active account in the branch, whatever its MAS, by name or PH number. */
+export async function searchBranchMembers(search: string, branch: string) {
+  if (text(search).length < 2 || !text(branch)) return [];
+  return findMembers(search, branch, ANY_MAS, 50);
+}
+
+/** findMembers' MAS for "any MAS of the branch". */
+const ANY_MAS = "\u0000any";
+
 async function findMembers(search: string, branch: string, mas: string, limit: number) {
   const term = text(search).toLowerCase();
   const normalizedBranch = text(branch).toLowerCase(), normalizedMas = text(mas).toLowerCase();
   const scoped = Boolean(normalizedBranch || normalizedMas);
   if ((!term && !scoped) || (scoped && (!normalizedBranch || !normalizedMas))) return [];
+  const anyMas = mas === ANY_MAS;
   // Written with an explicit alias (mp) and table name: inside a subquery, Drizzle's column references are not
   // table-qualified, and an unqualified member_id would compare the enrollment with itself instead of with the member.
   const eligible = scoped
-    ? sql`lower(trim(mp.branch)) = ${normalizedBranch} and lower(trim(mp.mas)) = ${normalizedMas} and (coalesce(trim(mp.status), '') = '' or lower(trim(mp.status)) = 'active')`
+    ? sql`lower(trim(mp.branch)) = ${normalizedBranch} and ${anyMas ? sql`true` : sql`lower(trim(mp.mas)) = ${normalizedMas}`} and (coalesce(trim(mp.status), '') = '' or lower(trim(mp.status)) = 'active')`
     : sql`true`;
   const pattern = `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
   const fullName = sql`lower(regexp_replace(trim(concat_ws(' ', ${members.first_name}, ${members.middle_name}, ${members.surname})), '\\s+', ' ', 'g'))`;

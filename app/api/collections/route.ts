@@ -6,7 +6,7 @@ import { manilaNow } from "@/lib/remittance-deadline";
 import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { blockingDateProblem } from "@/lib/date-checks";
-import { withEncoder } from "@/lib/encoder-context";
+import { currentEncoder, withEncoder } from "@/lib/encoder-context";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { inTransaction, isUniqueViolation } from "@/lib/db";
 import { loadAccountData, commitCollections, type NewCollection } from "@/lib/account-data";
@@ -28,7 +28,9 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const data = await loadAccountData({ memberId: searchParams.get("memberId") ?? "" });
-    const matches = data.accounts.filter((a) => a.programId === searchParams.get("programId") && sameName(a.branch, searchParams.get("branch")) && sameName(a.mas, searchParams.get("mas")));
+    // A DTO batch takes any account of the branch, whatever its MAS (owner, October 13, 2026).
+    const dto = searchParams.get("dto") === "1";
+    const matches = data.accounts.filter((a) => a.programId === searchParams.get("programId") && sameName(a.branch, searchParams.get("branch")) && (dto || sameName(a.mas, searchParams.get("mas"))));
     if (matches.length !== 1) return Response.json({ success: false, message: "A unique program enrollment was not found." }, { status: 404 });
     const account = matches[0];
     const history = data.payments.filter((p) => p.enrollmentId === account.id).sort((a, b) => b.nopTo - a.nopTo);
@@ -47,24 +49,39 @@ async function saveCollections(request: Request) {
   try {
     const body = await request.json();
     const branch = String(body.branch ?? "").trim();
-    const mas = String(body.mas ?? "").trim();
-    const accountableEmployeeId = String(body.accountableEmployeeId ?? "").trim();
+    /*
+     * DTO batch (owner, October 13, 2026): the member paid at the office, often because their MAS resigned or is
+     * inactive. The clerk who received the cash is accountable; there is no clearing (the clerk received it directly),
+     * any account of the branch may be paid whatever its MAS, the account keeps its MAS on record, and no incentive,
+     * penalty or Fidelity applies.
+     */
+    const dto = body.dto === true;
+    const clerk = currentEncoder();
+    const mas = dto ? "" : String(body.mas ?? "").trim();
+    const accountableEmployeeId = dto ? clerk?.employeeId ?? "" : String(body.accountableEmployeeId ?? "").trim();
     const dateRemitted = String(body.dateRemitted ?? "");
     const autoApproveRemittance = body.autoApproveRemittance === true;
-    if (!branch || !mas || !accountableEmployeeId || !validDate(dateRemitted) || !Array.isArray(body.collections) || !body.collections.length) throw new Error("Branch, accountable Collector/MAS, Date Remitted, and collections are required.");
+    if (!branch || (!dto && !mas) || !accountableEmployeeId || !validDate(dateRemitted) || !Array.isArray(body.collections) || !body.collections.length) throw new Error(dto ? "Branch, Date Remitted and collections are required; DTO needs a signed-in employee." : "Branch, accountable Collector/MAS, Date Remitted, and collections are required.");
+    if (dto && dateRemitted > manilaNow().date) throw new Error("The Date Remitted cannot be in the future.");
     const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
     const selectedBranch = branches.find((item) => item.name === branch && item.status === "active");
-    const accountable = employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active" && selectedBranch && employee.branchIds.includes(selectedBranch.id));
-    if (!selectedBranch || !accountable) throw new Error("Select an active accountable employee assigned to the selected branch.");
-    // Encoding follows Clearing: the accountable person must be cleared for this branch on the Date Remitted.
-    const notCleared = await clearingProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections");
-    if (notCleared) throw new Error(notCleared);
-    // A Date Remitted moved off the clearing day (encoding delayed by meetings and the like) needs a reason, kept on each row.
-    const dateRemittedReason = String(body.dateRemittedReason ?? "").trim().slice(0, 300);
-    const reasonProblem = await dateRemittedReasonProblem(accountable.id, selectedBranch.name, dateRemitted, dateRemittedReason, "Collections");
-    if (reasonProblem) throw new Error(reasonProblem);
+    const accountable = dto
+      ? employees.find((employee) => employee.id === accountableEmployeeId && employee.status.toLowerCase() === "active")
+      : employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active" && selectedBranch && employee.branchIds.includes(selectedBranch.id));
+    if (!selectedBranch) throw new Error("Select an active branch.");
+    if (!accountable) throw new Error(dto ? "DTO needs your own active employee record: you are accountable for the cash you received." : "Select an active accountable employee assigned to the selected branch.");
+    let dateRemittedReason = "";
+    if (!dto) {
+      // Encoding follows Clearing: the accountable person must be cleared for this branch on the Date Remitted.
+      const notCleared = await clearingProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections");
+      if (notCleared) throw new Error(notCleared);
+      // A Date Remitted moved off the clearing day (encoding delayed by meetings and the like) needs a reason, kept on each row.
+      dateRemittedReason = String(body.dateRemittedReason ?? "").trim().slice(0, 300);
+      const reasonProblem = await dateRemittedReasonProblem(accountable.id, selectedBranch.name, dateRemitted, dateRemittedReason, "Collections");
+      if (reasonProblem) throw new Error(reasonProblem);
+    }
     // Batch-level details: who brought the payments in and how the MAS remitted them.
-    const collectedBy = String(body.collectedBy ?? "").trim();
+    const collectedBy = dto ? "DTO" : String(body.collectedBy ?? "").trim();
     if (!(COLLECTION_CHANNELS as readonly string[]).includes(collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");
     // A Collector brings in payments for the batch's own MAS, so that MAS is the original MAS on record.
     const originalMas = collectedBy === "Collector" ? mas : "";
@@ -79,10 +96,12 @@ async function saveCollections(request: Request) {
     if (!Number.isFinite(penalty) || penalty < 0) throw new Error("The penalty must be zero or a positive amount.");
     if (penalty > 0 && penaltyNote.length < 3) throw new Error("Explain what the penalty is for (at least 3 characters).");
     if (penaltyNote.length > 300) throw new Error("The penalty note must be 300 characters or fewer.");
+    if (dto && penalty > 0) throw new Error("A DTO batch has no MAS to charge a penalty to.");
     // Fidelity: the accountable employee's own money handed over with this batch. It has no limit, leaves incentives
     // untouched, and is added to the batch's total remittance.
     const fidelity = Math.round((Number(body.fidelityAmount) || 0) * 100) / 100;
     if (!Number.isFinite(fidelity) || fidelity < 0) throw new Error("Fidelity must be zero or a positive amount.");
+    if (dto && fidelity > 0) throw new Error("A DTO batch has no MAS whose Fidelity it could be.");
     if (autoApproveRemittance) {
       // Same rule as Remittances: anyone who can encode may confirm full physical cash; other methods are verified there.
       if (!paymentMethod.isCash) throw new Error(`${paymentMethod.name} payments are verified in Remittances before approval.`);
@@ -112,7 +131,9 @@ async function saveCollections(request: Request) {
         const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
         if (matches.length !== 1) throw new Error("A unique program enrollment was not found.");
         const account = matches[0];
-        if (!sameName(account.branch, branch) || !sameName(account.mas, mas)) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch and MAS.`);
+        if (!sameName(account.branch, branch) || (!dto && !sameName(account.mas, mas))) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch${dto ? "" : " and MAS"}.`);
+        // The payment keeps the account's MAS on record; in a DTO batch the clerk is only accountable for the cash.
+        const accountMas = dto ? account.mas : mas;
         const input = {
           monthFrom: String(entry.monthFrom ?? ""), monthTo: String(entry.monthTo ?? ""), nopFrom: Number(entry.nopFrom), nopTo: Number(entry.nopTo), amount: Number(entry.amountCollected),
           orDate: String(entry.orDate ?? ""), orNumber: normalizeOrNumber(String(entry.orNumber ?? "")), waiver: String(entry.ifSuspended ?? ""),
@@ -136,7 +157,7 @@ async function saveCollections(request: Request) {
         grossCents += Math.round(quote.gross * 100);
         remittanceCents += Math.round(quote.remittance * 100);
         const id = createReadableId("COL");
-        const payment: AccountPayment = { ...input, id, enrollmentId: account.id, dateRemitted, mas };
+        const payment: AccountPayment = { ...input, id, enrollmentId: account.id, dateRemitted, mas: accountMas };
         payments.push(payment);
         touched.set(account.id, account);
         // Penalty and Fidelity belong to the batch and are stored on its first row. forfeited_incentive is set at
@@ -145,11 +166,11 @@ async function saveCollections(request: Request) {
         const first = !rows.length;
         rows.push({
           collection_id: id, collection_batch_id: batchId, enrollment_id: account.id, member_id: account.memberId, member_number: account.memberNumber, program_id: account.programId,
-          branch, mas, or_number: input.orNumber, or_date: input.orDate, amount_collected: input.amount, month_from: input.monthFrom, month_to: input.monthTo,
+          branch, mas: accountMas, or_number: input.orNumber, or_date: input.orDate, amount_collected: input.amount, month_from: input.monthFrom, month_to: input.monthTo,
           nop_from: input.nopFrom, nop_to: input.nopTo, reactivation: entry.reactivation === "Yes", transferred: entry.transferred === "Yes",
           suspended: input.waiver || null, original_mas: input.originalMas || null, status: "Posted", created_at: timestamp,
           collected_by_role: input.collectedByRole, remittance_amount: quote.remittance, remittance_breakdown: quote.breakdown, remittance_status: "Outstanding",
-          accountable_employee_id: accountableEmployeeId, accountable_name: mas, accountable_role: "MAS", remittance_method: paymentMethod.name, payment_reference: paymentReference || null,
+          accountable_employee_id: accountableEmployeeId, accountable_name: dto ? accountable.name : mas, accountable_role: dto ? "DTO" : "MAS", remittance_method: paymentMethod.name, payment_reference: paymentReference || null,
           penalty_amount: first && penalty > 0 ? penalty : null, penalty_note: first && penalty > 0 ? penaltyNote : null, fidelity_amount: first && fidelity > 0 ? fidelity : null,
           backdate_reason: backdateReason || null, date_remitted: dateRemitted, date_remitted_reason: dateRemittedReason || null,
         });

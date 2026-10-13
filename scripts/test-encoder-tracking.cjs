@@ -2716,3 +2716,35 @@ test('a person cleared for New Sales only can be cleared for Collections the sam
   await assert.rejects(() => runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Collections' })), /already cleared for Collections in BR-1 today/);
   assert.deepEqual((await query("select covers from clearings where status = 'Open' order by covers")).map((row) => row.covers), ['Collections', 'New Sales']);
 });
+
+test('a DTO batch: a member of a resigned MAS paid at the office, without a clearing; the clerk is accountable', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1);
+  // DPE-0001 is the signed-in clerk; DPE-0009 the MAS who resigned. Nobody is in Clearing.
+  h.rows.Employees = [[], ['DPE-0001', '=encoder', 'BR-1', 'Entry Clerk', 'active'], ['DPE-0009', 'Old MAS', 'BR-1', 'MAS', 'resigned']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-9', 'DPE-0009', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  await seedAccount({ doi: month + '-01', mas: 'Old MAS' });
+  await seed('employees', [{ employee_id: 'DPE-0001', full_name: '=encoder' }, { employee_id: 'DPE-0009', full_name: 'Old MAS' }]);
+  await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
+  const route = h.load('app/api/collections/route.ts');
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    const found = await route.GET(new Request('http://localhost/api/collections?memberId=MEM-1&programId=DP-1&branch=BR-1&mas=&dto=1'));
+    assert.equal(found.status, 200, 'any account of the branch, whatever its MAS');
+    const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '3001 C', orDate: today };
+    const batch = { dto: true, branch: 'BR-1', mas: 'ignored', accountableEmployeeId: 'DPE-0009', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'Cash', controlTotal: 350, collections: [entry] };
+    const penalized = await route.POST(request({ ...batch, penalty: 50, penaltyNote: 'Late' }));
+    assert.equal(penalized.status, 400);
+    assert.match((await penalized.json()).message, /no MAS to charge a penalty/);
+    const saved = await route.POST(request(batch));
+    assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
+    const [row] = await query('select mas, accountable_employee_id, accountable_name, accountable_role, collected_by_role, remittance_amount from collections');
+    assert.deepEqual({ ...row, remittance_amount: Number(row.remittance_amount) },
+      { mas: 'Old MAS', accountable_employee_id: 'DPE-0001', accountable_name: '=encoder', accountable_role: 'DTO', collected_by_role: 'DTO', remittance_amount: 350 },
+      'the account keeps its MAS; the clerk is accountable; DTO earns no incentive, so all ₱350 is remitted');
+  } finally { globalThis.dayongClearingNotRequired = true; }
+});

@@ -408,8 +408,9 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
     ...forfeits.flatMap((collection) => forfeitUpdate(sheet, collection, collection.amount, incentiveOf(collection))),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
-  // The person's clearing for that day is done once their entries are on a slip (lib/clearing.ts).
-  await closeClearings(owner.accountableEmployeeId, owner.branch, owner.dateRemitted || input.remittanceDate, id, kind);
+  // The person's clearing for that day is done once their entries are on a slip (lib/clearing.ts). A DTO slip has no
+  // clearing: its accountable person is the clerk who received the cash, whose own clearing (as a MAS) stays open.
+  if (owner.accountableRole !== "DTO") await closeClearings(owner.accountableEmployeeId, owner.branch, owner.dateRemitted || input.remittanceDate, id, kind);
   return { id, type: kind, status, expectedAmount: expected, actualAmount: actual, difference, fidelityAmount: Math.round(fidelityAmount*100)/100, forfeitedCount: forfeits.length, forfeitedAmount: forfeitedTotal };
 }
 

@@ -324,6 +324,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### DTO batches for members of resigned or inactive MAS (2026-10-13)
+
+- **Owner:** resigned or inactive employees cannot be chosen, but their members keep paying (DTO); clerks need a way to encode those accounts.
+- **Production (October 13):** 648 accounts not forfeited under 36 resigned MAS, 127 under 8 inactive MAS, and 37 whose MAS matches no employee (7 names).
+- **Owner's decisions:** the receiving clerk is accountable; no clearing; any account of the branch; the account keeps its old MAS (reassign later with Programs → Transfer members).
+- **Done:** Collections → Batch type → DTO: paid at the office (no clearing, branch chosen, Date Remitted today or earlier, members searched across the branch, no incentive / penalty / Fidelity, clerk accountable as DTO). DTO collections are outside every clearing; the returned-batch editor needs no clearing for them. Tested.
+
 ### From Clearing: MAS cleared but not listed (2026-10-13)
 
 - **Owner:** a MAS is in Clearing but does not show in New Sales or Collections.

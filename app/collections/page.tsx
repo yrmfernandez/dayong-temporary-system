@@ -263,6 +263,9 @@ export default function CollectionsPage() {
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
   // The Clearing entry the batch was filled from (components/clearing-picker.tsx); its employee is the accountable one.
   const [cleared, setCleared] = useState<{ id: string; employeeId: string; employeeName: string; clearedDate?: string } | null>(null);
+  // DTO batch (owner, October 13, 2026): members who paid at the office, e.g. of a resigned or inactive MAS. No clearing,
+  // any account of the branch, and the clerk who received the cash is accountable (app/api/collections/route.ts).
+  const [dto, setDto] = useState(false);
   // A Date Remitted moved off the clearing day needs a reason (encoding delayed by meetings and the like; lib/clearing.ts).
   const [dateRemittedReason, setDateRemittedReason] = useState("");
   const dateRemittedChanged = Boolean(cleared?.clearedDate && dateRemitted && dateRemitted !== cleared.clearedDate);
@@ -293,8 +296,9 @@ export default function CollectionsPage() {
   // The unsaved batch survives leaving the page and coming back (member search results included, so picks still show).
   useFormDraft(
     "collections",
-    { branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity },
+    { dto, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity },
     (draft) => {
+      setDto(Boolean(draft.dto));
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
       setDateRemitted(draft.dateRemitted ?? "");
@@ -363,7 +367,7 @@ export default function CollectionsPage() {
   // Every member under the chosen Branch and MAS, so the member field is a full list that typing narrows at once.
   const [membersLoading, setMembersLoading] = useState(false);
   useEffect(() => {
-    if (!branch || !mas) return;
+    if (dto || !branch || !mas) return;
     const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- shows loading while this branch and MAS list arrives
     setMembersLoading(true);
@@ -377,7 +381,41 @@ export default function CollectionsPage() {
       .catch(() => undefined)
       .finally(() => { if (!controller.signal.aborted) setMembersLoading(false); });
     return () => controller.abort();
-  }, [branch, mas]);
+  }, [dto, branch, mas]);
+
+  // DTO: members of the whole branch are searched as the clerk types (a branch can have thousands).
+  const dtoSearch = useRef<{ timer?: ReturnType<typeof setTimeout>; controller?: AbortController }>({});
+  function searchDtoMembers(query: string) {
+    clearTimeout(dtoSearch.current.timer);
+    dtoSearch.current.controller?.abort();
+    if (!dto || !branch || query.trim().length < 2) return;
+    dtoSearch.current.timer = setTimeout(() => {
+      const controller = new AbortController();
+      dtoSearch.current.controller = controller;
+      setMembersLoading(true);
+      fetch(`/api/members?dto=1&branch=${encodeURIComponent(branch)}&search=${encodeURIComponent(query.trim())}`, { cache: "no-store", signal: controller.signal })
+        .then((response) => response.json())
+        .then((result) => { if (result.success) setMembers((current) => [...new Map([...current, ...(result.members ?? [])].map((member: CollectionMember) => [member.id, member])).values()]); })
+        .catch(() => undefined)
+        .finally(() => { if (!controller.signal.aborted) setMembersLoading(false); });
+    }, 300);
+  }
+
+  /** Switches between a batch from Clearing and a DTO batch; the batch starts over. */
+  function chooseBatchType(next: boolean) {
+    if (next === dto) return;
+    setDto(next);
+    setCleared(null);
+    setBranch("");
+    setMas("");
+    setDateRemitted(next ? manilaNow().date : "");
+    setDateRemittedReason("");
+    setCollectedBy(next ? "DTO" : "MAS");
+    setPenalty("");
+    setPenaltyNote("");
+    setFidelity("");
+    clearScopedMemberSelections();
+  }
 
   useEffect(() => {
     if (!scrollTargetId) return;
@@ -526,7 +564,7 @@ export default function CollectionsPage() {
     updateCollection(entryId, { programId, programSearch: program?.code ?? "", accountStatus: "", accountLoading: true, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
     setHistories((current) => ({ ...current, [entryId]: [] }));
     try {
-      const response = await fetch(`/api/collections?memberId=${encodeURIComponent(memberId)}&programId=${encodeURIComponent(programId)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(mas)}`, { cache: "no-store" });
+      const response = await fetch(`/api/collections?memberId=${encodeURIComponent(memberId)}&programId=${encodeURIComponent(programId)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(mas)}${dto ? "&dto=1" : ""}`, { cache: "no-store" });
       const result = await response.json();
       if (selectionVersions.current[entryId] !== version) return;
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load account.");
@@ -594,7 +632,7 @@ export default function CollectionsPage() {
     if (months < 1 || Number(entry.amountCollected) * 100 < Math.round(rate * 100) * months) return "Amount must cover every selected full monthly installment.";
     if (!branch) return "Branch is required.";
 
-    if (!mas) return "MAS is required.";
+    if (!dto && !mas) return "MAS is required.";
 
     if (!dateRemitted) {
       return "Date Remitted is required.";
@@ -733,7 +771,7 @@ export default function CollectionsPage() {
       return;
     }
 
-    if (!mas) {
+    if (!dto && !mas) {
       setSaveMessage("Please select a MAS.");
       return;
     }
@@ -810,7 +848,8 @@ export default function CollectionsPage() {
           accountableEmployeeId: (cleared?.employeeName === mas ? cleared.employeeId : "") || (masStaff.find((staff) => staff.fullName === mas)?.employeeId ?? ""),
           dateRemitted,
           dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "",
-          collectedBy,
+          dto,
+          collectedBy: dto ? "DTO" : collectedBy,
           paymentMethod,
           paymentReference: selectedPaymentMethod && !selectedPaymentMethod.isCash ? paymentReference.trim() : "",
           // Saved first; the approved remittance is created below once the receipt photo is attached.
@@ -875,7 +914,8 @@ export default function CollectionsPage() {
     setPenalty("");
     setPenaltyNote("");
     setFidelity("");
-    setCollectedBy("MAS");
+    setCollectedBy(dto ? "DTO" : "MAS");
+    if (dto) setDateRemitted(manilaNow().date);
     setPaymentMethod(paymentMethods.find((method) => method.isCash)?.name || paymentMethods[0]?.name || "");
     setPaymentReference("");
   }
@@ -896,22 +936,38 @@ export default function CollectionsPage() {
 
       {/* COLLECTION BATCH HEADER */}
       <Card><CardContent className="p-4">
-          <p className="mb-3 text-sm font-semibold">Collection Batch</p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold">Collection Batch</p>
+            <div role="radiogroup" aria-label="Batch type" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
+              {([[false, "From Clearing (MAS / Collector)"], [true, "DTO: paid at the office"]] as const).map(([value, label]) => (
+                <button key={label} type="button" role="radio" aria-checked={dto === value} onClick={() => chooseBatchType(value)}
+                  className={`rounded-md px-3 py-1.5 font-semibold transition-colors ${dto === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+              ))}
+            </div>
+          </div>
+          {dto ? (
+            <p className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+              Members who paid at the office, for example when their MAS resigned or is inactive. No clearing is needed: you received the cash, so you are accountable for it. Any account of the branch can be paid; it keeps its MAS on record. DTO earns no incentive, so the whole payment is remitted.
+            </p>
+          ) : (
           <div className="mb-4"><ClearingPicker kind="Collections" value={cleared?.id ?? ""} onPick={(clearing) => {
             setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName, clearedDate: clearing.clearedDate });
             setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setDateRemittedReason(""); clearScopedMemberSelections();
           }} /></div>
+          )}
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label>Branch *</Label>
 
-              <SearchSelect aria-label="Branch" value={branch} disabled placeholder="From Clearing" options={branches.map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))} onValueChange={(value) => { setBranch(value); setMas(""); clearScopedMemberSelections(); }}/>
+              <SearchSelect aria-label="Branch" value={branch} disabled={!dto} placeholder={dto ? "Search branch" : "From Clearing"} options={branches.filter((item) => !dto || item.status === "active").map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))} onValueChange={(value) => { setBranch(value); setMas(""); clearScopedMemberSelections(); }}/>
             </div>
 
             <div className="space-y-2">
-              <Label>MAS *</Label>
+              <Label>{dto ? "Accountable" : "MAS *"}</Label>
 
-              <SearchSelect aria-label="MAS" value={mas} placeholder="From Clearing" disabled options={masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(value) => { setMas(value); clearScopedMemberSelections(); }}/>
+              {dto ? (
+                <p className="flex h-8 items-center rounded-lg border bg-muted/40 px-2.5 text-sm">You (the clerk who received the cash) · DTO</p>
+              ) : <SearchSelect aria-label="MAS" value={mas} placeholder="From Clearing" disabled options={masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(value) => { setMas(value); clearScopedMemberSelections(); }}/>}
             </div>
 
             <div className="space-y-2">
@@ -919,9 +975,9 @@ export default function CollectionsPage() {
 
               {/* Branch and MAS come only from Clearing (owner, October 12, 2026). The Date Remitted starts on the clearing day
                   and can be changed with a reason, since encoding can wait for meetings and the like (owner, October 13, 2026). */}
-              <Input type="date" value={dateRemitted} disabled={!cleared} max={manilaNow().date} aria-label="Date Remitted" onChange={(event) => setDateRemitted(event.target.value)} />
+              <Input type="date" value={dateRemitted} disabled={!dto && !cleared} max={manilaNow().date} aria-label="Date Remitted" onChange={(event) => setDateRemitted(event.target.value)} />
 
-              <p className="text-xs text-muted-foreground">Shared by every entry in this batch. Starts on the day they were cleared; Branch and MAS come from Clearing.</p>
+              <p className="text-xs text-muted-foreground">{dto ? "The day the member paid at the office. Shared by every entry in this batch." : "Shared by every entry in this batch. Starts on the day they were cleared; Branch and MAS come from Clearing."}</p>
 
               {dateRemittedChanged && (
                 <div className="space-y-1">
@@ -934,7 +990,7 @@ export default function CollectionsPage() {
           </div>
 
           <div className="mt-4 grid gap-4 border-t pt-4 md:grid-cols-3">
-            <fieldset className="space-y-2">
+            {!dto && <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">Collected by *</legend>
               <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/50 p-1">
                 {collectionChannels.map((channel) => (
@@ -946,7 +1002,7 @@ export default function CollectionsPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">{collectionChannels.find((channel) => channel.value === collectedBy)?.hint}. Applies to every entry; DTO uses the current MAS incentive.</p>
-            </fieldset>
+            </fieldset>}
 
             <div className="space-y-2">
               <Label htmlFor="payment-method">Remittance Method *</Label>
@@ -969,7 +1025,7 @@ export default function CollectionsPage() {
               </div>
             )}
 
-            <fieldset className={`space-y-2 rounded-lg border p-3 md:col-span-3 ${penaltyAmount > 0 ? "border-red-300 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20" : ""}`}>
+            {!dto && <fieldset className={`space-y-2 rounded-lg border p-3 md:col-span-3 ${penaltyAmount > 0 ? "border-red-300 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20" : ""}`}>
               <legend className="px-1 text-sm font-medium">Remittance penalty (optional)</legend>
               <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
                 <div className="space-y-1">
@@ -982,9 +1038,9 @@ export default function CollectionsPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Charged to the {collectedBy === "Collector" ? "Collector" : "MAS"}, paid from their own money, and added to this batch&apos;s total remittance. Members are not charged.</p>
-            </fieldset>
+            </fieldset>}
 
-            <fieldset className="space-y-2 rounded-lg border p-3 md:col-span-3">
+            {!dto && <fieldset className="space-y-2 rounded-lg border p-3 md:col-span-3">
               <legend className="px-1 text-sm font-medium">Fidelity (optional)</legend>
               <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
                 <div className="space-y-1">
@@ -993,7 +1049,7 @@ export default function CollectionsPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">The {collectedBy === "Collector" ? "Collector" : "MAS"}&apos;s own money handed over for their Fidelity savings. It is added to this batch&apos;s total remittance and does not reduce incentives. There is no limit; the first ₱10,000 of savings is released only when the employee leaves, and anything above it can be withdrawn any time.</p>
               </div>
-            </fieldset>
+            </fieldset>}
           </div>
         </CardContent>
       </Card>
@@ -1213,9 +1269,10 @@ export default function CollectionsPage() {
                             <SearchSelect
                               aria-label="Member"
                               value={entry.memberId}
-                              disabled={!branch || !mas}
-                              placeholder={!branch || !mas ? "Select Branch and MAS first" : membersLoading ? "Loading this MAS's members..." : "Choose or type member name or number"}
-                              emptyText={membersLoading ? "Loading members..." : "No member of this MAS matches."}
+                              disabled={!branch || (!dto && !mas)}
+                              placeholder={dto ? (!branch ? "Select the branch first" : "Type 2+ letters of the name or PH number") : !branch || !mas ? "Select Branch and MAS first" : membersLoading ? "Loading this MAS's members..." : "Choose or type member name or number"}
+                              emptyText={membersLoading ? "Loading members..." : dto ? "Type at least 2 letters; no member of this branch matches yet." : "No member of this MAS matches."}
+                              onSearchChange={dto ? searchDtoMembers : undefined}
                               limit={1000}
                               options={members.map((member) => ({ value: member.id, label: getMemberFullName(member), description: [member.phMemberNumber, member.contactNumber].filter(Boolean).join(" · "), keywords: getMemberDisplayName(member) }))}
                               onValueChange={(memberId) => {
@@ -1226,9 +1283,10 @@ export default function CollectionsPage() {
                               }}
                             />
 
-                            {(!branch || !mas) && (
+                            {!dto && (!branch || !mas) && (
                               <p className="text-xs text-muted-foreground">Member results are limited to enrollments matching both the selected Branch and MAS.</p>
                             )}
+                            {dto && <p className="text-xs text-muted-foreground">Any member with an active account in this branch, whatever their MAS.</p>}
                           </div>
 
                           {/* SELECTED MEMBER: the details to check against the receipt, in two lines. */}
