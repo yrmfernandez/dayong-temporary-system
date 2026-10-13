@@ -82,8 +82,9 @@ async function saveCollections(request: Request) {
     }
     // Batch-level details: who brought the payments in and how the MAS remitted them.
     const collectedBy = dto ? "DTO" : String(body.collectedBy ?? "").trim();
-    // ORC, outright commission (owner, October 13, 2026): set per batch; the MAS and the Collector both earn their tier.
+    // ORC, outright commission (owner, October 13, 2026): set per Collector batch; the Collector earns half of the MAS incentive.
     const orc = !dto && body.orc === true;
+    if (orc && collectedBy !== "Collector") throw new Error("ORC (outright commission) applies only when the batch is collected by a Collector.");
     if (!(COLLECTION_CHANNELS as readonly string[]).includes(collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");
     // A Collector brings in payments for the batch's own MAS, so that MAS is the original MAS on record.
     const originalMas = collectedBy === "Collector" ? mas : "";

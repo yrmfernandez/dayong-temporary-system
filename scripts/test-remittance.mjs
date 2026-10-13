@@ -112,23 +112,26 @@ test("a non-commissionable period pays only the Collector; a MAS collection is r
   assert.deepEqual([sale.incentive, sale.remittance], [0, 300]);
 });
 
-test("ORC: the MAS and the Collector both earn; reactivation earns only 10%; they cannot be combined (owner, October 13, 2026)", () => {
+test("ORC: a Collector earns half of the MAS incentive; reactivation earns only 10%; they cannot be combined (owner, October 13, 2026)", () => {
   const tiers = [
     { role: "MAS", fromMonth: 1, toMonth: 12, incentiveType: "percentage", markUp: 50, incentiveAmount: 50 },
     { role: "Collector", fromMonth: 1, toMonth: 12, incentiveType: "percentage", markUp: 50, incentiveAmount: 20 },
     { role: "MAS", fromMonth: 13, toMonth: 60, incentiveType: "percentage", markUp: 50, incentiveAmount: 30, nonCommissionable: true },
     { role: "Collector", fromMonth: 13, toMonth: 60, incentiveType: "percentage", markUp: 50, incentiveAmount: 10, nonCommissionable: true },
   ];
-  // (350 - 50) = 300: MAS 50% = 150, Collector 20% = 60, so the company gets 350 - 210 = 140.
+  // (350 - 50) = 300: the MAS incentive is 50% = 150; with ORC the Collector keeps half (75), the company gets 275.
   const orc = calculateRemittance(350, tiers, "Collector", 2, 2, 350, false, null, { orc: true });
-  assert.equal(orc.remittance, 140);
-  assert.deepEqual([orc.breakdown[0].masIncentive, orc.breakdown[0].collectorIncentive, orc.breakdown[0].orc], [150, 60, true]);
-  assert.equal(calculateRemittance(350, tiers, "MAS", 2, 2, 350, false, null, { orc: true }).remittance, 140, "the same whoever handed it in");
-  assert.equal(calculateRemittance(350, tiers, "MAS", 13, 13, 350, false, null, { orc: true }).remittance, 320, "non-commissionable: only the Collector's 10% (30)");
+  assert.equal(orc.remittance, 275);
+  assert.deepEqual([orc.breakdown[0].incentive, orc.breakdown[0].masIncentive, orc.breakdown[0].orc], [75, 150, true]);
+  assert.equal(calculateRemittance(350, tiers, "Collector", 2, 2).remittance, 290, "without ORC: the Collector tier, 20% = 60");
+  assert.equal(calculateRemittance(350, tiers, "Collector", 13, 13, 350, false, null, { orc: true }).remittance, 320, "non-commissionable: the Collector's own 10% (30)");
+  assert.equal(calculateRemittance(350, [tiers[0], { ...tiers[0], role: "Collector", incentiveType: "fixed", incentiveAmount: 100 }], "Collector", 1, 1, 350, false, null, { orc: true }).remittance, 275, "half of the MAS tier, not the Collector's");
+  assert.equal(calculateRemittance(351, [{ ...tiers[0], markUp: 0, incentiveType: "fixed", incentiveAmount: 100.01 }, tiers[1]], "Collector", 1, 1, 351, false, null, { orc: true }).breakdown[0].incentive, 50, "an odd centavo goes to the company");
+  assert.throws(() => calculateRemittance(350, tiers, "MAS", 2, 2, 350, false, null, { orc: true }), /only when the batch is collected by a Collector/);
+  assert.throws(() => calculateRemittance(350, tiers, "DTO", 2, 2, 350, false, null, { orc: true }), /only when the batch is collected by a Collector/);
   // Reactivation: 10% of (350 - 50) = 30 for whoever collected.
   assert.equal(calculateRemittance(350, tiers, "MAS", 2, 2, 350, false, null, { reactivation: true }).remittance, 320);
   assert.equal(calculateRemittance(350, tiers, "Collector", 2, 3, 700, false, null, { reactivation: true }).remittance, 640);
   assert.equal(calculateRemittance(350, tiers, "DTO", 2, 2, 350, false, null, { reactivation: true }).remittance, 350, "DTO still earns nothing");
-  assert.throws(() => calculateRemittance(350, tiers, "MAS", 2, 2, 350, false, null, { orc: true, reactivation: true }), /cannot be ORC/);
-  assert.throws(() => calculateRemittance(350, tiers, "DTO", 2, 2, 350, false, null, { orc: true }), /not DTO/);
+  assert.throws(() => calculateRemittance(350, tiers, "Collector", 2, 2, 350, false, null, { orc: true, reactivation: true }), /cannot be ORC/);
 });

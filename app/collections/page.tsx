@@ -484,7 +484,7 @@ export default function CollectionsPage() {
       const selected = programs.find((p) => p.id === entry.programId);
       const count = getMonthDifference(entry.monthFrom, entry.monthTo);
       if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
-      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto, reactivation: entry.reactivation === "Yes" }), error: "" };
+      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto && collectedBy === "Collector", reactivation: entry.reactivation === "Yes" }), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
   }
   const quotes = collections.map(quoteEntry);
@@ -637,7 +637,7 @@ export default function CollectionsPage() {
     if (!branch) return "Branch is required.";
 
     if (!dto && !mas) return "MAS is required.";
-    if (orc && !dto && entry.reactivation === "Yes") return "A reactivation cannot be in an ORC batch. Set ORC to No, or encode the reactivation in its own batch.";
+    if (orc && !dto && collectedBy === "Collector" && entry.reactivation === "Yes") return "A reactivation cannot be in an ORC batch. Set ORC to No, or encode the reactivation in its own batch.";
 
     if (!dateRemitted) {
       return "Date Remitted is required.";
@@ -854,7 +854,7 @@ export default function CollectionsPage() {
           dateRemitted,
           dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "",
           dto,
-          orc: orc && !dto,
+          orc: orc && !dto && collectedBy === "Collector",
           collectedBy: dto ? "DTO" : collectedBy,
           paymentMethod,
           paymentReference: selectedPaymentMethod && !selectedPaymentMethod.isCash ? paymentReference.trim() : "",
@@ -1011,7 +1011,7 @@ export default function CollectionsPage() {
               <p className="text-xs text-muted-foreground">{collectionChannels.find((channel) => channel.value === collectedBy)?.hint}. Applies to every entry; DTO uses the current MAS incentive.</p>
             </fieldset>}
 
-            {!dto && collectedBy !== "DTO" && <fieldset className="space-y-2">
+            {!dto && collectedBy === "Collector" && <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">ORC (outright commission)</legend>
               <div role="radiogroup" aria-label="ORC" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1">
                 {([[false, "No"], [true, "Yes"]] as const).map(([value, label]) => (
@@ -1019,7 +1019,7 @@ export default function CollectionsPage() {
                     className={`rounded-md px-2 py-1.5 text-sm font-semibold transition-colors ${orc === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">{orc ? "Yes: the MAS and the Collector both earn their incentive on every entry; both are kept from the remittance. No reactivation in this batch." : "No: only who collected earns the incentive."}</p>
+              <p className="text-xs text-muted-foreground">{orc ? "Yes: the Collector earns half of the MAS incentive; the other half goes to the remittance. No reactivation in this batch." : "No: the Collector earns the Collector incentive."}</p>
             </fieldset>}
 
             <div className="space-y-2">

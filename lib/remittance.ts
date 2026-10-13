@@ -72,8 +72,9 @@ export function calculateSaleIncentive(program: SaleProgram, amountPaid: number)
  * non-commissionable period only the Collector earns; a MAS collection is remitted in full.
  *
  * `options` (owner, October 13, 2026):
- *   - `orc`, Outright Commission (set per batch): each NOP's incentive is the MAS tier's plus the Collector tier's, both
- *     kept from the remittance and recorded apart (masIncentive, collectorIncentive). Not for DTO.
+ *   - `orc`, Outright Commission (set per batch, Collector batches only): the Collector earns half of the MAS tier's
+ *     incentive; the other half goes to the company's remittance (owner, October 13, 2026). In a non-commissionable
+ *     period, where the MAS earns nothing, the Collector keeps their own tier as usual.
  *   - `reactivation` (set per entry): whoever collected earns only 10% of (base pay - mark-up) per NOP. A reactivation
  *     cannot be ORC. A MAS still earns nothing in a non-commissionable period.
  */
@@ -83,7 +84,7 @@ export function calculateRemittance(basePay: number, tiers: IncentiveTier[], rol
   if (role !== "MAS" && role !== "Collector" && role !== "DTO") throw new Error("Select the collection role.");
   const orc = options.orc === true, reactivation = options.reactivation === true;
   if (orc && reactivation) throw new Error("A reactivation cannot be ORC (outright commission).");
-  if (orc && role === "DTO") throw new Error("ORC (outright commission) is for MAS and Collector collections, not DTO.");
+  if (orc && role !== "Collector") throw new Error("ORC (outright commission) applies only when the batch is collected by a Collector.");
   const count = nopTo - nopFrom + 1;
   const paidCents = amountCollected === undefined ? NaN : Math.round(amountCollected * 100);
   const flexibleShares = flexible && Number.isFinite(paidCents);
@@ -114,14 +115,17 @@ export function calculateRemittance(basePay: number, tiers: IncentiveTier[], rol
     const tierIncentive = (item: IncentiveTier, itemRole: string) => (item.nonCommissionable && itemRole === "MAS") ? 0
       : reactivation ? Math.round(incentiveBase * REACTIVATION_RATE / 100)
       : item.incentiveType === "percentage" ? Math.round(incentiveBase * item.incentiveAmount / 100) : Math.round(item.incentiveAmount * 100);
-    // ORC: the MAS and the Collector both earn their tier (each tier's own percentage of the same base).
-    const masCents = orc ? tierIncentive(tierOf("MAS"), "MAS") : 0, collectorCents = orc ? tierIncentive(tierOf("Collector"), "Collector") : 0;
-    const incentiveCents = orc ? masCents + collectorCents : tierIncentive(tier, role);
+    // ORC: the Collector earns half of the MAS tier's incentive (the rest is remitted); when the MAS tier earns nothing
+    // (non-commissionable), the Collector's own tier applies.
+    const masTier = orc ? tierOf("MAS") : null;
+    const masCents = masTier ? tierIncentive(masTier, "MAS") : 0;
+    const orcHalf = masTier && !masTier.nonCommissionable;
+    const incentiveCents = orcHalf ? Math.floor(masCents / 2) : tierIncentive(tier, role);
     if (incentiveCents > incentiveBase) throw new Error(`The incentive for NOP ${nop} is more than the installment less mark-up.`);
     const remittanceCents = (incentiveBase - incentiveCents) + markUpCents;
     breakdown.push({ nop, tierId: tier.id ?? "", role, basePay: baseCents / 100, markUp: markUpCents / 100,
       incentiveType: reactivation ? "percentage" as const : tier.incentiveType, incentiveAmount: reactivation ? REACTIVATION_RATE : tier.incentiveAmount, incentive: incentiveCents / 100, remittance: remittanceCents / 100,
-      ...(orc ? { orc: true, masIncentive: masCents / 100, collectorIncentive: collectorCents / 100 } : {}), ...(reactivation ? { reactivation: true } : {}) });
+      ...(orc ? { orc: true, masIncentive: masCents / 100, orcHalf: Boolean(orcHalf) } : {}), ...(reactivation ? { reactivation: true } : {}) });
   }
   const grossCents = breakdown.reduce((sum, item) => sum + Math.round(item.basePay * 100), 0);
   const collectedCents = amountCollected === undefined ? grossCents : Math.round(amountCollected * 100);

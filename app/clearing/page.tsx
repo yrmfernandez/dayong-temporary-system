@@ -1,7 +1,7 @@
 "use client";
 
 import { BadgeCheck, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ export default function ClearingPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [removing, setRemoving] = useState<{ id: string; reason: string } | null>(null);
+  const [removeError, setRemoveError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -77,19 +78,20 @@ export default function ClearingPage() {
 
   async function remove() {
     if (!removing) return;
-    setBusy(true); setError(""); setMessage("");
+    setBusy(true); setRemoveError(""); setError(""); setMessage("");
     try {
       const response = await fetch("/api/clearing", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(removing) });
       const result = await readApiResponse(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to remove.");
       setMessage(result.message || "Removed."); setRemoving(null);
       await load();
-    } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to remove."); }
+    } catch (failure) { setRemoveError(failure instanceof Error ? failure.message : "Unable to remove."); }
     finally { setBusy(false); }
   }
 
   const row = (item: Clearing) => (
-    <tr key={item.id} className="border-t align-top">
+    <Fragment key={item.id}>
+    <tr className="border-t align-top">
       <td className="p-3"><strong>{item.employeeName || item.employeeId}</strong><span className="block text-xs text-muted-foreground">{item.employeeId}</span></td>
       <td className="p-3">{item.branch}</td>
       <td className="p-3 tabular-nums">{item.clearedDate === data?.today ? time(item.clearedAt) : `${item.clearedDate} ${time(item.clearedAt)}`}<span className="block text-xs text-muted-foreground">by {item.clearedBy || "—"}</span></td>
@@ -99,8 +101,20 @@ export default function ClearingPage() {
         ? <div className="space-y-2">{item.kinds.map((part) => <div key={part.kind}><span className="block text-xs font-medium">{part.kind}</span><StatusBadge status={part.stage} tone={STAGE_TONE[part.stage]} />{entrySummary(part.entries) && <span className="mt-0.5 block text-xs text-muted-foreground">{entrySummary(part.entries)}</span>}{/* Who approved or returned it, for tracking (owner, October 13, 2026). */}{(part.decisions ?? []).map((decision) => <span key={`${decision.status}-${decision.by}`} className={`block text-xs ${decision.status === "Returned" ? "text-red-700 dark:text-red-400" : "text-muted-foreground"}`}>{decision.status} by {decision.by}{decision.at ? ` · ${decision.at.slice(0, 10) === data?.today ? time(decision.at) : `${decision.at.slice(0, 10)} ${time(decision.at)}`}` : ""}</span>)}</div>)}</div>
         : <><StatusBadge status={item.stage ?? "Waiting for encoding"} tone={STAGE_TONE[item.stage ?? "Waiting for encoding"]} /><span className="block text-xs text-muted-foreground">{item.covers === "Both" ? "New Sales and Collections" : `${item.covers} only`}</span></>}
         {item.remittanceId && <span className="block font-mono text-[11px] text-muted-foreground">{item.remittanceId}</span>}</td>
-      <td className="p-3 text-right">{item.status === "Open" && item.stage === "Waiting for encoding" && <Button type="button" size="sm" variant="outline" onClick={() => setRemoving(removing?.id === item.id ? null : { id: item.id, reason: "" })}>Remove</Button>}</td>
+      <td className="p-3 text-right">{item.status === "Open" && item.stage === "Waiting for encoding" && <Button type="button" size="sm" variant="outline" disabled={busy} aria-expanded={removing?.id === item.id} aria-controls={removing?.id === item.id ? `clearing-remove-${item.id}` : undefined} onClick={() => { setRemoveError(""); setRemoving(removing?.id === item.id ? null : { id: item.id, reason: "" }); }}>Remove</Button>}</td>
     </tr>
+    {removing?.id === item.id && <tr className="border-t bg-amber-50 dark:bg-amber-950/30"><td colSpan={7} className="p-3">
+      <form id={`clearing-remove-${item.id}`} className="space-y-3 text-sm" onSubmit={(event) => { event.preventDefault(); if (!busy && removing.reason.trim().length >= 3) void remove(); }}>
+        <p className="font-medium">Remove clearing for {item.employeeName || item.employeeId} in {item.branch}?</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-64 flex-1 space-y-1"><Label htmlFor={`clearing-remove-reason-${item.id}`}>Reason for removing *</Label><Input id={`clearing-remove-reason-${item.id}`} autoFocus disabled={busy} minLength={3} maxLength={300} required placeholder="e.g. Listed the wrong MAS" value={removing.reason} onChange={(event) => setRemoving({ ...removing, reason: event.target.value })} /><p className="text-xs text-muted-foreground">Enter at least 3 characters, then confirm removal.</p></div>
+          <Button type="submit" variant="destructive" disabled={busy || removing.reason.trim().length < 3}>{busy ? "Removing..." : "Remove clearing"}</Button>
+          <Button type="button" variant="ghost" disabled={busy} onClick={() => { setRemoving(null); setRemoveError(""); }}>Cancel</Button>
+        </div>
+        {removeError && <p role="alert" className="text-red-700 dark:text-red-400">{removeError}</p>}
+      </form>
+    </td></tr>}
+    </Fragment>
   );
 
   return (
@@ -128,11 +142,6 @@ export default function ClearingPage() {
 
       {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {removing && <div className="flex flex-wrap items-end gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
-        <div className="min-w-64 flex-1 space-y-1"><Label htmlFor="clearing-remove-reason">Reason for removing *</Label><Input id="clearing-remove-reason" maxLength={300} placeholder="e.g. Listed the wrong MAS" value={removing.reason} onChange={(event) => setRemoving({ ...removing, reason: event.target.value })} /></div>
-        <Button type="button" variant="destructive" disabled={busy || removing.reason.trim().length < 3} onClick={() => void remove()}>Remove</Button>
-        <Button type="button" variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button>
-      </div>}
 
       <Card><CardHeader><CardTitle>In progress ({open.length})</CardTitle><p className="text-sm text-muted-foreground">New Sales and Collections each move by themselves: Waiting for encoding → Waiting for receipt (bank or e-wallet batch saved, receipt photo not attached yet; cash skips this) → For approval → Approved. Returned means the approver sent that batch back. Lines from earlier days stay here until everything ticked is approved.</p></CardHeader><CardContent>
         <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-muted/50"><tr>{["MAS / employee", "Branch", "Cleared", "Amount", "Notes", "Status", ""].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>

@@ -351,7 +351,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
       }
     }
     // ORC and reactivation stay as encoded: ORC from the saved breakdown (set per batch), reactivation per entry.
-    const orc = common.collectedBy !== "DTO" && Array.isArray(row.remittance_breakdown) && (row.remittance_breakdown as Array<{ orc?: boolean }>).some((item) => item?.orc === true);
+    const orc = common.collectedBy === "Collector" && Array.isArray(row.remittance_breakdown) && (row.remittance_breakdown as Array<{ orc?: boolean }>).some((item) => item?.orc === true);
     const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), common.branchId), incentiveRoleFor(common.collectedBy), nopFrom, nopTo, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation: row.reactivation === true });
     payments = [...payments, { id: row.collection_id, enrollmentId: account.id, orDate, orNumber, monthFrom, monthTo, nopFrom, nopTo, amount, dateRemitted: common.dateRemitted, mas: text(row.mas) }];
     const firstRow = row === rows[0];
