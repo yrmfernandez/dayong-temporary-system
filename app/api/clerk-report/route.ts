@@ -69,7 +69,7 @@ export const POST = withEncoder(async (request: Request) => {
         // The clerk's own report only: the Cash Beg they received for this period, with the reason (lib/clerk-cash.ts).
         const kind = asAuditPeriod(body.kind);
         await saveCashBeg(user.employeeId, kind, periodSpan(kind, String(body.date ?? "")).start, body);
-        return Response.json({ success: true, message: body.cashBeg === "" || body.cashBeg === null ? "Cash Beg is calculated again." : "Cash Beg saved." });
+        return Response.json({ success: true, message: body.cashBeg === "" || body.cashBeg === null ? "Cash Beg cleared." : "Cash Beg saved." });
       }
       default:
         return Response.json({ success: false, message: "Unknown report action." }, { status: 400 });

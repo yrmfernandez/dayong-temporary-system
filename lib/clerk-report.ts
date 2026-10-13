@@ -11,8 +11,8 @@ import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
  *   encoded in the period, by the date encoded.
  * - Expenses / Other Cash Out (expenses the clerk encoded) and Cash Flow Transactions (cash the clerk forwarded to the
  *   bank, lib/clerk-cash.ts).
- * - The cash summary: Cash Beg/Pending COH (the clerk's remaining cash on hand before the period, or the cash received
- *   that the clerk typed for it), Sales Net, Collection
+ * - The cash summary: Cash Beg/Pending COH (the cash received that the clerk typed for this report, else zero), Sales
+ *   Net, Collection
  *   Net, Fidelity Bond, Penalty (since October 12, 2026), Pending cash to be encoded, Total Cash In; Expenses, Cash forwarded to bank, Total Cash Out;
  *   Remaining Cash on Hand = Total Cash In - Total Cash Out.
  * - The clerk's remarks, and the per-MAS summary sheet (New Member and Collection by Marketing Account Staff), whose
@@ -100,9 +100,9 @@ async function clerkExpenses(employeeId: string, to: string) {
 
 export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: { employeeId: string; name: string; branch?: string }) {
   const { start, end } = periodSpan(kind, date);
-  // Everything the clerk ever recorded up to the period end: the period itself, and what came before for Cash Beg.
+  // What the clerk recorded in the period; nothing before it counts (Cash Beg is typed, not carried).
   const [{ entries: history }, expensesAll, depositsAll, notes, cashBegEdits] = await Promise.all([
-    getEntriesForRange("2000-01-01", end, "encoded", { encodedBy: clerk.employeeId }), clerkExpenses(clerk.employeeId, end),
+    getEntriesForRange(start, end, "encoded", { encodedBy: clerk.employeeId }), clerkExpenses(clerk.employeeId, end),
     getDeposits(clerk.employeeId, end), getReportNotes(clerk.employeeId, kind, start), getCashBegEdits(clerk.employeeId),
   ]);
   const inPeriod = (day: string) => day >= start && day <= end;
@@ -114,20 +114,12 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const newSales = section(kind, sales), collection = section(kind, collections);
 
   /*
-   * Cash Beg: what the clerk still held at the start of the period (cash in less cash out), pending cash excluded.
-   * Since October 13, 2026 (owner: Cash Beg is the cash received, case by case) the clerk may type it for a period, with
-   * a reason. A typed Cash Beg is that report's alone: nothing recalculates it, and other reports keep their own.
+   * Cash Beg is the cash received, case by case (owner, October 13, 2026): the clerk types it for a report, with a
+   * reason, and it belongs to that report only (kind and period). Without one it is zero; it is no longer calculated
+   * from earlier entries, expenses and deposits, nor carried from another report.
    */
-  const cashBetween = (from: string, to: string) => {
-    const within = (day: string) => day >= from && day < to;
-    const cashIn = history.filter((entry) => within(entry.encodedAt.slice(0, 10))).reduce((total, entry) => total + entry.amount - entry.incentive + entry.fidelity + entry.penalty, 0);
-    const cashOut = [...expensesAll, ...depositsAll].filter((item) => within(item.date)).reduce((total, item) => total + item.amount, 0);
-    return cashIn - cashOut;
-  };
-  // What the system calculates for this period, from the clerk's first entry; typed Cash Begs of other reports do not change it.
-  const calculatedCashBeg = round(cashBetween("0000-00-00", start));
   const typedCashBeg = cashBegEdits.filter((edit) => edit.start === start && edit.kind === kind).at(-1) ?? null;
-  const cashBeg = typedCashBeg ? round(typedCashBeg.amount) : calculatedCashBeg;
+  const cashBeg = typedCashBeg ? round(typedCashBeg.amount) : 0;
   const fidelity = round(newSales.total.fidelity + collection.total.fidelity);
   // Penalties are cash the clerk receives with the batch (the turnover control total includes them), so they count in.
   const penalty = round(newSales.total.penalty + collection.total.penalty);
@@ -163,7 +155,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
     expenses: expenses.map((item): ExpenseRow => ({ ...item, when: whenLabel(kind, item.date) })), expenseTotal,
     deposits: deposits.map((item: BankDeposit) => ({ ...item, when: whenLabel(kind, item.date) })), depositTotal,
     cash: {
-      cashBeg, calculatedCashBeg, cashBegEdit: typedCashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, pendingCash: notes.pendingCash, totalCashIn,
+      cashBeg, cashBegEdit: typedCashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, pendingCash: notes.pendingCash, totalCashIn,
       expenses: expenseTotal, forwardedToBank: depositTotal, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,
     },
     notes,

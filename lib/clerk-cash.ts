@@ -11,7 +11,7 @@ import { createReadableId } from "@/lib/readable-id";
  * - "Report Notes": per clerk and period, the cash received but not yet encoded and the three remark boxes. Columns:
  *   note_key (employee|kind|start), employee_id, period_kind, period_start, pending_cash, specific_remarks,
  *   pending_transactions, other_comments, updated_at, updated_by, and (October 13, 2026) cash_beg, cash_beg_reason,
- *   cash_beg_updated_at, cash_beg_updated_by: the Cash Beg the clerk typed for the period, blank for the calculated one.
+ *   cash_beg_updated_at, cash_beg_updated_by: the Cash Beg the clerk typed for the period; blank = zero.
  *
  * Both sheets are created on first use. They feed the clerk report only; the finance cash ledger is not changed.
  */
@@ -101,7 +101,7 @@ export async function getCashBegEdits(employeeId: string): Promise<Array<CashBeg
 /**
  * The clerk types the Cash Beg of their own report for one period: the cash actually received at its start (owner,
  * October 13, 2026: case by case), with the reason. It is that report's alone; other reports are not changed. A blank
- * amount goes back to the calculated Cash Beg. Only columns K-N change, so the notes stay as they are.
+ * amount clears it (Cash Beg zero). Only columns K-N change, so the notes stay as they are.
  */
 export async function saveCashBeg(employeeId: string, kind: string, start: string, input: Record<string, unknown>) {
   const blank = input.cashBeg === null || input.cashBeg === undefined || text(input.cashBeg) === "";

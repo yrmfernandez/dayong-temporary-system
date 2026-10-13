@@ -133,7 +133,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
             <div className="grid grid-cols-[1.1fr_0.8fr_1.6fr] gap-3">
               <dl className="space-y-0.5">
                 <Cash label="Cash Beg/Pending COH" value={report.cash.cashBeg} color={tone.cashBeg} />
-                {report.cash.cashBegEdit && <p className="text-right text-[11px] text-muted-foreground">Typed by {report.cash.cashBegEdit.updatedBy}: {report.cash.cashBegEdit.reason} · calculated {money(report.cash.calculatedCashBeg)}</p>}
+                {report.cash.cashBegEdit && <p className="text-right text-[11px] text-muted-foreground">Typed by {report.cash.cashBegEdit.updatedBy}: {report.cash.cashBegEdit.reason}</p>}
                 <Cash label="Sales Net" value={report.cash.salesNet} />
                 <Cash label="Collection Net" value={report.cash.collectionNet} />
                 <Cash label="Fidelity Bond" value={report.cash.fidelity} />
@@ -340,7 +340,6 @@ function RecordPanel({ report, act }: { report: Report; act: (body: Record<strin
   const [expense, setExpense] = useState({ category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
   const [deposit, setDeposit] = useState({ date: inPeriod, bankAccount: "DSRDPI", amount: "", transferType: "", mas: "", remarks: "" });
   const [cashBeg, setCashBeg] = useState({ amount: report.cash.cashBegEdit ? String(report.cash.cashBegEdit.amount) : "", reason: report.cash.cashBegEdit?.reason ?? "" });
-  const cashBegChanged = cashBeg.amount !== "" && Number(cashBeg.amount) !== report.cash.calculatedCashBeg;
   const [notes, setNotes] = useState({ pendingCash: String(report.notes.pendingCash || ""), specificRemarks: report.notes.specificRemarks, pendingTransactions: report.notes.pendingTransactions, otherComments: report.notes.otherComments });
   const masNames = report.masSummary.rows.map((row) => row.name);
 
@@ -380,14 +379,13 @@ function RecordPanel({ report, act }: { report: Report; act: (body: Record<strin
       {/* Cash Beg is the cash received (owner, October 13, 2026): the clerk can type it, with the reason; blank = calculated. */}
       <form className="space-y-2 rounded-lg border bg-muted/30 p-3" onSubmit={(event) => { event.preventDefault(); void act({ action: "save-cash-beg", cashBeg: cashBeg.amount === "" ? "" : Number(cashBeg.amount), reason: cashBeg.reason }); }}>
         <p className="font-semibold">Cash Beg for this report</p>
-        <p className="text-xs text-muted-foreground">Calculated: {money(report.cash.calculatedCashBeg)} (last period&apos;s remaining cash on hand). Type the cash you actually received if it is different. It applies to this report only.</p>
-        <Label className="text-xs">Cash received (Cash Beg)<Input type="number" min="0" step="0.01" placeholder={String(report.cash.calculatedCashBeg)} value={cashBeg.amount} onChange={(event) => setCashBeg({ ...cashBeg, amount: event.target.value })} /></Label>
+        <p className="text-xs text-muted-foreground">The cash you actually received at the start of this report. It applies to this report only; left blank, Cash Beg is zero.</p>
+        <Label className="text-xs">Cash received (Cash Beg)<Input type="number" min="0" step="0.01" placeholder="0.00" value={cashBeg.amount} onChange={(event) => setCashBeg({ ...cashBeg, amount: event.target.value })} /></Label>
         {cashBeg.amount !== "" && <Label className="text-xs">Reason *<Input maxLength={300} placeholder="e.g. Counted cash on hand; turnover from the previous clerk" value={cashBeg.reason} onChange={(event) => setCashBeg({ ...cashBeg, reason: event.target.value })} /></Label>}
         <div className="flex flex-wrap gap-2">
           <Button type="submit" size="sm" disabled={cashBeg.amount !== "" && cashBeg.reason.trim().length < 5}>Save Cash Beg</Button>
-          {report.cash.cashBegEdit && <Button type="button" size="sm" variant="outline" onClick={() => { setCashBeg({ amount: "", reason: "" }); void act({ action: "save-cash-beg", cashBeg: "" }); }}>Use calculated</Button>}
+          {report.cash.cashBegEdit && <Button type="button" size="sm" variant="outline" onClick={() => { setCashBeg({ amount: "", reason: "" }); void act({ action: "save-cash-beg", cashBeg: "" }); }}>Clear</Button>}
         </div>
-        {cashBegChanged && <p className="text-xs text-amber-800">Differs from the calculated Cash Beg by {money(Number(cashBeg.amount) - report.cash.calculatedCashBeg)}.</p>}
         {report.cash.cashBegEdit?.updatedAt && <p className="text-xs text-muted-foreground">Saved {new Date(report.cash.cashBegEdit.updatedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {report.cash.cashBegEdit.updatedBy}</p>}
       </form>
 

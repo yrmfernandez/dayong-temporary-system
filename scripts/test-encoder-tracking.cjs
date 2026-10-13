@@ -2239,12 +2239,12 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   assert.equal(report.summaryLabel, '3RD WEEKLY REPORT');
   assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity, row.penalty]), [['6/15/2026', 1, 350, 50, 300, 20, 0], ['6/16/2026', 1, 700, 100, 600, 0, 50]], 'by date; the other clerk\'s COL-3 is not counted');
   assert.deepEqual([report.newSales.total.accounts, report.newSales.total.gross, report.newSales.total.incentives], [1, 500, 50]);
-  assert.deepEqual(report.cash, { cashBeg: 0, calculatedCashBeg: 0, cashBegEdit: null, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, pendingCash: 0, totalCashIn: 1420, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
+  assert.deepEqual(report.cash, { cashBeg: 0, cashBegEdit: null, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, pendingCash: 0, totalCashIn: 1420, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
   assert.deepEqual(report.masSummary.rows.map((row) => [row.name, row.sales.accounts, row.collections.accounts, row.collections.gross]), [['Maria', 1, 2, 1050]]);
-  // The next week starts with what was left: Cash Beg carries the remaining cash on hand.
+  // Cash Beg is typed case by case (owner, October 13, 2026): the next week does not carry what was left.
   const next = await buildClerkReport('weekly', '2026-06-24', { employeeId: 'DPE-7', name: 'Clerk' });
-  assert.equal(next.cash.cashBeg, 1320, 'the penalty stays in the cash carried forward');
-  assert.equal(next.cash.remainingCashOnHand, 1320);
+  assert.equal(next.cash.cashBeg, 0, 'nothing is carried from the week before');
+  assert.equal(next.cash.remainingCashOnHand, 0);
   assert.equal(report.checks.withPhoto, 0);
   const daily = await buildClerkReport('daily', '2026-06-15', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.deepEqual(daily.collection.rows.map((row) => row.label), ['Maria'], 'a day is grouped by MAS');
@@ -2268,7 +2268,7 @@ test('receipt photos must be small compressed images and may cover several entri
   assert.equal(viewed.dataUrl, `data:image/webp;base64,${data}`, 'viewing returns the same image');
 });
 
-test('bank deposits count as cash out, pending cash counts only in its own report, and remaining cash carries over', async () => {
+test('bank deposits count as cash out, pending cash counts only in its own report, and Cash Beg is typed per report', async () => {
   const h = harness();
   const collection = Array(41).fill(''); Object.assign(collection, { 0: 'COL-1', 5: 'DP-1', 7: 'Maria', 9: '2026-09-03', 10: 1000, 19: 'Posted', 20: '2026-09-03T02:00:00.000Z', 22: 'DPE-7', 24: '2026-09-03T02:00:00.000Z', 26: 900, 28: 'Outstanding', 31: 'Maria' });
   h.rows.Collections = [[], collection];
@@ -2285,10 +2285,10 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   assert.deepEqual([day.cash.collectionNet, day.cash.pendingCash, day.cash.totalCashIn, day.cash.forwardedToBank, day.cash.remainingCashOnHand], [900, 120, 1020, 700, 320]);
   assert.equal(day.notes.specificRemarks, 'Penalty paid');
   const nextDay = await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' });
-  assert.equal(nextDay.cash.cashBeg, 200, 'carried: 900 in less 700 deposited; pending cash is not carried because it is encoded later');
+  assert.equal(nextDay.cash.cashBeg, 0, 'the 200 left the day before is not carried: Cash Beg is typed, case by case');
 
-  // Cash Beg is the cash received, case by case (owner, October 13, 2026): a typed one replaces the calculated one for
-  // that report only, with its reason; other reports keep their own.
+  // Cash Beg is the cash received, case by case (owner, October 13, 2026): the clerk types it for a report, with its
+  // reason; it belongs to that report only, and without one Cash Beg is zero.
   const { saveCashBeg } = h.load('lib/clerk-cash.ts');
   const { runAsSystem } = h.load('lib/encoder-context.ts');
   await assert.rejects(() => runAsSystem(() => saveCashBeg('DPE-7', 'daily', '2026-09-04', { cashBeg: 1000, reason: '' })), /reason for the Cash Beg/);
@@ -2301,21 +2301,20 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   h.rows['Report Notes'].push(saved.requestBody.values[0]);
   const typed = await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.equal(typed.cash.cashBeg, 1000);
-  assert.equal(typed.cash.calculatedCashBeg, 200, 'the calculated figure stays visible');
   assert.equal(typed.cash.cashBegEdit.reason, 'Counted cash on hand');
   assert.equal(typed.cash.remainingCashOnHand, 1000);
   assert.equal(typed.notes.specificRemarks, '', 'the notes of that day are untouched');
   const later = await buildClerkReport('daily', '2026-09-07', { employeeId: 'DPE-7', name: 'Clerk' });
-  assert.equal(later.cash.cashBeg, 200, 'a typed Cash Beg does not carry into later reports');
+  assert.equal(later.cash.cashBeg, 0, 'a typed Cash Beg does not carry into later reports');
   assert.equal((await buildClerkReport('monthly', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' })).cash.cashBegEdit, null, 'nor into another kind of report');
   assert.equal((await buildClerkReport('daily', '2026-09-03', { employeeId: 'DPE-7', name: 'Clerk' })).cash.cashBeg, 0, 'earlier reports are not affected');
-  // Blank goes back to the calculated Cash Beg: only columns K-N of that row are cleared, the notes stay.
+  // Blank clears it (zero): only columns K-N of that row are cleared, the notes stay.
   await runAsSystem(() => saveCashBeg('DPE-7', 'daily', '2026-09-04', { cashBeg: '' }));
   const cleared = h.writes.at(-1);
   assert.equal(cleared.range, "'Report Notes'!K3:N3");
   assert.deepEqual(cleared.requestBody.values, [['', '', '', '']]);
   h.rows['Report Notes'][2].splice(10, 4, '', '', '', '');
-  assert.equal((await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' })).cash.cashBeg, 200);
+  assert.equal((await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' })).cash.cashBeg, 0);
 });
 
 test('changing an Employee ID rewrites every Employee ID column and refuses an ID already in use', async () => {

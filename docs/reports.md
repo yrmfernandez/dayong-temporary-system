@@ -17,7 +17,7 @@ Reports are per Entry Clerk, not company-wide: each clerk sees only the New Sale
 | Summary sheet | Weekly, monthly, yearly: New Member and Collection by Marketing Account Staff. CVE columns are shown but not yet defined. |
 | Checks | Remitted and not-yet-remitted shares, penalties, forfeited incentives, receipt photos, date warnings, and every entry with its details. |
 
-Entries count by the date the clerk encoded them. Weeks run Monday to Sunday; week N of a month is the week of its Nth Monday, and days before the first Monday are week 1. Cash Beg carries the clerk's Remaining Cash on Hand from before the period; pending cash is not carried.
+Entries count by the date the clerk encoded them. Weeks run Monday to Sunday; week N of a month is the week of its Nth Monday, and days before the first Monday are week 1. Cash Beg is what the clerk types for that report (zero when none), case by case; nothing is carried from earlier periods (since October 13, 2026).
 
 On their own report a clerk records expenses (saved to Expenses for their primary branch, so Finance sees them), cash forwarded to the bank (voided with a reason, never deleted), and the report notes.
 

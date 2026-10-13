@@ -536,7 +536,7 @@ Today's Entries combines New Sales and posted Collections, with amount, incentiv
 - **New Sales and Collections sections** side by side, with Accts, Gross, Inc, Net, and Fid/bond. Rows are by MAS (daily), date (weekly), week of the month (monthly), or month (yearly).
 - **Expenses/Other Cash Out:** posted expenses the clerk encoded in the period (expense date, encoder Employee ID).
 - **Cash Flow Transaction and Other Cash Ins:** cash the clerk forwarded to the bank (`Bank Deposits` sheet; voided deposits excluded).
-- **Penalty** (owner, October 12, 2026): each New Sales and Collections line has a Penalty column (penalties the clerk encoded), and the cash summary a Penalty line after Fidelity Bond; it is cash received, so it is in Total Cash In and carries into the next Cash Beg.
+- **Penalty** (owner, October 12, 2026): each New Sales and Collections line has a Penalty column (penalties the clerk encoded), and the cash summary a Penalty line after Fidelity Bond; it is cash received, so it is in Total Cash In.
 - **Cash summary** and the **Specific Rmks, Pending Transactions, and Other Comments** boxes (`Report Notes` sheet).
 - **Summary sheet** for weekly, monthly, and yearly: New Member and Collection by Marketing Account Staff (CVE columns are shown but not yet defined).
 
@@ -545,13 +545,12 @@ Sales Net / Collection Net = gross member payments − incentives (each section)
 Total Cash In   = Cash Beg + Sales Net + Collection Net + Fidelity Bond + Penalty + Pending cash to be encoded
 Total Cash Out  = Expenses + Cash forwarded to bank
 Remaining Cash on Hand = Total Cash In − Total Cash Out
-Cash Beg        = the Cash Beg the clerk typed for this report, if any; otherwise
-                  the clerk's (net + Fidelity + penalty) before the period − their expenses and deposits before the period
+Cash Beg        = the Cash Beg the clerk typed for this report; zero when none is typed
 ```
 
-**Cash Beg is the cash received (owner, October 13, 2026).** On their own report the clerk can type **Cash Beg for this report** (the cash actually received at the start of the period) with a reason (at least 5 characters); **Use calculated** clears it. The cash summary shows the typed figure with who typed it, the reason and the calculated figure beside it. It is case by case: a typed Cash Beg belongs to that report only (that kind and period), nothing recalculates it, and it does not carry into any other report, which keeps its own typed or calculated Cash Beg. Stored on the period's Report Notes row (`cash_beg`, `cash_beg_reason`, `cash_beg_updated_at`, `cash_beg_updated_by`, migration `0023`), separately from the notes, so saving notes keeps it ([clerk-cash.ts](../lib/clerk-cash.ts) `saveCashBeg`).
+**Cash Beg is the cash received (owner, October 13, 2026).** On their own report the clerk types **Cash Beg for this report** (the cash actually received at the start of the period) with a reason (at least 5 characters); **Clear** removes it. The cash summary shows the typed figure with who typed it and the reason. It is case by case: a typed Cash Beg belongs to that report only (that kind and period), nothing recalculates it, and it does not carry into any other report. Without one, Cash Beg is zero: it is no longer calculated from the clerk's earlier entries, expenses and deposits (the old rule, cleared October 13, 2026), so the report reads only the period's entries. Stored on the period's Report Notes row (`cash_beg`, `cash_beg_reason`, `cash_beg_updated_at`, `cash_beg_updated_by`, migration `0023`), separately from the notes, so saving notes keeps it ([clerk-cash.ts](../lib/clerk-cash.ts) `saveCashBeg`).
 
-Pending cash is counted only in its own report; it is not carried into the next Cash Beg because those entries are encoded later. Without a typed Cash Beg, it starts at zero from the clerk's first encoded entry. Every entry's net counts as cash, whatever its remittance method (a bank or GCash batch is balanced only by recording a matching cash forwarded to bank).
+Pending cash is counted only in its own report. Every entry's net counts as cash in, whatever its remittance method (a bank or GCash batch is balanced only by recording a matching cash forwarded to bank).
 
 On their own report a clerk records: expenses (saved to Expenses for their primary branch, paid from Cash on Hand, so Finance sees and can void them), cash forwarded to the bank (date, bank account name, amount, type of transfer, MAS, remarks; voided with a reason, never deleted), and the report notes. Checks show remitted/not-yet-remitted shares, penalties, forfeited incentives, receipt photos, and date warnings. Detailed entries cap at 1,000; totals still use all entries.
 

@@ -830,7 +830,7 @@ export const report_notes = pgTable("report_notes", {
   other_comments: text(),
   updated_at: moment("updated_at"),
   updated_by: text(),
-  /** Cash Beg the clerk typed for this period (the cash actually received); blank = the calculated one (owner, October 13, 2026). */
+  /** Cash Beg the clerk typed for this report (the cash actually received); blank = zero (owner, October 13, 2026). */
   cash_beg: money("cash_beg"),
   cash_beg_reason: text(),
   cash_beg_updated_at: moment("cash_beg_updated_at"),
