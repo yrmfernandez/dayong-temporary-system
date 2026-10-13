@@ -16,7 +16,7 @@ import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
 type Remark = { id: string; comment: string; createdAt: string; encodedBy: string };
-type Result = { success: boolean; message?: string; report: Report; remarks: Remark[]; canChoose: boolean; isOwn: boolean; clerks: Array<{ employeeId: string; name: string; branch: string }> };
+type Result = { success: boolean; message?: string; report: Report; remarks: Remark[]; canChoose: boolean; isOwn: boolean; branch: string; branchChoices: string[]; clerks: Array<{ employeeId: string; name: string; branch: string }> };
 
 const money = (value: number) => (value ? new Intl.NumberFormat("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) : "-");
 const todayInManila = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
@@ -35,9 +35,14 @@ const tone = {
  * An Entry Clerk's report in the company's layout. A clerk sees their own and records expenses, bank deposits and notes
  * on it; with `review` (Report Review and Audits) the reviewer chooses the clerk and gets the entry checklist and remarks.
  */
-export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, date: fixedDate }: { kind: Kind; review?: boolean; employeeId?: string; date?: string }) {
+export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, date: fixedDate, branch: sharedBranch, onBranchChange }: { kind: Kind; review?: boolean; employeeId?: string; date?: string; branch?: string; onBranchChange?: (branch: string) => void }) {
   const [date, setDate] = useState(fixedDate ?? todayInManila());
   const [employeeId, setEmployeeId] = useState(fixedEmployee ?? "");
+  // Reports are per branch (owner, October 13, 2026): "" = the clerk's primary branch, "all" = every branch (Audits).
+  // The tabs share the choice through `branch` / `onBranchChange`.
+  const [ownBranch, setOwnBranch] = useState("");
+  const branch = sharedBranch ?? ownBranch;
+  const setBranch = onBranchChange ?? setOwnBranch;
   const [data, setData] = useState<Result | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -48,7 +53,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ kind, date, ...(employeeId ? { employeeId } : {}) });
+      const params = new URLSearchParams({ kind, date, ...(employeeId ? { employeeId } : {}), ...(branch ? { branch } : {}) });
       const response = await fetch(`/api/clerk-report?${params}`, { cache: "no-store" });
       const result = await response.json() as Result;
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to build the report.");
@@ -58,7 +63,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
     } finally {
       setLoading(false);
     }
-  }, [kind, date, employeeId]);
+  }, [kind, date, employeeId, branch]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reload when the period or clerk changes
@@ -70,7 +75,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   /** Sends one of the clerk's own report actions, then reloads the report. */
   const act = async (body: Record<string, unknown>) => {
     setMessage("");
-    const response = await fetch("/api/clerk-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, date, ...body }) });
+    const response = await fetch("/api/clerk-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, date, branch: data?.branch === "all" ? "" : data?.branch ?? "", ...body }) });
     const result = await response.json();
     setMessage(result.message || (response.ok ? "Saved." : "Unable to save."));
     if (response.ok && result.success) await load();
@@ -96,8 +101,16 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
         </label>
         {data?.canChoose && !fixedEmployee && (
           <label className="text-sm">Entry Clerk
-            <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={employeeId || report?.encoder.employeeId || ""} onChange={(event) => setEmployeeId(event.target.value)}>
+            <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={employeeId || report?.encoder.employeeId || ""} onChange={(event) => { setEmployeeId(event.target.value); setBranch(""); }}>
               {data.clerks.map((clerk) => <option key={clerk.employeeId} value={clerk.employeeId}>{clerk.name}{clerk.branch ? ` · ${clerk.branch}` : ""}</option>)}
+            </select>
+          </label>
+        )}
+        {data && !(sharedBranch !== undefined && !onBranchChange) && (data.branchChoices.length > 1 || data.branch === "all" || review) && (
+          <label className="text-sm">Branch
+            <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={data.branch} onChange={(event) => setBranch(event.target.value)}>
+              {data.branchChoices.map((name) => <option key={name} value={name}>{name}</option>)}
+              <option value="all">All branches</option>
             </select>
           </label>
         )}
@@ -160,7 +173,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
       {report && kind !== "daily" && <MasSummary report={report} />}
 
-      {report && own && <RecordPanel key={`${report.kind}-${report.from}`} report={report} act={act} />}
+      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}`} report={report} act={act} />}
+      {report && own && data?.branch === "all" && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">Choose one branch to record expenses, deposits, Cash Beg and notes for it.</p>}
 
       {report && (
         <div className="grid gap-2 rounded-lg border p-3 text-sm sm:grid-cols-3 print:hidden">

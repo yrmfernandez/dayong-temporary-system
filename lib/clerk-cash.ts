@@ -82,18 +82,23 @@ export type ReportNotes = { pendingCash: number; specificRemarks: string; pendin
 /** Columns K-N of a notes row: the typed Cash Beg, or null when it is blank. */
 const cashBegOf = (row: unknown[] | undefined): CashBegEdit | null => text(row?.[10]) === "" || !Number.isFinite(Number(row?.[10])) ? null
   : { amount: Number(row?.[10]), reason: text(row?.[11]), updatedAt: text(row?.[12]), updatedBy: text(row?.[13]) };
-const noteKey = (employeeId: string, kind: string, start: string) => `${employeeId}|${kind}|${start}`;
+/** One notes row per clerk, period and branch (October 13, 2026); rows from before then have no branch part. */
+const noteKey = (employeeId: string, kind: string, start: string, branch = "") => `${employeeId}|${kind}|${start}${text(branch) ? `|${text(branch)}` : ""}`;
+const sameKey = (a: unknown, b: string) => text(a).toLowerCase() === b.toLowerCase();
 
-export async function getReportNotes(employeeId: string, kind: string, start: string): Promise<ReportNotes> {
-  const row = (await rows(NOTES, NOTE_HEADERS.length)).find((item) => text(item[0]) === noteKey(employeeId, kind, start));
+/** A branch's notes; the notes saved before reports were split by branch count for the clerk's primary branch. */
+export async function getReportNotes(employeeId: string, kind: string, start: string, branch = "", primary = false): Promise<ReportNotes> {
+  const all = await rows(NOTES, NOTE_HEADERS.length);
+  const row = all.find((item) => sameKey(item[0], noteKey(employeeId, kind, start, branch)))
+    ?? (branch && primary ? all.find((item) => sameKey(item[0], noteKey(employeeId, kind, start))) : undefined);
   return { pendingCash: Number(row?.[4]) || 0, specificRemarks: text(row?.[5]), pendingTransactions: text(row?.[6]), otherComments: text(row?.[7]), updatedAt: text(row?.[8]), updatedBy: text(row?.[9]), cashBeg: cashBegOf(row) };
 }
 
-/** Every Cash Beg the clerk typed, with the report it belongs to (kind and start day), oldest first. */
-export async function getCashBegEdits(employeeId: string): Promise<Array<CashBegEdit & { kind: string; start: string }>> {
+/** Every Cash Beg the clerk typed, with the report it belongs to (kind, start day and branch; "" before the split), oldest first. */
+export async function getCashBegEdits(employeeId: string): Promise<Array<CashBegEdit & { kind: string; start: string; branch: string }>> {
   return (await rows(NOTES, NOTE_HEADERS.length)).slice(1)
     .filter((row) => text(row[1]) === employeeId && cashBegOf(row))
-    .map((row) => { const [, kind = "", start = ""] = text(row[0]).split("|"); return { ...cashBegOf(row)!, kind, start }; })
+    .map((row) => { const [, kind = "", start = "", branch = ""] = text(row[0]).split("|"); return { ...cashBegOf(row)!, kind, start, branch }; })
     .filter((edit) => validDate(edit.start))
     .sort((a, b) => a.start.localeCompare(b.start) || a.updatedAt.localeCompare(b.updatedAt));
 }
@@ -103,7 +108,7 @@ export async function getCashBegEdits(employeeId: string): Promise<Array<CashBeg
  * October 13, 2026: case by case), with the reason. It is that report's alone; other reports are not changed. A blank
  * amount clears it (Cash Beg zero). Only columns K-N change, so the notes stay as they are.
  */
-export async function saveCashBeg(employeeId: string, kind: string, start: string, input: Record<string, unknown>) {
+export async function saveCashBeg(employeeId: string, kind: string, start: string, input: Record<string, unknown>, branch = "") {
   const blank = input.cashBeg === null || input.cashBeg === undefined || text(input.cashBeg) === "";
   const amount = blank ? null : Math.round(Number(input.cashBeg) * 100) / 100;
   const reason = text(input.reason).slice(0, 300);
@@ -111,23 +116,23 @@ export async function saveCashBeg(employeeId: string, kind: string, start: strin
   if (amount !== null && reason.length < CASH_BEG_REASON_MIN) throw new Error("Enter the reason for the Cash Beg (at least 5 characters).");
   const actor = getEncoder();
   await ensure(NOTES, NOTE_HEADERS);
-  const key = noteKey(employeeId, kind, start);
+  const key = noteKey(employeeId, kind, start, branch);
   const cash = amount === null ? ["", "", "", ""] : [amount, reason, actor.encodedAt, actor.name];
   const all = await rows(NOTES, NOTE_HEADERS.length);
-  const index = all.findIndex((row, position) => position > 0 && text(row[0]) === key);
+  const index = all.findIndex((row, position) => position > 0 && sameKey(row[0], key));
   if (index < 0) await sheets.spreadsheets.values.append({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!A:N`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values: [[key, employeeId, kind, start, 0, "", "", "", actor.encodedAt, actor.name, ...cash]] } });
   else await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!K${index + 1}:N${index + 1}`, valueInputOption: "RAW", requestBody: { values: [cash] } });
 }
 
 /** The clerk saves the notes of their own report for one period. */
-export async function saveReportNotes(employeeId: string, kind: string, start: string, input: Record<string, unknown>) {
+export async function saveReportNotes(employeeId: string, kind: string, start: string, input: Record<string, unknown>, branch = "") {
   const pendingCash = Math.round((Number(input.pendingCash) || 0) * 100) / 100;
   if (pendingCash < 0) throw new Error("Pending cash cannot be negative.");
   const actor = getEncoder();
   await ensure(NOTES, NOTE_HEADERS);
-  const values = [[noteKey(employeeId, kind, start), employeeId, kind, start, pendingCash, text(input.specificRemarks).slice(0, 1000), text(input.pendingTransactions).slice(0, 1000), text(input.otherComments).slice(0, 1000), actor.encodedAt, actor.name]];
+  const values = [[noteKey(employeeId, kind, start, branch), employeeId, kind, start, pendingCash, text(input.specificRemarks).slice(0, 1000), text(input.pendingTransactions).slice(0, 1000), text(input.otherComments).slice(0, 1000), actor.encodedAt, actor.name]];
   const all = await rows(NOTES, NOTE_HEADERS.length);
-  const index = all.findIndex((row, position) => position > 0 && text(row[0]) === values[0][0]);
+  const index = all.findIndex((row, position) => position > 0 && sameKey(row[0], String(values[0][0])));
   if (index < 0) await sheets.spreadsheets.values.append({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!A:J`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values } });
   else await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!A${index + 1}:J${index + 1}`, valueInputOption: "RAW", requestBody: { values } });
 }

@@ -86,29 +86,39 @@ function section(kind: AuditPeriod, entries: DayEntry[]) {
 
 export type ExpenseRow = { id: string; date: string; when: string; account: string; amount: number; receipt: string; purpose: string; remarks: string };
 
-/** Posted expenses the clerk encoded on or before `to` (Expenses B date, C account, D purpose, E amount, K receipt, L status, M remarks, S encoder). */
+/** Posted expenses the clerk encoded on or before `to` (Expenses B date, C account, D purpose, E amount, H branch, K receipt, L status, M remarks, S encoder). */
 async function clerkExpenses(employeeId: string, to: string) {
   try {
     const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Expenses'!A:U", valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" })).data.values ?? [];
     return rows.slice(1)
       .filter((row) => text(row[0]) && text(row[18]) === employeeId && (text(row[11]) || "Posted") === "Posted" && text(row[1]).slice(0, 10) <= to)
-      .map((row) => ({ id: text(row[0]), date: text(row[1]).slice(0, 10), account: text(row[2]), purpose: text(row[3]), amount: Number(row[4]) || 0, receipt: text(row[10]), remarks: text(row[12]) }));
+      .map((row) => ({ id: text(row[0]), date: text(row[1]).slice(0, 10), account: text(row[2]), purpose: text(row[3]), amount: Number(row[4]) || 0, branch: text(row[7]), receipt: text(row[10]), remarks: text(row[12]) }));
   } catch {
     return [];
   }
 }
 
-export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: { employeeId: string; name: string; branch?: string }) {
+/**
+ * `branch` (owner, October 13, 2026): the report of one branch, for a clerk who encodes for several; "" = every branch
+ * (Audits). Entries, expenses and deposits are that branch's; notes and Cash Beg are kept per branch, and the ones saved
+ * before reports were split belong to the clerk's primary branch.
+ */
+export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: { employeeId: string; name: string; branch?: string }, branch = "") {
   const { start, end } = periodSpan(kind, date);
+  const sameBranch = (value: string) => !branch || text(value).toLowerCase() === branch.trim().toLowerCase();
+  const primary = Boolean(branch) && text(clerk.branch).toLowerCase() === branch.trim().toLowerCase();
   // What the clerk recorded in the period; nothing before it counts (Cash Beg is typed, not carried).
   const [{ entries: history }, expensesAll, depositsAll, notes, cashBegEdits] = await Promise.all([
     getEntriesForRange(start, end, "encoded", { encodedBy: clerk.employeeId }), clerkExpenses(clerk.employeeId, end),
-    getDeposits(clerk.employeeId, end), getReportNotes(clerk.employeeId, kind, start), getCashBegEdits(clerk.employeeId),
+    getDeposits(clerk.employeeId, end), getReportNotes(clerk.employeeId, kind, start, branch, primary), getCashBegEdits(clerk.employeeId),
   ]);
   const inPeriod = (day: string) => day >= start && day <= end;
-  const entries = history.filter((entry) => inPeriod(entry.encodedAt.slice(0, 10)));
-  const expenses = expensesAll.filter((item) => inPeriod(item.date));
-  const deposits = depositsAll.filter((item) => inPeriod(item.date));
+  const encoded = history.filter((entry) => inPeriod(entry.encodedAt.slice(0, 10)));
+  // Every branch the clerk encoded for in the period, for the branch choice.
+  const encodedBranches = [...new Set(encoded.map((entry) => text(entry.branch)).filter(Boolean))].sort();
+  const entries = encoded.filter((entry) => sameBranch(entry.branch));
+  const expenses = expensesAll.filter((item) => inPeriod(item.date) && sameBranch(item.branch));
+  const deposits = depositsAll.filter((item) => inPeriod(item.date) && sameBranch(item.branch));
 
   const sales = entries.filter((entry) => entry.kind === "New Sale"), collections = entries.filter((entry) => entry.kind === "Collection");
   const newSales = section(kind, sales), collection = section(kind, collections);
@@ -118,7 +128,8 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
    * reason, and it belongs to that report only (kind and period). Without one it is zero; it is no longer calculated
    * from earlier entries, expenses and deposits, nor carried from another report.
    */
-  const typedCashBeg = cashBegEdits.filter((edit) => edit.start === start && edit.kind === kind).at(-1) ?? null;
+  const forBranch = (edit: { branch: string }) => (edit.branch ? sameBranch(edit.branch) && Boolean(branch) : !branch || primary);
+  const typedCashBeg = cashBegEdits.filter((edit) => edit.start === start && edit.kind === kind && forBranch(edit)).at(-1) ?? null;
   const cashBeg = typedCashBeg ? round(typedCashBeg.amount) : 0;
   const fidelity = round(newSales.total.fidelity + collection.total.fidelity);
   // Penalties are cash the clerk receives with the batch (the turnover control total includes them), so they count in.
@@ -138,7 +149,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   }
   const branches = [...new Set(entries.map((entry) => entry.branch).filter(Boolean))];
   // CVE (%): what each MAS was expected to collect in the period (lib/mas-expected.ts); CVE% = Collection GROSS ÷ CVE GROSS.
-  const expected = await expectedByMas(start, end, branches.length ? branches : [clerk.branch ?? ""]);
+  const expected = await expectedByMas(start, end, branch ? [branch] : branches.length ? branches : [clerk.branch ?? ""]);
   const cveOf = (name: string, collected: number) => {
     const due: Expected = expected.get(name.trim().toLowerCase()) ?? { accounts: 0, gross: 0 };
     return { accounts: due.accounts, gross: due.gross, percent: due.gross > 0 ? round((collected / due.gross) * 100) : null };
@@ -148,7 +159,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
 
   return {
     company: COMPANY, kind, from: start, to: end, ...headings(kind, start, end),
-    branch: branches.join(", ") || clerk.branch || "", encoder: { employeeId: clerk.employeeId, name: clerk.name },
+    branch: branch || branches.join(", ") || clerk.branch || "", encodedBranches, encoder: { employeeId: clerk.employeeId, name: clerk.name },
     groupLabel: kind === "daily" ? "MAS" : kind === "weekly" ? "DATE" : kind === "monthly" ? "WEEK" : "MONTH",
     whenLabel: kind === "monthly" ? "WEEK" : kind === "yearly" ? "MONTH" : "DATE",
     newSales, collection,

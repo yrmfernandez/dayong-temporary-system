@@ -145,7 +145,7 @@ export default function DailyAuditPage() {
                 <details className="rounded-lg border bg-background p-3">
                   <summary className="cursor-pointer text-sm font-semibold">Open {row.employeeName}&apos;s report and every entry</summary>
                   <p className="mt-1 text-xs text-muted-foreground">Check each entry from its dates (OR, remitted, encoded) to its numbers and receipt photo before deciding Balanced or With findings.</p>
-                  <div className="mt-3"><ClerkReport kind={period} review employeeId={row.employeeId} date={span.from || date} /></div>
+                  <div className="mt-3"><ClerkReport kind={period} review employeeId={row.employeeId} date={span.from || date} branch="all" /></div>
                 </details>
                 {row.audit?.reopenReason && row.status === "Draft" && <p className="text-xs text-amber-700">Reopened: {row.audit.reopenReason}</p>}
                 {row.status === "Approved" ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">

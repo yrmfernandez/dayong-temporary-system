@@ -324,6 +324,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Clerk reports per branch (2026-10-13)
+
+- **Owner:** reports must be separated by branch: for this branch, the report for today, the week, the month and the year; some Entry Clerks are assigned to several branches.
+- **Done:** Reports → Branch (primary branch by default; primary, assigned and encoded-for branches, plus All branches), kept across the Daily / Weekly / Monthly / Yearly tabs. Entries, expenses and deposits are filtered by branch; notes and Cash Beg are kept per branch (older notes count for the primary branch); expenses and deposits are saved for the report's branch. Report Review can choose the branch too; Audits stay on all branches. Tested.
+
 ### DTO batches for members of resigned or inactive MAS (2026-10-13)
 
 - **Owner:** resigned or inactive employees cannot be chosen, but their members keep paying (DTO); clerks need a way to encode those accounts.

@@ -8,6 +8,22 @@ import { getReportRemarks } from "@/lib/report-remarks";
 import { addDeposit, saveCashBeg, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense } from "@/lib/finance-data";
+import { getBranches } from "@/lib/google-sheets-data";
+
+const text = (value: unknown) => String(value ?? "").trim();
+const same = (a: unknown, b: unknown) => text(a).toLowerCase() === text(b).toLowerCase();
+
+/**
+ * Reports are per branch (owner, October 13, 2026): a clerk assigned to several branches gets each branch's report.
+ * The branches a clerk can choose: their primary branch, the branches they are assigned to, and any branch they
+ * encoded for in the period.
+ */
+async function clerkBranches(employeeId: string) {
+  const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
+  const employee = employees.find((item) => item.id === employeeId);
+  const assigned = branches.filter((branch) => employee?.branchIds.includes(branch.id)).map((branch) => branch.name);
+  return { primary: employee?.branch ?? "", names: [...new Set([employee?.branch ?? "", ...assigned].map(text).filter(Boolean))], active: branches.filter((branch) => branch.status === "active").map((branch) => branch.name) };
+}
 
 /**
  * An Entry Clerk's report (?kind=daily|weekly|monthly|yearly&date=YYYY-MM-DD). A clerk always gets their own. People
@@ -24,12 +40,18 @@ export async function GET(request: Request) {
     const clerks = canChoose ? await auditedEmployees() : [];
     const requested = canChoose ? params.get("employeeId")?.trim() || clerks[0]?.employeeId || user.employeeId : user.employeeId;
     const employee = clerks.find((clerk) => clerk.employeeId === requested) ?? (await getEmployees()).map((item) => ({ employeeId: item.id, name: item.name, branch: item.branch })).find((item) => item.employeeId === requested);
-    const report = await buildClerkReport(kind, date, employee ?? { employeeId: user.employeeId, name: user.name });
+    const clerk = employee ?? { employeeId: user.employeeId, name: user.name };
+    // ?branch=NAME for one branch, ?branch=all for every branch (Audits); by default the clerk's primary branch.
+    const own = await clerkBranches(clerk.employeeId);
+    const asked = params.get("branch")?.trim() ?? "";
+    const branch = asked.toLowerCase() === "all" ? "" : asked || own.primary || own.names[0] || "";
+    const report = await buildClerkReport(kind, date, { ...clerk, branch: own.primary || ("branch" in clerk ? clerk.branch : "") }, branch);
+    const branchChoices = [...new Map([...own.names, ...report.encodedBranches, ...(branch ? [branch] : [])].map((name) => [name.toLowerCase(), name])).values()];
     // Remarks left on this clerk's report for the same period.
     const remarks = (await getReportRemarks(report.from, report.to)).filter((remark) => remark.scope === report.encoder.name);
     // Only the clerk records expenses, deposits and notes, on their own report.
     const isOwn = report.encoder.employeeId === user.employeeId;
-    return Response.json({ success: true, report, remarks, canChoose, isOwn, clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, report, remarks, canChoose, isOwn, branch: branch || "all", branchChoices, clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to build the report." }, { status: 400 });
   }
@@ -46,10 +68,13 @@ export const POST = withEncoder(async (request: Request) => {
     const body = await request.json() as Record<string, unknown>;
     const employees = await getEmployees();
     const me = employees.find((employee) => employee.id === user.employeeId);
-    const clerk = { employeeId: user.employeeId, name: me?.name || user.name, branch: me?.branch || "" };
+    // The branch whose report the clerk is on: an active branch, else their primary branch.
+    const { active } = await clerkBranches(user.employeeId);
+    const chosen = active.find((name) => same(name, body.branch)) ?? "";
+    const clerk = { employeeId: user.employeeId, name: me?.name || user.name, branch: chosen || me?.branch || "" };
     switch (body.action) {
       case "add-expense": {
-        if (!clerk.branch) throw new Error("No primary branch is set for you. Ask an administrator to set it in Employees.");
+        if (!clerk.branch) throw new Error("Choose the branch of the report, or ask an administrator to set your primary branch in Employees.");
         const saved = await createExpense({ ...body, branch: clerk.branch, paidBy: "Cash on Hand", paymentMethod: "Cash" });
         return Response.json({ success: true, message: `Expense ${saved.id} saved.` });
       }
@@ -62,13 +87,13 @@ export const POST = withEncoder(async (request: Request) => {
         return Response.json({ success: true, message: "Deposit voided." });
       case "save-notes": {
         const kind = asAuditPeriod(body.kind);
-        await saveReportNotes(user.employeeId, kind, periodSpan(kind, String(body.date ?? "")).start, body);
+        await saveReportNotes(user.employeeId, kind, periodSpan(kind, String(body.date ?? "")).start, body, chosen);
         return Response.json({ success: true, message: "Report notes saved." });
       }
       case "save-cash-beg": {
         // The clerk's own report only: the Cash Beg they received for this period, with the reason (lib/clerk-cash.ts).
         const kind = asAuditPeriod(body.kind);
-        await saveCashBeg(user.employeeId, kind, periodSpan(kind, String(body.date ?? "")).start, body);
+        await saveCashBeg(user.employeeId, kind, periodSpan(kind, String(body.date ?? "")).start, body, chosen);
         return Response.json({ success: true, message: body.cashBeg === "" || body.cashBeg === null ? "Cash Beg cleared." : "Cash Beg saved." });
       }
       default:

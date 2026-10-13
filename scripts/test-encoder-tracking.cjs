@@ -2748,3 +2748,29 @@ test('a DTO batch: a member of a resigned MAS paid at the office, without a clea
       'the account keeps its MAS; the clerk is accountable; DTO earns no incentive, so all ₱350 is remitted');
   } finally { globalThis.dayongClearingNotRequired = true; }
 });
+
+test('an Entry Clerk report is per branch for a clerk who encodes for several', async () => {
+  const h = harness();
+  const collection = (id, branch, amount, net) => { const row = Array(41).fill(''); Object.assign(row, { 0: id, 5: 'DP-1', 6: branch, 7: 'Maria', 9: '2026-09-03', 10: amount, 19: 'Posted', 20: '2026-09-03T02:00:00.000Z', 22: 'DPE-7', 24: '2026-09-03T02:00:00.000Z', 26: net, 28: 'Outstanding', 31: 'Maria' }); return row; };
+  h.rows.Collections = [[], collection('COL-A', 'AGDAO', 1000, 900), collection('COL-T', 'TORIL', 500, 450)];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program']];
+  h.rows['Bank Deposits'] = [[],
+    ['DEP-A', '2026-09-03', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 700, 'RCBC', '', '', 'Posted', '', ''],
+    ['DEP-T', '2026-09-03', 'DPE-7', 'Clerk', 'TORIL', 'DSRDPI', 300, 'RCBC', '', '', 'Posted', '', ''],
+  ];
+  // Notes saved before reports were split (no branch in the key) belong to the primary branch (AGDAO).
+  h.rows['Report Notes'] = [[],
+    ['DPE-7|daily|2026-09-03', 'DPE-7', 'daily', '2026-09-03', 120, 'Old notes', '', '', '', ''],
+    ['DPE-7|daily|2026-09-03|TORIL', 'DPE-7', 'daily', '2026-09-03', 0, 'Toril notes', '', '', '', '', 50, 'Counted at Toril', '', 'Clerk'],
+  ];
+  await h.sync();
+  const { buildClerkReport } = h.load('lib/clerk-report.ts');
+  const clerk = { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' };
+  const agdao = await buildClerkReport('daily', '2026-09-03', clerk, 'AGDAO');
+  assert.deepEqual([agdao.branch, agdao.collection.total.gross, agdao.cash.forwardedToBank, agdao.notes.specificRemarks, agdao.cash.pendingCash, agdao.cash.cashBeg], ['AGDAO', 1000, 700, 'Old notes', 120, 0]);
+  const toril = await buildClerkReport('daily', '2026-09-03', clerk, 'toril');
+  assert.deepEqual([toril.collection.total.gross, toril.cash.forwardedToBank, toril.notes.specificRemarks, toril.cash.pendingCash, toril.cash.cashBeg], [500, 300, 'Toril notes', 0, 50], 'case does not matter');
+  assert.deepEqual(toril.encodedBranches, ['AGDAO', 'TORIL'], 'every branch encoded in the period is offered');
+  const all = await buildClerkReport('daily', '2026-09-03', clerk);
+  assert.deepEqual([all.collection.total.gross, all.cash.forwardedToBank], [1500, 1000], 'every branch (Audits)');
+});

@@ -21,6 +21,8 @@ const isKind = (value: string | null): value is Kind => TABS.some((tab) => tab.i
  */
 export function ReportTabs({ review = false }: { review?: boolean }) {
   const [kind, setKind] = useState<Kind>("daily");
+  // The branch stays the same when switching tabs (reports are per branch; "" = the clerk's primary branch).
+  const [branch, setBranch] = useState("");
 
   useEffect(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
@@ -48,7 +50,7 @@ export function ReportTabs({ review = false }: { review?: boolean }) {
       </div>
       <p className="text-sm text-muted-foreground print:hidden">{TABS.find((tab) => tab.id === kind)?.description}</p>
       {/* A new report per tab, so each keeps its own period input. */}
-      <ClerkReport key={kind} kind={kind} review={review} />
+      <ClerkReport key={kind} kind={kind} review={review} branch={branch} onBranchChange={setBranch} />
     </div>
   );
 }
