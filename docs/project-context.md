@@ -324,6 +324,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Entries without incentives on October 13: check and fix (2026-10-13)
+
+- **Owner:** check again for MAS without incentives today and fix.
+- **Found (production):** no forfeits left; every New Sale has its incentive; 3 collections had none because they were saved as Collected by Collector on programs whose Collector tier was 0%: TANGAL, MARY JEAN (a MAS, D-320 NOP 29, ABESIA, DARYL JANE, MATINA) and GOTUAL, FLORYL JAY (a Collector and the accounts' MAS on record; D-350 (5Y) NOP 9 and D-370 NOP 44–45, CABALLERO, JENNY, MINTAL).
+- **Owner decided:** Tangal: leave as is. Collector tier 10% from month 13 on D-350 (5Y) (13–60), D-370 (13–96), D-320 (13–60); months 1–12 stay 0%.
+- **Applied on production:** `scripts/set-collector-tiers.mts --apply` set the three tiers and recalculated Gotual's slip REM-20261013082847-TH8J (₱1,111.50) → REM-20261013085527-WKVX (₱1,037.50): D-370 incentive ₱74, D-350 (5Y) NOP 9 stays ₱0. Tangal's slip (REM-20261013081611-ZVKX) untouched; recalculated with the new D-320 tier it would get ₱32.
+
 ### Every incentive kept on October 13 only (2026-10-13)
 
 - **Owner:** allow all entries only for today to have incentives, even the clearing is after 3 PM.
