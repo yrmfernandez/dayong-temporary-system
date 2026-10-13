@@ -106,7 +106,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
             </select>
           </label>
         )}
-        {data && !(sharedBranch !== undefined && !onBranchChange) && (data.branchChoices.length > 1 || data.branch === "all" || review) && (
+        {data && !(sharedBranch !== undefined && !onBranchChange) && (
           <label className="text-sm">Branch
             <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={data.branch} onChange={(event) => setBranch(event.target.value)}>
               {data.branchChoices.map((name) => <option key={name} value={name}>{name}</option>)}

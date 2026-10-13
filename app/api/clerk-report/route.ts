@@ -8,6 +8,9 @@ import { getReportRemarks } from "@/lib/report-remarks";
 import { addDeposit, saveCashBeg, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense } from "@/lib/finance-data";
+import { sql } from "drizzle-orm";
+
+import { currentDb } from "@/lib/db";
 import { getBranches } from "@/lib/google-sheets-data";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -15,14 +18,20 @@ const same = (a: unknown, b: unknown) => text(a).toLowerCase() === text(b).toLow
 
 /**
  * Reports are per branch (owner, October 13, 2026): a clerk assigned to several branches gets each branch's report.
- * The branches a clerk can choose: their primary branch, the branches they are assigned to, and any branch they
- * encoded for in the period.
+ * The branches a clerk can choose: their primary branch, the branches they are assigned to, and every branch they have
+ * ever encoded New Sales or Collections for (a clerk may encode for a branch they are not assigned to).
  */
 async function clerkBranches(employeeId: string) {
-  const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
+  const [employees, branches, encoded] = await Promise.all([
+    getEmployees(), getBranches(),
+    currentDb().execute(sql`select distinct trim(branch) as branch from collections where encoded_by_employee_id = ${employeeId} and coalesce(trim(branch), '') <> ''
+      union select distinct trim(branch) from sales where encoded_by_employee_id = ${employeeId} and coalesce(trim(branch), '') <> ''`),
+  ]);
   const employee = employees.find((item) => item.id === employeeId);
   const assigned = branches.filter((branch) => employee?.branchIds.includes(branch.id)).map((branch) => branch.name);
-  return { primary: employee?.branch ?? "", names: [...new Set([employee?.branch ?? "", ...assigned].map(text).filter(Boolean))], active: branches.filter((branch) => branch.status === "active").map((branch) => branch.name) };
+  const encodedFor = ((Array.isArray(encoded) ? encoded : (encoded as { rows?: unknown[] }).rows ?? []) as Array<{ branch: string }>).map((row) => row.branch);
+  const names = [...new Map([employee?.branch ?? "", ...assigned, ...encodedFor].map(text).filter(Boolean).map((name) => [name.toLowerCase(), name])).values()];
+  return { primary: employee?.branch ?? "", names, active: branches.filter((branch) => branch.status === "active").map((branch) => branch.name) };
 }
 
 /**

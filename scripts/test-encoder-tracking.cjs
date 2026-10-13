@@ -2774,3 +2774,18 @@ test('an Entry Clerk report is per branch for a clerk who encodes for several', 
   const all = await buildClerkReport('daily', '2026-09-03', clerk);
   assert.deepEqual([all.collection.total.gross, all.cash.forwardedToBank], [1500, 1000], 'every branch (Audits)');
 });
+
+test('Clearing shows who approved or returned each kind', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila();
+  await seedAccount({ doi: today });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('clearings', [{ clearing_id: 'CLR-D', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T00:30:00Z`, cleared_date: today, status: 'Encoded', covers: 'Collections' }]);
+  await seed('remittances', [{ remittance_id: 'REM-D', branch: 'BR-1', mas: 'MAS-2', date_remitted: today, status: 'Approved', decision_by_name: 'BAUTISTA, JO-ANN E.', decision_at: `${today}T02:15:00Z` }]);
+  await seed('collections', [{ collection_id: 'COL-D', collection_batch_id: 'CBT-D', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', or_number: '4001 C', amount_collected: 350, status: 'Posted', remittance_status: 'Remitted', linked_remittance_id: 'REM-D', accountable_employee_id: 'DPE-0002', date_remitted: today, encoded_at: `${today}T01:00:00Z`, remittance_method: 'Cash' }]);
+  const clearing = h.load('lib/clearing.ts');
+  const [line] = await clearing.withProgress((await clearing.getClearingPage('')).clearings.filter((item) => item.id === 'CLR-D'));
+  assert.equal(line.stage, 'Approved');
+  assert.deepEqual(line.kinds[0].decisions, [{ status: 'Approved', by: 'BAUTISTA, JO-ANN E.', at: `${today} 10:15` }]);
+});

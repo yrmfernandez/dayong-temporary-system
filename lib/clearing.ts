@@ -40,6 +40,8 @@ const manilaStamp = (value: string | Date | null | undefined) => { if (!value) r
 export type ClearingStage = "Waiting for encoding" | "Waiting for receipt" | "For approval" | "Returned" | "Approved" | "Removed";
 export { CLEARING_COVERS, coveredKinds, type ClearingCovers, type ClearingKind } from "@/lib/clearing-kinds";
 type Tally = { total: number; receipt: number; approval: number; returned: number; approved: number };
+/** Who approved or returned a kind's entries, and when ("YYYY-MM-DD HH:MM", Manila), one line per person and decision. */
+export type ClearingDecision = { status: "Approved" | "Returned"; by: string; at: string };
 export type Clearing = {
   id: string; branch: string; employeeId: string; employeeName: string; clearedAt: string; clearedDate: string;
   amount: number | null; notes: string; status: "Open" | "Encoded" | "Removed"; remittanceId: string; closedAt: string; closedReason: string; clearedBy: string;
@@ -48,7 +50,7 @@ export type Clearing = {
   /** Where its entries stand (getClearingPage only): overall (the least advanced kind), and per kind covered. */
   stage?: ClearingStage;
   entries?: Tally;
-  kinds?: Array<{ kind: ClearingKind; stage: ClearingStage; entries: Tally }>;
+  kinds?: Array<{ kind: ClearingKind; stage: ClearingStage; entries: Tally; decisions: ClearingDecision[] }>;
   /** getEncodableClearings, an Encoded clearing of an earlier day: the kinds still waiting for encoding (only these can be picked). */
   waitingKinds?: ClearingKind[];
 };
@@ -81,10 +83,10 @@ export async function withProgress(list: Clearing[]): Promise<Clearing[]> {
   const earliest = addDays(live.map((item) => item.clearedDate).sort()[0], -UNFINISHED_DAYS);
   const { collections, sales, receipt_photos: photos } = schema;
   const [collectionRows, saleRows, photoRows, cashNames] = await Promise.all([
-    currentDb().select({ id: collections.collection_id, employeeId: collections.accountable_employee_id, branch: collections.branch, dateRemitted: collections.date_remitted, status: collections.remittance_status, encodedAt: collections.encoded_at, method: collections.remittance_method })
+    currentDb().select({ id: collections.collection_id, employeeId: collections.accountable_employee_id, branch: collections.branch, dateRemitted: collections.date_remitted, status: collections.remittance_status, encodedAt: collections.encoded_at, method: collections.remittance_method, remittanceId: collections.linked_remittance_id })
       // DTO collections (accountable: the receiving clerk) belong to no clearing, even when that clerk was cleared too.
       .from(collections).where(and(inArray(collections.accountable_employee_id, ids), sql`lower(coalesce(${collections.status}, '')) = 'posted'`, sql`coalesce(${collections.accountable_role}, '') <> 'DTO'`, gte(collections.date_remitted, earliest), sql`${collections.date_remitted} <= ${latest}`)),
-    currentDb().select({ id: sales.sale_id, employeeId: sql<string>`coalesce(${sales.accountable_employee_id}, ${sales.mas_employee_id})`, branch: sales.branch, dateRemitted: sales.date_remitted, status: sales.remittance_status, encodedAt: sales.encoded_at, method: sales.payment_method })
+    currentDb().select({ id: sales.sale_id, employeeId: sql<string>`coalesce(${sales.accountable_employee_id}, ${sales.mas_employee_id})`, branch: sales.branch, dateRemitted: sales.date_remitted, status: sales.remittance_status, encodedAt: sales.encoded_at, method: sales.payment_method, remittanceId: sales.linked_remittance_id })
       .from(sales).where(and(or(inArray(sales.accountable_employee_id, ids), inArray(sales.mas_employee_id, ids)), gte(sales.date_remitted, earliest), sql`${sales.date_remitted} <= ${latest}`)),
     currentDb().select({ entryIds: photos.entry_ids }).from(photos).where(sql`${photos.uploaded_at} >= ${`${earliest}T00:00:00+08:00`}`),
     cashMethodNames(),
@@ -92,6 +94,8 @@ export async function withProgress(list: Clearing[]): Promise<Clearing[]> {
   const photographed = new Set(photoRows.flatMap((row) => text(row.entryIds).split(",").map(text)).filter(Boolean));
   const empty = (): Tally => ({ total: 0, receipt: 0, approval: 0, returned: 0, approved: 0 });
   const counts = new Map(live.map((item) => [item.id, { "New Sales": empty(), Collections: empty() } as Record<ClearingKind, Tally>]));
+  // The slips of approved and returned entries, per clearing and kind, to show who decided them (owner, October 13, 2026).
+  const slips = new Map(live.map((item) => [item.id, { "New Sales": new Set<string>(), Collections: new Set<string>() } as Record<ClearingKind, Set<string>>]));
   const key = (value: string) => text(value).toLowerCase();
   const tagged = [...collectionRows.map((row) => ({ ...row, kind: "Collections" as const })), ...saleRows.map((row) => ({ ...row, kind: "New Sales" as const }))];
   for (const entry of tagged) {
@@ -102,18 +106,34 @@ export async function withProgress(list: Clearing[]): Promise<Clearing[]> {
     const tally = counts.get(owner.id)![entry.kind];
     const status = text(entry.status);
     tally.total++;
+    if ((status === "Remitted" || status === "Returned") && text(entry.remittanceId)) slips.get(owner.id)![entry.kind].add(text(entry.remittanceId));
     if (status === "Remitted") tally.approved++;
     else if (status === "Returned") tally.returned++;
     // Cash needs no receipt photo: it waits only for approval.
     else if (status === "Outstanding" && !photographed.has(entry.id) && !isCashMethod(text(entry.method), cashNames)) tally.receipt++;
     else tally.approval++;
   }
+  const slipIds = [...new Set([...slips.values()].flatMap((byKind) => [...byKind["New Sales"], ...byKind.Collections]))];
+  const decided = new Map((slipIds.length ? await currentDb().select({ id: schema.remittances.remittance_id, status: schema.remittances.status, by: schema.remittances.decision_by_name, at: schema.remittances.decision_at })
+    .from(schema.remittances).where(inArray(schema.remittances.remittance_id, slipIds)) : []).map((row) => [row.id, row]));
+  const decisionsOf = (ids: Set<string>): ClearingDecision[] => {
+    const list = new Map<string, ClearingDecision>();
+    for (const id of ids) {
+      const slip = decided.get(id);
+      if (!slip || !["Approved", "Rejected"].includes(text(slip.status))) continue;
+      const decision = { status: text(slip.status) === "Approved" ? "Approved" as const : "Returned" as const, by: text(slip.by) || "—", at: manilaStamp(slip.at as string | Date | null) };
+      const key = `${decision.status}|${decision.by}`;
+      // One line per person and decision, with their latest time.
+      if (!list.has(key) || list.get(key)!.at < decision.at) list.set(key, decision);
+    }
+    return [...list.values()].sort((a, b) => a.at.localeCompare(b.at));
+  };
   const stageOf = (entries: Tally): ClearingStage => !entries.total ? "Waiting for encoding" : entries.returned ? "Returned" : entries.receipt ? "Waiting for receipt" : entries.approval ? "For approval" : "Approved";
   const order: ClearingStage[] = ["Returned", "Waiting for encoding", "Waiting for receipt", "For approval", "Approved"];
   return list.map((item) => {
     if (item.status === "Removed") return { ...item, stage: "Removed" as const };
     const byKind = counts.get(item.id)!;
-    const kinds = coveredKinds(item.covers).map((kind) => ({ kind, stage: stageOf(byKind[kind]), entries: byKind[kind] }));
+    const kinds = coveredKinds(item.covers).map((kind) => ({ kind, stage: stageOf(byKind[kind]), entries: byKind[kind], decisions: decisionsOf(slips.get(item.id)![kind]) }));
     const entries = kinds.reduce((sum, part) => ({ total: sum.total + part.entries.total, receipt: sum.receipt + part.entries.receipt, approval: sum.approval + part.entries.approval, returned: sum.returned + part.entries.returned, approved: sum.approved + part.entries.approved }), empty());
     const stage = kinds.map((part) => part.stage).sort((a, b) => order.indexOf(a) - order.indexOf(b))[0];
     return { ...item, stage, entries, kinds };
