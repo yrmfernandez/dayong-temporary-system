@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 64 API handlers, 117 library files, 48 component files; 392 scanned source/configuration/public-text files in total.
+42 page routes, 64 API handlers, 117 library files, 48 component files; 393 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -437,6 +437,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/legacy-sources.mjs](../scripts/legacy-sources.mjs) | `node:fs`, `node:path` | No flag detected; read source before running |
 | [scripts/list-programs.mjs](../scripts/list-programs.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/lookup-records.mjs](../scripts/lookup-records.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/merge-employee-pair.mjs](../scripts/merge-employee-pair.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/merge-employees.mjs](../scripts/merge-employees.mjs) | `node:fs`, `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/merge-legacy-mas.mjs](../scripts/merge-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/merge-members.mjs](../scripts/merge-members.mjs) | `node:fs`, `@next/env`, `postgres` | Yes; read source for semantics |

@@ -49,6 +49,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   const [showEntries, setShowEntries] = useState(review);
   const [open, setOpen] = useState("");
   const [remark, setRemark] = useState("");
+  // A deposit opened for editing in the record panel (owner, October 13, 2026: edit it, or void it).
+  const [editingDeposit, setEditingDeposit] = useState<Report["deposits"][number] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -140,7 +142,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 headers={["Bank Account Name", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
                 rows={report.deposits.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, item.remarks])}
                 total={report.depositTotal}
-                action={own ? (index) => <button type="button" className="text-xs text-red-700 underline print:hidden" onClick={() => { const reason = window.prompt("Why is this deposit being voided?"); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button> : undefined} />
+                action={own ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this deposit being voided?"); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
             </div>
 
             <div className="grid grid-cols-[1.1fr_0.8fr_1.6fr] gap-3">
@@ -173,7 +175,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
       {report && kind !== "daily" && <MasSummary report={report} />}
 
-      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}`} report={report} act={act} />}
+      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}`} report={report} act={act} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)} />}
       {report && own && data?.branch === "all" && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">Choose one branch to record expenses, deposits, Cash Beg and notes for it.</p>}
 
       {report && (
@@ -348,11 +350,13 @@ function MasSummary({ report }: { report: Report }) {
 }
 
 /** The clerk records what the report needs besides New Sales and Collections. */
-function RecordPanel({ report, act }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean> }) {
+function RecordPanel({ report, act, editing, onEditDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; editing: Report["deposits"][number] | null; onEditDone: () => void }) {
   const today = todayInManila();
   const inPeriod = today >= report.from && today <= report.to ? today : report.to;
   const [expense, setExpense] = useState({ category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
-  const [deposit, setDeposit] = useState({ date: inPeriod, bankAccount: "DSRDPI", amount: "", transferType: "", mas: "", remarks: "" });
+  const [deposit, setDeposit] = useState(editing
+    ? { date: editing.date, bankAccount: editing.bankAccount, amount: String(editing.amount), transferType: editing.transferType, mas: editing.mas, remarks: editing.remarks }
+    : { date: inPeriod, bankAccount: "DSRDPI", amount: "", transferType: "", mas: "", remarks: "" });
   const [cashBeg, setCashBeg] = useState({ amount: report.cash.cashBegEdit ? String(report.cash.cashBegEdit.amount) : "", reason: report.cash.cashBegEdit?.reason ?? "" });
   const [notes, setNotes] = useState({ pendingCash: String(report.notes.pendingCash || ""), specificRemarks: report.notes.specificRemarks, pendingTransactions: report.notes.pendingTransactions, otherComments: report.notes.otherComments });
   const masNames = report.masSummary.rows.map((row) => row.name);
@@ -376,8 +380,12 @@ function RecordPanel({ report, act }: { report: Report; act: (body: Record<strin
         <p className="text-xs text-muted-foreground">Saved to Expenses for your branch; Finance can void a wrong one.</p>
       </form>
 
-      <form className="space-y-2" onSubmit={async (event) => { event.preventDefault(); if (await act({ action: "add-deposit", ...deposit, amount: Number(deposit.amount) })) setDeposit((current) => ({ ...current, amount: "", remarks: "" })); }}>
-        <p className="font-semibold">Add cash forwarded to bank</p>
+      <form id="deposit-form" className={`space-y-2 ${editing ? "rounded-lg border border-primary/40 bg-primary/5 p-3" : ""}`} onSubmit={async (event) => {
+        event.preventDefault();
+        if (editing) { if (await act({ action: "edit-deposit", id: editing.id, ...deposit, amount: Number(deposit.amount) })) onEditDone(); return; }
+        if (await act({ action: "add-deposit", ...deposit, amount: Number(deposit.amount) })) setDeposit((current) => ({ ...current, amount: "", remarks: "" }));
+      }}>
+        <p className="font-semibold">{editing ? `Edit deposit ${editing.id}` : "Add cash forwarded to bank"}</p>
         <div className="grid grid-cols-2 gap-2">
           <Label className="text-xs">Date<Input type="date" value={deposit.date} onChange={(event) => setDeposit({ ...deposit, date: event.target.value })} /></Label>
           <Label className="text-xs">Amount<Input type="number" min="0" step="0.01" value={deposit.amount} onChange={(event) => setDeposit({ ...deposit, amount: event.target.value })} /></Label>
@@ -386,7 +394,10 @@ function RecordPanel({ report, act }: { report: Report; act: (body: Record<strin
         <Label className="text-xs">Type of transfer<Input value={deposit.transferType} onChange={(event) => setDeposit({ ...deposit, transferType: event.target.value })} placeholder="e.g. RCBC, GCash" /></Label>
         <Label className="text-xs">MAS<Input list="report-mas" value={deposit.mas} onChange={(event) => setDeposit({ ...deposit, mas: event.target.value })} /><datalist id="report-mas">{masNames.map((name) => <option key={name} value={name} />)}</datalist></Label>
         <Label className="text-xs">Remarks<Input value={deposit.remarks} onChange={(event) => setDeposit({ ...deposit, remarks: event.target.value })} placeholder="e.g. Already deposited" /></Label>
-        <Button type="submit" size="sm" disabled={!deposit.amount || !deposit.transferType.trim()}>Save deposit</Button>
+        <div className="flex gap-2">
+          <Button type="submit" size="sm" disabled={!deposit.amount || !deposit.transferType.trim()}>{editing ? "Save changes" : "Save deposit"}</Button>
+          {editing && <Button type="button" size="sm" variant="outline" onClick={onEditDone}>Cancel</Button>}
+        </div>
       </form>
 
       <div className="space-y-4">

@@ -72,5 +72,13 @@
     "Anib, N.": "LEG-2026-0008",
     "ALLAN C. QUIÑONES": "MD-2026-0062",
     "Agua, J.": "LEG-2026-0001"
-  }
+  },
+  "applied": [
+    {
+      "duplicate": "MD-2026-0084",
+      "keep": "MD-2026-0063",
+      "note": "Owner confirmed duplicate employee; keep original login and permissions, consolidate identical attendance and branch assignments. Applied with scripts/merge-employee-pair.mjs.",
+      "appliedOn": "2026-10-13 (production)"
+    }
+  ]
 }

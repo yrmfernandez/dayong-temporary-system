@@ -1,0 +1,30 @@
+{
+  "note": "Two people the old-sheet import merged into one member and one account (same surname and first name, no birthdate), split by scripts/split-member.mjs. NOPs are the old sheet's (owner-confirmed); months follow from each account's DOI. addKeep / addNew are old-sheet rows the import held back, added with the importer's IDs (hash of source|tab|row).",
+  "splits": [
+    {
+      "member": "PH-96073537",
+      "program": "DP-0005",
+      "keepFirstName": "FE MAMATO",
+      "newMember": { "surname": "CABUNAG", "firstName": "FE DHIVENIL", "doi": "2024-07-01" },
+      "keep": [
+        { "or": "15968 N", "nop": 16 },
+        { "or": "18393 N", "nop": 17 },
+        { "or": "19684 N", "nop": 18 },
+        { "or": "22025 N", "nop": 19 }
+      ],
+      "move": [
+        { "or": "15969 N", "nop": 18 },
+        { "or": "18394 N", "nop": 19 },
+        { "or": "19685 N", "nop": 20 },
+        { "or": "22024 N", "nop": 21 }
+      ],
+      "addKeep": [
+        { "ref": "Data-Base-Old|DDO 1-COLL|8314", "or": "25235 N", "orDate": "2026-10-07", "amount": 250, "nop": 20 }
+      ],
+      "addNew": [
+        { "ref": "Data-Base-Old|DDO 1-COLL|8315", "or": "25236 N", "orDate": "2026-10-07", "amount": 250, "nop": 22 }
+      ],
+      "reason": "Two people merged by the old-sheet import: Cabunag, Fe (Fe Mamato) and Cabunag, Fe Dhivenil, MARAGUSAN, BANSAGAN, D-210 HG; the paired same-day receipts are one each (owner, October 13, 2026)"
+    }
+  ]
+}

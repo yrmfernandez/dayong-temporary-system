@@ -324,6 +324,19 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Forfeited accounts today only; deposits can be edited (2026-10-13)
+
+- **Owner:** allow entries for forfeited accounts just today; in reports allow editing even beyond 3 PM: instead of only void, they can edit or void.
+- **Done:** `FORFEITED_PAYMENT_DAYS = ["2026-10-13"]`: payments on forfeited accounts pass on that day only (form and save), blocked again from October 14. Reports: Edit next to Void on each bank deposit (date, bank account, amount, type, MAS, remarks; own or administrator; not voided). There is no 3:00 PM lock on reports (3:00 PM is only the incentive deadline). Tested.
+
+### Reports: no incentives, deposits not showing; DTO label (2026-10-13)
+
+- **Owner:** reports show no incentives and no cash flow, even after saving; a DTO transaction should say DTO, not the MAS or Collector name.
+- **Found (production, read-only):** the report itself works (ABESIA, DARYL JANE, MATINA, October 13: incentives ₱1,130 + ₱300, 4 deposits). CABALLERO, JENNY's five collections (OR date Sunday October 11, Date Remitted moved to October 12 for an entry clerks' meeting) had their ₱474 incentive forfeited: the cash counts as received at her clearing, October 13 12:08, after the 3:00 PM October 12 deadline. Her two deposits (₱992, ₱725) were saved with deposit date October 12, so they are on the October 12 report while her entries (by date encoded) are on October 13.
+- **Done:** DTO payments show as DTO (report, Today's Entries, Remittances). Tested.
+- **Owner decided:** yes: the Date Remitted is when the MAS really remitted; the clerk received the cash but could not encode or clear it that day. **Done:** a Date Remitted moved earlier with a reason counts the cash as received on that day (start of the day), so an on-time incentive is kept (`receivedAtOf`). Tested.
+- **Applied on production (owner's request):** `scripts/recalculate-moved-date-remitted.mts` returned and re-sent CABALLERO, JENNY's two pending slips: REM-20261013061728-IUZM (₱1,130) → REM-20261013072247-A8NI (₱782); REM-20261013065406-0AG5 (₱851) → REM-20261013072256-7D25 (₱725); ₱474 of incentive given back, forfeits cleared; the returned slips keep the reason.
+
 ### New Sales refused although the MAS is in Clearing (2026-10-13)
 
 - **Owner:** CABALLERO, JENNY cleared SUYMAN, NELSON (MINTAL, both kinds) but New Sales says he is not in Clearing for New Sales.
@@ -679,3 +692,6 @@ PH-25541018 is enrolled only in D-350 (5Y) (DP-0009). Production correction move
 
 ### October 13, 2026: clearing removal
 Removed clearing CLR-20261013022919-CXXZ (NABUNTURAN, DNDO-2026-0042, PHP 900, note 20 FB) in production at the owner's request; verified Removed status, Audit Log and Record Corrections. The row was absent from staging; production dry run rolled back before applying. Clearing's Remove reason and confirmation form now opens directly under the selected row, focuses the reason field and displays removal errors there. ESLint, TypeScript and the existing clearing ownership/removal test passed. UI change awaits deployment.
+
+### October 13, 2026: duplicate employee MD-2026-0084
+Owner confirmed MD-2026-0084 duplicates MD-2026-0063. scripts/merge-employee-pair.mjs performs a scoped, audited transaction with dry-run rollback and --verify; retains the original login and permissions, reassigns employee/user references and matching names, and refuses conflicting attendance/pay profiles/report-note keys. Staging lacked the duplicate. Production dry run succeeded before applying: removed the duplicate employee, login USR-0071, redundant branch assignment and identical October 13 Day Off attendance row. Original MD-2026-0063 and login USR-0060 retained. No transaction references needed reassignment; all were already under the original. Audit Log and Record Corrections retain the merge; config/employee-merges.json records the applied pair.

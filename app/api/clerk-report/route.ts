@@ -5,7 +5,7 @@ import { asAuditPeriod, auditedEmployees, periodSpan } from "@/lib/daily-audit";
 import { getEmployees } from "@/lib/employees";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { getReportRemarks } from "@/lib/report-remarks";
-import { addDeposit, saveCashBeg, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
+import { addDeposit, editDeposit, saveCashBeg, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense } from "@/lib/finance-data";
 import { sql } from "drizzle-orm";
@@ -91,6 +91,9 @@ export const POST = withEncoder(async (request: Request) => {
         const saved = await addDeposit(body, clerk);
         return Response.json({ success: true, message: `Deposit ${saved.id} saved.` });
       }
+      case "edit-deposit":
+        await editDeposit(String(body.id ?? ""), body, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+        return Response.json({ success: true, message: "Deposit updated." });
       case "void-deposit":
         await voidDeposit(String(body.id ?? ""), String(body.reason ?? ""), { employeeId: user.employeeId, isAdmin: await canManageUsers() });
         return Response.json({ success: true, message: "Deposit voided." });

@@ -66,6 +66,28 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
   return { id };
 }
 
+/**
+ * Corrects a deposit (owner, October 13, 2026: edit it, not only void it): date, bank account, amount, type of transfer,
+ * MAS and remarks. The clerk who recorded it or an administrator; not a voided one. The Audit Log keeps the old values.
+ */
+export async function editDeposit(id: string, input: Record<string, unknown>, by: { employeeId: string; isAdmin: boolean }) {
+  const date = text(input.date), amount = Math.round(Number(input.amount) * 100) / 100;
+  if (!validDate(date)) throw new Error("Enter the deposit date.");
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter the amount deposited.");
+  const bankAccount = text(input.bankAccount).slice(0, 100), transferType = text(input.transferType).slice(0, 60);
+  if (!bankAccount) throw new Error("Enter the bank account name.");
+  if (!transferType) throw new Error("Enter the type of transfer (bank or channel).");
+  getEncoder();
+  const all = await rows(DEPOSITS, DEPOSIT_HEADERS.length);
+  const index = all.findIndex((row, position) => position > 0 && text(row[0]) === text(id));
+  if (index < 0) throw new Error("Deposit not found.");
+  if (!by.isAdmin && text(all[index][2]) !== by.employeeId) throw new Error("You can edit only deposits you recorded.");
+  if (text(all[index][10]) === "Voided") throw new Error("A voided deposit cannot be edited.");
+  // B date, F bank account, G amount, H type of transfer, I MAS, J remarks; the clerk, branch and status stay.
+  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!B${index + 1}:B${index + 1}`, valueInputOption: "RAW", requestBody: { values: [[date]] } });
+  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!F${index + 1}:J${index + 1}`, valueInputOption: "RAW", requestBody: { values: [[bankAccount, amount, transferType, text(input.mas).slice(0, 100), text(input.remarks).slice(0, 200)]] } });
+}
+
 /** Voids a deposit recorded by mistake; the clerk who recorded it or an administrator may do so. */
 export async function voidDeposit(id: string, reason: string, by: { employeeId: string; isAdmin: boolean }) {
   if (reason.trim().length < 3) throw new Error("Give the reason for voiding the deposit.");

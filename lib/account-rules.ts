@@ -131,14 +131,22 @@ export type CollectionChannel = (typeof COLLECTION_CHANNELS)[number];
 /** MAS collections earn the MAS incentive, Collector collections the Collector incentive, DTO none (owner, October 10, 2026). */
 export const incentiveRoleFor = (channel: string): "MAS" | "Collector" | "DTO" => channel === "Collector" ? "Collector" : channel === "DTO" ? "DTO" : "MAS";
 
+/**
+ * Days (Manila) when payments may be entered on forfeited accounts (owner, October 13, 2026: "just today"). On any other
+ * day a forfeited account takes no payment. Add a day here only on the owner's instruction.
+ */
+export const FORFEITED_PAYMENT_DAYS: readonly string[] = ["2026-10-13"];
+export const forfeitedPaymentsAllowed = (today = todayInManila()) => FORFEITED_PAYMENT_DAYS.includes(today);
+
 export type PaymentInput = { monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; amount: number; orDate: string; orNumber: string; waiver: string; collectedByRole: string; originalMas: string };
 export function validatePayment(account: Account, history: AccountPayment[], input: PaymentInput, today = todayInManila()) {
   const state = accountState(account, history, today);
-  if (state.status === "Forfeited") throw new Error("This program account is forfeited. Payments are blocked.");
+  const forfeitedAllowed = forfeitedPaymentsAllowed(today);
+  if (state.status === "Forfeited" && !forfeitedAllowed) throw new Error("This program account is forfeited. Payments are blocked.");
   if (!validDate(input.orDate) || input.orDate > today || input.orDate < account.doi) throw new Error("OR Date must be a valid date between DOI and today.");
   if (state.latestOrDate && input.orDate < state.latestOrDate) throw new Error("OR Date cannot precede the last recorded payment. Review backdated entries separately.");
   const atPayment = accountState(account, history, input.orDate);
-  if (atPayment.status === "Forfeited") throw new Error("The account was forfeited on this OR Date.");
+  if (atPayment.status === "Forfeited" && !forfeitedAllowed) throw new Error("The account was forfeited on this OR Date.");
   if ((state.temporarilySuspended || atPayment.temporarilySuspended) && input.waiver !== "Waiver") throw new Error("Select Waiver under If Suspended before accepting payment.");
   if (!(COLLECTION_CHANNELS as readonly string[]).includes(input.collectedByRole)) throw new Error("Select whether the collection was made by MAS, Collector, or DTO (Direct to Office).");
   if (!input.orNumber.trim()) throw new Error("OR Number is required.");

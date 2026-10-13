@@ -162,7 +162,7 @@ async function loadLedger() {
   }));
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
     kind: "Collections" as const, photoId: "", cash: false, encodedByEmployeeId: text(row[22]), encodedByName: text(row[23]), encodedAt: manilaStamp(text(row[24])), dateRemitted: text(row[40]).slice(0, 10), id: text(row[0]), batchId: text(row[1]), rowNumber: activeCollections.rowNumbers[index], memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
-    accountableEmployeeId: text(row[30]), accountableName: text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS",
+    accountableEmployeeId: text(row[30]), accountableName: text(row[32]) === "DTO" || text(row[25]) === "DTO" ? "DTO" : text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS", // DTO shows as DTO; the clerk stays accountable by ID
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), forfeitedIncentive: number(row[FORFEIT_COLUMN.Collections]), incentiveDeadline: deadline(text(row[9]), text(row[6])), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
     collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]), fidelity: number(row[37]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${text(row[9])}T00:00:00Z`).getTime()) / 86400000)) || 0,
@@ -450,12 +450,26 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
  * kept when this is by 3:00 PM the day after the OR date. (It used to assume 11:59 PM of the Date Remitted when encoded
  * on a later day, which made cash received on time look late.)
  */
-async function receivedAtOf(items: CashCollection[]) {
+export async function receivedAtOf(items: Array<Pick<CashCollection, "id" | "encodedAt" | "dateRemitted" | "accountableEmployeeId" | "branch" | "kind">>) {
   const encoded = items.map((item) => item.encodedAt).filter(Boolean).sort().at(-1) ?? "";
   const day = items.map((item) => item.dateRemitted).find(Boolean) || encoded.slice(0, 10) || manilaNow().date;
   const cleared = await clearedAt(items[0].accountableEmployeeId, items[0].branch, day, encoded, items[0].kind);
   const stamp = cleared || encoded || `${manilaNow().date} ${manilaNow().time}`;
+  /*
+   * A Date Remitted moved earlier with a reason (owner, October 13, 2026): the clerk received the cash that day but could
+   * not clear or encode it (a meeting and the like), so the cash counts as received on the Date Remitted. Its time is
+   * not known, so the start of that day is used; the incentive is kept when that day is on time.
+   */
+  if (day < stamp.slice(0, 10) && await movedWithReason(items.map((item) => item.id))) return { date: day, time: "00:00" };
   return { date: stamp.slice(0, 10), time: stamp.slice(11, 16) };
+}
+
+/** True when these entries' Date Remitted was moved off the clearing day with a reason (date_remitted_reason). */
+async function movedWithReason(ids: string[]) {
+  if (!ids.length) return false;
+  const result = await getDb().execute(sql`select 1 from collections where collection_id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)}) and coalesce(trim(date_remitted_reason), '') <> ''
+    union all select 1 from sales where sale_id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)}) and coalesce(trim(date_remitted_reason), '') <> '' limit 1`);
+  return (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []).length > 0;
 }
 
 /**

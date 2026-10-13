@@ -185,7 +185,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
       const nop = text(row[13]) === text(row[14]) ? text(row[13]) : `${text(row[13])} to ${text(row[14])}`;
       return entry({
         kind: "Collection", id: text(row[0]), memberNumber: text(row[4]), memberName,
-        program: programNames.get(text(row[5])) || text(row[5]), branch: text(row[6]), person: text(row[31]) || text(row[7]),
+        program: programNames.get(text(row[5])) || text(row[5]), branch: text(row[6]), person: text(row[32]) === "DTO" || text(row[25]) === "DTO" ? "DTO" : text(row[31]) || text(row[7]), // a DTO payment shows DTO, not the clerk or MAS (owner, October 13, 2026)
         orNumber: text(row[8]), orDate, applicationNumber: "", notes: "",
         amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[38]),
         remittanceStatus: text(row[28]), remittanceId: text(row[29]), encodedBy: text(row[23]), encodedAt: manilaTime(text(row[24]) || text(row[20])),

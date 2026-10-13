@@ -78,3 +78,12 @@ test("programs are isolated and missing-month statuses stop at 150D", () => {
   assert.equal(accountState(account, [payment()], "2026-05-20").status, "120D");
   assert.equal(accountState(account, [payment()], "2026-06-20").status, "150D");
 });
+test("a forfeited account takes payments only on the owner's chosen days (October 13, 2026)", () => {
+  // DOI 2025-01-15, nothing paid: forfeited long before October 2026.
+  const old = { ...account, doi: "2025-01-15" };
+  const late = input({ monthFrom: "2025-02", monthTo: "2025-02", orDate: "2026-10-13" });
+  assert.equal(accountState(old, [], "2026-10-13").status, "Forfeited");
+  assert.throws(() => validatePayment(old, [], { ...late, orDate: "2026-10-12" }, "2026-10-12"), /forfeited/, "the day before: blocked");
+  validatePayment(old, [], late, "2026-10-13");
+  assert.throws(() => validatePayment(old, [], { ...late, orDate: "2026-10-14" }, "2026-10-14"), /forfeited/, "the day after: blocked again");
+});

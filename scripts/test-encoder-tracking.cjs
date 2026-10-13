@@ -2746,6 +2746,8 @@ test('a DTO batch: a member of a resigned MAS paid at the office, without a clea
     assert.deepEqual({ ...row, remittance_amount: Number(row.remittance_amount) },
       { mas: 'Old MAS', accountable_employee_id: 'DPE-0001', accountable_name: '=encoder', accountable_role: 'DTO', collected_by_role: 'DTO', remittance_amount: 350 },
       'the account keeps its MAS; the clerk is accountable; DTO earns no incentive, so all ₱350 is remitted');
+    const { entries } = await h.load('lib/todays-entries.ts').getEntriesForRange(today, today, 'encoded', {});
+    assert.deepEqual(entries.map((entry) => entry.person), ['DTO'], 'shown as DTO, not the clerk or the MAS');
   } finally { globalThis.dayongClearingNotRequired = true; }
 });
 
@@ -2806,4 +2808,39 @@ test('a clearing for both kinds still covers an earlier Date Remitted for the ki
     assert.equal(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', yesterday, 'New Sales'), '', 'its New Sales are still waiting');
     assert.match(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', yesterday, 'Collections'), /not in Clearing for Collections/, 'its Collections are already encoded');
   } finally { globalThis.dayongClearingNotRequired = true; }
+});
+
+test('a Date Remitted moved earlier with a reason counts the cash as received that day', async () => {
+  const h = harness();
+  await seedAccount({ doi: '2026-09-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  // Cleared on Tuesday the 13th at 12:08; the MAS really remitted on Monday the 12th (entry clerks' meeting).
+  await seed('clearings', [{ clearing_id: 'CLR-M', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: '2026-10-13T04:08:00Z', cleared_date: '2026-10-13', status: 'Open', covers: 'Both' }]);
+  const row = (id, reason) => ({ collection_id: id, collection_batch_id: `CBT-${id}`, enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', or_number: `${id} C`, amount_collected: 350, status: 'Posted', remittance_status: 'Outstanding', accountable_employee_id: 'DPE-0002', date_remitted: '2026-10-12', date_remitted_reason: reason, encoded_at: '2026-10-13T06:12:00Z', remittance_method: 'Cash' });
+  await seed('collections', [row('M1', "Entry clerks' meeting"), row('M2', null)]);
+  const { receivedAtOf } = h.load('lib/remittance-workflow.ts');
+  const item = (id) => ({ id, encodedAt: '2026-10-13 14:12', dateRemitted: '2026-10-12', accountableEmployeeId: 'DPE-0002', branch: 'BR-1', kind: 'Collections' });
+  assert.deepEqual(await receivedAtOf([item('M1')]), { date: '2026-10-12', time: '00:00' }, 'moved with a reason: received on the Date Remitted');
+  assert.deepEqual(await receivedAtOf([item('M2')]), { date: '2026-10-13', time: '12:08' }, 'no reason: the clearing time, as before');
+  // OR dated Sunday the 11th: due 3:00 PM Monday the 12th, so the moved batch keeps its incentive.
+  assert.equal(h.load('lib/remittance-deadline.ts').keepsIncentive('2026-10-11', '2026-10-12 00:00'), true);
+});
+
+test('a clerk can edit their own deposit (not a voided one, not another clerk\'s)', async () => {
+  const h = harness();
+  h.rows['Bank Deposits'] = [[],
+    ['DEP-1', '2026-10-12', 'DPE-7', 'Clerk', 'MINTAL', 'DSRDPI', 992, 'RCBC', 'SUYMAN, NELSON', '', 'Posted', '', ''],
+    ['DEP-2', '2026-10-12', 'DPE-7', 'Clerk', 'MINTAL', 'DSRDPI', 50, 'RCBC', '', '', 'Voided', 'Typed twice', ''],
+  ];
+  const { editDeposit } = h.load('lib/clerk-cash.ts');
+  const { runAsSystem } = h.load('lib/encoder-context.ts');
+  const changes = { date: '2026-10-13', bankAccount: 'DSRDPI', amount: 990, transferType: 'RCBC', mas: 'SUYMAN, NELSON', remarks: 'Amount corrected' };
+  await runAsSystem(() => editDeposit('DEP-1', changes, { employeeId: 'DPE-7', isAdmin: false }));
+  const [dateWrite, restWrite] = h.writes.slice(-2);
+  assert.deepEqual([dateWrite.range, dateWrite.requestBody.values], ["'Bank Deposits'!B2:B2", [['2026-10-13']]]);
+  assert.deepEqual([restWrite.range, restWrite.requestBody.values], ["'Bank Deposits'!F2:J2", [['DSRDPI', 990, 'RCBC', 'SUYMAN, NELSON', 'Amount corrected']]]);
+  await assert.rejects(() => runAsSystem(() => editDeposit('DEP-1', changes, { employeeId: 'DPE-8', isAdmin: false })), /only deposits you recorded/);
+  await runAsSystem(() => editDeposit('DEP-1', changes, { employeeId: 'DPE-8', isAdmin: true }));
+  await assert.rejects(() => runAsSystem(() => editDeposit('DEP-2', changes, { employeeId: 'DPE-7', isAdmin: false })), /voided deposit cannot be edited/);
+  await assert.rejects(() => runAsSystem(() => editDeposit('DEP-1', { ...changes, amount: 0 }, { employeeId: 'DPE-7', isAdmin: false })), /amount deposited/);
 });

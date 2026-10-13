@@ -39,6 +39,7 @@ import {
 
 import type { Member } from "@/lib/types";
 import { calculateRemittance, tiersForBranch, type IncentiveTier } from "@/lib/remittance";
+import { forfeitedPaymentsAllowed } from "@/lib/account-rules";
 import { isValidOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
 
 type CollectionChannel = "MAS" | "Collector" | "DTO";
@@ -629,7 +630,8 @@ export default function CollectionsPage() {
     const quote = quoteEntry(entry);
     if (quote.error) return quote.error;
     if (entry.accountLoading || !entry.accountStatus) return "Load the program account before saving.";
-    if (entry.accountStatus === "Forfeited") return "This program account is forfeited. Payments are blocked.";
+    // Payments on forfeited accounts are allowed only on the owner's chosen days (lib/account-rules.ts).
+    if (entry.accountStatus === "Forfeited" && !forfeitedPaymentsAllowed()) return "This program account is forfeited. Payments are blocked.";
     if (entry.temporarilySuspended && entry.ifSuspended !== "Waiver") return "Select Waiver under If Suspended.";
     const rate = programs.find((p) => p.id === entry.programId)?.basePay ?? 0;
     const months = getMonthDifference(entry.monthFrom, entry.monthTo);
@@ -1414,7 +1416,7 @@ export default function CollectionsPage() {
                             <span title="NOP is set from the covered months and the account's history (an NS account's New Sale is NOP 1, so its first collection is NOP 2). The remittance uses the MAS or Collector incentive tier and mark-up."> ⓘ</span>
                             {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
                             {entry.temporarilySuspended && <p className="mt-1 text-amber-700">Temporarily suspended. Select Waiver under If Suspended.</p>}
-                            {entry.accountStatus === "Forfeited" && <p className="mt-1 text-red-600">Payments are blocked for this program.</p>}
+                            {entry.accountStatus === "Forfeited" && <p className={`mt-1 ${forfeitedPaymentsAllowed() ? "text-amber-700" : "text-red-600"}`}>{forfeitedPaymentsAllowed() ? "Forfeited: payments are allowed today only." : "Payments are blocked for this program."}</p>}
                             {entry.temporarilySuspended && <label className="mt-2 block text-foreground">If Suspended *<select className="ml-2 rounded border p-1" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
                           </div>
 
