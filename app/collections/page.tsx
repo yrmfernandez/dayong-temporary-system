@@ -266,7 +266,7 @@ export default function CollectionsPage() {
   // DTO batch (owner, October 13, 2026): members who paid at the office, e.g. of a resigned or inactive MAS. No clearing,
   // any account of the branch, and the clerk who received the cash is accountable (app/api/collections/route.ts).
   const [dto, setDto] = useState(false);
-  // ORC, outright commission (owner, October 13, 2026): per batch, the MAS and the Collector both earn their incentive.
+  // ORC defaults to No for each batch; Yes must be selected for a Collector batch.
   const [orc, setOrc] = useState(false);
   // A Date Remitted moved off the clearing day needs a reason (encoding delayed by meetings and the like; lib/clearing.ts).
   const [dateRemittedReason, setDateRemittedReason] = useState("");
@@ -301,7 +301,7 @@ export default function CollectionsPage() {
     { dto, orc, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity },
     (draft) => {
       setDto(Boolean(draft.dto));
-      setOrc(Boolean(draft.orc));
+      setOrc(draft.orc === true);
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
       setDateRemitted(draft.dateRemitted ?? "");
@@ -959,7 +959,7 @@ export default function CollectionsPage() {
           ) : (
           <div className="mb-4"><ClearingPicker kind="Collections" value={cleared?.id ?? ""} onPick={(clearing) => {
             setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName, clearedDate: clearing.clearedDate });
-            setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setDateRemittedReason(""); clearScopedMemberSelections();
+            setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setDateRemittedReason(""); setOrc(false); clearScopedMemberSelections();
           }} /></div>
           )}
           <div className="grid gap-4 md:grid-cols-3">
@@ -1002,7 +1002,7 @@ export default function CollectionsPage() {
               <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/50 p-1">
                 {collectionChannels.map((channel) => (
                   <button key={channel.value} type="button" role="radio" aria-checked={collectedBy === channel.value} title={channel.hint}
-                    onClick={() => setCollectedBy(channel.value)}
+                    onClick={() => { if (channel.value !== collectedBy) setOrc(false); setCollectedBy(channel.value); }}
                     className={`rounded-md px-2 py-1.5 text-sm font-semibold transition-colors ${collectedBy === channel.value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
                     {channel.label}
                   </button>

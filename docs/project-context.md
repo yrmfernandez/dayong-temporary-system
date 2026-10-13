@@ -676,3 +676,6 @@ The Collections page lists a member only under their account's branch and MAS, a
 
 ### October 13, 2026: member program correction
 PH-25541018 is enrolled only in D-350 (5Y) (DP-0009). Production correction moved OR 09522 B to that account and deleted the empty D-350 assignment. Payments now run NOP 2–5 in OR-date order (OR 14368 B is NOP 5, August 2026); status recalculated to 60D. Staging and production dry runs passed before applying; production readback verified the result. Audit Log and Record Corrections retain the changes; config/receipt-consolidations.json records the applied case.
+
+### October 13, 2026: clearing removal
+Removed clearing CLR-20261013022919-CXXZ (NABUNTURAN, DNDO-2026-0042, PHP 900, note 20 FB) in production at the owner's request; verified Removed status, Audit Log and Record Corrections. The row was absent from staging; production dry run rolled back before applying. Clearing's Remove reason and confirmation form now opens directly under the selected row, focuses the reason field and displays removal errors there. ESLint, TypeScript and the existing clearing ownership/removal test passed. UI change awaits deployment.
