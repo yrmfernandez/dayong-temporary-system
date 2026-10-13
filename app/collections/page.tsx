@@ -266,6 +266,8 @@ export default function CollectionsPage() {
   // DTO batch (owner, October 13, 2026): members who paid at the office, e.g. of a resigned or inactive MAS. No clearing,
   // any account of the branch, and the clerk who received the cash is accountable (app/api/collections/route.ts).
   const [dto, setDto] = useState(false);
+  // ORC, outright commission (owner, October 13, 2026): per batch, the MAS and the Collector both earn their incentive.
+  const [orc, setOrc] = useState(false);
   // A Date Remitted moved off the clearing day needs a reason (encoding delayed by meetings and the like; lib/clearing.ts).
   const [dateRemittedReason, setDateRemittedReason] = useState("");
   const dateRemittedChanged = Boolean(cleared?.clearedDate && dateRemitted && dateRemitted !== cleared.clearedDate);
@@ -296,9 +298,10 @@ export default function CollectionsPage() {
   // The unsaved batch survives leaving the page and coming back (member search results included, so picks still show).
   useFormDraft(
     "collections",
-    { dto, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity },
+    { dto, orc, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity },
     (draft) => {
       setDto(Boolean(draft.dto));
+      setOrc(Boolean(draft.orc));
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
       setDateRemitted(draft.dateRemitted ?? "");
@@ -411,6 +414,7 @@ export default function CollectionsPage() {
     setDateRemitted(next ? manilaNow().date : "");
     setDateRemittedReason("");
     setCollectedBy(next ? "DTO" : "MAS");
+    setOrc(false);
     setPenalty("");
     setPenaltyNote("");
     setFidelity("");
@@ -480,7 +484,7 @@ export default function CollectionsPage() {
       const selected = programs.find((p) => p.id === entry.programId);
       const count = getMonthDifference(entry.monthFrom, entry.monthTo);
       if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
-      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment), error: "" };
+      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto, reactivation: entry.reactivation === "Yes" }), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
   }
   const quotes = collections.map(quoteEntry);
@@ -633,6 +637,7 @@ export default function CollectionsPage() {
     if (!branch) return "Branch is required.";
 
     if (!dto && !mas) return "MAS is required.";
+    if (orc && !dto && entry.reactivation === "Yes") return "A reactivation cannot be in an ORC batch. Set ORC to No, or encode the reactivation in its own batch.";
 
     if (!dateRemitted) {
       return "Date Remitted is required.";
@@ -849,6 +854,7 @@ export default function CollectionsPage() {
           dateRemitted,
           dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "",
           dto,
+          orc: orc && !dto,
           collectedBy: dto ? "DTO" : collectedBy,
           paymentMethod,
           paymentReference: selectedPaymentMethod && !selectedPaymentMethod.isCash ? paymentReference.trim() : "",
@@ -915,6 +921,7 @@ export default function CollectionsPage() {
     setPenaltyNote("");
     setFidelity("");
     setCollectedBy(dto ? "DTO" : "MAS");
+    setOrc(false);
     if (dto) setDateRemitted(manilaNow().date);
     setPaymentMethod(paymentMethods.find((method) => method.isCash)?.name || paymentMethods[0]?.name || "");
     setPaymentReference("");
@@ -1002,6 +1009,17 @@ export default function CollectionsPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">{collectionChannels.find((channel) => channel.value === collectedBy)?.hint}. Applies to every entry; DTO uses the current MAS incentive.</p>
+            </fieldset>}
+
+            {!dto && collectedBy !== "DTO" && <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-medium">ORC (outright commission)</legend>
+              <div role="radiogroup" aria-label="ORC" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1">
+                {([[false, "No"], [true, "Yes"]] as const).map(([value, label]) => (
+                  <button key={label} type="button" role="radio" aria-checked={orc === value} onClick={() => setOrc(value)}
+                    className={`rounded-md px-2 py-1.5 text-sm font-semibold transition-colors ${orc === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{orc ? "Yes: the MAS and the Collector both earn their incentive on every entry; both are kept from the remittance. No reactivation in this batch." : "No: only who collected earns the incentive."}</p>
             </fieldset>}
 
             <div className="space-y-2">
@@ -1462,6 +1480,7 @@ export default function CollectionsPage() {
                                         </SelectItem>
                                       </SelectContent>
                                     </Select>
+                                    <p className="text-xs text-muted-foreground">Yes: whoever collected earns only 10% of (base pay − mark-up). Not allowed in an ORC batch.</p>
                                   </div>
 
                                   <div className="space-y-2">

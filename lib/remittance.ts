@@ -70,10 +70,20 @@ export function calculateSaleIncentive(program: SaleProgram, amountPaid: number)
  * `role` is who collected (owner, October 10, 2026): "MAS" earns the MAS incentive of the period, "Collector" the
  * Collector incentive, and "DTO" (Direct to Office) earns nothing, so the whole installment is remitted. In a
  * non-commissionable period only the Collector earns; a MAS collection is remitted in full.
+ *
+ * `options` (owner, October 13, 2026):
+ *   - `orc`, Outright Commission (set per batch): each NOP's incentive is the MAS tier's plus the Collector tier's, both
+ *     kept from the remittance and recorded apart (masIncentive, collectorIncentive). Not for DTO.
+ *   - `reactivation` (set per entry): whoever collected earns only 10% of (base pay - mark-up) per NOP. A reactivation
+ *     cannot be ORC. A MAS still earns nothing in a non-commissionable period.
  */
-export function calculateRemittance(basePay: number, tiers: IncentiveTier[], role: string, nopFrom: number, nopTo: number, amountCollected?: number, flexible = false, maxMonthlyPayment?: number | null) {
+export const REACTIVATION_RATE = 10;
+export function calculateRemittance(basePay: number, tiers: IncentiveTier[], role: string, nopFrom: number, nopTo: number, amountCollected?: number, flexible = false, maxMonthlyPayment?: number | null, options: { orc?: boolean; reactivation?: boolean } = {}) {
   if (!Number.isFinite(basePay) || basePay <= 0 || !Number.isInteger(nopFrom) || !Number.isInteger(nopTo) || nopFrom < 1 || nopTo < nopFrom || nopTo - nopFrom > 1199) throw new Error("Select a valid program and NOP range to calculate remittance.");
   if (role !== "MAS" && role !== "Collector" && role !== "DTO") throw new Error("Select the collection role.");
+  const orc = options.orc === true, reactivation = options.reactivation === true;
+  if (orc && reactivation) throw new Error("A reactivation cannot be ORC (outright commission).");
+  if (orc && role === "DTO") throw new Error("ORC (outright commission) is for MAS and Collector collections, not DTO.");
   const count = nopTo - nopFrom + 1;
   const paidCents = amountCollected === undefined ? NaN : Math.round(amountCollected * 100);
   const flexibleShares = flexible && Number.isFinite(paidCents);
@@ -89,20 +99,29 @@ export function calculateRemittance(basePay: number, tiers: IncentiveTier[], rol
       breakdown.push({ nop, tierId: "", role, basePay: baseCents / 100, markUp: 0, incentiveType: "fixed" as const, incentiveAmount: 0, incentive: 0, remittance: baseCents / 100 });
       continue;
     }
-    const matches = tiers.filter((tier) => tier.role === role && nop >= tier.fromMonth && nop <= tier.toMonth);
-    if (matches.length !== 1) throw new Error(`Configure exactly one ${role} incentive tier for NOP ${nop}.`);
-    const tier = matches[0];
-    if (!Number.isFinite(tier.markUp) || tier.markUp < 0 || tier.markUp > basePay || !Number.isFinite(tier.incentiveAmount) || tier.incentiveAmount < 0 || !["fixed", "percentage"].includes(tier.incentiveType) || (tier.incentiveType === "percentage" && tier.incentiveAmount > 100)) throw new Error(`Invalid incentive configuration for NOP ${nop}.`);
+    const tierOf = (tierRole: string) => {
+      const matches = tiers.filter((tier) => tier.role === tierRole && nop >= tier.fromMonth && nop <= tier.toMonth);
+      if (matches.length !== 1) throw new Error(`Configure exactly one ${tierRole} incentive tier for NOP ${nop}.`);
+      const tier = matches[0];
+      if (!Number.isFinite(tier.markUp) || tier.markUp < 0 || tier.markUp > basePay || !Number.isFinite(tier.incentiveAmount) || tier.incentiveAmount < 0 || !["fixed", "percentage"].includes(tier.incentiveType) || (tier.incentiveType === "percentage" && tier.incentiveAmount > 100)) throw new Error(`Invalid incentive configuration for NOP ${nop}.`);
+      return tier;
+    };
+    const tier = tierOf(role);
     const markUpCents = Math.round(tier.markUp * 100);
     const incentiveBase = baseCents - markUpCents;
     // Remittance = ((base pay - mark-up) - incentive) + mark-up. The incentive is what the MAS/Collector keeps for
     // this NOP: a fixed amount, or a percentage of (base pay - mark-up). The mark-up always goes to the company.
-    const earns = !(tier.nonCommissionable && role === "MAS");
-    const incentiveCents = !earns ? 0 : tier.incentiveType === "percentage" ? Math.round(incentiveBase * tier.incentiveAmount / 100) : Math.round(tier.incentiveAmount * 100);
+    const tierIncentive = (item: IncentiveTier, itemRole: string) => (item.nonCommissionable && itemRole === "MAS") ? 0
+      : reactivation ? Math.round(incentiveBase * REACTIVATION_RATE / 100)
+      : item.incentiveType === "percentage" ? Math.round(incentiveBase * item.incentiveAmount / 100) : Math.round(item.incentiveAmount * 100);
+    // ORC: the MAS and the Collector both earn their tier (each tier's own percentage of the same base).
+    const masCents = orc ? tierIncentive(tierOf("MAS"), "MAS") : 0, collectorCents = orc ? tierIncentive(tierOf("Collector"), "Collector") : 0;
+    const incentiveCents = orc ? masCents + collectorCents : tierIncentive(tier, role);
     if (incentiveCents > incentiveBase) throw new Error(`The incentive for NOP ${nop} is more than the installment less mark-up.`);
     const remittanceCents = (incentiveBase - incentiveCents) + markUpCents;
     breakdown.push({ nop, tierId: tier.id ?? "", role, basePay: baseCents / 100, markUp: markUpCents / 100,
-      incentiveType: tier.incentiveType, incentiveAmount: tier.incentiveAmount, incentive: incentiveCents / 100, remittance: remittanceCents / 100 });
+      incentiveType: reactivation ? "percentage" as const : tier.incentiveType, incentiveAmount: reactivation ? REACTIVATION_RATE : tier.incentiveAmount, incentive: incentiveCents / 100, remittance: remittanceCents / 100,
+      ...(orc ? { orc: true, masIncentive: masCents / 100, collectorIncentive: collectorCents / 100 } : {}), ...(reactivation ? { reactivation: true } : {}) });
   }
   const grossCents = breakdown.reduce((sum, item) => sum + Math.round(item.basePay * 100), 0);
   const collectedCents = amountCollected === undefined ? grossCents : Math.round(amountCollected * 100);

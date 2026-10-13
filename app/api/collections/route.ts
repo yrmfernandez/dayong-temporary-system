@@ -82,6 +82,8 @@ async function saveCollections(request: Request) {
     }
     // Batch-level details: who brought the payments in and how the MAS remitted them.
     const collectedBy = dto ? "DTO" : String(body.collectedBy ?? "").trim();
+    // ORC, outright commission (owner, October 13, 2026): set per batch; the MAS and the Collector both earn their tier.
+    const orc = !dto && body.orc === true;
     if (!(COLLECTION_CHANNELS as readonly string[]).includes(collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");
     // A Collector brings in payments for the batch's own MAS, so that MAS is the original MAS on record.
     const originalMas = collectedBy === "Collector" ? mas : "";
@@ -152,7 +154,10 @@ async function saveCollections(request: Request) {
         if (receipt && batchReceipts.has(receipt)) throw new Error(`OR Number ${input.orNumber} is entered twice in this batch (${batchReceipts.get(receipt)} and ${account.memberNumber}). Each OR Number is used once.`);
         if (receipt) batchReceipts.set(receipt, account.memberNumber);
         validatePayment(account, payments, input);
-        const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), selectedBranch.id), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount, account.flexible, account.maxMonthlyPayment);
+        // Reactivation is per entry: whoever collected earns only 10%; it cannot be in an ORC batch.
+        const reactivation = entry.reactivation === "Yes";
+        if (orc && reactivation) throw new Error(`Collection for ${account.memberNumber}: a reactivation cannot be in an ORC batch.`);
+        const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), selectedBranch.id), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation });
         // Client totals are only a preview. Persist the authoritative server calculation.
         grossCents += Math.round(quote.gross * 100);
         remittanceCents += Math.round(quote.remittance * 100);

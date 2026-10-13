@@ -324,6 +324,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### ORC and reactivation incentives (2026-10-13)
+
+- **Owner:** ORC (outright commission): both the Collector and the MAS get their incentives, with a Yes/No; reactivation: whoever collected (MAS, Collector or ORC) gets only 10%. Owner's answers: ORC both incentives deducted, set per batch; reactivation 10% of (base pay − mark-up), per entry; reactivation and ORC cannot go together.
+- **Done:** Collections → ORC Yes/No per batch; Reactivation Yes/No per entry (existing field) now sets the 10% incentive; preview, save and the returned-batch editor use the same rule. Tested.
+- **Open:** payroll's earned-incentive reference credits an ORC payment's whole incentive to the accountable person (no split yet).
+- **Data (production, October 13):** 393 imported old-sheet collections carry the old sheet's flags: reactivation 228 (160 accounts), transferred 160 (92 accounts), both 5; all dated 2026, none at NOP 1, most not the account's first payment; only 15 reactivation and 8 transferred accounts have another program account of the same member in the system. D-210 HG holds 124 of the reactivation payments (106 not whole months of its ₱150 minimum: it is flexible). The old flags are not recalculated by the new 10% rule.
+
 ### Clearing: who approved (2026-10-13)
 
 - **Owner:** in Clearing, Approved today, show under the status who made that status, for tracking.

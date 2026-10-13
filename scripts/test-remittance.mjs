@@ -111,3 +111,24 @@ test("a non-commissionable period pays only the Collector; a MAS collection is r
   const sale = calculateSaleIncentive({ basePay: 300, registrationFeeRequired: false, saleIncentiveType: "", saleIncentiveAmount: 0, incentiveTiers: tiers.map((tier) => ({ ...tier, nonCommissionable: true })) }, 300);
   assert.deepEqual([sale.incentive, sale.remittance], [0, 300]);
 });
+
+test("ORC: the MAS and the Collector both earn; reactivation earns only 10%; they cannot be combined (owner, October 13, 2026)", () => {
+  const tiers = [
+    { role: "MAS", fromMonth: 1, toMonth: 12, incentiveType: "percentage", markUp: 50, incentiveAmount: 50 },
+    { role: "Collector", fromMonth: 1, toMonth: 12, incentiveType: "percentage", markUp: 50, incentiveAmount: 20 },
+    { role: "MAS", fromMonth: 13, toMonth: 60, incentiveType: "percentage", markUp: 50, incentiveAmount: 30, nonCommissionable: true },
+    { role: "Collector", fromMonth: 13, toMonth: 60, incentiveType: "percentage", markUp: 50, incentiveAmount: 10, nonCommissionable: true },
+  ];
+  // (350 - 50) = 300: MAS 50% = 150, Collector 20% = 60, so the company gets 350 - 210 = 140.
+  const orc = calculateRemittance(350, tiers, "Collector", 2, 2, 350, false, null, { orc: true });
+  assert.equal(orc.remittance, 140);
+  assert.deepEqual([orc.breakdown[0].masIncentive, orc.breakdown[0].collectorIncentive, orc.breakdown[0].orc], [150, 60, true]);
+  assert.equal(calculateRemittance(350, tiers, "MAS", 2, 2, 350, false, null, { orc: true }).remittance, 140, "the same whoever handed it in");
+  assert.equal(calculateRemittance(350, tiers, "MAS", 13, 13, 350, false, null, { orc: true }).remittance, 320, "non-commissionable: only the Collector's 10% (30)");
+  // Reactivation: 10% of (350 - 50) = 30 for whoever collected.
+  assert.equal(calculateRemittance(350, tiers, "MAS", 2, 2, 350, false, null, { reactivation: true }).remittance, 320);
+  assert.equal(calculateRemittance(350, tiers, "Collector", 2, 3, 700, false, null, { reactivation: true }).remittance, 640);
+  assert.equal(calculateRemittance(350, tiers, "DTO", 2, 2, 350, false, null, { reactivation: true }).remittance, 350, "DTO still earns nothing");
+  assert.throws(() => calculateRemittance(350, tiers, "MAS", 2, 2, 350, false, null, { orc: true, reactivation: true }), /cannot be ORC/);
+  assert.throws(() => calculateRemittance(350, tiers, "DTO", 2, 2, 350, false, null, { orc: true }), /not DTO/);
+});
