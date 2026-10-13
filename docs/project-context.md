@@ -324,6 +324,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Audits arranged; report without sideways scroll (2026-10-13)
+
+- **Owner:** arrange Audits neatly; the opened report should not scroll horizontally.
+- **Done:** Audits lists one card per Entry Clerk (name, ID and branch, accounts, collected, expected remittance, status, Audit / View); the opened audit has sections Figures, Daily audits, Entries by program, Report and every entry, Decision. The clerk report (Reports, Report Review, Audits) has no fixed minimum width any more (was 980 px, 760 px for the MAS summary, 1,000 px for every entry): sections stack on narrower screens and text wraps; printing keeps the paper layout.
+
 ### Entries without incentives on October 13: check and fix (2026-10-13)
 
 - **Owner:** check again for MAS without incentives today and fix.
@@ -716,3 +721,6 @@ Owner confirmed MD-2026-0084 duplicates MD-2026-0063. scripts/merge-employee-pai
 
 ### October 13, 2026: incentives follow Clearing receipt time
 Fixed receipt-time lookup so a later-day clearing covering an earlier Date Remitted remains usable after it becomes Encoded. Remittances totals use each outstanding/returned batch's receipt time and retain pending slips' saved amounts, rather than forfeiting incentives as the clock advances. Tests cover late encoding, the exact 3 PM cutoff, both entry kinds, Removed/future clearings and stable pending totals. All 127 encoder/remittance tests, TypeScript and targeted lint passed. scripts/restore-clearing-incentives.mts previewed staging (no cases) and production before applying seven pending-slip corrections: PHP 1,840.50 restored, original slips retained as Rejected, replacement slips Pending Approval. Production readback verified zero forfeiture and balanced totals on all seven, with Record Corrections summaries. Two genuinely late slips were unchanged.
+
+### October 13, 2026: GOTUAL daily incentive correction
+Owner confirmed MD-2026-0053's incentive for October 13 must be PHP 196.50. Corrected today's stored collection snapshot only: OR 17111B (D-350 (5Y), NOP 9) PHP 122.50, plus OR 17112B (D-370, NOP 44-45) PHP 74.00. The first payment had been calculated at a zero Collector rate; this correction records a 35% snapshot without changing program-wide tiers. Pending slip REM-20261013085527-WKVX and its mapping now agree at PHP 915.00 including PHP 21.50 Fidelity. scripts/fix-gotual-incentives.mjs ran as a production dry run before applying and verifies the daily total, balanced slip, mappings and Record Corrections. Staging did not have the same pending entries. All changes retained in Audit Log and Record Corrections.

@@ -126,16 +126,17 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       {message && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">{message}</p>}
 
       {report && (
-        <div className="clerk-report-sheet overflow-x-auto rounded-xl border bg-card p-3 text-[13px] text-card-foreground print:border-0 print:p-0">
-          <div className="min-w-[980px] space-y-3">
+        <div className="clerk-report-sheet rounded-xl border bg-card p-3 text-[13px] text-card-foreground print:border-0 print:p-0">
+          {/* Fits the screen, no sideways scroll (owner, October 13, 2026): sections stack on narrow screens; print keeps the paper layout. */}
+          <div className="min-w-0 space-y-3">
             <ReportHeader report={report} />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 xl:grid-cols-2 print:grid-cols-2">
               <EntryTable title="New Sales Section" color={tone.sales} groupLabel={report.groupLabel} rows={report.newSales.rows} total={report.newSales.total} />
               <EntryTable title="Collections Section" color={tone.collections} groupLabel={report.groupLabel} rows={report.collection.rows} total={report.collection.total} />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 xl:grid-cols-2 print:grid-cols-2">
               <Grid title="Expenses/Other Cash Out Section" color={tone.expenses}
                 headers={["Account Name/Type of Expense", report.whenLabel, "Amount", "Receipt/CV", "Purpose", "Rmks"]}
                 rows={report.expenses.map((item) => [item.account, item.when, money(item.amount), item.receipt, item.purpose, item.remarks])}
@@ -155,7 +156,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 action={own ? (index) => { const item = report.fidelitySlips[index]; return ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this Fidelity entry being voided?"); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
             )}
 
-            <div className="grid grid-cols-[1.1fr_0.8fr_1.6fr] gap-3">
+            <div className="grid gap-3 lg:grid-cols-[1.1fr_0.8fr_1.6fr] print:grid-cols-[1.1fr_0.8fr_1.6fr]">
               <dl className="space-y-0.5">
                 <Cash label="Cash Beg/Pending COH" value={report.cash.cashBeg} color={tone.cashBeg} />
                 {report.cash.cashBegEdit && <p className="text-right text-[11px] text-muted-foreground">Typed by {report.cash.cashBegEdit.updatedBy}: {report.cash.cashBegEdit.reason}</p>}
@@ -204,8 +205,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       {report && showEntries && (
         <div className="space-y-2 print:break-before-page">
           <p className="font-semibold">Every entry ({report.checks.entryCount}){report.entriesTruncated ? ", first 1,000 shown" : ""}</p>
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[1000px] text-sm">
+          <div className="rounded-lg border">
+            <table className="w-full table-auto break-words text-xs sm:text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <tr><th className="p-2">Encoded</th><th className="p-2">Entry</th><th className="p-2">OR / App · date</th><th className="p-2">Date remitted</th><th className="p-2">Member</th><th className="p-2">MAS / Collector</th><th className="p-2 text-right">Amount</th><th className="p-2 text-right">Incentive</th><th className="p-2">Status</th><th className="p-2">Receipt</th><th className="p-2" /></tr>
               </thead>
@@ -249,7 +250,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
 function ReportHeader({ report }: { report: Report }) {
   return (
-    <div className="grid grid-cols-[1fr_auto_auto_1.1fr] items-center gap-3 border-b pb-2">
+    <div className="grid items-center gap-3 border-b pb-2 sm:grid-cols-[1fr_auto] lg:grid-cols-[1fr_auto_auto_1.1fr] print:grid-cols-[1fr_auto_auto_1.1fr]">
       <div className="leading-tight">
         <p className="font-bold">{report.company.name}</p>
         <p className="text-xs">{report.company.address}</p>
@@ -276,7 +277,7 @@ function EntryTable({ title, color, groupLabel, rows, total }: { title: string; 
         <tr className="border-b">{[groupLabel, "Accts", "Gross", "Inc", "Net", "Fid/ bond", "Penalty"].map((header, index) => <th key={header} className={`border-r p-1 font-semibold ${index ? "text-right" : "text-left"} ${index === 5 ? "text-[10px] italic" : ""}`}>{header}</th>)}</tr>
       </thead>
       <tbody>
-        {rows.map((line) => <tr key={line.label} className="border-b"><td className="border-r p-1 font-medium">{line.label}</td>{cells(line).map((value, index) => <td key={index} className="border-r p-1 text-right tabular-nums">{value}</td>)}</tr>)}
+        {rows.map((line) => <tr key={line.label} className="border-b"><td className="break-words border-r p-1 font-medium">{line.label}</td>{cells(line).map((value, index) => <td key={index} className="border-r p-1 text-right tabular-nums">{value}</td>)}</tr>)}
         {Array.from({ length: filler }, (_, index) => <tr key={`filler-${index}`} className="h-6 border-b">{Array.from({ length: 7 }, (__, cell) => <td key={cell} className="border-r" />)}</tr>)}
         <tr className={`font-bold ${color}`}><td className="p-1.5 text-center">Total</td>{cells(total).map((value, index) => <td key={index} className="p-1.5 text-right tabular-nums">{value}</td>)}</tr>
       </tbody>
@@ -293,7 +294,7 @@ function Grid({ title, color, headers, rows, total, action }: { title: string; c
         <tr className="border-b">{headers.map((header, index) => <th key={header} className={`border-r p-1 font-semibold ${index === 0 || index === 3 ? "text-[10px]" : ""}`}>{header}</th>)}</tr>
       </thead>
       <tbody>
-        {rows.map((row, rowIndex) => <tr key={rowIndex} className="border-b">{row.map((value, index) => <td key={index} className={`border-r p-1 ${index === 2 ? "text-right tabular-nums" : "text-center"}`}>{value}{index === 5 && action?.(rowIndex)}</td>)}</tr>)}
+        {rows.map((row, rowIndex) => <tr key={rowIndex} className="border-b">{row.map((value, index) => <td key={index} className={`break-words border-r p-1 ${index === 2 ? "text-right tabular-nums" : "text-center"}`}>{value}{index === 5 && action?.(rowIndex)}</td>)}</tr>)}
         {Array.from({ length: filler }, (_, index) => <tr key={`filler-${index}`} className="h-6 border-b">{Array.from({ length: 6 }, (__, cell) => <td key={cell} className="border-r" />)}</tr>)}
         <tr className="font-bold"><td className={`p-1.5 text-center ${tone.total}`}>Total</td><td className="bg-neutral-900" /><td className="p-1.5 text-right tabular-nums">{money(total)}</td><td colSpan={3} className="bg-neutral-900" /></tr>
       </tbody>
@@ -329,20 +330,20 @@ function MasSummary({ report }: { report: Report }) {
   // CVE (%): accounts due and amount due in the period, and Collection GROSS ÷ CVE GROSS (the sheet's G/J).
   const cve = (value: { accounts: number; gross: number; percent: number | null }) => [String(value.accounts || ""), value.gross ? money(value.gross) : "", value.percent === null ? "—" : `${value.percent.toFixed(2)}%`];
   return (
-    <div className="clerk-report-sheet overflow-x-auto rounded-xl border bg-card p-3 text-[13px] text-card-foreground print:break-before-page print:border-0">
-      <div className="min-w-[760px] space-y-2">
+    <div className="clerk-report-sheet rounded-xl border bg-card p-3 text-[13px] text-card-foreground print:break-before-page print:border-0">
+      <div className="min-w-0 space-y-2">
         <div className="bg-yellow-300 py-1 text-center font-bold leading-tight text-neutral-900">
           <p>{report.company.name}</p><p>{report.masSummary.title}</p><p>NEW MEMBER AND COLLECTION</p>
         </div>
-        <div className="flex justify-between gap-6 text-xs">
+        <div className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-xs">
           <p className="font-bold">{report.summaryLabel}</p>
-          <dl className="grid grid-cols-[auto_12rem] gap-x-2">
+          <dl className="grid grid-cols-[auto_minmax(0,12rem)] gap-x-2">
             <dt className="text-right">Week and Date:</dt><dd className="border-b font-semibold">{report.summaryWeek}</dd>
             <dt className="text-right">Branch Name:</dt><dd className="border-b font-semibold">{report.branch || "—"}</dd>
             <dt className="text-right">Encoder&apos;s Name:</dt><dd className="border-b font-semibold uppercase">{report.encoder.name}</dd>
           </dl>
         </div>
-        <table className="w-full border-collapse border text-[12px]">
+        <table className="w-full border-collapse border text-[11px] sm:text-[12px]">
           <thead>
             <tr><th rowSpan={2} className="border p-1">No.</th><th rowSpan={2} className="border p-1">Marketing Account Staff</th><th colSpan={3} className="border bg-orange-200 p-1 text-orange-950">NEW SALES</th><th colSpan={3} className="border bg-blue-200 p-1 text-blue-950">COLLECTION</th><th colSpan={3} className="border bg-green-200 p-1 text-green-950">CVE (%)</th></tr>
             <tr>{["ACCTS", "GROSS", "INC.", "ACCTS", "GROSS", "INC.", "ACCTS", "GROSS", "CVE%"].map((header, index) => <th key={`${header}-${index}`} className="border p-1 text-[11px]">{header}</th>)}</tr>

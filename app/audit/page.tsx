@@ -1,9 +1,8 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ClipboardCheck, Printer } from "lucide-react";
 
-import { InlineRow } from "@/components/inline-panel";
 import { ClerkReport } from "@/components/clerk-report";
 import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge } from "@/components/status-badge";
@@ -111,29 +110,38 @@ export default function DailyAuditPage() {
       <MetricTile tone="success" label="Approved" value={String(count("Approved"))} />
     </div>
 
-    <div className="overflow-x-auto rounded-xl border bg-background">
-      <table className="w-full text-left text-sm">
-        <thead className="bg-muted"><tr>{["Employee", "Accounts", "Amount collected", "Expected remittance", "Status", ""].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
-        <tbody>
-          {rows.map((row) => <Fragment key={row.employeeId}>
-            <tr className="border-t">
-              <td className="p-3"><strong>{row.employeeName}</strong><span className="block text-xs text-muted-foreground"><span className="font-mono">{row.employeeId}</span>{row.branch ? ` · ${row.branch}` : ""}</span></td>
-              <td className="p-3 tabular-nums">{row.figures.accounts}</td>
-              <td className="p-3 tabular-nums">{money(row.figures.gross)}</td>
-              <td className="p-3 tabular-nums">{money(row.figures.expectedRemittance)}</td>
-              <td className="p-3"><StatusBadge status={row.status} tone={row.status === "Approved" ? "success" : row.status === "Draft" ? "info" : "warning"} />{row.audit?.result && <span className="block text-xs text-muted-foreground">{row.audit.result}</span>}</td>
-              <td className="p-3 text-right"><Button type="button" size="sm" variant={open === row.employeeId ? "default" : "outline"} aria-expanded={open === row.employeeId} onClick={() => toggle(row)}>{open === row.employeeId ? "Close" : row.status === "Approved" ? "View" : "Audit"}</Button></td>
-            </tr>
-            {open === row.employeeId && <InlineRow colSpan={6}>
-              <div className="space-y-4">
+    {/* One card per Entry Clerk (owner, October 13, 2026: arranged neatly); the audit opens below the card in sections. */}
+    <div className="space-y-3">
+      {rows.map((row) => <div key={row.employeeId} className={`overflow-hidden rounded-xl border bg-background ${open === row.employeeId ? "border-primary/50 shadow-sm" : ""}`}>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
+          <div className="min-w-48 flex-1">
+            <p className="font-semibold">{row.employeeName}</p>
+            <p className="text-xs text-muted-foreground"><span className="font-mono">{row.employeeId}</span>{row.branch ? ` · ${row.branch}` : ""}</p>
+          </div>
+          <dl className="grid grid-cols-3 gap-x-6 gap-y-1 text-sm">
+            {[["Accounts", String(row.figures.accounts)], ["Collected", money(row.figures.gross)], ["Expected remittance", money(row.figures.expectedRemittance)]].map(([label, value]) =>
+              <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-semibold tabular-nums">{value}</dd></div>)}
+          </dl>
+          <div className="min-w-28"><StatusBadge status={row.status} tone={row.status === "Approved" ? "success" : row.status === "Draft" ? "info" : "warning"} />{row.audit?.result && <span className="mt-1 block text-xs text-muted-foreground">{row.audit.result}</span>}</div>
+          <Button type="button" size="sm" variant={open === row.employeeId ? "default" : "outline"} aria-expanded={open === row.employeeId} onClick={() => toggle(row)}>{open === row.employeeId ? "Close" : row.status === "Approved" ? "View" : "Audit"}</Button>
+        </div>
+        {open === row.employeeId && <div className="space-y-5 border-t bg-muted/20 p-4">
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">Figures</h3>
                 <div className="grid gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
                   {[["Accounts", String(row.figures.accounts)], ["Amount collected", money(row.figures.gross)], ["Incentives", money(row.figures.incentives)], ["Fidelity", money(row.figures.fidelity)], ["Penalties", money(row.figures.penalty)], ["Expected remittance", money(row.figures.expectedRemittance)]].map(([label, value]) =>
                     <div key={label} className="rounded-lg border bg-background p-2"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold tabular-nums">{value}</p></div>)}
                 </div>
-                {row.figures.dailyAudits && <div className="grid gap-3 text-sm sm:grid-cols-4">
+          </section>
+          {row.figures.dailyAudits && <section className="space-y-2">
+            <h3 className="text-sm font-semibold">Daily audits in this period</h3>
+                <div className="grid gap-3 text-sm sm:grid-cols-4">
                   {[["Daily audits approved", row.figures.dailyAudits.approved], ["Balanced days", row.figures.dailyAudits.balanced], ["Days with findings", row.figures.dailyAudits.withFindings], ["Daily audits not yet approved", row.figures.dailyAudits.drafts]].map(([label, value]) =>
                     <div key={String(label)} className="rounded-lg border bg-background p-2"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold tabular-nums">{value}</p></div>)}
-                </div>}
+                </div>
+          </section>}
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">Entries by program</h3>
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div><p className="mb-1 text-sm font-semibold">New Sales ({row.figures.sales.length})</p>
                     {row.figures.sales.length ? <ul className="divide-y rounded-lg border bg-background text-sm">{row.figures.sales.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s)</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>
@@ -142,11 +150,17 @@ export default function DailyAuditPage() {
                     {row.figures.collections.length ? <ul className="divide-y rounded-lg border bg-background text-sm">{row.figures.collections.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s) · remit {money(line.expectedRemittance)}</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>
                       : <p className="text-sm text-muted-foreground">No collections encoded.</p>}</div>
                 </div>
+          </section>
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">Report and every entry</h3>
                 <details className="rounded-lg border bg-background p-3">
                   <summary className="cursor-pointer text-sm font-semibold">Open {row.employeeName}&apos;s report and every entry</summary>
                   <p className="mt-1 text-xs text-muted-foreground">Check each entry from its dates (OR, remitted, encoded) to its numbers and receipt photo before deciding Balanced or With findings.</p>
                   <div className="mt-3"><ClerkReport kind={period} review employeeId={row.employeeId} date={span.from || date} branch="all" /></div>
                 </details>
+          </section>
+          <section className="space-y-3 rounded-lg border bg-background p-3">
+            <h3 className="text-sm font-semibold">Decision</h3>
                 {row.audit?.reopenReason && row.status === "Draft" && <p className="text-xs text-amber-700">Reopened: {row.audit.reopenReason}</p>}
                 {row.status === "Approved" ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
                   <p><strong>{row.audit?.result}</strong> · approved by {row.audit?.approvedByName} on {when(row.audit?.approvedAt ?? "")}. Figures are locked as approved.</p>
@@ -162,13 +176,11 @@ export default function DailyAuditPage() {
                     {row.audit?.updatedAt && <span className="text-xs text-muted-foreground">Last saved {when(row.audit.updatedAt)}{row.audit.preparedBy ? ` · prepared by ${row.audit.preparedBy.replace(/^'/, "")}` : ""}</span>}
                   </div>
                 </div>}
-                {message && <p role="status" className="text-sm">{message}</p>}
-              </div>
-            </InlineRow>}
-          </Fragment>)}
-          {!rows.length && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">{busy ? "Loading..." : "No active Entry Clerks to audit."}</td></tr>}
-        </tbody>
-      </table>
+          </section>
+          {message && <p role="status" className="text-sm">{message}</p>}
+        </div>}
+      </div>)}
+      {!rows.length && <p className="rounded-xl border bg-background p-8 text-center text-muted-foreground">{busy ? "Loading..." : "No active Entry Clerks to audit."}</p>}
     </div>
     </>}
   </section>;

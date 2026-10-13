@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 64 API handlers, 117 library files, 48 component files; 397 scanned source/configuration/public-text files in total.
+42 page routes, 64 API handlers, 117 library files, 48 component files; 399 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -16,7 +16,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/attendance-reviews` | [app/attendance-reviews/page.tsx](../app/attendance-reviews/page.tsx) | `@/components/attendance-calendar`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/attendance-tracking` | [app/attendance-tracking/page.tsx](../app/attendance-tracking/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/attendance` |
 | `/attendance` | [app/attendance/page.tsx](../app/attendance/page.tsx) | `@/components/attendance-calendar`, `@/components/my-attendance-history`, `@/lib/attendance`, `@/components/ui/badge`, `@/components/ui/button`, `@/lib/use-live-refresh` |
-| `/audit` | [app/audit/page.tsx](../app/audit/page.tsx) | `@/components/inline-panel`, `@/components/clerk-report`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/use-live-refresh` |
+| `/audit` | [app/audit/page.tsx](../app/audit/page.tsx) | `@/components/clerk-report`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/use-live-refresh` |
 | `/branches` | [app/branches/page.tsx](../app/branches/page.tsx) | `@/components/ui/badge`, `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/lib/use-live-refresh` |
 | `/cash-transactions` | [app/cash-transactions/page.tsx](../app/cash-transactions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/clearing` | [app/clearing/page.tsx](../app/clearing/page.tsx) | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/clearing`, `@/lib/use-live-refresh` |
@@ -217,7 +217,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/readable-id.ts](../lib/readable-id.ts) | `createReadableId` | — |
 | [lib/receipt-photos.ts](../lib/receipt-photos.ts) | `MAX_PHOTO_BYTES`, `ReceiptPhotoInfo`, `listReceiptPhotos`, `photosByEntry`, `getReceiptPhoto`, `saveReceiptPhoto` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/photo-storage`, `@/lib/readable-id` |
 | [lib/record-corrections.ts](../lib/record-corrections.ts) | `ensureCorrectionsSheet`, `recordCorrection` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
-| [lib/remittance-deadline.ts](../lib/remittance-deadline.ts) | `REMITTANCE_CUTOFF`, `validTime`, `incentiveDeadline`, `keepsIncentive`, `manilaNow`, `manilaDateOf`, `formatDeadline` | `@/lib/working-days` |
+| [lib/remittance-deadline.ts](../lib/remittance-deadline.ts) | `REMITTANCE_CUTOFF`, `INCENTIVE_GRACE_DAYS`, `validTime`, `incentiveDeadline`, `keepsIncentive`, `manilaNow`, `manilaDateOf`, `formatDeadline` | `@/lib/working-days` |
 | [lib/remittance-methods.ts](../lib/remittance-methods.ts) | `PaymentMethod`, `getPaymentMethods`, `findActivePaymentMethod`, `savePaymentMethod` | `@/lib/db`, `@/lib/readable-id` |
 | [lib/remittance-workflow.ts](../lib/remittance-workflow.ts) | `RemittanceKind`, `SlipType`, `CashCollection`, `CashRemittance`, `forfeitsIncentive`, `amountDue`, `getRemittanceDashboard`, `RemittanceEntry`, `getRemittanceEntries`, `CASH_IN_FULL_NOTE`, `createCashRemittance`, `decideCashRemittance`, `createFidelitySlip`, `editFidelitySlip`, `voidFidelitySlip`, `receivedAtOf`, `submitReadyEntries`, `submitCashAfterSave`, `resubmitReturned` | `@/lib/db`, `@/lib/sheets-on-db`, `@/lib/readable-id`, `@/lib/sheet-ranges`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/cash-count`, `@/lib/receipt-photos`, `@/lib/clearing`, `@/lib/entry-batches` |
 | [lib/remittance.ts](../lib/remittance.ts) | `IncentiveTier`, `tiersForBranch`, `SaleIncentiveSetting`, `SaleProgram`, `normalizeSaleIncentive`, `calculateSaleIncentive`, `REACTIVATION_RATE`, `calculateRemittance` | `./program-payment-limit.mjs` |
@@ -421,6 +421,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-copy-exception-dates.mjs](../scripts/fix-copy-exception-dates.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-duplicates.mjs](../scripts/fix-duplicates.mjs) | `@next/env`, `node:fs`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-duplicates.mts](../scripts/fix-duplicates.mts) | `node:fs`, `@next/env` | Yes; read source for semantics |
+| [scripts/fix-gotual-incentives.mjs](../scripts/fix-gotual-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-impossible-doi.mjs](../scripts/fix-impossible-doi.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-legacy-receipts.mjs](../scripts/fix-legacy-receipts.mjs) | `node:fs`, `node:crypto`, `@next/env`, `googleapis`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-merge-mas.mjs](../scripts/fix-merge-mas.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -482,6 +483,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/repair-sheet-rows.mjs](../scripts/repair-sheet-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/restore-clearing-incentives.mts](../scripts/restore-clearing-incentives.mts) | `@next/env`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow`, `@/lib/work-calendar` | Yes; read source for semantics |
 | [scripts/set-clearing-covers.mjs](../scripts/set-clearing-covers.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/set-collector-tiers.mts](../scripts/set-collector-tiers.mts) | `drizzle-orm`, `@/lib/batch-edit`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-workflow` | Yes; read source for semantics |
 | [scripts/split-member.mjs](../scripts/split-member.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/test-access-control.mjs](../scripts/test-access-control.mjs) | `node:assert/strict`, `node:test`, `../lib/access-control.ts` | No flag detected; read source before running |
 | [scripts/test-account-rules.mjs](../scripts/test-account-rules.mjs) | `node:assert/strict`, `node:test`, `../lib/account-rules.ts` | No flag detected; read source before running |
