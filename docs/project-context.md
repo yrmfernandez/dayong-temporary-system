@@ -324,6 +324,17 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Report branch list: assigned branches only (2026-10-13)
+
+- **Owner:** the report's branches are not accurate: CABALLERO, JENNY is assigned to MINTAL, but the list had AGDAO (one New Sale she encoded on October 9).
+- **Done:** the Branch list holds the primary branch and the branches assigned in Employees, plus All branches (no longer every branch ever encoded for). Entries for any other branch still count under All branches and in Audits.
+
+### Report notes in the audit (2026-10-13)
+
+- **Owner:** report comments (Specific Rmks, Other Comments) are not reflected in the audit report.
+- **Cause:** since reports were split by branch, notes are saved per branch (`employee|kind|start|branch`); the All branches report (Audits, Report Review) read only notes without a branch.
+- **Done:** All branches gathers every branch's notes for the clerk and period (labelled by branch when several), adds pending cash and each branch's typed Cash Beg. Checked on production for October 13 (e.g. CABALLERO, JENNY's MINTAL notes, AMBASING, CHARNNY's CALINAN comment). Tested.
+
 ### Collapsible sections that fit the screen (2026-10-13)
 
 - **Owner:** in Audits, Entries by program collapsible, each list (New Sales, Collections) in its own scrolling card; Every entry still too wide, make it fit and collapsible.

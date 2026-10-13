@@ -144,7 +144,12 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
    * from earlier entries, expenses and deposits, nor carried from another report.
    */
   const forBranch = (edit: { branch: string }) => (edit.branch ? sameBranch(edit.branch) && Boolean(branch) : !branch || primary);
-  const typedCashBeg = cashBegEdits.filter((edit) => edit.start === start && edit.kind === kind && forBranch(edit)).at(-1) ?? null;
+  const ofPeriod = cashBegEdits.filter((edit) => edit.start === start && edit.kind === kind);
+  // All branches: each branch's typed Cash Beg (its latest) added together, so the cash summary matches the branches.
+  const perBranch = [...new Map(ofPeriod.map((edit) => [edit.branch.toLowerCase(), edit])).values()];
+  const typedCashBeg = branch ? ofPeriod.filter(forBranch).at(-1) ?? null
+    : perBranch.length === 1 ? perBranch[0]
+    : perBranch.length ? { amount: round(perBranch.reduce((total, edit) => total + edit.amount, 0)), reason: perBranch.map((edit) => `${edit.branch || "earlier"} ₱${edit.amount}: ${edit.reason}`).join("; "), updatedAt: perBranch.map((edit) => edit.updatedAt).sort().at(-1) ?? "", updatedBy: [...new Set(perBranch.map((edit) => edit.updatedBy))].join(", "), kind, start, branch: "" } : null;
   const cashBeg = typedCashBeg ? round(typedCashBeg.amount) : 0;
   const fidelity = round(newSales.total.fidelity + collection.total.fidelity + fidelityLater);
   // Penalties are cash the clerk receives with the batch (the turnover control total includes them), so they count in.

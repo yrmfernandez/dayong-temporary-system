@@ -111,6 +111,19 @@ const sameKey = (a: unknown, b: string) => text(a).toLowerCase() === b.toLowerCa
 /** A branch's notes; the notes saved before reports were split by branch count for the clerk's primary branch. */
 export async function getReportNotes(employeeId: string, kind: string, start: string, branch = "", primary = false): Promise<ReportNotes> {
   const all = await rows(NOTES, NOTE_HEADERS.length);
+  if (!text(branch)) {
+    /*
+     * All branches (Audits, Report Review): every branch's notes for this clerk and period together (owner, October 13,
+     * 2026: the remarks were missing from the audit), each labelled with its branch when there are several; pending cash
+     * adds up.
+     */
+    const base = noteKey(employeeId, kind, start).toLowerCase();
+    const found = all.slice(1).filter((item) => { const key = text(item[0]).toLowerCase(); return key === base || key.startsWith(`${base}|`); });
+    const several = found.length > 1;
+    const join = (index: number) => found.filter((item) => text(item[index])).map((item) => { const label = text(item[0]).split("|")[3] ?? ""; return several && label ? `${label}: ${text(item[index])}` : text(item[index]); }).join("\n\n");
+    const latest = [...found].sort((a, b) => text(b[8]).localeCompare(text(a[8])))[0];
+    return { pendingCash: Math.round(found.reduce((total, item) => total + (Number(item[4]) || 0), 0) * 100) / 100, specificRemarks: join(5), pendingTransactions: join(6), otherComments: join(7), updatedAt: text(latest?.[8]), updatedBy: text(latest?.[9]), cashBeg: null };
+  }
   const row = all.find((item) => sameKey(item[0], noteKey(employeeId, kind, start, branch)))
     ?? (branch && primary ? all.find((item) => sameKey(item[0], noteKey(employeeId, kind, start))) : undefined);
   return { pendingCash: Number(row?.[4]) || 0, specificRemarks: text(row?.[5]), pendingTransactions: text(row?.[6]), otherComments: text(row?.[7]), updatedAt: text(row?.[8]), updatedBy: text(row?.[9]), cashBeg: cashBegOf(row) };

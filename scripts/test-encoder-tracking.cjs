@@ -2776,6 +2776,9 @@ test('an Entry Clerk report is per branch for a clerk who encodes for several', 
   const all = await buildClerkReport('daily', '2026-09-03', clerk);
   assert.deepEqual([all.collection.total.gross, all.cash.forwardedToBank], [1500, 1000], 'every branch (Audits)');
   assert.deepEqual(all.byBranch.map((line) => [line.branch, line.gross]), [['AGDAO', 1000], ['TORIL', 500]], 'Audits show each branch, each equal to its own report');
+  assert.equal(all.notes.specificRemarks, 'Old notes\n\nTORIL: Toril notes', "All branches (Audits) shows every branch's notes, labelled by branch");
+  assert.equal(all.notes.pendingCash, 120);
+  assert.equal(all.cash.cashBeg, 50, "each branch's typed Cash Beg added together");
 });
 
 test('Clearing shows who approved or returned each kind', async () => {

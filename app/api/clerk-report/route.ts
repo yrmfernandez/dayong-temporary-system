@@ -8,9 +8,6 @@ import { getReportRemarks } from "@/lib/report-remarks";
 import { addDeposit, editDeposit, saveCashBeg, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense } from "@/lib/finance-data";
-import { sql } from "drizzle-orm";
-
-import { currentDb } from "@/lib/db";
 import { getBranches } from "@/lib/google-sheets-data";
 import { createFidelitySlip, editFidelitySlip, voidFidelitySlip } from "@/lib/remittance-workflow";
 
@@ -19,19 +16,14 @@ const same = (a: unknown, b: unknown) => text(a).toLowerCase() === text(b).toLow
 
 /**
  * Reports are per branch (owner, October 13, 2026): a clerk assigned to several branches gets each branch's report.
- * The branches a clerk can choose: their primary branch, the branches they are assigned to, and every branch they have
- * ever encoded New Sales or Collections for (a clerk may encode for a branch they are not assigned to).
+ * The branches a clerk can choose are their primary branch and the branches they are assigned to in Employees (owner:
+ * only the assigned ones; entries encoded for another branch show under All branches).
  */
 async function clerkBranches(employeeId: string) {
-  const [employees, branches, encoded] = await Promise.all([
-    getEmployees(), getBranches(),
-    currentDb().execute(sql`select distinct trim(branch) as branch from collections where encoded_by_employee_id = ${employeeId} and coalesce(trim(branch), '') <> ''
-      union select distinct trim(branch) from sales where encoded_by_employee_id = ${employeeId} and coalesce(trim(branch), '') <> ''`),
-  ]);
+  const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
   const employee = employees.find((item) => item.id === employeeId);
   const assigned = branches.filter((branch) => employee?.branchIds.includes(branch.id)).map((branch) => branch.name);
-  const encodedFor = ((Array.isArray(encoded) ? encoded : (encoded as { rows?: unknown[] }).rows ?? []) as Array<{ branch: string }>).map((row) => row.branch);
-  const names = [...new Map([employee?.branch ?? "", ...assigned, ...encodedFor].map(text).filter(Boolean).map((name) => [name.toLowerCase(), name])).values()];
+  const names = [...new Map([employee?.branch ?? "", ...assigned].map(text).filter(Boolean).map((name) => [name.toLowerCase(), name])).values()];
   return { primary: employee?.branch ?? "", names, active: branches.filter((branch) => branch.status === "active").map((branch) => branch.name) };
 }
 
@@ -64,7 +56,7 @@ export async function GET(request: Request) {
     const asked = params.get("branch")?.trim() ?? "";
     const branch = asked.toLowerCase() === "all" ? "" : asked || own.primary || own.names[0] || "";
     const report = await buildClerkReport(kind, date, { ...clerk, branch: own.primary || ("branch" in clerk ? clerk.branch : "") }, branch);
-    const branchChoices = [...new Map([...own.names, ...report.encodedBranches, ...(branch ? [branch] : [])].map((name) => [name.toLowerCase(), name])).values()];
+    const branchChoices = [...new Map([...own.names, ...(branch ? [branch] : [])].map((name) => [name.toLowerCase(), name])).values()];
     // Remarks left on this clerk's report for the same period.
     const remarks = (await getReportRemarks(report.from, report.to)).filter((remark) => remark.scope === report.encoder.name);
     // Only the clerk records expenses, deposits and notes, on their own report.
