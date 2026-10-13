@@ -324,6 +324,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### OR No. in a member's MAM (2026-10-13)
+
+- **Owner:** adjust the individual MAM first, add the OR number, to compare records more easily (checking whether PH-36482213 and PH-88659933 are the same person: names and birthdates differ, so nothing is merged until the owner decides).
+- **Done:** the member's MAM table has OR No. and OR Date columns, one line per receipt.
+
 ### DS-320 missing from New Sales; one code per program (2026-10-13)
 
 - **Owner:** New Sales does not show all programs; DS-320 cannot be picked.

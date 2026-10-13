@@ -2608,3 +2608,24 @@ test('a program code is used by one program only', async () => {
   await assertProgramCodeFree(currentDb(), '320', 'DP-0004');
   await assertProgramCodeFree(currentDb(), 'DS-320');
 });
+
+test('Collections find the account when its MAS name differs only in capitals', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1);
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, false, 'active']];
+  // The account keeps the MAS as first encoded; the employee (and Clearing) spell it in capitals.
+  await seedAccount({ doi: month + '-01', mas: 'mas-2 ' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
+  const route = h.load('app/api/collections/route.ts');
+  const found = await route.GET(new Request(`http://localhost/api/collections?memberId=MEM-1&programId=DP-1&branch=BR-1&mas=MAS-2`));
+  assert.equal(found.status, 200, JSON.stringify(await found.clone().json()));
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 C', orDate: today };
+  const saved = await route.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] }));
+  assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
+});

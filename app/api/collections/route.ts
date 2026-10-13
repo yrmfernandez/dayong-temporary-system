@@ -17,12 +17,18 @@ import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
 
+/**
+ * The same branch or MAS name, ignoring case and extra spaces: accounts keep the MAS as first encoded (e.g. "Nagliba,
+ * Marissa") while the employee and the Clearing pick may be spelled "NAGLIBA, MARISSA" (owner, October 13, 2026).
+ */
+const sameName = (a: unknown, b: unknown) => String(a ?? "").trim().replace(/\s+/g, " ").toLowerCase() === String(b ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+
 export async function GET(request: Request) {
   if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
   try {
     const { searchParams } = new URL(request.url);
     const data = await loadAccountData({ memberId: searchParams.get("memberId") ?? "" });
-    const matches = data.accounts.filter((a) => a.programId === searchParams.get("programId") && a.branch === searchParams.get("branch") && a.mas === searchParams.get("mas"));
+    const matches = data.accounts.filter((a) => a.programId === searchParams.get("programId") && sameName(a.branch, searchParams.get("branch")) && sameName(a.mas, searchParams.get("mas")));
     if (matches.length !== 1) return Response.json({ success: false, message: "A unique program enrollment was not found." }, { status: 404 });
     const account = matches[0];
     const history = data.payments.filter((p) => p.enrollmentId === account.id).sort((a, b) => b.nopTo - a.nopTo);
@@ -106,7 +112,7 @@ async function saveCollections(request: Request) {
         const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
         if (matches.length !== 1) throw new Error("A unique program enrollment was not found.");
         const account = matches[0];
-        if (account.branch !== branch || account.mas !== mas) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch and MAS.`);
+        if (!sameName(account.branch, branch) || !sameName(account.mas, mas)) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch and MAS.`);
         const input = {
           monthFrom: String(entry.monthFrom ?? ""), monthTo: String(entry.monthTo ?? ""), nopFrom: Number(entry.nopFrom), nopTo: Number(entry.nopTo), amount: Number(entry.amountCollected),
           orDate: String(entry.orDate ?? ""), orNumber: normalizeOrNumber(String(entry.orNumber ?? "")), waiver: String(entry.ifSuspended ?? ""),

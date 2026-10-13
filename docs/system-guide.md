@@ -582,6 +582,8 @@ MAM joins member, enrollment, program, New Sale reference, and real posted Colle
 
 **NOP and Month of (owner, October 12, 2026).** Month of is what that month's own receipts paid: the months they cover, as a range when one receipt (often an old-sheet row) covers several ([mam-format.ts](../lib/mam-format.ts)); a month with no receipt shows —, not the month before's. The MAM page shows it under NOP / TMD in every month cell and in the CSV (Month Of column). A member's own MAM (Members → member → MAM) shows in its header the NOP and month paid up to today, and per month the NOP paid and Month of from that month's receipts (— when nothing was paid); months before the DOI are not listed. Each receipt lists its NOP range.
 
+**OR No. and OR Date in a member's MAM (owner, October 13, 2026).** Members → member → MAM lists each month's receipts with the OR number and OR date in their own columns (one line per receipt), so a member's payments can be compared with the old records receipt by receipt; Receipts shows each one's amount and what it covers ([member-mam.tsx](../components/member-mam.tsx)).
+
 Past months calculate state at month end, current month at today. Future columns are marked projections based only on already received receipts. Historical calculations do not inherit today's stored Forfeited marker. Invalid histories produce explicit review errors.
 
 For example, a September receipt covering October–December shows money received in September and coverage in the later month columns. It does not appear as a fresh receipt in every covered month. Sync current statuses writes calculated current statuses to Member programs column S; it does not repair invalid payment histories.

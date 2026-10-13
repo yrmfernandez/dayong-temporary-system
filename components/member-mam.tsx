@@ -55,16 +55,19 @@ export function MemberMam({ memberId }: { memberId: string }) {
             {latest?.temporarilySuspended && <span className="text-xs text-amber-700">Temporarily suspended</span>}
             <span className="text-xs text-muted-foreground">DOI {row.doi || "—"} · Monthly {money(row.basePay)} · Paid up to NOP {latest?.nop ?? "—"} ({monthOf(latest ?? null, row.doi)}) · Balance today {latest ? latest.balance === null ? "—" : money(latest.balance) : "—"} · MAS {row.mas || "—"}</span>
           </div>
-          <div className="max-h-80 overflow-auto rounded-md border"><table className="w-full min-w-[680px] text-xs">
-            <thead className="sticky top-0 bg-muted text-left"><tr>{["Month", "Status", "NOP paid", "Month of", "Collected", "Covered", "Receipts"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead>
+          <div className="max-h-80 overflow-auto rounded-md border"><table className="w-full min-w-[820px] text-xs">
+            <thead className="sticky top-0 bg-muted text-left"><tr>{["Month", "Status", "OR No.", "OR Date", "NOP paid", "Month of", "Collected", "Covered", "Receipts"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead>
             <tbody>{[...row.periods].reverse().filter((period) => period.state || period.error || period.receipts.length).map((period) => { const paid = paidInMonth(period.receipts); return <tr key={period.month} className="border-t align-top">
               <td className="p-2 font-medium">{period.month}</td>
               <td className="p-2">{period.error ? <span className="text-destructive">Needs review</span> : period.state ? <StatusBadge status={period.state.status} tone={statusTone(period.state.status)} /> : <span className="text-muted-foreground">Not enrolled</span>}</td>
+              {/* OR number and date in their own columns, one line per receipt, for comparing with the old records (owner, October 13, 2026). */}
+              <td className="p-2 font-mono whitespace-nowrap">{period.receipts.length ? period.receipts.map((receipt) => <span key={receipt.id} className="block">{receipt.orNumber || "—"}</span>) : <span className="text-muted-foreground">—</span>}</td>
+              <td className="p-2 whitespace-nowrap tabular-nums">{period.receipts.length ? period.receipts.map((receipt) => <span key={receipt.id} className="block">{receipt.orDate || "—"}</span>) : <span className="text-muted-foreground">—</span>}</td>
               <td className="p-2 tabular-nums">{paid.nop || <span className="text-muted-foreground">—</span>}</td>
               <td className="p-2">{paid.monthOf || <span className="text-muted-foreground">—</span>}</td>
               <td className="p-2 tabular-nums">{money(period.collected)}</td>
               <td className="p-2 tabular-nums">{money(period.coveredAmount)}</td>
-              <td className="p-2">{period.receipts.length ? period.receipts.map((receipt) => <span key={receipt.id} className="block">OR {receipt.orNumber || "—"} · {receipt.orDate} · {money(receipt.amount)} · covers {receipt.monthFrom}{receipt.monthTo !== receipt.monthFrom ? ` to ${receipt.monthTo}` : ""}{receipt.nopFrom ? ` (NOP ${receipt.nopFrom}${receipt.nopTo !== receipt.nopFrom ? `-${receipt.nopTo}` : ""})` : ""}</span>) : <span className="text-muted-foreground">—</span>}</td>
+              <td className="p-2">{period.receipts.length ? period.receipts.map((receipt) => <span key={receipt.id} className="block">{money(receipt.amount)} · covers {receipt.monthFrom}{receipt.monthTo !== receipt.monthFrom ? ` to ${receipt.monthTo}` : ""}{receipt.nopFrom ? ` (NOP ${receipt.nopFrom}${receipt.nopTo !== receipt.nopFrom ? `-${receipt.nopTo}` : ""})` : ""}</span>) : <span className="text-muted-foreground">—</span>}</td>
             </tr>; })}</tbody>
           </table></div>
         </section>;
