@@ -181,6 +181,15 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
     expenses: expenses.map((item): ExpenseRow => ({ ...item, when: whenLabel(kind, item.date) })), expenseTotal,
     deposits: deposits.map((item: BankDeposit) => ({ ...item, when: whenLabel(kind, item.date) })), depositTotal,
     fidelitySlips: fidelitySlips.map((item) => ({ ...item, when: whenLabel(kind, item.date) })), fidelityLater,
+    /*
+     * Every Fidelity received in the period (owner, October 13, 2026: its total equals the Fidelity Bond line): Fidelity
+     * entered with a batch (on the batch's first entry) and Fidelity handed in after encoding (Fidelity slips, which the
+     * clerk can still edit or void until approved).
+     */
+    fidelityReceived: [
+      ...entries.filter((entry) => entry.fidelity > 0).map((entry) => ({ id: entry.id, kind: "batch" as const, masName: entry.person, branch: entry.branch, date: entry.encodedAt.slice(0, 10), when: whenLabel(kind, entry.encodedAt.slice(0, 10)), amount: entry.fidelity, status: "With the batch", remarks: entry.kind === "New Sale" ? "New Sales batch" : "Collections batch" })),
+      ...fidelitySlips.map((item) => ({ id: item.id, kind: "slip" as const, masName: item.masName, branch: item.branch, date: item.date, when: whenLabel(kind, item.date), amount: item.amount, status: item.status, remarks: item.remarks || "Handed in after encoding" })),
+    ].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     cash: {
       cashBeg, cashBegEdit: typedCashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, pendingCash: notes.pendingCash, totalCashIn,
       expenses: expenseTotal, forwardedToBank: depositTotal, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,
@@ -200,10 +209,28 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
       entryCount: entries.length,
     },
     byProgram: { sales: byProgram(sales), collections: byProgram(collections) },
+    byBranch: byBranch(entries, fidelitySlips),
     entries: entries.slice(0, ENTRY_LIMIT), entriesTruncated: entries.length > ENTRY_LIMIT,
   };
 }
 export type ClerkReport = Awaited<ReturnType<typeof buildClerkReport>>;
+
+/**
+ * Per branch (owner, October 13, 2026: Audits show each branch, each line equal to that branch's own report): accounts,
+ * gross, incentives, net (gross - incentives, the audit's expected remittance), Fidelity (with Fidelity slips) and penalties.
+ */
+export type BranchFigures = { branch: string; accounts: number; gross: number; incentives: number; net: number; fidelity: number; penalty: number };
+function byBranch(entries: DayEntry[], fidelitySlips: Array<{ branch: string; amount: number }>) {
+  const groups = new Map<string, BranchFigures>();
+  const group = (name: string) => { const key = text(name).toLowerCase(); const found = groups.get(key) ?? { branch: text(name) || "(no branch)", accounts: 0, gross: 0, incentives: 0, net: 0, fidelity: 0, penalty: 0 }; groups.set(key, found); return found; };
+  for (const entry of entries) {
+    const line = group(entry.branch);
+    line.accounts += 1; line.gross = round(line.gross + entry.amount); line.incentives = round(line.incentives + entry.incentive);
+    line.net = round(line.gross - line.incentives); line.fidelity = round(line.fidelity + entry.fidelity); line.penalty = round(line.penalty + entry.penalty);
+  }
+  for (const slip of fidelitySlips) { const line = group(slip.branch); line.fidelity = round(line.fidelity + slip.amount); }
+  return [...groups.values()].sort((a, b) => a.branch.localeCompare(b.branch));
+}
 
 function byProgram(entries: DayEntry[]) {
   const groups = new Map<string, { program: string; branch: string; accounts: number; gross: number; expectedRemittance: number }>();

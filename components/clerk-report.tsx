@@ -148,12 +148,13 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 action={own ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this deposit being voided?"); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
             </div>
 
-            {(report.fidelitySlips.length > 0 || own) && (
-              <Grid title="Fidelity received after encoding" color={tone.cashFlow}
+            {(report.fidelityReceived.length > 0 || own) && (
+              // Every Fidelity received: with a batch, or handed in after encoding; the total is the Fidelity Bond line.
+              <Grid title="Fidelity received" color={tone.cashFlow}
                 headers={["MAS", report.whenLabel, "Amount", "Status", "Rmks", "Ref"]}
-                rows={report.fidelitySlips.map((item) => [item.masName, item.when, money(item.amount), item.status, item.remarks, item.id])}
-                total={report.fidelityLater}
-                action={own ? (index) => { const item = report.fidelitySlips[index]; return ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this Fidelity entry being voided?"); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
+                rows={report.fidelityReceived.map((item) => [item.masName, item.when, money(item.amount), item.status, item.remarks, item.id])}
+                total={report.cash.fidelity}
+                action={own ? (index) => { const item = report.fidelitySlips.find((slip) => slip.id === report.fidelityReceived[index].id); return item && ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this Fidelity entry being voided?"); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
             )}
 
             <div className="grid gap-3 lg:grid-cols-[1.1fr_0.8fr_1.6fr] print:grid-cols-[1.1fr_0.8fr_1.6fr]">

@@ -324,6 +324,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Audits match the clerk's report; one Fidelity list (2026-10-13)
+
+- **Owner:** the audits report and the Entry Clerk's report are not the same; the Fidelity received total and Fidelity Bond should be the same.
+- **Cause (production, October 13):** Audits add up every branch the clerk encoded for; the clerk's Reports page opens on their primary branch (e.g. ABESIA, DARYL JANE ₱24,510 in Audits vs ₱10,680 MATINA; GARCIA, JASPER ₱5,690 vs ₱0 BALIOK). Clerks with one branch matched exactly. The Fidelity list showed only Fidelity added after encoding, while Fidelity Bond also counts Fidelity entered with a batch.
+- **Owner's choice:** one audit per clerk, showing each branch.
+- **Done:** the audit card has By branch (accounts, collected, incentives, Fidelity, penalties, expected remittance per branch, plus All branches), each line equal to that branch's report; the report inside the audit opens on All branches with a Branch choice. Reports list every Fidelity received (with the batch, or added after encoding) under Fidelity received, whose total is the Fidelity Bond line; only the later ones have Edit / Void. Checked on production for every clerk on October 13. Tested.
+
 ### Audits arranged; report without sideways scroll (2026-10-13)
 
 - **Owner:** arrange Audits neatly; the opened report should not scroll horizontally.

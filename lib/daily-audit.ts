@@ -38,6 +38,8 @@ export type AuditFigures = {
   accounts: number; gross: number; incentives: number; fidelity: number; penalty: number; expectedRemittance: number;
   sales: Array<{ program: string; branch: string; accounts: number; gross: number }>;
   collections: Array<{ program: string; branch: string; accounts: number; gross: number; expectedRemittance: number }>;
+  /** Each branch the clerk encoded for (each equal to that branch's report); the totals above are all branches. */
+  byBranch?: Array<{ branch: string; accounts: number; gross: number; incentives: number; net: number; fidelity: number; penalty: number }>;
   /** Weekly, monthly and yearly audits: how the clerk's daily audits in the period stand. */
   dailyAudits?: { approved: number; balanced: number; withFindings: number; drafts: number };
 };
@@ -94,6 +96,7 @@ async function figuresFor(period: AuditPeriod, date: string, employee: { name: s
     penalty: report.checks.penalties, expectedRemittance: report.totals.net,
     sales: report.byProgram.sales.map((line) => ({ program: line.program, branch: line.branch, accounts: line.accounts, gross: line.gross })),
     collections: report.byProgram.collections,
+    byBranch: report.byBranch,
   };
 }
 

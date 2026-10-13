@@ -17,6 +17,8 @@ type Figures = {
   sales: Array<{ program: string; branch: string; accounts: number; gross: number }>;
   collections: Array<{ program: string; branch: string; accounts: number; gross: number; expectedRemittance: number }>;
   dailyAudits?: { approved: number; balanced: number; withFindings: number; drafts: number };
+  /** Each branch the clerk encoded for, equal to that branch's report (not on audits approved before October 13, 2026). */
+  byBranch?: Array<{ branch: string; accounts: number; gross: number; incentives: number; net: number; fidelity: number; penalty: number }>;
 };
 type Period = "daily" | "weekly" | "monthly" | "yearly";
 const PERIODS: Array<[Period, string, string]> = [["daily", "Daily", "day"], ["weekly", "Weekly", "week"], ["monthly", "Monthly", "month"], ["yearly", "Yearly", "year"]];
@@ -38,6 +40,8 @@ export default function DailyAuditPage() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [open, setOpen] = useState("");
+  // The branch of the report opened inside an audit: all branches first (like the audit's totals), switchable.
+  const [reportBranch, setReportBranch] = useState("all");
   const [draft, setDraft] = useState({ findings: "", result: "Balanced", reason: "" });
   const [message, setMessage] = useState("");
 
@@ -64,6 +68,7 @@ export default function DailyAuditPage() {
     setMessage("");
     if (open === row.employeeId) { setOpen(""); return; }
     setOpen(row.employeeId);
+    setReportBranch("all");
     setDraft({ findings: row.audit?.findings ?? "", result: row.audit?.result || "Balanced", reason: "" });
   }
 
@@ -127,12 +132,25 @@ export default function DailyAuditPage() {
         </div>
         {open === row.employeeId && <div className="space-y-5 border-t bg-muted/20 p-4">
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Figures</h3>
+            <h3 className="text-sm font-semibold">Figures{(row.figures.byBranch?.length ?? 0) > 1 ? " · all branches" : row.figures.byBranch?.[0] ? ` · ${row.figures.byBranch[0].branch}` : ""}</h3>
                 <div className="grid gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
                   {[["Accounts", String(row.figures.accounts)], ["Amount collected", money(row.figures.gross)], ["Incentives", money(row.figures.incentives)], ["Fidelity", money(row.figures.fidelity)], ["Penalties", money(row.figures.penalty)], ["Expected remittance", money(row.figures.expectedRemittance)]].map(([label, value]) =>
                     <div key={label} className="rounded-lg border bg-background p-2"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold tabular-nums">{value}</p></div>)}
                 </div>
           </section>
+          {(row.figures.byBranch?.length ?? 0) > 1 && <section className="space-y-2">
+            {/* Each branch equals that branch's report on the clerk's Reports page (owner, October 13, 2026). */}
+            <h3 className="text-sm font-semibold">By branch</h3>
+            <div className="rounded-lg border bg-background">
+              <table className="w-full table-auto text-left text-xs sm:text-sm">
+                <thead className="bg-muted/50"><tr>{["Branch", "Accounts", "Collected", "Incentives", "Fidelity", "Penalties", "Expected remittance"].map((label) => <th key={label} className="p-2 font-medium">{label}</th>)}</tr></thead>
+                <tbody>
+                  {row.figures.byBranch!.map((line) => <tr key={line.branch} className="border-t"><td className="p-2 font-medium">{line.branch}</td>{[String(line.accounts), money(line.gross), money(line.incentives), money(line.fidelity), money(line.penalty), money(line.net)].map((value, index) => <td key={index} className="p-2 tabular-nums">{value}</td>)}</tr>)}
+                  <tr className="border-t bg-muted/30 font-semibold"><td className="p-2">All branches</td>{[String(row.figures.accounts), money(row.figures.gross), money(row.figures.incentives), money(row.figures.fidelity), money(row.figures.penalty), money(row.figures.expectedRemittance)].map((value, index) => <td key={index} className="p-2 tabular-nums">{value}</td>)}</tr>
+                </tbody>
+              </table>
+            </div>
+          </section>}
           {row.figures.dailyAudits && <section className="space-y-2">
             <h3 className="text-sm font-semibold">Daily audits in this period</h3>
                 <div className="grid gap-3 text-sm sm:grid-cols-4">
@@ -156,7 +174,7 @@ export default function DailyAuditPage() {
                 <details className="rounded-lg border bg-background p-3">
                   <summary className="cursor-pointer text-sm font-semibold">Open {row.employeeName}&apos;s report and every entry</summary>
                   <p className="mt-1 text-xs text-muted-foreground">Check each entry from its dates (OR, remitted, encoded) to its numbers and receipt photo before deciding Balanced or With findings.</p>
-                  <div className="mt-3"><ClerkReport kind={period} review employeeId={row.employeeId} date={span.from || date} branch="all" /></div>
+                  <div className="mt-3"><ClerkReport kind={period} review employeeId={row.employeeId} date={span.from || date} branch={reportBranch} onBranchChange={setReportBranch} /></div>
                 </details>
           </section>
           <section className="space-y-3 rounded-lg border bg-background p-3">

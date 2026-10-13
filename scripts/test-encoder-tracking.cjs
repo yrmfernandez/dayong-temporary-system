@@ -2775,6 +2775,7 @@ test('an Entry Clerk report is per branch for a clerk who encodes for several', 
   assert.deepEqual(toril.encodedBranches, ['AGDAO', 'TORIL'], 'every branch encoded in the period is offered');
   const all = await buildClerkReport('daily', '2026-09-03', clerk);
   assert.deepEqual([all.collection.total.gross, all.cash.forwardedToBank], [1500, 1000], 'every branch (Audits)');
+  assert.deepEqual(all.byBranch.map((line) => [line.branch, line.gross]), [['AGDAO', 1000], ['TORIL', 500]], 'Audits show each branch, each equal to its own report');
 });
 
 test('Clearing shows who approved or returned each kind', async () => {
@@ -2909,6 +2910,8 @@ test('Fidelity handed in after encoding: its own slip, in the report at once, ap
   const report = await buildClerkReport('daily', '2026-10-13', { employeeId: 'DPE-7', name: 'Clerk', branch: 'MINTAL' }, 'MINTAL');
   assert.deepEqual(report.fidelitySlips.map((item) => [item.id, item.amount]), [['REM-F1', 30]], 'not the voided one, not another branch');
   assert.equal(report.cash.fidelity, 30);
+  assert.deepEqual(report.fidelityReceived.map((item) => [item.id, item.kind, item.amount]), [['REM-F1', 'slip', 30]]);
+  assert.equal(report.fidelityReceived.reduce((sum, item) => sum + item.amount, 0), report.cash.fidelity, 'the Fidelity list adds up to the Fidelity Bond line');
 
   // Approving a Fidelity slip needs no entries.
   const remittancesHeader = Array(28).fill(''); remittancesHeader[12] = 'Difference'; remittancesHeader[26] = 'time_remitted'; remittancesHeader[27] = 'cash_count';
