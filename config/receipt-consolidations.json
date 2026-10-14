@@ -107,6 +107,24 @@
       ],
       "note": "Owner confirmed October 13, 2026: member enrolled only in D-350 (5Y); move OR 09522 B from D-350 and remove the erroneous D-350 assignment.",
       "appliedOn": "2026-10-13 (production)"
+    },
+    {
+      "member": "PH-78528286",
+      "program": "DP-0010",
+      "receipts": [
+        "9698 C",
+        "11858 C",
+        "14179 C",
+        "9598 M",
+        "17759 C",
+        "18854 C",
+        "20325 C",
+        "23152 C",
+        "24552 C"
+      ],
+      "startNop": 7,
+      "note": "Owner confirmed October 14, 2026: all nine receipts belong to PH-78528286 under DPB-350, in this order, covering January through September 2026. Consolidate July/August from D-350; correct September receipt 24552 C from July/NOP 13 to September/NOP 15.",
+      "appliedOn": "2026-10-14 (staging and production)"
     }
   ]
 }

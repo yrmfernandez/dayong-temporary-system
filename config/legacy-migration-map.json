@@ -1,5 +1,11 @@
 {
   "note": "Overrides for scripts/migrate-legacy-members.mjs. leaveOut: old-sheet rows skipped by the importer (handled elsewhere); members: pending rows assigned to the first member go to the second.",
+  "agents": {
+    "Baranda, M.": "SDS-2026-0001",
+    "Baranda M.": "SDS-2026-0001",
+    "Baranda, M": "SDS-2026-0001",
+    "Baranda M": "SDS-2026-0001"
+  },
   "leaveOut": {
     "Data-Base-Old|M1-COLL|8871": "₱300 D-300 (BRACKETING) payment filed under D-350 (5Y); added to D-300 (BRACKETING) by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",
     "Data-Base-Old|M3-COLL|12292": "₱300 D-300 (BRACKETING) payment filed under D-350 (5Y); added to D-300 (BRACKETING) by scripts/fix-legacy-receipts.mjs (owner, October 9, 2026)",

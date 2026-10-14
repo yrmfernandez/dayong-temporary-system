@@ -324,6 +324,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### My Entries in tabs by status (2026-10-14)
+
+- **Owner:** arrange My Entries by status like Clearing (returned, approved, waiting for receipt, for approval).
+- **Done:** batches in tabs Waiting for receipt, Not yet sent (only when there is one), For approval, Returned, Approved, with counts; a mixed batch goes under the status needing attention first; batch badges use the same words (For approval, Approved, Waiting for receipt, Not yet sent).
+
 ### Clearing grouped by status, Edit, Collected by from the role (2026-10-14)
 
 - **Owner:** arrange Clearing by status; add Edit for a wrong Remitting, branch or MAS; when the cleared person is a Collector, Collections should default Collected by to Collector.

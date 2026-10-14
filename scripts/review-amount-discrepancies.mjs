@@ -1,0 +1,25 @@
+/** Read-only detail for the amount findings from audit-database-data.mjs. No member names/contact details exported. */
+import fs from 'node:fs';
+import nextEnv from '@next/env';
+import postgres from 'postgres';
+nextEnv.loadEnvConfig(process.cwd());
+const project=/postgres\.([a-z0-9]+)[:@]/.exec(process.env.DIRECT_DATABASE_URL??'')?.[1]??'unknown';
+const input=process.argv.find(a=>a.startsWith('--audit='))?.slice(8)??`legacy-data/database-audit-2026-10-14-${project}.json`;
+const audit=JSON.parse(fs.readFileSync(input,'utf8'));
+if(audit.project!==project)throw new Error('Audit and target database project differ.');
+const collectionIds=audit.checks.find(c=>c.name==='Collection amount differs from current program coverage rule').rows.map(r=>r.id);
+const saleIds=audit.checks.find(c=>c.name==='Locked New Sale amount differs from current program rule').rows.map(r=>r.id);
+const sql=postgres(process.env.DIRECT_DATABASE_URL,{max:1,connect_timeout:15,onnotice:()=>{}});
+try{await sql.begin('isolation level repeatable read read only',async tx=>{
+ const collections=collectionIds.length?await tx`select c.collection_id as id,m.member_number as member,c.or_number as receipt,c.or_date::text as date,c.branch,p.program_code as program,c.amount_collected::float8 as amount,p.base_pay::float8 as rate,p.flexible,c.month_from,c.month_to,c.nop_from,c.nop_to from collections c join members m on m.member_id=c.member_id join programs p on p.program_id=c.program_id where c.collection_id in ${tx(collectionIds)} order by p.program_code,m.member_number,c.or_date`:[];
+ const sales=saleIds.length?await tx`select s.sale_id as id,s.member_number as member,s.application_no as application,s.or_date::text as date,s.branch,p.program_code as program,s.amount_paid::float8 as amount,(case when p.registration_fee_required then p.registration_amount else p.base_pay end)::float8 as expected from sales s join programs p on p.program_id=s.program_id where s.sale_id in ${tx(saleIds)} order by p.program_code,s.member_number`:[];
+ for(const r of collections){const month=s=>Number(s.slice(0,4))*12+Number(s.slice(5,7));r.months=month(r.month_to)-month(r.month_from)+1;r.expected=r.rate*r.months;r.wholeMonthsAtRate=r.rate>0&&Number.isInteger(Math.round(r.amount*100)/Math.round(r.rate*100))?Math.round(r.amount*100)/Math.round(r.rate*100):null;r.review=r.wholeMonthsAtRate!==null&&r.wholeMonthsAtRate!==r.months?'Amount equals a different whole-month count; verify coverage and following receipts.':'Verify paper amount, original program/rate and coverage.';}
+ const summary={collections:collections.length,sales:sales.length,wholeMonthCoverageCandidates:collections.filter(r=>r.wholeMonthsAtRate!==null&&r.wholeMonthsAtRate!==r.months).length,belowExpected:collections.filter(r=>r.amount<r.expected).length,aboveExpected:collections.filter(r=>r.amount>r.expected).length};
+ const byProgram={};for(const r of collections)byProgram[r.program]=(byProgram[r.program]??0)+1;
+ const base=`legacy-data/amount-discrepancies-${audit.asOf}-${project}`;
+ const cell=v=>String(v??'').replaceAll('|','/');const peso=v=>'PHP '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const lines=['# Amount discrepancies review','',`Live details checked ${new Date().toISOString()}; original audit dated ${audit.asOf}. Project ${project}. Read-only: no data changed.`,'','These are review candidates against current program rules. Confirm paper receipts and original rates before changing money, programs or payment coverage. A whole-month candidate is an arithmetic clue, not proof of the correct coverage. This detail report follows the original audit finding IDs; rerun the audit to discover newly introduced findings.','',`Collections: ${summary.collections}; New Sales: ${summary.sales}. ${summary.wholeMonthCoverageCandidates} collections equal a different whole-month count at the current rate.`, '', '## Collections','', '| Member | OR | Branch | Program | Paid | Recorded coverage | Months | Expected | Months paid at current rate | Record ID |','| --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: | --- |',...collections.map(r=>[r.member,r.receipt,r.branch,r.program,peso(r.amount),`${r.month_from} to ${r.month_to}`,r.months,peso(r.expected),r.wholeMonthsAtRate??'not whole',r.id].map(cell).join(' | ')).map(r=>'| '+r+' |'),'','## New Sales','', '| Member | Application | Branch | Program | Paid | Current fixed amount | Record ID |','| --- | --- | --- | --- | ---: | ---: | --- |',...sales.map(r=>[r.member,r.application,r.branch,r.program,peso(r.amount),peso(r.expected),r.id].map(cell).join(' | ')).map(r=>'| '+r+' |')];
+ fs.writeFileSync(`${base}.md`,lines.join('\n'));
+ fs.writeFileSync(`${base}.json`,JSON.stringify({project,generatedAt:new Date().toISOString(),originalAudit:audit.asOf,summary,collections,sales},null,2));
+ console.log(JSON.stringify({summary,byProgram,sales,examples:collections.filter(r=>r.wholeMonthsAtRate!==null).slice(0,6),report:`${base}.md`},null,2));
+});}finally{await sql.end();}

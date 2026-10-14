@@ -39,6 +39,7 @@ export default function MyEntriesPage() {
   const [open, setOpen] = useState("");
   // The returned batch being edited (its key).
   const [editing, setEditing] = useState("");
+  const [tab, setTab] = useState<BatchTab | "">("");
 
   const load = useCallback(async (nextFrom: string, nextTo: string, nextEmployee: string) => {
     setLoading(true);
@@ -70,6 +71,16 @@ export default function MyEntriesPage() {
   const returned = entries.filter((entry) => entry.remittanceStatus === "Returned");
   // Outstanding batches that are ready (cash, or every receipt attached) but were not sent: saved before cash went to approval on its own.
   const readyToSend = batches.filter((batch) => batch.readyToSend);
+  /*
+   * Tabs by status, like Clearing and Remittances (owner, October 14, 2026). A batch whose entries differ is under the one
+   * needing attention first: Returned, waiting for its receipt photo, not sent, for approval, then approved (remitted).
+   */
+  const tabOf = (batch: Batch): BatchTab => batch.entries.some((entry) => entry.remittanceStatus === "Returned") ? "Returned"
+    : batch.needsPhoto ? "Waiting for receipt"
+    : batch.entries.some((entry) => entry.remittanceStatus === "Outstanding" || !entry.remittanceStatus) ? "Not yet sent"
+    : batch.entries.some((entry) => entry.remittanceStatus === "Pending Remittance Approval") ? "For approval" : "Approved";
+  const tabs = BATCH_TABS.map((id) => ({ id, items: batches.filter((batch) => tabOf(batch) === id) })).filter((item) => item.id !== "Not yet sent" || item.items.length);
+  const shownTab = tabs.find((item) => item.id === tab) ?? tabs.find((item) => item.items.length) ?? tabs[0];
   const post = async (body: Record<string, unknown>, fallback: string) => {
     setMessage("");
     const response = await fetch("/api/my-entries", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -137,7 +148,13 @@ export default function MyEntriesPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {batches.map((batch) => {
+          <div className="overflow-x-auto border-b"><div className="flex min-w-max gap-1" role="tablist" aria-label="Batches by status">
+            {tabs.map((item) => <button key={item.id} type="button" role="tab" aria-selected={shownTab.id === item.id} onClick={() => setTab(item.id)}
+              className={`inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium ${shownTab.id === item.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>
+              {item.id}<span className={`rounded-full px-1.5 text-xs ${shownTab.id === item.id ? "bg-primary text-primary-foreground" : item.items.length && item.id !== "Approved" && item.id !== "For approval" ? "bg-amber-200 text-amber-950" : "bg-muted"}`}>{item.items.length}</span>
+            </button>)}
+          </div></div>
+          {shownTab.items.map((batch) => {
             const ids = batch.entries.map((entry) => entry.id);
             const first = batch.entries[0];
             const isReturned = batch.entries.some((entry) => entry.remittanceStatus === "Returned");
@@ -150,7 +167,7 @@ export default function MyEntriesPage() {
                     {first.returnReason && <p className="text-xs text-red-700">Returned: {first.returnReason}</p>}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={batch.status} tone={batch.needsPhoto ? "warning" : isReturned ? "danger" : batch.status === "Remitted" ? "success" : "info"} />
+                    <StatusBadge status={batch.status} tone={batch.needsPhoto ? "warning" : isReturned ? "danger" : batch.status === "Approved" ? "success" : "info"} />
                     {batch.allCash
                       ? <span className="text-xs text-muted-foreground">Cash · no receipt photo needed</span>
                       : <>
@@ -187,6 +204,7 @@ export default function MyEntriesPage() {
             );
           })}
           {!batches.length && <p className="p-8 text-center text-muted-foreground">{loading ? "Loading..." : "Nothing encoded in this period."}</p>}
+          {batches.length > 0 && !shownTab.items.length && <p className="p-8 text-center text-muted-foreground">No batches {shownTab.id === "Approved" ? "approved" : `in ${shownTab.id}`} in this period.</p>}
         </CardContent>
       </Card>
     </div>
@@ -200,6 +218,10 @@ type Batch = { key: string; kind: DayEntry["kind"]; entries: DayEntry[]; total: 
  * photo when any of its Outstanding entries is not cash and has none; it is ready to send when every Outstanding entry
  * is cash or has its photo (lib/remittance-workflow.ts submitReadyEntries).
  */
+// The same names and order as Clearing (owner, October 14, 2026); Not yet sent shows only when there is such a batch.
+const BATCH_TABS = ["Waiting for receipt", "Not yet sent", "For approval", "Returned", "Approved"] as const;
+type BatchTab = (typeof BATCH_TABS)[number];
+
 function groupBatches(entries: DayEntry[]): Batch[] {
   const groups = new Map<string, DayEntry[]>();
   for (const entry of entries) { const key = entry.batchId || entry.id; groups.set(key, [...(groups.get(key) ?? []), entry]); }
@@ -207,13 +229,14 @@ function groupBatches(entries: DayEntry[]): Batch[] {
     const outstanding = list.filter((entry) => entry.remittanceStatus === "Outstanding");
     const statuses = [...new Set(list.map((entry) => entry.remittanceStatus || "Not set"))];
     const needsPhoto = outstanding.some((entry) => !entry.cash && !entry.photoId);
-    const label = (status: string) => status === "Pending Remittance Approval" ? "Pending approval" : status;
+    // The same words as the tabs and Clearing (owner, October 14, 2026).
+    const label = (status: string) => status === "Pending Remittance Approval" ? "For approval" : status === "Remitted" ? "Approved" : status === "Outstanding" ? "Not yet sent" : status;
     const allCash = list.every((entry) => entry.cash);
     return {
       key, kind: list[0].kind, entries: list, total: Math.round(list.reduce((sum, entry) => sum + entry.amount, 0) * 100) / 100,
       methods: [...new Set(list.map((entry) => entry.paymentMethod).filter(Boolean))], allCash,
       photoIds: [...new Set(list.map((entry) => entry.photoId).filter(Boolean))],
-      status: needsPhoto ? "Needs receipt photo" : statuses.length === 1 ? label(statuses[0]) : statuses.map(label).join(" / "),
+      status: needsPhoto ? "Waiting for receipt" : statuses.length === 1 ? label(statuses[0]) : statuses.map(label).join(" / "),
       needsPhoto, readyToSend: outstanding.length > 0 && !needsPhoto,
       // A photo can be added or replaced until the batch is approved.
       canAttach: !allCash && list.some((entry) => entry.remittanceStatus !== "Remitted"),
