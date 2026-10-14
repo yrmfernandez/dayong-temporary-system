@@ -425,10 +425,11 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
           <Field label="Bank account name"><Input value={deposit.bankAccount} onChange={(event) => setDeposit({ ...deposit, bankAccount: event.target.value })} /></Field>
           <Field label="Type of transfer *"><Input value={deposit.transferType} onChange={(event) => setDeposit({ ...deposit, transferType: event.target.value })} placeholder="e.g. RCBC, GCash" /></Field>
           <Field label="MAS"><Input list="report-mas" value={deposit.mas} onChange={(event) => setDeposit({ ...deposit, mas: event.target.value })} /><datalist id="report-mas">{masNames.map((name) => <option key={name} value={name} />)}</datalist></Field>
-          <Field label="Remarks"><Input value={deposit.remarks} onChange={(event) => setDeposit({ ...deposit, remarks: event.target.value })} placeholder="e.g. Already deposited" /></Field>
+          <Field label="Remarks * (with a number)"><Input value={deposit.remarks} onChange={(event) => setDeposit({ ...deposit, remarks: event.target.value })} placeholder="e.g. Ref 01101026001363" /></Field>
         </div>
         <div className="flex gap-2">
-          <Button type="submit" size="sm" disabled={!deposit.amount || !deposit.transferType.trim()}>{editing ? "Save changes" : "Save deposit"}</Button>
+          <Button type="submit" size="sm" disabled={!deposit.amount || !deposit.transferType.trim() || !/\d/.test(deposit.remarks)}>{editing ? "Save changes" : "Save deposit"}</Button>
+          {deposit.remarks.trim() !== "" && !/\d/.test(deposit.remarks) && <span className="self-center text-xs text-red-700 dark:text-red-400">Remarks need a number; letters only are not accepted.</span>}
           {editing && <Button type="button" size="sm" variant="outline" onClick={onEditDone}>Cancel</Button>}
         </div>
       </form>}

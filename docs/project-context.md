@@ -324,6 +324,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Collector incentives; deposit remarks; Audits show present clerks (2026-10-14)
+
+- **Owner:** in Collections, a Collector collecting as Collector gets no incentive; cash-flow remarks must have numbers (numbers only fine, letters only not); Audits should show only Entry Clerks who were present.
+- **Collector incentives (no code change):** the calculation is right; most programs' Collector tiers are 0% for most months (e.g. D-250 FG 13–120, D-300 (Bracketing) 1–12), so a Collector batch earns nothing there. Owner: use each program's incentives as set; when Collected by is MAS, the MAS rate applies (already so). The Collector preset is only a default; the clerk picks MAS when the Collector collects his own members.
+- **Done:** deposit remarks required and must contain a number (`depositRemarksProblem`, add and edit; the form says so). Audits list an Entry Clerk only when present (clocked in or marked Present) in the period, or who encoded something in it, or who already has an audit for it (production: October 13, 7 of 11 shown). Tested (remarks).
+
 ### Waiver judged on the OR date; drafts to set a batch aside (2026-10-14)
 
 - **Owner:** still wrong: an OR dated September for August asked for a Waiver though the member was not two months late. Also: drafts, so a clerk can leave a batch for a moment and go on with other entries.

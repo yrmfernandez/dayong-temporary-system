@@ -2880,15 +2880,19 @@ test('a clerk can edit their own deposit (not a voided one, not another clerk\'s
   ];
   const { editDeposit } = h.load('lib/clerk-cash.ts');
   const { runAsSystem } = h.load('lib/encoder-context.ts');
-  const changes = { date: '2026-10-13', bankAccount: 'DSRDPI', amount: 990, transferType: 'RCBC', mas: 'SUYMAN, NELSON', remarks: 'Amount corrected' };
+  const changes = { date: '2026-10-13', bankAccount: 'DSRDPI', amount: 990, transferType: 'RCBC', mas: 'SUYMAN, NELSON', remarks: 'Ref 01101026001363' };
   await runAsSystem(() => editDeposit('DEP-1', changes, { employeeId: 'DPE-7', isAdmin: false }));
   const [dateWrite, restWrite] = h.writes.slice(-2);
   assert.deepEqual([dateWrite.range, dateWrite.requestBody.values], ["'Bank Deposits'!B2:B2", [['2026-10-13']]]);
-  assert.deepEqual([restWrite.range, restWrite.requestBody.values], ["'Bank Deposits'!F2:J2", [['DSRDPI', 990, 'RCBC', 'SUYMAN, NELSON', 'Amount corrected']]]);
+  assert.deepEqual([restWrite.range, restWrite.requestBody.values], ["'Bank Deposits'!F2:J2", [['DSRDPI', 990, 'RCBC', 'SUYMAN, NELSON', 'Ref 01101026001363']]]);
   await assert.rejects(() => runAsSystem(() => editDeposit('DEP-1', changes, { employeeId: 'DPE-8', isAdmin: false })), /only deposits you recorded/);
   await runAsSystem(() => editDeposit('DEP-1', changes, { employeeId: 'DPE-8', isAdmin: true }));
   await assert.rejects(() => runAsSystem(() => editDeposit('DEP-2', changes, { employeeId: 'DPE-7', isAdmin: false })), /voided deposit cannot be edited/);
   await assert.rejects(() => runAsSystem(() => editDeposit('DEP-1', { ...changes, amount: 0 }, { employeeId: 'DPE-7', isAdmin: false })), /amount deposited/);
+  // Remarks (owner, October 14, 2026): numbers, or letters and numbers; never letters only; required.
+  await assert.rejects(() => runAsSystem(() => editDeposit('DEP-1', { ...changes, remarks: 'Already deposited' }, { employeeId: 'DPE-7', isAdmin: false })), /letters only are not accepted/);
+  await assert.rejects(() => runAsSystem(() => editDeposit('DEP-1', { ...changes, remarks: '' }, { employeeId: 'DPE-7', isAdmin: false })), /Enter the remarks/);
+  await runAsSystem(() => editDeposit('DEP-1', { ...changes, remarks: '01101026001363' }, { employeeId: 'DPE-7', isAdmin: false }));
 });
 
 test('Fidelity handed in after encoding: its own slip, in the report at once, approved like any slip', async () => {

@@ -109,7 +109,7 @@ export default function DailyAuditPage() {
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {span.from && period !== "daily" && <p className="text-sm text-muted-foreground">Auditing the {unit} from <strong>{span.from}</strong> to <strong>{span.to}</strong>: each Entry Clerk&apos;s report totals for the whole {unit}, with how their daily audits stand.</p>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <MetricTile tone="brand" label="Entry Clerks to audit" value={String(rows.length)} detail="Active Entry Clerks" />
+      <MetricTile tone="brand" label="Entry Clerks to audit" value={String(rows.length)} detail="Present, or encoded, in the period" />
       <MetricTile tone="warning" label="Not started" value={String(count("Not started"))} />
       <MetricTile tone="teal" label="Draft" value={String(count("Draft"))} detail="Prepared, awaiting approval" />
       <MetricTile tone="success" label="Approved" value={String(count("Approved"))} />
@@ -199,7 +199,7 @@ export default function DailyAuditPage() {
           {message && <p role="status" className="text-sm">{message}</p>}
         </div>}
       </div>)}
-      {!rows.length && <p className="rounded-xl border bg-background p-8 text-center text-muted-foreground">{busy ? "Loading..." : "No active Entry Clerks to audit."}</p>}
+      {!rows.length && <p className="rounded-xl border bg-background p-8 text-center text-muted-foreground">{busy ? "Loading..." : "No Entry Clerk was present or encoded in this period."}</p>}
     </div>
     </>}
   </section>;

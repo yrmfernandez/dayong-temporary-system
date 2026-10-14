@@ -22,6 +22,16 @@ const NOTE_HEADERS = ["note_key", "employee_id", "period_kind", "period_start", 
 /** At least this many characters explain a typed Cash Beg. */
 export const CASH_BEG_REASON_MIN = 5;
 const text = (value: unknown) => String(value ?? "").trim();
+/**
+ * Cash-flow remarks (owner, October 14, 2026): letters and numbers or numbers only (a reference such as 01101026001363),
+ * never letters only. Required.
+ */
+export const depositRemarksProblem = (value: unknown) => {
+  const remarks = text(value);
+  if (!remarks) return "Enter the remarks: the deposit's reference number (numbers, or letters and numbers).";
+  if (!/\d/.test(remarks)) return "The remarks need a number (e.g. the deposit reference); letters only are not accepted.";
+  return "";
+};
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 const column = (count: number) => String.fromCharCode(64 + count);
 
@@ -57,6 +67,8 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
   const bankAccount = text(input.bankAccount).slice(0, 100), transferType = text(input.transferType).slice(0, 60);
   if (!bankAccount) throw new Error("Enter the bank account name.");
   if (!transferType) throw new Error("Enter the type of transfer (bank or channel).");
+  const remarksProblem = depositRemarksProblem(input.remarks);
+  if (remarksProblem) throw new Error(remarksProblem);
   getEncoder();
   await ensure(DEPOSITS, DEPOSIT_HEADERS);
   const id = createReadableId("DEP");
@@ -77,6 +89,8 @@ export async function editDeposit(id: string, input: Record<string, unknown>, by
   const bankAccount = text(input.bankAccount).slice(0, 100), transferType = text(input.transferType).slice(0, 60);
   if (!bankAccount) throw new Error("Enter the bank account name.");
   if (!transferType) throw new Error("Enter the type of transfer (bank or channel).");
+  const remarksProblem = depositRemarksProblem(input.remarks);
+  if (remarksProblem) throw new Error(remarksProblem);
   getEncoder();
   const all = await rows(DEPOSITS, DEPOSIT_HEADERS.length);
   const index = all.findIndex((row, position) => position > 0 && text(row[0]) === text(id));

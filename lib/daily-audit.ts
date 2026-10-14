@@ -1,3 +1,6 @@
+import { sql } from "drizzle-orm";
+
+import { getDb } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEmployees } from "@/lib/employees";
@@ -100,16 +103,26 @@ async function figuresFor(period: AuditPeriod, date: string, employee: { name: s
   };
 }
 
+/** Employees present on any day from `from` to `to`: clocked in, or marked Present. */
+async function presentEmployees(from: string, to: string) {
+  const result = await getDb().execute(sql`select distinct employee_id from attendance
+    where attendance_date between ${from}::date and ${to}::date and (attendance_status = 'Present' or coalesce(trim(time_in::text), '') <> '')`);
+  return new Set(((Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ employee_id: string }>).map((row) => row.employee_id));
+}
+
 export async function getDailyAudits(day: string, period: AuditPeriod = "daily") {
-  const date = periodSpan(period, day).start;
-  const [employees, rows] = await Promise.all([auditedEmployees(), auditRows(period)]);
+  const { start: date, end } = periodSpan(period, day);
+  const [employees, rows, present] = await Promise.all([auditedEmployees(), auditRows(period), presentEmployees(date, end)]);
   const saved = rows.slice(1).map(readAudit).filter((audit) => audit.id && audit.date === date);
-  return Promise.all(employees.map(async (employee) => {
+  const all = await Promise.all(employees.map(async (employee) => {
     const audit = saved.find((item) => item.employeeId === employee.employeeId);
     // Approved audits show the figures they were approved on; open ones show the current report.
     const figures = audit?.status === "Approved" && audit.figures ? audit.figures : await figuresFor(period, date, employee);
     return { employeeId: employee.employeeId, employeeName: employee.name, branch: employee.branch, status: (audit?.status ?? "Not started") as AuditStatus, audit: audit ?? null, figures };
   }));
+  // Only Entry Clerks who were present (owner, October 14, 2026): clocked in or marked Present in the period, or who
+  // encoded something in it (they worked), or who already have an audit for it.
+  return all.filter((row) => present.has(row.employeeId) || row.figures.accounts > 0 || row.audit);
 }
 
 async function findAudit(period: AuditPeriod, date: string, employeeId: string) {
