@@ -23,6 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useFormDraft } from "@/lib/use-form-draft";
+import { useParkedDrafts } from "@/lib/use-parked-drafts";
+import { ParkedDrafts } from "@/components/parked-drafts";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
@@ -110,6 +112,8 @@ type CollectionEntry = {
   status: string;
   accountStatus: string;
   temporarilySuspended: boolean;
+  /** When the account becomes suspended (lib/account-rules.ts); a Waiver is needed only when the OR date is on or after it. */
+  suspendedAt?: string;
   collectedByRole: string;
   accountLoading: boolean;
 
@@ -240,6 +244,13 @@ function getMonthDifference(from: string, to: string) {
   );
 }
 
+/**
+ * A Waiver is needed only when the member paid on or after the day the account became suspended (the OR date, not the
+ * day it is encoded; owner, October 14, 2026). Without a suspension date, today's state decides.
+ */
+const needsWaiver = (entry: { temporarilySuspended: boolean; suspendedAt?: string; orDate: string }) =>
+  entry.suspendedAt ? Boolean(entry.orDate) && entry.orDate >= entry.suspendedAt : entry.temporarilySuspended;
+
 export default function CollectionsPage() {
   const [branch, setBranch] = useState("");
   // Late dates skip Sundays and the branch's declared non-working days, as the server does (lib/working-days.ts).
@@ -297,10 +308,9 @@ export default function CollectionsPage() {
   const [fidelity, setFidelity] = useState("");
 
   // The unsaved batch survives leaving the page and coming back (member search results included, so picks still show).
-  useFormDraft(
-    "collections",
-    { dto, orc, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity },
-    (draft) => {
+  const draftSnapshot = { dto, orc, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity };
+  type CollectionsDraft = typeof draftSnapshot;
+  const restoreDraft = (draft: Partial<CollectionsDraft>) => {
       setDto(Boolean(draft.dto));
       setOrc(draft.orc === true);
       setBranch(draft.branch ?? "");
@@ -319,8 +329,10 @@ export default function CollectionsPage() {
       setPenalty(draft.penalty ?? "");
       setPenaltyNote(draft.penaltyNote ?? "");
       setFidelity(draft.fidelity ?? "");
-    },
-  );
+    };
+  useFormDraft("collections", draftSnapshot, restoreDraft);
+  // Batches set aside to finish later (owner, October 14, 2026; lib/use-parked-drafts.ts).
+  const parked = useParkedDrafts<CollectionsDraft>("collections");
   const selectedPaymentMethod = paymentMethods.find((method) => method.name === paymentMethod);
   const isCashPayment = selectedPaymentMethod?.isCash ?? false;
 
@@ -575,7 +587,7 @@ export default function CollectionsPage() {
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load account.");
       const account = result.account;
       setHistories((current) => ({ ...current, [entryId]: result.history ?? [] }));
-      updateCollection(entryId, { accountStatus: account.status, temporarilySuspended: account.temporarilySuspended, accountLoading: false,
+      updateCollection(entryId, { accountStatus: account.status, temporarilySuspended: account.temporarilySuspended, suspendedAt: account.suspendedAt ?? "", accountLoading: false,
         amountCollected: String(account.monthlyAmount), monthFrom: account.nextMonth, monthTo: account.nextMonth, nopFrom: account.nextNop, nopTo: account.nextNop });
     } catch (error) {
       if (selectionVersions.current[entryId] !== version) return;
@@ -632,7 +644,7 @@ export default function CollectionsPage() {
     if (entry.accountLoading || !entry.accountStatus) return "Load the program account before saving.";
     // Payments on forfeited accounts are allowed only on the owner's chosen days (lib/account-rules.ts).
     if (entry.accountStatus === "Forfeited" && !forfeitedPaymentsAllowed()) return "This program account is forfeited. Payments are blocked.";
-    if (entry.temporarilySuspended && entry.ifSuspended !== "Waiver") return "Select Waiver under If Suspended.";
+    if (needsWaiver(entry) && entry.ifSuspended !== "Waiver") return "The account was suspended on the OR date. Select Waiver under If Suspended.";
     const rate = programs.find((p) => p.id === entry.programId)?.basePay ?? 0;
     const months = getMonthDifference(entry.monthFrom, entry.monthTo);
     if (months < 1 || Number(entry.amountCollected) * 100 < Math.round(rate * 100) * months) return "Amount must cover every selected full monthly installment.";
@@ -929,6 +941,24 @@ export default function CollectionsPage() {
     setPaymentReference("");
   }
 
+  // Set aside / resume (owner, October 14, 2026): a batch with anything in it can be set aside; resuming a draft sets
+  // the open batch aside first, so nothing is lost.
+  const batchHasWork = Boolean(cleared || branch) || collections.some((entry) => entry.memberId || entry.orNumber);
+  const draftLabel = () => `${dto ? "DTO" : mas || "No MAS"} · ${branch || "no branch"} · ${collections.filter((entry) => entry.memberId).length} entr${collections.filter((entry) => entry.memberId).length === 1 ? "y" : "ies"}`;
+  function parkBatch() {
+    if (!batchHasWork) return;
+    parked.park(draftLabel(), draftSnapshot);
+    resetForm();
+    setSaveMessage("Batch set aside. Resume it from Drafts.");
+  }
+  function resumeBatch(id: string) {
+    const data = parked.swap(id, batchHasWork ? { label: draftLabel(), data: draftSnapshot } : undefined);
+    if (!data) return;
+    resetForm();
+    restoreDraft(data);
+    setSaveMessage(batchHasWork ? "Draft resumed; the batch you had open was set aside." : "Draft resumed.");
+  }
+
   return (
     // Enter moves to the next field (lib/enter-to-next.ts).
     <div className="space-y-4" onKeyDown={enterToNextField}>
@@ -942,6 +972,8 @@ export default function CollectionsPage() {
           Record member payments and assign cash accountability.
         </p></div><Badge variant="secondary">{collections.length} {collections.length===1?"entry":"entries"}</Badge>
       </div>
+
+      <ParkedDrafts drafts={parked.drafts} canPark={batchHasWork} onPark={parkBatch} onResume={resumeBatch} onDelete={parked.remove} />
 
       {/* COLLECTION BATCH HEADER */}
       <Card><CardContent className="p-4">
@@ -1418,9 +1450,9 @@ export default function CollectionsPage() {
                             {" · "}Remittance <strong className="text-foreground">{(() => { const quote = quoteEntry(entry); return "remittance" in quote ? formatCurrency(quote.remittance) : "Pending"; })()}</strong>
                             <span title="NOP is set from the covered months and the account's history (an NS account's New Sale is NOP 1, so its first collection is NOP 2). The remittance uses the MAS or Collector incentive tier and mark-up."> ⓘ</span>
                             {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
-                            {entry.temporarilySuspended && <p className="mt-1 text-amber-700">Temporarily suspended. Select Waiver under If Suspended.</p>}
+                            {needsWaiver(entry) && <p className="mt-1 text-amber-700">Suspended on the OR date. Select Waiver under If Suspended.</p>}
                             {entry.accountStatus === "Forfeited" && <p className={`mt-1 ${forfeitedPaymentsAllowed() ? "text-amber-700" : "text-red-600"}`}>{forfeitedPaymentsAllowed() ? "Forfeited: payments are allowed today only." : "Payments are blocked for this program."}</p>}
-                            {entry.temporarilySuspended && <label className="mt-2 block text-foreground">If Suspended *<select className="ml-2 rounded border p-1" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
+                            {needsWaiver(entry) && <label className="mt-2 block text-foreground">If Suspended *<select className="ml-2 rounded border p-1" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
                           </div>
 
                           {/* MORE DETAILS */}

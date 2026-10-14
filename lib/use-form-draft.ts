@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 
+import { clearParkedDrafts } from "@/lib/use-parked-drafts";
+
 const PREFIX = "dayong:draft:";
 
 /**
@@ -31,9 +33,10 @@ export function useFormDraft<T>(key: string, snapshot: T, restore: (draft: T) =>
   }, [storageKey, json]);
 }
 
-/** Forgets every saved form draft; called on sign-out. */
+/** Forgets every saved form draft and set-aside batch (lib/use-parked-drafts.ts); called on sign-out. */
 export function clearFormDrafts() {
   try {
     for (const key of Object.keys(window.sessionStorage)) if (key.startsWith(PREFIX)) window.sessionStorage.removeItem(key);
   } catch { /* storage blocked: nothing to clear */ }
+  clearParkedDrafts();
 }

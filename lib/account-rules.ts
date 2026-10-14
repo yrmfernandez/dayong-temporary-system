@@ -157,7 +157,9 @@ export function validatePayment(account: Account, history: AccountPayment[], inp
   if (state.latestOrDate && input.orDate < state.latestOrDate) throw new Error("OR Date cannot precede the last recorded payment. Review backdated entries separately.");
   const atPayment = accountState(account, history, input.orDate);
   if (atPayment.status === "Forfeited" && !forfeitedAllowed) throw new Error("The account was forfeited on this OR Date.");
-  if ((state.temporarilySuspended || atPayment.temporarilySuspended) && input.waiver !== "Waiver") throw new Error("Select Waiver under If Suspended before accepting payment.");
+  // Suspension is judged on the OR date, the day the member paid, not the day it is encoded (owner, October 14, 2026: an
+  // August payment made in September and encoded in October needs no Waiver). Forfeiture above is still judged today.
+  if (atPayment.temporarilySuspended && input.waiver !== "Waiver") throw new Error("Select Waiver under If Suspended before accepting payment.");
   if (!(COLLECTION_CHANNELS as readonly string[]).includes(input.collectedByRole)) throw new Error("Select whether the collection was made by MAS, Collector, or DTO (Direct to Office).");
   if (!input.orNumber.trim()) throw new Error("OR Number is required.");
   if (history.some((p) => p.enrollmentId === account.id && p.orNumber === input.orNumber)) throw new Error("This receipt is already recorded for the account.");

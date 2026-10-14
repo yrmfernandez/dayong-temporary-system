@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 64 API handlers, 117 library files, 48 component files; 407 scanned source/configuration/public-text files in total.
+42 page routes, 64 API handlers, 118 library files, 49 component files; 409 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -20,7 +20,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/branches` | [app/branches/page.tsx](../app/branches/page.tsx) | `@/components/ui/badge`, `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/lib/use-live-refresh` |
 | `/cash-transactions` | [app/cash-transactions/page.tsx](../app/cash-transactions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/clearing` | [app/clearing/page.tsx](../app/clearing/page.tsx) | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/clearing`, `@/lib/use-live-refresh` |
-| `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/clearing-picker`, `@/lib/clearing-kinds`, `@/lib/enter-to-next`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/remittance-deadline`, `@/lib/use-work-calendar`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/receipt-photo`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance`, `@/lib/account-rules`, `@/lib/or-number` |
+| `/collections` | [app/collections/page.tsx](../app/collections/page.tsx) | `@/components/clearing-picker`, `@/lib/clearing-kinds`, `@/lib/enter-to-next`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-form-draft`, `@/lib/use-parked-drafts`, `@/components/parked-drafts`, `@/lib/remittance-deadline`, `@/lib/use-work-calendar`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/components/receipt-photo`, `@/components/remittance-summary`, `@/components/ui/select`, `@/lib/types`, `@/lib/remittance`, `@/lib/account-rules`, `@/lib/or-number` |
 | `/commissions` | [app/commissions/page.tsx](../app/commissions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/company-reports` | [app/company-reports/page.tsx](../app/company-reports/page.tsx) | `@/components/company-reports` |
 | `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/bulk-member-transfer`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password`, `@/components/nte-panel`, `@/lib/use-live-refresh` |
@@ -240,8 +240,9 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/todays-entries.ts](../lib/todays-entries.ts) | `DayEntry`, `getEntriesForDay`, `getEntriesForRange` | `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/receipt-photos`, `@/lib/entry-batches`, `@/lib/today-mode` |
 | [lib/types.ts](../lib/types.ts) | `Address`, `PersonName`, `Claimant`, `Beneficiary`, `Member`, `Program`, `ProgramEnrollment`, `NewSale`, `Collection` | — |
 | [lib/ui-preferences.ts](../lib/ui-preferences.ts) | `IndicatorStyle`, `TableDensity`, `preferenceKeys`, `ACTIVE_ROLE_COOKIE`, `writeActiveRoleCookie`, `readPreference`, `writePreference`, `removePreference`, `onPreferencesChange`, `readIndicator`, `readDensity` | — |
-| [lib/use-form-draft.ts](../lib/use-form-draft.ts) | `useFormDraft`, `clearFormDrafts` | — |
+| [lib/use-form-draft.ts](../lib/use-form-draft.ts) | `useFormDraft`, `clearFormDrafts` | `@/lib/use-parked-drafts` |
 | [lib/use-live-refresh.ts](../lib/use-live-refresh.ts) | `useLiveRefresh` | — |
+| [lib/use-parked-drafts.ts](../lib/use-parked-drafts.ts) | `ParkedDraft`, `useParkedDrafts`, `clearParkedDrafts` | — |
 | [lib/use-work-calendar.ts](../lib/use-work-calendar.ts) | `useDeclaredNonWorkingDays` | `@/lib/working-days` |
 | [lib/users-sheet.ts](../lib/users-sheet.ts) | `USERS_RANGE`, `UserColumns`, `UserRecord`, `userColumns`, `readUserRows`, `loadUsers`, `userCell`, `assertUsernameColumnRemoved` | `@/lib/google-sheets`, `@/lib/encoder-schema`, `@/lib/sheet-headers` |
 | [lib/utils.ts](../lib/utils.ts) | `cn` | — |
@@ -275,9 +276,10 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/member-mam.tsx](../components/member-mam.tsx) | `MemberMam` | `@/components/status-badge`, `@/lib/mam-format` |
 | [components/metric-tile.tsx](../components/metric-tile.tsx) | `MetricTile` | `@/components/status-badge` |
 | [components/my-attendance-history.tsx](../components/my-attendance-history.tsx) | `MyAttendanceHistory` | `@/lib/attendance-board` |
-| [components/new-sales-form.tsx](../components/new-sales-form.tsx) | `NewSalesForm` | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/program-amount-lock`, `@/lib/use-work-calendar`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/use-form-draft`, `@/components/remittance-summary`, `@/lib/remittance`, `@/components/ui/select`, `@/components/ui/separator`, `@/components/ui/textarea`, `@/lib/types`, `@/lib/use-live-refresh`, `@/components/clearing-picker`, `@/lib/clearing-kinds`, `@/lib/enter-to-next` |
+| [components/new-sales-form.tsx](../components/new-sales-form.tsx) | `NewSalesForm` | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/program-amount-lock`, `@/lib/use-work-calendar`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/use-form-draft`, `@/components/remittance-summary`, `@/lib/remittance`, `@/components/ui/select`, `@/components/ui/separator`, `@/components/ui/textarea`, `@/lib/types`, `@/lib/use-live-refresh`, `@/components/clearing-picker`, `@/components/parked-drafts`, `@/lib/use-parked-drafts`, `@/lib/clearing-kinds`, `@/lib/enter-to-next` |
 | [components/nte-panel.tsx](../components/nte-panel.tsx) | `NtePanel` | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/nte` |
 | [components/one-time-password.tsx](../components/one-time-password.tsx) | `IssuedPassword`, `OneTimePasswordNotice` | `@/components/ui/button` |
+| [components/parked-drafts.tsx](../components/parked-drafts.tsx) | `ParkedDrafts` | `@/components/ui/button` |
 | [components/print-button.tsx](../components/print-button.tsx) | `PrintButton` | `@/components/ui/button` |
 | [components/profile.tsx](../components/profile.tsx) | `Profile`, `permissionLabels`, `initials`, `Avatar`, `useProfile`, `ProfileDetails`, `ProfileMenu` | `@/components/status-badge`, `@/lib/utils`, `@/lib/ui-preferences`, `@/lib/use-form-draft` |
 | [components/receipt-photo.tsx](../components/receipt-photo.tsx) | `compressReceiptPhoto`, `ReceiptPhotoUpload`, `ReceiptPhotoView` | `@/components/ui/button` |

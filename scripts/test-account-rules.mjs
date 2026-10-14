@@ -99,3 +99,12 @@ test("a forfeited account takes payments only on the owner's chosen days (Octobe
   validatePayment(old, [], late, "2026-10-13");
   assert.throws(() => validatePayment(old, [], { ...late, orDate: "2026-10-14" }, "2026-10-14"), /forfeited/, "the day after: blocked again");
 });
+test("the Waiver is judged on the OR date, not the day it is encoded (October 14, 2026)", () => {
+  const a = { ...account, doi: "2026-01-15" };
+  const history = [payment({ id: "A", orDate: "2026-02-10", monthFrom: "2026-02", monthTo: "2026-07", nopFrom: 2, nopTo: 7, amount: 2100 })];
+  const august = (orDate, waiver = "") => input({ monthFrom: "2026-08", monthTo: "2026-08", nopFrom: 8, nopTo: 8, orDate, orNumber: "OR-AUG", waiver });
+  assert.equal(accountState(a, history, "2026-10-14").temporarilySuspended, true, "today August and September have ended unpaid");
+  validatePayment(a, history, august("2026-09-20"), "2026-10-14");
+  assert.throws(() => validatePayment(a, history, august("2026-10-02"), "2026-10-14"), /Waiver/, "paid after August and September ended: suspended then");
+  validatePayment(a, history, august("2026-10-02", "Waiver"), "2026-10-14");
+});

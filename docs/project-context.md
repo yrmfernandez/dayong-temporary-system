@@ -324,6 +324,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Waiver judged on the OR date; drafts to set a batch aside (2026-10-14)
+
+- **Owner:** still wrong: an OR dated September for August asked for a Waiver though the member was not two months late. Also: drafts, so a clerk can leave a batch for a moment and go on with other entries.
+- **Cause:** the Waiver check also looked at today's state (August and September ended unpaid, the September payment not yet encoded), not only the state on the OR date.
+- **Done:** suspension (and the Waiver) is judged on the OR date only (`validatePayment`; the Collections form compares the OR date with the account's suspension date); forfeiture is still judged today (a backdated OR cannot bypass it). New Sales and Collections: Drafts panel: **Set this batch aside** stores the open batch (labelled MAS · branch · entries) and clears the form; **Resume** brings it back (setting the open batch aside first); **Delete** after confirming. Stored in this browser (localStorage), cleared on sign-out (`lib/use-parked-drafts.ts`, `components/parked-drafts.tsx`). Tested (Waiver).
+
 ### Missed months, 60D and suspension counted from month end (2026-10-14)
 
 - **Owner:** temporary suspension and 60D were wrong: a member who paid in July for July and August, then nothing in August and September, showed suspended and 60D.

@@ -55,6 +55,8 @@ import type {
 } from "@/lib/types";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { ClearingPicker } from "@/components/clearing-picker";
+import { ParkedDrafts } from "@/components/parked-drafts";
+import { useParkedDrafts } from "@/lib/use-parked-drafts";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { enterToNextField } from "@/lib/enter-to-next";
 
@@ -302,10 +304,9 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
 
   // The unsaved form survives leaving the page (e.g. to Collections) and coming back.
-  useFormDraft(
-    masMode ? "mas-sales" : "new-sales",
-    { branch, mas, dateRemitted, clearingId, clearedDate, dateRemittedReason, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId },
-    (draft) => {
+  const draftSnapshot = { branch, mas, dateRemitted, clearingId, clearedDate, dateRemittedReason, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId };
+  type SalesDraft = typeof draftSnapshot;
+  const restoreDraft = (draft: Partial<SalesDraft>) => {
       setSubmissionId(draft.submissionId ?? "");
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
@@ -318,8 +319,10 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       setPenalty(draft.penalty ?? "");
       setPenaltyNote(draft.penaltyNote ?? "");
       setFidelity(draft.fidelity ?? "");
-    },
-  );
+    };
+  useFormDraft(masMode ? "mas-sales" : "new-sales", draftSnapshot, restoreDraft);
+  // Batches set aside to finish later (owner, October 14, 2026; lib/use-parked-drafts.ts).
+  const parked = useParkedDrafts<SalesDraft>(masMode ? "mas-sales" : "new-sales");
 
   const [programs, setPrograms] = useState<
     Program[]
@@ -913,6 +916,30 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
    * RESET
    * =========================================================
    */
+  // Set aside / resume (owner, October 14, 2026): the form starts over completely for the next batch; resuming a draft
+  // sets the open batch aside first, so nothing is lost.
+  const batchHasWork = Boolean(clearingId || submissionId) || sales.some((sale) => sale.member.name.surname.trim() || sale.applicationNumber.trim());
+  const draftLabel = () => `${mas || "No MAS"} · ${branch || "no branch"} · ${sales.filter((sale) => sale.member.name.surname.trim()).length} sale(s)`;
+  const clearBatch = () => {
+    const firstSale = emptyNewSale("", "");
+    setBranch(""); setMas(""); setDateRemitted(""); setClearingId(""); setClearedDate(""); setDateRemittedReason("");
+    setSales([firstSale]); setExpandedSales({ [firstSale.id]: true }); setPenalty(""); setPenaltyNote(""); setFidelity("");
+    setShowPreview(false); setSubmissionId(""); setSaveMessage("");
+  };
+  const parkBatch = () => {
+    if (!batchHasWork) return;
+    parked.park(draftLabel(), draftSnapshot);
+    clearBatch();
+    setSaveMessage("Batch set aside. Resume it from Drafts.");
+  };
+  const resumeBatch = (id: string) => {
+    const data = parked.swap(id, batchHasWork ? { label: draftLabel(), data: draftSnapshot } : undefined);
+    if (!data) return;
+    clearBatch();
+    restoreDraft(data);
+    setSaveMessage(batchHasWork ? "Draft resumed; the batch you had open was set aside." : "Draft resumed.");
+  };
+
   const resetForm = () => {
     const firstSale = emptyNewSale(
       branch,
@@ -1313,6 +1340,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         </CardHeader>
 
         <CardContent className="space-y-4">
+          <ParkedDrafts drafts={parked.drafts} canPark={batchHasWork} onPark={parkBatch} onResume={resumeBatch} onDelete={parked.remove} />
           <ClearingPicker kind="New Sales" value={clearingId} disabled={Boolean(submissionId)} onPick={(clearing) => {
             setClearingId(clearing.id); setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setClearedDate(clearing.clearedDate); setDateRemittedReason("");
             setSales((current) => current.map((sale) => ({ ...sale, program: { ...sale.program, branch: clearing.branch, mas: clearing.employeeName } })));
