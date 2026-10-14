@@ -324,6 +324,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Report record panel organized (2026-10-14)
+
+- **Owner:** the forms under the report (expense, cash to bank, Fidelity, Cash Beg, notes) were messy.
+- **Done:** one panel with tabs Expense · Cash to bank · Fidelity · Cash Beg · Notes; one form at a time with a title and a short note, labels above their fields in a two-column grid (one column on phones), actions at the bottom; Edit on a deposit or Fidelity entry opens its tab.
+
 ### My Entries in tabs by status (2026-10-14)
 
 - **Owner:** arrange My Entries by status like Clearing (returned, approved, waiting for receipt, for approval).

@@ -9,7 +9,6 @@ import { ReceiptPhotoView } from "@/components/receipt-photo";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import type { ClerkReport as Report, ReportLine } from "@/lib/clerk-report";
 import { EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
@@ -387,93 +386,117 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
   const [cashBeg, setCashBeg] = useState({ amount: report.cash.cashBegEdit ? String(report.cash.cashBegEdit.amount) : "", reason: report.cash.cashBegEdit?.reason ?? "" });
   const [notes, setNotes] = useState({ pendingCash: String(report.notes.pendingCash || ""), specificRemarks: report.notes.specificRemarks, pendingTransactions: report.notes.pendingTransactions, otherComments: report.notes.otherComments });
   const masNames = report.masSummary.rows.map((row) => row.name);
+  // One form at a time, in tabs (owner, October 14, 2026: the side-by-side forms were messy). Editing opens its tab.
+  const [section, setSection] = useState<RecordSection>(editing ? "deposit" : editingFidelity ? "fidelity" : "expense");
+  const textarea = "min-h-20 w-full rounded-md border bg-background p-2 text-sm";
 
   return (
-    <div className="grid gap-4 rounded-xl border p-4 print:hidden lg:grid-cols-3">
-      <form className="space-y-2" onSubmit={async (event) => { event.preventDefault(); if (await act({ action: "add-expense", ...expense, amount: Number(expense.amount), attachments: [] })) setExpense((current) => ({ ...current, amount: "", receiptNumber: "", description: "", remarks: "" })); }}>
-        <p className="font-semibold">Add expense / other cash out</p>
-        <Label className="text-xs">Account name / type of expense<select className={field} value={expense.category} onChange={(event) => setExpense({ ...expense, category: event.target.value })}>{EXPENSE_ACCOUNTS.map((item) => <option key={item}>{item}</option>)}</select></Label>
-        {expense.category === "Other" && <Input placeholder="Specify the expense" value={expense.categoryOther} onChange={(event) => setExpense({ ...expense, categoryOther: event.target.value })} />}
-        <div className="grid grid-cols-2 gap-2">
-          <Label className="text-xs">Date<Input type="date" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} /></Label>
-          <Label className="text-xs">Amount<Input type="number" min="0" step="0.01" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} /></Label>
+    <div className="rounded-xl border print:hidden">
+      <div className="overflow-x-auto border-b px-2"><div className="flex min-w-max gap-1" role="tablist" aria-label="Record for this report">
+        {RECORD_SECTIONS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id)}
+          className={`border-b-2 px-3 py-3 text-sm font-medium ${section === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
+      </div></div>
+      <div className="p-4">
+      {section === "expense" && <form className="space-y-4" onSubmit={async (event) => { event.preventDefault(); if (await act({ action: "add-expense", ...expense, amount: Number(expense.amount), attachments: [] })) setExpense((current) => ({ ...current, amount: "", receiptNumber: "", description: "", remarks: "" })); }}>
+        <FormTitle title="Add expense / other cash out" note="Saved to Expenses for your branch; Finance can void a wrong one." />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Account name / type of expense"><select className={field} value={expense.category} onChange={(event) => setExpense({ ...expense, category: event.target.value })}>{EXPENSE_ACCOUNTS.map((item) => <option key={item}>{item}</option>)}</select></Field>
+          {expense.category === "Other" ? <Field label="Specify the expense"><Input value={expense.categoryOther} onChange={(event) => setExpense({ ...expense, categoryOther: event.target.value })} /></Field> : <div className="hidden sm:block" />}
+          <Field label="Date"><Input type="date" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} /></Field>
+          <Field label="Amount"><Input type="number" min="0" step="0.01" placeholder="0.00" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} /></Field>
+          <Field label="Receipt / CV no."><Input value={expense.receiptNumber} onChange={(event) => setExpense({ ...expense, receiptNumber: event.target.value })} /></Field>
+          <Field label="Approved by"><select className={field} value={expense.approvedBy} onChange={(event) => setExpense({ ...expense, approvedBy: event.target.value })}>{EXPENSE_APPROVERS.map((item) => <option key={item}>{item}</option>)}</select></Field>
+          {expense.approvedBy === "Other" && <Field label="Who approved it" wide><Input value={expense.approvedByOther} onChange={(event) => setExpense({ ...expense, approvedByOther: event.target.value })} /></Field>}
+          <Field label="Purpose *" wide><Input value={expense.description} onChange={(event) => setExpense({ ...expense, description: event.target.value })} /></Field>
+          <Field label="Remarks" wide><Input value={expense.remarks} onChange={(event) => setExpense({ ...expense, remarks: event.target.value })} /></Field>
         </div>
-        <Label className="text-xs">Receipt / CV no.<Input value={expense.receiptNumber} onChange={(event) => setExpense({ ...expense, receiptNumber: event.target.value })} /></Label>
-        <Label className="text-xs">Purpose<Input value={expense.description} onChange={(event) => setExpense({ ...expense, description: event.target.value })} /></Label>
-        <Label className="text-xs">Remarks<Input value={expense.remarks} onChange={(event) => setExpense({ ...expense, remarks: event.target.value })} /></Label>
-        <Label className="text-xs">Approved by<select className={field} value={expense.approvedBy} onChange={(event) => setExpense({ ...expense, approvedBy: event.target.value })}>{EXPENSE_APPROVERS.map((item) => <option key={item}>{item}</option>)}</select></Label>
-        {expense.approvedBy === "Other" && <Input placeholder="Who approved it" value={expense.approvedByOther} onChange={(event) => setExpense({ ...expense, approvedByOther: event.target.value })} />}
-        <Button type="submit" size="sm" disabled={!expense.amount || !expense.description.trim()}>Save expense</Button>
-        <p className="text-xs text-muted-foreground">Saved to Expenses for your branch; Finance can void a wrong one.</p>
-      </form>
+        <div className="flex gap-2"><Button type="submit" size="sm" disabled={!expense.amount || !expense.description.trim()}>Save expense</Button></div>
+      </form>}
 
-      <form id="deposit-form" className={`space-y-2 ${editing ? "rounded-lg border border-primary/40 bg-primary/5 p-3" : ""}`} onSubmit={async (event) => {
+      {section === "deposit" && <form id="deposit-form" className="space-y-4" onSubmit={async (event) => {
         event.preventDefault();
         if (editing) { if (await act({ action: "edit-deposit", id: editing.id, ...deposit, amount: Number(deposit.amount) })) onEditDone(); return; }
         if (await act({ action: "add-deposit", ...deposit, amount: Number(deposit.amount) })) setDeposit((current) => ({ ...current, amount: "", remarks: "" }));
       }}>
-        <p className="font-semibold">{editing ? `Edit deposit ${editing.id}` : "Add cash forwarded to bank"}</p>
-        <div className="grid grid-cols-2 gap-2">
-          <Label className="text-xs">Date<Input type="date" value={deposit.date} onChange={(event) => setDeposit({ ...deposit, date: event.target.value })} /></Label>
-          <Label className="text-xs">Amount<Input type="number" min="0" step="0.01" value={deposit.amount} onChange={(event) => setDeposit({ ...deposit, amount: event.target.value })} /></Label>
+        <FormTitle title={editing ? `Edit deposit ${editing.id}` : "Add cash forwarded to bank"} note="Cash out of this report: cash you deposited or sent to the bank." />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Date"><Input type="date" value={deposit.date} onChange={(event) => setDeposit({ ...deposit, date: event.target.value })} /></Field>
+          <Field label="Amount"><Input type="number" min="0" step="0.01" placeholder="0.00" value={deposit.amount} onChange={(event) => setDeposit({ ...deposit, amount: event.target.value })} /></Field>
+          <Field label="Bank account name"><Input value={deposit.bankAccount} onChange={(event) => setDeposit({ ...deposit, bankAccount: event.target.value })} /></Field>
+          <Field label="Type of transfer *"><Input value={deposit.transferType} onChange={(event) => setDeposit({ ...deposit, transferType: event.target.value })} placeholder="e.g. RCBC, GCash" /></Field>
+          <Field label="MAS"><Input list="report-mas" value={deposit.mas} onChange={(event) => setDeposit({ ...deposit, mas: event.target.value })} /><datalist id="report-mas">{masNames.map((name) => <option key={name} value={name} />)}</datalist></Field>
+          <Field label="Remarks"><Input value={deposit.remarks} onChange={(event) => setDeposit({ ...deposit, remarks: event.target.value })} placeholder="e.g. Already deposited" /></Field>
         </div>
-        <Label className="text-xs">Bank account name<Input value={deposit.bankAccount} onChange={(event) => setDeposit({ ...deposit, bankAccount: event.target.value })} /></Label>
-        <Label className="text-xs">Type of transfer<Input value={deposit.transferType} onChange={(event) => setDeposit({ ...deposit, transferType: event.target.value })} placeholder="e.g. RCBC, GCash" /></Label>
-        <Label className="text-xs">MAS<Input list="report-mas" value={deposit.mas} onChange={(event) => setDeposit({ ...deposit, mas: event.target.value })} /><datalist id="report-mas">{masNames.map((name) => <option key={name} value={name} />)}</datalist></Label>
-        <Label className="text-xs">Remarks<Input value={deposit.remarks} onChange={(event) => setDeposit({ ...deposit, remarks: event.target.value })} placeholder="e.g. Already deposited" /></Label>
         <div className="flex gap-2">
           <Button type="submit" size="sm" disabled={!deposit.amount || !deposit.transferType.trim()}>{editing ? "Save changes" : "Save deposit"}</Button>
           {editing && <Button type="button" size="sm" variant="outline" onClick={onEditDone}>Cancel</Button>}
         </div>
-      </form>
+      </form>}
 
-      <div className="space-y-4">
       {/* Fidelity handed in after the MAS's entries were encoded: its own slip, approved in Remittances (October 13, 2026). */}
-      <form id="fidelity-form" className={`space-y-2 rounded-lg border p-3 ${editingFidelity ? "border-primary/40 bg-primary/5" : ""}`} onSubmit={async (event) => {
+      {section === "fidelity" && <form id="fidelity-form" className="space-y-4" onSubmit={async (event) => {
         event.preventDefault();
         const body = { ...fidelity, amount: Number(fidelity.amount) };
         if (editingFidelity) { if (await act({ action: "edit-fidelity", id: editingFidelity.id, ...body })) onFidelityDone(); return; }
         if (await act({ action: "add-fidelity", ...body })) setFidelity((current) => ({ ...current, masEmployeeId: "", amount: "", remarks: "" }));
       }}>
-        <p className="font-semibold">{editingFidelity ? `Edit Fidelity ${editingFidelity.id}` : "Add Fidelity (handed in after encoding)"}</p>
-        <Label className="text-xs">MAS<select className={field} value={fidelity.masEmployeeId} onChange={(event) => setFidelity({ ...fidelity, masEmployeeId: event.target.value })}>
-          <option value="">Choose the MAS</option>{masChoices.map((mas) => <option key={mas.id} value={mas.id}>{mas.name}</option>)}
-        </select></Label>
-        <div className="grid grid-cols-2 gap-2">
-          <Label className="text-xs">Date received<Input type="date" max={todayInManila()} value={fidelity.date} onChange={(event) => setFidelity({ ...fidelity, date: event.target.value })} /></Label>
-          <Label className="text-xs">Amount<Input type="number" min="0" step="0.01" value={fidelity.amount} onChange={(event) => setFidelity({ ...fidelity, amount: event.target.value })} /></Label>
+        <FormTitle title={editingFidelity ? `Edit Fidelity ${editingFidelity.id}` : "Add Fidelity (handed in after encoding)"} note="Counts as cash in (Fidelity Bond) on this report at once, and in the MAS's Fidelity once approved in Remittances. Edit or void it until then." />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="MAS *" wide><select className={field} value={fidelity.masEmployeeId} onChange={(event) => setFidelity({ ...fidelity, masEmployeeId: event.target.value })}>
+            <option value="">Choose the MAS</option>{masChoices.map((mas) => <option key={mas.id} value={mas.id}>{mas.name}</option>)}
+          </select></Field>
+          <Field label="Date received"><Input type="date" max={todayInManila()} value={fidelity.date} onChange={(event) => setFidelity({ ...fidelity, date: event.target.value })} /></Field>
+          <Field label="Amount *"><Input type="number" min="0" step="0.01" placeholder="0.00" value={fidelity.amount} onChange={(event) => setFidelity({ ...fidelity, amount: event.target.value })} /></Field>
+          <Field label="Remarks" wide><Input maxLength={300} placeholder="e.g. Fidelity for the Oct 12 collections" value={fidelity.remarks} onChange={(event) => setFidelity({ ...fidelity, remarks: event.target.value })} /></Field>
         </div>
-        <Label className="text-xs">Remarks<Input maxLength={300} placeholder="e.g. Fidelity for the Oct 12 collections" value={fidelity.remarks} onChange={(event) => setFidelity({ ...fidelity, remarks: event.target.value })} /></Label>
         <div className="flex gap-2">
           <Button type="submit" size="sm" disabled={!fidelity.masEmployeeId || !(Number(fidelity.amount) > 0)}>{editingFidelity ? "Save changes" : "Save Fidelity"}</Button>
           {editingFidelity && <Button type="button" size="sm" variant="outline" onClick={onFidelityDone}>Cancel</Button>}
         </div>
-        <p className="text-xs text-muted-foreground">Counts as cash in (Fidelity Bond) on this report at once, and in the MAS&apos;s Fidelity once approved in Remittances. Edit or void it until then.</p>
-      </form>
+      </form>}
 
-      {/* Cash Beg is the cash received (owner, October 13, 2026): the clerk can type it, with the reason; blank = calculated. */}
-      <form className="space-y-2 rounded-lg border bg-muted/30 p-3" onSubmit={(event) => { event.preventDefault(); void act({ action: "save-cash-beg", cashBeg: cashBeg.amount === "" ? "" : Number(cashBeg.amount), reason: cashBeg.reason }); }}>
-        <p className="font-semibold">Cash Beg for this report</p>
-        <p className="text-xs text-muted-foreground">The cash you actually received at the start of this report. It applies to this report only; left blank, Cash Beg is zero.</p>
-        <Label className="text-xs">Cash received (Cash Beg)<Input type="number" min="0" step="0.01" placeholder="0.00" value={cashBeg.amount} onChange={(event) => setCashBeg({ ...cashBeg, amount: event.target.value })} /></Label>
-        {cashBeg.amount !== "" && <Label className="text-xs">Reason *<Input maxLength={300} placeholder="e.g. Counted cash on hand; turnover from the previous clerk" value={cashBeg.reason} onChange={(event) => setCashBeg({ ...cashBeg, reason: event.target.value })} /></Label>}
-        <div className="flex flex-wrap gap-2">
+      {/* Cash Beg is the cash received (owner, October 13, 2026): the clerk types it, with the reason; blank = zero. */}
+      {section === "cashBeg" && <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "save-cash-beg", cashBeg: cashBeg.amount === "" ? "" : Number(cashBeg.amount), reason: cashBeg.reason }); }}>
+        <FormTitle title="Cash Beg for this report" note="The cash you actually received at the start of this report. It applies to this report only; left blank, Cash Beg is zero." />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Cash received (Cash Beg)"><Input type="number" min="0" step="0.01" placeholder="0.00" value={cashBeg.amount} onChange={(event) => setCashBeg({ ...cashBeg, amount: event.target.value })} /></Field>
+          {cashBeg.amount !== "" ? <Field label="Reason *"><Input maxLength={300} placeholder="e.g. Counted cash on hand" value={cashBeg.reason} onChange={(event) => setCashBeg({ ...cashBeg, reason: event.target.value })} /></Field> : <div className="hidden sm:block" />}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" size="sm" disabled={cashBeg.amount !== "" && cashBeg.reason.trim().length < 5}>Save Cash Beg</Button>
           {report.cash.cashBegEdit && <Button type="button" size="sm" variant="outline" onClick={() => { setCashBeg({ amount: "", reason: "" }); void act({ action: "save-cash-beg", cashBeg: "" }); }}>Clear</Button>}
+          {report.cash.cashBegEdit?.updatedAt && <span className="text-xs text-muted-foreground">Saved {new Date(report.cash.cashBegEdit.updatedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {report.cash.cashBegEdit.updatedBy}</span>}
         </div>
-        {report.cash.cashBegEdit?.updatedAt && <p className="text-xs text-muted-foreground">Saved {new Date(report.cash.cashBegEdit.updatedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {report.cash.cashBegEdit.updatedBy}</p>}
-      </form>
+      </form>}
 
-      <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); void act({ action: "save-notes", ...notes, pendingCash: Number(notes.pendingCash) || 0 }); }}>
-        <p className="font-semibold">Notes for this report</p>
-        <Label className="text-xs">Pending cash, to be encoded<Input type="number" min="0" step="0.01" value={notes.pendingCash} onChange={(event) => setNotes({ ...notes, pendingCash: event.target.value })} /></Label>
-        <Label className="text-xs">Specific remarks<textarea className="min-h-16 w-full rounded-md border bg-background p-2 text-sm" value={notes.specificRemarks} onChange={(event) => setNotes({ ...notes, specificRemarks: event.target.value })} /></Label>
-        <Label className="text-xs">Pending transactions<textarea className="min-h-16 w-full rounded-md border bg-background p-2 text-sm" value={notes.pendingTransactions} onChange={(event) => setNotes({ ...notes, pendingTransactions: event.target.value })} /></Label>
-        <Label className="text-xs">Other comments / remarks<textarea className="min-h-16 w-full rounded-md border bg-background p-2 text-sm" value={notes.otherComments} onChange={(event) => setNotes({ ...notes, otherComments: event.target.value })} /></Label>
-        <Button type="submit" size="sm">Save notes</Button>
-        {report.notes.updatedAt && <p className="text-xs text-muted-foreground">Last saved {new Date(report.notes.updatedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {report.notes.updatedBy}</p>}
-      </form>
+      {section === "notes" && <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "save-notes", ...notes, pendingCash: Number(notes.pendingCash) || 0 }); }}>
+        <FormTitle title="Notes for this report" note="Shown in the report's remark boxes, and to reviewers and auditors." />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Pending cash, to be encoded"><Input type="number" min="0" step="0.01" placeholder="0.00" value={notes.pendingCash} onChange={(event) => setNotes({ ...notes, pendingCash: event.target.value })} /></Field>
+          <div className="hidden sm:block" />
+          <Field label="Specific remarks" wide><textarea className={textarea} value={notes.specificRemarks} onChange={(event) => setNotes({ ...notes, specificRemarks: event.target.value })} /></Field>
+          <Field label="Pending transactions"><textarea className={textarea} value={notes.pendingTransactions} onChange={(event) => setNotes({ ...notes, pendingTransactions: event.target.value })} /></Field>
+          <Field label="Other comments / remarks"><textarea className={textarea} value={notes.otherComments} onChange={(event) => setNotes({ ...notes, otherComments: event.target.value })} /></Field>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" size="sm">Save notes</Button>
+          {report.notes.updatedAt && <span className="text-xs text-muted-foreground">Last saved {new Date(report.notes.updatedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {report.notes.updatedBy}</span>}
+        </div>
+      </form>}
       </div>
     </div>
   );
+}
+
+const RECORD_SECTIONS = [["expense", "Expense"], ["deposit", "Cash to bank"], ["fidelity", "Fidelity"], ["cashBeg", "Cash Beg"], ["notes", "Notes"]] as const;
+type RecordSection = (typeof RECORD_SECTIONS)[number][0];
+
+/** A form's heading and what it is for. */
+function FormTitle({ title, note }: { title: string; note: string }) {
+  return <div><p className="font-semibold">{title}</p><p className="text-xs text-muted-foreground">{note}</p></div>;
+}
+
+/** A label above its input; `wide` spans both columns. */
+function Field({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return <label className={`block space-y-1 ${wide ? "sm:col-span-2" : ""}`}><span className="block text-xs font-medium text-muted-foreground">{label}</span>{children}</label>;
 }
