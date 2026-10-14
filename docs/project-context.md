@@ -324,6 +324,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Expenses on the report of the day recorded (2026-10-14)
+
+- **Owner:** an expense whose date the clerk changes goes to that date's report; it should always be on today's report.
+- **Done:** the clerk report places an expense by the day it was recorded (Expenses U encoded at, else N created, Manila), not the expense date typed; the row still shows the typed date. Finance's own Expenses pages are unchanged. Tested.
+
 ### Collector incentives; deposit remarks; Audits show present clerks (2026-10-14)
 
 - **Owner:** in Collections, a Collector collecting as Collector gets no incentive; cash-flow remarks must have numbers (numbers only fine, letters only not); Audits should show only Entry Clerks who were present.

@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db";
 import { periodSpan, type AuditPeriod } from "@/lib/daily-audit";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { expectedByMas, type Expected } from "@/lib/mas-expected";
+import { manilaDateOf } from "@/lib/remittance-deadline";
 import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
 
 /**
@@ -89,13 +90,18 @@ function section(kind: AuditPeriod, entries: DayEntry[]) {
 
 export type ExpenseRow = { id: string; date: string; when: string; account: string; amount: number; receipt: string; purpose: string; remarks: string };
 
-/** Posted expenses the clerk encoded on or before `to` (Expenses B date, C account, D purpose, E amount, H branch, K receipt, L status, M remarks, S encoder). */
+/**
+ * Posted expenses the clerk recorded on or before `to` (Expenses B date, C account, D purpose, E amount, H branch, K receipt,
+ * L status, M remarks, N created, S encoder, U encoded at). `recordedOn` is the day it was entered (Manila): an expense
+ * belongs to the report of the day it was recorded, whatever expense date was typed (owner, October 14, 2026).
+ */
 async function clerkExpenses(employeeId: string, to: string) {
   try {
     const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Expenses'!A:U", valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" })).data.values ?? [];
     return rows.slice(1)
-      .filter((row) => text(row[0]) && text(row[18]) === employeeId && (text(row[11]) || "Posted") === "Posted" && text(row[1]).slice(0, 10) <= to)
-      .map((row) => ({ id: text(row[0]), date: text(row[1]).slice(0, 10), account: text(row[2]), purpose: text(row[3]), amount: Number(row[4]) || 0, branch: text(row[7]), receipt: text(row[10]), remarks: text(row[12]) }));
+      .map((row) => ({ row, recordedOn: manilaDateOf(text(row[20]) || text(row[13])) || text(row[1]).slice(0, 10) }))
+      .filter(({ row, recordedOn }) => text(row[0]) && text(row[18]) === employeeId && (text(row[11]) || "Posted") === "Posted" && recordedOn <= to)
+      .map(({ row, recordedOn }) => ({ id: text(row[0]), date: text(row[1]).slice(0, 10), recordedOn, account: text(row[2]), purpose: text(row[3]), amount: Number(row[4]) || 0, branch: text(row[7]), receipt: text(row[10]), remarks: text(row[12]) }));
   } catch {
     return [];
   }
@@ -129,7 +135,8 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   // Every branch the clerk encoded for in the period, for the branch choice.
   const encodedBranches = [...new Set(encoded.map((entry) => text(entry.branch)).filter(Boolean))].sort();
   const entries = encoded.filter((entry) => sameBranch(entry.branch));
-  const expenses = expensesAll.filter((item) => inPeriod(item.date) && sameBranch(item.branch));
+  // By the day the expense was recorded, not the expense date typed (owner, October 14, 2026).
+  const expenses = expensesAll.filter((item) => inPeriod(item.recordedOn) && sameBranch(item.branch));
   const deposits = depositsAll.filter((item) => inPeriod(item.date) && sameBranch(item.branch));
   // Fidelity handed in after encoding (its own slips): cash received, so it is in the Fidelity Bond line.
   const fidelitySlips = fidelityAll.filter((item) => sameBranch(item.branch)).map((item) => ({ ...item, amount: Number(item.amount) || 0 }));

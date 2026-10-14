@@ -2965,3 +2965,16 @@ test('a clearing listed by mistake can be corrected until its entries are encode
   assert.equal((await query("select covers from clearings where clearing_id = 'CLR-E'"))[0].covers, 'Collections', 'New Sales (none encoded) can be unticked');
   await assert.rejects(() => clearing.editClearing({ id: 'CLR-E', branch: 'BR-2', employeeId: 'DPE-0003', covers: 'Both' }, 'DPE-9999'), /Only a clearing you made/);
 });
+
+test('an expense goes on the report of the day it was recorded, whatever expense date was typed (October 14, 2026)', async () => {
+  const h = harness();
+  const expense = Array(21).fill(''); Object.assign(expense, { 0: 'EXP-9', 1: '2026-10-10', 2: 'Fare', 4: 75, 7: 'MINTAL', 11: 'Posted', 18: 'DPE-7', 20: '2026-10-14T01:30:00.000Z' });
+  h.rows.Expenses = [[], expense];
+  await h.sync();
+  const { buildClerkReport } = h.load('lib/clerk-report.ts');
+  const clerk = { employeeId: 'DPE-7', name: 'Clerk', branch: 'MINTAL' };
+  const recorded = await buildClerkReport('daily', '2026-10-14', clerk, 'MINTAL');
+  assert.deepEqual(recorded.expenses.map((item) => [item.id, item.date, item.amount]), [['EXP-9', '2026-10-10', 75]], 'on the day recorded, showing the expense date typed');
+  assert.equal(recorded.cash.expenses, 75);
+  assert.equal((await buildClerkReport('daily', '2026-10-10', clerk, 'MINTAL')).expenses.length, 0, 'not on the expense date');
+});

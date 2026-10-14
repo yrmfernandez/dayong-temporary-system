@@ -177,6 +177,66 @@
       "startNop": 2,
       "note": "Owner confirmed October 14, 2026: OR 4308 B belongs to D-350 (5Y), the member's only program; move it from D-350 and remove the empty extra account. Preserve original January 13 enrollment/New Sale; collections follow February–September 2026, NOP 2–9, in receipt-date order.",
       "appliedOn": "2026-10-14 (staging and production)"
+    },
+    {
+      "member": "PH-44391390",
+      "program": "DP-0017",
+      "fromAccounts": [
+        "ENR-LEG-1C77AC2E68"
+      ],
+      "receipts": [
+        "5193 M",
+        "6453 M",
+        "8177 M",
+        "8478 M",
+        "6079 B",
+        "8037 B",
+        "11127 B",
+        "12585 B",
+        "14341 B"
+      ],
+      "startNop": 7,
+      "note": "Owner confirmed October 14, 2026: all nine listed receipts belong to DPB-420. Consolidate PH-44391390's D-420 payments into the existing DPB-420 account and correct coverage to January–September 2026, NOP 7–15, in supplied OR-date order; retain dates and PHP 420 amounts.",
+      "appliedOn": "2026-10-14 (staging and production)"
+    },
+    {
+      "member": "PH-69288046",
+      "program": "DP-0022",
+      "fromAccounts": [
+        "ENR-LEG-DE707905A3"
+      ],
+      "receipts": [
+        "5194 M",
+        "6455 M",
+        "8179 M",
+        "8480 M",
+        "6080 B",
+        "8039 B",
+        "11128 B",
+        "12586 B",
+        "14344 B"
+      ],
+      "startNop": 11,
+      "note": "Owner confirmed October 14, 2026: all nine listed receipts belong to D-460 (59B). Consolidate PH-69288046's D-460 payments into the existing D-460 (59B) account, January–September 2026, NOP 11–19, in supplied receipt-date order. Preserve dates and PHP 460 amounts.",
+      "appliedOn": "2026-10-14 (staging and production)"
+    },
+    {
+      "member": "PH-75578382",
+      "program": "DP-0066",
+      "receipts": [
+        "5458 M",
+        "6479 M",
+        "8175 M",
+        "3808 B",
+        "6066 B",
+        "8043 B",
+        "11138 B",
+        "13341 B",
+        "14334 B"
+      ],
+      "startNop": 33,
+      "note": "Owner requested correction October 14, 2026 in supplied receipt order. D-280 account DOI May 2023 supports January–September 2026 NOP 33–41. Original M1-COLL March–June and August–September rows show NOP 35–38,40–41; July has typo29 instead of39, causing imported NOP29–37 and four-month coverage shift. First two source rows also have inconsistent month/NOP labels. Preserve receipt dates and PHP280 amounts.",
+      "appliedOn": "2026-10-14 (production; staging skipped because target program account differs)"
     }
   ]
 }

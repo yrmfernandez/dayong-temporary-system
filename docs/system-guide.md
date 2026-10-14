@@ -537,7 +537,7 @@ Today's Entries combines New Sales and posted Collections, with amount, incentiv
 
 - **Header:** company name, address, SEC Reg No., logo, report name, Branch, Entry Clerk, and Date + Week (daily `Wednesday, September 30, 2026 · 5TH WEEK`; weekly `WEEK 3 JUNE 15-21, 2026`; monthly the month end and `WHOLE MONTH`). Weeks start Monday; week N of the month is the week of its Nth Monday (October 12, 2026 is the 2ND WEEK), and days before the first Monday are week 1.
 - **New Sales and Collections sections** side by side, with Accts, Gross, Inc, Net, and Fid/bond. Rows are by MAS (daily), date (weekly), week of the month (monthly), or month (yearly).
-- **Expenses/Other Cash Out:** posted expenses the clerk encoded in the period (expense date, encoder Employee ID).
+- **Expenses/Other Cash Out:** posted expenses the clerk recorded in the period, placed by the day they were recorded (Manila), whatever expense date was typed (October 14, 2026); the row shows the expense date typed.
 - **Cash Flow Transaction and Other Cash Ins:** cash the clerk forwarded to the bank (`Bank Deposits` sheet; voided deposits excluded).
 - **Penalty** (owner, October 12, 2026): each New Sales and Collections line has a Penalty column (penalties the clerk encoded), and the cash summary a Penalty line after Fidelity Bond; it is cash received, so it is in Total Cash In.
 - **Cash summary** and the **Specific Rmks, Pending Transactions, and Other Comments** boxes (`Report Notes` sheet).
