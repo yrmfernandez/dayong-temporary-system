@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 64 API handlers, 117 library files, 48 component files; 400 scanned source/configuration/public-text files in total.
+42 page routes, 64 API handlers, 117 library files, 48 component files; 403 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -147,7 +147,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/calculations.ts](../lib/calculations.ts) | `CollectionStatus`, `calculateTMD`, `calculateBalance`, `getNextNOP`, `getProgramBasePay`, `calculateCollectionTMD` | `./types` |
 | [lib/cash-count.ts](../lib/cash-count.ts) | `DENOMINATIONS`, `CashCount`, `cashCountTotal`, `formatCashCount`, `parseCashCount`, `cashCountProblem` | — |
 | [lib/clearing-kinds.ts](../lib/clearing-kinds.ts) | `ClearingKind`, `ClearingCovers`, `CLEARING_COVERS`, `coveredKinds`, `DATE_REMITTED_REASON_MIN` | — |
-| [lib/clearing.ts](../lib/clearing.ts) | `ClearingStage`, `CLEARING_COVERS`, `coveredKinds`, `ClearingCovers`, `ClearingKind`, `ClearingDecision`, `Clearing`, `withProgress`, `getClearingPage`, `getEncodableClearings`, `addClearing`, `removeClearing`, `clearedEmployee`, `clearingProblem`, `dateRemittedReasonProblem`, `clearedAt`, `closeClearings`, `countOpenClearings` | `@/lib/db`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/clearing-kinds`, `@/lib/entry-batches`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
+| [lib/clearing.ts](../lib/clearing.ts) | `ClearingStage`, `CLEARING_COVERS`, `coveredKinds`, `ClearingCovers`, `ClearingKind`, `ClearingDecision`, `Clearing`, `withProgress`, `getClearingPage`, `getEncodableClearings`, `addClearing`, `removeClearing`, `editClearing`, `clearedEmployee`, `clearingProblem`, `dateRemittedReasonProblem`, `clearedAt`, `closeClearings`, `countOpenClearings` | `@/lib/db`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/clearing-kinds`, `@/lib/entry-batches`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/clerk-cash.ts](../lib/clerk-cash.ts) | `CASH_BEG_REASON_MIN`, `BankDeposit`, `getDeposits`, `addDeposit`, `editDeposit`, `voidDeposit`, `CashBegEdit`, `ReportNotes`, `getReportNotes`, `getCashBegEdits`, `saveCashBeg`, `saveReportNotes` | `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/clerk-report.ts](../lib/clerk-report.ts) | `COMPANY`, `weekOfMonth`, `ReportLine`, `ExpenseRow`, `buildClerkReport`, `ClerkReport`, `BranchFigures` | `@/lib/clerk-cash`, `@/lib/db`, `@/lib/daily-audit`, `@/lib/google-sheets`, `@/lib/mas-expected`, `@/lib/todays-entries` |
 | [lib/company-targets.ts](../lib/company-targets.ts) | `CompanyTarget`, `periodType`, `getCompanyTargets`, `saveCompanyTarget` | `@/lib/encoder-sheets`, `@/lib/encoder-schema`, `@/lib/encoder-context`, `@/lib/google-sheets` |
@@ -321,7 +321,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/cash-transactions/route.ts](../app/api/cash-transactions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data` |
 | [app/api/clearing/open/route.ts](../app/api/clearing/open/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing` |
 | [app/api/clearing/route.ts](../app/api/clearing/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing`, `@/lib/encoder-context` |
-| [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clerk-report`, `@/lib/daily-audit`, `@/lib/employees`, `@/lib/remittance-deadline`, `@/lib/report-remarks`, `@/lib/clerk-cash`, `@/lib/encoder-context`, `@/lib/finance-data`, `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/remittance-workflow` |
+| [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clerk-report`, `@/lib/daily-audit`, `@/lib/employees`, `@/lib/remittance-deadline`, `@/lib/report-remarks`, `@/lib/clerk-cash`, `@/lib/encoder-context`, `@/lib/finance-data`, `@/lib/google-sheets-data`, `@/lib/remittance-workflow` |
 | [app/api/collections/route.ts](../app/api/collections/route.ts) | `GET`, `POST` | `@/lib/clearing`, `@/lib/or-number`, `@/lib/remittance-workflow`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/db`, `@/lib/account-data`, `@/lib/account-rules`, `@/lib/remittance-methods`, `@/lib/remittance`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/duplicate-entries` |
 | [app/api/commissions/route.ts](../app/api/commissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/earned-commissions`, `@/lib/encoder-context`, `@/lib/finance-operations` |
 | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/company-targets`, `@/lib/encoder-context` |
@@ -400,6 +400,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/_tmp-g.mjs](../scripts/_tmp-g.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/add-or-branch-letters.mjs](../scripts/add-or-branch-letters.mjs) | `node:fs`, `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/assign-mas-branches.mjs](../scripts/assign-mas-branches.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/audit-database-data.mjs](../scripts/audit-database-data.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/audit-sheet-database.mjs](../scripts/audit-sheet-database.mjs) | `node:fs`, `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/check-collections.mjs](../scripts/check-collections.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
@@ -417,6 +418,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/exceptions-summary.mts](../scripts/exceptions-summary.mts) | `node:fs`, `@next/env` | No flag detected; read source before running |
 | [scripts/fill-member-contacts.mjs](../scripts/fill-member-contacts.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/find-name-variants.mjs](../scripts/find-name-variants.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/fix-21532-21533-receipts.mjs](../scripts/fix-21532-21533-receipts.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-amounts.mjs](../scripts/fix-amounts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-copy-exception-dates.mjs](../scripts/fix-copy-exception-dates.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-duplicates.mjs](../scripts/fix-duplicates.mjs) | `@next/env`, `node:fs`, `postgres` | Yes; read source for semantics |
@@ -426,6 +428,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-legacy-receipts.mjs](../scripts/fix-legacy-receipts.mjs) | `node:fs`, `node:crypto`, `@next/env`, `googleapis`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-merge-mas.mjs](../scripts/fix-merge-mas.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-or-letters.mjs](../scripts/fix-or-letters.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/fix-ph11841180-coverage.mjs](../scripts/fix-ph11841180-coverage.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-remitted-before-receipt.mjs](../scripts/fix-remitted-before-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-tangal-incentives.mjs](../scripts/fix-tangal-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/generate-code-reference.mjs](../scripts/generate-code-reference.mjs) | `node:fs`, `node:path`, `typescript` | Yes; read source for semantics |

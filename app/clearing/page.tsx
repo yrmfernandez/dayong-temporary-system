@@ -44,6 +44,7 @@ export default function ClearingPage() {
   const [error, setError] = useState("");
   const [removing, setRemoving] = useState<{ id: string; reason: string } | null>(null);
   const [removeError, setRemoveError] = useState("");
+  const [tab, setTab] = useState("Waiting for encoding");
   // A clearing being corrected (owner, October 14, 2026): what is remitted, the branch, the MAS / employee.
   const [editing, setEditing] = useState<{ id: string; branch: string; employeeId: string; covers: ClearingCovers } | null>(null);
   const [editError, setEditError] = useState("");
@@ -79,16 +80,17 @@ export default function ClearingPage() {
   const open = (data?.clearings ?? []).filter((item) => item.stage !== "Approved" && item.stage !== "Removed");
   const closedToday = (data?.clearings ?? []).filter((item) => item.stage === "Approved" || item.stage === "Removed");
   /*
-   * Arranged by status (owner, October 14, 2026): Returned first (it needs fixing), then the flow Waiting for encoding,
-   * Waiting for receipt, For approval; Approved before Removed. Newest clearing first within a status.
+   * Tabs by status, like Remittances (owner, October 14, 2026): one tab per stage in the order work flows, each with its
+   * count; Approved today holds approved and removed lines. Newest clearing first within a tab.
    */
-  const groups = (list: Clearing[], order: ClearingStage[]) => order.map((stage) => ({ stage, items: list.filter((item) => (item.stage ?? "Waiting for encoding") === stage) })).filter((group) => group.items.length);
-  const openGroups = groups(open, ["Returned", "Waiting for encoding", "Waiting for receipt", "For approval"]);
-  const closedGroups = groups(closedToday, ["Approved", "Removed"]);
-  const grouped = (list: Array<{ stage: ClearingStage; items: Clearing[] }>) => list.map((group) => <Fragment key={group.stage}>
-    <tr className="border-t bg-muted/40"><td colSpan={7} className="px-3 py-2"><StatusBadge status={group.stage} tone={STAGE_TONE[group.stage]} /><span className="ml-2 text-xs text-muted-foreground">{group.items.length}</span></td></tr>
-    {group.items.map(row)}
-  </Fragment>);
+  const TABS = [
+    { id: "Waiting for encoding", label: "Waiting for encoding", items: open.filter((item) => (item.stage ?? "Waiting for encoding") === "Waiting for encoding") },
+    { id: "Waiting for receipt", label: "Waiting for receipt", items: open.filter((item) => item.stage === "Waiting for receipt") },
+    { id: "For approval", label: "For approval", items: open.filter((item) => item.stage === "For approval") },
+    { id: "Returned", label: "Returned", items: open.filter((item) => item.stage === "Returned") },
+    { id: "Approved today", label: "Approved today", items: [...closedToday.filter((item) => item.stage === "Approved"), ...closedToday.filter((item) => item.stage !== "Approved")] },
+  ] as const;
+  const shownTab = TABS.find((item) => item.id === tab) ?? TABS[0];
 
   async function clear(event: React.FormEvent) {
     event.preventDefault();
@@ -191,15 +193,17 @@ export default function ClearingPage() {
       {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
-      <Card><CardHeader><CardTitle>In progress ({open.length})</CardTitle><p className="text-sm text-muted-foreground">New Sales and Collections each move by themselves: Waiting for encoding → Waiting for receipt (bank or e-wallet batch saved, receipt photo not attached yet; cash skips this) → For approval → Approved. Returned means the approver sent that batch back. Lines from earlier days stay here until everything ticked is approved.</p></CardHeader><CardContent>
+      <Card><CardContent className="space-y-4 pt-4">
+        <div className="overflow-x-auto border-b"><div className="flex min-w-max gap-1" role="tablist" aria-label="Clearing by status">
+          {TABS.map((item) => <button key={item.id} type="button" role="tab" aria-selected={shownTab.id === item.id} onClick={() => setTab(item.id)}
+            className={`inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium ${shownTab.id === item.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>
+            {item.label}<span className={`rounded-full px-1.5 text-xs ${shownTab.id === item.id ? "bg-primary text-primary-foreground" : "bg-muted"}`}>{item.items.length}</span>
+          </button>)}
+        </div></div>
+        <p className="text-sm text-muted-foreground">{shownTab.id === "Approved today" ? "Every entry saved and approved (or the line removed). These leave the page after 11:59 PM." : "New Sales and Collections each move by themselves: Waiting for encoding → Waiting for receipt (bank or e-wallet batch saved, receipt photo not attached yet; cash skips this) → For approval → Approved. Returned means the approver sent that batch back. A line ticked for both is under its least advanced kind. Lines from earlier days stay until everything ticked is approved."}</p>
         <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-muted/50"><tr>{["MAS / employee", "Branch", "Cleared", "Amount", "Notes", "Status", ""].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>
-          <tbody>{grouped(openGroups)}{!open.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{data ? "Nothing in progress." : "Loading..."}</td></tr>}</tbody></table></div>
+          <tbody>{shownTab.items.map(row)}{!shownTab.items.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{data ? `Nothing ${shownTab.id === "Approved today" ? "approved today" : `in ${shownTab.label}`}.` : "Loading..."}</td></tr>}</tbody></table></div>
       </CardContent></Card>
-
-      {closedToday.length > 0 && <Card><CardHeader><CardTitle>Approved today ({closedToday.length})</CardTitle><p className="text-sm text-muted-foreground">Every entry saved and approved (or the line removed). These leave the page after 11:59 PM.</p></CardHeader><CardContent>
-        <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-muted/50"><tr>{["MAS / employee", "Branch", "Cleared", "Amount", "Notes", "Status", ""].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>
-          <tbody>{grouped(closedGroups)}</tbody></table></div>
-      </CardContent></Card>}
     </section>
   );
 }
