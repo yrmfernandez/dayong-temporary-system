@@ -624,6 +624,50 @@ test('attendance tracking lets Finance review one employee across a date range',
   assert.equal(result.records[0].lateMinutes, 5);
 });
 
+test('attendance sheet lists every day and totals what payroll counts', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'finance', roleNames: ['Finance'], permissions: {} });
+  const { attendanceSheet, sumSummaries } = h.load('lib/attendance-sheet.ts');
+  const day = (date, values = {}) => ({ id: `ATT-${date}`, employeeId: 'E1', attendanceDate: date, branch: 'MATINA', scheduledTimeIn: '08:00', scheduledTimeOut: '17:00', timeIn: '', timeOut: '', workedHours: 0, overtimeHours: 0, status: 'Present', lateMinutes: 0, undertimeMinutes: 0, leaveType: '', leaveApprovalStatus: '', notes: '', createdAt: '', updatedAt: '', ...values });
+  const records = [
+    day('2026-10-02', { timeIn: '08:00', timeOut: '17:00' }),
+    day('2026-10-03', { timeIn: '08:30', timeOut: '17:00', lateMinutes: 10 }),
+    day('2026-10-04', { timeIn: '09:00', timeOut: '12:00', undertimeMinutes: 240 }),
+    day('2026-10-06', { status: 'Absent', notes: 'Absent by system: no clock-in by 11:59 PM and not marked by management.' }),
+    day('2026-10-09', { status: 'Leave', leaveType: 'Vacation', leaveApprovalStatus: 'Pending' }),
+  ];
+  const { days, summary } = attendanceSheet({
+    employee: { branch: 'MATINA', dateHired: '2026-10-02' }, records,
+    declaredDays: [{ date: '2026-10-05', allBranches: true, branchNames: [] }], from: '2026-10-01', to: '2026-10-10', today: '2026-10-08',
+  });
+  assert.deepEqual(days.map((item) => item.status), ['Before hire', 'Present', 'Late', 'Present', 'Non-working day', 'Absent (system)', 'No record', 'Not clocked in', 'Leave', 'Upcoming']);
+  assert.equal(days[3].restDayWork, true, 'worked on a Sunday');
+  // Working days so far: Oct 2, 3, 6, 7 (Oct 1 before hire, Sunday, the declared day and today not counted).
+  assert.equal(summary.scheduledDays, 4);
+  assert.deepEqual([summary.present, summary.restDayWork, summary.lateDays, summary.lateMinutes, summary.undertimeDays, summary.undertimeMinutes], [3, 1, 1, 10, 1, 240]);
+  assert.deepEqual([summary.absent, summary.systemAbsent, summary.noRecord, summary.approvedLeave, summary.otherLeave], [1, 1, 1, 0, 1]);
+  assert.equal(summary.daysPayable, 3, 'present + approved leave, as payroll counts');
+  assert.equal(summary.regularHours, 18.5);
+  assert.equal(summary.attendanceRate, 50, 'two of four expected working days (the Sunday is extra)');
+  assert.equal(sumSummaries([summary, summary]).present, 6);
+
+  h.rows.Employees = [[], ['MD-2099-0101', 'Ana Santos', 'MATINA', 'MAS', 'active'], ['MD-2099-0102', 'Old Staff', 'MATINA', 'MAS', 'resigned']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-2099-0101', 'BR-1']];
+  h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
+  const attendance = Array(18).fill(''); attendance[0] = 'ATT-1'; attendance[1] = 'MD-2099-0101'; attendance[2] = '2026-09-15'; attendance[3] = 'MATINA'; attendance[6] = '08:05:00'; attendance[7] = '17:00:00'; attendance[8] = 8.92; attendance[9] = 0; attendance[10] = 'Present'; attendance[11] = 5;
+  h.rows.Attendance = [[], attendance];
+  const route = h.load('app/api/attendance-sheet/route.ts');
+  const all = await (await route.GET(new Request('http://localhost/api/attendance-sheet?from=2026-09-01&to=2026-09-30'))).json();
+  assert.equal(all.success, true, JSON.stringify(all));
+  assert.deepEqual(all.rows.map((row) => row.employee.id), ['MD-2099-0101'], 'resigned staff without attendance are left out');
+  assert.equal(all.rows[0].summary.present, 1);
+  assert.equal(all.rows[0].summary.lateMinutes, 5);
+  const one = await (await route.GET(new Request('http://localhost/api/attendance-sheet?from=2026-09-01&to=2026-09-30&employeeId=MD-2099-0101'))).json();
+  assert.equal(one.days.length, 30, 'every day of the range');
+  assert.equal(one.days.find((item) => item.date === '2026-09-15').status, 'Late');
+  h.setUser({ userId: 'U2', employeeId: 'MD-2099-0101', name: 'ana', roleNames: ['MAS'], permissions: {} });
+  assert.equal((await route.GET(new Request('http://localhost/api/attendance-sheet?from=2026-09-01&to=2026-09-30'))).status, 403);
+});
+
 test('an employee sees a Notice to Explain issued to them, confirms receipt and explains; others never see it', async () => {
   const admin = { userId: 'USR-9', employeeId: 'MD-2099-0900', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } };
   const h = harness(admin);

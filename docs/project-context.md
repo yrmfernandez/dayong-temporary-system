@@ -324,6 +324,17 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Attendance sheet for Finance (2026-10-14)
+
+- **Owner:** an attendance sheet for each employee that Finance can check for a date range, overall and with summaries; important for salaries.
+- **Done:** Attendance Tracking → **Attendance sheet** tab (Finance, HR, management): payroll cut-off quick ranges; a summary table of every employee (working days, present, days payable = present + approved leave as payroll counts, late, undertime, overtime, regular / total hours, leave, day off / not required, absent with system absences, AWOL, no record, no time-out, attendance rate) with totals and search; click an employee for the day-by-day sheet (every date, including days with nothing recorded), with only-days-to-check, print and CSV (`lib/attendance-sheet.ts`, `/api/attendance-sheet`, `app/attendance-tracking/attendance-sheet.tsx`). Uses the same records as payroll. Tested.
+- **Production preview (October 1–13):** 162 employees listed; most are MAS marked No attendance needed or absent by the system, so search by role (e.g. Entry Clerk) for office staff.
+
+### Member split: CABUNAG (2026-10-14)
+
+- **Owner:** PH-96073537 was two people merged by the old-sheet import (Cabunag, Fe Mamato and Cabunag, Fe Dhivenil; MARAGUSAN, D-210 HG); their paired same-day receipts are one each.
+- **Done:** `scripts/split-member.mjs` with `config/member-splits.json`: dry run, then applied on production by the owner. FE MAMATO keeps PH-96073537 (NOPs 16–19 and 20); FE DHIVENIL is a new member with her own D-210 HG account from DOI 2024-07-01 (NOPs 18–21 and 22); the held-back October 7 receipts 25235 N / 25236 N were added; both accounts' statuses recalculated. Audit Log and Record Corrections keep every change.
+
 ### Receipt photos required on New Sales and Collections (2026-10-14)
 
 - **Owner:** make the attachment required on New Sales and Collections; at least one, as many as needed.

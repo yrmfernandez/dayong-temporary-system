@@ -1,0 +1,252 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Download, Printer, Search } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { SearchSelect } from "@/components/ui/search-select";
+import type { SheetDay, SheetEmployee, SheetSummary } from "@/lib/attendance-sheet";
+
+type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: Array<{ employee: SheetEmployee; summary: SheetSummary }>; totals: SheetSummary };
+type OneResult = { success: boolean; message?: string; employees: SheetEmployee[]; employee: SheetEmployee; days: SheetDay[]; summary: SheetSummary };
+
+const manilaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
+const lastDayOf = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+const previousMonth = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
+
+/** Payroll cut-offs and months, from today's month. */
+function presets() {
+  const month = manilaToday().slice(0, 7), last = previousMonth(month);
+  return [
+    { label: "This month", from: `${month}-01`, to: lastDayOf(month) },
+    { label: "1–15", from: `${month}-01`, to: `${month}-15` },
+    { label: "16–end", from: `${month}-16`, to: lastDayOf(month) },
+    { label: "Last month", from: `${last}-01`, to: lastDayOf(last) },
+    { label: "Last 16–end", from: `${last}-16`, to: lastDayOf(last) },
+  ];
+}
+
+const minutes = (value: number) => value >= 60 ? `${Math.floor(value / 60)}h ${String(value % 60).padStart(2, "0")}m` : `${value} min`;
+const hours = (value: number) => value.toFixed(2);
+const rate = (value: number | null) => value === null ? "—" : `${value}%`;
+const longDate = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString("en-PH", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
+
+const statusTone: Record<string, string> = {
+  Present: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  Late: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  Absent: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  "Absent (system)": "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  AWOL: "bg-red-200 text-red-900 dark:bg-red-950 dark:text-red-200",
+  Leave: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+  "Day Off": "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
+  "No record": "bg-amber-50 text-amber-800 ring-1 ring-amber-300 dark:bg-amber-950/40 dark:text-amber-300",
+};
+
+function downloadCsv(name: string, rows: Array<Array<string | number>>) {
+  const text = rows.map((row) => row.map((cell) => { const value = String(cell); return /[",\n]/.test(value) ? `"${value.replaceAll("\"", "\"\"")}"` : value; }).join(",")).join("\r\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([`﻿${text}`], { type: "text/csv;charset=utf-8" }));
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+const summaryHeadings = ["Working days", "Present", "Days payable", "Late days", "Late", "Undertime", "Overtime hrs", "Regular hrs", "Total hrs", "Approved leave", "Other leave", "Day off", "Not required", "Absent", "AWOL", "No record", "No time-out", "Attendance"];
+const summaryCells = (summary: SheetSummary) => [summary.scheduledDays, summary.present, summary.daysPayable, summary.lateDays, summary.lateMinutes, summary.undertimeMinutes, hours(summary.overtimeHours), hours(summary.regularHours), hours(summary.totalHours), summary.approvedLeave, summary.otherLeave, summary.dayOff, summary.notRequired, summary.absent, summary.awol, summary.noRecord, summary.missingTimeOut, rate(summary.attendanceRate)];
+
+/**
+ * Attendance sheet (owner, October 14, 2026): for Finance to check attendance before paying salaries. All employees'
+ * totals for a date range, and each employee's day-by-day sheet (every day, including days with no record), with
+ * print and CSV. lib/attendance-sheet.ts, /api/attendance-sheet.
+ */
+export function AttendanceSheet() {
+  const initial = presets()[0];
+  const [from, setFrom] = useState(initial.from);
+  const [to, setTo] = useState(initial.to);
+  const [employeeId, setEmployeeId] = useState("");
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const [search, setSearch] = useState("");
+  const [all, setAll] = useState<AllResult | null>(null);
+  const [one, setOne] = useState<OneResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function load(next: { from?: string; to?: string; employeeId?: string } = {}) {
+    const range = { from: next.from ?? from, to: next.to ?? to, employeeId: next.employeeId ?? employeeId };
+    if (!range.from || !range.to || range.from > range.to) { setError("Choose a valid date range."); return; }
+    setLoading(true); setError("");
+    try {
+      const query = new URLSearchParams({ from: range.from, to: range.to, ...(range.employeeId ? { employeeId: range.employeeId } : {}), ...(includeInactive ? { inactive: "1" } : {}) });
+      const response = await fetch(`/api/attendance-sheet?${query}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to load the attendance sheet.");
+      if (range.employeeId) setOne(result as OneResult); else { setAll(result as AllResult); setOne(null); }
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to load the attendance sheet."); }
+    finally { setLoading(false); }
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
+  useEffect(() => { void load(); }, []);
+
+  const employees = one?.employees ?? all?.employees ?? [];
+  const openEmployee = (id: string) => { setEmployeeId(id); void load({ employeeId: id }); };
+  const backToAll = () => { setEmployeeId(""); setOne(null); if (!all) void load({ employeeId: "" }); };
+  const choosePreset = (preset: { from: string; to: string }) => { setFrom(preset.from); setTo(preset.to); void load(preset); };
+
+  const shownRows = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return (all?.rows ?? []).filter((row) => !needle || `${row.employee.name} ${row.employee.id} ${row.employee.branch} ${row.employee.roles.join(" ")}`.toLowerCase().includes(needle));
+  }, [all, search]);
+
+  const period = `${longDate(from)} – ${longDate(to)}`;
+  const showingOne = Boolean(employeeId && one);
+
+  return <div className="space-y-5">
+    <Card className="print:hidden"><CardContent className="space-y-4 p-4">
+      <div className="flex flex-wrap gap-2">{presets().map((preset) => <Button key={preset.label} type="button" size="sm" variant={from === preset.from && to === preset.to ? "default" : "outline"} onClick={() => choosePreset(preset)}>{preset.label}</Button>)}</div>
+      <div className="grid gap-4 md:grid-cols-[1fr_1fr_2fr_auto] md:items-end">
+        <div className="space-y-2"><Label htmlFor="sheet-from">From</Label><Input id="sheet-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></div>
+        <div className="space-y-2"><Label htmlFor="sheet-to">To</Label><Input id="sheet-to" type="date" min={from} value={to} onChange={(event) => setTo(event.target.value)} /></div>
+        <div className="space-y-2"><Label>Employee</Label><SearchSelect aria-label="Employee" clearable value={employeeId} placeholder="All employees - search ID or name" options={employees.map((employee) => ({ value: employee.id, label: employee.name, description: `${employee.id}${employee.branch ? ` · ${employee.branch}` : ""}${employee.status !== "active" ? ` · ${employee.status}` : ""}` }))} onValueChange={(value) => { setEmployeeId(value); if (!value) setOne(null); }} /></div>
+        <Button type="button" disabled={loading || !from || !to || from > to} onClick={() => void load()}>{loading ? "Loading..." : "Show sheet"}</Button>
+      </div>
+      {!employeeId && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeInactive} onChange={(event) => setIncludeInactive(event.target.checked)} />Include inactive and resigned employees without attendance in the period</label>}
+    </CardContent></Card>
+
+    {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</p>}
+
+    {showingOne && one ? <EmployeeSheet result={one} period={period} from={from} to={to} onBack={backToAll} />
+      : all && <Card>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div><CardTitle>Attendance summary · {period}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{all.rows.length} employees. Click an employee for the day-by-day sheet. Days payable = present + approved leave, as payroll counts them.</p></div>
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Search employees" className="w-56 pl-8" placeholder="Search name, ID, branch" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+            <Button type="button" variant="outline" onClick={() => downloadCsv(`attendance-summary-${from}-to-${to}.csv`, [["Employee ID", "Employee", "Branch", "Roles", "Status", ...summaryHeadings], ...shownRows.map((row) => [row.employee.id, row.employee.name, row.employee.branch, row.employee.roles.join("; "), row.employee.status, ...summaryCells(row.summary)])])}><Download className="size-4" />CSV</Button>
+            <Button type="button" variant="outline" onClick={() => window.print()}><Printer className="size-4" />Print</Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="max-h-[70vh] overflow-auto rounded-lg border print:max-h-none print:overflow-visible">
+            <table className="w-full min-w-[1400px] text-sm print:min-w-0 print:text-[10px]">
+              <thead className="sticky top-0 z-10 bg-muted text-left"><tr>
+                <th className="sticky left-0 bg-muted p-2">Employee</th>
+                {["Working days", "Present", "Days payable", "Late", "Undertime", "Overtime", "Regular hrs", "Total hrs", "Leave", "Day off / not req.", "Absent", "AWOL", "No record", "No time-out", "Attendance"].map((heading) => <th key={heading} className="p-2 text-right">{heading}</th>)}
+              </tr></thead>
+              <tbody>
+                {shownRows.map(({ employee, summary }) => <tr key={employee.id} className="cursor-pointer border-t hover:bg-muted/40" onClick={() => openEmployee(employee.id)}>
+                  <td className="sticky left-0 bg-background p-2"><span className="font-medium text-primary underline-offset-2 hover:underline">{employee.name}</span><span className="block text-xs text-muted-foreground">{employee.id}{employee.branch ? ` · ${employee.branch}` : ""}{employee.status !== "active" ? ` · ${employee.status}` : ""}</span></td>
+                  <SummaryRow summary={summary} />
+                </tr>)}
+                {!shownRows.length && <tr><td colSpan={16} className="p-8 text-center text-muted-foreground">No employees match.</td></tr>}
+              </tbody>
+              {shownRows.length > 1 && !search.trim() && <tfoot className="border-t-2 bg-muted/50 font-semibold"><tr><td className="sticky left-0 bg-muted p-2">All employees</td><SummaryRow summary={all.totals} /></tr></tfoot>}
+            </table>
+          </div>
+          <Legend />
+        </CardContent>
+      </Card>}
+  </div>;
+}
+
+function SummaryRow({ summary }: { summary: SheetSummary }) {
+  const warn = (value: number) => value > 0 ? "font-semibold text-red-700 dark:text-red-400" : "text-muted-foreground";
+  const caution = (value: number) => value > 0 ? "font-semibold text-amber-700 dark:text-amber-400" : "text-muted-foreground";
+  return <>
+    <td className="p-2 text-right tabular-nums">{summary.scheduledDays}</td>
+    <td className="p-2 text-right tabular-nums">{summary.present}{summary.restDayWork ? <span className="block text-xs text-muted-foreground">{summary.restDayWork} rest day</span> : null}</td>
+    <td className="p-2 text-right font-semibold tabular-nums">{summary.daysPayable}</td>
+    <td className={`p-2 text-right tabular-nums ${caution(summary.lateMinutes)}`}>{summary.lateDays ? <>{minutes(summary.lateMinutes)}<span className="block text-xs font-normal">{summary.lateDays} day(s)</span></> : "—"}</td>
+    <td className={`p-2 text-right tabular-nums ${caution(summary.undertimeMinutes)}`}>{summary.undertimeDays ? <>{minutes(summary.undertimeMinutes)}<span className="block text-xs font-normal">{summary.undertimeDays} day(s)</span></> : "—"}</td>
+    <td className="p-2 text-right tabular-nums">{summary.overtimeHours ? `${hours(summary.overtimeHours)} h` : "—"}</td>
+    <td className="p-2 text-right tabular-nums">{hours(summary.regularHours)}</td>
+    <td className="p-2 text-right tabular-nums">{hours(summary.totalHours)}</td>
+    <td className="p-2 text-right tabular-nums">{summary.approvedLeave + summary.otherLeave || "—"}{summary.otherLeave ? <span className="block text-xs text-amber-700 dark:text-amber-400">{summary.otherLeave} not approved</span> : null}</td>
+    <td className="p-2 text-right tabular-nums">{summary.dayOff + summary.notRequired || "—"}</td>
+    <td className={`p-2 text-right tabular-nums ${warn(summary.absent)}`}>{summary.absent || "—"}{summary.systemAbsent ? <span className="block text-xs font-normal">{summary.systemAbsent} by system</span> : null}</td>
+    <td className={`p-2 text-right tabular-nums ${warn(summary.awol)}`}>{summary.awol || "—"}</td>
+    <td className={`p-2 text-right tabular-nums ${caution(summary.noRecord)}`}>{summary.noRecord || "—"}</td>
+    <td className={`p-2 text-right tabular-nums ${caution(summary.missingTimeOut)}`}>{summary.missingTimeOut || "—"}</td>
+    <td className="p-2 text-right tabular-nums">{rate(summary.attendanceRate)}</td>
+  </>;
+}
+
+function EmployeeSheet({ result, period, from, to, onBack }: { result: OneResult; period: string; from: string; to: string; onBack: () => void }) {
+  const { employee, days, summary } = result;
+  const [problemsOnly, setProblemsOnly] = useState(false);
+  const isProblem = (day: SheetDay) => ["Late", "Absent", "Absent (system)", "AWOL", "No record"].includes(day.status) || day.missingTimeOut || day.undertimeMinutes > 0 || (day.status === "Leave" && !day.leave.toLowerCase().includes("approved"));
+  const shown = problemsOnly ? days.filter(isProblem) : days;
+  const cards: Array<[string, string, string?]> = [
+    ["Days payable", String(summary.daysPayable), `${summary.present} present + ${summary.approvedLeave} approved leave`],
+    ["Working days", String(summary.scheduledDays), "Mon–Sat, less declared non-working days"],
+    ["Attendance", rate(summary.attendanceRate), "Present ÷ days expected"],
+    ["Late", summary.lateDays ? minutes(summary.lateMinutes) : "None", summary.lateDays ? `${summary.lateDays} day(s) late` : undefined],
+    ["Undertime", summary.undertimeDays ? minutes(summary.undertimeMinutes) : "None", summary.undertimeDays ? `${summary.undertimeDays} day(s)` : undefined],
+    ["Overtime", `${hours(summary.overtimeHours)} h`],
+    ["Regular / total hours", `${hours(summary.regularHours)} / ${hours(summary.totalHours)}`, "Lunch break excluded"],
+    ["Absent / AWOL", `${summary.absent} / ${summary.awol}`, summary.systemAbsent ? `${summary.systemAbsent} absent by system (no clock-in)` : undefined],
+    ["Leave", String(summary.approvedLeave + summary.otherLeave), summary.otherLeave ? `${summary.otherLeave} not approved (not paid)` : "All approved"],
+    ["Day off / not required", `${summary.dayOff} / ${summary.notRequired}`],
+    ["No record", String(summary.noRecord), "Past working days with nothing recorded; payroll does not deduct them"],
+    ["No time-out", String(summary.missingTimeOut), "Clocked in but not out: no hours counted"],
+  ];
+  return <Card>
+    <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+      <div>
+        <Button type="button" variant="ghost" size="sm" className="-ml-2 mb-1 print:hidden" onClick={onBack}><ArrowLeft className="size-4" />All employees</Button>
+        <CardTitle>Attendance sheet · {employee.name}</CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">{employee.id} · {employee.branch || "No primary branch"} · {employee.roles.join(", ") || "Employee"}{employee.status !== "active" ? ` · ${employee.status}` : ""}{employee.dateHired ? ` · hired ${longDate(employee.dateHired.slice(0, 10))}` : ""}</p>
+        <p className="text-sm font-medium">{period}</p>
+      </div>
+      <div className="flex flex-wrap gap-2 print:hidden">
+        <Button type="button" variant="outline" onClick={() => downloadCsv(`attendance-${employee.id}-${from}-to-${to}.csv`, [
+          ["Date", "Day", "Status", "Branch", "Time in", "Time out", "Regular hrs", "Total hrs", "Overtime hrs", "Late min", "Undertime min", "Leave", "Notes"],
+          ...days.map((day) => [day.date, day.weekday, day.status + (day.missingTimeOut ? " (no time-out)" : "") + (day.restDayWork ? " (rest day)" : ""), day.branch, day.timeIn, day.timeOut, hours(day.regularHours), hours(day.totalHours), hours(day.overtimeHours), day.lateMinutes, day.undertimeMinutes, day.leave, day.notes]),
+          [],
+          summaryHeadings, summaryCells(summary),
+        ])}><Download className="size-4" />CSV</Button>
+        <Button type="button" variant="outline" onClick={() => window.print()}><Printer className="size-4" />Print</Button>
+      </div>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 print:grid-cols-4">
+        {cards.map(([label, value, detail]) => <div key={label} className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="text-lg font-semibold tabular-nums">{value}</p>{detail && <p className="text-xs text-muted-foreground">{detail}</p>}</div>)}
+      </div>
+      <label className="flex items-center gap-2 text-sm print:hidden"><input type="checkbox" checked={problemsOnly} onChange={(event) => setProblemsOnly(event.target.checked)} />Only days to check (late, undertime, absent, AWOL, no record, no time-out, leave not approved)</label>
+      <div className="overflow-x-auto rounded-lg border print:overflow-visible">
+        <table className="w-full min-w-[980px] text-sm print:min-w-0 print:text-[10px]">
+          <thead className="bg-muted text-left"><tr>{["Date", "Status", "Time in", "Time out", "Regular", "Total", "OT", "Late", "Undertime", "Branch", "Leave / notes"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead>
+          <tbody>
+            {shown.map((day) => {
+              const muted = ["Sunday", "Non-working day", "Upcoming", "Before hire"].includes(day.status);
+              return <tr key={day.date} className={`border-t ${muted ? "bg-muted/30 text-muted-foreground" : ""}`}>
+                <td className="whitespace-nowrap p-2"><span className="font-medium">{day.weekday}</span> {longDate(day.date)}</td>
+                <td className="p-2"><Badge variant="secondary" className={statusTone[day.status] ?? ""}>{day.status}</Badge>{day.missingTimeOut && <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">no time-out</span>}{day.restDayWork && <span className="ml-1 text-xs text-muted-foreground">rest day</span>}</td>
+                <td className="p-2 tabular-nums">{day.timeIn || "—"}</td>
+                <td className="p-2 tabular-nums">{day.timeOut || "—"}</td>
+                <td className="p-2 tabular-nums">{day.timeIn ? hours(day.regularHours) : "—"}</td>
+                <td className="p-2 tabular-nums">{day.timeIn ? hours(day.totalHours) : "—"}</td>
+                <td className="p-2 tabular-nums">{day.overtimeHours ? hours(day.overtimeHours) : "—"}</td>
+                <td className={`p-2 tabular-nums ${day.lateMinutes ? "font-medium text-amber-700 dark:text-amber-400" : ""}`}>{day.lateMinutes ? `${day.lateMinutes} min` : "—"}</td>
+                <td className={`p-2 tabular-nums ${day.undertimeMinutes ? "font-medium text-amber-700 dark:text-amber-400" : ""}`}>{day.undertimeMinutes ? `${day.undertimeMinutes} min` : "—"}</td>
+                <td className="p-2">{day.branch || "—"}</td>
+                <td className="max-w-72 p-2 text-xs">{[day.leave, day.notes].filter(Boolean).join(" · ") || "—"}</td>
+              </tr>;
+            })}
+            {!shown.length && <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">{problemsOnly ? "Nothing to check in this period." : "No days in this period."}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Legend />
+    </CardContent>
+  </Card>;
+}
+
+function Legend() {
+  return <p className="text-xs text-muted-foreground">
+    Days payable = Present + approved leave (payroll&apos;s attendance method). Late, undertime and overtime come from days worked. Absent (system) = no clock-in by 11:59 PM and not marked by management. No record = a past working day with nothing recorded (not deducted by payroll; mark it in Attendance Review). Sundays, declared non-working days, days before the hire date and days still to come are not counted.
+  </p>;
+}

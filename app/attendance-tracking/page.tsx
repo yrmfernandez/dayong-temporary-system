@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { dayTotals } from "@/lib/attendance";
+import { AttendanceSheet } from "./attendance-sheet";
 import { DailyBoard } from "./daily-board";
 
 type Employee = { id: string; name: string; roles: string[]; status: string; branches: string[] };
@@ -22,13 +23,13 @@ const hours = (value: number) => `${value.toFixed(2)} hrs`;
 const totalsOf = (record: Record) => dayTotals(record.timeIn, record.timeOut, record.scheduledTimeOut);
 
 export default function AttendanceTrackingPage() {
-  const [view, setView] = useState<"daily" | "history">("daily");
+  const [view, setView] = useState<"daily" | "sheet" | "history">("daily");
   return <section className="mx-auto max-w-7xl space-y-6">
     <header className="rounded-2xl page-hero p-5">
       <div className="flex items-center gap-3"><div className="rounded-xl bg-violet-95 p-3 text-violet-40"><BarChart3 className="size-6" /></div><div><h1 className="text-2xl font-bold">Employee Attendance Tracking</h1><p className="text-sm text-violet-30/80">See who is present, late, early, absent, AWOL, on leave, or on a day off each day, and review attendance history.</p></div></div>
     </header>
-    <div role="tablist" className="flex gap-1 border-b print:hidden">{([["daily", "Daily board"], ["history", "History"]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`border-b-2 px-3 py-2.5 text-sm font-medium ${view === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{label}</button>)}</div>
-    {view === "daily" ? <DailyBoard /> : <AttendanceHistory />}
+    <div role="tablist" className="flex gap-1 border-b print:hidden">{([["daily", "Daily board"], ["sheet", "Attendance sheet"], ["history", "History"]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`border-b-2 px-3 py-2.5 text-sm font-medium ${view === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{label}</button>)}</div>
+    {view === "daily" ? <DailyBoard /> : view === "sheet" ? <AttendanceSheet /> : <AttendanceHistory />}
   </section>;
 }
 

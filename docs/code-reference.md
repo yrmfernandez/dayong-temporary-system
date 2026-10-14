@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 64 API handlers, 118 library files, 50 component files; 413 scanned source/configuration/public-text files in total.
+42 page routes, 65 API handlers, 119 library files, 50 component files; 416 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -64,6 +64,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/admin-delete` | GET, POST | [app/api/admin-delete/route.ts](../app/api/admin-delete/route.ts) |
 | `/api/attendance-calendar` | GET, POST | [app/api/attendance-calendar/route.ts](../app/api/attendance-calendar/route.ts) |
 | `/api/attendance-reviews` | GET, POST | [app/api/attendance-reviews/route.ts](../app/api/attendance-reviews/route.ts) |
+| `/api/attendance-sheet` | GET | [app/api/attendance-sheet/route.ts](../app/api/attendance-sheet/route.ts) |
 | `/api/attendance-tracking/daily` | GET, PATCH, POST | [app/api/attendance-tracking/daily/route.ts](../app/api/attendance-tracking/daily/route.ts) |
 | `/api/attendance-tracking` | GET | [app/api/attendance-tracking/route.ts](../app/api/attendance-tracking/route.ts) |
 | `/api/attendance/history` | GET | [app/api/attendance/history/route.ts](../app/api/attendance/history/route.ts) |
@@ -138,6 +139,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/attendance-board.ts](../lib/attendance-board.ts) | `BoardCategory`, `canViewAttendanceTracking`, `canAdjustLateness`, `MARK_STATUSES`, `MarkStatus`, `isMarkStatus`, `boardCategory`, `minutesBetween`, `HistoryPeriod`, `HISTORY_PERIODS`, `isHistoryPeriod`, `periodRange`, `HistoryTotals`, `summarizeHistory`, `AttendanceHistory` | `@/lib/auth`, `@/lib/attendance-data` |
 | [lib/attendance-calendar.ts](../lib/attendance-calendar.ts) | `ALL_BRANCHES`, `Holiday`, `Closure`, `validDate`, `getHolidays`, `saveHoliday`, `deleteHoliday`, `addPhilippineHolidays`, `getClosures`, `closureCovers`, `closureLabel`, `closureForBranch`, `employeeAttendanceBranches`, `declareClosure`, `removeClosure` | `@/lib/attendance-data`, `@/lib/encoder-sheets`, `@/lib/encoder-schema`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/philippine-holidays`, `@/lib/readable-id`, `@/lib/sheet-rows` |
 | [lib/attendance-data.ts](../lib/attendance-data.ts) | `AttendanceRecord`, `sheetDateText`, `sheetTimeText`, `getAttendanceForEmployeeDate`, `addAttendanceRecord`, `getAttendanceRowsForDate`, `addAttendanceRecords`, `getAllAttendanceForRange`, `updateAttendanceRecord`, `getAttendanceRecordsForDate`, `getNonWorkingDayRecords`, `cancelClockInsForNonWorkingDay`, `getAttendanceRecordsForRange`, `getEmployeeAttendance`, `recordApprovedLeaveAttendance` | `@/lib/db`, `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/attendance` |
+| [lib/attendance-sheet.ts](../lib/attendance-sheet.ts) | `SheetDayStatus`, `SheetDay`, `SheetSummary`, `SheetEmployee`, `emptySummary`, `attendanceSheet`, `sumSummaries` | `@/lib/attendance-data`, `@/lib/attendance-board`, `@/lib/attendance`, `@/lib/working-days` |
 | [lib/attendance.ts](../lib/attendance.ts) | `ATTENDANCE_TIME_ZONE`, `SCHEDULED_TIME_IN`, `SCHEDULED_TIME_OUT`, `LATE_GRACE_MINUTES`, `BREAK_START`, `BREAK_END`, `timeToMinutes`, `workingMinutesBetween`, `lateMinutesFor`, `clockOutFigures`, `dayTotals`, `withDayTotals`, `WORKING_DAYS`, `AttendanceStatus`, `getPhilippineDate`, `getPhilippineTime`, `isWorkingDay` | — |
 | [lib/audit-log.ts](../lib/audit-log.ts) | `AUDIT_SHEET`, `AUDIT_HEADERS`, `AuditActor`, `AuditAction`, `AuditChanges`, `parseRange`, `planValuesUpdate`, `planValuesBatchUpdate`, `planBatchUpdate`, `diffRow`, `auditedWrite`, `resetAuditSheetCache` | — |
 | [lib/auth-server.ts](../lib/auth-server.ts) | `getSessionUser`, `userWithPageAccess`, `canManageAccounts`, `canManageEmployees`, `canManageConfiguration`, `canManageUsers`, `canManageAttendance` | `@/lib/access-control`, `@/lib/auth` |
@@ -311,6 +313,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/admin-delete/route.ts](../app/api/admin-delete/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/admin-delete`, `@/lib/encoder-context` |
 | [app/api/attendance-calendar/route.ts](../app/api/attendance-calendar/route.ts) | `GET`, `POST` | `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
 | [app/api/attendance-reviews/route.ts](../app/api/attendance-reviews/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auto-absence`, `@/lib/employees`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/attendance-board`, `@/lib/google-sheets-data` |
+| [app/api/attendance-sheet/route.ts](../app/api/attendance-sheet/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/attendance`, `@/lib/attendance-board`, `@/lib/attendance-data`, `@/lib/attendance-sheet`, `@/lib/auto-absence`, `@/lib/employees`, `@/lib/work-calendar` |
 | [app/api/attendance-tracking/daily/route.ts](../app/api/attendance-tracking/daily/route.ts) | `GET`, `PATCH`, `POST` | `@/lib/auth-server`, `@/lib/auto-absence`, `@/lib/encoder-context`, `@/lib/attendance-calendar`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-board`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [app/api/attendance-tracking/route.ts](../app/api/attendance-tracking/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/attendance-board`, `@/lib/attendance-data`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [app/api/attendance/history/route.ts](../app/api/attendance/history/route.ts) | `GET` | `@/lib/attendance`, `@/lib/attendance-data`, `@/lib/attendance-board`, `@/lib/auth-server` |
@@ -378,6 +381,7 @@ All routes pass through the authentication proxy except the three public auth en
 | File | Exported symbols | Local imports / re-exports |
 | --- | --- | --- |
 | [.env.example](../.env.example) | — | — |
+| [app/attendance-tracking/attendance-sheet.tsx](../app/attendance-tracking/attendance-sheet.tsx) | `AttendanceSheet` | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/attendance-sheet` |
 | [app/attendance-tracking/daily-board.tsx](../app/attendance-tracking/daily-board.tsx) | `DailyBoard` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | [app/fidelity/fidelity-views.tsx](../app/fidelity/fidelity-views.tsx) | `MyFidelity`, `FidelityMonitoring` | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/search-select`, `@/components/ui/button`, `@/components/ui/card` |
 | [app/globals.css](../app/globals.css) | — | — |
