@@ -25,10 +25,13 @@ export async function listReceiptPhotos(): Promise<ReceiptPhotoInfo[]> {
   return rows.map((row) => ({ photoId: row.id, entryIds: text(row.entryIds).split(",").map(text).filter(Boolean), sizeBytes: row.size ?? 0, uploadedAt: row.at ?? "", uploadedByEmployeeId: text(row.byId), uploadedByName: text(row.by) }));
 }
 
-/** Entry ID → its latest photo. */
+/**
+ * Entry ID → its latest photo, with `allPhotoIds`: every photo of the entry, oldest first (a batch may have several
+ * receipts; owner, October 14, 2026: at least one required, as many as needed).
+ */
 export async function photosByEntry() {
-  const map = new Map<string, ReceiptPhotoInfo>();
-  for (const photo of await listReceiptPhotos()) for (const id of photo.entryIds) map.set(id, photo);
+  const map = new Map<string, ReceiptPhotoInfo & { allPhotoIds: string[] }>();
+  for (const photo of await listReceiptPhotos()) for (const id of photo.entryIds) map.set(id, { ...photo, allPhotoIds: [...(map.get(id)?.allPhotoIds ?? []), photo.photoId] });
   return map;
 }
 

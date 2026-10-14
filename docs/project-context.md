@@ -132,7 +132,7 @@ Programs T `new_sale_amount_editable` and U `collection_amount_editable` hold TR
 ## Entry Clerk reports and receipt photos (2026-10-04)
 
 - **Clerk reports** (`lib/clerk-report.ts`, `components/clerk-report.tsx`), revised 2026-10-04 to the company's Daily/Weekly/Monthly Report sheets: header (company, address, SEC Reg No., logo, report name, Branch, Entry Clerk, Date + Week); New Sales and Collections sections side by side (rows by MAS for a day, by date for a week, by week of the month for a month, by month for a year: Accts, Gross, Inc, Net, Fid/bond); Expenses/Other Cash Out (expenses the clerk encoded) and Cash Flow Transactions (cash the clerk forwarded to the bank); the cash summary (Cash Beg/Pending COH = the clerk's remaining cash on hand before the period, Sales Net, Collection Net, Fidelity Bond, Pending cash to be encoded, Total Cash In, Expenses, Cash forwarded to bank, Total Cash Out, Remaining Cash on Hand, TOTALS); Specific Rmks, Pending Transactions and Other Comments; and for weekly, monthly and yearly the summary sheet New Member and Collection by Marketing Account Staff (CVE columns not yet defined). Rows count what the clerk encoded, by date encoded; weeks start Monday. On their own report the clerk records expenses (saved in Expenses for their branch), bank deposits (`Bank Deposits` sheet, voided rather than deleted) and the notes (`Report Notes` sheet, `lib/clerk-cash.ts`). Reports shows each clerk only their own, as tabs; Report Review and Audits choose the clerk, with the entry checklist and reviewer remarks. Audit figures come from the same report.
-- **Receipt photos** (`lib/receipt-photos.ts`, sheet `Receipt Photos`): the browser shrinks each photo (grayscale, at most 1280 px, WebP or JPEG) to at most 80 KB; it is stored as base64 split across up to four cells (a cell holds 50,000 characters). One photo may cover several entries. Clerks attach them in My Entries (`/my-entries`) to entries they encoded; administrators to any. An administrator cannot approve a submitted remittance until every item has a photo. Attaching the photos is what sends entries to Pending Approval (see Remittance approval flow below); the photo is optional on the Collections form and can be added later in Today's Entries or My Entries. Cash received in full (approved at once, without waiting for photos) is for approvers only (2026-10-04). Photo data columns are masked in the Audit Log.
+- **Receipt photos** (`lib/receipt-photos.ts`, sheet `Receipt Photos`): the browser shrinks each photo (grayscale, at most 1280 px, WebP or JPEG) to at most 80 KB; it is stored as base64 split across up to four cells (a cell holds 50,000 characters). One photo may cover several entries. Clerks attach them in My Entries (`/my-entries`) to entries they encoded; administrators to any. An administrator cannot approve a submitted remittance until every item has a photo. Attaching the photos is what sends entries to Pending Approval (see Remittance approval flow below); since 2026-10-14 New Sales and Collections require at least one photo on the form (any number allowed), and more can be added later in Today's Entries or My Entries. Cash received in full (approved at once, without waiting for photos) is for approvers only (2026-10-04). Photo data columns are masked in the Audit Log.
 
 ## Employee IDs (2026-10-04)
 
@@ -172,7 +172,7 @@ Programs T `new_sale_amount_editable` and U `collection_amount_editable` hold TR
 ## Reports tabs and collections photo (2026-10-04)
 
 - Reports is one page with Daily, Weekly, Monthly, and Yearly tabs (`/reports?tab=…`), like Remittances; the old per-period addresses redirect. Report Review uses the same tabs.
-- The Collections form no longer offers Cash received in full; its receipt photo is optional and, when given, sends the batch to Pending Approval right after saving.
+- The Collections form no longer offers Cash received in full; its receipt photos (required since 2026-10-14) send the batch to Pending Approval right after saving.
 
 ## Rules still requiring business decisions
 
@@ -323,6 +323,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
+
+### Receipt photos required on New Sales and Collections (2026-10-14)
+
+- **Owner:** make the attachment required on New Sales and Collections; at least one, as many as needed.
+- **Done:** both forms have **Receipt photos for this batch \*** (`components/receipt-photos-picker.tsx`): add several photos at once or one by one, thumbnails with remove; Save is refused until one is added (New Sales: the Entry Clerk's save only; a MAS submission has none, the clerk adds them when saving it). After the save every photo is attached to every entry of the batch, which sends a bank or e-wallet batch to Pending Approval; a photo that fails to upload is reported and can be added in My Entries. My Entries and Remittances show all of a batch's photos (before, only the latest per entry).
+- **Note:** the check is on the forms; the server still accepts a save without photos (the photos are uploaded right after the save), and older entries without photos still get them in My Entries.
 
 ### Expenses on the report of the day recorded (2026-10-14)
 

@@ -29,7 +29,7 @@ import { manilaNow } from "@/lib/remittance-deadline";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
-import { compressReceiptPhoto } from "@/components/receipt-photo";
+import { ReceiptPhotosPicker, uploadBatchPhotos, type PickedPhoto } from "@/components/receipt-photos-picker";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import {
   Select,
@@ -293,9 +293,8 @@ export default function CollectionsPage() {
   const [saving, setSaving] = useState(false);
   // The total written on the MAS's turnover sheet; the batch saves only when the entries add up to it.
   const [controlTotal, setControlTotal] = useState("");
-  // The batch's receipt photo, optional: attached right after saving, which sends the batch for approval.
-  const [receiptPhoto, setReceiptPhoto] = useState<{ dataUrl: string; width: number; height: number; bytes: number } | null>(null);
-  const [photoError, setPhotoError] = useState("");
+  // The batch's receipt photos: at least one, as many as needed (owner, October 14, 2026); attached right after saving.
+  const [receiptPhotos, setReceiptPhotos] = useState<PickedPhoto[]>([]);
   // Batch-level: who brought these payments in, and how the MAS remitted them to the office.
   const [collectedBy, setCollectedBy] = useState<CollectionChannel>("MAS");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
@@ -822,6 +821,11 @@ export default function CollectionsPage() {
       return;
     }
 
+    if (!receiptPhotos.length) {
+      setSaveMessage("Add at least one receipt photo for this batch.");
+      return;
+    }
+
     for (let index = 0; index < collections.length; index++) {
       const error = validateEntry(
         collections[index],
@@ -892,18 +896,13 @@ export default function CollectionsPage() {
         throw new Error(result.message || "Unable to save collections.");
       }
 
-      if (receiptPhoto) {
-        // Attaching the photo sends the batch to Pending Approval.
-        const ids: string[] = result.collectionIds ?? [];
-        const photo = await fetch("/api/receipt-photos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryIds: ids, dataUrl: receiptPhoto.dataUrl, width: receiptPhoto.width, height: receiptPhoto.height }) });
-        const photoResult = await photo.json();
-        resetForm();
-        setSaveMessage(photo.ok && photoResult.success ? `${ids.length} collection(s) saved. ${photoResult.message}` : `${ids.length} collection(s) saved, but the receipt photo was not: ${photoResult.message || "try again"} Add it in Today's Entries or My Entries.`);
-        return;
-      }
-
+      // Attach every receipt photo; the first one sends a bank or e-wallet batch to Pending Approval.
+      const ids: string[] = result.collectionIds ?? [];
+      const uploaded = await uploadBatchPhotos(ids, receiptPhotos);
       resetForm();
-      setSaveMessage(result.message);
+      setSaveMessage(uploaded.problem
+        ? `${ids.length} collection(s) saved; ${uploaded.saved} of ${receiptPhotos.length} receipt photo(s) attached. ${uploaded.problem} Add the rest in My Entries.`
+        : `${ids.length} collection(s) saved with ${uploaded.saved} receipt photo(s). ${result.message}`);
     } catch (error) {
       setSaveMessage(
         error instanceof Error ? error.message : "Unable to save collections.",
@@ -929,8 +928,7 @@ export default function CollectionsPage() {
     setSaveMessage("");
     setShowPreview(false);
     setControlTotal("");
-    setReceiptPhoto(null);
-    setPhotoError("");
+    setReceiptPhotos([]);
     setPenalty("");
     setPenaltyNote("");
     setFidelity("");
@@ -1628,13 +1626,8 @@ export default function CollectionsPage() {
               {/* TOTALS: amount collected, incentives (less Fidelity), penalty, total remittance */}
               <RemittanceSummary collected={totalCollected} remittance={totalRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} />
 
-              {/* RECEIPT PHOTO: optional now; it can be added later in Today's Entries or My Entries. */}
-              <div className="space-y-1 rounded-xl border bg-muted/20 p-3">
-                <Label>Receipt photo for this batch (optional)</Label>
-                <input type="file" accept="image/*" capture="environment" className="block text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setPhotoError(""); try { setReceiptPhoto(await compressReceiptPhoto(file)); } catch (error) { setReceiptPhoto(null); setPhotoError(error instanceof Error ? error.message : "Unable to read the photo."); } }} />
-                <p className="text-xs text-muted-foreground">{receiptPhoto ? `Photo ready (${Math.round(receiptPhoto.bytes / 1000)} KB). It is attached to every collection in this batch, and the batch goes to Pending Approval.` : "With the photo, the batch goes to Pending Approval right after saving. Without it, add it later in Today's Entries or My Entries."}</p>
-                {photoError && <p className="text-xs text-red-700">{photoError}</p>}
-              </div>
+              {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026). */}
+              <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="collection" />
 
               {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatCurrency(totalCollected)} · Total remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p></div>}
             </CardContent>

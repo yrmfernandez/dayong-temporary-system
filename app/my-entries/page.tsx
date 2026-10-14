@@ -235,7 +235,7 @@ function groupBatches(entries: DayEntry[]): Batch[] {
     return {
       key, kind: list[0].kind, entries: list, total: Math.round(list.reduce((sum, entry) => sum + entry.amount, 0) * 100) / 100,
       methods: [...new Set(list.map((entry) => entry.paymentMethod).filter(Boolean))], allCash,
-      photoIds: [...new Set(list.map((entry) => entry.photoId).filter(Boolean))],
+      photoIds: [...new Set(list.flatMap((entry) => entry.photoIds?.length ? entry.photoIds : [entry.photoId]).filter(Boolean))],
       status: needsPhoto ? "Waiting for receipt" : statuses.length === 1 ? label(statuses[0]) : statuses.map(label).join(" / "),
       needsPhoto, readyToSend: outstanding.length > 0 && !needsPhoto,
       // A photo can be added or replaced until the batch is approved.

@@ -66,6 +66,8 @@ export type DayEntry = {
   penalty: number;
   /** The receipt photo attached to this entry, if any. */
   photoId: string;
+  /** Every receipt photo of the entry, oldest first (a batch may have several). */
+  photoIds: string[];
   /** The saved batch it belongs to (Collections batch ID, or the New Sales saved together; lib/entry-batches.ts); blank on imported rows. */
   batchId: string;
   /** How it was paid; cash needs no receipt photo (counted at Clearing). */
@@ -129,7 +131,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
   const money = (value: unknown) => (text(value) === "" ? "" : peso(number(value)));
   const today = manilaNow().date;
 
-  type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings" | "photoId" | "returnReason" | "cash">;
+  type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings" | "photoId" | "photoIds" | "returnReason" | "cash">;
   const entry = (values: Base): DayEntry => {
     const slipDate = text(slipRows.get(values.remittanceId)?.[3]).slice(0, 10);
     return {
@@ -141,7 +143,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
       incentiveDeadline: incentiveDeadline(values.orDate, { days: offDays, branch: values.branch }),
       warnings: dateWarnings({ receiptDate: values.orDate, receiptLabel: values.kind === "New Sale" ? "application date" : "OR date", dateRemitted: values.dateRemitted, slipDate, recordedOn: values.recordedOn, today }),
       details: values.details.filter(([, value]) => value !== ""),
-      photoId: photos.get(values.id)?.photoId ?? "",
+      photoId: photos.get(values.id)?.photoId ?? "", photoIds: photos.get(values.id)?.allPhotoIds ?? [],
       cash: isCashMethod(values.paymentMethod, cashNames),
     };
   };

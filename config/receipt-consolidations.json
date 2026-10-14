@@ -237,6 +237,17 @@
       "startNop": 33,
       "note": "Owner requested correction October 14, 2026 in supplied receipt order. D-280 account DOI May 2023 supports January–September 2026 NOP 33–41. Original M1-COLL March–June and August–September rows show NOP 35–38,40–41; July has typo29 instead of39, causing imported NOP29–37 and four-month coverage shift. First two source rows also have inconsistent month/NOP labels. Preserve receipt dates and PHP280 amounts.",
       "appliedOn": "2026-10-14 (production; staging skipped because target program account differs)"
+    },
+    {
+      "member": "PH-16645225",
+      "program": "DP-0009",
+      "fromAccounts": [
+        "ENR-LEG-1A83F84064",
+        "ENR-LEG-F8B65F7FEA"
+      ],
+      "startNop": 2,
+      "note": "Owner confirmed October 14, 2026: PH-16645225 has only D-350 (5Y); merge the DPB-350 and D-350 accounts into the existing D-350 (5Y) enrollment. Preserve March 18, 2026 DOI and original New Sale. Six PHP350 collections follow receipt-date order covering April–September 2026, NOP2–7.",
+      "appliedOn": "2026-10-14 (staging and production)"
     }
   ]
 }

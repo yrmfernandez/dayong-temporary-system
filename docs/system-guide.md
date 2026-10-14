@@ -192,8 +192,8 @@ Sources: [remittance formulas](../lib/remittance.ts), [tier validation/storage](
 3. Select an active program, DOI, application number/date, payment information, and amount. Registration requirements come from the program rather than the submitted fee flag.
 4. Add more sales if needed. The same new person can enroll in several programs in one batch: the person row is created once, with separate enrollments and Sales rows.
 5. Enter the **control total (net / total remittance) from the turnover sheet**, plus any batch Fidelity or separately tracked penalty.
-6. Save. Existing member details confirmed in this form become their current member record. New member, enrollment, sale, and beneficiary records are written as needed, with encoder metadata.
-7. Attach the receipt photo in My Entries or Today's Entries. Once it is attached, the sale goes to Pending Approval on its own (section 6). Saving a sale does not itself make the cash an approved company inflow.
+6. Add the **receipt photos for this batch** (required since October 14, 2026: at least one, as many as needed; not on a MAS submission).
+7. Save. Existing member details confirmed in this form become their current member record. New member, enrollment, sale, and beneficiary records are written as needed, with encoder metadata. Every photo is then attached to every sale of the batch, which sends it to Pending Approval on its own (section 6); a photo that fails to upload is named and can be added in My Entries or Today's Entries. Saving a sale does not itself make the cash an approved company inflow.
 
 ### New Sales submitted by a MAS (from October 6, 2026)
 
@@ -242,7 +242,7 @@ Months and NOP cannot overlap. One month's PHP 350 installment cannot be paid as
 
 The Collections save appends all rows and updates affected account statuses in one Sheets `batchUpdate`, first widening the sheet's grid if a row has more columns than the sheet. Each save has a batch ID, and its remittance must include all outstanding cards from that batch. The batch's Date Remitted is stored on every row (Collections AO). The payment's posted status and outstanding cash status are stored separately.
 
-The form takes an optional receipt photo for the batch. When one is chosen, it is attached to every Collection of the batch right after saving, which sends the batch to Pending Approval. Without it, the clerk attaches it later in My Entries or Today's Entries. The form no longer offers Cash received in full: Entry Clerks do not approve their own cash.
+The form requires the batch's receipt photos (October 14, 2026): at least one, as many as needed (`components/receipt-photos-picker.tsx`); Save is refused without one. Right after saving every photo is attached to every Collection of the batch, which sends the batch to Pending Approval; a photo that fails to upload is named and can be added in My Entries or Today's Entries. The form no longer offers Cash received in full: Entry Clerks do not approve their own cash.
 
 ### NOP, TMD, and coverage
 
@@ -344,7 +344,7 @@ Cash count uses PHP 1,000, 500, 200, 100, 50, 20, 10, 5, and 1 denominations. If
 
 ### Receipt evidence
 
-Photos are optional when saving and can be added any time from My Entries or Today's Entries; adding one is what sends ready entries to approval. Photos are compressed in the browser to grayscale WebP/JPEG, at most 1280 pixels and 80,000 bytes. The server stores base64 in `Receipt Photos`, split into up to four 45,000-character chunks. One photo can cover multiple entries; the latest linked photo is shown. Old uploads are retained. There is no external image-storage service in this workflow.
+New Sales (Entry Clerk save) and Collections require at least one photo when saving (October 14, 2026; any number allowed); more can be added any time from My Entries or Today's Entries; adding one is what sends ready entries to approval. My Entries and Remittances show every photo of a batch. Photos are compressed in the browser to grayscale WebP/JPEG, at most 1280 pixels and 80,000 bytes. The server stores base64 in `Receipt Photos`, split into up to four 45,000-character chunks. One photo can cover multiple entries; the latest linked photo is shown on each entry, and every photo on the batch. Old uploads are retained. There is no external image-storage service in this workflow.
 
 Sources: [cash workflow](../lib/remittance-workflow.ts), [deadline](../lib/remittance-deadline.ts), [Remittances API](../app/api/remittances/route.ts), [photos](../lib/receipt-photos.ts), [denominations](../lib/cash-count.ts).
 

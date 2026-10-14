@@ -60,6 +60,8 @@ export type CashCollection = {
   incentiveDeadline: string;
   /** The receipt photo attached to this item; every non-cash item needs one before its remittance is approved. */
   photoId: string;
+  /** Every receipt photo of the item, oldest first (a batch may have several; October 14, 2026). */
+  photoIds?: string[];
   /** Paid in cash (lib/entry-batches.ts): counted at Clearing, so no receipt photo is needed. */
   cash: boolean;
   /** The Entry Clerk who encoded it, and when (Manila "YYYY-MM-DD HH:MM"); blank on imported rows. */
@@ -186,7 +188,7 @@ async function loadLedger() {
   // A New Sales batch: the sales saved together (lib/entry-batches.ts), remitted on one slip like a Collections batch.
   for (const sale of sales) sale.batchId = saleBatchKey(sale);
   collections.push(...sales);
-  for (const item of collections) { item.photoId = photos.get(item.id)?.photoId ?? ""; item.cash = isCashMethod(item.paymentMethod, cashNames); }
+  for (const item of collections) { item.photoId = photos.get(item.id)?.photoId ?? ""; item.photoIds = photos.get(item.id)?.allPhotoIds ?? []; item.cash = isCashMethod(item.paymentMethod, cashNames); }
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
     id: text(row[0]), rowNumber: index + 2, branch: text(row[1]), accountableName: text(row[2]), remittanceDate: text(row[3]), remittanceTime: text(row[REMITTANCE_TIME_COLUMN]), cashCount: text(row[CASH_COUNT_COLUMN]), status: text(row[4]) || "Legacy",
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
@@ -201,7 +203,7 @@ async function loadLedger() {
     remittance.paymentReferences = [...new Set(linked.map((item) => item.paymentReference).filter(Boolean))];
     remittance.penaltyAmount = Math.round(linked.reduce((sum, item) => sum + item.penalty, 0) * 100) / 100;
     remittance.penaltyNotes = linked.filter((item) => item.penalty > 0).map((item) => item.penaltyNote);
-    remittance.photoIds = [...new Set(linked.map((item) => item.photoId).filter(Boolean))];
+    remittance.photoIds = [...new Set(linked.flatMap((item) => item.photoIds?.length ? item.photoIds : [item.photoId]).filter(Boolean))];
     remittance.missingPhotos = linked.filter((item) => !item.photoId && !item.cash).map((item) => item.id);
     remittance.clerkIds = [...new Set(linked.map((item) => item.encodedByEmployeeId).filter(Boolean))];
     remittance.clerkNames = [...new Set(linked.map((item) => item.encodedByName).filter(Boolean))];

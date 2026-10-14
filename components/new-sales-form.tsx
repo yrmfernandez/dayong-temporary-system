@@ -56,6 +56,7 @@ import type {
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { ClearingPicker } from "@/components/clearing-picker";
 import { ParkedDrafts } from "@/components/parked-drafts";
+import { ReceiptPhotosPicker, uploadBatchPhotos, type PickedPhoto } from "@/components/receipt-photos-picker";
 import { useParkedDrafts } from "@/lib/use-parked-drafts";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { enterToNextField } from "@/lib/enter-to-next";
@@ -368,6 +369,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  // The batch's receipt photos (clerk save only): at least one, as many as needed (owner, October 14, 2026).
+  const [receiptPhotos, setReceiptPhotos] = useState<PickedPhoto[]>([]);
 
   useEffect(() => {
     if (masMode) return;
@@ -924,7 +927,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     const firstSale = emptyNewSale("", "");
     setBranch(""); setMas(""); setDateRemitted(""); setClearingId(""); setClearedDate(""); setDateRemittedReason("");
     setSales([firstSale]); setExpandedSales({ [firstSale.id]: true }); setPenalty(""); setPenaltyNote(""); setFidelity("");
-    setShowPreview(false); setSubmissionId(""); setSaveMessage("");
+    setShowPreview(false); setSubmissionId(""); setSaveMessage(""); setReceiptPhotos([]);
   };
   const parkBatch = () => {
     if (!batchHasWork) return;
@@ -953,7 +956,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     });
     setShowPreview(false);
     setSubmissionId("");
-
+    setReceiptPhotos([]);
   };
 
   /*
@@ -1158,6 +1161,11 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       return;
     }
 
+    if (!receiptPhotos.length) {
+      setSaveMessage("Add at least one receipt photo for this batch.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -1238,13 +1246,13 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         );
       }
 
-      setSaveMessage(
-        `${sales.length} ${
-          sales.length === 1
-            ? "new sale"
-            : "new sales"
-        } saved successfully.`,
-      );
+      // Attach every receipt photo to the saved sales; the first one sends a bank or e-wallet batch to Pending Approval.
+      const photos = receiptPhotos;
+      const uploaded = await uploadBatchPhotos((result.savedSales ?? []).map((saved: { saleId: string }) => saved.saleId), photos);
+      const savedText = `${sales.length} ${sales.length === 1 ? "new sale" : "new sales"} saved`;
+      setSaveMessage(uploaded.problem
+        ? `${savedText}; ${uploaded.saved} of ${photos.length} receipt photo(s) attached. ${uploaded.problem} Add the rest in My Entries.`
+        : `${savedText} with ${uploaded.saved} receipt photo(s).`);
 
       resetForm();
       if (submissionId) setSubmissionRevision((value) => value + 1);
@@ -2806,6 +2814,9 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       </Card>}
 
       {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.orDate || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p></div>}
+
+      {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
+      {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" />}
 
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}
