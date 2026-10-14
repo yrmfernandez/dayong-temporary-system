@@ -324,6 +324,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Member transfer to a MAS from another branch (2026-10-14)
+
+- **Owner:** transferring members to another MAS should allow a MAS from another branch; asked, the owner chose to decide per transfer whether the accounts keep their branch or move.
+- **Done:** single (Members) and bulk (Employees → Transfer members) transfers list every active employee with their branches. For accounts in a branch the new MAS is not assigned to, the form requires: **Keep** (the account stays; the MAS is assigned to that branch, so Clearing and Collections work) or **Move** (the account changes to one of the MAS's branches; past entries stay under the old one; the transfer reason notes the branch change). Bulk transfers no longer skip accounts outside the new MAS's branches. One transaction; the database relinks branch and MAS IDs. Tested (keep, move, missing choice, bulk).
+
 ### Attendance sheet for Finance (2026-10-14)
 
 - **Owner:** an attendance sheet for each employee that Finance can check for a date range, overall and with summaries; important for salaries.

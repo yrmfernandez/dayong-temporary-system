@@ -17,10 +17,12 @@ export const POST = withEncoder(async (request: Request) => {
   if (!(await canTransferMembers())) return Response.json({ success: false, message: "Only Administrators and HR Officers can transfer members." }, { status: 403 });
   try {
     const body = await request.json();
+    // Accounts outside the new MAS's branches: "keep" their branch (the MAS is assigned to it) or "move" to `moveTo`.
+    const branchChoice = { branchMode: String(body.branchMode ?? ""), moveTo: String(body.moveTo ?? "") };
     if (body.fromEmployeeId) {
       const ids = Array.isArray(body.enrollmentIds) ? body.enrollmentIds.map(String) : [];
-      return Response.json({ success: true, result: await transferEmployeeAccounts({ fromEmployeeId: String(body.fromEmployeeId), enrollmentIds: ids, toEmployeeId: String(body.toEmployeeId ?? ""), reason: String(body.reason ?? "") }) });
+      return Response.json({ success: true, result: await transferEmployeeAccounts({ fromEmployeeId: String(body.fromEmployeeId), enrollmentIds: ids, toEmployeeId: String(body.toEmployeeId ?? ""), reason: String(body.reason ?? ""), ...branchChoice }) });
     }
-    return Response.json({ success: true, transfer: await transferEnrollment({ enrollmentId: String(body.enrollmentId ?? ""), toEmployeeId: String(body.toEmployeeId ?? ""), reason: String(body.reason ?? "") }) });
+    return Response.json({ success: true, transfer: await transferEnrollment({ enrollmentId: String(body.enrollmentId ?? ""), toEmployeeId: String(body.toEmployeeId ?? ""), reason: String(body.reason ?? ""), ...branchChoice }) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to transfer the member." }, { status: 400 }); }
 });

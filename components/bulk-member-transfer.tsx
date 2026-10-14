@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
+import { branchChoiceReady, branchesOutside, noBranchChoice, TransferBranchChoice, type BranchChoice } from "@/components/transfer-branch-choice";
 import type { EmployeeAccount } from "@/lib/member-transfer";
 
 type Candidate = { employeeId: string; name: string; roles: string[]; branches: string[] };
@@ -14,7 +15,8 @@ type Loaded = { employee: { id: string; name: string }; accounts: EmployeeAccoun
 
 /**
  * Transfer members: all or some of one employee's accounts move to another employee (lib/member-transfer.ts). Shown on
- * Employees to Administrators and HR Officers. Accounts in branches the new employee is not assigned to stay put.
+ * Employees to Administrators and HR Officers. The new employee may be from any branch (October 14, 2026): accounts in
+ * branches they are not assigned to keep their branch (assigning them) or move to their branch, as chosen.
  */
 export function BulkMemberTransfer({ employeeId, onClose, onDone }: { employeeId: string; onClose: () => void; onDone: (message: string) => void }) {
   const [data, setData] = useState<Loaded | null>(null);
@@ -24,6 +26,7 @@ export function BulkMemberTransfer({ employeeId, onClose, onDone }: { employeeId
   const [target, setTarget] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [branchChoice, setBranchChoice] = useState<BranchChoice>(noBranchChoice);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,9 +44,8 @@ export function BulkMemberTransfer({ employeeId, onClose, onDone }: { employeeId
   }, [accounts, search]);
   const chosen = accounts.filter((account) => selected.has(account.enrollmentId));
   const candidate = data?.candidates.find((item) => item.employeeId === target);
-  const covered = new Set((candidate?.branches ?? []).map((branch) => branch.toLowerCase()));
-  const outside = candidate ? chosen.filter((account) => !covered.has(account.branch.toLowerCase())) : [];
-  const outsideBranches = [...new Set(outside.map((account) => account.branch))];
+  const outsideBranches = candidate ? branchesOutside(chosen.map((account) => account.branch), candidate.branches) : [];
+  const outsideCount = chosen.filter((account) => outsideBranches.includes(account.branch)).length;
   const allShown = shown.length > 0 && shown.every((account) => selected.has(account.enrollmentId));
   const toggleAll = () => setSelected((current) => { const next = new Set(current); for (const account of shown) { if (allShown) next.delete(account.enrollmentId); else next.add(account.enrollmentId); } return next; });
   const toggle = (id: string) => setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -51,11 +53,11 @@ export function BulkMemberTransfer({ employeeId, onClose, onDone }: { employeeId
   async function transfer() {
     setBusy(true); setError("");
     try {
-      const response = await fetch("/api/members/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fromEmployeeId: employeeId, enrollmentIds: [...selected], toEmployeeId: target, reason }) });
+      const response = await fetch("/api/members/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fromEmployeeId: employeeId, enrollmentIds: [...selected], toEmployeeId: target, reason, ...branchChoice }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to transfer the members.");
-      const { from, to, moved, skipped } = result.result as { from: string; to: string; moved: number; skipped: Array<{ branch: string; count: number }> };
-      onDone(`${moved} account${moved === 1 ? "" : "s"} moved from ${from} to ${to}. Future collections belong to ${to}.${skipped.length ? ` Not moved (${to} is not assigned to the branch): ${skipped.map((item) => `${item.branch} ${item.count}`).join(", ")}.` : ""}`);
+      const { from, to, moved, assigned, movedBranch, moveTo } = result.result as { from: string; to: string; moved: number; assigned: string[]; movedBranch: number; moveTo: string };
+      onDone(`${moved} account${moved === 1 ? "" : "s"} moved from ${from} to ${to}. Future collections belong to ${to}.${assigned.length ? ` ${to} is now assigned to ${assigned.join(", ")}.` : ""}${movedBranch ? ` ${movedBranch} account${movedBranch === 1 ? "" : "s"} moved to branch ${moveTo}.` : ""}`);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to transfer the members."); }
     finally { setBusy(false); }
   }
@@ -91,16 +93,12 @@ export function BulkMemberTransfer({ employeeId, onClose, onDone }: { employeeId
         </div>
         <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <div className="space-y-1"><Label>Transfer to *</Label>
-            <SearchSelect aria-label="Transfer to" className="h-9" placeholder="Search employee or MAS" value={target} onValueChange={setTarget}
+            <SearchSelect aria-label="Transfer to" className="h-9" placeholder="Search employee or MAS, any branch" value={target} onValueChange={(value) => { setTarget(value); setBranchChoice(noBranchChoice); }}
               options={data.candidates.map((item) => ({ value: item.employeeId, label: item.name, description: `${item.employeeId} · ${item.roles.join(", ") || "No role"} · ${item.branches.join(", ") || "No branch"}` }))} /></div>
           <div className="space-y-1"><Label htmlFor={`transfer-reason-${employeeId}`}>Reason *</Label><Input id={`transfer-reason-${employeeId}`} maxLength={300} placeholder="e.g. MAS resigned; accounts reassigned" value={reason} onChange={(event) => setReason(event.target.value)} /></div>
-          <Button type="button" disabled={busy || !selected.size || !target || reason.trim().length < 3 || outside.length === chosen.length} onClick={() => void transfer()}>{busy ? "Transferring..." : `Transfer ${chosen.length - outside.length || ""}`.trim()}</Button>
+          <Button type="button" disabled={busy || !selected.size || !target || reason.trim().length < 3 || !branchChoiceReady(outsideBranches, branchChoice)} onClick={() => void transfer()}>{busy ? "Transferring..." : `Transfer ${chosen.length || ""}`.trim()}</Button>
         </div>
-        {candidate && outside.length > 0 && (
-          <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-            {candidate.name} is not assigned to {outsideBranches.join(", ")}, so {outside.length} of the selected account{outside.length === 1 ? "" : "s"} will stay with {data.employee.name}. Collections need the MAS to be assigned to the account&apos;s branch: add the branch to {candidate.name} in Employees → Edit first to move them too.
-          </p>
-        )}
+        {candidate && <TransferBranchChoice name={candidate.name} outside={outsideBranches} count={outsideCount} targetBranches={candidate.branches} value={branchChoice} onChange={setBranchChoice} />}
       </>}
       {error && <p role="alert" className="text-red-700 dark:text-red-400">{error}</p>}
     </div>

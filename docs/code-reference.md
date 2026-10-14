@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 65 API handlers, 119 library files, 50 component files; 416 scanned source/configuration/public-text files in total.
+42 page routes, 65 API handlers, 119 library files, 51 component files; 417 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -35,7 +35,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/mam` | [app/mam/page.tsx](../app/mam/page.tsx) | `@/lib/mam-format`, `@/lib/mam-report`, `@/lib/account-rules`, `@/components/ui/button`, `@/components/ui/badge`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/mas-sales` | [app/mas-sales/page.tsx](../app/mas-sales/page.tsx) | `@/components/new-sales-form` |
 | `/master-data` | [app/master-data/page.tsx](../app/master-data/page.tsx) |  |
-| `/members` | [app/members/page.tsx](../app/members/page.tsx) | `@/components/admin-delete`, `@/components/member-edit-form`, `@/components/inline-panel`, `@/components/ui/search-select`, `@/components/ui/input`, `@/lib/api-response`, `@/components/ui/button`, `@/components/status-badge`, `@/components/member-mam`, `@/lib/member-directory`, `@/lib/use-live-refresh` |
+| `/members` | [app/members/page.tsx](../app/members/page.tsx) | `@/components/admin-delete`, `@/components/member-edit-form`, `@/components/inline-panel`, `@/components/ui/search-select`, `@/components/ui/input`, `@/lib/api-response`, `@/components/ui/button`, `@/components/status-badge`, `@/components/member-mam`, `@/lib/member-directory`, `@/lib/use-live-refresh`, `@/components/transfer-branch-choice` |
 | `/my-entries` | [app/my-entries/page.tsx](../app/my-entries/page.tsx) | `@/components/batch-editor`, `@/components/entry-details`, `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/todays-entries`, `@/lib/use-live-refresh` |
 | `/my-notices` | [app/my-notices/page.tsx](../app/my-notices/page.tsx) | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/textarea`, `@/lib/api-response`, `@/lib/nte`, `@/lib/use-live-refresh` |
 | `/new-sales` | [app/new-sales/page.tsx](../app/new-sales/page.tsx) | `@/components/new-sales-form` |
@@ -192,7 +192,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/member-directory.ts](../lib/member-directory.ts) | `DirectoryEnrollment`, `DirectoryMember`, `DECEASED_STATUS`, `MEMBER_STATUSES`, `STANDING_FILTERS`, `Standing`, `matchesStanding`, `DirectoryFilters`, `emptyDirectoryFilters`, `MemberRecord`, `EnrollmentRecord`, `CollectorRecord`, `buildMemberDirectory`, `filterMemberDirectory` | — |
 | [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `memberContactOrClaimant`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `searchBranchMembers`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
 | [lib/member-scope.ts](../lib/member-scope.ts) | `ownMembersScope`, `isOwnAccount` | `@/lib/auth`, `@/lib/access-control`, `@/lib/employees` |
-| [lib/member-transfer.ts](../lib/member-transfer.ts) | `canTransferMembers`, `transferCandidates`, `transferEnrollment`, `EmployeeAccount`, `employeeAccounts`, `transferEmployeeAccounts`, `getTransferHistory` | `@/lib/auth-server`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/readable-id` |
+| [lib/member-transfer.ts](../lib/member-transfer.ts) | `canTransferMembers`, `BranchMode`, `TransferCandidate`, `transferCandidates`, `transferEnrollment`, `EmployeeAccount`, `employeeAccounts`, `transferEmployeeAccounts`, `getTransferHistory` | `@/lib/auth-server`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/readable-id` |
 | [lib/members.ts](../lib/members.ts) | `getMemberPrograms`, `getProgram`, `getMember` | `./types` |
 | [lib/mock-members.ts](../lib/mock-members.ts) | `mockMembers` | `./types` |
 | [lib/navigation.ts](../lib/navigation.ts) | `NavItem`, `NavSection`, `normalizeRole`, `workspaceFor`, `routeMatches`, `visibleNavigation`, `isInWorkspace`, `locatePage`, `activeHref` | `@/lib/access-control` |
@@ -260,7 +260,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/attendance-calendar.tsx](../components/attendance-calendar.tsx) | `AttendanceCalendar` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/philippine-holidays` |
 | [components/batch-editor.tsx](../components/batch-editor.tsx) | `BatchEditor` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/batch-edit` |
 | [components/brand-logo.tsx](../components/brand-logo.tsx) | `BrandLogo` | — |
-| [components/bulk-member-transfer.tsx](../components/bulk-member-transfer.tsx) | `BulkMemberTransfer` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/member-transfer` |
+| [components/bulk-member-transfer.tsx](../components/bulk-member-transfer.tsx) | `BulkMemberTransfer` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/transfer-branch-choice`, `@/lib/member-transfer` |
 | [components/clearing-picker.tsx](../components/clearing-picker.tsx) | `ClearingPicker` | `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/use-live-refresh` |
 | [components/clerk-report.tsx](../components/clerk-report.tsx) | `ClerkReport` | `@/components/brand-logo`, `@/components/entry-details`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/lib/clerk-report`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
 | [components/company-reports.tsx](../components/company-reports.tsx) | `CompanyReports` | `@/components/metric-tile`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/reports`, `@/lib/use-live-refresh` |
@@ -296,6 +296,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/theme-toggle.tsx](../components/theme-toggle.tsx) | `useThemePreference`, `ThemeToggle` | `@/lib/theme` |
 | [components/topbar-clock.tsx](../components/topbar-clock.tsx) | `TopbarClock` | — |
 | [components/topbar.tsx](../components/topbar.tsx) | `Topbar` | `@/components/app-shell`, `@/components/profile`, `@/components/theme-toggle`, `@/components/topbar-clock`, `@/lib/navigation` |
+| [components/transfer-branch-choice.tsx](../components/transfer-branch-choice.tsx) | `BranchChoice`, `noBranchChoice`, `branchesOutside`, `branchChoiceReady`, `TransferBranchChoice` | `@/components/ui/search-select` |
 | [components/ui/badge.tsx](../components/ui/badge.tsx) | `Badge`, `badgeVariants` | — |
 | [components/ui/button.tsx](../components/ui/button.tsx) | `Button`, `buttonVariants` | — |
 | [components/ui/card.tsx](../components/ui/card.tsx) | `Card`, `CardHeader`, `CardFooter`, `CardTitle`, `CardAction`, `CardDescription`, `CardContent` | — |

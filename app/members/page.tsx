@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { MemberMam } from "@/components/member-mam";
 import { emptyDirectoryFilters, STANDING_FILTERS, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { branchChoiceReady, branchesOutside, noBranchChoice, TransferBranchChoice, type BranchChoice } from "@/components/transfer-branch-choice";
 
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort();
@@ -150,13 +151,14 @@ type Enrollment = DirectoryMember["enrollments"][number];
 /** A member's program enrollments; Administrators and HR Officers can move one to another employee in its branch. */
 function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }: { enrollments: Enrollment[]; canTransfer: boolean; transfers: Transfer[]; onTransferred: (enrollmentId: string, toMas: string) => void }) {
   const [open, setOpen] = useState("");
-  const [candidates, setCandidates] = useState<Array<{ employeeId: string; name: string }>>([]);
+  const [candidates, setCandidates] = useState<Array<{ employeeId: string; name: string; roles: string[]; branches: string[] }>>([]);
   const [target, setTarget] = useState("");
+  const [branchChoice, setBranchChoice] = useState<BranchChoice>(noBranchChoice);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   async function start(enrollment: Enrollment) {
-    setNote(""); setTarget(""); setReason("");
+    setNote(""); setTarget(""); setReason(""); setBranchChoice(noBranchChoice);
     if (open === enrollment.id) { setOpen(""); return; }
     setOpen(enrollment.id); setCandidates([]); setBusy(true);
     try {
@@ -170,10 +172,11 @@ function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }:
   async function transfer(enrollment: Enrollment) {
     setBusy(true); setNote("");
     try {
-      const response = await fetch("/api/members/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enrollmentId: enrollment.id, toEmployeeId: target, reason }) });
+      const response = await fetch("/api/members/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enrollmentId: enrollment.id, toEmployeeId: target, reason, ...branchChoice }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to transfer.");
-      setOpen(""); setNote(`${enrollment.programName} moved from ${result.transfer.fromMas} to ${result.transfer.toMas}. Future collections belong to ${result.transfer.toMas}.`);
+      const { fromMas, toMas, assigned, movedBranch, moveTo } = result.transfer as { fromMas: string; toMas: string; assigned: string[]; movedBranch: number; moveTo: string };
+      setOpen(""); setNote(`${enrollment.programName} moved from ${fromMas} to ${toMas}. Future collections belong to ${toMas}.${assigned.length ? ` ${toMas} is now assigned to ${assigned.join(", ")}.` : ""}${movedBranch ? ` The account moved to branch ${moveTo}.` : ""}`);
       onTransferred(enrollment.id, result.transfer.toMas);
     } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to transfer."); }
     finally { setBusy(false); }
@@ -194,12 +197,13 @@ function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }:
           </tr>
           {open === e.id && <InlineRow colSpan={headers.length}>
             <p className="text-sm font-semibold">Transfer {e.programName} from {e.mas || "no MAS"}</p>
-            <p className="mb-3 text-xs text-muted-foreground">To another active employee in {e.branch}. Future collections belong to the new MAS; past collections and cash already owed stay with {e.mas || "the current MAS"}.</p>
+            <p className="mb-3 text-xs text-muted-foreground">To another active employee of any branch. Future collections belong to the new MAS; past collections and cash already owed stay with {e.mas || "the current MAS"}.</p>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">New MAS / employee *<SearchSelect aria-label="New MAS" className="mt-1 h-9" placeholder={busy && !candidates.length ? "Loading..." : candidates.length ? "Search employee" : "No other employee in this branch"} disabled={!candidates.length} value={target} onValueChange={setTarget} options={candidates.map((item) => ({ value: item.employeeId, label: item.name, description: item.employeeId }))} /></label>
+              <label className="text-sm">New MAS / employee *<SearchSelect aria-label="New MAS" className="mt-1 h-9" placeholder={busy && !candidates.length ? "Loading..." : candidates.length ? "Search employee, any branch" : "No other active employee"} disabled={!candidates.length} value={target} onValueChange={(value) => { setTarget(value); setBranchChoice(noBranchChoice); }} options={candidates.map((item) => ({ value: item.employeeId, label: item.name, description: `${item.employeeId} · ${item.branches.join(", ") || "No branch"}` }))} /></label>
               <label className="text-sm">Reason *<Input className="mt-1 h-9" maxLength={300} value={reason} placeholder="e.g. Original MAS resigned; member requested a new officer" onChange={(event) => setReason(event.target.value)} /></label>
             </div>
-            <div className="mt-3 flex gap-2"><Button type="button" disabled={busy || !target || reason.trim().length < 3} onClick={() => void transfer(e)}>{busy ? "Saving..." : "Transfer"}</Button><Button type="button" variant="ghost" onClick={() => setOpen("")}>Cancel</Button></div>
+            {(() => { const chosen = candidates.find((item) => item.employeeId === target); return chosen && <div className="mt-3"><TransferBranchChoice name={chosen.name} outside={branchesOutside([e.branch], chosen.branches)} count={1} targetBranches={chosen.branches} value={branchChoice} onChange={setBranchChoice} /></div>; })()}
+            <div className="mt-3 flex gap-2"><Button type="button" disabled={busy || !target || reason.trim().length < 3 || !branchChoiceReady(branchesOutside([e.branch], candidates.find((item) => item.employeeId === target)?.branches ?? []), branchChoice)} onClick={() => void transfer(e)}>{busy ? "Saving..." : "Transfer"}</Button><Button type="button" variant="ghost" onClick={() => setOpen("")}>Cancel</Button></div>
           </InlineRow>}
         </Fragment>;
       })}</tbody>

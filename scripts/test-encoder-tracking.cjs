@@ -1874,26 +1874,65 @@ test('daily audit: HR, Finance, and Admin can open it; only Admin approves and a
   assert.match((await (await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'reopen', reason: '' }))).json()).message, /reason/);
 });
 
-test('a program enrollment transfers only to an active employee in the same branch, with a reason and history', async () => {
+test('a program enrollment transfers to an active employee of any branch, keeping or moving its branch, with a reason and history', async () => {
   const h = harness({ userId: 'USR-2', employeeId: 'MD-1', name: 'HR Person', roleNames: ['HR Officer'], permissions: {} });
   await seedAccount({ doi: '2026-01-15', branch: 'MATINA', mas: 'Old MAS' });
   await seed('employees', [{ employee_id: 'MD-6', full_name: 'New MAS' }]);
-  h.rows.Employees = [[], ['MD-5', 'Old MAS', 'MATINA', 'MAS', 'active'], ['MD-6', 'New MAS', 'MATINA', 'MAS', 'active'], ['MD-7', 'Toril MAS', 'TORIL', 'MAS', 'active']];
-  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-5', 'BR-1'], ['EBA-2', 'MD-6', 'BR-1'], ['EBA-3', 'MD-7', 'BR-2']];
+  h.rows.Employees = [[], ['MD-5', 'Old MAS', 'MATINA', 'MAS', 'active'], ['MD-6', 'New MAS', 'MATINA', 'MAS', 'active'], ['MD-7', 'Toril MAS', 'TORIL', 'MAS', 'active'], ['MD-8', 'Toril Two', 'TORIL', 'MAS', 'active'], ['MD-9', 'Gone MAS', 'MATINA', 'MAS', 'resigned']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-5', 'BR-1'], ['EBA-2', 'MD-6', 'BR-1'], ['EBA-3', 'MD-7', 'BR-2'], ['EBA-4', 'MD-8', 'BR-2'], ['EBA-5', 'MD-9', 'BR-1']];
   h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'TORIL', 'METRO', '', '', '', '', '', '', '', '', '', 'active']];
   const route = h.load('app/api/members/transfer/route.ts');
   const listed = await (await route.GET(new Request('http://localhost/api/members/transfer?enrollmentId=ENR-1'))).json();
-  assert.deepEqual(listed.candidates.map((item) => item.name), ['New MAS'], 'same branch, not the current MAS');
-  assert.match((await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-7', reason: 'Moved' }))).json()).message, /assigned to MATINA/);
+  assert.deepEqual(listed.candidates.map((item) => [item.name, item.branches]), [['New MAS', ['MATINA']], ['Toril MAS', ['TORIL']], ['Toril Two', ['TORIL']]], 'any branch, active, not the current MAS');
   assert.match((await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: '' }))).json()).message, /reason/);
   const done = await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: 'Old MAS resigned' }))).json();
-  assert.deepEqual([done.transfer.fromMas, done.transfer.toMas], ['Old MAS', 'New MAS']);
+  assert.deepEqual([done.transfer.fromMas, done.transfer.toMas, done.transfer.assigned, done.transfer.movedBranch], ['Old MAS', 'New MAS', [], 0], 'same branch: only the MAS changes');
   assert.equal((await query("select mas from member_programs where enrollment_id = 'ENR-1'"))[0].mas, 'New MAS', 'the enrollment MAS changes');
   const [history] = await query('select enrollment_id, member_id, member_number, program_id, branch, from_mas, to_mas, to_employee_id, reason, encoded_by_name from member_transfers');
   assert.deepEqual(Object.values(history), ['ENR-1', 'MEM-1', 'PH-1', 'DP-1', 'MATINA', 'Old MAS', 'New MAS', 'MD-6', 'Old MAS resigned', 'HR Person']);
   assert.deepEqual(await query('select table_name, record_id, employee_id from audit_log'), [{ table_name: 'member_programs', record_id: 'ENR-1', employee_id: 'MD-1' }], 'the MAS change is audited');
+
+  // Another branch's MAS: the choice is required.
+  assert.match((await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-7', reason: 'Covering' }))).json()).message, /not assigned to MATINA/);
+  assert.match((await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-7', reason: 'Covering', branchMode: 'move', moveTo: 'MATINA' }))).json()).message, /Toril MAS's branches/);
+  // Keep: the account stays in MATINA and Toril MAS is assigned to MATINA, so Clearing and Collections accept them.
+  const kept = await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-7', reason: 'Covering', branchMode: 'keep' }))).json();
+  assert.equal(kept.success, true, JSON.stringify(kept));
+  assert.deepEqual(kept.transfer.assigned, ['MATINA']);
+  assert.deepEqual(await query("select mas, branch, mas_employee_id from member_programs where enrollment_id = 'ENR-1'"), [{ mas: 'Toril MAS', branch: 'MATINA', mas_employee_id: 'MD-7' }]);
+  assert.deepEqual(await query("select branch_id from employee_branches where employee_id = 'MD-7' order by branch_id"), [{ branch_id: 'BR-1' }, { branch_id: 'BR-2' }]);
+  // Move: the account goes to Toril Two's branch; the history notes the branch change.
+  const moved = await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-8', reason: 'Member moved to Toril', branchMode: 'move', moveTo: 'toril' }))).json();
+  assert.equal(moved.success, true, JSON.stringify(moved));
+  assert.deepEqual([moved.transfer.movedBranch, moved.transfer.moveTo, moved.transfer.assigned], [1, 'TORIL', []]);
+  assert.deepEqual(await query("select mas, branch, branch_id, mas_employee_id from member_programs where enrollment_id = 'ENR-1'"), [{ mas: 'Toril Two', branch: 'TORIL', branch_id: 'BR-2', mas_employee_id: 'MD-8' }]);
+  assert.equal((await query("select reason from member_transfers where to_employee_id = 'MD-8'"))[0].reason, 'Member moved to Toril (branch MATINA → TORIL)');
+  assert.deepEqual(await query("select employee_id from employee_branches where employee_id = 'MD-8' and branch_id = 'BR-1'"), [], 'a move assigns nobody');
+
   h.setUser({ userId: 'USR-3', employeeId: 'MD-3', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
   assert.equal((await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-6', reason: 'x y z' }))).status, 403, 'only Administrators and HR Officers');
+});
+
+test('transfer members of an employee to a MAS from another branch moves every chosen account, keeping or moving branches', async () => {
+  const h = harness({ userId: 'USR-1', employeeId: 'MD-0', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  await seedAccount({ enrollment: 'ENR-1', member: 'MEM-1', memberNumber: 'PH-1', doi: '2026-01-15', branch: 'MATINA', mas: 'Old MAS' });
+  await seed('members', [{ member_id: 'MEM-2', member_number: 'PH-2', surname: 'Cruz', first_name: 'Ben' }, { member_id: 'MEM-3', member_number: 'PH-3', surname: 'Reyes', first_name: 'Cy' }]);
+  await seed('member_programs', [
+    { enrollment_id: 'ENR-2', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-1', branch: 'AGDAO', mas: 'Old MAS', status: 'Active' },
+    { enrollment_id: 'ENR-3', member_id: 'MEM-3', member_number: 'PH-3', program_id: 'DP-1', branch: 'TORIL', mas: 'Old MAS', status: 'Active' },
+  ]);
+  h.rows.Employees = [[], ['MD-5', 'Old MAS', 'MATINA', 'MAS', 'active'], ['MD-7', 'Toril MAS', 'TORIL', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-5', 'BR-1'], ['EBA-2', 'MD-5', 'BR-3'], ['EBA-3', 'MD-5', 'BR-2'], ['EBA-4', 'MD-7', 'BR-2']];
+  h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'TORIL', 'METRO', '', '', '', '', '', '', '', '', '', 'active'], ['BR-3', 'AGDAO', 'METRO', '', '', '', '', '', '', '', '', '', 'active']];
+  const route = h.load('app/api/members/transfer/route.ts');
+  const body = { fromEmployeeId: 'MD-5', enrollmentIds: ['ENR-1', 'ENR-2', 'ENR-3'], toEmployeeId: 'MD-7', reason: 'Old MAS resigned' };
+  assert.match((await (await route.POST(request(body))).json()).message, /not assigned to MATINA, AGDAO|not assigned to AGDAO, MATINA/, 'the choice is required');
+  const result = await (await route.POST(request({ ...body, branchMode: 'move', moveTo: 'TORIL' }))).json();
+  assert.equal(result.success, true, JSON.stringify(result));
+  assert.deepEqual([result.result.moved, result.result.movedBranch, result.result.moveTo], [3, 2, 'TORIL'], 'nothing is skipped; the two outside TORIL change branch');
+  assert.deepEqual(await query('select enrollment_id, mas, branch from member_programs order by enrollment_id'), [
+    { enrollment_id: 'ENR-1', mas: 'Toril MAS', branch: 'TORIL' }, { enrollment_id: 'ENR-2', mas: 'Toril MAS', branch: 'TORIL' }, { enrollment_id: 'ENR-3', mas: 'Toril MAS', branch: 'TORIL' }]);
+  assert.equal((await query('select count(*)::int as n from member_transfers'))[0].n, 3);
 });
 
 test('audit summary counts only approved Entry Clerk audits in the period, by branch and clerk', async () => {
