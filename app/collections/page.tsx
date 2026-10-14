@@ -962,6 +962,9 @@ export default function CollectionsPage() {
           <div className="mb-4"><ClearingPicker kind="Collections" value={cleared?.id ?? ""} onPick={(clearing) => {
             setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName, clearedDate: clearing.clearedDate });
             setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setDateRemittedReason(""); setOrc(false); clearScopedMemberSelections();
+            // A Collector (role Collector, not MAS) collects as Collector by default; the clerk can still change it (owner, October 14, 2026).
+            const roles = (clearing.employeeRoles ?? []).map((role) => role.trim().toLowerCase());
+            setCollectedBy(roles.includes("collector") && !roles.includes("mas") ? "Collector" : "MAS");
           }} /></div>
           )}
           <div className="grid gap-4 md:grid-cols-3">

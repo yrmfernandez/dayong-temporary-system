@@ -2938,3 +2938,26 @@ test('on a grace day every incentive is kept, however late the cash (October 13,
   assert.equal(forfeitsIncentive(item, '2026-10-13 16:00'), false);
   assert.equal(forfeitsIncentive(item, '2026-10-14 09:00'), true);
 });
+
+test('a clearing listed by mistake can be corrected until its entries are encoded', async () => {
+  const h = harness();
+  const today = h.load('lib/account-rules.ts').todayInManila();
+  await seed('branches', [{ branch_id: 'BR-1', branch_name_code: 'BR-1', status: 'active' }, { branch_id: 'BR-2', branch_name_code: 'BR-2', status: 'active' }]);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2', employment_status: 'Active' }, { employee_id: 'DPE-0003', full_name: 'MAS-3', employment_status: 'Active' }]);
+  await seed('employee_branches', [{ assignment_id: 'EBA-1', employee_id: 'DPE-0002', branch_id: 'BR-1' }, { assignment_id: 'EBA-2', employee_id: 'DPE-0003', branch_id: 'BR-2' }]);
+  await seedAccount({ doi: today, mas: 'MAS-3', branch: 'BR-2' });
+  await seed('clearings', [{ clearing_id: 'CLR-E', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T00:00:00+08:00`, cleared_date: today, status: 'Open', covers: 'New Sales' }]);
+  const clearing = h.load('lib/clearing.ts');
+  // Wrong branch, person and kind: corrected while nothing is encoded.
+  await clearing.editClearing({ id: 'CLR-E', branch: 'BR-2', employeeId: 'DPE-0003', covers: 'Both' });
+  const [row] = await query("select branch, employee_id, employee_name, covers from clearings where clearing_id = 'CLR-E'");
+  assert.deepEqual(row, { branch: 'BR-2', employee_id: 'DPE-0003', employee_name: 'MAS-3', covers: 'Both' });
+  await assert.rejects(() => clearing.editClearing({ id: 'CLR-E', branch: 'BR-1', employeeId: 'DPE-0003', covers: 'Both' }), /not assigned to BR-1/);
+  // Once a collection is encoded on it: Collections stays ticked, and the branch and person stay.
+  await seed('collections', [{ collection_id: 'COL-E', collection_batch_id: 'CBT-E', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-2', or_number: '6001 C', amount_collected: 350, status: 'Posted', remittance_status: 'Outstanding', accountable_employee_id: 'DPE-0003', date_remitted: today, encoded_at: new Date().toISOString(), remittance_method: 'Cash' }]);
+  await assert.rejects(() => clearing.editClearing({ id: 'CLR-E', branch: 'BR-2', employeeId: 'DPE-0003', covers: 'New Sales' }), /Collections are already encoded/);
+  await assert.rejects(() => clearing.editClearing({ id: 'CLR-E', branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Both' }), /only before anything is encoded/);
+  await clearing.editClearing({ id: 'CLR-E', branch: 'BR-2', employeeId: 'DPE-0003', covers: 'Collections' });
+  assert.equal((await query("select covers from clearings where clearing_id = 'CLR-E'"))[0].covers, 'Collections', 'New Sales (none encoded) can be unticked');
+  await assert.rejects(() => clearing.editClearing({ id: 'CLR-E', branch: 'BR-2', employeeId: 'DPE-0003', covers: 'Both' }, 'DPE-9999'), /Only a clearing you made/);
+});

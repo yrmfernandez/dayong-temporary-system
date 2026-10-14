@@ -44,6 +44,22 @@ export default function ClearingPage() {
   const [error, setError] = useState("");
   const [removing, setRemoving] = useState<{ id: string; reason: string } | null>(null);
   const [removeError, setRemoveError] = useState("");
+  // A clearing being corrected (owner, October 14, 2026): what is remitted, the branch, the MAS / employee.
+  const [editing, setEditing] = useState<{ id: string; branch: string; employeeId: string; covers: ClearingCovers } | null>(null);
+  const [editError, setEditError] = useState("");
+
+  async function saveEdit() {
+    if (!editing) return;
+    setBusy(true); setEditError(""); setMessage("");
+    try {
+      const response = await fetch("/api/clearing", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "edit", ...editing }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to update the clearing.");
+      setMessage(result.message || "Updated."); setEditing(null);
+      await load();
+    } catch (failure) { setEditError(failure instanceof Error ? failure.message : "Unable to update the clearing."); }
+    finally { setBusy(false); }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -62,6 +78,17 @@ export default function ClearingPage() {
   const people = useMemo(() => (data?.employees ?? []).filter((person) => selectedBranchId && person.branchIds.includes(selectedBranchId)), [data, selectedBranchId]);
   const open = (data?.clearings ?? []).filter((item) => item.stage !== "Approved" && item.stage !== "Removed");
   const closedToday = (data?.clearings ?? []).filter((item) => item.stage === "Approved" || item.stage === "Removed");
+  /*
+   * Arranged by status (owner, October 14, 2026): Returned first (it needs fixing), then the flow Waiting for encoding,
+   * Waiting for receipt, For approval; Approved before Removed. Newest clearing first within a status.
+   */
+  const groups = (list: Clearing[], order: ClearingStage[]) => order.map((stage) => ({ stage, items: list.filter((item) => (item.stage ?? "Waiting for encoding") === stage) })).filter((group) => group.items.length);
+  const openGroups = groups(open, ["Returned", "Waiting for encoding", "Waiting for receipt", "For approval"]);
+  const closedGroups = groups(closedToday, ["Approved", "Removed"]);
+  const grouped = (list: Array<{ stage: ClearingStage; items: Clearing[] }>) => list.map((group) => <Fragment key={group.stage}>
+    <tr className="border-t bg-muted/40"><td colSpan={7} className="px-3 py-2"><StatusBadge status={group.stage} tone={STAGE_TONE[group.stage]} /><span className="ml-2 text-xs text-muted-foreground">{group.items.length}</span></td></tr>
+    {group.items.map(row)}
+  </Fragment>);
 
   async function clear(event: React.FormEvent) {
     event.preventDefault();
@@ -101,8 +128,29 @@ export default function ClearingPage() {
         ? <div className="space-y-2">{item.kinds.map((part) => <div key={part.kind}><span className="block text-xs font-medium">{part.kind}</span><StatusBadge status={part.stage} tone={STAGE_TONE[part.stage]} />{entrySummary(part.entries) && <span className="mt-0.5 block text-xs text-muted-foreground">{entrySummary(part.entries)}</span>}{/* Who approved or returned it, for tracking (owner, October 13, 2026). */}{(part.decisions ?? []).map((decision) => <span key={`${decision.status}-${decision.by}`} className={`block text-xs ${decision.status === "Returned" ? "text-red-700 dark:text-red-400" : "text-muted-foreground"}`}>{decision.status} by {decision.by}{decision.at ? ` · ${decision.at.slice(0, 10) === data?.today ? time(decision.at) : `${decision.at.slice(0, 10)} ${time(decision.at)}`}` : ""}</span>)}</div>)}</div>
         : <><StatusBadge status={item.stage ?? "Waiting for encoding"} tone={STAGE_TONE[item.stage ?? "Waiting for encoding"]} /><span className="block text-xs text-muted-foreground">{item.covers === "Both" ? "New Sales and Collections" : `${item.covers} only`}</span></>}
         {item.remittanceId && <span className="block font-mono text-[11px] text-muted-foreground">{item.remittanceId}</span>}</td>
-      <td className="p-3 text-right">{item.status === "Open" && item.stage === "Waiting for encoding" && <Button type="button" size="sm" variant="outline" disabled={busy} aria-expanded={removing?.id === item.id} aria-controls={removing?.id === item.id ? `clearing-remove-${item.id}` : undefined} onClick={() => { setRemoveError(""); setRemoving(removing?.id === item.id ? null : { id: item.id, reason: "" }); }}>Remove</Button>}</td>
+      <td className="space-y-1 p-3 text-right">{item.status !== "Removed" && item.stage !== "Approved" && <Button type="button" size="sm" variant="outline" disabled={busy} aria-expanded={editing?.id === item.id} onClick={() => { setEditError(""); setRemoving(null); setEditing(editing?.id === item.id ? null : { id: item.id, branch: item.branch, employeeId: item.employeeId, covers: item.covers }); }}>Edit</Button>}
+        {item.status === "Open" && item.stage === "Waiting for encoding" && <Button type="button" size="sm" variant="outline" disabled={busy} aria-expanded={removing?.id === item.id} aria-controls={removing?.id === item.id ? `clearing-remove-${item.id}` : undefined} onClick={() => { setRemoveError(""); setEditing(null); setRemoving(removing?.id === item.id ? null : { id: item.id, reason: "" }); }}>Remove</Button>}</td>
     </tr>
+    {editing?.id === item.id && <tr className="border-t bg-primary/5"><td colSpan={7} className="p-3">
+      <form className="space-y-3 text-sm" onSubmit={(event) => { event.preventDefault(); if (!busy && editing.branch && editing.employeeId) void saveEdit(); }}>
+        <p className="font-medium">Correct the clearing of {item.employeeName || item.employeeId} ({item.clearedDate})</p>
+        <div className="grid gap-3 md:grid-cols-[1fr_1.4fr] md:items-end">
+          <div className="space-y-1"><Label>Branch *</Label><SearchSelect aria-label="Branch" className="h-9" value={editing.branch} onValueChange={(value) => setEditing({ ...editing, branch: value, employeeId: "" })} options={(data?.branches ?? []).map((branchItem) => ({ value: branchItem.name, label: branchItem.name }))} /></div>
+          <div className="space-y-1"><Label>MAS / employee *</Label><SearchSelect aria-label="MAS or employee" className="h-9" disabled={!editing.branch} placeholder="Search name or ID" value={editing.employeeId} onValueChange={(value) => setEditing({ ...editing, employeeId: value })}
+            options={(data?.employees ?? []).filter((person) => person.branchIds.includes(data?.branches.find((branchItem) => branchItem.name === editing.branch)?.id ?? "")).map((person) => ({ value: person.id, label: person.name, description: `${person.id} · ${person.roles.join(", ") || "No role"}` }))} /></div>
+        </div>
+        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <legend className="mb-1 font-medium">Remitting *</legend>
+          {([["Both", "New Sales and Collections"], ["New Sales", "New Sales only"], ["Collections", "Collections only"]] as const).map(([value, label]) => <label key={value} className="flex items-center gap-2"><input type="radio" name={`clearing-edit-covers-${item.id}`} checked={editing.covers === value} onChange={() => setEditing({ ...editing, covers: value })} />{label}</label>)}
+        </fieldset>
+        <p className="text-xs text-muted-foreground">The branch and MAS can be changed only before anything is encoded for this clearing; a kind already encoded stays ticked.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={busy || !editing.branch || !editing.employeeId}>{busy ? "Saving..." : "Save changes"}</Button>
+          <Button type="button" variant="ghost" disabled={busy} onClick={() => { setEditing(null); setEditError(""); }}>Cancel</Button>
+        </div>
+        {editError && <p role="alert" className="text-red-700 dark:text-red-400">{editError}</p>}
+      </form>
+    </td></tr>}
     {removing?.id === item.id && <tr className="border-t bg-amber-50 dark:bg-amber-950/30"><td colSpan={7} className="p-3">
       <form id={`clearing-remove-${item.id}`} className="space-y-3 text-sm" onSubmit={(event) => { event.preventDefault(); if (!busy && removing.reason.trim().length >= 3) void remove(); }}>
         <p className="font-medium">Remove clearing for {item.employeeName || item.employeeId} in {item.branch}?</p>
@@ -145,12 +193,12 @@ export default function ClearingPage() {
 
       <Card><CardHeader><CardTitle>In progress ({open.length})</CardTitle><p className="text-sm text-muted-foreground">New Sales and Collections each move by themselves: Waiting for encoding → Waiting for receipt (bank or e-wallet batch saved, receipt photo not attached yet; cash skips this) → For approval → Approved. Returned means the approver sent that batch back. Lines from earlier days stay here until everything ticked is approved.</p></CardHeader><CardContent>
         <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-muted/50"><tr>{["MAS / employee", "Branch", "Cleared", "Amount", "Notes", "Status", ""].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>
-          <tbody>{open.map(row)}{!open.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{data ? "Nothing in progress." : "Loading..."}</td></tr>}</tbody></table></div>
+          <tbody>{grouped(openGroups)}{!open.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{data ? "Nothing in progress." : "Loading..."}</td></tr>}</tbody></table></div>
       </CardContent></Card>
 
       {closedToday.length > 0 && <Card><CardHeader><CardTitle>Approved today ({closedToday.length})</CardTitle><p className="text-sm text-muted-foreground">Every entry saved and approved (or the line removed). These leave the page after 11:59 PM.</p></CardHeader><CardContent>
         <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-muted/50"><tr>{["MAS / employee", "Branch", "Cleared", "Amount", "Notes", "Status", ""].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>
-          <tbody>{closedToday.map(row)}</tbody></table></div>
+          <tbody>{grouped(closedGroups)}</tbody></table></div>
       </CardContent></Card>}
     </section>
   );

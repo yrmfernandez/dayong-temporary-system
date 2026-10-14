@@ -1,9 +1,9 @@
 import { canAccessPath } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
-import { addClearing, getClearingPage, removeClearing } from "@/lib/clearing";
+import { addClearing, editClearing, getClearingPage, removeClearing } from "@/lib/clearing";
 import { withEncoder } from "@/lib/encoder-context";
 
-/** Clearing (lib/clearing.ts): GET the day's list; POST { branch, employeeId, covers, amount?, notes? } clears; PATCH { id, reason } removes. */
+/** Clearing (lib/clearing.ts): GET the day's list; POST { branch, employeeId, covers, amount?, notes? } clears; PATCH { id, reason } removes; PATCH { action: "edit", id, branch, employeeId, covers } corrects it. */
 async function allowed() {
   const user = await getSessionUser();
   if (!user) return { error: Response.json({ success: false, message: "Please sign in." }, { status: 401 }) };
@@ -34,6 +34,10 @@ export const PATCH = withEncoder(async (request: Request) => {
   if (error) return error;
   try {
     const body = await request.json();
+    if (body.action === "edit") {
+      const edited = await editClearing({ id: String(body.id ?? ""), branch: String(body.branch ?? ""), employeeId: String(body.employeeId ?? ""), covers: body.covers }, clearedBy);
+      return Response.json({ success: true, message: `Clearing updated: ${edited.employeeName}, ${edited.branch}, ${edited.covers === "Both" ? "New Sales and Collections" : `${edited.covers} only`}.` });
+    }
     await removeClearing({ id: String(body.id ?? ""), reason: String(body.reason ?? "") }, clearedBy);
     return Response.json({ success: true, message: "Clearing removed." });
   } catch (failure) { return Response.json({ success: false, message: failure instanceof Error ? failure.message : "Unable to remove the clearing." }, { status: 400 }); }

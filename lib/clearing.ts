@@ -51,6 +51,8 @@ export type Clearing = {
   stage?: ClearingStage;
   entries?: Tally;
   kinds?: Array<{ kind: ClearingKind; stage: ClearingStage; entries: Tally; decisions: ClearingDecision[] }>;
+  /** getEncodableClearings: the person's operational roles, so Collections can preset Collected by (Collector role → Collector). */
+  employeeRoles?: string[];
   /** getEncodableClearings, an Encoded clearing of an earlier day: the kinds still waiting for encoding (only these can be picked). */
   waitingKinds?: ClearingKind[];
 };
@@ -170,7 +172,8 @@ export async function getEncodableClearings(clearedBy = "") {
   const rows = await currentDb().select().from(clearings)
     .where(and(mine(clearedBy), or(eq(clearings.status, "Open"), and(eq(clearings.status, "Encoded"), gte(clearings.cleared_date, addDays(today, -UNFINISHED_DAYS))))))
     .orderBy(desc(clearings.cleared_at));
-  const list = rows.map(toClearing);
+  const roles = new Map((await getEmployees()).map((employee) => [employee.id, employee.roles]));
+  const list = rows.map(toClearing).map((item) => ({ ...item, employeeRoles: roles.get(item.employeeId) ?? [] }));
   const earlier = list.filter((item) => item.status === "Encoded" && item.clearedDate !== today);
   const progress = new Map((await withProgress(earlier)).map((item) => [item.id, item]));
   return list.flatMap((item) => {
@@ -217,6 +220,40 @@ export async function removeClearing(input: { id: string; reason: string }, clea
     .where(and(eq(clearings.clearing_id, id), eq(clearings.status, "Open"), mine(clearedBy))).returning({ id: clearings.clearing_id });
   if (!updated.length) throw new Error(clearedBy ? "Only an Open clearing you made can be removed." : "Only an Open clearing can be removed.");
   return { id };
+}
+
+/**
+ * Corrects a clearing listed by mistake (owner, October 14, 2026): what is being remitted, the branch, the MAS /
+ * employee. The branch and person change only while nothing is encoded for the clearing (like removing it); a kind can
+ * be unticked only when none of its entries are encoded. Same checks as a new clearing (active branch, active person
+ * assigned to it, no second open clearing of a kind the same day). Own clearings only, unless an administrator.
+ */
+export async function editClearing(input: { id: string; branch: string; employeeId: string; covers: unknown }, clearedBy = "") {
+  const [row] = await currentDb().select().from(clearings).where(and(eq(clearings.clearing_id, text(input.id)), mine(clearedBy)));
+  if (!row || row.status === "Removed") throw new Error(clearedBy ? "Only a clearing you made can be edited." : "Clearing not found.");
+  const covers = (text(input.covers) || "Both") as ClearingCovers;
+  if (!CLEARING_COVERS.includes(covers)) throw new Error("Choose what is being remitted: New Sales, Collections or both.");
+  const [branches, employees] = await Promise.all([getBranches(), getEmployees()]);
+  const branch = branches.find((item) => item.name === text(input.branch) && item.status === "active");
+  const employee = employees.find((item) => item.id === text(input.employeeId) && item.status.toLowerCase() === "active");
+  if (!branch) throw new Error("Choose the branch.");
+  if (!employee) throw new Error("Choose an active MAS or employee.");
+  if (!employee.branchIds.includes(branch.id)) throw new Error(`${employee.name} is not assigned to ${branch.name}. Add the branch in Employees → Edit first.`);
+  const [progress] = await withProgress([toClearing(row)]);
+  const encoded = (kind: ClearingKind) => progress.kinds?.find((part) => part.kind === kind)?.entries.total ?? 0;
+  const movesPerson = employee.id !== row.employee_id || branch.name.trim().toLowerCase() !== text(row.branch).toLowerCase();
+  if (movesPerson && (row.status !== "Open" || (progress.entries?.total ?? 0) > 0)) throw new Error("The branch and MAS can be changed only before anything is encoded for this clearing.");
+  const current = (CLEARING_COVERS as string[]).includes(text(row.covers)) ? row.covers as ClearingCovers : "Both";
+  for (const kind of coveredKinds(current).filter((item) => !coveredKinds(covers).includes(item))) {
+    if (encoded(kind) > 0) throw new Error(`${kind} are already encoded on this clearing, so keep ${kind} ticked.`);
+  }
+  // No second open clearing of a kind for the same person, branch and day (as when clearing).
+  const others = await currentDb().select({ id: clearings.clearing_id, covers: clearings.covers }).from(clearings)
+    .where(and(eq(clearings.employee_id, employee.id), eq(clearings.branch, branch.name), eq(clearings.cleared_date, text(row.cleared_date)), eq(clearings.status, "Open"), ne(clearings.clearing_id, row.clearing_id)));
+  const overlap = others.flatMap((item) => coveredKinds((CLEARING_COVERS as string[]).includes(text(item.covers)) ? item.covers as ClearingCovers : "Both")).filter((kind) => coveredKinds(covers).includes(kind));
+  if (overlap.length) throw new Error(`${employee.name} is already cleared for ${[...new Set(overlap)].join(" and ")} in ${branch.name} that day.`);
+  await currentDb().update(clearings).set({ branch: branch.name, employee_id: employee.id, employee_name: employee.name, covers }).where(eq(clearings.clearing_id, row.clearing_id));
+  return { id: row.clearing_id, employeeName: employee.name, branch: branch.name, covers };
 }
 
 /** The same branch, ignoring case and outer spaces. */

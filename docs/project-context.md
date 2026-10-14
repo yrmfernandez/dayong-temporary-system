@@ -324,6 +324,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Clearing grouped by status, Edit, Collected by from the role (2026-10-14)
+
+- **Owner:** arrange Clearing by status; add Edit for a wrong Remitting, branch or MAS; when the cleared person is a Collector, Collections should default Collected by to Collector.
+- **Done:** In progress grouped Returned → Waiting for encoding → Waiting for receipt → For approval (newest first within a status); Approved today: Approved, then Removed. Edit on each line (not Approved or Removed): branch and MAS / employee only while nothing is encoded; a kind can be unticked only when none of its entries are encoded; same checks as a new clearing; own clearings unless administrator (`editClearing`). Collections: picking someone whose role is Collector (and not MAS) presets Collected by Collector, otherwise MAS; the clerk can change it. Tested.
+- **Open:** members carry a status (Active: MAS collecting; Collector: transferred to a collector after the MAS resigned or went inactive; DTO: paid at the office). Collected by is still per batch; a Collector handing in both transferred and own members encodes them as Collector (Collector tier).
+
 ### Report branch list: assigned branches only (2026-10-13)
 
 - **Owner:** the report's branches are not accurate: CABALLERO, JENNY is assigned to MINTAL, but the list had AGDAO (one New Sale she encoded on October 9).
