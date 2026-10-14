@@ -52,6 +52,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   const [editingDeposit, setEditingDeposit] = useState<Report["deposits"][number] | null>(null);
   // A Fidelity entry (handed in after encoding) opened for editing (October 13, 2026).
   const [editingFidelity, setEditingFidelity] = useState<Report["fidelitySlips"][number] | null>(null);
+  // Every entry filters (owner, October 14, 2026): kind, remitted / returned / missing photo, OR search, MAS, program.
+  const [entryFilter, setEntryFilter] = useState<EntryFilter>(NO_FILTER);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +98,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
   const report = data?.report;
   const own = Boolean(data?.isOwn && !review);
+  const entries = report ? filterEntries(report.entries, entryFilter) : [];
+  const filtering = JSON.stringify(entryFilter) !== JSON.stringify(NO_FILTER);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3 print:hidden">
@@ -207,11 +211,12 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
         // closed, and scrolls inside its own card.
         <details open className="group rounded-lg border print:break-before-page">
           <summary className="flex cursor-pointer items-center justify-between gap-2 p-3 font-semibold">
-            <span>Every entry ({report.checks.entryCount}){report.entriesTruncated ? ", first 1,000 shown" : ""}</span>
+            <span>Every entry ({filtering ? `${entries.length} of ` : ""}{report.checks.entryCount}){report.entriesTruncated ? ", first 1,000 shown" : ""}</span>
             <ChevronDown className="size-4 transition-transform group-open:rotate-180 print:hidden" />
           </summary>
+          <EntryFilters entries={report.entries} filter={entryFilter} onChange={setEntryFilter} />
           <div className="max-h-[36rem] divide-y overflow-y-auto border-t text-xs sm:text-sm print:max-h-none print:overflow-visible">
-            {report.entries.map((entry) => (
+            {entries.map((entry) => (
               <div key={entry.id} className="p-2">
                 <div className="grid items-start gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,0.8fr)_auto]">
                   <div className="min-w-0">
@@ -242,6 +247,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
               </div>
             ))}
             {!report.entries.length && <p className="p-6 text-center text-muted-foreground">Nothing encoded in this period.</p>}
+            {report.entries.length > 0 && !entries.length && <p className="p-6 text-center text-muted-foreground">No entry matches these filters.</p>}
           </div>
         </details>
       )}
@@ -254,6 +260,51 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
           <div className="flex gap-2"><Input value={remark} onChange={(event) => setRemark(event.target.value)} placeholder="Add a remark for this clerk's report" /><Button type="button" disabled={!remark.trim()} onClick={() => void saveRemark()}>Save</Button></div>
         </div>
       )}
+    </div>
+  );
+}
+
+type Entry = Report["entries"][number];
+type EntryFilter = { kind: "" | Entry["kind"]; status: "" | "Remitted" | "Returned" | "Missing photo"; search: string; mas: string; program: string };
+const NO_FILTER: EntryFilter = { kind: "", status: "", search: "", mas: "", program: "" };
+const ENTRY_STATUSES: Array<[EntryFilter["status"], string]> = [["", "Any status"], ["Remitted", "Remitted"], ["Returned", "Returned"], ["Missing photo", "Missing receipt photo"]];
+
+/** The entries that pass every filter; the search matches OR and application numbers. */
+function filterEntries(entries: Entry[], filter: EntryFilter) {
+  const search = filter.search.trim().toLowerCase();
+  return entries.filter((entry) => (!filter.kind || entry.kind === filter.kind)
+    && (!filter.status || (filter.status === "Missing photo" ? !entry.photoId : entry.remittanceStatus === filter.status))
+    && (!search || entry.orNumber.toLowerCase().includes(search) || entry.applicationNumber.toLowerCase().includes(search))
+    && (!filter.mas || (entry.person || "(no MAS)") === filter.mas)
+    && (!filter.program || entry.program === filter.program));
+}
+
+/** The filter bar above Every entry; MAS and program choices come from the period's entries. */
+function EntryFilters({ entries, filter, onChange }: { entries: Entry[]; filter: EntryFilter; onChange: (filter: EntryFilter) => void }) {
+  const choices = (values: string[]) => [...new Set(values)].sort((a, b) => a.localeCompare(b));
+  const masChoices = choices(entries.map((entry) => entry.person || "(no MAS)"));
+  const programChoices = choices(entries.map((entry) => entry.program).filter(Boolean));
+  const set = (change: Partial<EntryFilter>) => onChange({ ...filter, ...change });
+  const select = "h-8 rounded-md border bg-background px-2 text-sm";
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2 print:hidden">
+      <div className="flex overflow-hidden rounded-md border text-sm" role="group" aria-label="Entry kind">
+        {([["", "All"], ["New Sale", "New Sales only"], ["Collection", "Collections only"]] as const).map(([value, label]) => (
+          <button key={label} type="button" aria-pressed={filter.kind === value} onClick={() => set({ kind: value })}
+            className={`px-2.5 py-1 ${filter.kind === value ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>{label}</button>
+        ))}
+      </div>
+      <select className={select} aria-label="Status" value={filter.status} onChange={(event) => set({ status: event.target.value as EntryFilter["status"] })}>
+        {ENTRY_STATUSES.map(([value, label]) => <option key={label} value={value}>{label}</option>)}
+      </select>
+      <Input className="h-8 w-48" placeholder="Search OR / app number" value={filter.search} onChange={(event) => set({ search: event.target.value })} />
+      <select className={select} aria-label="MAS" value={filter.mas} onChange={(event) => set({ mas: event.target.value })}>
+        <option value="">Every MAS</option>{masChoices.map((name) => <option key={name} value={name}>{name}</option>)}
+      </select>
+      <select className={select} aria-label="Program" value={filter.program} onChange={(event) => set({ program: event.target.value })}>
+        <option value="">Every program</option>{programChoices.map((name) => <option key={name} value={name}>{name}</option>)}
+      </select>
+      {JSON.stringify(filter) !== JSON.stringify(NO_FILTER) && <Button type="button" size="sm" variant="ghost" onClick={() => onChange(NO_FILTER)}>Clear filters</Button>}
     </div>
   );
 }

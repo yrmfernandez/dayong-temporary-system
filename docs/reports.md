@@ -15,7 +15,7 @@ Reports are per Entry Clerk, not company-wide: each clerk sees only the New Sale
 | Cash summary | Cash Beg/Pending COH, Sales Net, Collection Net, Fidelity Bond, Penalty, Pending cash to be encoded, Total Cash In; Expenses, Cash forwarded to bank, Total Cash Out; Remaining Cash on Hand; TOTALS. |
 | Remarks | Specific Rmks, Pending Transactions, Other Comments (`Report Notes`). |
 | Summary sheet | Weekly, monthly, yearly: New Member and Collection by Marketing Account Staff. CVE columns are shown but not yet defined. |
-| Checks | Remitted and not-yet-remitted shares, penalties, forfeited incentives, receipt photos, date warnings, and every entry with its details. |
+| Checks | Remitted and not-yet-remitted shares, penalties, forfeited incentives, receipt photos, date warnings, and every entry with its details, filtered by New Sales or Collections, Remitted / Returned / missing receipt photo, OR or application number, MAS and program. |
 
 Entries count by the date the clerk encoded them. Weeks run Monday to Sunday; week N of a month is the week of its Nth Monday, and days before the first Monday are week 1. Cash Beg is what the clerk types for that report (zero when none), case by case; nothing is carried from earlier periods (since October 13, 2026).
 

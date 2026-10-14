@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 65 API handlers, 119 library files, 51 component files; 417 scanned source/configuration/public-text files in total.
+42 page routes, 65 API handlers, 119 library files, 51 component files; 419 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -422,6 +422,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/consolidate-member-receipts.mjs](../scripts/consolidate-member-receipts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/copy-legacy-import.mjs](../scripts/copy-legacy-import.mjs) | `node:fs`, `postgres` | Yes; read source for semantics |
 | [scripts/copy-sheets-to-postgres.mjs](../scripts/copy-sheets-to-postgres.mjs) | `@next/env`, `googleapis`, `postgres` | Yes; read source for semantics |
+| [scripts/correct-ciara-mas-split-20261014.mjs](../scripts/correct-ciara-mas-split-20261014.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/correct-employee-id.mjs](../scripts/correct-employee-id.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/delete-test-entries.mts](../scripts/delete-test-entries.mts) | `@next/env` | Yes; read source for semantics |
 | [scripts/exceptions-summary.mts](../scripts/exceptions-summary.mts) | `node:fs`, `@next/env` | No flag detected; read source before running |
@@ -492,6 +493,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/move-program-accounts.mjs](../scripts/move-program-accounts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/prod.mjs](../scripts/prod.mjs) | `node:child_process`, `node:fs` | No flag detected; read source before running |
 | [scripts/program-history.mjs](../scripts/program-history.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/reassign-ciara-ns-20261014.mjs](../scripts/reassign-ciara-ns-20261014.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/recalculate-moved-date-remitted.mts](../scripts/recalculate-moved-date-remitted.mts) | `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow` | Yes; read source for semantics |
 | [scripts/register-legacy-mas.mjs](../scripts/register-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/remove-blank-rows.mjs](../scripts/remove-blank-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |

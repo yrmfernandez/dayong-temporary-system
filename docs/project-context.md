@@ -324,6 +324,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Every entry filters (2026-10-14)
+
+- **Owner:** in Audits, Every entry needs filters: New Sales only, Collections only, remitted, returned, missing, search for OR numbers, MAS, program.
+- **Done:** the report's Every entry list (Audits, Report Review, Reports) has a filter bar: All / New Sales only / Collections only; status (Remitted, Returned, Missing receipt photo); search by OR or application number; MAS and program (choices from the period's entries); Clear filters. The heading shows how many match (e.g. 12 of 80). Filters work on the entries already loaded (first 1,000) and are hidden when printing.
+- **To do:** nothing.
+
 ### Member transfer to a MAS from another branch (2026-10-14)
 
 - **Owner:** transferring members to another MAS should allow a MAS from another branch; asked, the owner chose to decide per transfer whether the accounts keep their branch or move.
