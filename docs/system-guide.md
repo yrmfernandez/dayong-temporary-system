@@ -264,31 +264,33 @@ Only posted Collections with OR date on/before the calculation date count. With 
 | Status | Meaning | Displayed balance multiplier |
 | --- | --- | --- |
 | NS | No Collection yet; new-account state. | 1 × monthly rate |
-| U | Collections cover every month before this one (this month may still be unpaid). | 1 × monthly rate |
+| U | At most one month has ended unpaid (this month never counts as missed; owner, October 14, 2026). | months due now (this one included), at least 1 |
 | ADV | No due month unpaid, and latest covered month is after this month. | 0 |
-| 60D | Two unpaid months (counting this month; owner, October 12, 2026). | 2 × monthly rate |
-| 90D | Three unpaid months. | 3 × monthly rate |
-| 120D | Four unpaid months. | 4 × monthly rate |
-| 150D | Five or more unpaid months; label caps here. | 5 × monthly rate |
+| 60D | Two months ended unpaid (a month is missed only after it ends; owner, October 14, 2026). | months due now, this one included (up to 5 ×) |
+| 90D | Three months ended unpaid. | same |
+| 120D | Four months ended unpaid. | same |
+| 150D | Five or more months ended unpaid; label caps here. | same, capped at 5 × |
 | Paid | Positive payoff total reached by sum of qualifying Collections. | 0 |
 | Forfeited | Stored forfeiture marker or timing threshold reached, unless Paid takes precedence. | `null`, displayed as unavailable |
 
-**Displayed balance is a status-based figure, not an exact arrears ledger.** At PHP 350, 60D displays PHP 700 (two unpaid months); past five unpaid months 150D still shows five. TMD is also not the sum of Collections. Read SOA history and unpaid-month count when reconciling real payments.
+**Displayed balance is a status-based figure, not an exact arrears ledger.** It counts the months due now, the current one included: at PHP 350, U with September missed shows PHP 700 in October, 60D from November 1 shows PHP 1,050; past five unpaid months 150D still shows five. TMD is also not the sum of Collections. Read SOA history and unpaid-month count when reconciling real payments.
 
 The payoff calculation uses Collections, **excluding the New Sale amount**. Current `validatePayment` explicitly blocks Forfeited but has no separate Paid-account block; status labels are not a substitute for checking remaining balance.
 
 ### Suspension and forfeiture clock
 
+**Since October 14, 2026 (owner):** temporary suspension starts the same day as 60D: the 1st of the third month after the last covered month (the New Sale covers the DOI month). Paid in July for July and August, then nothing: U through October, 60D and suspended from November 1. Forfeiture is unchanged (below).
+
 Start with the latest actual Collection OR date, or DOI before any Collection. Advance coverage can move that anchor forward to **DOI's day in the last advance-covered month**. A nonexistent day is clamped to the month end.
 
 ```text
-suspension date = anchor + 2 calendar months
+suspension date = the 1st of the 3rd month after the last covered month (since October 14, 2026; was anchor + 2 months)
 forfeiture date = anchor + 6 calendar months + 1 day
 ```
 
 On/after suspension, another payment requires `If Suspended = Waiver`. Other dropdown values do not satisfy this rule. On/after forfeiture, payment is blocked. These rules apply to each enrollment independently; payment to another program does not reset the clock.
 
-**Example:** DOI September 15; September receipt covers through November. Anchor becomes November 15, suspension begins January 15, and forfeiture begins May 16. The receipt remains dated September; no future Collections are invented.
+**Example:** DOI September 15; September receipt covers through November. Anchor becomes November 15; suspension begins February 1 (December and January ended unpaid) and forfeiture begins May 16. The receipt remains dated September; no future Collections are invented.
 
 Status is calculated on reads, updated on Collection saves, and persisted by MAM's **Sync current statuses** action. There is no background status scheduler.
 

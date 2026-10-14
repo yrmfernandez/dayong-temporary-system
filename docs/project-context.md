@@ -324,6 +324,15 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** the report has no penalty; add it.
 - **Done:** New Sales and Collections lines have a Penalty column; the cash summary has a Penalty line after Fidelity Bond, counted in Total Cash In and carried into the next Cash Beg. Tested.
 
+### Missed months, 60D and suspension counted from month end (2026-10-14)
+
+- **Owner:** temporary suspension and 60D were wrong: a member who paid in July for July and August, then nothing in August and September, showed suspended and 60D.
+- **Cause:** the current month counted as unpaid (60D on October 1 with only September missed), and suspension started two months after the DOI day of the last covered month.
+- **Owner decided:** a month is missed only once it has ended; 60D = two missed months (90D three, 120D four, 150D five+); suspended the same day as 60D. Example: U through October 31, 60D and suspended from November 1.
+- **Done:** `accountState` (lib/account-rules.ts): `unpaidMonths` = months ended unpaid; suspension from the 1st of the third month after the last covered month; the amount due still includes the current month; forfeiture unchanged. SOA "Months behind" follows. Tested.
+- **Production preview (October 14):** 14,193 accounts; 2,910 suspended under the new rule; stored statuses to change include 60D → U 4,275, 90D → U 1,904, 120D → 60D 628, 150D → 90D 509 (some changes are only stale stored statuses).
+- **To do (owner):** after deploying, run MAM → Sync current statuses so member lists and dashboards show the new statuses.
+
 ### Report record panel organized (2026-10-14)
 
 - **Owner:** the forms under the report (expense, cash to bank, Fidelity, Cash Beg, notes) were messy.

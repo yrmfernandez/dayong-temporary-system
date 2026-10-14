@@ -1,6 +1,15 @@
 {
   "note": "Owner-confirmed receipts that belong on one account of a member (scripts/consolidate-member-receipts.mjs). Each listed OR moves to the member's account in the given program; that account is renumbered in OR-date order; accounts of the member left with no payment are deleted.",
-  "cases": [],
+  "cases": [
+    {
+      "member": "PH-60638126",
+      "program": "DP-0022",
+      "fromAccounts": ["ENR-LEG-F430186A49"],
+      "receipts": ["5195 M", "6454 M", "8178 M", "8479 M", "6081 B", "8040 B", "11129  B", "12587 B", "14343 B"],
+      "startNop": 11,
+      "note": "Owner confirmed October 14, 2026: PH-60638126 has only D-460 (59B). Merge the D-460 account into D-460 (59B); all nine receipts follow OR-date order January–September 2026, NOP 11–19; preserve dates and amounts."
+    }
+  ],
   "applied": [
     {
       "member": "PH-84755298",
