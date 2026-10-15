@@ -1,3 +1,4 @@
+import { isFinanceFamilyRole, pageTicked } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { getFidelityData, withdrawFidelity } from "@/lib/fidelity";
 import { withEncoder } from "@/lib/encoder-context";
@@ -10,7 +11,8 @@ export async function GET(request: Request) {
   const roles = user.roleNames.map((role) => role.trim().toLowerCase());
   if (!roles.length) return Response.json({ success: false, message: "You do not have access to Fidelity." }, { status: 403 });
   const personal = new URL(request.url).searchParams.get("scope") === "me";
-  const canMonitor = roles.some((role) => ["administrator", "admin", "finance", "ceo", "president"].includes(role));
+  // Finance-named roles (e.g. Finance-Auditor) and roles with Fidelity ticked in Roles monitor it; paying out stays with Finance.
+  const canMonitor = roles.some((role) => ["administrator", "admin", "ceo", "president"].includes(role) || isFinanceFamilyRole(role)) || pageTicked(user, "/fidelity");
   const viewAll = canMonitor && !personal;
   const canClaim = !personal && roles.some((role) => ["administrator", "admin", "finance"].includes(role));
   try {

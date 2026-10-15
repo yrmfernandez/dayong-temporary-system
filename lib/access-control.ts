@@ -38,6 +38,11 @@ export const normalizeRoleName = (role: string) => role.trim().toLowerCase();
 export const isAdministratorRole = (role: string) => ["administrator", "admin"].includes(normalizeRoleName(role));
 export const itRoles = ["it clerk", "it"];
 export const hrRoles = ["hr officer", "hr"];
+/**
+ * Roles named after Finance, such as "Finance-Auditor" (owner, October 15, 2026), use the Finance workspace and
+ * dashboard and may read what Finance reads; changing money (payroll, Fidelity payouts) stays with Finance itself.
+ */
+export const isFinanceFamilyRole = (role: string) => { const name = normalizeRoleName(role); return name === "finance" || /^finance[\s-]/.test(name); };
 const hasRole = (context: Pick<AccessContext, "roleNames">, names: string[]) => context.roleNames.some((role) => names.includes(normalizeRoleName(role)) || isAdministratorRole(role));
 
 /**
@@ -60,6 +65,14 @@ export function defaultRoutesForRole(role: string) {
   const name = normalizeRoleName(role), routes = roleRoutes[name] ?? [];
   if (routes.includes("*")) return ["*"];
   return [...new Set([...alwaysAllowed, ...routes, ...(executiveRoles.includes(name) ? [] : employeeRoutes)])];
+}
+
+/**
+ * True when Roles → Page access ticks this page for one of the user's roles (Administrators have every page). Pages
+ * every employee has by default (e.g. Fidelity, for My Fidelity) do not count, so a tick is a deliberate grant.
+ */
+export function pageTicked(context: Pick<AccessContext, "roleNames" | "rolePages">, pathname: string) {
+  return context.roleNames.some((role) => isAdministratorRole(role) || (context.rolePages?.[normalizeRoleName(role)] ?? []).some((route) => routeMatches(pathname, route)));
 }
 
 function routeMatches(pathname: string, route: string) {
@@ -97,7 +110,7 @@ function kindOfRole(role: string): DashboardKind | null {
   const name = normalizeRoleName(role);
   if (isAdministratorRole(name)) return "admin";
   if (executiveRoles.includes(name)) return "executive";
-  if (name === "finance") return "finance";
+  if (isFinanceFamilyRole(name)) return "finance";
   if (hrRoles.includes(name)) return "hr";
   if (itRoles.includes(name)) return "it";
   if (name === "entry clerk") return "entry";

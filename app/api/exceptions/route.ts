@@ -1,14 +1,17 @@
-import { canManageUsers } from "@/lib/auth-server";
+import { pageTicked } from "@/lib/access-control";
+import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { correctSaleOrCollection } from "@/lib/entry-corrections";
 import { findExceptions } from "@/lib/exceptions";
 
-/** Data problems for administrators; ?legacy=1 includes imported records. */
+/** Data problems for administrators, and to read for any role with Exceptions ticked in Roles; ?legacy=1 includes imported records. */
 export async function GET(request: Request) {
-  if (!(await canManageUsers())) return Response.json({ success: false, message: "Administrator access is required." }, { status: 403 });
+  const user = await getSessionUser();
+  const canFix = await canManageUsers();
+  if (!canFix && !(user && pageTicked(user, "/exceptions"))) return Response.json({ success: false, message: "Administrator access is required." }, { status: 403 });
   try {
     const includeLegacy = new URL(request.url).searchParams.get("legacy") === "1";
-    return Response.json({ success: true, ...(await findExceptions({ includeLegacy })) }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, canFix, ...(await findExceptions({ includeLegacy })) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to check for exceptions." }, { status: 500 });
   }

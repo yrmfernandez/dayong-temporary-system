@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 
 import { readSheetRows } from "@/lib/sheets-on-db";
-﻿import { canManageAccounts, canManageUsers, getSessionUser } from "@/lib/auth-server";
+﻿import { isFinanceFamilyRole, pageTicked } from "@/lib/access-control";
+import { canManageAccounts, canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { correctSaleOrCollection } from "@/lib/entry-corrections";
@@ -90,7 +91,8 @@ async function auditEntries() {
 
 export async function GET() {
   const user = await getSessionUser();
-  const finance = user?.roleNames.some((role) => role.trim().toLowerCase() === "finance");
+  // Finance and Finance-named roles read it, as does any role with the Audit Log ticked in Roles.
+  const finance = Boolean(user && (user.roleNames.some(isFinanceFamilyRole) || pageTicked(user, "/history")));
   if (!(await canManageAccounts()) && !finance) return Response.json({ success: false, message: "Administrator, IT, or Finance access is required." }, { status: 403 });
   try {
     // A tracked sheet that has not been created yet (e.g. Company Targets before the first target) would fail the whole

@@ -6,9 +6,16 @@ export type BoardCategory = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "
 
 const roleNames = (user: Pick<SessionUser, "roleNames">) => user.roleNames.map((role) => role.trim().toLowerCase());
 
-export function canViewAttendanceTracking(user: Pick<SessionUser, "roleNames" | "permissions">) {
-  return roleNames(user).some((role) => ["administrator", "admin", "hr officer", "hr", "finance", "ceo", "president"].includes(role))
-    || Boolean(user.permissions.manageAttendance || user.permissions.viewAttendanceReports);
+/**
+ * Management, HR, Finance and Finance-named roles (e.g. Finance-Auditor), the attendance permissions, or Attendance
+ * Tracking ticked for the role in Roles. The same rules as isFinanceFamilyRole and pageTicked in lib/access-control.ts,
+ * written out here so this file keeps no runtime imports (scripts/test-access-control.mjs loads it directly).
+ */
+export function canViewAttendanceTracking(user: Pick<SessionUser, "roleNames" | "permissions"> & { rolePages?: SessionUser["rolePages"] }) {
+  const roles = roleNames(user);
+  return roles.some((role) => ["administrator", "admin", "hr officer", "hr", "ceo", "president", "finance"].includes(role) || /^finance[\s-]/.test(role))
+    || Boolean(user.permissions.manageAttendance || user.permissions.viewAttendanceReports)
+    || roles.some((role) => (user.rolePages?.[role] ?? []).some((route) => route === "/attendance-tracking" || route.startsWith("/attendance-tracking/")));
 }
 
 /** Late time may be corrected by management and HR (it flows into payroll deductions); Finance only views it. */

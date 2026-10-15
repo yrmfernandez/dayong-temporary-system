@@ -5,7 +5,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { canAccessPath, isAdministratorRole, type AccessContext } from "@/lib/access-control";
+import { canAccessPath, isAdministratorRole, isFinanceFamilyRole, type AccessContext } from "@/lib/access-control";
 
 export type NavItem = { name: string; href: string; icon: LucideIcon; children?: NavItem[] };
 export type NavSection = { title: string; items: NavItem[] };
@@ -134,8 +134,15 @@ const roleAliases: Record<string, string> = {
 
 export const normalizeRole = (role: string) => role.trim().toLowerCase();
 
+/** The role's own workspace; Finance-named roles (e.g. Finance-Auditor) share Finance's. Null for other custom roles. */
+function knownWorkspace(role: string) {
+  const name = normalizeRole(role);
+  const alias = roleAliases[name] ?? (isFinanceFamilyRole(name) ? "finance" : "");
+  return alias ? workspaces[alias] : null;
+}
+
 export function workspaceFor(role: string) {
-  return workspaces[roleAliases[normalizeRole(role)] ?? "mas"];
+  return knownWorkspace(role) ?? workspaces.mas;
 }
 
 export const routeMatches = (pathname: string, href: string) => pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
@@ -172,7 +179,10 @@ export function visibleNavigation(role: string, access: AccessContext): NavSecti
   const configured = isAdministratorRole(role) ? undefined : access.rolePages?.[normalizeRole(role)];
   const inRole = (href: string) => !configured || href === "/" || configured.some((route) => routeMatches(href, route));
   const allowed = (item: NavItem) => canAccessPath(access, item.href) && inRole(item.href);
-  const sections = workspaceFor(role)
+  // A custom role with its pages ticked in Roles (e.g. an auditor role) gets them grouped as in the administrator
+  // workspace, not squeezed into the MAS layout (owner, October 15, 2026).
+  const base = knownWorkspace(role) ?? (configured ? adminSections : workspaces.mas);
+  const sections = base
     .map((section) => ({
       ...section,
       items: section.items.filter(allowed).map((item) => item.children ? { ...item, children: item.children.filter(allowed) } : item),

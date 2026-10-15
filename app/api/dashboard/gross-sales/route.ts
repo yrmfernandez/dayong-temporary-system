@@ -1,4 +1,4 @@
-import { executiveRoles, isAdministratorRole, normalizeRoleName } from "@/lib/access-control";
+import { executiveRoles, isAdministratorRole, isFinanceFamilyRole, normalizeRoleName } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { filterGrossSales, getGrossSalesEntries } from "@/lib/gross-sales";
 
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const user = await getSessionUser();
   if (!user) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
   // The roles whose dashboards show Gross Sales.
-  const allowed = (user.roleNames ?? []).some((role) => isAdministratorRole(role) || executiveRoles.includes(normalizeRoleName(role)) || normalizeRoleName(role) === "finance");
+  const allowed = (user.roleNames ?? []).some((role) => isAdministratorRole(role) || executiveRoles.includes(normalizeRoleName(role)) || isFinanceFamilyRole(role));
   if (!allowed) return Response.json({ success: false, message: "Only Administrators, the CEO, the President and Finance can see the Gross Sales breakdown." }, { status: 403 });
   const params = new URL(request.url).searchParams;
   const from = params.get("from") ?? "", to = params.get("to") ?? "";

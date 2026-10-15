@@ -349,6 +349,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **In progress:** the owner runs the dry run, then `--apply`, on production (`npm run prod -- node scripts/import-paper-attendance-20261015.mjs`).
 - **To do / open:** GULTIANO, MARCLEONITZ (P on October 12) is not a registered employee, so skipped. Meaning of **NA** (Abesia October 13; Pacios and Balcos October 10) to confirm; skipped until then. The sheet header says 2016, but its weekdays are October 2026's.
 
+### Finance-Auditor role: ticked pages not all seen (2026-10-15)
+
+- **Owner:** the pages ticked for the Finance-Auditor role in Roles are not all seen in the actual system.
+- **Cause:** the sidebar and dashboard know only the built-in role names, so Finance-Auditor got the MAS layout (its pages squeezed into MAS sections) and the MAS dashboard; and several pages read their data by role name (Finance), so a ticked page opened empty or refused: Attendance Tracking and its sheet, Audit Log, Fidelity monitoring, Exceptions, the Gross Sales breakdown.
+- **Done:** Finance-named roles (`isFinanceFamilyRole`) use the Finance layout and dashboard and read what Finance reads; other custom roles are grouped like the Administrator sidebar; ticked pages show their data (`pageTicked`). Changing money stays with Finance and Administrators. Tested (sidebar with every ticked page, dashboard, access checks).
+- **To confirm:** the production Finance-Auditor page list was not read (production reads are blocked here); if a ticked page still does not show, name it. A change in Roles reaches a signed-in user within 5 minutes (session recheck) or at the next sign-in.
+
 ### Cards turning white when a receipt photo is attached (2026-10-15)
 
 - **Owner:** when the Entry Clerk attaches a picture, the card turns all white.

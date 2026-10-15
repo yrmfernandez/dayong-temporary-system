@@ -1330,6 +1330,20 @@ test('each OR Number is recorded once; a voided collection frees its receipt', a
   await seed('collections', [collection('COL-4', 'OR 501', 'Posted'), collection('COL-5', 'OR-500', 'Posted', { legacy_duplicate: true })]);
 });
 
+test('Finance-Auditor sees every ticked page in the Finance layout; other custom roles are grouped like the administrator sidebar', () => {
+  const { visibleNavigation } = harness().load('lib/navigation.ts');
+  const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };
+  const ticked = ['/', '/audit', '/remittances', '/payroll', '/fidelity', '/history', '/attendance-tracking', '/exceptions', '/todays-entries', '/members', '/expenses'];
+  const sections = visibleNavigation('Finance-Auditor', { roleNames: ['Finance-Auditor'], permissions, rolePages: { 'finance-auditor': ticked } });
+  const shown = new Set(sections.flatMap((section) => section.items.map((item) => item.href)));
+  for (const href of ticked) assert.equal(shown.has(href), true, href);
+  assert.equal(sections.some((section) => section.title === 'My Portfolio'), false, 'not the MAS layout');
+  assert.equal(sections[0].title, 'Overview');
+  const custom = visibleNavigation('Auditor', { roleNames: ['Auditor'], permissions, rolePages: { auditor: ['/audit', '/history', '/expenses'] } });
+  assert.deepEqual(custom.flatMap((section) => section.items.map((item) => item.href)).sort(), ['/', '/audit', '/expenses', '/history']);
+  assert.equal(custom.some((section) => section.title === 'My Portfolio'), false);
+});
+
 test('pages granted to a role appear in the section where they belong, not under More', () => {
   const { visibleNavigation } = harness().load('lib/navigation.ts');
   const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };

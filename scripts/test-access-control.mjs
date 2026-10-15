@@ -213,3 +213,18 @@ test("attendance board: who is late, early, absent, AWOL, or on leave, and who m
   assert.equal(canAdjustLateness(user(["Finance"])), false, "Finance views but does not adjust");
   assert.equal(canAdjustLateness(user(["MAS"])), false);
 });
+
+test("Finance-Auditor reads Attendance Tracking; Finance-named roles are recognised", async () => {
+  const { dashboardKind, pageTicked, isFinanceFamilyRole } = await import("../lib/access-control.ts");
+  const { canViewAttendanceTracking } = await import("../lib/attendance-board.ts");
+  const auditor = { roleNames: ["Finance-Auditor"], permissions, rolePages: { "finance-auditor": ["/history", "/payroll"] } };
+  assert.equal(isFinanceFamilyRole("Finance-Auditor"), true);
+  assert.equal(isFinanceFamilyRole("Financial Planner"), false);
+  assert.equal(dashboardKind(auditor, "Finance-Auditor"), "finance");
+  assert.equal(pageTicked(auditor, "/history"), true);
+  assert.equal(pageTicked(auditor, "/expenses"), false);
+  assert.equal(pageTicked({ roleNames: ["MAS"], permissions }, "/fidelity"), false, "a default page is not a tick");
+  assert.equal(canViewAttendanceTracking(auditor), true, "Finance-named role");
+  assert.equal(canViewAttendanceTracking({ roleNames: ["Auditor"], permissions, rolePages: { auditor: ["/attendance-tracking"] } }), true, "ticked in Roles");
+  assert.equal(canViewAttendanceTracking({ roleNames: ["Auditor"], permissions, rolePages: { auditor: ["/history"] } }), false);
+});

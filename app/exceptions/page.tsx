@@ -12,7 +12,7 @@ import type { ExceptionCategory, ExceptionItem } from "@/lib/exceptions";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Category = { category: ExceptionCategory; label: string; total: number; items: ExceptionItem[] };
-type Result = { success: boolean; message?: string; categories: Category[]; limit: number };
+type Result = { success: boolean; message?: string; categories: Category[]; limit: number; canFix?: boolean };
 
 const HELP: Record<ExceptionCategory, string> = {
   dates: "OR or application dates that are not real dates, are in the future, or are before 2000. Usually a typo in the year.",
@@ -97,7 +97,7 @@ export default function ExceptionsPage() {
                       <p className="break-words text-sm font-medium">{item.title}{item.legacy && <span className="ml-2 rounded bg-muted px-1.5 text-xs text-muted-foreground">legacy</span>}</p>
                       <p className="break-words text-sm text-muted-foreground">{item.problem}</p>
                     </div>
-                    {item.entry
+                    {item.entry && data?.canFix
                       ? <Button type="button" size="sm" variant="outline" onClick={() => setFixing(fixing === item.key ? "" : item.key)}>{fixing === item.key ? "Close" : "Fix"}</Button>
                       : item.href && <Link href={item.href} className="inline-flex h-8 shrink-0 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted">Open</Link>}
                   </div>
