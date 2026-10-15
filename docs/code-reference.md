@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 65 API handlers, 119 library files, 51 component files; 420 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 120 library files, 51 component files; 423 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -24,6 +24,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/commissions` | [app/commissions/page.tsx](../app/commissions/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/company-reports` | [app/company-reports/page.tsx](../app/company-reports/page.tsx) | `@/components/company-reports` |
 | `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/bulk-member-transfer`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password`, `@/components/nte-panel`, `@/lib/use-live-refresh` |
+| `/entry-corrections` | [app/entry-corrections/page.tsx](../app/entry-corrections/page.tsx) | `@/components/entry-correction-form`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/lib/api-response`, `@/lib/entry-search` |
 | `/exceptions` | [app/exceptions/page.tsx](../app/exceptions/page.tsx) | `@/components/entry-correction-form`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/api-response`, `@/lib/exceptions`, `@/lib/use-live-refresh` |
 | `/expenses` | [app/expenses/page.tsx](../app/expenses/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
 | `/fidelity/me` | [app/fidelity/me/page.tsx](../app/fidelity/me/page.tsx) |  |
@@ -84,6 +85,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/company-targets` | POST | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) |
 | `/api/dashboard/gross-sales` | GET | [app/api/dashboard/gross-sales/route.ts](../app/api/dashboard/gross-sales/route.ts) |
 | `/api/employees` | GET, POST, PATCH, DELETE | [app/api/employees/route.ts](../app/api/employees/route.ts) |
+| `/api/entry-corrections` | GET, PATCH | [app/api/entry-corrections/route.ts](../app/api/entry-corrections/route.ts) |
 | `/api/exceptions` | GET, PATCH | [app/api/exceptions/route.ts](../app/api/exceptions/route.ts) |
 | `/api/expenses` | GET, POST, PATCH | [app/api/expenses/route.ts](../app/api/expenses/route.ts) |
 | `/api/fidelity` | GET, PATCH | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) |
@@ -131,7 +133,7 @@ All routes pass through the authentication proxy except the three public auth en
 
 | File | Exported symbols | Local imports / re-exports |
 | --- | --- | --- |
-| [lib/access-control.ts](../lib/access-control.ts) | `AccessContext`, `executiveRoles`, `normalizeRoleName`, `isAdministratorRole`, `itRoles`, `hrRoles`, `canManageAccountsFor`, `canManageEmployeesFor`, `canManageConfigurationFor`, `defaultRoutesForRole`, `routesForRole`, `accessibleRoutes`, `canAccessPath`, `DashboardKind`, `dashboardKind` | — |
+| [lib/access-control.ts](../lib/access-control.ts) | `AccessContext`, `executiveRoles`, `normalizeRoleName`, `isAdministratorRole`, `itRoles`, `hrRoles`, `canManageAccountsFor`, `canManageEmployeesFor`, `canManageConfigurationFor`, `canCorrectEntriesFor`, `defaultRoutesForRole`, `routesForRole`, `accessibleRoutes`, `canAccessPath`, `DashboardKind`, `dashboardKind` | — |
 | [lib/account-data.ts](../lib/account-data.ts) | `AccountScope`, `LoadedAccount`, `AccountData`, `loadAccountData`, `accountReport`, `ProgramStanding`, `memberStanding`, `mamReport`, `memberMam`, `syncAccountStatuses`, `NewCollection`, `commitCollections` | `@/lib/account-rules`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance`, `@/lib/mam-report` |
 | [lib/account-rules.ts](../lib/account-rules.ts) | `AccountStatus`, `Account`, `AccountPayment`, `todayInManila`, `validDate`, `validMonth`, `monthIndex`, `monthName`, `monthCount`, `dateInMonth`, `addMonths`, `addDay`, `allocations`, `paymentsByEnrollment`, `accountState`, `COLLECTION_CHANNELS`, `CollectionChannel`, `incentiveRoleFor`, `FORFEITED_PAYMENT_DAYS`, `forfeitedPaymentsAllowed`, `PaymentInput`, `validatePayment` | `./program-payment-limit.mjs` |
 | [lib/admin-delete.ts](../lib/admin-delete.ts) | `DELETE_KINDS`, `DeleteKind`, `isDeleteKind`, `canDeleteRecords`, `DeletionPlan`, `planDeletion`, `deleteRecord` | `@/lib/auth`, `@/lib/access-control`, `@/lib/db`, `@/lib/readable-id` |
@@ -172,6 +174,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/entry-batches.ts](../lib/entry-batches.ts) | `saleBatchKey`, `cashMethodNames`, `isCashMethod` | `@/lib/remittance-methods` |
 | [lib/entry-controls.ts](../lib/entry-controls.ts) | `BACKDATE_REASON_MIN`, `needsBackdateReason`, `checkBackdate`, `controlTotalProblem`, `isIncompleteApplicationNumber`, `INCOMPLETE_APPLICATION_MESSAGE` | `@/lib/remittance-deadline`, `@/lib/working-days` |
 | [lib/entry-corrections.ts](../lib/entry-corrections.ts) | `correctSaleOrCollection` | `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/remittance-deadline`, `@/lib/record-corrections`, `@/lib/or-number` |
+| [lib/entry-search.ts](../lib/entry-search.ts) | `SearchKind`, `isSearchKind`, `FoundEntry`, `SEARCH_LIMIT`, `searchEntries` | `@/lib/db` |
 | [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/lib/db`, `@/lib/sheets-on-db`, `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/date-checks` |
 | [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/db`, `@/lib/company-targets`, `@/lib/remittance-deadline`, `@/lib/google-sheets` |
 | [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList` | — |
@@ -334,6 +337,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/company-targets`, `@/lib/encoder-context` |
 | [app/api/dashboard/gross-sales/route.ts](../app/api/dashboard/gross-sales/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/gross-sales` |
 | [app/api/employees/route.ts](../app/api/employees/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/auth-server`, `@/lib/member-transfer`, `@/lib/employee-id-change`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/master-data-crud`, `@/lib/employee-accounts`, `@/lib/privilege-guard` |
+| [app/api/entry-corrections/route.ts](../app/api/entry-corrections/route.ts) | `GET`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/entry-search` |
 | [app/api/exceptions/route.ts](../app/api/exceptions/route.ts) | `GET`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/exceptions` |
 | [app/api/expenses/route.ts](../app/api/expenses/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data` |
 | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) | `GET`, `PATCH` | `@/lib/auth-server`, `@/lib/fidelity`, `@/lib/encoder-context` |

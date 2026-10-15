@@ -349,6 +349,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **In progress:** the owner runs the dry run, then `--apply`, on production (`npm run prod -- node scripts/import-paper-attendance-20261015.mjs`).
 - **To do / open:** GULTIANO, MARCLEONITZ (P on October 12) is not a registered employee, so skipped. Meaning of **NA** (Abesia October 13; Pacios and Balcos October 10) to confirm; skipped until then. The sheet header says 2016, but its weekdays are October 2026's.
 
+### Entry Corrections for IT and Administrators (2026-10-15)
+
+- **Owner:** a section where IT and Admin can search Collections or New Sales and edit them even when already remitted, because Entry Clerks still sometimes type a wrong OR number.
+- **Done:** page `/entry-corrections` (Administrator: Administration; IT: Monitoring and a System Health quick action). Search by OR number, application number, member number or name, or record ID (also without spaces or punctuation), New Sales, Collections or both, newest 100 of each. **Correct** works on remitted entries: OR number, OR date, application number, notes, with a required reason (Record Corrections + Audit Log). Permission `canCorrectEntriesFor` (IT Clerk, Administrator, `manage_users`). Tested (access); search checked on staging.
+- **Decision:** the amount of a remitted entry is not changed here, since the remittance slip counted that cash; it stays a reconciliation correction. Tell us if amounts must be editable too.
+- **To do:** roles whose page access was configured in Roles need Entry Corrections ticked.
+
 ### Member split: CABUNAG (2026-10-14)
 
 - **Owner:** PH-96073537 was two people merged by the old-sheet import (Cabunag, Fe Mamato and Cabunag, Fe Dhivenil; MARAGUSAN, D-210 HG); their paired same-day receipts are one each.

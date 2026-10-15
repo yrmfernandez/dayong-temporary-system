@@ -1,6 +1,6 @@
 import {
   BadgeCheck, BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
-  ClipboardList, CreditCard, FileWarning, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
+  ClipboardList, CreditCard, FilePen, FileWarning, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
   LayoutDashboard, Banknote, Camera, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -49,6 +49,8 @@ const page = {
   userAccounts: { name: "User Accounts", href: "/user-accounts", icon: UserCog },
   roles: { name: "Roles", href: "/roles", icon: ShieldCheck },
   auditLog: { name: "Audit Log", href: "/history", icon: History },
+  // IT and Administrators search New Sales and Collections and fix typed numbers, remitted ones too (lib/entry-search.ts).
+  entryCorrections: { name: "Entry Corrections", href: "/entry-corrections", icon: FilePen },
   todaysEntries: { name: "Today's Entries", href: "/todays-entries", icon: ReceiptText },
   exceptions: { name: "Exceptions", href: "/exceptions", icon: TriangleAlert },
   myEntries: { name: "My Entries", href: "/my-entries", icon: Camera },
@@ -72,7 +74,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Reports", items: [page.reports, page.companyReports, page.soa, page.dailyAudit, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
     { title: "Master Data", items: [page.members, page.programs, page.branches] },
-    { title: "Administration", items: [page.userAccounts, page.roles, page.auditLog] },
+    { title: "Administration", items: [page.userAccounts, page.roles, page.auditLog, page.entryCorrections] },
     myHr,
   ],
   executive: [
@@ -109,7 +111,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "System", items: [{ ...page.dashboard, name: "System Health" }] },
     { title: "Access Control", items: [page.userAccounts, page.roles, page.employees] },
     { title: "Configuration", items: [page.branches, page.programs, page.masterData] },
-    { title: "Monitoring", items: [page.auditLog] },
+    { title: "Monitoring", items: [page.auditLog, page.entryCorrections] },
     myHr,
   ],
   mas: [

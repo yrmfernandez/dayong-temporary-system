@@ -95,6 +95,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/admin-reports` | Report Review: the same tabs, read-only, for a chosen Entry Clerk, with the entry checklist and reviewer remarks. |
 | `/audit` | Daily, weekly, monthly, yearly Entry Clerk report audits and audit summaries. |
 | `/history` | Creation history, logged edits/deletions, and authorized transaction corrections. |
+| `/entry-corrections` | **Entry Corrections** (October 15, 2026), IT and Administrators: search New Sales and Collections, remitted ones too, and fix a number the Entry Clerk typed wrong; see section 12. |
 | `/exceptions` | Administrator review of dates, amounts, duplicate entries, missing member details, overdue cash, backdating, OR numbers without a branch letter, application numbers to complete, and **imported receipts sharing a number** (October 9, 2026). |
 | `/expenses` | Company expense forms and posted outflows; authorized voiding with a reason. |
 | `/cash-transactions` | Consolidated cash ledger plus other manual inflows/outflows. |
@@ -708,6 +709,10 @@ MAS-only member scope restricts directory/MAM to enrollments assigned to that em
 Sources: [access rules](../lib/access-control.ts), [member scope](../lib/member-scope.ts), [Employee ID change](../lib/employee-id-change.ts), [privilege guards](../lib/privilege-guard.ts), [employees](../lib/employees.ts), [auth](../lib/auth.ts), [session checks](../lib/session-account.ts), [passwords](../lib/passwords.ts), [proxy](../proxy.ts).
 
 ## 12. Corrections, history, audits, and exceptions
+
+### Entry Corrections (October 15, 2026)
+
+For IT Clerks and Administrators (and `manage_users`): Administration → **Entry Corrections** (IT: Monitoring → Entry Corrections, also a System Health quick action). Search New Sales and Collections by OR number, application number, member number or name, or record ID; numbers also match without spaces or punctuation (12345S finds 12345 S). Choose New Sales, Collections or both; the newest 100 of each kind by OR date are listed with member, program and branch, MAS or Collector, OR number and date, application number, amount, remittance status and slip, and who encoded it. **Correct** opens the correction form on any entry, **remitted ones included**: OR number, OR date, application number (New Sales) and notes, with a required reason. The same checks as other corrections apply: a changed collection OR number needs its branch letter and must not be on another collection; an application number must not be on another sale; the OR date cannot be in the future. The amount of an entry on a remittance slip stays as remitted (the slip counted that cash); correct it through reconciliation. Each correction is saved in Record Corrections (before and after) and the Audit Log. Files: [entry-search.ts](../lib/entry-search.ts), `GET/PATCH /api/entry-corrections`, [page.tsx](../app/entry-corrections/page.tsx); saving uses `correctSaleOrCollection` in [entry-corrections.ts](../lib/entry-corrections.ts). A role whose page access is configured in Roles needs Entry Corrections ticked there.
 
 ### Member transfers and master data
 

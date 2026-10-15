@@ -89,6 +89,19 @@ test("IT runs accounts and configuration; HR manages employees; neither approves
   for (const path of ["/remittances", "/expenses", "/payroll", "/cash-transactions"]) assert.equal(access(["IT Clerk"], path), false, path);
 });
 
+test("Entry Corrections is for IT and Administrators, not Entry Clerks or Finance", async () => {
+  const { canCorrectEntriesFor } = await import("../lib/access-control.ts");
+  const context = (roleNames) => ({ roleNames, permissions });
+  for (const roles of [["IT Clerk"], ["Administrator"]]) {
+    assert.equal(canCorrectEntriesFor(context(roles)), true, roles[0]);
+    assert.equal(access(roles, "/entry-corrections"), true, roles[0]);
+  }
+  for (const roles of [["Entry Clerk"], ["Finance"], ["HR Officer"], ["MAS"]]) {
+    assert.equal(canCorrectEntriesFor(context(roles)), false, roles[0]);
+    assert.equal(access(roles, "/entry-corrections"), false, roles[0]);
+  }
+});
+
 test("the dashboard follows the chosen workspace only when the user holds that role", async () => {
   const { dashboardKind } = await import("../lib/access-control.ts");
   const user = (roleNames) => ({ roleNames, permissions, rolePages: {}, roles: [], userId: "U", employeeId: "E", name: "N" });

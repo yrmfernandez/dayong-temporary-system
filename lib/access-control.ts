@@ -22,8 +22,8 @@ const roleRoutes: Record<string, string[]> = {
   finance: ["/", "/audit", "/members", "/clearing", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
   "entry clerk": ["/", "/todays-entries", "/clearing", "/my-entries", "/new-sales", "/members", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/settings"],
   // IT builds and runs the system: accounts, roles, configuration, and the audit trail.
-  "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/settings"],
-  it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/settings"],
+  "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/settings"],
+  it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/settings"],
   mas: ["/", "/mas-sales", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
 };
 
@@ -50,6 +50,10 @@ export const canManageAccountsFor = (context: AccessContext) => context.permissi
 export const canManageEmployeesFor = (context: AccessContext) => context.permissions.manageUsers || hasRole(context, [...itRoles, ...hrRoles]);
 // Branches, programs and incentive tiers: system configuration kept by IT.
 export const canManageConfigurationFor = (context: AccessContext) => context.permissions.manageUsers || hasRole(context, itRoles);
+
+// Entry Corrections (owner, October 15, 2026): fixing what an Entry Clerk typed wrong on a New Sale or Collection,
+// remitted ones included, is IT's and the Administrators' job.
+export const canCorrectEntriesFor = (context: AccessContext) => context.permissions.manageUsers || hasRole(context, itRoles);
 
 /** Pages a role receives when its page access has not been configured. Used to pre-fill the Roles editor. */
 export function defaultRoutesForRole(role: string) {

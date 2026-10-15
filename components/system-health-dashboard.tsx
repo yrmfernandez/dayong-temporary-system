@@ -67,7 +67,7 @@ export function SystemHealthDashboard({ data, employeeName }: { data: SystemHeal
       </Panel>
     </div>
 
-    <Panel title="Quick Actions" subtitle="Shortcuts to the pages IT uses most."><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{[["User Accounts", "/user-accounts"], ["Roles", "/roles"], ["Employees", "/employees"], ["Branches & Programs", "/branches"], ["Audit Log", "/history"]].map(([label, href]) => <Link key={href} href={href} className="rounded-xl border bg-card px-4 py-3 text-sm font-semibold shadow-sm transition-colors hover:border-primary hover:text-primary">{label}</Link>)}</div></Panel>
+    <Panel title="Quick Actions" subtitle="Shortcuts to the pages IT uses most."><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{[["User Accounts", "/user-accounts"], ["Roles", "/roles"], ["Employees", "/employees"], ["Branches & Programs", "/branches"], ["Audit Log", "/history"], ["Entry Corrections", "/entry-corrections"]].map(([label, href]) => <Link key={href} href={href} className="rounded-xl border bg-card px-4 py-3 text-sm font-semibold shadow-sm transition-colors hover:border-primary hover:text-primary">{label}</Link>)}</div></Panel>
     <p className="text-xs text-muted-foreground">Checked {stamp(data.checkedAt)}. <Gauge className="inline size-3" /> Reload the page to run the checks again.</p>
   </section>;
 }
