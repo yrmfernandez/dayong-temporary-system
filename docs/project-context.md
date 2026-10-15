@@ -349,6 +349,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **In progress:** the owner runs the dry run, then `--apply`, on production (`npm run prod -- node scripts/import-paper-attendance-20261015.mjs`).
 - **To do / open:** GULTIANO, MARCLEONITZ (P on October 12) is not a registered employee, so skipped. Meaning of **NA** (Abesia October 13; Pacios and Balcos October 10) to confirm; skipped until then. The sheet header says 2016, but its weekdays are October 2026's.
 
+### Cards turning white when a receipt photo is attached (2026-10-15)
+
+- **Owner:** when the Entry Clerk attaches a picture, the card turns all white.
+- **Cause:** every card drew its light edge with a masked `::before` overlay filled with an almost-white gradient; when Chrome dropped the mask on repaint (adding photo previews triggers one), the overlay covered the card. The first fix earlier today removed it only from the entry cards; the New Sales photo picker sits outside them.
+- **Done:** the overlay is removed from every card (`app/globals.css`); the edge highlight is an inset shadow. The New Sales save bar is solid without live blur. Build checked; still to confirm on a clerk's computer (it is a browser repaint problem, not reproducible headless).
+
 ### Entry Corrections for IT and Administrators (2026-10-15)
 
 - **Owner:** a section where IT and Admin can search Collections or New Sales and edit them even when already remitted, because Entry Clerks still sometimes type a wrong OR number.
