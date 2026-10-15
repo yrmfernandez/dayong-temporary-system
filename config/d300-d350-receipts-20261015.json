@@ -1,0 +1,15 @@
+{
+  "note": "Owner confirmed eighteen receipts belong to the member's D-300 (Bracketing) and D-350 accounts (October 15, 2026). D-300 is already correct. The intended February D-350 receipt is stored as 13601C (duplicated); the unrelated plain 13601 C is excluded.",
+  "moves": [
+    { "collection": "COL-LEG-52413FE2A7", "member": "MEM-LEG-7D3A217E36", "program": "D-350", "note": "Owner confirmed OR 9813 M belongs to D-350, not DPB-350." },
+    { "collection": "COL-LEG-1256123766", "member": "MEM-LEG-7D3A217E36", "program": "D-350", "note": "Owner confirmed OR 22719 C belongs to D-350, not D-350 (5Y)." },
+    { "collection": "COL-LEG-6F8A28C356", "member": "MEM-LEG-7D3A217E36", "program": "D-350", "note": "Owner confirmed OR 23972 C belongs to D-350, not D-350 (5Y)." }
+  ],
+  "receiptLabels": [
+    { "collection": "COL-LEG-E742578F91", "member": "MEM-LEG-7D3A217E36", "expected": "13601C (duplicated)", "label": "13601C (to be checked)", "note": "Owner requested (to be checked) for the February D-350 receipt whose number is also used on another member's payment. Preserve its existing duplicate flag." }
+  ],
+  "deleteAccounts": [
+    { "enrollment": "ENR-LEG-1B30A8A241", "note": "Empty erroneous DPB-350 account after OR 9813 M was moved to the owner-confirmed D-350 account." },
+    { "enrollment": "ENR-LEG-2C677E0808", "note": "Empty erroneous D-350 (5Y) account after ORs 22719 C and 23972 C were moved to the owner-confirmed D-350 account." }
+  ]
+}

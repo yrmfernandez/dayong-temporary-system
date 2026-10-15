@@ -1,0 +1,9 @@
+{
+  "note": "Owner confirmed ORs 13646 C and 14797 C both belong to D-350 (October 15, 2026).",
+  "moves": [
+    { "collection": "COL-LEG-8CC73D73FE", "member": "MEM-LEG-B949AC5C08", "program": "D-350", "note": "Owner confirmed OR 14797 C belongs to D-350 together with OR 13646 C; move it from the erroneous DPB-350 account and recalculate coverage." }
+  ],
+  "deleteAccounts": [
+    { "enrollment": "ENR-LEG-B0386CD720", "note": "Empty erroneous DPB-350 account created by OR 14797 C; owner confirmed the receipt belongs to the existing D-350 account." }
+  ]
+}

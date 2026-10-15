@@ -1,0 +1,9 @@
+{
+  "note": "Owner confirmed ORs 9300 C, 11444C, 13648 C, 14799 C, 15831 C, 18569C, 20369 C, 21065 C and 23790 C all belong to D-350 (DP-0013), October 15, 2026. Eight are on D-350 account ENR-LEG-9A8B78660B; 14799 C is on DPB-350 account ENR-LEG-F7CC44C92C of the same member.",
+  "moves": [
+    { "collection": "COL-LEG-0BCD550D99", "member": "MEM-LEG-953E387C77", "program": "D-350", "note": "Owner confirmed OR 14799 C belongs to D-350, not DPB-350." }
+  ],
+  "deleteAccounts": [
+    { "enrollment": "ENR-LEG-F7CC44C92C", "note": "DPB-350 account holding only the misfiled OR 14799 C; empty after the move to the owner's confirmed D-350 account. Refused if any other payment, transfer or remitted New Sale is on it." }
+  ]
+}

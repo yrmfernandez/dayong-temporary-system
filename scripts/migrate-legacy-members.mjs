@@ -25,6 +25,8 @@
 //   node scripts/migrate-legacy-members.mjs --pending --drop-existing [--apply]   remove the pending rows of accounts
 //     already in the database (rows left out on purpose as duplicates of what was imported); a dry run lists the count.
 // Sources can also be named explicitly: .xlsx/.csv files, folders, or Google Sheets URLs shared with the service account.
+// --only-ref="Data-Base-Old|BUTUAN-NS|221" limits writes to the account containing that source row;
+// the full workbook is still read for member matching, stable IDs, and account validation.
 // Run scripts/legacy-programs.mjs first: old DAYONG PROGRAM labels are mapped through config/legacy-programs.json.
 //
 // Privacy: the console and the report file identify problems by workbook, tab, and row number only. Member names,
@@ -78,6 +80,10 @@ const sourceArgs = args.filter((a) => !a.startsWith("--"));
 // keep their IDs and are skipped, and only rows added since are imported. The Google Form tabs only grow at the bottom
 // (checked: 62,881 of 62,890 rows still match their record by timestamp).
 const sourceTitle = args.find((a) => a.startsWith("--source-title="))?.slice("--source-title=".length) ?? "";
+// Scope writes to the account containing one owner-selected source row while retaining the
+// full workbook for stable member matching and payment history validation.
+const onlyRef = args.find((a) => a.startsWith('--only-ref='))?.slice(11) ?? '';
+if (onlyRef && (exportPending || dropExisting)) throw new Error('--only-ref cannot export or remove pending rows.');
 
 const auth = new google.auth.GoogleAuth({ credentials: { client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL, private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n") }, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
 const sheets = google.sheets({ version: "v4", auth });
@@ -636,8 +642,28 @@ for (const e of enrollments) {
 }
 
 /* ---------- report ---------- */
-const valid = enrollments.filter((e) => !e.invalid);
-const invalid = enrollments.filter((e) => e.invalid);
+const inScope = e => !onlyRef || e.sale?.ref === onlyRef || e.rows.some(row => row.ref === onlyRef);
+if (onlyRef && !enrollments.some(inScope)) {
+  // Say why: the issues logged for that row (row references and reasons only), and whether the row was read at all.
+  const [refSource, refTab, refRow] = onlyRef.split("|"), where = `${refSource} › ${refTab} row ${refRow}`;
+  const read = [...saleRows, ...collectionRows].some((row) => row.ref === onlyRef);
+  const reasons = [...issues].filter(([, wheres]) => wheres.includes(where)).map(([category]) => category);
+  console.log(`${where}: ${read ? "read from the workbook" : "NOT read from the workbook (check the tab name and row number)"}.`);
+  if (!read) {
+    const tabs = new Map();
+    for (const row of [...saleRows, ...collectionRows]) {
+      const [source, tab, number] = row.ref.split("|"), key = `${source}|${tab}`, range = tabs.get(key) ?? [Infinity, 0];
+      tabs.set(key, [Math.min(range[0], Number(number)), Math.max(range[1], Number(number))]);
+    }
+    const same = [...tabs].filter(([key]) => key.toLowerCase().includes(String(refTab).toLowerCase()));
+    for (const [key, [low, high]] of same.length ? same : tabs) console.log(`  rows read from ${key}: ${low}–${high}`);
+  }
+  for (const reason of reasons) console.log(`  - ${reason}`);
+  throw new Error('Selected source reference has no importable account; review its source row.');
+}
+const valid = enrollments.filter((e) => !e.invalid && inScope(e));
+const invalid = enrollments.filter((e) => e.invalid && inScope(e));
+if (onlyRef) console.log(`Scoped import: ${onlyRef}; ${valid.length} passing account(s), ${invalid.length} failing account(s).`);
 const paymentsIn = (list) => list.reduce((n, e) => n + (e.payments?.length ?? e.rows.length), 0);
 console.log(`Read ${saleRows.length} New Sales rows and ${collectionRows.length} Collections rows from ${sources.length} workbook(s).`);
 console.log(`Members: ${members.length}  (${members.length - nameOnlyMembers} from New Sales, ${nameOnlyMembers} name-only from Collections)`);
@@ -840,7 +866,6 @@ for (const e of valid) {
   }
 }
 console.log(`\nWriting: ${Object.entries(out).map(([t, rows]) => `${rows.length} ${t}`).join(", ")}.`);
-const meta = await sheets.spreadsheets.get({ spreadsheetId: DB, fields: "sheets.properties" }, options);
 writeFileSync(`backups/legacy-migration-ids-${stamp}.json`, JSON.stringify(Object.fromEntries(Object.entries(out).map(([t, rows]) => [t, rows.map((r) => r[0])])), null, 1));
 // Order matters for a partial failure: members before the rows that point at them. A re-run skips rows already written.
 const flags = { Sales: duplicateFlags(out.Sales, 28, usedApplications), Collections: duplicateFlags(out.Collections, 8, usedOr) };
@@ -857,6 +882,7 @@ console.log(`Done. Written row IDs are listed in backups/legacy-migration-ids-${
 const importedRefs = new Set(valid.flatMap((e) => [e.sale?.ref, ...e.rows.map((row) => row.ref)].filter(Boolean)));
 const repairRows = repairs.filter((item) => importedRefs.has(item.ref)).map((item) => [hashId("REP", item.ref, item.change), item.where, hashId("COL", item.ref), item.change, item.before, item.after, importedAt]);
 if (repairRows.length) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: DB, fields: "sheets.properties" }, options);
   const title = "Legacy Repairs";
   if (!meta.data.sheets.some((sheet) => sheet.properties.title === title)) {
     await sheets.spreadsheets.batchUpdate({ spreadsheetId: DB, requestBody: { requests: [{ addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } } }] } }, options);

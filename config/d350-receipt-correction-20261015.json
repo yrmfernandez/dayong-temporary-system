@@ -1,0 +1,17 @@
+{
+  "note": "Owner confirmed ORs 10943C, 14675 C, 15365 C, 17109 C, 19622 C, 21675 C all belong to D-350 (October 15, 2026). Five were already correct; one payment created an erroneous DPB-350 account.",
+  "moves": [
+    {
+      "collection": "COL-LEG-5EA4036C54",
+      "member": "MEM-LEG-E1C80007D7",
+      "program": "D-350",
+      "note": "Owner confirmed all six listed receipts belong to D-350. OR 15365 C was misfiled under DPB-350; move it and recalculate the chronological payment coverage."
+    }
+  ],
+  "deleteAccounts": [
+    {
+      "enrollment": "ENR-LEG-E9F3748773",
+      "note": "Empty erroneous DPB-350 account created by OR 15365 C; owner confirmed the receipt belongs to the existing D-350 account."
+    }
+  ]
+}

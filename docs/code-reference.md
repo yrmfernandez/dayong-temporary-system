@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 120 library files, 51 component files; 423 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 120 library files, 51 component files; 437 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -418,6 +418,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-collections.mjs](../scripts/check-collections.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
 | [scripts/check-incentive-periods.mjs](../scripts/check-incentive-periods.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/check-mas-members.mjs](../scripts/check-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs`, `./name-match.mjs` | No flag detected; read source before running |
 | [scripts/check-member-transfer.mjs](../scripts/check-member-transfer.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-pending-receipts.mjs](../scripts/check-pending-receipts.mjs) | `node:fs`, `@next/env`, `googleapis`, `postgres` | No flag detected; read source before running |
 | [scripts/clear-payroll-runs.mjs](../scripts/clear-payroll-runs.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -427,6 +428,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/copy-legacy-import.mjs](../scripts/copy-legacy-import.mjs) | `node:fs`, `postgres` | Yes; read source for semantics |
 | [scripts/copy-sheets-to-postgres.mjs](../scripts/copy-sheets-to-postgres.mjs) | `@next/env`, `googleapis`, `postgres` | Yes; read source for semantics |
 | [scripts/correct-ciara-mas-split-20261014.mjs](../scripts/correct-ciara-mas-split-20261014.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/correct-d350-receipts.mjs](../scripts/correct-d350-receipts.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs` | Yes; read source for semantics |
 | [scripts/correct-employee-id.mjs](../scripts/correct-employee-id.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/delete-test-entries.mts](../scripts/delete-test-entries.mts) | `@next/env` | Yes; read source for semantics |
 | [scripts/exceptions-summary.mts](../scripts/exceptions-summary.mts) | `node:fs`, `@next/env` | No flag detected; read source before running |
@@ -458,8 +460,11 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/legacy-site-export.mjs](../scripts/legacy-site-export.mjs) | `node:fs`, `node:path`, `node:stream`, `node:stream/promises` | No flag detected; read source before running |
 | [scripts/legacy-site-survey.mjs](../scripts/legacy-site-survey.mjs) | `node:fs`, `node:path`, `node:stream`, `node:stream/promises` | No flag detected; read source before running |
 | [scripts/legacy-sources.mjs](../scripts/legacy-sources.mjs) | `node:fs`, `node:path` | No flag detected; read source before running |
+| [scripts/link-cinde-calumbay.mjs](../scripts/link-cinde-calumbay.mjs) | `@next/env`, `postgres`, `node:fs` | Yes; read source for semantics |
+| [scripts/link-legacy-mas.mjs](../scripts/link-legacy-mas.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs`, `node:crypto` | Yes; read source for semantics |
 | [scripts/list-programs.mjs](../scripts/list-programs.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/lookup-records.mjs](../scripts/lookup-records.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/member-accounts.mjs](../scripts/member-accounts.mjs) | `@next/env`, `postgres`, `./legacy-sources.mjs`, `node:fs` | No flag detected; read source before running |
 | [scripts/merge-employee-pair.mjs](../scripts/merge-employee-pair.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/merge-employees.mjs](../scripts/merge-employees.mjs) | `node:fs`, `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/merge-legacy-mas.mjs](../scripts/merge-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
@@ -496,6 +501,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/migrate-single-address.mjs](../scripts/migrate-single-address.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/move-photos-to-storage.mjs](../scripts/move-photos-to-storage.mjs) | `@next/env`, `@supabase/supabase-js`, `postgres` | Yes; read source for semantics |
 | [scripts/move-program-accounts.mjs](../scripts/move-program-accounts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/name-match.mjs](../scripts/name-match.mjs) | See source | No flag detected; read source before running |
 | [scripts/prod.mjs](../scripts/prod.mjs) | `node:child_process`, `node:fs` | No flag detected; read source before running |
 | [scripts/program-history.mjs](../scripts/program-history.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/reassign-ciara-ns-20261014.mjs](../scripts/reassign-ciara-ns-20261014.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -520,11 +526,19 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/test-remittance.mjs](../scripts/test-remittance.mjs) | `node:assert/strict`, `node:test`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/test-sheets-cache.mjs](../scripts/test-sheets-cache.mjs) | `node:test`, `node:assert/strict`, `../lib/sheets-read-cache.ts` | No flag detected; read source before running |
 | [scripts/time-dashboards.mts](../scripts/time-dashboards.mts) | `@next/env` | No flag detected; read source before running |
+| [scripts/transfer-mas-members.mjs](../scripts/transfer-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./name-match.mjs` | Yes; read source for semantics |
 | [scripts/web-left-out-sheet.mjs](../scripts/web-left-out-sheet.mjs) | `node:fs` | No flag detected; read source before running |
 
 ## Configuration and public text files
 
 - [config/amount-fixes.json](../config/amount-fixes.json)
+- [config/condes-members-20261015.json](../config/condes-members-20261015.json)
+- [config/d300-d350-receipts-20261015.json](../config/d300-d350-receipts-20261015.json)
+- [config/d350-nine-receipts-20261015.json](../config/d350-nine-receipts-20261015.json)
+- [config/d350-receipt-correction-20261015.json](../config/d350-receipt-correction-20261015.json)
+- [config/d350-receipt-correction-20261015b.json](../config/d350-receipt-correction-20261015b.json)
+- [config/d350-two-receipts-20261015.json](../config/d350-two-receipts-20261015.json)
+- [config/dpb350-receipt-correction-20261015.json](../config/dpb350-receipt-correction-20261015.json)
 - [config/duplicate-fixes.json](../config/duplicate-fixes.json)
 - [config/employee-merges.json](../config/employee-merges.json)
 - [config/legacy-migration-map.json](../config/legacy-migration-map.json)

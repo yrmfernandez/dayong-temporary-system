@@ -9,6 +9,8 @@
  *     rule; months follow from the DOI), and its payment status is recalculated (lib/account-rules.ts).
  *   - moves: a payment already in the database that sits on the wrong program's account of its member (e.g. a D-350
  *     account created only by that one misfiled receipt) moves to the right account, renumbered as above.
+ *   - receiptLabels: changes a specific member's receipt label only when its original text matches the reviewed
+ *     expectation; duplicate flags are preserved, and each label change is audited and summarized.
  *   - deleteAccounts (run last, after the moves): an account the owner says should not exist (e.g. an application recorded in both old systems
  *     under different programs). The account, its New Sale and that sale's beneficiaries are deleted; refused when it has
  *     payments, transfers, or a New Sale on a remittance slip. The Audit Log keeps every deleted row.
@@ -16,6 +18,8 @@
  *   node scripts/fix-legacy-receipts.mjs                      dry run on staging (every change made, then rolled back)
  *   node scripts/fix-legacy-receipts.mjs --apply              apply on staging
  *   npm run prod -- node scripts/fix-legacy-receipts.mjs [--apply]
+ *   Add --config=config/<scoped-file>.json to run only one set of owner-confirmed fixes.
+ *   Configurations without pending receipts use PostgreSQL only and do not access Google Sheets.
  *
  * With --apply on production, the receipts' rows are then removed from the shared Legacy Pending COLL tab (never on
  * staging, which shares that sheet). One transaction; every change is in the Audit Log and summarized in Record
@@ -35,7 +39,9 @@ if (!url) throw new Error("Missing DIRECT_DATABASE_URL.");
 const PRODUCTION = "qnugejonwpfvsenxvhxz";
 const project = /postgres\.([a-z0-9]+)[:@]/.exec(url)?.[1] ?? "unknown";
 const sql = postgres(url, { max: 1, onnotice: () => {} });
-const config = JSON.parse(fs.readFileSync("config/legacy-receipt-fixes.json", "utf8"));
+// A scoped config prevents a new correction from re-running unrelated historical fixes.
+const configFile = process.argv.find((arg) => arg.startsWith('--config='))?.slice(9) || "config/legacy-receipt-fixes.json";
+const config = JSON.parse(fs.readFileSync(configFile, "utf8"));
 const today = todayInManila();
 const text = (value) => String(value ?? "").trim();
 // Same IDs as scripts/migrate-legacy-members.mjs, so the importer treats these rows as already imported.
@@ -50,7 +56,9 @@ const correction = (tx, module, recordId, reason, before, after) => tx`insert in
 const auth = new google.auth.GoogleAuth({ credentials: { client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL, private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n") }, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
 const sheets = google.sheets({ version: "v4", auth });
 const PENDING = "Legacy Pending COLL";
-const pending = (await sheets.spreadsheets.values.get({ spreadsheetId: process.env.GOOGLE_SHEET_ID, range: `'${PENDING}'` })).data.values ?? [];
+const pending = config.receipts?.length
+  ? (await sheets.spreadsheets.values.get({ spreadsheetId: process.env.GOOGLE_SHEET_ID, range: `'${PENDING}'` })).data.values ?? []
+  : [];
 const header = (pending[0] ?? []).map((name) => text(name).toUpperCase());
 const cell = (row, name) => text(row[header.indexOf(name)]);
 const refOf = (row) => `${cell(row, "SOURCE")}|${cell(row, "SOURCE TAB")}|${Number(cell(row, "SOURCE ROW"))}`;
@@ -165,6 +173,16 @@ try {
       console.log(`\nMove ${payment.collection_id} (${payment.program_code} ${payment.enrollment_id}, OR ${payment.or_date}, ₱${payment.amount}) → ${account.enrollment_id} ${move.program} (member ${account.member_id}, DOI ${account.doi})`);
       for (const line of lines) console.log(line.replace("← added", "← moved"));
       console.log(`   status ${account.account_status || "—"} → ${state.status}`);
+    }
+
+    for (const label of config.receiptLabels ?? []) {
+      const [payment] = await tx`select collection_id, member_id, or_number, legacy_duplicate from collections where collection_id=${label.collection} for update`;
+      if (!payment || payment.member_id !== label.member) throw new Error(`Receipt label ${label.collection}: member mismatch or missing payment.`);
+      if (payment.or_number === label.label) { console.log(`Receipt label ${label.collection}: already set.`); continue; }
+      if (payment.or_number !== label.expected) throw new Error(`Receipt label ${label.collection}: original label differs; review required.`);
+      await tx`update collections set or_number=${label.label} where collection_id=${label.collection}`;
+      await correction(tx, 'Receipt label', payment.collection_id, label.note, { orNumber: payment.or_number, duplicate: payment.legacy_duplicate }, { orNumber: label.label, duplicate: payment.legacy_duplicate });
+      console.log(`Receipt label ${payment.collection_id}: ${payment.or_number} → ${label.label}; duplicate flag preserved.`);
     }
 
     for (const remove of config.deleteAccounts ?? []) {

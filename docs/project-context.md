@@ -349,6 +349,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **In progress:** the owner runs the dry run, then `--apply`, on production (`npm run prod -- node scripts/import-paper-attendance-20261015.mjs`).
 - **To do / open:** GULTIANO, MARCLEONITZ (P on October 12) is not a registered employee, so skipped. Meaning of **NA** (Abesia October 13; Pacios and Balcos October 10) to confirm; skipped until then. The sheet header says 2016, but its weekdays are October 2026's.
 
+### PH-93455604: programs not shown in Collections (2026-10-15)
+
+- **Owner:** the member has 2 programs, but Collections does not show them.
+- **Finding (staging copy; production to confirm):** both accounts are under MAS EDELYN B. TIZON, but in different branches: D-210 HG in MATINA, D-300 (Bracketing) in TORIL (same DOI, 8 collections each). A Collections batch lists only the accounts of its own branch and MAS (and Active status), so each batch shows one program and never both.
+- **Tool:** `scripts/member-accounts.mjs <member number>` (read-only; account structure only, no personal details), on production with `npm run prod --`.
+- **To decide:** if both accounts belong to one branch, correct the other account's branch; or let Collections list every account of the MAS whatever its branch.
+
 ### Finance-Auditor role: ticked pages not all seen (2026-10-15)
 
 - **Owner:** the pages ticked for the Finance-Auditor role in Roles are not all seen in the actual system.

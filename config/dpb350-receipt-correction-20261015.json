@@ -1,0 +1,12 @@
+{
+  "note": "Owner confirmed all nine listed receipts belong to DPB-350 (DP-0010, program_code 350), October 15, 2026.",
+  "moves": [
+    { "collection": "COL-LEG-27183F7210", "member": "MEM-LEG-352C0C9743", "program": "350", "note": "Owner confirmed OR 9242 C belongs to DPB-350, not D-350." },
+    { "collection": "COL-LEG-7D0863B7E7", "member": "MEM-LEG-352C0C9743", "program": "350", "note": "Owner confirmed OR 13585 C belongs to DPB-350, not D-350." },
+    { "collection": "COL-LEG-85AE3FA655", "member": "MEM-LEG-352C0C9743", "program": "350", "note": "Owner confirmed OR 9860 M belongs to DPB-350, not D-350." },
+    { "collection": "COL-LEG-E31B239235", "member": "MEM-LEG-352C0C9743", "program": "350", "note": "Owner confirmed OR 15387 C belongs to DPB-350, not D-350." }
+  ],
+  "deleteAccounts": [
+    { "enrollment": "ENR-LEG-23819F96FE", "note": "Empty erroneous D-350 account after all four receipts were moved to the owner's confirmed DPB-350 account." }
+  ]
+}

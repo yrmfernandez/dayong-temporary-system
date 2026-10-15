@@ -3,6 +3,15 @@
 Reviewed against repository code on **October 4, 2026**. Start with the [system guide](system-guide.md): it explains daily operations, calculations with examples, how records connect, staff permissions, setup, and current limitations.
 
 October 9 updates (no migration needed):
+See also the [October 15 CINDE CALUMBAY correction](cinde-calumbay-mas-correction-20261015.md): seven existing member accounts and sales linked to the owner-confirmed MAS.
+The [October 15 CONDES, MILDRED verification](mildred-condes-mas-verification-20261015.md) confirms the existing MAS and 22 linked member accounts, including the old-sheet records.
+The [October 15 D-350 receipt correction](d350-receipt-correction-20261015.md) places six owner-confirmed receipts on one D-350 account with continuous payment coverage.
+The [October 15 dual-program receipt verification](dual-program-receipts-20261015.md) confirms ten receipts are correctly split between D-210 HG and D-300 (Bracketing).
+The [October 15 DPB-350 receipt correction](dpb350-receipt-correction-20261015.md) consolidates nine owner-confirmed receipts on DPB-350 with January–September 2026 coverage.
+The [October 15 nine-receipt D-350 correction](d350-nine-receipts-20261015.md) moves OR 14800 C from DPB-350 so all nine listed receipts belong to D-350.
+The [October 15 D-300 (Bracketing)/D-350 correction](d300-d350-receipts-20261015.md) verifies nine receipts per program and marks the intended 13601C receipt `(to be checked)`.
+The [October 15 two-receipt D-350 correction](d350-two-receipts-20261015.md) puts ORs 13646 C and 14797 C on the same D-350 account.
+
 - **Clearing:** New Sales and Collections pick the MAS **From Clearing**, which fills in Branch, MAS and Date Remitted; a MAS listed in Clearing is no longer missed (branch case, an earlier Date Remitted, two employees with the same name). Each Clearing line follows its entries (Waiting for encoding → Waiting for receipt → For approval → Approved, or Returned) and leaves the page after 11:59 PM only once approved.
 - **Attendance:** the daily board and Attendance Review mark many employees at once (select all or ticked); Attendance Review marks one by one from a **Mark as** dropdown; new **No attendance needed** mark for employees such as MAS who do not clock in.
 - **Programs and accounts:** D-290 (500) and a duplicate DSP-290 entry move into D-290 or DSP-290 by DOI (`scripts/move-program-accounts.mjs`, which can now merge an account into the member's existing one); impossible DOIs such as 1943 are replaced with the OR or remittance date (`scripts/fix-impossible-doi.mjs`). Both run on production with `npm run prod --`, dry run first. See [project context](project-context.md).
