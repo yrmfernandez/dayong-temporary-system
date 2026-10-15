@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-42 page routes, 65 API handlers, 119 library files, 51 component files; 419 scanned source/configuration/public-text files in total.
+42 page routes, 65 API handlers, 119 library files, 51 component files; 420 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -139,7 +139,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/attendance-board.ts](../lib/attendance-board.ts) | `BoardCategory`, `canViewAttendanceTracking`, `canAdjustLateness`, `MARK_STATUSES`, `MarkStatus`, `isMarkStatus`, `boardCategory`, `minutesBetween`, `HistoryPeriod`, `HISTORY_PERIODS`, `isHistoryPeriod`, `periodRange`, `HistoryTotals`, `summarizeHistory`, `AttendanceHistory` | `@/lib/auth`, `@/lib/attendance-data` |
 | [lib/attendance-calendar.ts](../lib/attendance-calendar.ts) | `ALL_BRANCHES`, `Holiday`, `Closure`, `validDate`, `getHolidays`, `saveHoliday`, `deleteHoliday`, `addPhilippineHolidays`, `getClosures`, `closureCovers`, `closureLabel`, `closureForBranch`, `employeeAttendanceBranches`, `declareClosure`, `removeClosure` | `@/lib/attendance-data`, `@/lib/encoder-sheets`, `@/lib/encoder-schema`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/philippine-holidays`, `@/lib/readable-id`, `@/lib/sheet-rows` |
 | [lib/attendance-data.ts](../lib/attendance-data.ts) | `AttendanceRecord`, `sheetDateText`, `sheetTimeText`, `getAttendanceForEmployeeDate`, `addAttendanceRecord`, `getAttendanceRowsForDate`, `addAttendanceRecords`, `getAllAttendanceForRange`, `updateAttendanceRecord`, `getAttendanceRecordsForDate`, `getNonWorkingDayRecords`, `cancelClockInsForNonWorkingDay`, `getAttendanceRecordsForRange`, `getEmployeeAttendance`, `recordApprovedLeaveAttendance` | `@/lib/db`, `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/attendance` |
-| [lib/attendance-sheet.ts](../lib/attendance-sheet.ts) | `SheetDayStatus`, `SheetDay`, `SheetSummary`, `SheetEmployee`, `emptySummary`, `attendanceSheet`, `sumSummaries` | `@/lib/attendance-data`, `@/lib/attendance-board`, `@/lib/attendance`, `@/lib/working-days` |
+| [lib/attendance-sheet.ts](../lib/attendance-sheet.ts) | `SheetDayStatus`, `SheetDay`, `SheetSummary`, `SheetEmployee`, `PAPER_SHEET_NOTE`, `emptySummary`, `attendanceSheet`, `GridTone`, `GridCell`, `gridCell`, `sumSummaries` | `@/lib/attendance-data`, `@/lib/attendance-board`, `@/lib/attendance`, `@/lib/working-days` |
 | [lib/attendance.ts](../lib/attendance.ts) | `ATTENDANCE_TIME_ZONE`, `SCHEDULED_TIME_IN`, `SCHEDULED_TIME_OUT`, `LATE_GRACE_MINUTES`, `BREAK_START`, `BREAK_END`, `timeToMinutes`, `workingMinutesBetween`, `lateMinutesFor`, `clockOutFigures`, `dayTotals`, `withDayTotals`, `WORKING_DAYS`, `AttendanceStatus`, `getPhilippineDate`, `getPhilippineTime`, `isWorkingDay` | — |
 | [lib/audit-log.ts](../lib/audit-log.ts) | `AUDIT_SHEET`, `AUDIT_HEADERS`, `AuditActor`, `AuditAction`, `AuditChanges`, `parseRange`, `planValuesUpdate`, `planValuesBatchUpdate`, `planBatchUpdate`, `diffRow`, `auditedWrite`, `resetAuditSheetCache` | — |
 | [lib/auth-server.ts](../lib/auth-server.ts) | `getSessionUser`, `userWithPageAccess`, `canManageAccounts`, `canManageEmployees`, `canManageConfiguration`, `canManageUsers`, `canManageAttendance` | `@/lib/access-control`, `@/lib/auth` |
@@ -314,7 +314,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/admin-delete/route.ts](../app/api/admin-delete/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/admin-delete`, `@/lib/encoder-context` |
 | [app/api/attendance-calendar/route.ts](../app/api/attendance-calendar/route.ts) | `GET`, `POST` | `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
 | [app/api/attendance-reviews/route.ts](../app/api/attendance-reviews/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auto-absence`, `@/lib/employees`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/attendance-board`, `@/lib/google-sheets-data` |
-| [app/api/attendance-sheet/route.ts](../app/api/attendance-sheet/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/attendance`, `@/lib/attendance-board`, `@/lib/attendance-data`, `@/lib/attendance-sheet`, `@/lib/auto-absence`, `@/lib/employees`, `@/lib/work-calendar` |
+| [app/api/attendance-sheet/route.ts](../app/api/attendance-sheet/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/attendance`, `@/lib/attendance-board`, `@/lib/attendance-data`, `@/lib/attendance-sheet`, `@/lib/auto-absence`, `@/lib/employees`, `@/lib/payroll`, `@/lib/work-calendar` |
 | [app/api/attendance-tracking/daily/route.ts](../app/api/attendance-tracking/daily/route.ts) | `GET`, `PATCH`, `POST` | `@/lib/auth-server`, `@/lib/auto-absence`, `@/lib/encoder-context`, `@/lib/attendance-calendar`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-board`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [app/api/attendance-tracking/route.ts](../app/api/attendance-tracking/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/attendance-board`, `@/lib/attendance-data`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [app/api/attendance/history/route.ts](../app/api/attendance/history/route.ts) | `GET` | `@/lib/attendance`, `@/lib/attendance-data`, `@/lib/attendance-board`, `@/lib/auth-server` |
@@ -446,6 +446,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/flag-ph96295172-receipt.mjs](../scripts/flag-ph96295172-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/generate-code-reference.mjs](../scripts/generate-code-reference.mjs) | `node:fs`, `node:path`, `typescript` | Yes; read source for semantics |
 | [scripts/hash-password.mjs](../scripts/hash-password.mjs) | `bcryptjs` | No flag detected; read source before running |
+| [scripts/import-paper-attendance-20261015.mjs](../scripts/import-paper-attendance-20261015.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/inspect-legacy-sheets.mjs](../scripts/inspect-legacy-sheets.mjs) | `@next/env`, `googleapis`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-sheet-headers.mjs](../scripts/inspect-sheet-headers.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/legacy-programs.mjs](../scripts/legacy-programs.mjs) | `node:fs`, `@next/env`, `googleapis`, `./legacy-sources.mjs` | Yes; read source for semantics |

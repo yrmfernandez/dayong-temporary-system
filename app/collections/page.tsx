@@ -1110,7 +1110,7 @@ export default function CollectionsPage() {
       {/* MAIN TWO COLUMN AREA */}
       <div className="grid min-h-0 gap-4 lg:grid-cols-2">
         {/* LEFT COLLECTION PANEL */}
-        <Card className="flex h-[calc(100vh-180px)] min-h-[34rem] flex-col overflow-hidden">
+        <Card className="receipt-entry-card flex h-[calc(100vh-180px)] min-h-[34rem] flex-col overflow-hidden">
           <CardHeader className="shrink-0 border-b px-4 py-3">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1634,7 +1634,7 @@ export default function CollectionsPage() {
 
             {/* SAVE BAR (October 9, 2026): stays at the bottom of the entries panel with the totals, the control total and
                 Save, so a batch is finished without scrolling to the end. */}
-            <div className="sticky bottom-0 z-10 space-y-2 border-t bg-background/95 p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur">
+            <div className="sticky bottom-0 z-10 space-y-2 border-t bg-card p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
                 <span>Total amount collected <strong className="text-lg tabular-nums">{formatCurrency(totalCollected)}</strong></span>
                 <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{totalDue === null ? "pending" : formatCurrency(totalDue)}</strong></span>

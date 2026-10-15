@@ -716,6 +716,18 @@ main [data-slot="card"]:nth-child(4) {
   animation-delay: 135ms;
 }
 
+/* Receipt entry forms repaint as local image previews are added. Keep these surfaces
+   solid and avoid a masked overlay over the scrolling form and its images. */
+main [data-slot="card"].receipt-entry-card {
+  background: var(--card);
+  color: var(--card-foreground);
+  animation: none;
+}
+
+main [data-slot="card"].receipt-entry-card::before {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

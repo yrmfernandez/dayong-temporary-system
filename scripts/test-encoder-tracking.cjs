@@ -650,6 +650,18 @@ test('attendance sheet lists every day and totals what payroll counts', async ()
   assert.equal(summary.attendanceRate, 50, 'two of four expected working days (the Sunday is extra)');
   assert.equal(sumSummaries([summary, summary]).present, 6);
 
+  // The paper sheet's grid codes; a paper "P" (Present, no times) counts present, and paper time-ins are not flagged for a missing time-out.
+  const { gridCell, PAPER_SHEET_NOTE } = h.load('lib/attendance-sheet.ts');
+  assert.deepEqual(days.map((item) => gridCell(item).code), ['', '8:00', '8:30', '9:00', '', 'A', 'ND', '', 'L', '']);
+  assert.equal(gridCell(days[2]).tone, 'late');
+  assert.equal(gridCell(days[4]).tone, 'closed');
+  const paper = attendanceSheet({
+    employee: { branch: 'MATINA', dateHired: '' }, declaredDays: [], from: '2026-10-01', to: '2026-10-03', today: '2026-10-08',
+    records: [day('2026-10-01', { notes: PAPER_SHEET_NOTE }), day('2026-10-02', { timeIn: '07:43', notes: `${PAPER_SHEET_NOTE} (time in only)` }), day('2026-10-03', { status: 'Day Off' })],
+  });
+  assert.deepEqual(paper.days.map((item) => gridCell(item).code), ['P', '7:43', 'RD']);
+  assert.deepEqual([paper.summary.present, paper.summary.missingTimeOut, paper.summary.dayOff, paper.summary.daysPayable], [2, 0, 1, 2]);
+
   h.rows.Employees = [[], ['MD-2099-0101', 'Ana Santos', 'MATINA', 'MAS', 'active'], ['MD-2099-0102', 'Old Staff', 'MATINA', 'MAS', 'resigned']];
   h.rows['Employee Branches'] = [[], ['EBA-1', 'MD-2099-0101', 'BR-1']];
   h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
@@ -661,6 +673,8 @@ test('attendance sheet lists every day and totals what payroll counts', async ()
   assert.deepEqual(all.rows.map((row) => row.employee.id), ['MD-2099-0101'], 'resigned staff without attendance are left out');
   assert.equal(all.rows[0].summary.present, 1);
   assert.equal(all.rows[0].summary.lateMinutes, 5);
+  assert.equal(all.rows[0].cells.length, 30, 'one grid cell per day');
+  assert.equal(all.rows[0].cells[14].code, '8:05');
   const one = await (await route.GET(new Request('http://localhost/api/attendance-sheet?from=2026-09-01&to=2026-09-30&employeeId=MD-2099-0101'))).json();
   assert.equal(one.days.length, 30, 'every day of the range');
   assert.equal(one.days.find((item) => item.date === '2026-09-15').status, 'Late');

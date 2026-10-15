@@ -27,7 +27,7 @@ export function ReceiptPhotosPicker({ photos, onChange, kind }: { photos: Picked
     setBusy(false);
   };
   return (
-    <div className={`space-y-2 rounded-xl border p-3 ${photos.length ? "bg-muted/20" : "border-amber-300 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20"}`}>
+    <div className={`min-w-0 space-y-2 rounded-xl border p-3 text-card-foreground ${photos.length ? "bg-card" : "border-amber-300 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium">Receipt photos for this batch *</p>
@@ -38,10 +38,10 @@ export function ReceiptPhotosPicker({ photos, onChange, kind }: { photos: Picked
           <input type="file" accept="image/*" multiple className="sr-only" disabled={busy} onChange={(event) => { void add(event.target.files); event.target.value = ""; }} />
         </label>
       </div>
-      {photos.length > 0 && <ul className="flex flex-wrap gap-2">
-        {photos.map((photo, index) => <li key={`${photo.name}-${index}`} className="flex items-center gap-2 rounded-md border bg-background py-1 pl-1 pr-2 text-xs">
+      {photos.length > 0 && <ul className="flex min-w-0 flex-wrap gap-2">
+        {photos.map((photo, index) => <li key={`${photo.name}-${index}`} className="flex max-w-full items-center gap-2 rounded-md border bg-background py-1 pl-1 pr-2 text-xs">
           {/* eslint-disable-next-line @next/next/no-img-element -- a local preview of the compressed photo */}
-          <img src={photo.dataUrl} alt={`Receipt ${index + 1}`} className="size-10 rounded object-cover" />
+          <img src={photo.dataUrl} alt={`Receipt ${index + 1}`} width={40} height={40} className="size-10 shrink-0 rounded object-cover" />
           <span>Receipt {index + 1}<span className="block text-muted-foreground">{Math.round(photo.bytes / 1000)} KB</span></span>
           <button type="button" aria-label={`Remove receipt ${index + 1}`} className="text-muted-foreground hover:text-red-700" onClick={() => onChange(photos.filter((_, other) => other !== index))}><X className="size-4" /></button>
         </li>)}

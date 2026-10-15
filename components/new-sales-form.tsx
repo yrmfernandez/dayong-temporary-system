@@ -1445,7 +1445,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                   saleRefs.current[sale.id] = element;
                 }}
               >
-              <Card>
+              <Card className="receipt-entry-card">
                 <CardHeader className="border-b">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex min-w-0 items-center gap-3">

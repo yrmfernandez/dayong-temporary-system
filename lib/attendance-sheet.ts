@@ -67,6 +67,9 @@ export type SheetSummary = {
 
 export type SheetEmployee = { id: string; name: string; branch: string; roles: string[]; status: string; dateHired: string };
 
+/** Notes on records copied from the paper attendance sheet (scripts/import-paper-attendance-20261015.mjs): time in only. */
+export const PAPER_SHEET_NOTE = "From the paper attendance sheet";
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const addDays = (date: string, count: number) => new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10);
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -113,9 +116,14 @@ export function attendanceSheet({ employee, records, declaredDays, from, to, tod
       day.overtimeHours = record.overtimeHours;
       day.lateMinutes = record.lateMinutes;
       day.undertimeMinutes = record.undertimeMinutes;
-      day.missingTimeOut = !record.timeOut && date < today;
+      // The paper sheet recorded time in only, so its days are not flagged for a missing time-out.
+      day.missingTimeOut = !record.timeOut && date < today && !record.notes.startsWith(PAPER_SHEET_NOTE);
       day.restDayWork = !workingDay;
-    } else if (record && record.status !== "Present") {
+    } else if (record?.status === "Present") {
+      // Present with no clock times ("P" on the paper sheet): counted present, as payroll counts it, with no hours.
+      day.status = "Present";
+      day.restDayWork = !workingDay;
+    } else if (record) {
       const category = boardCategory(record, date, today);
       day.status = record.status === "Non-working Day" ? "Non-working day"
         : record.status === "Absent" && record.notes.startsWith("Absent by system") ? "Absent (system)"
@@ -158,6 +166,32 @@ export function attendanceSheet({ employee, records, declaredDays, from, to, tod
   const expected = summary.scheduledDays - summary.dayOff - summary.notRequired - summary.approvedLeave;
   summary.attendanceRate = expected > 0 ? Math.min(100, Math.round(((summary.present - summary.restDayWork) / expected) * 100)) : null;
   return { days, summary };
+}
+
+/**
+ * The day as a cell of the attendance grid, in the paper sheet's format (owner, October 15, 2026): the time in for a
+ * day worked (late when `tone` is "late"), P present with no times, L leave, A absent, AWOL, RD rest day (day off),
+ * NR not required, ND no record. Sundays and non-working days are "closed" (the red columns); blank otherwise.
+ */
+export type GridTone = "present" | "late" | "leave" | "absent" | "rest" | "none" | "closed" | "blank";
+export type GridCell = { code: string; tone: GridTone };
+
+const clock = (time: string) => time.replace(/^0(?=\d:)/, "");
+
+export function gridCell(day: SheetDay): GridCell {
+  switch (day.status) {
+    case "Present": case "Late":
+      if (!day.timeIn) return { code: "P", tone: "present" };
+      return { code: clock(day.timeIn), tone: day.status === "Late" ? "late" : "blank" };
+    case "Leave": return { code: "L", tone: "leave" };
+    case "Absent": case "Absent (system)": return { code: "A", tone: "absent" };
+    case "AWOL": return { code: "AWOL", tone: "absent" };
+    case "Day Off": return { code: "RD", tone: "rest" };
+    case "Not required": return { code: "NR", tone: "rest" };
+    case "No record": return day.workingDay ? { code: "ND", tone: "none" } : { code: "", tone: "closed" };
+    case "Sunday": case "Non-working day": return { code: "", tone: "closed" };
+    default: return { code: "", tone: "blank" };
+  }
 }
 
 /** One row per employee for a summary table, and the grand totals. */

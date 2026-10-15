@@ -9,9 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
-import type { SheetDay, SheetEmployee, SheetSummary } from "@/lib/attendance-sheet";
+import type { GridCell, GridTone, SheetDay, SheetEmployee, SheetSummary } from "@/lib/attendance-sheet";
 
-type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: Array<{ employee: SheetEmployee; summary: SheetSummary }>; totals: SheetSummary };
+type AllRow = { employee: SheetEmployee; summary: SheetSummary; cells: GridCell[]; rate: string };
+type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: AllRow[]; showRates: boolean; totals: SheetSummary };
 type OneResult = { success: boolean; message?: string; employees: SheetEmployee[]; employee: SheetEmployee; days: SheetDay[]; summary: SheetSummary };
 
 const manilaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
@@ -70,6 +71,7 @@ export function AttendanceSheet() {
   const [employeeId, setEmployeeId] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<"sheet" | "summary">("sheet");
   const [all, setAll] = useState<AllResult | null>(null);
   const [one, setOne] = useState<OneResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,14 +124,18 @@ export function AttendanceSheet() {
     {showingOne && one ? <EmployeeSheet result={one} period={period} from={from} to={to} onBack={backToAll} />
       : all && <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-          <div><CardTitle>Attendance summary · {period}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{all.rows.length} employees. Click an employee for the day-by-day sheet. Days payable = present + approved leave, as payroll counts them.</p></div>
+          <div><CardTitle>{view === "sheet" ? "Attendance sheet" : "Attendance summary"} · {period}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{all.rows.length} employees. Click an employee for the day-by-day sheet. {view === "sheet" ? "Total days" : "Days payable"} = present + approved leave, as payroll counts them.</p></div>
           <div className="flex flex-wrap gap-2 print:hidden">
+            <div className="flex rounded-md border p-0.5">{(["sheet", "summary"] as const).map((option) => <Button key={option} type="button" size="sm" variant={view === option ? "default" : "ghost"} onClick={() => setView(option)}>{option === "sheet" ? "Sheet" : "Summary"}</Button>)}</div>
             <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Search employees" className="w-56 pl-8" placeholder="Search name, ID, branch" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-            <Button type="button" variant="outline" onClick={() => downloadCsv(`attendance-summary-${from}-to-${to}.csv`, [["Employee ID", "Employee", "Branch", "Roles", "Status", ...summaryHeadings], ...shownRows.map((row) => [row.employee.id, row.employee.name, row.employee.branch, row.employee.roles.join("; "), row.employee.status, ...summaryCells(row.summary)])])}><Download className="size-4" />CSV</Button>
+            <Button type="button" variant="outline" onClick={() => view === "sheet"
+              ? downloadCsv(`attendance-sheet-${from}-to-${to}.csv`, [["Employee ID", "Employee Name", ...sheetDates(from, to).map((day) => `${day.weekday} ${Number(day.date.slice(8))}`), "Total Days", ...(all.showRates ? ["Rate"] : [])], ...shownRows.map((row) => [row.employee.id, row.employee.name, ...row.cells.map((cell) => cell.code), row.summary.daysPayable, ...(all.showRates ? [row.rate] : [])])])
+              : downloadCsv(`attendance-summary-${from}-to-${to}.csv`, [["Employee ID", "Employee", "Branch", "Roles", "Status", ...summaryHeadings], ...shownRows.map((row) => [row.employee.id, row.employee.name, row.employee.branch, row.employee.roles.join("; "), row.employee.status, ...summaryCells(row.summary)])])}><Download className="size-4" />CSV</Button>
             <Button type="button" variant="outline" onClick={() => window.print()}><Printer className="size-4" />Print</Button>
           </div>
         </CardHeader>
         <CardContent>
+          {view === "sheet" ? <AttendanceGrid rows={shownRows} from={from} to={to} showRates={all.showRates} onOpen={openEmployee} /> : <>
           <div className="max-h-[70vh] overflow-auto rounded-lg border print:max-h-none print:overflow-visible">
             <table className="w-full min-w-[1400px] text-sm print:min-w-0 print:text-[10px]">
               <thead className="sticky top-0 z-10 bg-muted text-left"><tr>
@@ -146,9 +152,89 @@ export function AttendanceSheet() {
               {shownRows.length > 1 && !search.trim() && <tfoot className="border-t-2 bg-muted/50 font-semibold"><tr><td className="sticky left-0 bg-muted p-2">All employees</td><SummaryRow summary={all.totals} /></tr></tfoot>}
             </table>
           </div>
+          </>}
           <Legend />
         </CardContent>
       </Card>}
+  </div>;
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const WEEKDAY_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+/** Every date from `from` to `to` with its weekday, for the grid's columns. */
+function sheetDates(from: string, to: string) {
+  const dates: Array<{ date: string; weekday: string }> = [];
+  for (let time = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T00:00:00Z`); time <= end; time += 86400000) {
+    dates.push({ date: new Date(time).toISOString().slice(0, 10), weekday: WEEKDAY_NAMES[new Date(time).getUTCDay()] });
+  }
+  return dates;
+}
+
+/** Cell colours of the paper attendance sheet: peach present, salmon leave and absent, yellow late and rest day, red Sundays. */
+const gridTone: Record<GridTone, string> = {
+  present: "bg-orange-100 text-orange-950 dark:bg-orange-950/70 dark:text-orange-100",
+  late: "bg-amber-100 font-semibold text-red-600 dark:bg-amber-950/60 dark:text-red-400",
+  leave: "bg-rose-300 text-rose-950 dark:bg-rose-900/70 dark:text-rose-100",
+  absent: "bg-red-400 font-semibold text-red-950 dark:bg-red-900 dark:text-red-100",
+  rest: "bg-yellow-200 text-yellow-950 dark:bg-yellow-900/60 dark:text-yellow-100",
+  none: "text-muted-foreground",
+  closed: "bg-red-600 dark:bg-red-800",
+  blank: "",
+};
+
+const gridKey: Array<[string, string, GridTone]> = [["L", "Leave", "leave"], ["P", "Present", "present"], ["A", "Absent", "absent"], ["LA", "Late", "late"], ["RD", "Rest day", "rest"], ["NR", "Not required", "rest"], ["ND", "No record", "none"]];
+
+/**
+ * All employees in the paper attendance sheet's format (owner, October 15, 2026): the key, the month and year, one
+ * column per date with its weekday (Sundays and non-working days in red), the time in for days worked (late in red),
+ * the letter codes for the rest, the total days (present + approved leave) and, for Payroll users, the rate.
+ */
+function AttendanceGrid({ rows, from, to, showRates, onOpen }: { rows: AllRow[]; from: string; to: string; showRates: boolean; onOpen: (id: string) => void }) {
+  const dates = sheetDates(from, to);
+  const firstMonth = Number(from.slice(5, 7)) - 1, lastMonth = Number(to.slice(5, 7)) - 1;
+  const months = from.slice(0, 7) === to.slice(0, 7) ? MONTHS[firstMonth] : `${MONTHS[firstMonth]} – ${MONTHS[lastMonth]}`;
+  const years = from.slice(0, 4) === to.slice(0, 4) ? from.slice(0, 4) : `${from.slice(0, 4)} – ${to.slice(0, 4)}`;
+  const heading = "p-2 text-base font-bold text-red-900 dark:text-red-300";
+  return <div className="space-y-3">
+    <style>{"@media print { @page { size: landscape; } }"}</style>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+      <span className="font-semibold">Key</span>
+      {gridKey.map(([code, label, tone]) => <span key={code} className="flex items-center gap-1.5"><span className={`inline-flex min-w-8 justify-center rounded px-1.5 py-0.5 font-semibold ${gridTone[tone]} ${tone === "none" ? "ring-1 ring-border" : ""}`}>{code}</span>{label.toUpperCase()}</span>)}
+    </div>
+    <div className="max-h-[70vh] overflow-auto rounded-lg border print:max-h-none print:overflow-visible">
+      <table className="w-full border-collapse text-xs print:text-[8px]">
+        <thead className="sticky top-0 z-10">
+          <tr className="bg-muted">
+            <th className={`sticky left-0 z-20 bg-muted text-left ${heading}`}>{months}</th>
+            <th colSpan={dates.length} className={`text-center ${heading}`}>Dates of Attendance</th>
+            <th colSpan={showRates ? 2 : 1} className={`text-right ${heading}`}>{years}</th>
+          </tr>
+          <tr className="bg-muted">
+            <th className="sticky left-0 z-20 bg-muted" />
+            {dates.map((day) => <th key={day.date} className={`border-x border-border px-1 py-1 text-center font-semibold ${day.weekday === "SUN" ? "bg-red-600 text-white dark:bg-red-800" : ""}`}>{day.weekday}</th>)}
+            <th className="bg-muted" />{showRates && <th className="bg-muted" />}
+          </tr>
+          <tr className="bg-[#5b1f16] text-white">
+            <th className="sticky left-0 z-20 bg-[#5b1f16] p-2 text-left font-semibold">Employee Name</th>
+            {dates.map((day) => <th key={day.date} className="min-w-11 border-x border-white/20 px-1 py-1 text-center font-semibold tabular-nums">{Number(day.date.slice(8))}</th>)}
+            <th className="whitespace-nowrap px-2 py-1 text-center font-semibold">Total Days</th>
+            {showRates && <th className="px-2 py-1 text-center font-semibold">Rate</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ employee, summary, cells, rate }, index) => <tr key={employee.id} className={index % 2 ? "bg-muted/40" : "bg-background"}>
+            <td className={`sticky left-0 z-[1] whitespace-nowrap border-y border-border p-0 ${index % 2 ? "bg-muted" : "bg-background"}`}>
+              <button type="button" className="w-full px-2 py-1.5 text-left font-semibold uppercase hover:text-primary hover:underline" title={`${employee.id}${employee.branch ? ` · ${employee.branch}` : ""}`} onClick={() => onOpen(employee.id)}>{employee.name}</button>
+            </td>
+            {cells.map((cell, day) => <td key={dates[day]?.date ?? day} className={`border border-border px-1 py-1.5 text-center tabular-nums ${gridTone[cell.tone]}`}>{cell.code}</td>)}
+            <td className="border border-border px-2 py-1.5 text-center font-semibold tabular-nums">{summary.daysPayable}</td>
+            {showRates && <td className="whitespace-nowrap border border-border px-2 py-1.5 tabular-nums">{rate || "—"}</td>}
+          </tr>)}
+          {!rows.length && <tr><td colSpan={dates.length + (showRates ? 3 : 2)} className="p-8 text-center text-muted-foreground">No employees match.</td></tr>}
+        </tbody>
+      </table>
+    </div>
   </div>;
 }
 

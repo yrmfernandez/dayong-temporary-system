@@ -6,6 +6,8 @@ This document supersedes the earlier behavior where saving a collection batch al
 
 Entry Clerks no longer create remittance slips or approve cash:
 
+Receipt form display (October 15, 2026): Collections and New Sales entry cards use solid theme-aware surfaces without the animated masked glass border. Collections' sticky save bar also uses a solid surface instead of live backdrop blur, and the shared receipt picker bounds previews to 40 × 40 pixels. These changes address cards turning white when local receipt attachments are added.
+
 1. Saved New Sales and Collections are `Outstanding` and appear in My Entries as *Needs receipt photo*.
 2. Attaching receipt photos (Collections form, My Entries, or Today's Entries) sends ready entries to approval on their own: a Collections batch as one slip once every Collection in it has a photo, New Sales one by one. The slip is created by "System", expects exactly the cash due (company share, or the full amount after the incentive deadline, plus any batch Fidelity), and is dated the batch's Date Remitted.
 3. Approvers approve or reject one, the selected, or all slips in Remittances → Pending Approval. Approval needs every receipt photo.
