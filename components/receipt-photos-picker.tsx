@@ -1,7 +1,7 @@
 "use client";
 
 import { ImagePlus, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { compressReceiptPhoto } from "@/components/receipt-photo";
 
@@ -15,6 +15,10 @@ export type PickedPhoto = { dataUrl: string; width: number; height: number; byte
 export function ReceiptPhotosPicker({ photos, onChange, kind }: { photos: PickedPhoto[]; onChange: (photos: PickedPhoto[]) => void; kind: string }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // The file input stays display:none and a button opens it. A visually hidden (sr-only) input took focus when the
+  // file picker closed, and the browser scrolled the overflow-hidden form card to show it, leaving the card blank
+  // below the save bar (owner, October 15, 2026).
+  const input = useRef<HTMLInputElement>(null);
   const add = async (files: FileList | null) => {
     if (!files?.length) return;
     setBusy(true); setError("");
@@ -33,10 +37,10 @@ export function ReceiptPhotosPicker({ photos, onChange, kind }: { photos: Picked
           <p className="text-sm font-medium">Receipt photos for this batch *</p>
           <p className="text-xs text-muted-foreground">At least one is required; add as many as the batch needs. They are attached to every {kind} in this batch.</p>
         </div>
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted">
+        <button type="button" disabled={busy} className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-60" onClick={() => input.current?.click()}>
           <ImagePlus className="size-4" />{busy ? "Reading..." : photos.length ? "Add more photos" : "Add photos"}
-          <input type="file" accept="image/*" multiple className="sr-only" disabled={busy} onChange={(event) => { void add(event.target.files); event.target.value = ""; }} />
-        </label>
+        </button>
+        <input ref={input} type="file" accept="image/*" multiple className="hidden" tabIndex={-1} onChange={(event) => { void add(event.target.files); event.target.value = ""; }} />
       </div>
       {photos.length > 0 && <ul className="flex min-w-0 flex-wrap gap-2">
         {photos.map((photo, index) => <li key={`${photo.name}-${index}`} className="flex max-w-full items-center gap-2 rounded-md border bg-background py-1 pl-1 pr-2 text-xs">

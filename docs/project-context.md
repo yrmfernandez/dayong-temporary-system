@@ -358,9 +358,9 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 
 ### Cards turning white when a receipt photo is attached (2026-10-15)
 
-- **Owner:** when the Entry Clerk attaches a picture, the card turns all white.
-- **Cause:** every card drew its light edge with a masked `::before` overlay filled with an almost-white gradient; when Chrome dropped the mask on repaint (adding photo previews triggers one), the overlay covered the card. The first fix earlier today removed it only from the entry cards; the New Sales photo picker sits outside them.
-- **Done:** the overlay is removed from every card (`app/globals.css`); the edge highlight is an inset shadow. The New Sales save bar is solid without live blur. Build checked; still to confirm on a clerk's computer (it is a browser repaint problem, not reproducible headless).
+- **Owner:** when the Entry Clerk attaches a picture, the card turns all white (screenshot: the Collections entry panel shows the photo button and the save bar at its top, blank below).
+- **Cause (found from the screenshot):** the photo picker's file input was visually hidden (`sr-only`) but still focusable. When the file picker closed, the browser focused it and scrolled the form card (`overflow-hidden`, which can still be scrolled by the browser) to show it, so the card's content slid up and left white space below. Two earlier guesses (solid entry cards; removing the masked light-edge overlay from every card) did not fix it; they are kept, as they do no harm.
+- **Done:** the input is `display: none` and a button opens it (`components/receipt-photos-picker.tsx`), as the My Entries photo button already did; the two Collections panels use `overflow-clip`, which cannot be scrolled at all. Build and tests checked; to confirm on a clerk's computer.
 
 ### Entry Corrections for IT and Administrators (2026-10-15)
 

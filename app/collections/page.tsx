@@ -1110,7 +1110,7 @@ export default function CollectionsPage() {
       {/* MAIN TWO COLUMN AREA */}
       <div className="grid min-h-0 gap-4 lg:grid-cols-2">
         {/* LEFT COLLECTION PANEL */}
-        <Card className="receipt-entry-card flex h-[calc(100vh-180px)] min-h-[34rem] flex-col overflow-hidden">
+        <Card className="receipt-entry-card flex h-[calc(100vh-180px)] min-h-[34rem] flex-col overflow-clip">
           <CardHeader className="shrink-0 border-b px-4 py-3">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1661,7 +1661,7 @@ export default function CollectionsPage() {
         </Card>
 
         {/* RIGHT HISTORY PANEL */}
-        <Card className="flex h-[calc(100vh-180px)] min-h-[34rem] flex-col overflow-hidden">
+        <Card className="flex h-[calc(100vh-180px)] min-h-[34rem] flex-col overflow-clip">
           <CardHeader className="shrink-0 border-b px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
