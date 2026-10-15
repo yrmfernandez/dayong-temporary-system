@@ -1,3 +1,4 @@
+import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { desc, eq, inArray, sql } from "drizzle-orm";
 
@@ -21,11 +22,12 @@ import { createReadableId } from "@/lib/readable-id";
  */
 const text = (value: unknown) => String(value ?? "").trim();
 
-// Administrators and HR Officers may move a member's program enrollment to another employee.
+// Administrators and HR Officers may move a member's program enrollment to another employee; IT too, from Edit / Corrections.
 export async function canTransferMembers() {
   const user = await getSessionUser();
   if (!user) return false;
-  return (await canManageUsers()) || (user.roleNames ?? []).some((role) => ["hr officer", "hr"].includes(role.trim().toLowerCase()));
+  return (await canManageUsers()) || (user.roleNames ?? []).some((role) => ["hr officer", "hr"].includes(role.trim().toLowerCase()))
+    || (canCorrectEntriesFor(user) && canAccessPath(user, "/entry-corrections"));
 }
 
 async function enrollmentRow(enrollmentId: string) {

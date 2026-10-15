@@ -1,0 +1,12 @@
+{
+  "note": "Owner confirmed PH-24556150 has one correct program, DFPP-650, and requested merging the program accounts (October 15, 2026).",
+  "cases": [
+    {
+      "member": "PH-24556150",
+      "program": "DP-0027",
+      "fromAccounts": ["ENR-LEG-2AFFED1836"],
+      "startNop": 2,
+      "note": "Owner confirmed DFPP-650 as the correct program. Merge the DFP-650 account and all its payments into the existing DFPP-650 account, retain the November 1, 2025 DOI, and recalculate chronological coverage from NOP 2. Amounts, receipt dates, incentives and remittances remain unchanged."
+    }
+  ]
+}

@@ -31,6 +31,7 @@ import nextEnv from "@next/env";
 import { google } from "googleapis";
 import postgres from "postgres";
 import { accountState, monthIndex, monthName, todayInManila } from "../lib/account-rules.ts";
+import { repriceEntries } from "../lib/entry-finance.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
 const apply = process.argv.includes("--apply");
@@ -96,6 +97,8 @@ async function renumber(tx, account, id, months, label) {
   const state = accountState({ id: account.enrollment_id, memberId: account.member_id, memberNumber: "", programId: account.program_id, doi: account.doi, branch: "", mas: "", basePay: account.rate, payBalanceTotal: account.total, storedStatus: "", flexible: account.flexible, maxMonthlyPayment: account.max },
     renumbered.map((p) => ({ id: p.collection_id, enrollmentId: account.enrollment_id, orDate: p.or_date, orNumber: text(p.or_number), monthFrom: p.monthFrom, monthTo: p.monthTo, nopFrom: p.nopFrom, nopTo: p.nopTo, amount: p.amount, dateRemitted: "", mas: "" })), today);
   await tx`update member_programs set account_status = ${state.status} where enrollment_id = ${account.enrollment_id}`;
+  const finance = await repriceEntries((query, params) => tx.unsafe(query, params), { collectionIds: payments.map(p => p.collection_id) });
+  lines.push(`   Incentives recalculated: ${finance.changes.length} entries, change ${finance.incentiveChange}; ${finance.slips.length} slip expectations updated.`);
   return { payments, renumbered, lines, state };
 }
 

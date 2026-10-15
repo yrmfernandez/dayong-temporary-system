@@ -3089,3 +3089,86 @@ test('an expense goes on the report of the day it was recorded, whatever expense
   assert.equal(recorded.cash.expenses, 75);
   assert.equal((await buildClerkReport('daily', '2026-10-10', clerk, 'MINTAL')).expenses.length, 0, 'not on the expense date');
 });
+
+test('Edit / Corrections: a collection moves to the other program of the member, both accounts renumbered and its slip follows', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-0009', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'Santos', first_name: 'Ana' }]);
+  await seed('programs', [{ program_id: 'DP-A', program_name: 'D-350', base_pay: 350 }, { program_id: 'DP-B', program_name: 'DPB-350', base_pay: 350 }]);
+  await seed('program_incentives', [{ incentive_id: 'I-DP-A', program_id: 'DP-A', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }, { incentive_id: 'I-DP-B', program_id: 'DP-B', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
+  await seed('member_programs', [
+    { enrollment_id: 'ENR-A', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-A', doi: '2026-01-01', branch: 'BR-1', mas: 'MAS-2', status: 'Active' },
+    { enrollment_id: 'ENR-B', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-B', doi: '2026-01-01', branch: 'BR-1', mas: 'MAS-2', status: 'Active' },
+  ]);
+  const pay = (id, enrollment, program, or, date, nop, extra = {}) => ({ collection_id: id, collection_batch_id: `B-${id}`, enrollment_id: enrollment, member_id: 'MEM-1', member_number: 'PH-1', program_id: program, branch: 'BR-1', mas: 'MAS-2', or_number: or, or_date: date, amount_collected: 350, month_from: `2026-0${nop}`, month_to: `2026-0${nop}`, nop_from: nop, nop_to: nop, status: 'Posted', collected_by_role: 'MAS', remittance_amount: 175, ...extra });
+  await seed('remittances', [{ remittance_id: 'REM-1', branch: 'BR-1', mas: 'MAS-2', status: 'Approved', gross_collection: 175, total_remittance: 175, difference: 0 }]);
+  await seed('collections', [
+    pay('C1', 'ENR-A', 'DP-A', '101 C', '2026-02-05', 2),
+    pay('C2', 'ENR-A', 'DP-A', '102 C', '2026-03-05', 3, { remittance_status: 'Remitted', linked_remittance_id: 'REM-1' }),
+    pay('C3', 'ENR-B', 'DP-B', '103 C', '2026-02-06', 2),
+  ]);
+  await seed('remittance_collections', [{ remittance_collection_id: 'RC-1', remittance_id: 'REM-1', collection_id: 'C2', amount: 175 }]);
+  const route = h.load('app/api/entry-corrections/route.ts');
+
+  const loaded = await (await route.GET(new Request('http://localhost/api/entry-corrections?kind=Collection&id=C2'))).json();
+  assert.equal(loaded.success, true, JSON.stringify(loaded));
+  assert.deepEqual(loaded.entry.accounts.map((account) => account.enrollmentId).sort(), ['ENR-A', 'ENR-B']);
+  assert.equal(loaded.entry.remittance.onSlip, true);
+
+  assert.match((await (await route.PUT(request({ kind: 'Collection', id: 'C2', enrollmentId: 'ENR-B' }))).json()).message, /reason/);
+  const saved = await (await route.PUT(request({ kind: 'Collection', id: 'C2', enrollmentId: 'ENR-B', reason: 'Receipt is DPB-350' }))).json();
+  assert.equal(saved.success, true, JSON.stringify(saved));
+  const rows = await query('select collection_id, enrollment_id, program_id, nop_from, month_from from collections order by collection_id');
+  assert.deepEqual(rows.map((row) => [row.collection_id, row.enrollment_id, row.program_id, row.nop_from, row.month_from]), [
+    ['C1', 'ENR-A', 'DP-A', 2, '2026-02'], ['C2', 'ENR-B', 'DP-B', 3, '2026-03'], ['C3', 'ENR-B', 'DP-B', 2, '2026-02'],
+  ]);
+  // The company share at NOP 3 of DPB-350 is 200 (it was remitted as 175): the slip expects 25 more than the cash received.
+  const [slip] = await query('select gross_collection::float8 as expected, difference::float8 as difference from remittances');
+  assert.deepEqual(slip, { expected: 200, difference: -25 });
+  assert.equal((await query('select amount::float8 as amount from remittance_collections'))[0].amount, 200);
+
+  // Fixing only the OR number keeps the share it was remitted with.
+  await query("update collections set remittance_amount = 123 where collection_id = 'C2'");
+  assert.match((await (await route.PUT(request({ kind: 'Collection', id: 'C2', orNumber: '1020 C', reason: 'typo' }))).json()).message, /saved: or number\.$/);
+  assert.deepEqual(await query('select gross_collection::float8 as expected from remittances'), [{ expected: 200 }], 'the slip is untouched');
+  assert.deepEqual(await query("select or_number, remittance_amount::float8 as share from collections where collection_id = 'C2'"), [{ or_number: '1020 C', share: 123 }]);
+
+  // A later OR date for the only payment of an account: it stays NOP 2.
+  const later = await (await route.PUT(request({ kind: 'Collection', id: 'C1', orDate: '2026-04-10', reason: 'date typo' }))).json();
+  assert.equal(later.success, true, JSON.stringify(later));
+  assert.equal((await query("select nop_from from collections where collection_id = 'C1'"))[0].nop_from, 2);
+
+  // Two months on C3 would overlap C2's month on ENR-B: renumbered C3 NOP 2-3, C2 NOP 4. Amount 350 cannot pay two months: refused.
+  assert.match((await (await route.PUT(request({ kind: 'Collection', id: 'C3', months: 2, reason: 'two months' }))).json()).message, /Nothing was saved/);
+  assert.equal((await query("select nop_to from collections where collection_id = 'C3'"))[0].nop_to, 2);
+
+  // An Entry Clerk may not edit.
+  h.setUser({ userId: 'USR-3', employeeId: 'DPE-0003', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await route.PUT(request({ kind: 'Collection', id: 'C2', reason: 'x y z' }))).status, 403);
+});
+
+test('Edit / Corrections: a New Sale changes program with its account, unless the member already has that program', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-0009', name: 'it', roleNames: ['IT Clerk'], permissions: {} });
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  await seed('members', [{ member_id: 'MEM-2', member_number: 'PH-2', surname: 'Cruz', first_name: 'Rina' }]);
+  await seed('programs', [{ program_id: 'DP-A', program_name: 'D-350', base_pay: 350 }, { program_id: 'DP-C', program_name: 'DC-350', base_pay: 350 }, { program_id: 'DP-D', program_name: 'D-500', base_pay: 500 }]);
+  await seed('program_incentives', [{ incentive_id: 'I-DP-A', program_id: 'DP-A', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }, { incentive_id: 'I-DP-C', program_id: 'DP-C', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }, { incentive_id: 'I-DP-D', program_id: 'DP-D', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-S', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-A', doi: '2026-10-01', branch: 'BR-1', mas: 'MAS-2', status: 'Active' }]);
+  await seed('sales', [{ sale_id: 'S1', member_number: 'PH-2', surname: 'Cruz', first_name: 'Rina', program_id: 'DP-A', branch: 'BR-1', mas: 'MAS-2', amount_paid: 350, application_no: 'APP-1', or_date: '2026-10-01', doi: '2026-10-01', remittance_status: 'Outstanding' }]);
+  // A collection on the account, with a company share that does not match the program's tiers (as if priced by another program).
+  await seed('collections', [{ collection_id: 'C9', collection_batch_id: 'B9', enrollment_id: 'ENR-S', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-A', branch: 'BR-1', mas: 'MAS-2', or_number: '901 C', or_date: '2026-10-02', amount_collected: 350, month_from: '2026-11', month_to: '2026-11', nop_from: 2, nop_to: 2, status: 'Posted', collected_by_role: 'MAS', remittance_amount: 1 }]);
+  const route = h.load('app/api/entry-corrections/route.ts');
+
+  // A 500 program needs 500: refused until the amount is right too.
+  assert.match((await (await route.PUT(request({ kind: 'New Sale', id: 'S1', programId: 'DP-D', reason: 'wrong program' }))).json()).message, /fixed New Sale amount of 500/);
+  const saved = await (await route.PUT(request({ kind: 'New Sale', id: 'S1', programId: 'DP-C', applicationNumber: 'APP-1B', reason: 'Clerk chose D-350' }))).json();
+  assert.equal(saved.success, true, JSON.stringify(saved));
+  assert.deepEqual(await query('select program_id, application_no from sales'), [{ program_id: 'DP-C', application_no: 'APP-1B' }]);
+  assert.deepEqual(await query('select enrollment_id, program_id from member_programs'), [{ enrollment_id: 'ENR-S', program_id: 'DP-C' }]);
+  // Its collections moved to the new program and took that program's incentive: reports follow.
+  assert.deepEqual(await query('select program_id, remittance_amount::float8 as share from collections'), [{ program_id: 'DP-C', share: 200 }]);
+  assert.match(saved.message, /1 collection\(s\) with new incentives/);
+
+  await seed('member_programs', [{ enrollment_id: 'ENR-T', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-A', doi: '2026-09-01', branch: 'BR-1', mas: 'MAS-2', status: 'Active' }]);
+  assert.match((await (await route.PUT(request({ kind: 'New Sale', id: 'S1', programId: 'DP-A', reason: 'back again' }))).json()).message, /already has a D-350 account/);
+});

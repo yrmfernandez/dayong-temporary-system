@@ -17,11 +17,13 @@
  *   node scripts/consolidate-member-receipts.mjs                     dry run on staging
  *   npm run prod -- node scripts/consolidate-member-receipts.mjs     dry run on production
  *   ... --apply
+ *   Add --config=config/<scoped-file>.json to run only one reviewed correction.
  */
 import fs from "node:fs";
 import nextEnv from "@next/env";
 import postgres from "postgres";
 import { accountState, monthIndex, monthName, todayInManila } from "../lib/account-rules.ts";
+import { repriceEntries } from "../lib/entry-finance.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
 const apply = process.argv.includes("--apply");
@@ -29,7 +31,8 @@ const url = process.env.DIRECT_DATABASE_URL;
 if (!url) throw new Error("Missing DIRECT_DATABASE_URL.");
 const project = /postgres\.([a-z0-9]+)[:@]/.exec(url)?.[1] ?? "unknown";
 const sql = postgres(url, { max: 1, onnotice: () => {} });
-const { cases = [] } = JSON.parse(fs.readFileSync("config/receipt-consolidations.json", "utf8"));
+const configFile = process.argv.find(arg => arg.startsWith('--config='))?.slice(9) || "config/receipt-consolidations.json";
+const { cases = [] } = JSON.parse(fs.readFileSync(configFile, "utf8"));
 const today = todayInManila();
 const text = (value) => String(value ?? "").trim();
 const key = (value) => text(value).toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -116,9 +119,12 @@ try {
         await tx`delete from member_programs where enrollment_id = ${account.enrollment_id}`;
         console.log(`   Account ${account.enrollment_id} (${account.program}) deleted: no payment left${sources.includes(account.enrollment_id) ? "" : " (it had none)"}.`);
       }
+      const targetSales = await tx`select sale_id from sales where member_number = ${member.member_number} and program_id = ${target.program_id}`;
+      const finance = await repriceEntries((query, params) => tx.unsafe(query, params), { collectionIds: payments.map(p => p.collection_id), saleIds: targetSales.map(s => s.sale_id) });
+      console.log(`   Recalculated ${finance.changes.length} financial entries; incentive change ${peso(finance.incentiveChange)}; ${finance.slips.length} remittance expectations updated.`);
       await tx`insert into record_corrections ${tx({ correction_id: `COR-RCN-${member.member_number}-${Date.now().toString(36).toUpperCase()}`, module: "Receipt consolidation", record_id: target.enrollment_id,
         reason: text(item.note) || `Receipts of ${member.member_number} put on ${target.program_name}`, before_json: { receipts: mine.map((row) => ({ or: row.or_number, enrollment: row.enrollment_id, program: row.program_id, nop: [row.nop_from, row.nop_to] })) },
-        after_json: { enrollment: target.enrollment_id, status, nops: renumbered.map((p) => ({ or: p.or_number, nop: [p.nopFrom, p.nopTo], month: p.monthFrom })), deleted: empty.map((account) => account.enrollment_id) },
+        after_json: { enrollment: target.enrollment_id, status, nops: renumbered.map((p) => ({ or: p.or_number, nop: [p.nopFrom, p.nopTo], month: p.monthFrom })), deleted: empty.map((account) => account.enrollment_id), finance },
         corrected_at: new Date().toISOString(), encoded_by_name: "Receipt consolidation", encoded_at: new Date().toISOString() })}`;
       console.log("");
     }

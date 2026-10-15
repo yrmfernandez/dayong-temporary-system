@@ -33,7 +33,7 @@ try {
   console.log(JSON.stringify({ sales }));
   const memberIds = [...new Set(payments.map(p => p.member_id))];
   if (memberIds.length) {
-    const accounts = await sql`select mp.enrollment_id, mp.member_id, mp.program_id, p.program_code, mp.doi::text as doi, mp.account_status, (select count(*)::int from collections c where c.enrollment_id=mp.enrollment_id) as payments, (select count(*)::int from member_transfers mt where mt.enrollment_id=mp.enrollment_id) as transfers, (select count(*)::int from sales s where s.member_number=mp.member_number and s.program_id=mp.program_id) as sales from member_programs mp join programs p on p.program_id=mp.program_id where mp.member_id in ${sql(memberIds)} order by mp.member_id, p.program_code`;
+    const accounts = await sql`select mp.enrollment_id, mp.member_id, mp.member_number, mp.program_id, p.program_code, mp.doi::text as doi, mp.account_status, (select count(*)::int from collections c where c.enrollment_id=mp.enrollment_id) as payments, (select count(*)::int from member_transfers mt where mt.enrollment_id=mp.enrollment_id) as transfers, (select count(*)::int from sales s where s.member_number=mp.member_number and s.program_id=mp.program_id) as sales from member_programs mp join programs p on p.program_id=mp.program_id where mp.member_id in ${sql(memberIds)} order by mp.member_id, p.program_code`;
     console.log(JSON.stringify({ accounts }));
     if (process.argv.includes('--backup')) {
       mkdirSync('backups', { recursive: true });

@@ -13,7 +13,8 @@
 import nextEnv from "@next/env";
 import postgres from "postgres";
 import { loadLegacySources } from './legacy-sources.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 nextEnv.loadEnvConfig(process.cwd());
 const requestedName = process.argv.find(arg => arg.startsWith('--name='))?.slice(7).trim();
@@ -47,7 +48,13 @@ try {
       console.log(JSON.stringify({ inspectedSheet: sheet, rowsChecked: rows.length, timestampsRead: timed.length, timestampMatches: hits.length, latestTimestampWallClock: Number.isFinite(latest) ? new Date(latest).toISOString().replace('T', ' ').slice(0, 19) : null }));
       for (const hit of hits) {
         const col = key => header.findIndex(value => String(value).trim().toUpperCase() === key);
-        console.log(JSON.stringify({ sourceRef: `Data-Base-Old|${sheet}|${hit.sourceRow}`, mas: hit.row[col('MARKETING AGENT')], branch: hit.row[col('BRANCH')], program: hit.row[col('DAYONG PROGRAM')] }));
+        const sourceRef = `Data-Base-Old|${sheet}|${hit.sourceRow}`;
+        console.log(JSON.stringify({ sourceRef, mas: hit.row[col('MARKETING AGENT')], branch: hit.row[col('BRANCH')], program: hit.row[col('DAYONG PROGRAM')] }));
+        if (sheet.endsWith('-NS')) {
+          const saleId = `SALE-LEG-${createHash('sha1').update(sourceRef).digest('hex').slice(0, 10).toUpperCase()}`;
+          const stored = await sql`select s.sale_id, s.member_number, m.member_id, m.status as member_status, mp.enrollment_id, mp.status as account_status, mp.doi::text as doi, mp.branch, mp.mas, mp.mas_employee_id, p.program_code, (select count(*)::int from beneficiaries b where b.sale_id=s.sale_id) as beneficiaries from sales s left join members m on m.member_number=s.member_number left join member_programs mp on mp.member_id=m.member_id and mp.program_id=s.program_id left join programs p on p.program_id=s.program_id where s.sale_id=${saleId}`;
+          console.log(JSON.stringify({ existingSourceRecords: stored }));
+        }
       }
     }
     if (!requestedName && !number) { await sql.end(); process.exit(0); }
@@ -127,13 +134,31 @@ try {
   const members = await sql`select member_id, status from members where member_number = ${number}`;
   console.log(`${number}: ${members.length} member record(s)${members.length ? `, status ${members.map((row) => row.status || "blank").join(", ")}` : ""}`);
   const accounts = await sql`
-    select mp.enrollment_id, p.program_code, p.program_name, p.status as program_status, mp.branch, mp.mas, mp.mas_employee_id, mp.status, mp.doi::text as doi,
+    select mp.enrollment_id, mp.program_id, p.program_code, p.program_name, p.status as program_status, p.base_pay::float8 as rate, p.flexible, p.pay_balance_total::float8 as total, mp.branch, mp.mas, mp.mas_employee_id, mp.status, mp.doi::text as doi,
       (select count(*)::int from collections c where c.enrollment_id = mp.enrollment_id and c.status = 'Posted') as collections
     from member_programs mp join members m on m.member_id = mp.member_id left join programs p on p.program_id = mp.program_id
     where m.member_number = ${number} order by mp.doi, p.program_code`;
   for (const account of accounts) {
     const listed = !account.status || account.status.trim().toLowerCase() === "active";
     console.log(`- ${account.program_code} (${account.program_name}; program ${account.program_status}) | branch ${account.branch || "blank"} | MAS ${account.mas || "blank"} (${account.mas_employee_id || "no employee link"}) | account ${account.status || "blank"} | DOI ${account.doi || "blank"} | ${account.collections} collections | ${listed ? `listed in a ${account.branch} batch of ${account.mas}` : "NOT listed: account status is not Active"}`);
+    if (process.argv.includes('--show-payments')) {
+      const payments = await sql`select collection_id, or_number, or_date::text as or_date, amount_collected::float8 as amount, nop_from, nop_to, month_from, month_to, status from collections where enrollment_id=${account.enrollment_id} order by or_date, collection_id`;
+      const sales = await sql`select sale_id, program_id, or_date::text as or_date, amount_paid::float8 as amount, linked_remittance_id from sales where member_number=${number} and program_id=${account.program_id}`;
+      console.log(JSON.stringify({ account: account.enrollment_id, programId: account.program_id, rate: account.rate, flexible: account.flexible, totalPayable: account.total, payments, sales }));
+    }
+  }
+  if (process.argv.includes('--backup') && members.length === 1) {
+    const memberId = members[0].member_id;
+    const snapshot = {
+      accounts: await sql`select * from member_programs where member_id=${memberId}`,
+      collections: await sql`select * from collections where member_id=${memberId}`,
+      sales: await sql`select * from sales where member_number=${number}`,
+      beneficiaries: await sql`select * from beneficiaries where member_id=${memberId}`,
+      transfers: await sql`select * from member_transfers where member_id=${memberId}`,
+    };
+    mkdirSync('backups', { recursive: true });
+    writeFileSync(`backups/member-accounts-${number}-${Date.now()}.json`, JSON.stringify(snapshot, null, 2));
+    console.log('Saved account and financial-history backup.');
   }
   const places = new Set(accounts.map((account) => `${(account.branch ?? "").trim().toLowerCase()}|${(account.mas ?? "").trim().toLowerCase()}`));
   if (places.size > 1) console.log(`\nThe accounts are under ${places.size} different branch / MAS pairs, so one Collections batch shows only the accounts of its own pair.`);

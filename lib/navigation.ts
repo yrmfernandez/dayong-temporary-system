@@ -49,8 +49,9 @@ const page = {
   userAccounts: { name: "User Accounts", href: "/user-accounts", icon: UserCog },
   roles: { name: "Roles", href: "/roles", icon: ShieldCheck },
   auditLog: { name: "Audit Log", href: "/history", icon: History },
-  // IT and Administrators search New Sales and Collections and fix typed numbers, remitted ones too (lib/entry-search.ts).
-  entryCorrections: { name: "Entry Corrections", href: "/entry-corrections", icon: FilePen },
+  // Edit / Corrections: IT and Administrators edit New Sales and Collections (remitted too) and move members between
+  // MAS and programs (app/entry-corrections/page.tsx).
+  entryCorrections: { name: "Edit / Corrections", href: "/entry-corrections", icon: FilePen },
   todaysEntries: { name: "Today's Entries", href: "/todays-entries", icon: ReceiptText },
   exceptions: { name: "Exceptions", href: "/exceptions", icon: TriangleAlert },
   myEntries: { name: "My Entries", href: "/my-entries", icon: Camera },

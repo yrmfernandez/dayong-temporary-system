@@ -1,0 +1,12 @@
+{
+  "note": "Owner corrected covered months and NOPs for six D-210 HG receipts, October 15, 2026. January–February written 10,1 is interpreted as 10–11, consistent with March NOP 12 and the April 2025 DOI.",
+  "cases": [
+    {
+      "member": "PH-96935082",
+      "program": "DP-0005",
+      "receipts": ["12168 N", "15392N", "17951N", "02683T", "05451 T", "07610 T"],
+      "startNop": 6,
+      "note": "Owner-confirmed coverage in receipt order: September–October 2025 NOP 6–7; November–December 2025 NOP 8–9; January–February 2026 NOP 10–11 (10,1 interpreted as 10,11); March 2026 NOP 12; April–May 2026 NOP 13–14; June–July 2026 NOP 15–16. Program, ownership, receipt dates and amounts stay unchanged."
+    }
+  ]
+}

@@ -44,7 +44,7 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
   { group: "Administration", pages: [
     { href: "/user-accounts", label: "User Accounts" },
     { href: "/roles", label: "Roles" },
-    { href: "/entry-corrections", label: "Entry Corrections (fix New Sales and Collections, remitted too)" },
+    { href: "/entry-corrections", label: "Edit / Corrections (edit entries, move members between MAS and programs)" },
   ] },
 ];
 

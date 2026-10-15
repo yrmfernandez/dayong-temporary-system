@@ -24,13 +24,14 @@
  *   - the member has no account in the "to" program yet (one account per program), and
  *   - its payments fit the "to" program's monthly rate (lib/account-rules.ts); its payment status is recalculated.
  * Accounts that do not are left where they are and counted (listed by enrollment ID in legacy-data/program-moves-left.txt).
- * Amounts already paid, incentives and remittances keep what applied at the time. One transaction per move; every
+ * Incentives and expected remittances follow the corrected program/NOPs; actual cash stays recorded. One transaction per move; every
  * change is in the Audit Log and a summary in Record Corrections. Prints program names and counts only.
  */
 import fs from "node:fs";
 import nextEnv from "@next/env";
 import postgres from "postgres";
 import { accountState, todayInManila } from "../lib/account-rules.ts";
+import { repriceEntries } from "../lib/entry-finance.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
 const apply = process.argv.includes("--apply");
@@ -170,6 +171,14 @@ try {
           reason: move.note ?? `${from.program_name} is ${to.program_name} (owner, October 8, 2026)`, before_json: { program: from.program_id, enrollments: ids },
           after_json: { program: to.program_id, moved: ids.length, alreadyInTarget: counts.alreadyInTarget, paymentsDoNotFit: counts.paymentsDoNotFit }, corrected_at: new Date().toISOString(),
           encoded_by_name: "Program move", encoded_at: new Date().toISOString() })}`;
+      }
+      if (apply && (merges.length || movable.length)) {
+        const touched = [...new Set([...merges.map(m => m.targetId), ...movable.map(m => m.enrollment_id)])];
+        const memberNumbers = [...new Set([...merges, ...movable].map(m => m.member_number))];
+        const entries = await tx`select collection_id from collections where enrollment_id in ${tx(touched)} and status='Posted'`;
+        const sales = await tx`select sale_id from sales where program_id=${to.program_id} and member_number in ${tx(memberNumbers)}`;
+        const finance = await repriceEntries((query, params) => tx.unsafe(query, params), { collectionIds: entries.map(c => c.collection_id), saleIds: sales.map(s => s.sale_id) });
+        console.log(`   Recalculated ${finance.changes.length} financial entries; incentive change ${finance.incentiveChange}; ${finance.slips.length} slip expectations updated.`);
       }
       // "remove": an emptied program is deleted with its incentive tiers; one still in use is set inactive.
       let removal = "";

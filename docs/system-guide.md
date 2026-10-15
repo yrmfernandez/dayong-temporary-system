@@ -95,7 +95,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/admin-reports` | Report Review: the same tabs, read-only, for a chosen Entry Clerk, with the entry checklist and reviewer remarks. |
 | `/audit` | Daily, weekly, monthly, yearly Entry Clerk report audits and audit summaries. |
 | `/history` | Creation history, logged edits/deletions, and authorized transaction corrections. |
-| `/entry-corrections` | **Entry Corrections** (October 15, 2026), IT and Administrators: search New Sales and Collections, remitted ones too, and fix a number the Entry Clerk typed wrong; see section 12. |
+| `/entry-corrections` | **Edit / Corrections** (October 15, 2026), IT and Administrators: edit everything about a New Sale or Collection (remitted ones too, including the program), delete an entry, move members between MAS and accounts between programs; see section 12. |
 | `/exceptions` | Administrator review of dates, amounts, duplicate entries, missing member details, overdue cash, backdating, OR numbers without a branch letter, application numbers to complete, and **imported receipts sharing a number** (October 9, 2026). |
 | `/expenses` | Company expense forms and posted outflows; authorized voiding with a reason. |
 | `/cash-transactions` | Consolidated cash ledger plus other manual inflows/outflows. |
@@ -710,9 +710,21 @@ Sources: [access rules](../lib/access-control.ts), [member scope](../lib/member-
 
 ## 12. Corrections, history, audits, and exceptions
 
-### Entry Corrections (October 15, 2026)
+### Edit / Corrections (October 15, 2026)
 
-For IT Clerks and Administrators (and `manage_users`): Administration → **Entry Corrections** (IT: Monitoring → Entry Corrections, also a System Health quick action). Search New Sales and Collections by OR number, application number, member number or name, or record ID; numbers also match without spaces or punctuation (12345S finds 12345 S). Choose New Sales, Collections or both; the newest 100 of each kind by OR date are listed with member, program and branch, MAS or Collector, OR number and date, application number, amount, remittance status and slip, and who encoded it. **Correct** opens the correction form on any entry, **remitted ones included**: OR number, OR date, application number (New Sales) and notes, with a required reason. The same checks as other corrections apply: a changed collection OR number needs its branch letter and must not be on another collection; an application number must not be on another sale; the OR date cannot be in the future. The amount of an entry on a remittance slip stays as remitted (the slip counted that cash); correct it through reconciliation. Each correction is saved in Record Corrections (before and after) and the Audit Log. Files: [entry-search.ts](../lib/entry-search.ts), `GET/PATCH /api/entry-corrections`, [page.tsx](../app/entry-corrections/page.tsx); saving uses `correctSaleOrCollection` in [entry-corrections.ts](../lib/entry-corrections.ts). A role whose page access is configured in Roles needs Entry Corrections ticked there.
+One place for IT Clerks and Administrators (and `manage_users`) to change data entered wrong: Administration → **Edit / Corrections** (IT: Monitoring, also a System Health quick action). Every change needs a reason and is kept in Record Corrections (before and after) and the Audit Log. A role whose page access is configured in Roles needs it ticked there. Four tabs:
+
+- **Entries.** Search New Sales and Collections, remitted ones included, by OR number, application number, member number or name, or record ID (numbers also match without spaces or punctuation: 12345S finds 12345 S); the newest 100 of each kind by OR date. **Edit** changes everything about one entry ([entry-edit.ts](../lib/entry-edit.ts), `GET ?kind=&id=` / `PUT /api/entry-corrections`):
+  - Collection: the **account it pays** (another program of the same member, for a clerk who chose the wrong one), OR number, OR date, amount, months paid, Date Remitted. When the account, OR date or months change, the payments of the account (both accounts, when it moves) are numbered again in OR-date order from their first NOP, months following the DOI; both must still pass the account rules or nothing is saved.
+  - New Sale: the **program** (the member's account and its collections move with it; refused when the member already has an account in that program: move the payments with Edit on each collection), application number, OR number, application date (the DOI follows while the account has no collections), amount (the program's fixed amount applies), remittance method, Date Remitted, notes.
+  - **Incentives follow** (owner, October 15, 2026, so reports are accurate): when the amount, months, NOPs or program change, the incentive and company share are worked out again from the program's tiers, for the edited entry and for every other payment whose program or NOPs changed with it. Fixing only a number or date keeps the figures the entry was remitted with. A forfeited incentive stays forfeited. An entry whose program has no incentive tiers for its NOPs keeps its figures and is reported (set the tiers in Programs, then edit it).
+  - On a **remittance slip**, the slip's line and expected amount follow a changed company share, and its difference (cash received less expected) shows the shortage or excess.
+  - **Delete** (Administrators): the usual permanent delete with what belongs to the entry ([admin-delete.ts](../lib/admin-delete.ts)).
+- **Move between MAS.** Choose the MAS the members are under, tick members (or all) and the MAS they go to: the Employees → Transfer members panel ([member-transfer.ts](../lib/member-transfer.ts)); past collections stay with the MAS who handled them.
+- **Move between programs.** Choose the program, tick accounts (or all) and a program with the same monthly pay: the Programs → Transfer members panel ([program-transfer.ts](../lib/program-transfer.ts)). The moved New Sales and collections now take the target program's incentives too.
+- **Other corrections.** Links to Members (member details, delete a member), Employees (Employee ID), Exceptions, Remittances and the Audit Log.
+
+The quick number correction (`PATCH`, `correctSaleOrCollection` in [entry-corrections.ts](../lib/entry-corrections.ts)) stays for Today's Entries, Exceptions and the Audit Log. IT may now also use the MAS and program transfers (`canTransferMembers`, `/api/programs/transfer`) through this page.
 
 ### Member transfers and master data
 

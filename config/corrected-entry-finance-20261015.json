@@ -1,0 +1,5 @@
+{
+  "enrollmentIds": ["ENR-LEG-492B031C0F", "ENR-LEG-6072D271E5", "ENR-LEG-6FE523A298", "ENR-LEG-EBDFB6E244", "ENR-LEG-74925547D2", "ENR-LEG-C18A6D3A68", "ENR-LEG-5B80B27906"],
+  "expectedCollections": 50,
+  "reason": "Owner: incentives and reports must follow corrected programs and NOPs, including PH-24556150 DFPP-650 merge (October 15, 2026)."
+}

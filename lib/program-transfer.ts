@@ -3,6 +3,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { accountState, todayInManila, type AccountPayment } from "@/lib/account-rules";
 import { currentDb, inTransaction } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
+import { repriceCollections, repriceSales } from "@/lib/entry-edit";
 import { getEncoder } from "@/lib/encoder-context";
 
 /**
@@ -13,6 +14,8 @@ import { getEncoder } from "@/lib/encoder-context";
  *   - a member who already has an account in the target program is merged into it (their payments join that account,
  *     renumbered in month order from the lowest NOP either had, the earlier DOI kept) unless both accounts paid the same month, which
  *     means two real accounts: those are left and reported;
+ *   - the moved New Sales and collections get the target program's incentives and company share (owner, October 15,
+ *     2026: reports follow the program; lib/entry-edit.ts repriceCollections / repriceSales; slips follow);
  *   - optionally the emptied program is deleted (with its incentive tiers), or set inactive if anything still uses it.
  * One transaction; the Audit Log keeps every change and Record Corrections a summary.
  */
@@ -119,6 +122,11 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
       joined.set(account.member_id, account.enrollment_id);
       moved++;
     }
+    // Incentives and company shares follow the new program (merged accounts were renumbered too).
+    const touched = [...new Set(chosen.map((account) => account.target ?? joined.get(account.member_id) ?? account.enrollment_id))];
+    const movedCollections = touched.length ? await query<{ id: string }>(sql`select collection_id as id from collections where enrollment_id in (${sql.join(touched.map((id) => sql`${id}`), sql`, `)})`) : [];
+    const movedSales = chosen.length ? await query<{ id: string }>(sql`select sale_id as id from sales where program_id = ${to.program_id} and member_number in (${sql.join(chosen.map((account) => sql`${account.member_number}`), sql`, `)})`) : [];
+    const repriced = { collections: await repriceCollections(currentDb(), movedCollections.map((row) => row.id)), sales: await repriceSales(currentDb(), movedSales.map((row) => row.id)) };
     let removal: "" | "deleted" | "inactive" = "";
     if (input.removeWhenEmpty) {
       const [{ other }] = await query<{ other: number }>(sql`select (select count(*)::int from member_programs where program_id = ${from.program_id}) + (select count(*)::int from sales where program_id = ${from.program_id})
@@ -130,7 +138,7 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
     await currentDb().execute(sql`insert into record_corrections (correction_id, module, record_id, reason, before_json, after_json, corrected_at, encoded_by_user_id, encoded_by_employee_id, encoded_by_name, encoded_at)
       values (${createReadableId("COR")}, 'Program transfer', ${from.program_id}, ${`${from.program_name} → ${to.program_name}: ${reason}`},
         ${JSON.stringify({ program: from.program_id, accounts: chosen.map((account) => account.enrollment_id) })}::jsonb,
-        ${JSON.stringify({ program: to.program_id, moved, merged, left, removal })}::jsonb, ${actor.encodedAt}, ${actor.userId}, ${actor.employeeId}, ${actor.name}, ${actor.encodedAt})`);
-    return { from: from.program_name, to: to.program_name, moved, merged, left, removal };
+        ${JSON.stringify({ program: to.program_id, moved, merged, left, removal, repriced })}::jsonb, ${actor.encodedAt}, ${actor.userId}, ${actor.employeeId}, ${actor.name}, ${actor.encodedAt})`);
+    return { from: from.program_name, to: to.program_name, moved, merged, left, removal, repriced: repriced.collections.repriced + repriced.sales.repriced, unpriced: repriced.collections.unpriced.length + repriced.sales.unpriced.length };
   });
 }

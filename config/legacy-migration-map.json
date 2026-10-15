@@ -49,6 +49,16 @@
     }
   },
   "programs": {
+    "Data-Base-Old|M1-COLL|6051": { "program": "DP-0027", "note": "Owner confirmed PH-24556150 has DFPP-650 only; OR 6425 B moved from DFP-650 (October 15, 2026)." },
+    "Data-Base-Old|M1-COLL|6483": { "program": "DP-0027", "note": "Owner confirmed PH-24556150 has DFPP-650 only; OR 9652 B moved from DFP-650 (October 15, 2026)." },
+    "Data-Base-Old|M1-COLL|8325": { "program": "DP-0027", "note": "Owner confirmed PH-24556150 has DFPP-650 only; OR 11632 B moved from DFP-650 (October 15, 2026)." },
+    "Data-Base-Old|M1-COLL|9556": { "program": "DP-0027", "note": "Owner confirmed PH-24556150 has DFPP-650 only; OR 13395 B moved from DFP-650 (October 15, 2026)." },
+    "Data-Base-Old|DDO 1-COLL|76": { "program": "DP-0005", "note": "Owner confirmed OR 12168 N belongs to D-210 HG (October 15, 2026)." },
+    "Data-Base-Old|DDO 1-COLL|1326": { "program": "DP-0005", "note": "Owner confirmed OR 15392N belongs to D-210 HG (October 15, 2026)." },
+    "Data-Base-Old|DDO 1-COLL|2545": { "program": "DP-0005", "note": "Owner confirmed OR 17951N belongs to D-210 HG (October 15, 2026)." },
+    "Data-Base-Old|DDO 1-COLL|3637": { "program": "DP-0005", "note": "Owner confirmed OR 02683T belongs to D-210 HG (October 15, 2026)." },
+    "Data-Base-Old|DDO 1-COLL|5609": { "program": "DP-0005", "note": "Owner confirmed OR 05451 T belongs to D-210 HG (October 15, 2026)." },
+    "Data-Base-Old|DDO 1-COLL|7753": { "program": "DP-0005", "note": "Owner confirmed OR 07610 T belongs to D-210 HG (October 15, 2026)." },
     "Data-Base-Old|M3-COLL|4471": { "program": "DP-0013", "note": "Owner confirmed OR 13646 C belongs to D-350 (October 15, 2026)." },
     "Data-Base-Old|M3-COLL|6339": { "program": "DP-0013", "note": "Owner confirmed OR 14797 C belongs to D-350, not DPB-350 (October 15, 2026)." },
     "Data-Base-Old|M3-COLL|7633": { "program": "DP-0013", "note": "Owner confirmed OR 9813 M belongs to D-350, not DPB-350 (October 15, 2026)." },

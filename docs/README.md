@@ -1,5 +1,11 @@
 # Dayong System documentation
 
+The [October 15 PH-24556150 program merge](ph24556150-dfpp650-merge-20261015.md) consolidates nine payments onto the member's correct DFPP-650 account.
+
+The [October 15 six-receipt D-210 HG verification and coverage correction](d210hg-six-receipts-20261015.md) confirms the program and applies the owner's September 2025–July 2026 coverage, NOP 6–16.
+
+The [October 15 DAVNOR-NS timestamp verification](davnor-ns-row150-verification-20261015.md) confirms the requested October 10 enrollment is already in production.
+
 Reviewed against repository code on **October 4, 2026**. Start with the [system guide](system-guide.md): it explains daily operations, calculations with examples, how records connect, staff permissions, setup, and current limitations.
 
 October 9 updates (no migration needed):

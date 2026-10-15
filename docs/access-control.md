@@ -29,7 +29,7 @@ Administrators choose which pages each role can open in **Roles → Page access*
 | Manage accounts | `manage_users`, Administrator, IT Clerk | User Accounts, Roles, Audit Log (read), Sheets connection test |
 | Manage employees | `manage_users`, Administrator, IT Clerk, HR Officer | Registering, editing and removing employees |
 | Manage configuration | `manage_users`, Administrator, IT Clerk | Branches, Programs, Program Incentives |
-| Correct entries (October 15, 2026) | `manage_users`, Administrator, IT Clerk | Entry Corrections: search New Sales and Collections and fix OR number, OR date, application number and notes, remitted ones too (`canCorrectEntriesFor`) |
+| Correct entries (October 15, 2026) | `manage_users`, Administrator, IT Clerk | Edit / Corrections: edit everything about a New Sale or Collection, remitted ones too; move members between MAS and accounts between programs (`canCorrectEntriesFor`; delete stays with Administrators) |
 
 Only an administrator (or a `manage_users` holder) may assign the Administrator role or any role with `manage_users`, turn that flag on, or change, reset or delete an administrator's account (`lib/privilege-guard.ts`). An employee registered by HR or IT with an administrator-level role is saved without an automatic account.
 
@@ -56,7 +56,7 @@ Workspaces are defined once in `lib/navigation.ts`. Each role's sidebar lists th
 | Finance | Overview · Cash (Remittances, Cash Transactions) · Payables (Payroll, Commissions, Expenses, Vendor Payables) · Monitoring (MAM, Fidelity, Audits, Attendance Tracking, Audit Log) · Directory (Members, Programs) · My HR |
 | Entry Clerk | Overview (Dashboard, Today's Entries) · Encoding (New Sales, Collections, My Entries, Remittances) · Reports · Lookup (Members, Programs, Branches) · My HR |
 | HR Officer | Overview (Dashboard, Today's Entries) · People (Employees, Attendance Review, Attendance Tracking, Leave Approvals) · Audit (Audits) · Directory (Branches) · My HR |
-| IT Clerk | System (System Health dashboard) · Access Control (User Accounts, Roles, Employees) · Configuration (Branches, Programs, Master Data) · Monitoring (Audit Log, Entry Corrections) · My HR. IT does not need the `manage_users` flag; see Job permissions. |
+| IT Clerk | System (System Health dashboard) · Access Control (User Accounts, Roles, Employees) · Configuration (Branches, Programs, Master Data) · Monitoring (Audit Log, Edit / Corrections) · My HR. IT does not need the `manage_users` flag; see Job permissions. |
 | MAS | Overview · My Portfolio (My Members, MAM, My Fidelity) · Reference (Programs, Branches, Master Data) · My HR |
 
 Reports is one sidebar link; Daily, Weekly, Monthly, and Yearly are tabs on that page (`/reports?tab=…`). The old `/reports/daily`…`/reports/yearly` addresses redirect to their tab.
