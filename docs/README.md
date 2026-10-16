@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+The [October 16 PH-99032555 correction](ph99032555-january-nop27-20261016.md) sets January–September 2026 coverage at NOP 27–35.
+
 The [October 16 OR 11420 B correction](or11420b-july-august-20261016.md) extends its PHP 840 payment to July–August 2026, NOP 50–51.
 
 The [October 16 PH-72833261 correction](ph72833261-january-nop21-20261016.md) sets January–September 2026 coverage at NOP 21–29 for nine D-210 HG receipts.

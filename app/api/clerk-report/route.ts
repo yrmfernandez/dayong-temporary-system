@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { canAccessPath } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { buildClerkReport } from "@/lib/clerk-report";
@@ -72,6 +73,9 @@ export async function GET(request: Request) {
  * cash deposit to the bank, voiding a mistaken deposit, and the report's notes. Always for the signed-in clerk.
  */
 export const POST = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   const user = await getSessionUser();
   if (!user || !canAccessPath(user, "/reports")) return Response.json({ success: false, message: "You do not have access to reports." }, { status: 403 });
   try {

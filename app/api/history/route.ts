@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { sql } from "drizzle-orm";
 
 import { readSheetRows } from "@/lib/sheets-on-db";
@@ -114,6 +115,9 @@ export async function GET() {
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load history." }, { status: 500 }); }
 }
 export const PATCH = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   if (!(await canManageUsers())) return Response.json({ success: false, message: "Administrator access is required." }, { status: 403 });
   try {
     return Response.json({ success: true, ...(await correctSaleOrCollection(await request.json())) });

@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { getSessionUser } from "@/lib/auth-server";
 import { canDeleteRecords, deleteRecord, isDeleteKind, planDeletion } from "@/lib/admin-delete";
 import { withEncoder } from "@/lib/encoder-context";
@@ -24,6 +25,9 @@ export async function GET(request: Request) {
 }
 
 export const POST = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   const { error } = await administrator();
   if (error) return error;
   try {

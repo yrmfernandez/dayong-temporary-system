@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { inArray } from "drizzle-orm";
 
 import { canAccessPath } from "@/lib/access-control";
@@ -28,6 +29,9 @@ export async function GET(request: Request) {
  * of the entries may attach it; administrators may attach to any entry.
  */
 export const POST = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   const user = await getSessionUser();
   if (!user || !["/my-entries", "/todays-entries"].some((path) => canAccessPath(user, path))) return Response.json({ success: false, message: "You do not have access to add receipt photos." }, { status: 403 });
   try {

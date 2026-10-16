@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { canDeleteRecords } from "@/lib/admin-delete";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
@@ -22,6 +23,9 @@ export async function GET(request?: Request) {
 }
 
 export const POST = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   try {
     const user=await getSessionUser();
     if(!user||!canAccessPath(user,"/remittances"))return Response.json({error:"You do not have access to Remittances."},{status:403});
@@ -41,6 +45,9 @@ export const POST = withEncoder(async (request: Request) => {
 
 /** Approve or reject one or several slips (remittanceIds), with one reason for all where a reason is needed. */
 export const PATCH = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   const user = await getSessionUser();
   if (!user || !(await canManageUsers())) return Response.json({ error: "You are not allowed to approve Remittances." }, { status: 403 });
   try {

@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { clearingProblem, dateRemittedReasonProblem } from "@/lib/clearing";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
@@ -39,6 +40,9 @@ export async function GET(request: Request) {
 }
 
 export const POST = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
   // Nobody encodes from the 3:00 PM cutoff until midnight.
   return saveCollections(request);

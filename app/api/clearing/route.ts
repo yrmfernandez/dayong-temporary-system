@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { canAccessPath } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { addClearing, editClearing, getClearingPage, removeClearing } from "@/lib/clearing";
@@ -20,6 +21,9 @@ export async function GET() {
 }
 
 export const POST = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   const { error } = await allowed();
   if (error) return error;
   try {
@@ -30,6 +34,9 @@ export const POST = withEncoder(async (request: Request) => {
 });
 
 export const PATCH = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   const { error, clearedBy } = await allowed();
   if (error) return error;
   try {

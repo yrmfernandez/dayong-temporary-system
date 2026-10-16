@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { listForReview, listMySubmissions, masProfile, returnSubmission, submitSales } from "@/lib/sale-submissions";
@@ -28,6 +29,9 @@ export async function GET(request: Request) {
 
 /** The MAS submits sale cards (new, or an edit of one still waiting or returned). */
 export const POST = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   const user = await userWithPageAccess("/mas-sales");
   if (!user) return Response.json({ success: false, message: "You do not have access to Submit New Sales." }, { status: 403 });
   try {
@@ -38,6 +42,9 @@ export const POST = withEncoder(async (request: Request) => {
 
 /** The clerk returns a submission to the MAS with what to fix. */
 export const PATCH = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   const user = await userWithPageAccess("/new-sales");
   if (!user) return Response.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
   try {

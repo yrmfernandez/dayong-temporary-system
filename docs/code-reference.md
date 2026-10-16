@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 122 library files, 52 component files; 464 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 123 library files, 52 component files; 466 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -158,6 +158,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/daily-audit.ts](../lib/daily-audit.ts) | `AUDIT_PERIODS`, `AuditPeriod`, `asAuditPeriod`, `AUDIT_RESULTS`, `AuditStatus`, `periodSpan`, `AuditFigures`, `DailyAudit`, `auditedEmployees`, `getDailyAudits`, `saveDailyAudit`, `decideDailyAudit`, `AuditSummaryFilters`, `getAuditSummary` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/encoder-sheets`, `@/lib/employees`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/clerk-report` |
 | [lib/dashboard-data.ts](../lib/dashboard-data.ts) | `dashboardKind`, `DashboardKind`, `getDashboardData`, `DashboardData` | `@/lib/auth`, `@/lib/account-rules`, `@/lib/access-control`, `@/lib/attendance-data`, `@/lib/google-sheets`, `@/lib/leave-data`, `@/lib/users-sheet`, `@/lib/reports`, `@/lib/remittance-workflow`, `@/lib/system-settings`, `@/lib/todays-entries`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db` |
 | [lib/date-checks.ts](../lib/date-checks.ts) | `REMIT_LATE_DAYS`, `ENCODE_LATE_DAYS`, `DateFacts`, `dateWarnings`, `blockingDateProblem` | — |
+| [lib/day-off.ts](../lib/day-off.ts) | `DAY_OFF_MESSAGE`, `isOnDayOff`, `refuseOnDayOff`, `entriesEncodedOn`, `dayOffEntriesNote` | `@/lib/attendance`, `@/lib/auth-server`, `@/lib/db` |
 | [lib/db.ts](../lib/db.ts) | `schema`, `Database`, `Transaction`, `Queryable`, `getDb`, `currentDb`, `inTransaction`, `UNIQUE_VIOLATION`, `isUniqueViolation`, `encodedBy` | `@/db/schema`, `@/lib/encoder-context`, `@/lib/server-environment` |
 | [lib/default-password.ts](../lib/default-password.ts) | `DEFAULT_PASSWORD`, `MIN_PASSWORD_LENGTH`, `isWeakPassword` | — |
 | [lib/defaults.ts](../lib/defaults.ts) | `emptyAddress`, `emptyPersonName`, `emptyClaimant`, `emptyMember`, `emptyProgram`, `emptyBeneficiary`, `emptyNewSale` | `./types` |
@@ -317,11 +318,11 @@ All routes pass through the authentication proxy except the three public auth en
 
 | File | Exported symbols | Local imports / re-exports |
 | --- | --- | --- |
-| [app/api/admin-delete/route.ts](../app/api/admin-delete/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/admin-delete`, `@/lib/encoder-context` |
+| [app/api/admin-delete/route.ts](../app/api/admin-delete/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/auth-server`, `@/lib/admin-delete`, `@/lib/encoder-context` |
 | [app/api/attendance-calendar/route.ts](../app/api/attendance-calendar/route.ts) | `GET`, `POST` | `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
-| [app/api/attendance-reviews/route.ts](../app/api/attendance-reviews/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auto-absence`, `@/lib/employees`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/attendance-board`, `@/lib/google-sheets-data` |
+| [app/api/attendance-reviews/route.ts](../app/api/attendance-reviews/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/encoder-context`, `@/lib/auto-absence`, `@/lib/employees`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-calendar`, `@/lib/auth-server`, `@/lib/attendance-board`, `@/lib/google-sheets-data` |
 | [app/api/attendance-sheet/route.ts](../app/api/attendance-sheet/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/attendance`, `@/lib/attendance-board`, `@/lib/attendance-data`, `@/lib/attendance-sheet`, `@/lib/auto-absence`, `@/lib/employees`, `@/lib/payroll`, `@/lib/work-calendar` |
-| [app/api/attendance-tracking/daily/route.ts](../app/api/attendance-tracking/daily/route.ts) | `GET`, `PATCH`, `POST` | `@/lib/auth-server`, `@/lib/auto-absence`, `@/lib/encoder-context`, `@/lib/attendance-calendar`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-board`, `@/lib/employees`, `@/lib/google-sheets-data` |
+| [app/api/attendance-tracking/daily/route.ts](../app/api/attendance-tracking/daily/route.ts) | `GET`, `PATCH`, `POST` | `@/lib/day-off`, `@/lib/auth-server`, `@/lib/auto-absence`, `@/lib/encoder-context`, `@/lib/attendance-calendar`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/attendance-board`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [app/api/attendance-tracking/route.ts](../app/api/attendance-tracking/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/attendance-board`, `@/lib/attendance-data`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [app/api/attendance/history/route.ts](../app/api/attendance/history/route.ts) | `GET` | `@/lib/attendance`, `@/lib/attendance-data`, `@/lib/attendance-board`, `@/lib/auth-server` |
 | [app/api/attendance/route.ts](../app/api/attendance/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auto-absence`, `@/lib/attendance-data`, `@/lib/attendance-calendar`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/attendance`, `@/lib/auth-server` |
@@ -333,19 +334,19 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/branches/route.ts](../app/api/branches/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/google-sheets-data` |
 | [app/api/cash-transactions/route.ts](../app/api/cash-transactions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data` |
 | [app/api/clearing/open/route.ts](../app/api/clearing/open/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing` |
-| [app/api/clearing/route.ts](../app/api/clearing/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing`, `@/lib/encoder-context` |
-| [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clerk-report`, `@/lib/daily-audit`, `@/lib/employees`, `@/lib/remittance-deadline`, `@/lib/report-remarks`, `@/lib/clerk-cash`, `@/lib/encoder-context`, `@/lib/finance-data`, `@/lib/google-sheets-data`, `@/lib/remittance-workflow` |
-| [app/api/collections/route.ts](../app/api/collections/route.ts) | `GET`, `POST` | `@/lib/clearing`, `@/lib/or-number`, `@/lib/remittance-workflow`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/db`, `@/lib/account-data`, `@/lib/account-rules`, `@/lib/remittance-methods`, `@/lib/remittance`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/duplicate-entries` |
+| [app/api/clearing/route.ts](../app/api/clearing/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing`, `@/lib/encoder-context` |
+| [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clerk-report`, `@/lib/daily-audit`, `@/lib/employees`, `@/lib/remittance-deadline`, `@/lib/report-remarks`, `@/lib/clerk-cash`, `@/lib/encoder-context`, `@/lib/finance-data`, `@/lib/google-sheets-data`, `@/lib/remittance-workflow` |
+| [app/api/collections/route.ts](../app/api/collections/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/clearing`, `@/lib/or-number`, `@/lib/remittance-workflow`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/db`, `@/lib/account-data`, `@/lib/account-rules`, `@/lib/remittance-methods`, `@/lib/remittance`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/duplicate-entries` |
 | [app/api/commissions/route.ts](../app/api/commissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/earned-commissions`, `@/lib/encoder-context`, `@/lib/finance-operations` |
 | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/company-targets`, `@/lib/encoder-context` |
 | [app/api/dashboard/gross-sales/route.ts](../app/api/dashboard/gross-sales/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/gross-sales` |
 | [app/api/employees/route.ts](../app/api/employees/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/auth-server`, `@/lib/member-transfer`, `@/lib/employee-id-change`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/master-data-crud`, `@/lib/employee-accounts`, `@/lib/privilege-guard` |
-| [app/api/entry-corrections/route.ts](../app/api/entry-corrections/route.ts) | `GET`, `PATCH`, `PUT` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/entry-edit`, `@/lib/entry-search`, `@/lib/admin-delete`, `@/lib/employees`, `@/lib/google-sheets-data` |
-| [app/api/exceptions/route.ts](../app/api/exceptions/route.ts) | `GET`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/exceptions` |
-| [app/api/expenses/route.ts](../app/api/expenses/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data` |
+| [app/api/entry-corrections/route.ts](../app/api/entry-corrections/route.ts) | `GET`, `PATCH`, `PUT` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/entry-edit`, `@/lib/entry-search`, `@/lib/admin-delete`, `@/lib/employees`, `@/lib/google-sheets-data` |
+| [app/api/exceptions/route.ts](../app/api/exceptions/route.ts) | `GET`, `PATCH` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/exceptions` |
+| [app/api/expenses/route.ts](../app/api/expenses/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data` |
 | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) | `GET`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/fidelity`, `@/lib/encoder-context` |
 | [app/api/finance-options/route.ts](../app/api/finance-options/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/finance-access`, `@/lib/finance-operations`, `@/lib/google-sheets-data` |
-| [app/api/history/route.ts](../app/api/history/route.ts) | `GET`, `PATCH` | `@/lib/sheets-on-db`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/entry-corrections`, `@/lib/encoder-schema`, `@/lib/audit-log` |
+| [app/api/history/route.ts](../app/api/history/route.ts) | `GET`, `PATCH` | `@/lib/day-off`, `@/lib/sheets-on-db`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/entry-corrections`, `@/lib/encoder-schema`, `@/lib/audit-log` |
 | [app/api/leave-approvals/route.ts](../app/api/leave-approvals/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data`, `@/lib/attendance-data`, `@/lib/employees` |
 | [app/api/leave-requests/route.ts](../app/api/leave-requests/route.ts) | `GET`, `POST` | `@/lib/readable-id`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data` |
 | [app/api/mam/member/route.ts](../app/api/mam/member/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/account-data` |
@@ -356,8 +357,8 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/members/route.ts](../app/api/members/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-records` |
 | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/account-data` |
 | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/member-transfer` |
-| [app/api/my-entries/batch/route.ts](../app/api/my-entries/batch/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/batch-edit`, `@/lib/db`, `@/lib/encoder-context` |
-| [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/db`, `@/lib/auth-server`, `@/lib/daily-audit`, `@/lib/remittance-deadline`, `@/lib/todays-entries`, `@/lib/encoder-context`, `@/lib/remittance-workflow` |
+| [app/api/my-entries/batch/route.ts](../app/api/my-entries/batch/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/batch-edit`, `@/lib/db`, `@/lib/encoder-context` |
+| [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/db`, `@/lib/auth-server`, `@/lib/daily-audit`, `@/lib/remittance-deadline`, `@/lib/todays-entries`, `@/lib/encoder-context`, `@/lib/remittance-workflow` |
 | [app/api/notifications/route.ts](../app/api/notifications/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/notifications` |
 | [app/api/nte/mine/route.ts](../app/api/nte/mine/route.ts) | `GET`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/nte` |
 | [app/api/nte/route.ts](../app/api/nte/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/nte` |
@@ -367,18 +368,18 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/program-incentives/route.ts](../app/api/program-incentives/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
 | [app/api/programs/route.ts](../app/api/programs/route.ts) | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/program-incentive-store`, `@/lib/program-snapshot`, `@/lib/program-payment-limit.mjs`, `@/lib/google-sheets-data` |
 | [app/api/programs/transfer/route.ts](../app/api/programs/transfer/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-transfer` |
-| [app/api/receipt-photos/route.ts](../app/api/receipt-photos/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/db`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/receipt-photos` |
+| [app/api/receipt-photos/route.ts](../app/api/receipt-photos/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/db`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/receipt-photos` |
 | [app/api/remittance-methods/route.ts](../app/api/remittance-methods/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-methods` |
 | [app/api/remittances/entries/route.ts](../app/api/remittances/entries/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/remittance-workflow` |
-| [app/api/remittances/route.ts](../app/api/remittances/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/admin-delete`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-workflow`, `@/lib/access-control` |
+| [app/api/remittances/route.ts](../app/api/remittances/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/admin-delete`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-workflow`, `@/lib/access-control` |
 | [app/api/reports/route.ts](../app/api/reports/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/employees`, `@/lib/access-control`, `@/lib/reports`, `@/lib/encoder-context`, `@/lib/report-remarks` |
 | [app/api/roles/route.ts](../app/api/roles/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/privilege-guard`, `@/lib/roles` |
-| [app/api/sale-submissions/route.ts](../app/api/sale-submissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/sale-submissions` |
-| [app/api/sales/route.ts](../app/api/sales/route.ts) | `POST` | `@/lib/clearing`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/work-calendar`, `@/lib/remittance-deadline`, `@/lib/encoder-context`, `@/lib/auth`, `@/lib/sale-submissions`, `@/lib/google-sheets-data`, `@/lib/member-records`, `@/lib/employees`, `@/lib/program-age`, `@/lib/account-rules`, `@/lib/db`, `@/lib/remittance`, `@/lib/duplicate-entries` |
+| [app/api/sale-submissions/route.ts](../app/api/sale-submissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/sale-submissions` |
+| [app/api/sales/route.ts](../app/api/sales/route.ts) | `POST` | `@/lib/day-off`, `@/lib/clearing`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/work-calendar`, `@/lib/remittance-deadline`, `@/lib/encoder-context`, `@/lib/auth`, `@/lib/sale-submissions`, `@/lib/google-sheets-data`, `@/lib/member-records`, `@/lib/employees`, `@/lib/program-age`, `@/lib/account-rules`, `@/lib/db`, `@/lib/remittance`, `@/lib/duplicate-entries` |
 | [app/api/sales/validate/route.ts](../app/api/sales/validate/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/member-records` |
 | [app/api/settings/route.ts](../app/api/settings/route.ts) | `PATCH` | `@/lib/auth-server`, `@/lib/google-sheets`, `@/lib/auth`, `@/lib/default-password`, `@/lib/passwords`, `@/lib/session-account`, `@/lib/users-sheet` |
 | [app/api/soa/route.ts](../app/api/soa/route.ts) | `GET`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/statement-of-account` |
-| [app/api/todays-entries/route.ts](../app/api/todays-entries/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/access-control`, `@/lib/admin-delete`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/remittance-deadline`, `@/lib/system-settings`, `@/lib/todays-entries` |
+| [app/api/todays-entries/route.ts](../app/api/todays-entries/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/admin-delete`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/remittance-deadline`, `@/lib/system-settings`, `@/lib/todays-entries` |
 | [app/api/user-accounts/password/route.ts](../app/api/user-accounts/password/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/master-data-crud`, `@/lib/privilege-guard` |
 | [app/api/user-accounts/route.ts](../app/api/user-accounts/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/encoder-context`, `@/lib/employees`, `@/lib/employee-accounts`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/google-sheets-data`, `@/lib/privilege-guard` |
 | [app/api/vendor-payables/route.ts](../app/api/vendor-payables/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-operations` |
@@ -573,6 +574,7 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/ph58645726-january-coverage-20261016.json](../config/ph58645726-january-coverage-20261016.json)
 - [config/ph61149554-d280-coverage-20261016.json](../config/ph61149554-d280-coverage-20261016.json)
 - [config/ph72833261-january-nop21-20261016.json](../config/ph72833261-january-nop21-20261016.json)
+- [config/ph99032555-january-nop27-20261016.json](../config/ph99032555-january-nop27-20261016.json)
 - [config/program-moves.json](../config/program-moves.json)
 - [config/receipt-consolidations.json](../config/receipt-consolidations.json)
 - [config/seven-same-pay-consolidations-20261016.json](../config/seven-same-pay-consolidations-20261016.json)

@@ -1,3 +1,4 @@
+import { dayOffEntriesNote } from "@/lib/day-off";
 import { getSessionUser } from "@/lib/auth-server";
 import { closeFinishedAttendanceDaysQuietly, isSystemAbsence } from "@/lib/auto-absence";
 import { withEncoder } from "@/lib/encoder-context";
@@ -128,7 +129,8 @@ export const POST = withEncoder(async (request: Request) => {
       const marked: AttendanceRecord = {
         id: record?.id || `ATT-${date.replaceAll("-", "")}-${employeeId}`, employeeId, attendanceDate: date, branch: "",
         scheduledTimeIn: SCHEDULED_TIME_IN, scheduledTimeOut: SCHEDULED_TIME_OUT, timeIn: "", timeOut: "", workedHours: 0, overtimeHours: 0,
-        status, lateMinutes: 0, undertimeMinutes: 0, leaveType: "", leaveApprovalStatus: "", notes,
+        // A Day Off mark says how many entries the employee had already encoded that day (they stay; lib/day-off.ts).
+        status, lateMinutes: 0, undertimeMinutes: 0, leaveType: "", leaveApprovalStatus: "", notes: status === "Day Off" ? `${notes}${await dayOffEntriesNote(employeeId, date)}` : notes,
         createdAt: record?.createdAt || timestamp, updatedAt: timestamp,
       };
       if (found) { await updateAttendanceRecord(found.rowNumber, marked); changed++; }

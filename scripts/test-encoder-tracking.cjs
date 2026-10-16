@@ -3221,3 +3221,23 @@ test('Edit / Corrections: a New Sale changes program with its account, merged wh
   ], 'numbered in OR-date order');
   assert.equal((await query('select program_id from sales'))[0].program_id, 'DP-A');
 });
+
+test('an employee marked Day Off cannot encode, change or delete entries that day; earlier entries stay and are noted', async () => {
+  const h = harness();
+  const { getPhilippineDate } = h.load('lib/attendance.ts');
+  const today = getPhilippineDate();
+  await seed('employees', [{ employee_id: 'DPE-0001', full_name: 'Clerk' }]);
+  await seed('programs', [{ program_id: 'DP-1', program_name: 'P', base_pay: 350 }]);
+  await seed('sales', [{ sale_id: 'S-EARLY', member_number: 'PH-1', program_id: 'DP-1', amount_paid: 350, application_no: 'A-1', encoded_by_employee_id: 'DPE-0001', encoded_at: new Date().toISOString() }]);
+  const { dayOffEntriesNote, isOnDayOff } = h.load('lib/day-off.ts');
+  assert.equal(await isOnDayOff('DPE-0001'), false);
+  assert.match(await dayOffEntriesNote('DPE-0001', today), /1 New Sale encoded that day before this mark; kept for review/);
+  await seed('attendance', [{ attendance_id: 'ATT-1', employee_id: 'DPE-0001', attendance_date: today, attendance_status: 'Day Off', notes: 'Day Off marked by HR' }]);
+  assert.equal(await isOnDayOff('DPE-0001'), true);
+  for (const [route, method] of [['app/api/collections/route.ts', 'POST'], ['app/api/sales/route.ts', 'POST'], ['app/api/admin-delete/route.ts', 'POST'], ['app/api/clerk-report/route.ts', 'POST'], ['app/api/my-entries/batch/route.ts', 'POST']]) {
+    const response = await h.load(route)[method](request({}));
+    assert.equal(response.status, 403, route);
+    assert.match((await response.json()).message, /marked Day Off today/, route);
+  }
+  assert.equal(await count('sales'), 1, 'the entry encoded before the mark stays');
+});

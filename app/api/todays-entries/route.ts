@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { canAccessPath } from "@/lib/access-control";
 import { canDeleteRecords } from "@/lib/admin-delete";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
@@ -48,6 +49,9 @@ export const POST = withEncoder(async (request: Request) => {
 
 /** Administrator correction of a New Sale or Collection; the reason is kept in Record Corrections. */
 export const PATCH = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   if (!(await allowedUser()) || !(await canManageUsers())) return Response.json({ success: false, message: "Administrator access is required." }, { status: 403 });
   try {
     return Response.json({ success: true, ...(await correctSaleOrCollection(await request.json())) });

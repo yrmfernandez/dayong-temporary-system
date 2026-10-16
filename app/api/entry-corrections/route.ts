@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
@@ -42,6 +43,9 @@ export async function GET(request: Request) {
 }
 
 export const PATCH = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   if (!(await allowedUser())) return Response.json({ success: false, message: "IT or Administrator access is required." }, { status: 403 });
   try {
     return Response.json({ success: true, ...(await correctSaleOrCollection(await request.json())) });
@@ -51,6 +55,9 @@ export const PATCH = withEncoder(async (request: Request) => {
 });
 
 export const PUT = withEncoder(async (request: Request) => {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   if (!(await allowedUser())) return Response.json({ success: false, message: "IT or Administrator access is required." }, { status: 403 });
   try {
     const body = await request.json() as Record<string, unknown>;

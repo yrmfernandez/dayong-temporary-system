@@ -1,3 +1,4 @@
+import { refuseOnDayOff } from "@/lib/day-off";
 import { clearedEmployee, clearingProblem, dateRemittedReasonProblem } from "@/lib/clearing";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
@@ -110,6 +111,9 @@ function phoneKey(value: unknown) {
 }
 
 export const POST = withEncoder(async function POST(request: Request) {
+  // Day Off locks the day's entries (lib/day-off.ts).
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
   const user = await userWithPageAccess("/new-sales");
   if (!user) return NextResponse.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
   // Nobody encodes from the 3:00 PM cutoff until midnight.

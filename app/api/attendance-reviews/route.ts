@@ -1,3 +1,4 @@
+import { dayOffEntriesNote } from "@/lib/day-off";
 import { withEncoder } from "@/lib/encoder-context";
 import { closeFinishedAttendanceDaysQuietly, isSystemAbsence, systemAbsencesWaiting } from "@/lib/auto-absence";
 import { NextResponse } from "next/server";
@@ -202,7 +203,8 @@ export const POST = withEncoder(async function POST(request: Request) {
       undertimeMinutes: 0,
       leaveType: "",
       leaveApprovalStatus: "",
-      notes,
+      // A Day Off mark says how many entries the employee had already encoded that day (they stay; lib/day-off.ts).
+      notes: status === "Day Off" ? `${notes}${await dayOffEntriesNote(employeeId, attendanceDate)}`.trim() : notes,
       createdAt: record?.createdAt || timestamp,
       updatedAt: timestamp,
     };

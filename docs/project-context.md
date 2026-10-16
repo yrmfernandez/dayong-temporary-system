@@ -369,6 +369,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Cause (found from the screenshot):** the photo picker's file input was visually hidden (`sr-only`) but still focusable. When the file picker closed, the browser focused it and scrolled the form card (`overflow-hidden`, which can still be scrolled by the browser) to show it, so the card's content slid up and left white space below. Two earlier guesses (solid entry cards; removing the masked light-edge overlay from every card) did not fix it; they are kept, as they do no harm.
 - **Done:** the input is `display: none` and a button opens it (`components/receipt-photos-picker.tsx`), as the My Entries photo button already did; the two Collections panels use `overflow-clip`, which cannot be scrolled at all. Build and tests checked; to confirm on a clerk's computer.
 
+### Day Off locks the day's entries (2026-10-16)
+
+- **Owner:** an employee marked Day Off must not encode, void or delete entries that day; entries encoded before the mark: keep them and block changes (owner's choice).
+- **Done:** `refuseOnDayOff` (`lib/day-off.ts`) at the start of every entry-changing route (collections, sales, sale submissions, My Entries and batch edit, receipt photos, admin delete, report actions, Today's Entries corrections, expenses, remittances, clearing, Edit / Corrections, Exceptions, Audit Log corrections); the Day Off mark (Attendance Review and the daily board) notes how many New Sales and Collections were encoded that day before it. Tested; build and all tests pass.
+
 ### Edit and delete expenses on the report (2026-10-16)
 
 - **Owner:** allow edit and delete of expenses in the report.
