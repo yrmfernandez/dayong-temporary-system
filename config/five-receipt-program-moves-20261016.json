@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {"member":"PH-13660905","program":"DP-0063","fromAccounts":["ENR-LEG-A2A71EADB8"],"startNop":52,"note":"Owner confirmed OR 4382 S (PHP 920) belongs to D-230, October 16, 2026. Source account contains only this receipt. Retain target DOI and renumber from NOP 52; recalculate incentives and company shares, preserving amounts, receipt dates and actual cash."},
+    {"member":"PH-38098964","program":"DP-0011","fromAccounts":["ENR-LEG-33C3267BE4"],"startNop":15,"note":"Owner confirmed OR 12008 B (PHP 320) belongs to D-320, October 16, 2026. Source account contains only this receipt. Retain target DOI and renumber from NOP 15; recalculate incentives and company shares, preserving amounts, receipt dates and actual cash."},
+    {"member":"PH-57731835","program":"DP-0066","fromAccounts":["ENR-LEG-2F5CAE639B"],"startNop":29,"note":"Owner confirmed OR 15945 B (PHP 280) belongs to D-280, October 16, 2026. Source account contains only this receipt. Retain target DOI and renumber from NOP 29; recalculate incentives and company shares, preserving amounts, receipt dates and actual cash. The separate DPB-420 account stays."},
+    {"member":"PH-71477809","program":"DP-0020","fromAccounts":["ENR-LEG-84597DB498"],"startNop":41,"note":"Owner confirmed OR 10926B (PHP 550) belongs to DFP-550, October 16, 2026. Source account contains only this receipt. Retain target September 1, 2022 DOI and renumber from NOP 41; recalculate incentives and company shares, preserving amounts, receipt dates and actual cash."},
+    {"member":"PH-77790640","program":"DP-0062","fromAccounts":["ENR-LEG-744F8F5432"],"startNop":59,"note":"Owner confirmed OR 08035T (PHP 190) belongs to D-190, October 16, 2026. Source account contains only this receipt. Retain target DOI and renumber from NOP 59; recalculate incentives and company shares, preserving amounts, receipt dates and actual cash."}
+  ]
+}

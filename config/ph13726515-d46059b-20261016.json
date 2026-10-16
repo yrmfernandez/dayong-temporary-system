@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {
+      "member": "PH-13726515",
+      "program": "DP-0022",
+      "fromAccounts": ["ENR-LEG-C678FC5C50"],
+      "startNop": 7,
+      "financeScope": "changed",
+      "note": "Owner confirmed all reviewed payments belong to D-460 (59B), October 16, 2026. Move OR 7758T at NOP 15 from the single-receipt D-460 account; its corrected incentive uses the configured NOP 13-60 tier. Existing target receipts retain their unchanged programs/NOPs and financial values. NOP 7-12 cannot be repriced until first-year tiers are configured; do not invent rates. Preserve DOI, receipt dates, gross payments and actual cash."
+    }
+  ]
+}

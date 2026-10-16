@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 122 library files, 52 component files; 451 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 122 library files, 52 component files; 458 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -459,6 +459,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/hash-password.mjs](../scripts/hash-password.mjs) | `bcryptjs` | No flag detected; read source before running |
 | [scripts/import-paper-attendance-20261015.mjs](../scripts/import-paper-attendance-20261015.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/inspect-legacy-sheets.mjs](../scripts/inspect-legacy-sheets.mjs) | `@next/env`, `googleapis`, `./legacy-sources.mjs` | No flag detected; read source before running |
+| [scripts/inspect-program-tiers.mjs](../scripts/inspect-program-tiers.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-sheet-headers.mjs](../scripts/inspect-sheet-headers.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/legacy-programs.mjs](../scripts/legacy-programs.mjs) | `node:fs`, `@next/env`, `googleapis`, `./legacy-sources.mjs` | Yes; read source for semantics |
 | [scripts/legacy-site-compare.mjs](../scripts/legacy-site-compare.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
@@ -520,6 +521,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/restore-clearing-incentives.mts](../scripts/restore-clearing-incentives.mts) | `@next/env`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow`, `@/lib/work-calendar` | Yes; read source for semantics |
 | [scripts/restore-ph70661323-4191s.mjs](../scripts/restore-ph70661323-4191s.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/review-amount-discrepancies.mjs](../scripts/review-amount-discrepancies.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/review-same-base-pay.mjs](../scripts/review-same-base-pay.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/set-clearing-covers.mjs](../scripts/set-clearing-covers.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/set-collector-tiers.mts](../scripts/set-collector-tiers.mts) | `drizzle-orm`, `@/lib/batch-edit`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-workflow` | Yes; read source for semantics |
 | [scripts/split-member.mjs](../scripts/split-member.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
@@ -550,7 +552,10 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/d460-seven-receipts-20261016.json](../config/d460-seven-receipts-20261016.json)
 - [config/dpb350-receipt-correction-20261015.json](../config/dpb350-receipt-correction-20261015.json)
 - [config/duplicate-fixes.json](../config/duplicate-fixes.json)
+- [config/eight-same-pay-consolidations-20261016.json](../config/eight-same-pay-consolidations-20261016.json)
+- [config/eight-same-pay-finance-verification-20261016.json](../config/eight-same-pay-finance-verification-20261016.json)
 - [config/employee-merges.json](../config/employee-merges.json)
+- [config/five-receipt-program-moves-20261016.json](../config/five-receipt-program-moves-20261016.json)
 - [config/legacy-migration-map.json](../config/legacy-migration-map.json)
 - [config/legacy-programs.json](../config/legacy-programs.json)
 - [config/legacy-receipt-fixes.json](../config/legacy-receipt-fixes.json)
@@ -561,8 +566,10 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/or13743c-dpb350-20261016.json](../config/or13743c-dpb350-20261016.json)
 - [config/or5151b-d190-20261016.json](../config/or5151b-d190-20261016.json)
 - [config/or8574m-dpb420-20261016.json](../config/or8574m-dpb420-20261016.json)
+- [config/ph13726515-d46059b-20261016.json](../config/ph13726515-d46059b-20261016.json)
 - [config/ph24556150-dfpp650-merge-20261015.json](../config/ph24556150-dfpp650-merge-20261015.json)
 - [config/program-moves.json](../config/program-moves.json)
 - [config/receipt-consolidations.json](../config/receipt-consolidations.json)
+- [config/seven-same-pay-consolidations-20261016.json](../config/seven-same-pay-consolidations-20261016.json)
 - [config/sheet-database-schema.json](../config/sheet-database-schema.json)
 - [public/robots.txt](../public/robots.txt)

@@ -120,7 +120,12 @@ try {
         console.log(`   Account ${account.enrollment_id} (${account.program}) deleted: no payment left${sources.includes(account.enrollment_id) ? "" : " (it had none)"}.`);
       }
       const targetSales = await tx`select sale_id from sales where member_number = ${member.member_number} and program_id = ${target.program_id}`;
-      const finance = await repriceEntries((query, params) => tx.unsafe(query, params), { collectionIds: payments.map(p => p.collection_id), saleIds: targetSales.map(s => s.sale_id) });
+      // A narrowly scoped correction may leave unrelated historical entries alone (for example when the program's
+      // first-year tiers are not configured). Every moved receipt and every changed NOP must still be priced.
+      const financialPayments = item.financeScope === 'changed'
+        ? renumbered.filter(p => movedIds.has(p.collection_id) || p.nopFrom !== p.nop_from || p.nopTo !== p.nop_to)
+        : payments;
+      const finance = await repriceEntries((query, params) => tx.unsafe(query, params), { collectionIds: financialPayments.map(p => p.collection_id), saleIds: targetSales.map(s => s.sale_id) });
       console.log(`   Recalculated ${finance.changes.length} financial entries; incentive change ${peso(finance.incentiveChange)}; ${finance.slips.length} remittance expectations updated.`);
       await tx`insert into record_corrections ${tx({ correction_id: `COR-RCN-${member.member_number}-${Date.now().toString(36).toUpperCase()}`, module: "Receipt consolidation", record_id: target.enrollment_id,
         reason: text(item.note) || `Receipts of ${member.member_number} put on ${target.program_name}`, before_json: { receipts: mine.map((row) => ({ or: row.or_number, enrollment: row.enrollment_id, program: row.program_id, nop: [row.nop_from, row.nop_to] })) },

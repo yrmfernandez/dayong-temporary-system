@@ -1,5 +1,9 @@
 # Dayong System documentation
 
+The [October 16 eight-member consolidation](eight-same-pay-consolidations-20261016.md) applies the owner-confirmed same-base-pay program assignments and records the D-460 (59B) first-year incentive configuration gap.
+
+The [October 16 five-receipt correction](five-receipt-program-moves-20261016.md) moves ORs 4382 S, 12008 B, 15945 B, 10926B and 08035T to the owner-confirmed programs and recalculates affected coverage and incentives.
+
 The [October 16 OR 8574 M correction](or8574m-dpb420-20261016.md) moves the PHP 420 receipt to DPB-420 and recalculates affected coverage and incentives.
 
 The [October 16 OR 5151 B correction](or5151b-d190-20261016.md) moves the PHP 380 receipt to D-190 and recalculates affected coverage and incentives.

@@ -1,0 +1,5 @@
+{
+  "enrollmentIds": ["ENR-LEG-AF2181F638", "ENR-LEG-E05112775A", "ENR-LEG-3B6988599E", "ENR-LEG-3B0BA4C3F3", "ENR-LEG-6D625EC127", "ENR-LEG-FDE48C5987", "ENR-LEG-D8124DD9AA"],
+  "expectedCollections": 68,
+  "reason": "Verify seven fully repriced accounts from the eight owner-confirmed consolidations, October 16, 2026. PH-13726515 is verified separately because its unchanged first-year entries lack configured tiers."
+}
