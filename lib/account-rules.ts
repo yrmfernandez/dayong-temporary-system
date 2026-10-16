@@ -115,7 +115,11 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   const suspendedAt = `${monthName(monthIndex(lastPaidMonth) + 3)}-01`;
   const forfeitedAt = addDay(addMonths(anchor, account.forfeitMonths ?? 6));
   const paid = account.payBalanceTotal > 0 && payments.reduce((sum, payment) => sum + payment.amount, 0) >= account.payBalanceTotal;
-  const forfeited = !paid && (account.storedStatus === "Forfeited" || today >= forfeitedAt);
+  // A stored Forfeited status holds (for example one carried from the old system), except on Pay the Balance programs:
+  // they wait the full 12 months before being declared forfeited, whatever was stored under the old 6-month rule
+  // (owner, October 16, 2026).
+  const keepsStoredForfeit = (account.forfeitMonths ?? 6) <= 6;
+  const forfeited = !paid && ((keepsStoredForfeit && account.storedStatus === "Forfeited") || today >= forfeitedAt);
   const temporarilySuspended = !forfeited && today >= suspendedAt;
   const currentMonth = today.slice(0, 7);
   const firstMonth = months[0] ?? account.doi.slice(0, 7);

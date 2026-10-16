@@ -373,6 +373,7 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 
 - **Owner:** Pay the Balance: up to and including 12 months, still not forfeited; others: up to and including 6 months.
 - **Done:** `forfeitMonths` on accounts (`forfeitMonthsFor`: the Pay the Balance category `CAT-PAY-THE-BALANCE`, or a category named Pay the Balance, is 12; otherwise 6), used wherever statuses are worked out (account data, Edit / Corrections, program moves); Statement of Account footer. `scripts/recheck-forfeited-accounts.mjs` reopens Pay the Balance accounts forfeited only by the old 6-month timer. Tested; build and all tests pass.
+- **Owner, same day:** accounts still showed Forfeited with the category set. Cause: a stored Forfeited always held. **Done:** on Pay the Balance programs it no longer holds; only the 12-month count decides. The recheck script now stores the worked-out status on every Pay the Balance account within 12 months. Tested.
 - **To do (owner):** put the Pay the Balance programs in the Pay the Balance category (Programs; none are on staging); then run `npm run prod -- node scripts/recheck-forfeited-accounts.mjs`, and `--apply` if the list is right.
 
 ### Members → Transfer: per MAS or per program (2026-10-16)

@@ -18,7 +18,7 @@ function load(file){
   if(!employeeId||!/^\d{4}-\d{2}-\d{2}$/.test(date??''))throw new Error('Supply employee ID and YYYY-MM-DD.');
   const {buildClerkReport}=load('lib/clerk-report.ts');
   const report=await buildClerkReport('daily',date,{employeeId,name:employeeId},branch);
-  const result={date,branch:report.branch,employeeId,newSales:report.newSales,collections:report.collection,totals:report.totals,checks:report.checks};
+  const result={date,branch:report.branch,employeeId,newSales:report.newSales,collections:report.collection,totals:report.totals,checks:report.checks,forfeitedEntries:report.entries.filter(e=>e.forfeitedIncentive>0).map(e=>({id:e.id,or:e.orNumber,forfeited:e.forfeitedIncentive,incentive:e.incentive,deadline:e.incentiveDeadline,received:e.remittedAt}))};
   console.log(JSON.stringify(result,null,2));
   fs.writeFileSync('legacy-data/actual-clerk-report-'+date+'.json',JSON.stringify(result,null,2));
   process.exit(0);

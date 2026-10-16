@@ -124,4 +124,7 @@ test("forfeiture: Pay the Balance programs after more than 12 months, other prog
   assert.notEqual(balance("2027-02-15"), "Forfeited", "12 months: still not forfeited");
   assert.equal(balance("2027-02-16"), "Forfeited", "after 12 months");
   assert.equal(accountState({ ...account, forfeitMonths: 12 }, paid, "2026-12-01").forfeitedAt, "2027-02-16");
+  // Stored Forfeited (from the old 6-month rule) does not hold on Pay the Balance programs; it still holds on others.
+  assert.equal(accountState({ ...account, forfeitMonths: 12, storedStatus: "Forfeited" }, paid, "2026-09-01").status, "150D", "within 12 months: overdue, not forfeited");
+  assert.equal(accountState({ ...account, storedStatus: "Forfeited" }, paid, "2026-03-01").status, "Forfeited", "other programs keep a stored Forfeited");
 });

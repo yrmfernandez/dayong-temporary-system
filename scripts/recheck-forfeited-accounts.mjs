@@ -1,11 +1,9 @@
 /**
  * New forfeiture rule (owner, October 16, 2026): Pay the Balance programs are forfeited only after more than 12 months
- * without payment; other programs after more than 6 (forfeitMonthsFor in lib/account-rules.ts). A stored Forfeited
- * status stays Forfeited, so Pay the Balance accounts the 6-month timer already forfeited are checked once here.
- *
- * An account is reopened only when the 6-month timer explains its Forfeited status: worked out from its payments it
- * would be Forfeited at 6 months but not at 12. Accounts forfeited for another reason (for example an old system's
- * status, still forfeited when worked out at 6 months is not) are left and listed. Prints IDs and statuses only.
+ * without payment; other programs after more than 6 (forfeitMonthsFor in lib/account-rules.ts). On Pay the Balance
+ * programs a stored Forfeited no longer holds (the owner: wait the full 12 months), so screens that work the status out
+ * already show it right; this stores the worked-out status on those accounts, so lists and filters that read the stored
+ * status agree. Prints IDs and statuses only.
  *
  *   node scripts/recheck-forfeited-accounts.mjs                    dry run (staging)
  *   npm run prod -- node scripts/recheck-forfeited-accounts.mjs [--apply]
@@ -35,16 +33,15 @@ try {
     const reopen = [], kept = [], failed = [];
     for (const account of accounts) {
       const list = payments.filter((p) => p.enrollment_id === account.enrollment_id).map((p) => ({ id: p.collection_id, enrollmentId: p.enrollment_id, orDate: p.or_date, orNumber: p.or_number ?? "", monthFrom: (p.month_from ?? "").slice(0, 7), monthTo: (p.month_to ?? "").slice(0, 7), nopFrom: p.nop_from ?? 0, nopTo: p.nop_to ?? 0, amount: p.amount, dateRemitted: "", mas: "" }));
-      const base = { id: account.enrollment_id, memberId: account.member_id, memberNumber: "", programId: account.program_id, doi: account.doi ?? "", branch: "", mas: "", basePay: account.rate, payBalanceTotal: account.total, storedStatus: "", flexible: account.flexible, maxMonthlyPayment: account.max };
+      const base = { id: account.enrollment_id, memberId: account.member_id, memberNumber: "", programId: account.program_id, doi: account.doi ?? "", branch: "", mas: "", basePay: account.rate, payBalanceTotal: account.total, storedStatus: account.account_status, flexible: account.flexible, maxMonthlyPayment: account.max };
       try {
-        const atSix = accountState({ ...base, forfeitMonths: 6 }, list, today);
         const atRule = accountState({ ...base, forfeitMonths: forfeitMonthsFor(account.category_id, account.category_name ?? "") }, list, today);
-        if (atSix.status === "Forfeited" && atRule.status !== "Forfeited") reopen.push({ id: account.enrollment_id, program: account.program_name, status: atRule.status, forfeitedAt: atRule.forfeitedAt });
-        else kept.push({ id: account.enrollment_id, program: account.program_name, why: atRule.status === "Forfeited" ? `still forfeited at 12 months (since ${atRule.forfeitedAt})` : "Forfeited for another reason (not the 6-month timer)" });
+        if (atRule.status !== "Forfeited") reopen.push({ id: account.enrollment_id, program: account.program_name, status: atRule.status, forfeitedAt: atRule.forfeitedAt });
+        else kept.push({ id: account.enrollment_id, program: account.program_name, why: `more than 12 months without payment (forfeited since ${atRule.forfeitedAt})` });
       } catch (error) { failed.push({ id: account.enrollment_id, program: account.program_name, why: error instanceof Error ? error.message : "payments do not fit" }); }
     }
     console.log(`\nPay the Balance accounts stored Forfeited: ${accounts.length}`);
-    console.log(`\nReopened (forfeited only by the 6-month timer): ${reopen.length}`);
+    console.log(`\nReopened (within 12 months of their last payment):${reopen.length}`);
     for (const item of reopen) console.log(`  ${item.id} · ${item.program} · Forfeited → ${item.status} (would be forfeited from ${item.forfeitedAt})`);
     console.log(`\nKept Forfeited: ${kept.length}`);
     for (const item of kept) console.log(`  ${item.id} · ${item.program} · ${item.why}`);
@@ -53,7 +50,7 @@ try {
     if (reopen.length) {
       const stamp = new Date().toISOString();
       await tx`select set_config('app.user_name', 'Forfeiture rule recheck', true)`;
-      await tx`insert into record_corrections ${tx({ correction_id: `COR-FORFEIT-PTB-${Date.now().toString(36).toUpperCase()}`, module: "Account status", record_id: "Pay the Balance", reason: "New rule (owner, October 16, 2026): Pay the Balance programs are not forfeited until more than 12 months without payment. Accounts forfeited only by the 6-month timer reopened.", before_json: reopen.map((item) => ({ id: item.id, status: "Forfeited" })), after_json: reopen.map((item) => ({ id: item.id, status: item.status })), corrected_at: stamp, encoded_by_name: "Forfeiture rule recheck", encoded_at: stamp })}`;
+      await tx`insert into record_corrections ${tx({ correction_id: `COR-FORFEIT-PTB-${Date.now().toString(36).toUpperCase()}`, module: "Account status", record_id: "Pay the Balance", reason: "New rule (owner, October 16, 2026): Pay the Balance programs are not forfeited until more than 12 months without payment. Accounts within 12 months of their last payment reopened.", before_json: reopen.map((item) => ({ id: item.id, status: "Forfeited" })), after_json: reopen.map((item) => ({ id: item.id, status: item.status })), corrected_at: stamp, encoded_by_name: "Forfeiture rule recheck", encoded_at: stamp })}`;
     }
     if (!apply) throw new DryRun();
   });

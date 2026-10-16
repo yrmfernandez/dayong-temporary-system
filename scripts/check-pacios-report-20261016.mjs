@@ -16,6 +16,11 @@ try{await db.begin(async tx=>{
   const figures={staff:staff[0],date:'2026-10-16',collections:total(collections),sales:total(sales)};
   fs.writeFileSync('legacy-data/pacios-report-20261016.json',JSON.stringify({figures,collections,sales},null,2));
   console.log(JSON.stringify(figures,null,2));
+  const forfeitedIds=collections.filter(r=>r.forfeited>0).map(r=>r.id);
+  if(forfeitedIds.length){
+    const clearings=await tx`select clearing_id,cleared_date::text,cleared_at,covers,status from clearings where employee_id in (select accountable_employee_id from collections where collection_id in ${tx(forfeitedIds)}) and cleared_date between '2026-10-14' and '2026-10-16' order by cleared_at`;
+    console.log(JSON.stringify({forfeitedReceipts:collections.filter(r=>r.forfeited>0).map(r=>({id:r.id,or:r.or_number,orDate:r.or_date,dateRemitted:r.date_remitted,forfeited:r.forfeited})),clearings},null,2));
+  }
   const quote=await repriceEntries((q,p)=>tx.unsafe(q,p),{collectionIds:collections.map(r=>r.id),saleIds:sales.map(r=>r.id)});
   const changes=quote.changes.map(r=>({id:r.id,kind:r.kind,program:r.programId,amount:r.amount,beforeShare:r.before.remittance,correctShare:r.after.remittance,beforeForfeited:r.before.forfeited,correctForfeited:r.after.forfeited}));
   console.log(JSON.stringify({changes,slips:quote.slips},null,2));
