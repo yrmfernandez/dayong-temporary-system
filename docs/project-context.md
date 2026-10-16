@@ -369,6 +369,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Cause (found from the screenshot):** the photo picker's file input was visually hidden (`sr-only`) but still focusable. When the file picker closed, the browser focused it and scrolled the form card (`overflow-hidden`, which can still be scrolled by the browser) to show it, so the card's content slid up and left white space below. Two earlier guesses (solid entry cards; removing the masked light-edge overlay from every card) did not fix it; they are kept, as they do no harm.
 - **Done:** the input is `display: none` and a button opens it (`components/receipt-photos-picker.tsx`), as the My Entries photo button already did; the two Collections panels use `overflow-clip`, which cannot be scrolled at all. Build and tests checked; to confirm on a clerk's computer.
 
+### No second batch while one is waiting (2026-10-16)
+
+- **Owner:** while a batch is pending approval the encoder can encode the same details again (double entries); do not allow it.
+- **Done:** `waitingBatchProblem` (lib/clearing.ts) refuses a New Sales or Collections save for a person, branch and Date Remitted while a batch of that kind for them is Outstanding, Pending Approval or Returned, unless they were cleared again after it was encoded; DTO and imported entries excluded. Tested; build and all tests pass.
+
 ### Resubmitted batches lost incentives (2026-10-16)
 
 - **Owner:** some resubmitted entries after 3 PM got no incentive; the rule: cleared before 3 PM keeps the incentive however late it is encoded. Fix it and the affected entries.

@@ -3293,3 +3293,36 @@ test('a resubmitted batch keeps the time its cash was cleared, even when the MAS
   await pglite.query("update clearings set remittance_id = null where clearing_id = 'CLR-1'");
   assert.deepEqual(await receivedAtOf([item]), { date: '2026-10-13', time: '10:00' }, 'never later than the returned slip');
 });
+
+test('no second batch for the same person and day while one is waiting for approval, unless cleared again', async () => {
+  const h = harness();
+  await seedAccount({ doi: '2026-09-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('clearings', [{ clearing_id: 'CLR-1', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: '2026-10-15T02:00:00Z', cleared_date: '2026-10-15', status: 'Encoded', covers: 'Both' }]);
+  const col = (id, extra = {}) => ({ collection_id: id, collection_batch_id: `CBT-${id}`, enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', or_number: `${id} C`, amount_collected: 350, status: 'Posted', remittance_status: 'Pending Remittance Approval', accountable_employee_id: 'DPE-0002', date_remitted: '2026-10-15', encoded_at: '2026-10-15T03:00:00Z', encoded_by_employee_id: 'DPE-0001', encoded_by_name: 'Clerk One', remittance_method: 'Cash', collected_by_role: 'MAS', ...extra });
+  await seed('collections', [col('W1')]);
+  const { waitingBatchProblem } = h.load('lib/clearing.ts');
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    const refused = await waitingBatchProblem('DPE-0002', 'MAS-2', 'br-1', '2026-10-15', 'Collections');
+    assert.match(refused, /MAS-2 already has a Collections batch for br-1 on 2026-10-15 that is waiting for approval \(1 entry, .*350.*encoded by Clerk One at 11:00\)/);
+    assert.equal(await waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', '2026-10-15', 'New Sales'), '', 'New Sales are a separate batch');
+    assert.equal(await waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', '2026-10-14', 'Collections'), '', 'another day');
+    // Returned: fix it in My Entries.
+    await pglite.query("update collections set remittance_status = 'Returned'");
+    assert.match(await waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', '2026-10-15', 'Collections'), /Edit batch/);
+    // Approved (Remitted): the next batch is fine.
+    await pglite.query("update collections set remittance_status = 'Remitted'");
+    assert.equal(await waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', '2026-10-15', 'Collections'), '');
+    // Waiting again, but the MAS was cleared again after it was encoded: another handover.
+    await pglite.query("update collections set remittance_status = 'Outstanding'");
+    await seed('clearings', [{ clearing_id: 'CLR-2', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: '2026-10-15T06:00:00Z', cleared_date: '2026-10-15', status: 'Open', covers: 'Collections' }]);
+    assert.equal(await waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', '2026-10-15', 'Collections'), '', 'cleared again after the waiting batch');
+    // DTO batches and imported entries (no encoder) never block.
+    await pglite.query("delete from clearings where clearing_id = 'CLR-2'");
+    await pglite.query("update collections set collected_by_role = 'DTO'");
+    assert.equal(await waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', '2026-10-15', 'Collections'), '');
+    await pglite.query("update collections set collected_by_role = 'MAS', encoded_by_employee_id = null");
+    assert.equal(await waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', '2026-10-15', 'Collections'), '');
+  } finally { globalThis.dayongClearingNotRequired = true; }
+});

@@ -1,5 +1,5 @@
 import { refuseOnDayOff } from "@/lib/day-off";
-import { clearedEmployee, clearingProblem, dateRemittedReasonProblem } from "@/lib/clearing";
+import { clearedEmployee, clearingProblem, dateRemittedReasonProblem, waitingBatchProblem } from "@/lib/clearing";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
@@ -183,6 +183,9 @@ async function saveSales(request: Request, user: SessionUser) {
     // Encoding follows Clearing: the MAS must be cleared for this branch on the Date Remitted.
     const notCleared = selectedBranch && selectedStaff ? await clearingProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim(), "New Sales") : "";
     if (notCleared) return NextResponse.json({ success: false, message: notCleared }, { status: 400 });
+    // No second batch while one for the same MAS and day is waiting for approval (double entries; lib/clearing.ts).
+    const waiting = selectedBranch && selectedStaff ? await waitingBatchProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim(), "New Sales") : "";
+    if (waiting) return NextResponse.json({ success: false, message: waiting }, { status: 400 });
     // A Date Remitted moved off the clearing day (encoding delayed by meetings and the like) needs a reason, kept on each sale.
     const dateRemittedReason = String(body.dateRemittedReason ?? "").trim().slice(0, 300);
     const reasonProblem = selectedBranch && selectedStaff ? await dateRemittedReasonProblem(selectedStaff.id, selectedBranch.name, body.dateRemitted.trim(), dateRemittedReason, "New Sales") : "";

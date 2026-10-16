@@ -1,5 +1,5 @@
 import { refuseOnDayOff } from "@/lib/day-off";
-import { clearingProblem, dateRemittedReasonProblem } from "@/lib/clearing";
+import { clearingProblem, dateRemittedReasonProblem, waitingBatchProblem } from "@/lib/clearing";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
@@ -79,6 +79,9 @@ async function saveCollections(request: Request) {
       // Encoding follows Clearing: the accountable person must be cleared for this branch on the Date Remitted.
       const notCleared = await clearingProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections");
       if (notCleared) throw new Error(notCleared);
+      // No second batch while one for the same person and day is waiting for approval (double entries; lib/clearing.ts).
+      const waiting = await waitingBatchProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections");
+      if (waiting) throw new Error(waiting);
       // A Date Remitted moved off the clearing day (encoding delayed by meetings and the like) needs a reason, kept on each row.
       dateRemittedReason = String(body.dateRemittedReason ?? "").trim().slice(0, 300);
       const reasonProblem = await dateRemittedReasonProblem(accountable.id, selectedBranch.name, dateRemitted, dateRemittedReason, "Collections");

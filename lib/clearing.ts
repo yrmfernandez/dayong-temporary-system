@@ -310,6 +310,37 @@ export async function clearingProblem(employeeId: string, employeeName: string, 
 }
 
 /**
+ * Why a batch cannot be saved yet, or "" (owner, October 16, 2026: double entries). While an earlier batch of the same
+ * kind for this person, branch and Date Remitted is still waiting (Outstanding or Pending Approval) or Returned, another
+ * one is refused: the clerk could otherwise encode the same receipts again from the same clearing. A new clearing of the
+ * person made after that batch was encoded is another handover, so it is allowed. Only batches encoded in this system
+ * count (imported entries have no encoder); DTO batches (paid at the office) are not limited.
+ */
+export async function waitingBatchProblem(employeeId: string, employeeName: string, branch: string, dateRemitted: string, kind: ClearingKind) {
+  if ((globalThis as { dayongClearingNotRequired?: boolean }).dayongClearingNotRequired) return "";
+  const waiting = sql`('Outstanding', 'Pending Remittance Approval', 'Returned')`;
+  const query = kind === "Collections"
+    ? sql`select count(*)::int as n, coalesce(sum(amount_collected), 0)::float8 as total, max(encoded_at) as last, min(encoded_by_name) as clerk, string_agg(distinct remittance_status, ', ') as statuses
+        from collections where accountable_employee_id = ${text(employeeId)} and lower(trim(branch)) = ${text(branch).toLowerCase()} and date_remitted = ${text(dateRemitted)}::date
+          and status = 'Posted' and remittance_status in ${waiting} and coalesce(encoded_by_employee_id, '') <> '' and coalesce(collected_by_role, '') <> 'DTO'`
+    : sql`select count(*)::int as n, coalesce(sum(amount_paid), 0)::float8 as total, max(encoded_at) as last, min(encoded_by_name) as clerk, string_agg(distinct remittance_status, ', ') as statuses
+        from sales where accountable_employee_id = ${text(employeeId)} and lower(trim(branch)) = ${text(branch).toLowerCase()} and date_remitted = ${text(dateRemitted)}::date
+          and remittance_status in ${waiting} and coalesce(encoded_by_employee_id, '') <> ''`;
+  const rows = await currentDb().execute(query);
+  const [row] = (Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? []) as Array<{ n: number; total: number; last: string | Date | null; clerk: string | null; statuses: string | null }>;
+  if (!Number(row?.n) || !row?.last) return "";
+  const last = row.last instanceof Date ? row.last.toISOString() : String(row.last);
+  const [newer] = await currentDb().select({ id: clearings.clearing_id }).from(clearings).where(and(
+    eq(clearings.employee_id, text(employeeId)), sameBranch(branch), ne(clearings.status, "Removed"), inArray(clearings.covers, ["Both", kind]),
+    sql`${clearings.cleared_at} > ${last}::timestamptz`,
+  )).limit(1);
+  if (newer) return "";
+  const peso = Number(row.total).toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+  const returned = text(row.statuses).includes("Returned");
+  return `${employeeName || employeeId} already has a ${kind} batch for ${branch} on ${dateRemitted} that is ${returned ? "returned or " : ""}waiting for approval (${row.n} entr${Number(row.n) === 1 ? "y" : "ies"}, ${peso}, encoded by ${text(row.clerk) || "a clerk"} at ${manilaStamp(last).slice(11)}). Saving again would enter the same receipts twice. ${returned ? "Fix a returned batch in My Entries → Edit batch. " : ""}If this is another handover, clear ${employeeName || "them"} again in Clearing first.`;
+}
+
+/**
  * Why a batch cannot be saved yet, or "": a Date Remitted that is not a day the person was cleared (an earlier day an
  * Open clearing covers) needs a reason, since encoding can wait for meetings and the like (owner, October 13, 2026).
  */
