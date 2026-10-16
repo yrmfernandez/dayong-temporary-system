@@ -322,6 +322,8 @@ Slip expected  = sum(entry cash due) + batch Fidelity
 Slip difference = actual cash received − slip expected
 ```
 
+**Resubmitted batches keep the clearing time (October 16, 2026).** Cash counts as received when it was cleared, however late the batch is encoded or resubmitted. A batch returned by the approver and resubmitted uses the clearing linked to its earlier slip, and never a later time than that returned slip had (`receivedAtOf` in [remittance-workflow.ts](../lib/remittance-workflow.ts)). Before this, the new slip searched again and could take a later clearing of the same person (another handover after 3 PM), forfeiting incentives of cash cleared on time; `scripts/restore-resubmit-incentives.mjs` (dry run, then `--apply`) restores those, and the current slip's expected amount follows.
+
 Positive slip difference means overage; negative means shortage. This sign is the **reverse of operational-report difference**. No valid receipt date means the deadline helper does not apply forfeiture; review bad dates in Exceptions.
 
 **Example:** member pays PHP 350, company share PHP 290, employee adds PHP 100 Fidelity. Timely expected cash is PHP 390. Late expected cash is PHP 450: PHP 350 full payment plus PHP 100 Fidelity. A separately recorded penalty is not added to the persisted slip expected amount.

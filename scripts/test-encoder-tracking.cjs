@@ -3271,3 +3271,25 @@ test('Fidelity history: a rejected slip shows as Returned and names the clerk wh
   const account = data.accounts.find((item) => item.masEmployeeId === 'DPE-0002');
   assert.deepEqual([account.approved, account.pending], [100, 100], 'a returned slip still does not count');
 });
+
+test('a resubmitted batch keeps the time its cash was cleared, even when the MAS was cleared again later', async () => {
+  const h = harness();
+  await seedAccount({ doi: '2026-09-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  // Cleared at 10:00 on the 13th (linked to the first slip), and again at 16:30 the same day for another handover.
+  await seed('remittances', [{ remittance_id: 'REM-OLD', branch: 'BR-1', mas: 'MAS-2', status: 'Rejected', date_remitted: '2026-10-13', time_remitted: '10:00' }]);
+  await seed('clearings', [
+    { clearing_id: 'CLR-1', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: '2026-10-13T02:00:00Z', cleared_date: '2026-10-13', status: 'Encoded', covers: 'Both', remittance_id: 'REM-OLD' },
+    { clearing_id: 'CLR-2', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: '2026-10-13T08:30:00Z', cleared_date: '2026-10-13', status: 'Open', covers: 'Both' },
+  ]);
+  await seed('collections', [{ collection_id: 'R1', collection_batch_id: 'CBT-R', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', or_number: 'R1 C', amount_collected: 350, status: 'Posted', remittance_status: 'Outstanding', accountable_employee_id: 'DPE-0002', date_remitted: '2026-10-13', encoded_at: '2026-10-13T09:00:00Z', remittance_method: 'Cash' }]);
+  await seed('remittance_collections', [{ remittance_collection_id: 'RC-R', remittance_id: 'REM-OLD', collection_id: 'R1', amount: 175 }]);
+  const { receivedAtOf } = h.load('lib/remittance-workflow.ts');
+  const item = { id: 'R1', encodedAt: '2026-10-13 17:00', dateRemitted: '2026-10-13', accountableEmployeeId: 'DPE-0002', branch: 'BR-1', kind: 'Collections' };
+  assert.deepEqual(await receivedAtOf([item]), { date: '2026-10-13', time: '10:00' }, 'the clearing linked to its first slip, not the 16:30 one');
+  // OR dated the 12th: due 3:00 PM on the 13th, so the incentive is kept.
+  assert.equal(h.load('lib/remittance-deadline.ts').keepsIncentive('2026-10-12', '2026-10-13 10:00'), true);
+  // Without the link, the returned slip's own time still caps it.
+  await pglite.query("update clearings set remittance_id = null where clearing_id = 'CLR-1'");
+  assert.deepEqual(await receivedAtOf([item]), { date: '2026-10-13', time: '10:00' }, 'never later than the returned slip');
+});

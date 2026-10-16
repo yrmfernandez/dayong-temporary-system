@@ -369,6 +369,13 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Cause (found from the screenshot):** the photo picker's file input was visually hidden (`sr-only`) but still focusable. When the file picker closed, the browser focused it and scrolled the form card (`overflow-hidden`, which can still be scrolled by the browser) to show it, so the card's content slid up and left white space below. Two earlier guesses (solid entry cards; removing the masked light-edge overlay from every card) did not fix it; they are kept, as they do no harm.
 - **Done:** the input is `display: none` and a button opens it (`components/receipt-photos-picker.tsx`), as the My Entries photo button already did; the two Collections panels use `overflow-clip`, which cannot be scrolled at all. Build and tests checked; to confirm on a clerk's computer.
 
+### Resubmitted batches lost incentives (2026-10-16)
+
+- **Owner:** some resubmitted entries after 3 PM got no incentive; the rule: cleared before 3 PM keeps the incentive however late it is encoded. Fix it and the affected entries.
+- **Cause:** a resubmitted batch gets a new slip whose cash-received time was searched again (latest clearing of the person before the encoding time); a later clearing (another handover after 3 PM, or the next day's) was taken.
+- **Done:** `receivedAtOf` uses the clearing linked to the batch's earlier slip and never a time later than the returned slip; tested. `scripts/restore-resubmit-incentives.mjs` restores forfeited incentives on resubmitted entries whose cash was cleared by the deadline (current slip's line and expected amount follow; Record Corrections).
+- **To do (owner):** `npm run prod -- npx tsx --tsconfig tsconfig.json scripts/restore-resubmit-incentives.mjs`, check the list, then `--apply`.
+
 ### Fidelity history: Returned and the real encoder (2026-10-16)
 
 - **Owner:** why Rejected and Encoded by System in the Fidelity history; show Returned for returned batches, and the real encoder.

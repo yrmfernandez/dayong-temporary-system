@@ -531,8 +531,13 @@ export async function voidFidelitySlip(id: string, reason: string, by: { employe
 export async function receivedAtOf(items: Array<Pick<CashCollection, "id" | "encodedAt" | "dateRemitted" | "accountableEmployeeId" | "branch" | "kind">>) {
   const encoded = items.map((item) => item.encodedAt).filter(Boolean).sort().at(-1) ?? "";
   const day = items.map((item) => item.dateRemitted).find(Boolean) || encoded.slice(0, 10) || manilaNow().date;
-  const cleared = await clearedAt(items[0].accountableEmployeeId, items[0].branch, day, encoded, items[0].kind);
-  const stamp = cleared || encoded || `${manilaNow().date} ${manilaNow().time}`;
+  // A resubmitted batch (owner, October 16, 2026): its cash was received once, when it was cleared. The clearing linked
+  // to its earlier slip says when, exactly; and it is never later than that returned slip's time. Searching again could
+  // pick a later clearing of the same person (another handover that day or the next) and forfeit the incentive.
+  const earlier = await earlierReceipt(items.map((item) => item.id));
+  const cleared = earlier.clearedAt || await clearedAt(items[0].accountableEmployeeId, items[0].branch, day, encoded, items[0].kind);
+  const found = cleared || encoded || `${manilaNow().date} ${manilaNow().time}`;
+  const stamp = earlier.slipAt && earlier.slipAt < found ? earlier.slipAt : found;
   /*
    * A Date Remitted moved earlier with a reason (owner, October 13, 2026): the clerk received the cash that day but could
    * not clear or encode it (a meeting and the like), so the cash counts as received on the Date Remitted. Its time is
@@ -540,6 +545,22 @@ export async function receivedAtOf(items: Array<Pick<CashCollection, "id" | "enc
    */
   if (day < stamp.slice(0, 10) && await movedWithReason(items.map((item) => item.id))) return { date: day, time: "00:00" };
   return { date: stamp.slice(0, 10), time: stamp.slice(11, 16) };
+}
+
+/**
+ * For entries already sent on a slip that was returned: the time ("YYYY-MM-DD HH:MM", Manila) of the clearing linked to
+ * one of their slips (closeClearings records it), and the earliest time received on a returned slip. Blank when none.
+ */
+async function earlierReceipt(ids: string[]) {
+  if (!ids.length) return { clearedAt: "", slipAt: "" };
+  const list = sql.join(ids.map((id) => sql`${id}`), sql`, `);
+  const result = await getDb().execute(sql`select
+      (select to_char(min(c.cleared_at) at time zone 'Asia/Manila', 'YYYY-MM-DD HH24:MI') from clearings c
+        where c.status <> 'Removed' and c.remittance_id in (select rc.remittance_id from remittance_collections rc where rc.collection_id in (${list}))) as cleared_at,
+      (select min(r.date_remitted::text || ' ' || coalesce(nullif(trim(r.time_remitted), ''), '23:59')) from remittances r
+        where r.status = 'Rejected' and r.date_remitted is not null and r.remittance_id in (select rc.remittance_id from remittance_collections rc where rc.collection_id in (${list}))) as slip_at`);
+  const [row] = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ cleared_at: string | null; slip_at: string | null }>;
+  return { clearedAt: text(row?.cleared_at), slipAt: text(row?.slip_at) };
 }
 
 /** True when these entries' Date Remitted was moved off the clearing day with a reason (date_remitted_reason). */
