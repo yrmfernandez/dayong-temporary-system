@@ -1,0 +1,11 @@
+{
+  "cases": [{
+    "member": "PH-04464351",
+    "program": "DP-0013",
+    "receipts": ["10238 C", "11285 C", "12675 C", "15411 C", "17501 C", "18087 C", "20200 C", "24460 C"],
+    "startNop": 31,
+    "coverageStart": "2026-01",
+    "expectedDoi": "2023-07-01",
+    "note": "Owner confirmed first receipt 10238 C starts January 2026/NOP 31, October 16, 2026. Eight PHP 350 receipts cover January-August 2026/NOP 31-38 in receipt-date order. Preserve July 1, 2023 DOI, D-350 program, receipt dates and PHP 2800 total. Recalculate incentives/company shares and account status."
+  }]
+}

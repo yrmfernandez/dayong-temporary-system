@@ -1,5 +1,9 @@
 # Dayong System documentation
 
+The [October 16 PH-47317014 verification](ph47317014-february-nop22-20261016.md) confirms February/NOP 22 for 4196 S and refreshes financial figures and account status.
+
+The [October 16 PH-04464351 correction](ph04464351-january-nop31-20261016.md) sets January–August 2026 coverage at NOP 31–38.
+
 The [October 16 PH-68531118 consolidation](ph68531118-all-d210hg-20261016.md) places all nine payments under D-210 HG and recalculates incentives.
 
 The [October 16 PH-17113133 correction](ph17113133-january-nop22-20261016.md) sets January–September 2026 coverage at NOP 22–30.

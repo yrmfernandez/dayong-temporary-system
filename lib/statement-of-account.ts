@@ -72,7 +72,7 @@ export async function getStatementOfAccount(enrollmentId: string) {
     summary: {
       status: state.status, temporarilySuspended: state.temporarilySuspended,
       monthsPaid: state.nop, lastCoveredMonth: state.lastCoveredMonth, nextMonth: state.nextMonth, nextNop: state.nextNop,
-      unpaidMonths: state.unpaidMonths, amountDue: state.balance, suspendedAt: state.suspendedAt, forfeitedAt: state.forfeitedAt,
+      unpaidMonths: state.unpaidMonths, amountDue: state.balance, suspendedAt: state.suspendedAt, forfeitedAt: state.forfeitedAt, forfeitMonths: account.forfeitMonths ?? 6,
       totalPaid, totalPaidBasis: account.flexible ? "every amount paid" : `NOP ${state.nop} × ${account.basePay}`, collectionsPaid,
       // Remaining toward the program's pay-the-balance total, when the program has one: that total less Total paid
       // (owner, October 10, 2026; it used to subtract the collections only).

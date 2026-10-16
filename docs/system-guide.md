@@ -286,8 +286,10 @@ Start with the latest actual Collection OR date, or DOI before any Collection. A
 
 ```text
 suspension date = the 1st of the 3rd month after the last covered month (since October 14, 2026; was anchor + 2 months)
-forfeiture date = anchor + 6 calendar months + 1 day
+forfeiture date = anchor + 6 calendar months + 1 day      (Pay the Balance programs: anchor + 12 calendar months + 1 day)
 ```
+
+**Pay the Balance programs (October 16, 2026, owner):** a program in the **Pay the Balance** category (`CAT-PAY-THE-BALANCE`, Programs → category) is still not forfeited up to and including 12 months after its anchor; every other program up to and including 6 months (`forfeitMonthsFor` in [account-rules.ts](../lib/account-rules.ts)). Suspension is unchanged. The Statement of Account footer names the period. A stored Forfeited status stays, so `scripts/recheck-forfeited-accounts.mjs` (dry run, then `--apply`) reopens Pay the Balance accounts that only the 6-month timer forfeited, leaving any forfeited for another reason; a program counts once it is in that category.
 
 On/after suspension, another payment requires `If Suspended = Waiver`. Other dropdown values do not satisfy this rule. On/after forfeiture, payment is blocked. These rules apply to each enrollment independently; payment to another program does not reset the clock.
 

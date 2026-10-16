@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 123 library files, 52 component files; 468 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 123 library files, 52 component files; 472 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -135,7 +135,7 @@ All routes pass through the authentication proxy except the three public auth en
 | --- | --- | --- |
 | [lib/access-control.ts](../lib/access-control.ts) | `AccessContext`, `executiveRoles`, `normalizeRoleName`, `isAdministratorRole`, `itRoles`, `hrRoles`, `isFinanceFamilyRole`, `canManageAccountsFor`, `canManageEmployeesFor`, `canManageConfigurationFor`, `canCorrectEntriesFor`, `defaultRoutesForRole`, `pageTicked`, `routesForRole`, `accessibleRoutes`, `canAccessPath`, `DashboardKind`, `dashboardKind` | — |
 | [lib/account-data.ts](../lib/account-data.ts) | `AccountScope`, `LoadedAccount`, `AccountData`, `loadAccountData`, `accountReport`, `ProgramStanding`, `memberStanding`, `mamReport`, `memberMam`, `syncAccountStatuses`, `NewCollection`, `commitCollections` | `@/lib/account-rules`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance`, `@/lib/mam-report` |
-| [lib/account-rules.ts](../lib/account-rules.ts) | `AccountStatus`, `Account`, `AccountPayment`, `todayInManila`, `validDate`, `validMonth`, `monthIndex`, `monthName`, `monthCount`, `dateInMonth`, `addMonths`, `addDay`, `allocations`, `paymentsByEnrollment`, `accountState`, `COLLECTION_CHANNELS`, `CollectionChannel`, `incentiveRoleFor`, `FORFEITED_PAYMENT_DAYS`, `forfeitedPaymentsAllowed`, `PaymentInput`, `validatePayment` | `./program-payment-limit.mjs` |
+| [lib/account-rules.ts](../lib/account-rules.ts) | `AccountStatus`, `Account`, `PAY_THE_BALANCE_CATEGORY_ID`, `forfeitMonthsFor`, `AccountPayment`, `todayInManila`, `validDate`, `validMonth`, `monthIndex`, `monthName`, `monthCount`, `dateInMonth`, `addMonths`, `addDay`, `allocations`, `paymentsByEnrollment`, `accountState`, `COLLECTION_CHANNELS`, `CollectionChannel`, `incentiveRoleFor`, `FORFEITED_PAYMENT_DAYS`, `forfeitedPaymentsAllowed`, `PaymentInput`, `validatePayment` | `./program-payment-limit.mjs` |
 | [lib/admin-delete.ts](../lib/admin-delete.ts) | `DELETE_KINDS`, `DeleteKind`, `isDeleteKind`, `canDeleteRecords`, `DeletionPlan`, `planDeletion`, `deleteRecord` | `@/lib/auth`, `@/lib/access-control`, `@/lib/db`, `@/lib/readable-id` |
 | [lib/api-response.ts](../lib/api-response.ts) | `readApiResponse`, `parseJsonResponse` | `@/lib/friendly-api-errors` |
 | [lib/attendance-board.ts](../lib/attendance-board.ts) | `BoardCategory`, `canViewAttendanceTracking`, `canAdjustLateness`, `MARK_STATUSES`, `MarkStatus`, `isMarkStatus`, `boardCategory`, `minutesBetween`, `HistoryPeriod`, `HISTORY_PERIODS`, `isHistoryPeriod`, `periodRange`, `HistoryTotals`, `summarizeHistory`, `AttendanceHistory` | `@/lib/auth`, `@/lib/attendance-data` |
@@ -425,6 +425,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-incentive-periods.mjs](../scripts/check-incentive-periods.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-mas-members.mjs](../scripts/check-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs`, `./name-match.mjs` | No flag detected; read source before running |
 | [scripts/check-member-transfer.mjs](../scripts/check-member-transfer.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/check-pacios-report-20261016.mjs](../scripts/check-pacios-report-20261016.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | No flag detected; read source before running |
 | [scripts/check-pending-receipts.mjs](../scripts/check-pending-receipts.mjs) | `node:fs`, `@next/env`, `googleapis`, `postgres` | No flag detected; read source before running |
 | [scripts/clear-payroll-runs.mjs](../scripts/clear-payroll-runs.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/compare-double-accounts.mjs](../scripts/compare-double-accounts.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
@@ -514,6 +515,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/program-history.mjs](../scripts/program-history.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/reassign-ciara-ns-20261014.mjs](../scripts/reassign-ciara-ns-20261014.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/recalculate-moved-date-remitted.mts](../scripts/recalculate-moved-date-remitted.mts) | `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow` | Yes; read source for semantics |
+| [scripts/recheck-forfeited-accounts.mjs](../scripts/recheck-forfeited-accounts.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/register-legacy-mas.mjs](../scripts/register-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/remove-blank-rows.mjs](../scripts/remove-blank-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/remove-oct10-expense.mjs](../scripts/remove-oct10-expense.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -569,9 +571,11 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/or13743c-dpb350-20261016.json](../config/or13743c-dpb350-20261016.json)
 - [config/or5151b-d190-20261016.json](../config/or5151b-d190-20261016.json)
 - [config/or8574m-dpb420-20261016.json](../config/or8574m-dpb420-20261016.json)
+- [config/ph04464351-january-nop31-20261016.json](../config/ph04464351-january-nop31-20261016.json)
 - [config/ph13726515-d46059b-20261016.json](../config/ph13726515-d46059b-20261016.json)
 - [config/ph17113133-january-nop22-20261016.json](../config/ph17113133-january-nop22-20261016.json)
 - [config/ph24556150-dfpp650-merge-20261015.json](../config/ph24556150-dfpp650-merge-20261015.json)
+- [config/ph47317014-february-nop22-20261016.json](../config/ph47317014-february-nop22-20261016.json)
 - [config/ph58645726-january-coverage-20261016.json](../config/ph58645726-january-coverage-20261016.json)
 - [config/ph61149554-d280-coverage-20261016.json](../config/ph61149554-d280-coverage-20261016.json)
 - [config/ph68531118-all-d210hg-20261016.json](../config/ph68531118-all-d210hg-20261016.json)

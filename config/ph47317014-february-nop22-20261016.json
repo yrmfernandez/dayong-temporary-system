@@ -1,0 +1,10 @@
+{
+  "cases": [{
+    "member": "PH-47317014",
+    "program": "DP-0005",
+    "receipts": ["4196 S", "4934 S", "961 S", "826 S", "2054 S", "2277 S", "1545 S", "3039 S"],
+    "startNop": 21,
+    "expectedDoi": "2024-05-01",
+    "note": "Owner confirmed 4196 S starts February 2026/NOP 22, October 16, 2026. This matches existing coverage. Preserve earlier January receipt 4036/NOP 21 and listed February-September receipts/NOP 22-29, DOI, D-210 HG, dates and amounts. Verify/recalculate stored financial figures and refresh stale account status. Full nine-receipt total PHP 1350; listed eight receipts PHP 1200."
+  }]
+}

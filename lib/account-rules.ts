@@ -10,7 +10,19 @@ export type Account = {
    */
   flexible?: boolean;
   maxMonthlyPayment?: number | null;
+  /** Months without payment before the account is forfeited: 12 for Pay the Balance programs, otherwise 6 (forfeitMonthsFor). */
+  forfeitMonths?: number;
 };
+
+/**
+ * Forfeiture (owner, October 16, 2026): an account of a program in the Pay the Balance category is still not forfeited
+ * up to and including 12 months after its anchor (the last payment, or the DOI day of an advance's last month); every
+ * other account up to and including 6 months. It is forfeited the day after.
+ */
+export const PAY_THE_BALANCE_CATEGORY_ID = "CAT-PAY-THE-BALANCE";
+export const forfeitMonthsFor = (categoryId: string | null | undefined, categoryName = "") =>
+  categoryId === PAY_THE_BALANCE_CATEGORY_ID || categoryName.trim().toLowerCase() === "pay the balance" ? 12 : 6;
+
 export type AccountPayment = {
   id: string; enrollmentId: string; orDate: string; orNumber: string;
   monthFrom: string; monthTo: string; nopFrom: number; nopTo: number;
@@ -96,11 +108,12 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
    * never does. 60D is two missed months, 90D three, 120D four, 150D five or more, and the account is temporarily
    * suspended from the same day as 60D: the 1st of the third month after the last covered one (paid in July for July and
    * August, then nothing: U through October, 60D and suspended from November 1). The New Sale covers the DOI month.
-   * Forfeiture still counts six months from the anchor (the last payment date, or the DOI day of an advance's last month).
+   * Forfeiture counts from the anchor (the last payment date, or the DOI day of an advance's last month): 6 months, or
+   * 12 for Pay the Balance programs (forfeitMonthsFor, owner, October 16, 2026).
    */
   const lastPaidMonth = lastCoveredMonth || account.doi.slice(0, 7);
   const suspendedAt = `${monthName(monthIndex(lastPaidMonth) + 3)}-01`;
-  const forfeitedAt = addDay(addMonths(anchor, 6));
+  const forfeitedAt = addDay(addMonths(anchor, account.forfeitMonths ?? 6));
   const paid = account.payBalanceTotal > 0 && payments.reduce((sum, payment) => sum + payment.amount, 0) >= account.payBalanceTotal;
   const forfeited = !paid && (account.storedStatus === "Forfeited" || today >= forfeitedAt);
   const temporarilySuspended = !forfeited && today >= suspendedAt;

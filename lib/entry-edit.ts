@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { isDeepStrictEqual } from "node:util";
 
-import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, monthIndex, monthName, type AccountPayment } from "@/lib/account-rules";
+import { accountState, COLLECTION_CHANNELS, forfeitMonthsFor, incentiveRoleFor, monthIndex, monthName, type AccountPayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
 import { currentDb, inTransaction, schema, type Queryable, type Transaction } from "@/lib/db";
 import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/duplicate-entries";
@@ -390,7 +390,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
       mergeTarget = existing?.id ?? "";
     }
     // Merging into the member's existing account is checked there (mergeAccountInto); otherwise the account moves as it is.
-    if (!mergeTarget) try { status = accountState({ ...loaded, programId, doi, basePay: Number(program.basePay) || 0, payBalanceTotal: Number(program.payBalanceTotal) || 0, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment ?? null }, paid, today).status; }
+    if (!mergeTarget) try { status = accountState({ ...loaded, programId, doi, basePay: Number(program.basePay) || 0, payBalanceTotal: Number(program.payBalanceTotal) || 0, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(program.categoryId) }, paid, today).status; }
     catch (error) { throw new Error(`${program.name}: ${error instanceof Error ? error.message : "the account's payments do not fit"} Nothing was saved.`); }
     if (changesProgram && !mergeTarget) accountNote = `account ${account.enrollment_id} and its ${paid.length} collection(s) moved to ${program.name}`;
   } else if (changesProgram) accountNote = "no account was found for this New Sale; only the sale changed";

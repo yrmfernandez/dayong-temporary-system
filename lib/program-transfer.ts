@@ -1,7 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
-import { accountState, todayInManila, type AccountPayment } from "@/lib/account-rules";
+import { accountState, forfeitMonthsFor, todayInManila, type AccountPayment } from "@/lib/account-rules";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { currentDb, inTransaction } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
@@ -25,8 +25,8 @@ const text = (value: unknown) => String(value ?? "").trim();
 const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
 const query = async <T,>(statement: SQL) => rowsOf<T>(await currentDb().execute(statement));
 
-type Program = { program_id: string; program_name: string; program_code: string; rate: number; total: number; flexible: boolean; max: number | null; status: string };
-const programById = async (id: string) => (await query<Program>(sql`select program_id, program_name, coalesce(program_code, '') as program_code, coalesce(base_pay, 0)::float8 as rate,
+type Program = { program_id: string; program_name: string; program_code: string; rate: number; total: number; flexible: boolean; max: number | null; status: string; category_id?: string | null };
+const programById = async (id: string) => (await query<Program>(sql`select program_id, program_name, category_id, coalesce(program_code, '') as program_code, coalesce(base_pay, 0)::float8 as rate,
     coalesce(pay_balance_total, 0)::float8 as total, coalesce(flexible, false) as flexible, max_monthly_payment::float8 as max, coalesce(status, 'active') as status
   from programs where program_id = ${text(id)}`))[0];
 const samePay = (a: Program, b: Program) => Math.round(a.rate * 100) === Math.round(b.rate * 100) && a.flexible === b.flexible;
@@ -99,7 +99,7 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
     const chosen = accounts.filter((account) => !wanted || wanted.has(account.enrollment_id));
     if (wanted && chosen.length !== wanted.size) throw new Error("Some of the chosen accounts are no longer in this program. Reload and try again.");
     const today = todayInManila();
-    const base = (id: string, memberId: string, doi: string) => ({ id, memberId, memberNumber: "", programId: to.program_id, doi, branch: "", mas: "", basePay: to.rate, payBalanceTotal: to.total, storedStatus: "", flexible: to.flexible, maxMonthlyPayment: to.max });
+    const base = (id: string, memberId: string, doi: string) => ({ id, memberId, memberNumber: "", programId: to.program_id, doi, branch: "", mas: "", basePay: to.rate, payBalanceTotal: to.total, storedStatus: "", flexible: to.flexible, maxMonthlyPayment: to.max, forfeitMonths: forfeitMonthsFor(to.category_id) });
     const left: Array<{ enrollmentId: string; why: string }> = [];
     let moved = 0, merged = 0;
     // A member with two accounts here: the first moves, the second merges into it.

@@ -162,7 +162,7 @@ function StatementContent() {
         {headMessage && <p className="w-full text-xs text-muted-foreground" aria-live="polite">{headMessage}</p>}
       </div>}
 
-      <p className="border-t pt-4 text-xs text-muted-foreground">Payments are applied to monthly installments in order. An account two months behind is temporarily suspended and is forfeited six months after its last covered month. Please present official receipts for any payment not listed. This statement was generated from company records on {longDate(statement.statementDate)}.</p>
+      <p className="border-t pt-4 text-xs text-muted-foreground">Payments are applied to monthly installments in order. An account two months behind is temporarily suspended and is forfeited {statement.summary.forfeitMonths === 12 ? "twelve" : "six"} months after its last payment{statement.summary.forfeitMonths === 12 ? " (Pay the Balance program)" : ""}. Please present official receipts for any payment not listed. This statement was generated from company records on {longDate(statement.statementDate)}.</p>
     </article>}
   </section>;
 }

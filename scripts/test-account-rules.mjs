@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accountState, validatePayment, allocations, addMonths } from "../lib/account-rules.ts";
+import { accountState, validatePayment, allocations, addMonths, forfeitMonthsFor } from "../lib/account-rules.ts";
 
 const account = { id: "E1", memberId: "M1", memberNumber: "PH1", programId: "P1", doi: "2026-01-15", branch: "B1", mas: "MAS1", basePay: 350, storedStatus: "" };
 const payment = (overrides = {}) => ({ id: "C1", enrollmentId: "E1", orDate: "2026-01-15", orNumber: "OR1", monthFrom: "2026-01", monthTo: "2026-01", nopFrom: 1, nopTo: 1, amount: 350, dateRemitted: "2026-02-01", mas: "MAS1", ...overrides });
@@ -107,4 +107,21 @@ test("the Waiver is judged on the OR date, not the day it is encoded (October 14
   validatePayment(a, history, august("2026-09-20"), "2026-10-14");
   assert.throws(() => validatePayment(a, history, august("2026-10-02"), "2026-10-14"), /Waiver/, "paid after August and September ended: suspended then");
   validatePayment(a, history, august("2026-10-02", "Waiver"), "2026-10-14");
+});
+
+test("forfeiture: Pay the Balance programs after more than 12 months, other programs after more than 6 (owner, October 16, 2026)", () => {
+  assert.equal(forfeitMonthsFor("CAT-PAY-THE-BALANCE"), 12);
+  assert.equal(forfeitMonthsFor("CAT-OTHER", "Pay the Balance"), 12, "by the category name too");
+  assert.equal(forfeitMonthsFor("CAT-FUNERAL-SERVICES"), 6);
+  assert.equal(forfeitMonthsFor(""), 6);
+  // February paid on February 15, 2026: the anchor.
+  const paid = [payment({ orDate: "2026-02-15", nopFrom: 2, nopTo: 2, monthFrom: "2026-02", monthTo: "2026-02" })];
+  const other = (today) => accountState(account, paid, today).status;
+  const balance = (today) => accountState({ ...account, forfeitMonths: 12 }, paid, today).status;
+  assert.notEqual(other("2026-08-15"), "Forfeited", "6 months: still not forfeited");
+  assert.equal(other("2026-08-16"), "Forfeited", "after 6 months");
+  assert.notEqual(balance("2026-08-16"), "Forfeited", "Pay the Balance: not after 6 months");
+  assert.notEqual(balance("2027-02-15"), "Forfeited", "12 months: still not forfeited");
+  assert.equal(balance("2027-02-16"), "Forfeited", "after 12 months");
+  assert.equal(accountState({ ...account, forfeitMonths: 12 }, paid, "2026-12-01").forfeitedAt, "2027-02-16");
 });
