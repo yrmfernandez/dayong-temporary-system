@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {
+      "member": "PH-99982893",
+      "program": "DP-0023",
+      "receipts": ["4507 M", "8027 M", "9708 M", "7010 B", "7040 B", "10183 B", "15058 B"],
+      "startNop": 14,
+      "note": "Owner confirmed these seven receipts all belong to D-460 (October 16, 2026). Move OR 8027 M from D-420 into the existing D-460 account; retain DOI December 1, 2024, renumber coverage from NOP 14, and recalculate incentives and company shares. Preserve gross payments and actual cash received."
+    }
+  ]
+}

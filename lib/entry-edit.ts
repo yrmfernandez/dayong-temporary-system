@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { isDeepStrictEqual } from "node:util";
 
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, monthIndex, monthName, type AccountPayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
@@ -21,7 +22,8 @@ import { findActivePaymentMethod, getPaymentMethods } from "@/lib/remittance-met
  *     Date Remitted. When the account, OR date or months change, the payments of the account(s) are numbered again in
  *     OR-date order from their first NOP (months follow the DOI), as scripts/fix-legacy-receipts.mjs does, and each
  *     account's history must still pass the account rules (lib/account-rules.ts) or nothing is saved.
- *   New Sale: the program (its account moves with it, unless the member already has an account in that program),
+ *   New Sale: the program (its account moves with it; when the member already has an account in that program, the two
+ *     are merged: mergeAccountInto),
  *     application number, OR number, application date (the DOI follows while the account has no collections), amount,
  *     notes, remittance method, Date Remitted.
  *
@@ -141,8 +143,8 @@ async function followSlip(tx: Queryable, entryId: string, slipId: string, newDue
  * Works out again the incentive and company share of collections whose program or NOPs changed (owner, October 15,
  * 2026: reports, commissions and payroll read the incentive as amount less company share, so they must follow the
  * program). A forfeited incentive stays forfeited (the whole amount is the company's). On a remittance slip, the slip's
- * expected amount follows. An entry whose program has no incentive tiers for its NOPs keeps its figures and is listed in
- * `unpriced` (set the program's incentives, then edit it). Returns how many changed, the slips touched and those left.
+ * expected amount follows. Missing or conflicting tiers stop the correction so stale figures cannot be saved.
+ * Returns how many changed and the slips touched.
  */
 export async function repriceCollections(tx: Queryable, ids: string[]) {
   const unique = [...new Set(ids.filter(Boolean))];
@@ -159,12 +161,12 @@ export async function repriceCollections(tx: Queryable, ids: string[]) {
     const orc = channel === "Collector" && Array.isArray(row.remittance_breakdown) && (row.remittance_breakdown as Array<{ orc?: boolean }>).some((item) => item?.orc === true);
     const amount = Number(row.amount_collected);
     let quote: ReturnType<typeof calculateRemittance>;
-    try { quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branchIds.get(text(row.branch).toLowerCase()) ?? ""), incentiveRoleFor(channel), row.nop_from, row.nop_to, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation: row.reactivation === true }); }
+    try { quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), row.branch_id || branchIds.get(text(row.branch).toLowerCase()) || ""), incentiveRoleFor(channel), row.nop_from, row.nop_to, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation: row.reactivation === true }); }
     catch (error) { throw new Error(`Cannot recalculate incentives for ${row.collection_id}: ${error instanceof Error ? error.message : "invalid incentive configuration"} Nothing was saved.`); }
     const forfeited = Number(row.forfeited_incentive ?? 0) > 0;
     const share = forfeited ? amount : quote.remittance;
     const forfeit = forfeited ? round(amount - quote.remittance) : row.forfeited_incentive;
-    if (cents(share) === cents(Number(row.remittance_amount ?? 0)) && Number(forfeit ?? 0) === Number(row.forfeited_incentive ?? 0) && JSON.stringify(row.remittance_breakdown) === JSON.stringify(quote.breakdown)) continue;
+    if (cents(share) === cents(Number(row.remittance_amount ?? 0)) && Number(forfeit ?? 0) === Number(row.forfeited_incentive ?? 0) && isDeepStrictEqual(row.remittance_breakdown, quote.breakdown)) continue;
     await tx.update(collections).set({ remittance_amount: share, remittance_breakdown: quote.breakdown, forfeited_incentive: forfeit }).where(eq(collections.collection_id, row.collection_id));
     if (text(row.linked_remittance_id) && !["", "Outstanding", "Returned"].includes(text(row.remittance_status)) && await followSlip(tx, row.collection_id, text(row.linked_remittance_id), share)) slips.add(text(row.linked_remittance_id));
     repriced++;
@@ -184,7 +186,7 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
     const program = programList.find((item) => item.id === row.program_id);
     if (!program) continue;
     const amount = Number(row.amount_paid ?? 0);
-    const branchId = branches.find((branch) => branch.name.trim().toLowerCase() === text(row.branch).toLowerCase())?.id ?? "";
+    const branchId = row.branch_id || branches.find((branch) => branch.name.trim().toLowerCase() === text(row.branch).toLowerCase())?.id || "";
     let quote: ReturnType<typeof calculateSaleIncentive>;
     try { quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, branchId) }, amount); }
     catch (error) { throw new Error(`Cannot recalculate incentives for ${row.sale_id}: ${error instanceof Error ? error.message : "invalid incentive configuration"} Nothing was saved.`); }
@@ -196,6 +198,40 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
     repriced++;
   }
   return { repriced, slips: [...slips], unpriced };
+}
+
+/**
+ * Merges a member's account into their other account (owner, October 16, 2026: a program can be moved even when the
+ * member's account in the target program already has payments). Every payment of both goes to the target account,
+ * numbered one after another in OR-date order from the lowest NOP either had (2 when none: NOP 1 is the New Sale), each
+ * keeping its number of months; months follow the earlier DOI, which the target keeps. This is the October 4 repair
+ * rule (scripts/fix-legacy-receipts.mjs). The combined history must pass the account rules with the target program,
+ * or this throws and the caller's transaction saves nothing. Transfer records follow; the source account is deleted.
+ * The callers move the New Sale and work out the incentives again.
+ */
+export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId: string, today = manilaNow().date) {
+  const data = await loadAccountData({ enrollmentIds: [sourceId, targetId] }, tx, { lock: true });
+  const source = data.accounts.find((account) => account.id === sourceId), target = data.accounts.find((account) => account.id === targetId);
+  if (!source || !target) throw new Error("The accounts to merge were not found.");
+  if (source.memberId !== target.memberId) throw new Error("Only two accounts of the same member can be merged.");
+  const doi = [source.doi, target.doi].filter(Boolean).sort()[0] ?? "";
+  const payments = data.payments.map((payment) => ({ ...payment, enrollmentId: target.id }));
+  const nops = payments.map((payment) => payment.nopFrom).filter((nop) => nop > 0);
+  const renumbered = renumber({ doi }, payments, nops.length ? Math.min(...nops) : 2, (payment) => Math.max(1, payment.nopTo - payment.nopFrom + 1));
+  let status: string;
+  try { status = accountState({ ...target, doi }, renumbered, today).status; }
+  catch (error) { throw new Error(`The payments of ${source.programName} and ${target.programName} do not fit together on one account (${error instanceof Error ? error.message : "coverage"}). Nothing was saved.`); }
+  for (const payment of renumbered) {
+    await tx.update(collections).set({ enrollment_id: target.id, program_id: target.programId, nop_from: payment.nopFrom, nop_to: payment.nopTo, month_from: payment.monthFrom, month_to: payment.monthTo }).where(eq(collections.collection_id, payment.id));
+  }
+  // Payments that are not Posted (voided) follow the account too, without numbers changing.
+  await tx.update(collections).set({ enrollment_id: target.id, program_id: target.programId }).where(eq(collections.enrollment_id, source.id));
+  await tx.update(schema.member_transfers).set({ enrollment_id: target.id, program_id: target.programId }).where(eq(schema.member_transfers.enrollment_id, source.id));
+  await tx.update(memberPrograms).set({ doi: doi || null, account_status: status }).where(eq(memberPrograms.enrollment_id, target.id));
+  await tx.delete(memberPrograms).where(eq(memberPrograms.enrollment_id, source.id));
+  const moved = data.payments.filter((payment) => payment.enrollmentId === source.id).length;
+  const changed = renumbered.filter((payment) => { const old = data.payments.find((item) => item.id === payment.id); return old && (old.nopFrom !== payment.nopFrom || old.nopTo !== payment.nopTo || old.monthFrom !== payment.monthFrom); }).length;
+  return { status, doi, moved, renumbered: changed, collectionIds: renumbered.map((payment) => payment.id), target: target.id };
 }
 
 /**
@@ -342,7 +378,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   // The account this New Sale opened: the member's account in the sale's program.
   const [account] = await tx.select().from(memberPrograms).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))).for("update");
   const changesProgram = programId !== row.program_id;
-  let accountNote = "", status: string | null = null, doi = day(account?.doi);
+  let accountNote = "", status: string | null = null, doi = day(account?.doi), mergeTarget = "";
   if (account) {
     const data = await loadAccountData({ enrollmentIds: [account.enrollment_id] }, tx, { lock: true });
     const loaded = data.accounts[0];
@@ -351,11 +387,12 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
     if (orDate && orDate !== day(row.or_date) && doi === day(row.or_date) && !paid.length) doi = orDate;
     if (changesProgram) {
       const [existing] = await tx.select({ id: memberPrograms.enrollment_id }).from(memberPrograms).where(and(eq(memberPrograms.member_id, account.member_id), eq(memberPrograms.program_id, programId)));
-      if (existing) throw new Error(`This member already has a ${program.name} account (${existing.id}). Move the payments there with Edit on each collection, or merge the accounts under Move between programs.`);
+      mergeTarget = existing?.id ?? "";
     }
-    try { status = accountState({ ...loaded, programId, doi, basePay: Number(program.basePay) || 0, payBalanceTotal: Number(program.payBalanceTotal) || 0, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment ?? null }, paid, today).status; }
+    // Merging into the member's existing account is checked there (mergeAccountInto); otherwise the account moves as it is.
+    if (!mergeTarget) try { status = accountState({ ...loaded, programId, doi, basePay: Number(program.basePay) || 0, payBalanceTotal: Number(program.payBalanceTotal) || 0, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment ?? null }, paid, today).status; }
     catch (error) { throw new Error(`${program.name}: ${error instanceof Error ? error.message : "the account's payments do not fit"} Nothing was saved.`); }
-    if (changesProgram) accountNote = `account ${account.enrollment_id} and its ${paid.length} collection(s) moved to ${program.name}`;
+    if (changesProgram && !mergeTarget) accountNote = `account ${account.enrollment_id} and its ${paid.length} collection(s) moved to ${program.name}`;
   } else if (changesProgram) accountNote = "no account was found for this New Sale; only the sale changed";
 
   const branchId = (await getBranches()).find((branch) => branch.name.trim().toLowerCase() === text(row.branch).toLowerCase())?.id ?? "";
@@ -376,7 +413,15 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   if (!changedKeys.length) return { changed: false, summary: "", before, after };
 
   await tx.update(sales).set(after).where(eq(sales.sale_id, row.sale_id));
-  if (account) {
+  if (account && mergeTarget) {
+    // The member already has an account in the new program: this account's payments join it (renumbered in OR-date order).
+    const merged = await mergeAccountInto(tx, account.enrollment_id, mergeTarget, today);
+    const followed = await repriceCollections(tx, merged.collectionIds);
+    const [{ n }] = rowsOf<{ n: number }>(await tx.execute(sql`select count(*)::int as n from sales where member_number = ${text(row.member_number)} and program_id = ${programId}`));
+    accountNote = `account ${account.enrollment_id} merged into the member's ${program.name} account ${mergeTarget} (${merged.moved} collection(s) joined, ${merged.renumbered} renumbered, status ${merged.status})`
+      + (followed.repriced ? `; ${followed.repriced} collection(s) with new incentives${followed.slips.length ? ` (slips ${followed.slips.join(", ")} follow)` : ""}` : "")
+      + (Number(n) > 1 ? `; the member now has ${n} New Sales in ${program.name}: delete the extra one if it was entered twice` : "");
+  } else if (account) {
     await tx.update(memberPrograms).set({ program_id: programId, doi: doi || null, amount_paid: amount, remittance_method: method || null, ...(status ? { account_status: status } : {}) }).where(eq(memberPrograms.enrollment_id, account.enrollment_id));
     if (changesProgram) {
       await tx.update(collections).set({ program_id: programId }).where(eq(collections.enrollment_id, account.enrollment_id));

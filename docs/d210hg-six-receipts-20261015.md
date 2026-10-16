@@ -1,5 +1,7 @@
 # Six receipts verified as D-210 HG
 
+Follow-up: [incentives were recalculated from the corrected NOPs](corrected-entry-finance-20261015.md). The initial preservation of financial figures described below has been superseded.
+
 On October 15, 2026, the owner confirmed ORs 12168 N, 15392N, 17951N, 02683T, 05451 T, and 07610 T belong to D-210 HG (`DP-0005`).
 
 Read-only production verification found all six posted receipts already on account `ENR-LEG-C18A6D3A68`, member `MEM-LEG-EF9AC84CED`, under the correct program. Five receipts are PHP 420 each and OR 02683T is PHP 210, totaling PHP 2,310. Full payment-history validation passed using the application's account rules. The existing account DOI is April 1, 2025, with recorded coverage NOP 1–11, April 2025–February 2026, and stored/calculated status `150D` on the verification date. No receipt moves, coverage changes, account changes or production writes were made.

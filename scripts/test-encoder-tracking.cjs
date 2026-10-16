@@ -757,16 +757,25 @@ test('Programs → Transfer members moves, merges or leaves each account, only t
   assert.equal(options.accounts.length, 3);
   const post = (body) => route.POST(request(body));
   assert.equal((await post({ from: 'DP-OLD', to: 'DP-400', all: true, reason: 'test' })).status, 400, 'a different pay is refused');
+  const missingTier = await (await post({ from: 'DP-OLD', to: 'DP-NEW', all: true, reason: 'Same plan' })).json();
+  assert.match(missingTier.message, /Cannot recalculate incentives/);
+  assert.equal((await query("select program_id from member_programs where enrollment_id='E1'"))[0].program_id, 'DP-OLD', 'a missing tier rolls back the program/account move');
+  assert.equal((await query("select count(*)::int as n from member_programs where enrollment_id='E2-OLD'"))[0].n, 1, 'merged source account also survives rollback');
+  await seed('program_incentives', [{ incentive_id: 'NEW-MAS', program_id: 'DP-NEW', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'fixed', mark_up: 0, incentive_amount: 75 }]);
   const response = await post({ from: 'DP-OLD', to: 'DP-NEW', all: true, removeWhenEmpty: true, reason: 'Same plan' });
   const result = await response.json();
   assert.equal(response.status, 200, JSON.stringify(result));
-  assert.deepEqual([result.moved, result.merged, result.left.map((item) => item.enrollmentId), result.removal], [1, 1, ['E3-OLD'], 'inactive']);
+  // Owner, October 16, 2026: a member whose target account already has payments is merged too (E3: both paid July).
+  assert.deepEqual([result.moved, result.merged, result.left.map((item) => item.enrollmentId), result.removal], [1, 2, [], 'deleted']);
   const enrollments = await query("select enrollment_id, program_id, doi::text as doi from member_programs order by enrollment_id");
-  assert.deepEqual(enrollments.map((row) => [row.enrollment_id, row.program_id]), [['E1', 'DP-NEW'], ['E2-NEW', 'DP-NEW'], ['E3-NEW', 'DP-NEW'], ['E3-OLD', 'DP-OLD']], 'E2-OLD merged away; E3-OLD left (same month paid on both)');
+  assert.deepEqual(enrollments.map((row) => [row.enrollment_id, row.program_id]), [['E1', 'DP-NEW'], ['E2-NEW', 'DP-NEW'], ['E3-NEW', 'DP-NEW']], 'E2-OLD and E3-OLD merged away');
   assert.equal(enrollments.find((row) => row.enrollment_id === 'E2-NEW').doi, '2026-06-10', 'the earlier DOI is kept');
   const merged = await query("select collection_id, enrollment_id, nop_from from collections where member_id = 'MEM-2' order by month_from");
   assert.deepEqual(merged.map((row) => [row.collection_id, row.enrollment_id, row.nop_from]), [['C2a', 'E2-NEW', 2], ['C2b', 'E2-NEW', 3], ['C2c', 'E2-NEW', 4]], 'payments joined and numbered on from NOP 2');
-  assert.equal((await query("select status from programs where program_id = 'DP-OLD'"))[0].status, 'inactive', 'still used by the account left behind');
+  assert.deepEqual(await query("select collection_id, remittance_amount::float8 as share from collections where collection_id in ('C1','C2a','C2b','C2c') order by collection_id"), ['C1','C2a','C2b','C2c'].map(collection_id => ({collection_id, share:225})), 'moved and merged histories use target incentives');
+  const both = await query("select collection_id, enrollment_id, nop_from, month_from from collections where member_id = 'MEM-3' order by nop_from");
+  assert.deepEqual(both.map((row) => [row.collection_id, row.enrollment_id, row.nop_from, row.month_from]), [['C3a', 'E3-NEW', 2, '2026-07'], ['C3b', 'E3-NEW', 3, '2026-08']], 'both July payments joined, numbered on in OR-date order');
+  assert.equal((await query("select count(*)::int as n from programs where program_id = 'DP-OLD'"))[0].n, 0, 'nothing uses the emptied program, so it is deleted');
   h.setUser({ userId: 'USR-1', employeeId: 'DPE-1', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
   assert.equal((await route.GET(new Request('http://localhost/api/programs/transfer?program=DP-NEW'))).status, 403, 'administrators only');
 });
@@ -3147,7 +3156,7 @@ test('Edit / Corrections: a collection moves to the other program of the member,
   assert.equal((await route.PUT(request({ kind: 'Collection', id: 'C2', reason: 'x y z' }))).status, 403);
 });
 
-test('Edit / Corrections: a New Sale changes program with its account, unless the member already has that program', async () => {
+test('Edit / Corrections: a New Sale changes program with its account, merged when the member already has that program', async () => {
   const h = harness({ userId: 'USR-9', employeeId: 'DPE-0009', name: 'it', roleNames: ['IT Clerk'], permissions: {} });
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
   await seed('members', [{ member_id: 'MEM-2', member_number: 'PH-2', surname: 'Cruz', first_name: 'Rina' }]);
@@ -3170,5 +3179,15 @@ test('Edit / Corrections: a New Sale changes program with its account, unless th
   assert.match(saved.message, /1 collection\(s\) with new incentives/);
 
   await seed('member_programs', [{ enrollment_id: 'ENR-T', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-A', doi: '2026-09-01', branch: 'BR-1', mas: 'MAS-2', status: 'Active' }]);
-  assert.match((await (await route.PUT(request({ kind: 'New Sale', id: 'S1', programId: 'DP-A', reason: 'back again' }))).json()).message, /already has a D-350 account/);
+  // The member already has a D-350 account with a payment: the New Sale's account merges into it (owner, October 16, 2026).
+  await seed('collections', [{ collection_id: 'C8', collection_batch_id: 'B8', enrollment_id: 'ENR-T', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-A', branch: 'BR-1', mas: 'MAS-2', or_number: '801 C', or_date: '2026-09-05', amount_collected: 350, month_from: '2026-10', month_to: '2026-10', nop_from: 2, nop_to: 2, status: 'Posted', collected_by_role: 'MAS', remittance_amount: 200 }]);
+  const merged = await (await route.PUT(request({ kind: 'New Sale', id: 'S1', programId: 'DP-A', reason: 'back again' }))).json();
+  assert.equal(merged.success, true, JSON.stringify(merged));
+  assert.match(merged.message, /merged into the member's D-350 account ENR-T/);
+  assert.deepEqual(await query('select enrollment_id, program_id, doi::text as doi from member_programs'), [{ enrollment_id: 'ENR-T', program_id: 'DP-A', doi: '2026-09-01' }]);
+  assert.deepEqual(await query('select collection_id, enrollment_id, program_id, nop_from, month_from from collections order by nop_from'), [
+    { collection_id: 'C8', enrollment_id: 'ENR-T', program_id: 'DP-A', nop_from: 2, month_from: '2026-10' },
+    { collection_id: 'C9', enrollment_id: 'ENR-T', program_id: 'DP-A', nop_from: 3, month_from: '2026-11' },
+  ], 'numbered in OR-date order');
+  assert.equal((await query('select program_id from sales'))[0].program_id, 'DP-A');
 });

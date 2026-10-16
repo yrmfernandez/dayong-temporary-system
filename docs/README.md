@@ -1,5 +1,9 @@
 # Dayong System documentation
 
+The [October 16 D-460 correction](d460-seven-receipts-20261016.md) consolidates seven receipts onto D-460 and recalculates their coverage and incentives.
+
+The [October 15 incentive correction](corrected-entry-finance-20261015.md) makes incentives follow corrected programs and NOPs, and backfills the seven accounts corrected in this session.
+
 The [October 15 PH-24556150 program merge](ph24556150-dfpp650-merge-20261015.md) consolidates nine payments onto the member's correct DFPP-650 account.
 
 The [October 15 six-receipt D-210 HG verification and coverage correction](d210hg-six-receipts-20261015.md) confirms the program and applies the owner's September 2025–July 2026 coverage, NOP 6–16.

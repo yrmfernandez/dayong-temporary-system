@@ -3,7 +3,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { accountState, todayInManila, type AccountPayment } from "@/lib/account-rules";
 import { currentDb, inTransaction } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
-import { repriceCollections, repriceSales } from "@/lib/entry-edit";
+import { mergeAccountInto, repriceCollections, repriceSales } from "@/lib/entry-edit";
 import { getEncoder } from "@/lib/encoder-context";
 
 /**
@@ -12,8 +12,8 @@ import { getEncoder } from "@/lib/encoder-context";
  * scripts/move-program-accounts.mjs:
  *   - an account moves with its New Sale, collections and transfer records; its payment status is recalculated;
  *   - a member who already has an account in the target program is merged into it (their payments join that account,
- *     renumbered in month order from the lowest NOP either had, the earlier DOI kept) unless both accounts paid the same month, which
- *     means two real accounts: those are left and reported;
+ *     renumbered in OR-date order from the lowest NOP either had, the earlier DOI kept: mergeAccountInto in
+ *     lib/entry-edit.ts) unless the combined payments break the account rules: those are left and reported;
  *   - the moved New Sales and collections get the target program's incentives and company share (owner, October 15,
  *     2026: reports follow the program; lib/entry-edit.ts repriceCollections / repriceSales; slips follow);
  *   - optionally the emptied program is deleted (with its incentive tiers), or set inactive if anything still uses it.
@@ -21,7 +21,6 @@ import { getEncoder } from "@/lib/encoder-context";
  */
 const text = (value: unknown) => String(value ?? "").trim();
 const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
-const monthIndex = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
 const query = async <T,>(statement: SQL) => rowsOf<T>(await currentDb().execute(statement));
 
 type Program = { program_id: string; program_name: string; program_code: string; rate: number; total: number; flexible: boolean; max: number | null; status: string };
@@ -84,31 +83,19 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
     let moved = 0, merged = 0;
     // A member with two accounts here: the first moves, the second merges into it.
     const joined = new Map<string, string>();
+    const changedAccounts = new Set<string>(), changedMembers = new Set<string>();
     for (const chosenAccount of chosen) {
       const account = { ...chosenAccount, target: chosenAccount.target ?? joined.get(chosenAccount.member_id) ?? null };
       const own = await paymentsOf(account.enrollment_id);
       if (account.target) {
-        // Merge into the member's account in the target program.
-        const [target] = await query<{ doi: string }>(sql`select coalesce(doi::text, '') as doi from member_programs where enrollment_id = ${account.target}`);
-        const theirs = await paymentsOf(account.target);
-        const months = (list: Payment[]) => new Set(list.flatMap((payment) => /^\d{4}-\d{2}$/.test(payment.monthFrom) && /^\d{4}-\d{2}$/.test(payment.monthTo) ? Array.from({ length: monthIndex(payment.monthTo) - monthIndex(payment.monthFrom) + 1 }, (_, i) => monthIndex(payment.monthFrom) + i) : []));
-        const theirMonths = months(theirs);
-        if ([...months(own)].some((month) => theirMonths.has(month))) { left.push({ enrollmentId: account.enrollment_id, why: `both this account and the member's ${to.program_name} account (${account.target}) paid the same month: two real accounts, left as they are` }); continue; }
-        const combined = [...theirs, ...own].map((payment) => ({ ...payment, enrollmentId: account.target! })).sort((a, b) => a.monthFrom.localeCompare(b.monthFrom) || a.orDate.localeCompare(b.orDate));
-        // Numbered on from the lowest NOP either account already had (2 when NOP 1 was the New Sale).
-        const firstNops = combined.map((payment) => payment.nopFrom).filter((value) => value > 0);
-        let nop = firstNops.length ? Math.min(...firstNops) : 1;
-        const renumbered = combined.map((payment) => { const count = monthIndex(payment.monthTo) - monthIndex(payment.monthFrom) + 1; const next = { ...payment, nopFrom: nop, nopTo: nop + count - 1 }; nop += count; return next; });
-        const doi = [target?.doi, account.doi].filter(Boolean).sort()[0] ?? "";
-        let status: string;
-        try { status = accountState(base(account.target, account.member_id, doi), renumbered, today).status; }
+        // Merge into the member's account in the target program: every payment of both, numbered again in OR-date order
+        // (owner, October 16, 2026: a program moves even when that account already has payments). Refused only when the
+        // combined payments break the account rules; then the account is left and reported.
+        try { await mergeAccountInto(currentDb(), account.enrollment_id, account.target, today); }
         catch (error) { left.push({ enrollmentId: account.enrollment_id, why: `cannot merge into ${account.target}: ${error instanceof Error ? error.message : "payments do not fit"}` }); continue; }
-        await currentDb().execute(sql`update collections set enrollment_id = ${account.target}, program_id = ${to.program_id} where enrollment_id = ${account.enrollment_id}`);
-        for (const payment of renumbered) await currentDb().execute(sql`update collections set nop_from = ${payment.nopFrom}, nop_to = ${payment.nopTo} where collection_id = ${payment.id} and (nop_from <> ${payment.nopFrom} or nop_to <> ${payment.nopTo})`);
-        await currentDb().execute(sql`update member_transfers set enrollment_id = ${account.target}, program_id = ${to.program_id} where enrollment_id = ${account.enrollment_id}`);
         await currentDb().execute(sql`update sales set program_id = ${to.program_id} where program_id = ${from.program_id} and member_number = ${account.member_number}`);
-        await currentDb().execute(sql`update member_programs set doi = ${doi || null}, account_status = ${status} where enrollment_id = ${account.target}`);
-        await currentDb().execute(sql`delete from member_programs where enrollment_id = ${account.enrollment_id}`);
+        changedAccounts.add(account.target);
+        changedMembers.add(account.member_number);
         merged++;
         continue;
       }
@@ -120,12 +107,14 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
       await currentDb().execute(sql`update sales set program_id = ${to.program_id} where program_id = ${from.program_id} and member_number = ${account.member_number}`);
       await currentDb().execute(sql`update member_programs set program_id = ${to.program_id}, account_status = ${status} where enrollment_id = ${account.enrollment_id}`);
       joined.set(account.member_id, account.enrollment_id);
+      changedAccounts.add(account.enrollment_id);
+      changedMembers.add(account.member_number);
       moved++;
     }
     // Incentives and company shares follow the new program (merged accounts were renumbered too).
-    const touched = [...new Set(chosen.map((account) => account.target ?? joined.get(account.member_id) ?? account.enrollment_id))];
+    const touched = [...changedAccounts];
     const movedCollections = touched.length ? await query<{ id: string }>(sql`select collection_id as id from collections where enrollment_id in (${sql.join(touched.map((id) => sql`${id}`), sql`, `)})`) : [];
-    const movedSales = chosen.length ? await query<{ id: string }>(sql`select sale_id as id from sales where program_id = ${to.program_id} and member_number in (${sql.join(chosen.map((account) => sql`${account.member_number}`), sql`, `)})`) : [];
+    const movedSales = changedMembers.size ? await query<{ id: string }>(sql`select sale_id as id from sales where program_id = ${to.program_id} and member_number in (${sql.join([...changedMembers].map((number) => sql`${number}`), sql`, `)})`) : [];
     const repriced = { collections: await repriceCollections(currentDb(), movedCollections.map((row) => row.id)), sales: await repriceSales(currentDb(), movedSales.map((row) => row.id)) };
     let removal: "" | "deleted" | "inactive" = "";
     if (input.removeWhenEmpty) {
