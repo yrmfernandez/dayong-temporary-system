@@ -1,5 +1,9 @@
 # Dayong System documentation
 
+The [October 16 PH-68531118 consolidation](ph68531118-all-d210hg-20261016.md) places all nine payments under D-210 HG and recalculates incentives.
+
+The [October 16 PH-17113133 correction](ph17113133-january-nop22-20261016.md) sets January–September 2026 coverage at NOP 22–30.
+
 The [October 16 PH-99032555 correction](ph99032555-january-nop27-20261016.md) sets January–September 2026 coverage at NOP 27–35.
 
 The [October 16 OR 11420 B correction](or11420b-july-august-20261016.md) extends its PHP 840 payment to July–August 2026, NOP 50–51.

@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {
+      "member": "PH-68531118",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-0C3596B765"],
+      "startNop": 21,
+      "expectedDoi": "2024-05-01",
+      "note": "Owner confirmed all PH-68531118 payments belong to D-210 HG, October 16, 2026. Move seven D-300 (Bracketing) receipts into existing D-210 HG account. Each PHP 300 receipt covers one month on the flexible D-210 HG program. Preserve May 1, 2024 DOI, January-September 2026/NOP 21-29 coverage, receipt dates, amounts and historical MAS attribution. Recalculate incentives/company shares and status; remove empty source account."
+    }
+  ]
+}
