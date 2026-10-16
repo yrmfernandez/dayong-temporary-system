@@ -1,23 +1,24 @@
-import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
-import { canManageUsers, getSessionUser } from "@/lib/auth-server";
+import { getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
-import { programTransferOptions, transferProgramAccounts } from "@/lib/program-transfer";
+import { canMovePrograms, programTargets, programTransferOptions, transferProgramAccounts } from "@/lib/program-transfer";
 
 /**
  * Programs → Transfer members (lib/program-transfer.ts), administrators, and IT from Edit / Corrections: GET ?program=ID lists the program's
- * accounts and the programs with the same pay; POST { from, to, enrollmentIds | all, removeWhenEmpty, reason } moves them.
+ * accounts and the programs with the same pay (&targets=1: only the programs, for Members → Transfer of one account);
+ * POST { from, to, enrollmentIds | all, removeWhenEmpty, reason } moves them.
  */
 async function allowed() {
   const user = await getSessionUser();
   if (!user) return Response.json({ success: false, message: "Please sign in." }, { status: 401 });
-  if (!(await canManageUsers()) && !(canCorrectEntriesFor(user) && canAccessPath(user, "/entry-corrections"))) return Response.json({ success: false, message: "Only administrators and IT move members between programs." }, { status: 403 });
+  if (!(await canMovePrograms())) return Response.json({ success: false, message: "Only administrators and IT move members between programs." }, { status: 403 });
   return null;
 }
 
 export async function GET(request: Request) {
   const refused = await allowed();
   if (refused) return refused;
-  try { return Response.json({ success: true, ...await programTransferOptions(new URL(request.url).searchParams.get("program") ?? "") }, { headers: { "Cache-Control": "private, no-store" } }); }
+  const params = new URL(request.url).searchParams;
+  try { return Response.json({ success: true, ...await (params.get("targets") ? programTargets(params.get("program") ?? "") : programTransferOptions(params.get("program") ?? "")) }, { headers: { "Cache-Control": "private, no-store" } }); }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load the program." }, { status: 400 }); }
 }
 

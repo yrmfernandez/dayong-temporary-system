@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 123 library files, 52 component files; 466 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 123 library files, 52 component files; 468 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -219,7 +219,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/program-incentive-store.ts](../lib/program-incentive-store.ts) | `StoredTier`, `validateIncentiveTiers`, `writeProgramIncentives` | `@/lib/db`, `@/lib/readable-id` |
 | [lib/program-payment-limit.mjs](../lib/program-payment-limit.mjs) | `normalizeMonthlyMaximum`, `validateMonthlyMaximum` | — |
 | [lib/program-snapshot.ts](../lib/program-snapshot.ts) | `ProgramSnapshotSource`, `programSnapshot` | — |
-| [lib/program-transfer.ts](../lib/program-transfer.ts) | `TransferAccount`, `programTransferOptions`, `transferProgramAccounts` | `@/lib/account-rules`, `@/lib/db`, `@/lib/readable-id`, `@/lib/entry-edit`, `@/lib/encoder-context` |
+| [lib/program-transfer.ts](../lib/program-transfer.ts) | `TransferAccount`, `canMovePrograms`, `programTargets`, `programTransferOptions`, `transferProgramAccounts` | `@/lib/access-control`, `@/lib/account-rules`, `@/lib/auth-server`, `@/lib/db`, `@/lib/readable-id`, `@/lib/entry-edit`, `@/lib/encoder-context` |
 | [lib/programs.ts](../lib/programs.ts) | `Program`, `getActivePrograms`, `getAllPrograms` | `./google-sheets-data` |
 | [lib/rate-limit.ts](../lib/rate-limit.ts) | `retryAfter`, `recordAttempt`, `clearAttempts`, `clientIp` | — |
 | [lib/readable-id.ts](../lib/readable-id.ts) | `createReadableId` | — |
@@ -353,7 +353,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/mam/route.ts](../app/api/mam/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/encoder-context`, `@/lib/account-data`, `@/lib/mam-report`, `@/lib/account-rules`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/member-records` |
 | [app/api/mas/route.ts](../app/api/mas/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees` |
 | [app/api/member-programs/check/route.ts](../app/api/member-programs/check/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-records` |
-| [app/api/members/directory/route.ts](../app/api/members/directory/route.ts) | `GET`, `PATCH`, `DELETE` | `@/lib/access-control`, `@/lib/admin-delete`, `@/lib/member-scope`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/master-data-crud`, `@/lib/member-directory-data`, `@/lib/member-directory`, `@/lib/member-transfer` |
+| [app/api/members/directory/route.ts](../app/api/members/directory/route.ts) | `GET`, `PATCH`, `DELETE` | `@/lib/access-control`, `@/lib/admin-delete`, `@/lib/member-scope`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/master-data-crud`, `@/lib/member-directory-data`, `@/lib/member-directory`, `@/lib/member-transfer`, `@/lib/program-transfer` |
 | [app/api/members/route.ts](../app/api/members/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-records` |
 | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/account-data` |
 | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/member-transfer` |
@@ -367,7 +367,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/program-categories/route.ts](../app/api/program-categories/route.ts) | `GET`, `POST`, `PUT`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-categories` |
 | [app/api/program-incentives/route.ts](../app/api/program-incentives/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets-data` |
 | [app/api/programs/route.ts](../app/api/programs/route.ts) | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` | `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/program-incentive-store`, `@/lib/program-snapshot`, `@/lib/program-payment-limit.mjs`, `@/lib/google-sheets-data` |
-| [app/api/programs/transfer/route.ts](../app/api/programs/transfer/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-transfer` |
+| [app/api/programs/transfer/route.ts](../app/api/programs/transfer/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/program-transfer` |
 | [app/api/receipt-photos/route.ts](../app/api/receipt-photos/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/db`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/receipt-photos` |
 | [app/api/remittance-methods/route.ts](../app/api/remittance-methods/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-methods` |
 | [app/api/remittances/entries/route.ts](../app/api/remittances/entries/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/remittance-workflow` |
@@ -570,9 +570,11 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/or5151b-d190-20261016.json](../config/or5151b-d190-20261016.json)
 - [config/or8574m-dpb420-20261016.json](../config/or8574m-dpb420-20261016.json)
 - [config/ph13726515-d46059b-20261016.json](../config/ph13726515-d46059b-20261016.json)
+- [config/ph17113133-january-nop22-20261016.json](../config/ph17113133-january-nop22-20261016.json)
 - [config/ph24556150-dfpp650-merge-20261015.json](../config/ph24556150-dfpp650-merge-20261015.json)
 - [config/ph58645726-january-coverage-20261016.json](../config/ph58645726-january-coverage-20261016.json)
 - [config/ph61149554-d280-coverage-20261016.json](../config/ph61149554-d280-coverage-20261016.json)
+- [config/ph68531118-all-d210hg-20261016.json](../config/ph68531118-all-d210hg-20261016.json)
 - [config/ph72833261-january-nop21-20261016.json](../config/ph72833261-january-nop21-20261016.json)
 - [config/ph99032555-january-nop27-20261016.json](../config/ph99032555-january-nop27-20261016.json)
 - [config/program-moves.json](../config/program-moves.json)

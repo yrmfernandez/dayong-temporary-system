@@ -52,6 +52,7 @@ export default function MembersPage() {
   const [deleting, setDeleting] = useState(false);
   // Administrators and HR Officers can move an enrollment to another employee in the same branch.
   const [canTransfer, setCanTransfer] = useState(false);
+  const [canMoveProgram, setCanMoveProgram] = useState(false);
   // New members are added through New Sales, which only encoders can open.
   const [canAddMember, setCanAddMember] = useState(false);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -70,7 +71,7 @@ export default function MembersPage() {
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load members.");
       setError(""); setMembers(result.members); setTotals({ total: result.total, matched: result.matched, pages: result.pages }); setCounts(result.counts ?? {}); setChoices(result.options);
       if (result.page !== page) setPage(result.page);
-      setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanDelete(Boolean(result.canDelete)); setCanTransfer(Boolean(result.canTransfer)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []);
+      setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanDelete(Boolean(result.canDelete)); setCanTransfer(Boolean(result.canTransfer)); setCanMoveProgram(Boolean(result.canMoveProgram)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []);
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -135,7 +136,8 @@ export default function MembersPage() {
         ["Claimant", selected.claimant], ["Claimant contact", selected.claimantContact], ["Claimant address", selected.claimantAddress],
       ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1">{value || "Not recorded"}</dd></div>)}</dl>
       <h3 className="font-semibold">All program enrollments</h3>
-      <EnrollmentTable enrollments={selected.enrollments} canTransfer={canTransfer} transfers={transfers} onTransferred={(enrollmentId, toMas) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, mas: toMas } : item) }); setRevision((value) => value + 1); }} />
+      <EnrollmentTable enrollments={selected.enrollments} canTransfer={canTransfer} canMoveProgram={canMoveProgram} transfers={transfers} onTransferred={(enrollmentId, toMas) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, mas: toMas } : item) }); setRevision((value) => value + 1); }}
+        onProgramMoved={(enrollmentId, programId, programName, merged) => { setSelected((current) => current && { ...current, enrollments: merged ? current.enrollments.filter((item) => item.id !== enrollmentId) : current.enrollments.map((item) => item.id === enrollmentId ? { ...item, programId, programName } : item) }); setRevision((value) => value + 1); }} />
       <MemberMam memberId={selected.id} />
 </section>{editing?.id === member.id && <MemberEditForm memberId={editing.id} onCancel={() => setEditing(null)} onSaved={(text) => { setMessage(text); setSavedId(editing.id); setEditing(null); setSelected(null); setRevision((value) => value + 1); }} />}</InlineRow>}</Fragment>)}{!visible.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">{totals.total ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
         </table>
@@ -148,9 +150,17 @@ export default function MembersPage() {
 type Transfer = { enrollmentId: string; fromMas: string; toMas: string; reason: string; by: string; at: string };
 type Enrollment = DirectoryMember["enrollments"][number];
 
-/** A member's program enrollments; Administrators and HR Officers can move one to another employee in its branch. */
-function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }: { enrollments: Enrollment[]; canTransfer: boolean; transfers: Transfer[]; onTransferred: (enrollmentId: string, toMas: string) => void }) {
+/**
+ * A member's program enrollments. Transfer (owner, October 16, 2026: a choice of per MAS or per program): Administrators
+ * and HR Officers move an account to another employee; Administrators and IT move it to another program with the same
+ * monthly pay (lib/program-transfer.ts: merged into the member's account there if they have one, incentives follow).
+ */
+function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, onTransferred, onProgramMoved }: { enrollments: Enrollment[]; canTransfer: boolean; canMoveProgram: boolean; transfers: Transfer[]; onTransferred: (enrollmentId: string, toMas: string) => void;
+  onProgramMoved: (enrollmentId: string, programId: string, programName: string, merged: boolean) => void }) {
   const [open, setOpen] = useState("");
+  const [mode, setMode] = useState<"mas" | "program">("mas");
+  const [programs, setPrograms] = useState<Array<{ id: string; name: string; code: string; rate: number }>>([]);
+  const [targetProgram, setTargetProgram] = useState("");
   const [candidates, setCandidates] = useState<Array<{ employeeId: string; name: string; roles: string[]; branches: string[] }>>([]);
   const [target, setTarget] = useState("");
   const [branchChoice, setBranchChoice] = useState<BranchChoice>(noBranchChoice);
@@ -158,15 +168,44 @@ function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }:
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   async function start(enrollment: Enrollment) {
-    setNote(""); setTarget(""); setReason(""); setBranchChoice(noBranchChoice);
+    setNote(""); setTarget(""); setReason(""); setBranchChoice(noBranchChoice); setTargetProgram("");
     if (open === enrollment.id) { setOpen(""); return; }
-    setOpen(enrollment.id); setCandidates([]); setBusy(true);
+    setOpen(enrollment.id); setCandidates([]); setPrograms([]);
+    const first = canTransfer ? "mas" : "program";
+    setMode(first);
+    await load(enrollment, first);
+  }
+  async function load(enrollment: Enrollment, which: "mas" | "program") {
+    setBusy(true); setNote("");
+    if (which === "program") {
+      try {
+        const response = await fetch(`/api/programs/transfer?targets=1&program=${encodeURIComponent(enrollment.programId)}`, { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to load programs.");
+        setPrograms(result.targets);
+      } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to load programs."); }
+      finally { setBusy(false); }
+      return;
+    }
     try {
       const response = await fetch(`/api/members/transfer?enrollmentId=${encodeURIComponent(enrollment.id)}`, { cache: "no-store" });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load employees.");
       setCandidates(result.candidates);
     } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to load employees."); }
+    finally { setBusy(false); }
+  }
+  async function moveProgram(enrollment: Enrollment) {
+    setBusy(true); setNote("");
+    try {
+      const response = await fetch("/api/programs/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: enrollment.programId, to: targetProgram, enrollmentIds: [enrollment.id], reason }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to move the account.");
+      if (result.left?.length) throw new Error(`Not moved: ${result.left.map((item: { why: string }) => item.why).join("; ")}`);
+      const name = programs.find((item) => item.id === targetProgram)?.name ?? "";
+      setOpen(""); setNote(result.message);
+      onProgramMoved(enrollment.id, targetProgram, name, Boolean(result.merged));
+    } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to move the account."); }
     finally { setBusy(false); }
   }
   async function transfer(enrollment: Enrollment) {
@@ -181,7 +220,8 @@ function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }:
     } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to transfer."); }
     finally { setBusy(false); }
   }
-  const headers = ["Program", "DOI", "Branch", "MAS / Officer", "Collector", "Remittance method", "Enrollment status", "Payment status", ...(canTransfer ? [""] : [])];
+  const canAct = canTransfer || canMoveProgram;
+  const headers = ["Program", "DOI", "Branch", "MAS / Officer", "Collector", "Remittance method", "Enrollment status", "Payment status", ...(canAct ? [""] : [])];
   return <div className="overflow-x-auto">
     <table className="w-full text-left text-sm">
       <thead><tr>{headers.map((label, index) => <th key={index} scope="col" className="p-2">{label}</th>)}</tr></thead>
@@ -193,9 +233,21 @@ function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }:
             <td className="p-2">{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">Transferred from {last.fromMas}{last.at ? ` on ${last.at.slice(0, 10)}` : ""} · {last.reason}</span>}</td>
             <td className="p-2">{e.collector || "-"}</td><td className="p-2">{e.paymentMethod || "-"}</td><td className="p-2">{e.status || "-"}</td>
             <td className="p-2">{e.accountError || <span className="flex flex-wrap items-center gap-1">{e.accountStatus || "Needs review"}<StandingBadge enrollment={e} /></span>}</td>
-            {canTransfer && <td className="p-2 text-right"><Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{open === e.id ? "Transferring" : "Transfer"}</Button></td>}
+            {canAct && <td className="p-2 text-right"><Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{open === e.id ? "Transferring" : "Transfer"}</Button></td>}
           </tr>
           {open === e.id && <InlineRow colSpan={headers.length}>
+            {canTransfer && canMoveProgram && <div className="mb-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Transfer to">
+              {([["mas", "To another MAS"], ["program", "To another program"]] as const).map(([value, label]) => <Button key={value} type="button" size="sm" role="radio" aria-checked={mode === value} variant={mode === value ? "default" : "outline"} onClick={() => { if (mode !== value) { setMode(value); setReason(""); void load(e, value); } }}>{label}</Button>)}
+            </div>}
+            {mode === "program" ? <>
+              <p className="text-sm font-semibold">Move {e.programName} to another program</p>
+              <p className="mb-3 text-xs text-muted-foreground">Only programs with the same monthly pay. The account keeps its New Sale, collections and history; if this member already has an account in that program, the two are merged and their payments numbered in OR-date order. Incentives follow the new program.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">New program *<SearchSelect aria-label="New program" className="mt-1 h-9" placeholder={busy && !programs.length ? "Loading..." : programs.length ? "Search program" : "No program with the same pay"} disabled={!programs.length} value={targetProgram} onValueChange={setTargetProgram} options={programs.map((item) => ({ value: item.id, label: item.name, description: `${item.code ? `${item.code} · ` : ""}₱${item.rate}/month`, keywords: item.code }))} /></label>
+                <label className="text-sm">Reason *<Input className="mt-1 h-9" maxLength={300} value={reason} placeholder="e.g. Clerk chose D-350; the application form says DPB-350" onChange={(event) => setReason(event.target.value)} /></label>
+              </div>
+              <div className="mt-3 flex gap-2"><Button type="button" disabled={busy || !targetProgram || reason.trim().length < 3} onClick={() => void moveProgram(e)}>{busy ? "Saving..." : "Move to program"}</Button><Button type="button" variant="ghost" onClick={() => setOpen("")}>Cancel</Button></div>
+            </> : <>
             <p className="text-sm font-semibold">Transfer {e.programName} from {e.mas || "no MAS"}</p>
             <p className="mb-3 text-xs text-muted-foreground">To another active employee of any branch. Future collections belong to the new MAS; past collections and cash already owed stay with {e.mas || "the current MAS"}.</p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -204,6 +256,7 @@ function EnrollmentTable({ enrollments, canTransfer, transfers, onTransferred }:
             </div>
             {(() => { const chosen = candidates.find((item) => item.employeeId === target); return chosen && <div className="mt-3"><TransferBranchChoice name={chosen.name} outside={branchesOutside([e.branch], chosen.branches)} count={1} targetBranches={chosen.branches} value={branchChoice} onChange={setBranchChoice} /></div>; })()}
             <div className="mt-3 flex gap-2"><Button type="button" disabled={busy || !target || reason.trim().length < 3 || !branchChoiceReady(branchesOutside([e.branch], candidates.find((item) => item.employeeId === target)?.branches ?? []), branchChoice)} onClick={() => void transfer(e)}>{busy ? "Saving..." : "Transfer"}</Button><Button type="button" variant="ghost" onClick={() => setOpen("")}>Cancel</Button></div>
+            </>}
           </InlineRow>}
         </Fragment>;
       })}</tbody>

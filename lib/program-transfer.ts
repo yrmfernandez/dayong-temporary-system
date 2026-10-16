@@ -1,6 +1,8 @@
 import { sql, type SQL } from "drizzle-orm";
 
+import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
 import { accountState, todayInManila, type AccountPayment } from "@/lib/account-rules";
+import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { currentDb, inTransaction } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
 import { mergeAccountInto, repriceCollections, repriceSales } from "@/lib/entry-edit";
@@ -30,6 +32,25 @@ const programById = async (id: string) => (await query<Program>(sql`select progr
 const samePay = (a: Program, b: Program) => Math.round(a.rate * 100) === Math.round(b.rate * 100) && a.flexible === b.flexible;
 
 export type TransferAccount = { enrollmentId: string; memberNumber: string; memberName: string; branch: string; mas: string; doi: string; status: string; payments: number };
+
+/** Who may move accounts between programs: administrators, and IT with Edit / Corrections. */
+export async function canMovePrograms() {
+  const user = await getSessionUser();
+  return Boolean(user && ((await canManageUsers()) || (canCorrectEntriesFor(user) && canAccessPath(user, "/entry-corrections"))));
+}
+
+/** Only the programs with the same monthly pay a program's accounts can move to (Members → Transfer, one account). */
+export async function programTargets(programId: string) {
+  const from = await programById(programId);
+  if (!from) throw new Error("Program not found.");
+  const targets = await query<Program>(sql`select program_id, program_name, coalesce(program_code, '') as program_code, coalesce(base_pay, 0)::float8 as rate,
+      coalesce(pay_balance_total, 0)::float8 as total, coalesce(flexible, false) as flexible, max_monthly_payment::float8 as max, coalesce(status, 'active') as status
+    from programs where program_id <> ${from.program_id} order by program_name`);
+  return {
+    program: { id: from.program_id, name: from.program_name, code: from.program_code, rate: from.rate, flexible: from.flexible },
+    targets: targets.filter((target) => samePay(target, from) && target.status !== "inactive").map((target) => ({ id: target.program_id, name: target.program_name, code: target.program_code, rate: target.rate, status: target.status, accounts: 0 })),
+  };
+}
 
 /** A program's accounts and the programs with the same monthly pay they can move to. */
 export async function programTransferOptions(programId: string) {

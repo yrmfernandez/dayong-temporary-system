@@ -369,6 +369,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Cause (found from the screenshot):** the photo picker's file input was visually hidden (`sr-only`) but still focusable. When the file picker closed, the browser focused it and scrolled the form card (`overflow-hidden`, which can still be scrolled by the browser) to show it, so the card's content slid up and left white space below. Two earlier guesses (solid entry cards; removing the masked light-edge overlay from every card) did not fix it; they are kept, as they do no harm.
 - **Done:** the input is `display: none` and a button opens it (`components/receipt-photos-picker.tsx`), as the My Entries photo button already did; the two Collections panels use `overflow-clip`, which cannot be scrolled at all. Build and tests checked; to confirm on a clerk's computer.
 
+### Members → Transfer: per MAS or per program (2026-10-16)
+
+- **Owner:** the Transfer button in Members should offer a choice: per MAS or per program.
+- **Done:** the Transfer panel has To another MAS / To another program; the program move uses `transferProgramAccounts` for that one account (same-pay programs; merge into an existing account; incentives follow). Permission `canMovePrograms` (Administrators, IT with Edit / Corrections); `programTargets` lists the programs. Tested; build and all tests pass.
+
 ### Day Off locks the day's entries (2026-10-16)
 
 - **Owner:** an employee marked Day Off must not encode, void or delete entries that day; entries encoded before the mark: keep them and block changes (owner's choice).

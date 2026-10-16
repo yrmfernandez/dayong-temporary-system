@@ -754,6 +754,8 @@ test('Programs → Transfer members moves, merges or leaves each account, only t
   const route = h.load('app/api/programs/transfer/route.ts');
   const options = await (await route.GET(new Request('http://localhost/api/programs/transfer?program=DP-OLD'))).json();
   assert.deepEqual(options.targets.map((item) => item.id), ['DP-NEW'], 'only programs with the same pay');
+  const targetsOnly = await (await route.GET(new Request('http://localhost/api/programs/transfer?targets=1&program=DP-OLD'))).json();
+  assert.deepEqual([targetsOnly.targets.map((item) => item.id), targetsOnly.accounts], [['DP-NEW'], undefined], 'Members -> Transfer lists only the programs');
   assert.equal(options.accounts.length, 3);
   const post = (body) => route.POST(request(body));
   assert.equal((await post({ from: 'DP-OLD', to: 'DP-400', all: true, reason: 'test' })).status, 400, 'a different pay is refused');

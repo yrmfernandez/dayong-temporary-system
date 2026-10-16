@@ -731,6 +731,8 @@ The quick number correction (`PATCH`, `correctSaleOrCollection` in [entry-correc
 
 Authorized HR/management can transfer **one enrollment** to another active employee (Members → the member → Transfer). The enrollment's MAS changes and `Member Transfers` records old/new MAS, target employee ID, reason, and encoder. Old Collections and already-owed cash retain their original stored responsibility. This action does not move the entire person (their other programs keep their MAS).
 
+**Transfer per MAS or per program (October 16, 2026).** The Transfer panel on an account offers **To another MAS** (above; Administrators and HR) or **To another program** (Administrators, and IT with Edit / Corrections): choose a program with the same monthly pay and a reason. The account keeps its New Sale, collections and history; if the member already has an account in that program, the two are merged (payments numbered in OR-date order) and the incentives follow the new program, as in Edit / Corrections → Move between programs ([program-transfer.ts](../lib/program-transfer.ts); `GET /api/programs/transfer?targets=1&program=` lists the programs).
+
 **Transfer to a MAS from another branch (October 14, 2026).** The new MAS may be any active employee, from any branch (the list shows each one's branches). Collections and Clearing need the MAS to be assigned to the account's branch, so when the account is in a branch the new MAS is not assigned to, the form asks each time (required):
 
 - **Keep in <branch>**: the account stays in its branch (reports, SOA and history unchanged) and the new MAS is assigned to that branch in Employees, so they can be cleared and their collections encoded there at once.
