@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-72833261",
+      "program": "DP-0005",
+      "receipts": ["10065 C", "11844C", "13789 C", "3581 B", "15910 C", "16861 C", "19756 C", "21590 C", "22191 C"],
+      "startNop": 21,
+      "coverageStart": "2026-01",
+      "expectedDoi": "2024-03-01",
+      "note": "Owner explicitly confirmed first receipt 10065 C starts January 2026/NOP 21, October 16, 2026. Nine PHP 210 receipts cover January-September 2026, NOP 21-29. Preserve recorded March 1, 2024 DOI, D-210 HG program, receipt dates, amounts and PHP 1890 total. This owner-specified month/NOP pairing differs from DOI-derived alignment. Recalculate incentives/company shares and account status."
+    }
+  ]
+}

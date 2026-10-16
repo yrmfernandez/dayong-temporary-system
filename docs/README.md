@@ -1,5 +1,15 @@
 # Dayong System documentation
 
+The [October 16 OR 11420 B correction](or11420b-july-august-20261016.md) extends its PHP 840 payment to July–August 2026, NOP 50–51.
+
+The [October 16 PH-72833261 correction](ph72833261-january-nop21-20261016.md) sets January–September 2026 coverage at NOP 21–29 for nine D-210 HG receipts.
+
+The [October 16 PH-58645726 coverage correction](ph58645726-january-coverage-20261016.md) shifts eight D-300 (Bracketing) receipts to January–October 2026, NOP 5–14.
+
+The [October 16 PH-61149554 coverage correction](ph61149554-d280-coverage-20261016.md) applies February–October 2026, NOP 31–39, to nine D-280 receipts.
+
+The [October 16 old-web receipt import](web24029-24037-import-20261016.md) records the completed 24029 import and the program clarification needed for 24037.
+
 The [October 16 eight-member consolidation](eight-same-pay-consolidations-20261016.md) applies the owner-confirmed same-base-pay program assignments and records the D-460 (59B) first-year incentive configuration gap.
 
 The [October 16 five-receipt correction](five-receipt-program-moves-20261016.md) moves ORs 4382 S, 12008 B, 15945 B, 10926B and 08035T to the owner-confirmed programs and recalculates affected coverage and incentives.

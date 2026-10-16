@@ -369,6 +369,16 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Cause (found from the screenshot):** the photo picker's file input was visually hidden (`sr-only`) but still focusable. When the file picker closed, the browser focused it and scrolled the form card (`overflow-hidden`, which can still be scrolled by the browser) to show it, so the card's content slid up and left white space below. Two earlier guesses (solid entry cards; removing the masked light-edge overlay from every card) did not fix it; they are kept, as they do no harm.
 - **Done:** the input is `display: none` and a button opens it (`components/receipt-photos-picker.tsx`), as the My Entries photo button already did; the two Collections panels use `overflow-clip`, which cannot be scrolled at all. Build and tests checked; to confirm on a clerk's computer.
 
+### Edit and delete expenses on the report (2026-10-16)
+
+- **Owner:** allow edit and delete of expenses in the report.
+- **Done:** Reports → the Expenses/Other Cash Out section has Edit and Delete on each expense, as deposits have: `editExpense` / `deleteExpense` in `lib/finance-data.ts` (the clerk who recorded it, or an administrator; delete voids it with a reason), actions `edit-expense` / `delete-expense` in `/api/clerk-report`. Tested; build and all tests pass.
+
+### Login reminders (2026-10-16)
+
+- **Owner:** on the login page, remind when Caps Lock is on, when Num Lock is on, and any other warning.
+- **Done:** warnings for Caps Lock on, Num Lock off (number pad not typing digits), password with a leading or trailing space, an Employee ID not in the company format, offline, cookies blocked; a note when Num Lock is on. They appear once the person types or clicks (browser limitation). Lint, type check and build pass.
+
 ### Edit / Corrections for IT and Administrators (2026-10-15)
 
 - **Owner:** a section where IT and Admin can search Collections or New Sales and edit them even when remitted (clerks still type wrong numbers). Then: rename it Edit / Corrections and put every data correction there, organized: entry edits of all content (a clerk may choose the wrong program for a member with many), members from MAS to MAS, accounts from program to program. Then: when a program changes, the entries' incentives must follow, so reports are accurate.

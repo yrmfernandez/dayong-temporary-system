@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 122 library files, 52 component files; 458 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 122 library files, 52 component files; 464 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -182,7 +182,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList` | — |
 | [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/encoder-sheets`, `@/lib/readable-id` |
 | [lib/finance-access.ts](../lib/finance-access.ts) | `canUseFinance` | `@/lib/auth-server` |
-| [lib/finance-data.ts](../lib/finance-data.ts) | `EXPENSE_EXTRA_HEADERS`, `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `createCashTransaction`, `voidFinanceRecord` | `@/lib/readable-id`, `@/lib/encoder-sheets`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/expense-options` |
+| [lib/finance-data.ts](../lib/finance-data.ts) | `EXPENSE_EXTRA_HEADERS`, `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `editExpense`, `deleteExpense`, `createCashTransaction`, `voidFinanceRecord` | `@/lib/readable-id`, `@/lib/encoder-sheets`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/expense-options` |
 | [lib/finance-operations.ts](../lib/finance-operations.ts) | `getCashAccounts`, `saveCashAccount`, `getVendorPayables`, `createVendorPayable`, `payVendorPayable`, `getCommissions`, `createCommission`, `payCommission` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/friendly-api-errors.ts](../lib/friendly-api-errors.ts) | `explainServerFailure`, `installFriendlyApiErrors` | — |
 | [lib/google-sheets-data.ts](../lib/google-sheets-data.ts) | `ProgramSheetData`, `BranchSheetData`, `getBranches`, `createBranch`, `ProgramIncentiveSheetData`, `CreateProgramData`, `getProgramIncentives`, `addProgramIncentive`, `getPrograms`, `programColumns`, `assertProgramCodeFree`, `createProgram`, `LoginRole`, `LoginUserData`, `AttendanceEmployee`, `getLoginUserByEmployeeId`, `AccountRole`, `CreateEmployeeAccountData`, `getActiveAccountRoles`, `createEmployeeAccount`, `getActiveAttendanceEmployees` | `@/lib/db`, `@/lib/program-amount-lock`, `@/lib/program-incentive-store`, `@/lib/employees`, `@/lib/employee-id`, `@/lib/encoder-sheets`, `@/lib/roles`, `@/lib/program-age`, `@/lib/remittance`, `@/lib/program-payment-limit.mjs`, `@/lib/users-sheet`, `@/lib/google-sheets` |
@@ -439,6 +439,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fill-member-contacts.mjs](../scripts/fill-member-contacts.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/find-misfiled-program-receipts.mjs](../scripts/find-misfiled-program-receipts.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/find-name-variants.mjs](../scripts/find-name-variants.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/find-shifted-coverage.mjs](../scripts/find-shifted-coverage.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/find-split-program-candidates.mjs](../scripts/find-split-program-candidates.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/fix-21532-21533-receipts.mjs](../scripts/fix-21532-21533-receipts.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-amounts.mjs](../scripts/fix-amounts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
@@ -488,7 +489,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/migrate-expense-fields.mjs](../scripts/migrate-expense-fields.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-finance.mjs](../scripts/migrate-finance.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-legacy-members.mjs](../scripts/migrate-legacy-members.mjs) | `node:crypto`, `node:fs`, `@next/env`, `googleapis`, `../lib/account-rules.ts`, `./legacy-sources.mjs` | Yes; read source for semantics |
-| [scripts/migrate-legacy-site.mjs](../scripts/migrate-legacy-site.mjs) | `node:crypto`, `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/migrate-legacy-site.mjs](../scripts/migrate-legacy-site.mjs) | `node:crypto`, `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/migrate-payroll.mjs](../scripts/migrate-payroll.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-period-audits.mjs](../scripts/migrate-period-audits.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-primary-branch.mjs](../scripts/migrate-primary-branch.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
@@ -563,13 +564,18 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/member-merges.json](../config/member-merges.json)
 - [config/member-splits.json](../config/member-splits.json)
 - [config/name-merges.json](../config/name-merges.json)
+- [config/or11420b-july-august-20261016.json](../config/or11420b-july-august-20261016.json)
 - [config/or13743c-dpb350-20261016.json](../config/or13743c-dpb350-20261016.json)
 - [config/or5151b-d190-20261016.json](../config/or5151b-d190-20261016.json)
 - [config/or8574m-dpb420-20261016.json](../config/or8574m-dpb420-20261016.json)
 - [config/ph13726515-d46059b-20261016.json](../config/ph13726515-d46059b-20261016.json)
 - [config/ph24556150-dfpp650-merge-20261015.json](../config/ph24556150-dfpp650-merge-20261015.json)
+- [config/ph58645726-january-coverage-20261016.json](../config/ph58645726-january-coverage-20261016.json)
+- [config/ph61149554-d280-coverage-20261016.json](../config/ph61149554-d280-coverage-20261016.json)
+- [config/ph72833261-january-nop21-20261016.json](../config/ph72833261-january-nop21-20261016.json)
 - [config/program-moves.json](../config/program-moves.json)
 - [config/receipt-consolidations.json](../config/receipt-consolidations.json)
 - [config/seven-same-pay-consolidations-20261016.json](../config/seven-same-pay-consolidations-20261016.json)
 - [config/sheet-database-schema.json](../config/sheet-database-schema.json)
+- [config/web24037-ds320-amount-correction-20261016.json](../config/web24037-ds320-amount-correction-20261016.json)
 - [public/robots.txt](../public/robots.txt)

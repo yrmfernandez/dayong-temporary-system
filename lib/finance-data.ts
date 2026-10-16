@@ -96,6 +96,45 @@ export async function createExpense(input: Record<string, unknown>) {
   return { id };
 }
 
+/**
+ * An expense recorded on an Entry Clerk's report, edited or deleted from the report (owner, October 16, 2026), as
+ * deposits are: by the clerk who recorded it, or an administrator. Delete voids it with the reason (it leaves the
+ * report, Expenses and the cash ledger; Finance and the Audit Log still show it). A voided expense is not edited.
+ */
+async function ownExpense(id: string, by: { employeeId: string; isAdmin: boolean }) {
+  const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Expenses'!A:W", valueRenderOption: "UNFORMATTED_VALUE" })).data.values ?? [];
+  const index = rows.findIndex((row, position) => position > 0 && text(row[0]) === text(id));
+  if (index < 0) throw new Error("Expense not found.");
+  // S (index 18) is the encoder's Employee ID.
+  if (!by.isAdmin && text(rows[index][18]) !== by.employeeId) throw new Error("You can change only expenses you recorded.");
+  if ((text(rows[index][11]) || "Posted") === "Voided") throw new Error("This expense was already deleted.");
+  return index + 1;
+}
+
+export async function editExpense(id: string, input: Record<string, unknown>, by: { employeeId: string; isAdmin: boolean }) {
+  const value = round(Number(input.amount));
+  if (!datePattern.test(text(input.date))) throw new Error("Enter a valid date of expense.");
+  if (!Number.isFinite(value) || value <= 0) throw new Error("Expense amount must be greater than zero.");
+  const account = choiceWithOther(EXPENSE_ACCOUNTS, input.category, input.categoryOther, "account name");
+  const approvedBy = choiceWithOther(EXPENSE_APPROVERS, input.approvedBy, input.approvedByOther, "approver");
+  const description = required(input.description, "Purpose");
+  getEncoder();
+  const row = await ownExpense(id, by);
+  // B date, C account, D purpose, E amount; K receipt; M remarks; W approved by. Branch, payee and status stay.
+  await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: [
+    { range: `'Expenses'!B${row}:E${row}`, values: [[text(input.date), account, description, value]] },
+    { range: `'Expenses'!K${row}`, values: [[text(input.receiptNumber)]] },
+    { range: `'Expenses'!M${row}`, values: [[text(input.remarks)]] },
+    { range: `'Expenses'!W${row}`, values: [[approvedBy]] },
+  ] } });
+}
+
+export async function deleteExpense(id: string, reason: string, by: { employeeId: string; isAdmin: boolean }) {
+  if (text(reason).length < 3) throw new Error("Give the reason for deleting the expense.");
+  await ownExpense(id, by);
+  await voidFinanceRecord("expense", text(id), text(reason).slice(0, 200));
+}
+
 export async function createCashTransaction(input: Record<string, unknown>) {
   const value = round(Number(input.amount)); const direction = text(input.direction);
   if (!datePattern.test(text(input.date))) throw new Error("Enter a valid transaction date.");

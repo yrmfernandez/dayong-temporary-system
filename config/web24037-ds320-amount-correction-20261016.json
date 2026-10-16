@@ -1,0 +1,11 @@
+{
+  "collections": [
+    {
+      "id": "1093",
+      "expectedAmount": 430,
+      "expectedProgram": "DS-320",
+      "amount": 320,
+      "reason": "Owner confirmed both receipts 24029 and 24037 belong to DS-320 and explicitly changed 24037's payment from PHP 430 to PHP 320, October 16, 2026. Apply existing chronological top-up rules after the imported September payment and recalculate the incentive from DS-320."
+    }
+  ]
+}

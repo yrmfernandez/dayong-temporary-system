@@ -1,7 +1,7 @@
 "use client";
 
-import { Eye, EyeOff, ExternalLink, HeartHandshake, LockKeyhole, UserRound } from "lucide-react";
-import { useState } from "react";
+import { Eye, EyeOff, ExternalLink, HeartHandshake, LockKeyhole, TriangleAlert, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,59 @@ Lord, please help me remain focused and productive today. When I leave this plac
 
 We thank You for all You have done, everything You are doing, and everything You are going to do. We thank You for the gifts with which You have blessed us. In the name of the Father, and of the Son, and of the Holy Spirit. Amen.`;
 
+const EMPLOYEE_ID = /^[A-Z]{2,5}-\d{4}-\d{4}$/;
+
+/**
+ * Keyboard and connection reminders on the login form (owner, October 16, 2026). Browsers report Caps Lock and Num Lock
+ * only with a key press or a click, so they show once the person types or clicks. Num Lock off is noticed when a
+ * number-pad key types an arrow or Home/End instead of a digit (Macs have no Num Lock and always type digits).
+ */
+function useKeyboardState() {
+  const [capsLock, setCapsLock] = useState(false);
+  const [numLock, setNumLock] = useState<boolean | null>(null);
+  const [numPadOff, setNumPadOff] = useState(false);
+  const [online, setOnline] = useState(true);
+  const [cookies, setCookies] = useState(true);
+  useEffect(() => {
+    const read = (event: KeyboardEvent | MouseEvent) => {
+      if (typeof event.getModifierState !== "function") return;
+      setCapsLock(event.getModifierState("CapsLock"));
+      // A key press reports Num Lock; Macs report it off although their number pad always types digits.
+      if (!/Mac|iPhone|iPad/.test(navigator.platform)) setNumLock(event.getModifierState("NumLock"));
+    };
+    const key = (event: KeyboardEvent) => {
+      read(event);
+      if (event.code.startsWith("Numpad")) setNumPadOff(!/^[\d.+\-*/]$|^Enter$/.test(event.key));
+    };
+    const connection = () => { setOnline(navigator.onLine); setCookies(navigator.cookieEnabled); };
+    // The browser's state when the page opens (not known while rendering on the server).
+    connection();
+    window.addEventListener("keydown", key); window.addEventListener("keyup", read); window.addEventListener("mousedown", read);
+    window.addEventListener("online", connection); window.addEventListener("offline", connection);
+    return () => {
+      window.removeEventListener("keydown", key); window.removeEventListener("keyup", read); window.removeEventListener("mousedown", read);
+      window.removeEventListener("online", connection); window.removeEventListener("offline", connection);
+    };
+  }, []);
+  return { capsLock, numLock, numPadOff, online, cookies };
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [employeeId, setEmployeeId] = useState(""); const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false); const [message, setMessage] = useState(""); const [submitting, setSubmitting] = useState(false);
+  const keyboard = useKeyboardState();
+  const typedId = employeeId.trim().toUpperCase();
+  // Reminders shown above Log In: warnings first, then notes.
+  const warnings = [
+    !keyboard.online && "You are offline. Connect to the internet to sign in.",
+    !keyboard.cookies && "Cookies are blocked in this browser, so you cannot stay signed in. Allow cookies for this site.",
+    keyboard.capsLock && "Caps Lock is on. Passwords are case-sensitive.",
+    keyboard.numPadOff && "Num Lock is off: the number pad is not typing numbers. Press Num Lock.",
+    password && password !== password.trim() && "Your password starts or ends with a space. Check that it was typed as intended.",
+    typedId.length >= 6 && !EMPLOYEE_ID.test(typedId) && `"${typedId}" does not look like an Employee ID (e.g. MD-2026-0001). Check the letters, dashes and digits.`,
+  ].filter((item): item is string => Boolean(item));
+  const notes = [keyboard.numLock === true && !keyboard.numPadOff && "Num Lock is on: the number pad types numbers."].filter((item): item is string => Boolean(item));
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setMessage("");
     if (!employeeId.trim() || !password) { setMessage("Enter your Employee ID and password."); return; }
@@ -49,6 +98,10 @@ export default function LoginPage() {
       <div className="relative my-auto w-full max-w-md self-center rounded-3xl border border-violet-90/80 bg-white/90 p-6 shadow-[0_24px_70px_-28px_rgb(45_28_89_/_0.45)] backdrop-blur sm:p-9"><div className="mb-8"><span className="rounded-md bg-purple-95 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-purple-60">Secure Employee Access</span><h2 className="mt-3 text-3xl font-black tracking-tight text-violet-10 sm:text-4xl">Welcome back</h2><p className="mt-2 text-sm text-violet-40">Enter your employee account credentials to continue.</p></div>
         <form className="space-y-5" onSubmit={handleLogin}><div className="space-y-2"><Label htmlFor="employee-id" className="font-bold text-violet-10">Employee ID</Label><div className="relative"><UserRound className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-violet-60"/><Input id="employee-id" autoComplete="username" autoCapitalize="characters" spellCheck={false} className="h-12 rounded-xl pl-10 uppercase placeholder:normal-case" value={employeeId} onChange={e=>setEmployeeId(e.target.value)} disabled={submitting} placeholder="MD-20##-####"/></div></div>
           <div className="space-y-2"><Label htmlFor="password" className="font-bold text-violet-10">Password</Label><div className="relative"><LockKeyhole className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-violet-60"/><Input id="password" type={showPassword?"text":"password"} autoComplete="current-password" className="h-12 rounded-xl px-10" value={password} onChange={e=>setPassword(e.target.value)} disabled={submitting} placeholder="Enter your password"/><button type="button" onClick={()=>setShowPassword(v=>!v)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-violet-40 hover:bg-violet-95 hover:text-violet-60" aria-label={showPassword?"Hide password":"Show password"}>{showPassword?<EyeOff className="size-4"/>:<Eye className="size-4"/>}</button></div></div>
+          {(warnings.length > 0 || notes.length > 0) && <div aria-live="polite" className="space-y-1.5">
+            {warnings.map((text) => <p key={text} className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900"><TriangleAlert className="mt-0.5 size-4 shrink-0"/>{text}</p>)}
+            {notes.map((text) => <p key={text} className="rounded-xl border border-violet-90 bg-violet-95/60 px-3 py-2 text-xs text-violet-40">{text}</p>)}
+          </div>}
           {message&&<p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{message}</p>}<Button type="submit" className="h-12 w-full rounded-xl text-base font-extrabold shadow-[0_10px_25px_-5px_rgb(105_51_255_/_0.35)]" disabled={submitting}>{submitting?"Signing in...":"Log In"}</Button><p className="text-center text-sm text-violet-40">Forgot your password? Ask IT for a one-time password.</p></form>
         <div className="mt-8 border-t border-violet-90 pt-6 text-center lg:hidden"><p className="text-xs font-bold uppercase tracking-wider text-accent-moss">Our Vision</p><p className="mt-2 text-sm leading-6 text-violet-40">A fully committed DAYONG provider with high regard for serving and protecting the needs of its members.</p><a href="https://www.facebook.com/dsrdprovidersinc" target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-violet-60">Visit our Facebook page <ExternalLink className="size-3"/></a></div>
       </div><p className="text-center text-xs text-muted-foreground">Authorized personnel only &middot; Credentials are protected by a secure session.</p></section>

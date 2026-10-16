@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-21566867",
+      "program": "DP-0018",
+      "receipts": ["11420 B"],
+      "receiptMonths": {"11420B": 2},
+      "startNop": 44,
+      "expectedDoi": "2022-06-01",
+      "note": "Owner confirmed OR 11420 B (PHP 840) covers July and August 2026, October 16, 2026. Extend coverage from July-only/NOP 50 to July-August/NOP 50-51. Other four receipts already cover January-June and retain coverage. Preserve June 1, 2022 DOI, D-420 program, receipt dates, amounts, transfer history and total PHP 3360. Recalculate affected financial figures and account status."
+    }
+  ]
+}

@@ -37,6 +37,7 @@ import fs from "node:fs";
 import nextEnv from "@next/env";
 import postgres from "postgres";
 import { accountState, monthIndex, monthName, todayInManila } from "../lib/account-rules.ts";
+import { repriceEntries } from "../lib/entry-finance.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
 const apply = process.argv.includes("--apply");
@@ -84,8 +85,32 @@ const ageAt = (birthdate, date) => {
 const tally = new Map();
 const count = (label, by = 1) => tally.set(label, (tally.get(label) ?? 0) + by);
 
-const siteMembers = readCsv(`${DIR}/members.csv`), siteSales = readCsv(`${DIR}/new_sales.csv`), siteCollections = readCsv(`${DIR}/collections.csv`);
+let siteMembers = readCsv(`${DIR}/members.csv`), siteSales = readCsv(`${DIR}/new_sales.csv`), siteCollections = readCsv(`${DIR}/collections.csv`);
+// A reviewed receipt import must not bring in unrelated records from the full export.
+const selectedCollectionIds = process.argv.find(arg => arg.startsWith('--collection-ids='))?.slice(17).split(',').map(str).filter(Boolean);
+if (selectedCollectionIds?.length) {
+  const wanted = new Set(selectedCollectionIds);
+  siteCollections = siteCollections.filter(row => wanted.has(row.record_id));
+  if (siteCollections.length !== wanted.size) throw new Error('Some selected old collection IDs are missing from the export.');
+  if (siteCollections.some(row => !row.member_id_value || !row.program_id_value)) throw new Error('Scoped import requires exported member/program links.');
+  const pairs = new Set(siteCollections.map(row => `${row.member_id_value}|${row.program_id_value}`));
+  siteSales = siteSales.filter(row => pairs.has(`${row.member_id_value}|${row.program_id_value}`));
+  const memberIds = new Set(siteCollections.map(row => row.member_id_value));
+  siteMembers = siteMembers.filter(row => memberIds.has(row.record_id));
+  console.log(`Scoped to ${wanted.size} reviewed old collection IDs and their related sale/member records.`);
+}
 const withDetails = (rows, field) => rows.filter((row) => str(row[field]) || str(row[`form_${field}`])).length;
+// Owner-confirmed source corrections apply only to explicitly selected collection IDs. Source files stay intact.
+const correctionFile = process.argv.find(arg => arg.startsWith('--corrections='))?.slice(14);
+const sourceCorrections = correctionFile ? JSON.parse(fs.readFileSync(correctionFile, 'utf8')).collections ?? [] : [];
+for (const correction of sourceCorrections) {
+  if (!selectedCollectionIds?.includes(String(correction.id))) throw new Error('Every source correction must be in --collection-ids.');
+  const row = siteCollections.find(row => row.record_id === String(correction.id));
+  if (!row || money(row.Amount) !== correction.expectedAmount || row.Program !== correction.expectedProgram || !str(correction.reason)) throw new Error(`Source correction ${correction.id} does not match the reviewed record.`);
+  if (!Number.isFinite(correction.amount) || correction.amount <= 0) throw new Error('Corrected amount must be positive.');
+  row.Amount = row.amount = row.data_amount = String(correction.amount);
+  console.log(`Reviewed correction ${correction.id}: amount ${correction.expectedAmount} → ${correction.amount}; incentive will be recalculated.`);
+}
 console.log(`Old web app export: ${siteMembers.length} members (${withDetails(siteMembers, "lname")} with details), ${siteSales.length} New Sales (${withDetails(siteSales, "member_id_value")} with details), ${siteCollections.length} collections (${withDetails(siteCollections, "member_id_value")} with details).`);
 
 // ---------------------------------------------------------------- the database
@@ -440,6 +465,16 @@ try {
     await insert("member_programs", enrollmentRows);
     await insert("sales", saleRows);
     await insert("collections", collectionRows);
+    const correctedIds = sourceCorrections.map(c => `COL-WEB-${c.id}`).filter(id => collectionRows.some(row => row.collection_id === id));
+    if (correctedIds.length) {
+      const finance = await repriceEntries((query, params) => tx.unsafe(query, params), {collectionIds: correctedIds});
+      for (const correction of sourceCorrections.filter(c => correctedIds.includes(`COL-WEB-${c.id}`))) {
+        const row = collectionRows.find(r => r.collection_id === `COL-WEB-${correction.id}`);
+        const change = finance.changes.find(c => c.id === row.collection_id);
+        await tx`insert into record_corrections ${tx({correction_id:`COR-WEB-${correction.id}-${Date.now().toString(36).toUpperCase()}`,module:'Old web import correction',record_id:row.collection_id,reason:correction.reason,before_json:{sourceId:correction.id,sourceAmount:correction.expectedAmount,sourceProgram:correction.expectedProgram},after_json:{amount:row.amount_collected,program:row.program_id,nop:[row.nop_from,row.nop_to],months:[row.month_from,row.month_to],finance:change?.after??null},corrected_at:new Date().toISOString(),encoded_by_name:IMPORTED_BY,encoded_at:new Date().toISOString()})}`;
+      }
+      console.log(`Recalculated ${correctedIds.length} corrected collection(s) using current program incentives.`);
+    }
     for (const a of toppedUp) await tx`update member_programs set account_status = ${a.status} where enrollment_id = ${a.id}`;
     console.log(`\nWritten: ${registrations.length} MAS registered, ${drafts.length} draft programs, ${memberRows.length} members, ${enrollmentRows.length} accounts, ${saleRows.length} New Sales, ${collectionRows.length} collections.`);
   });

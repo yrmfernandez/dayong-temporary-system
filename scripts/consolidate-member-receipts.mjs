@@ -53,6 +53,9 @@ try {
         from member_programs mp join programs p on p.program_id = mp.program_id where mp.member_id = ${member.member_id} and mp.program_id = ${text(item.program)}`;
       if (!target) { console.log(`${label}: the member has no account in ${item.program}.\n`); problems++; continue; }
       if (!target.doi) { console.log(`${label}: account ${target.enrollment_id} has no DOI, so its months cannot be worked out.\n`); problems++; continue; }
+      if (item.expectedDoi && target.doi !== item.expectedDoi) throw new Error(`${label}: DOI differs from the reviewed value.`);
+      // Explicit owner-confirmed exception: coverage may start at a different month than the DOI implies.
+      if (item.coverageStart && (!/^\d{4}-(0[1-9]|1[0-2])$/.test(item.coverageStart) || !item.expectedDoi || !text(item.note))) throw new Error('An explicit coverage start requires a valid YYYY-MM, expectedDoi and reason.');
       // "fromAccounts": every posted receipt of these accounts of the member, besides any listed in "receipts".
       const fromAccounts = (item.fromAccounts ?? []).map(text).filter(Boolean);
       const ofAccounts = fromAccounts.length ? (await tx`select or_key from collections where enrollment_id in ${tx(fromAccounts)} and member_id = ${member.member_id} and lower(coalesce(status, '')) = 'posted' and coalesce(or_key, '') <> ''`).map((row) => row.or_key) : [];
@@ -82,11 +85,12 @@ try {
       const renumbered = payments.map((p) => {
         const byAmount = target.flexible ? 1 : Math.round(p.amount * 100) / Math.round(target.rate * 100);
         const kept = p.nop_to >= p.nop_from && p.nop_from > 0 ? p.nop_to - p.nop_from + 1 : 0;
-        const count = movedIds.has(p.collection_id) ? byAmount : kept || byAmount;
+        const count = item.receiptMonths?.[key(p.or_number)] ?? (movedIds.has(p.collection_id) ? byAmount : kept || byAmount);
         if (!Number.isInteger(count) || count < 1) failed ||= `OR ${p.or_number} (${peso(p.amount)}) is not a whole number of ${peso(target.rate)} months`;
         const months = Number.isInteger(count) && count > 0 ? count : 1;
         const nopFrom = next, nopTo = next + months - 1; next = nopTo + 1;
-        return { ...p, nopFrom, nopTo, monthFrom: monthName(monthIndex(target.doi.slice(0, 7)) + nopFrom - 1), monthTo: monthName(monthIndex(target.doi.slice(0, 7)) + nopTo - 1) };
+        const origin = item.coverageStart ? monthIndex(item.coverageStart) - start : monthIndex(target.doi.slice(0, 7)) - 1;
+        return { ...p, nopFrom, nopTo, monthFrom: monthName(origin + nopFrom), monthTo: monthName(origin + nopTo) };
       });
       if (failed) { console.log(`   STOPPED: ${failed}. Nothing changes for this member.\n`); problems++; continue; }
       for (const p of renumbered) await tx`update collections set nop_from = ${p.nopFrom}, nop_to = ${p.nopTo}, month_from = ${p.monthFrom}, month_to = ${p.monthTo} where collection_id = ${p.collection_id}`;

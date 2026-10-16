@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {
+      "member": "PH-61149554",
+      "program": "DP-0066",
+      "receipts": ["9850 C", "12069C", "13777 C", "3570 B", "15929 C", "16877 C", "19766 C", "21585 C", "23810 C"],
+      "startNop": 31,
+      "note": "Owner confirmed corrected coverage February-October 2026, NOP 31-39, on October 16, 2026. Specifically confirmed OR 13777 C dated March 16 covers April 2026/NOP 33, correcting the initially supplied March/NOP 28. Preserve D-280, August 1, 2023 DOI, receipt dates and amounts; recalculate affected incentives/company shares and account status."
+    }
+  ]
+}

@@ -3099,6 +3099,36 @@ test('an expense goes on the report of the day it was recorded, whatever expense
   assert.equal((await buildClerkReport('daily', '2026-10-10', clerk, 'MINTAL')).expenses.length, 0, 'not on the expense date');
 });
 
+test('an expense on the report can be edited and deleted by the clerk who recorded it, not by another clerk', async () => {
+  const h = harness({ userId: 'USR-7', employeeId: 'DPE-7', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  const expense = Array(23).fill(''); Object.assign(expense, { 0: 'EXP-9', 1: '2026-10-10', 2: 'Transportation', 3: 'Fare', 4: 75, 7: 'MINTAL', 11: 'Posted', 18: 'DPE-7', 20: '2026-10-14T01:30:00.000Z', 22: 'VP Finance' });
+  h.rows.Expenses = [['expense_id'], expense];
+  h.rows['Cash Transactions'] = [['transaction_id']];
+  await h.sync();
+  const finance = h.load('lib/finance-data.ts');
+  const { withEncoder } = h.load('lib/encoder-context.ts');
+  // Saving needs a verified encoder (the signed-in user), as the clerk-report route provides.
+  const as = (work) => withEncoder(async () => { await work(); return Response.json({}); })(request());
+  const editExpense = (...args) => as(() => finance.editExpense(...args));
+  const deleteExpense = (...args) => as(() => finance.deleteExpense(...args));
+  const own = { employeeId: 'DPE-7', isAdmin: false };
+  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Other', categoryOther: '', amount: 80, description: 'Fare', approvedBy: 'VP Finance' }, own), /Specify the other account name/);
+  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Meals/Snacks', amount: 80, description: 'Lunch', approvedBy: 'VP Finance' }, { employeeId: 'DPE-8', isAdmin: false }), /only expenses you recorded/);
+  await editExpense('EXP-9', { date: '2026-10-11', category: 'Meals/Snacks', amount: 80, description: 'Lunch', receiptNumber: 'R-1', remarks: 'team', approvedBy: 'Other', approvedByOther: 'Branch head' }, own);
+  // Row 2 of Expenses: B:E date, account, purpose, amount; K receipt; M remarks; W approver.
+  const edit = h.writes.at(-1).requestBody.data;
+  assert.deepEqual(edit.map((item) => [item.range, item.values[0]]), [
+    ["'Expenses'!B2:E2", ['2026-10-11', 'Meals/Snacks', 'Lunch', 80]], ["'Expenses'!K2", ['R-1']], ["'Expenses'!M2", ['team']], ["'Expenses'!W2", ['Other: Branch head']],
+  ]);
+  await assert.rejects(deleteExpense('EXP-9', 'x', own), /reason/);
+  await deleteExpense('EXP-9', 'entered twice', own);
+  const removed = h.writes.at(-1).requestBody.data;
+  assert.deepEqual([removed[0].range, removed[0].values[0][0], removed[1].values[0][2]], ["'Expenses'!L2", 'Voided', 'entered twice'], 'deleted: voided with the reason');
+  // A voided expense cannot be changed again.
+  expense[11] = 'Voided';
+  await assert.rejects(deleteExpense('EXP-9', 'again please', own), /already deleted/);
+});
+
 test('Edit / Corrections: a collection moves to the other program of the member, both accounts renumbered and its slip follows', async () => {
   const h = harness({ userId: 'USR-9', employeeId: 'DPE-0009', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];

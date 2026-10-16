@@ -50,6 +50,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   const [remark, setRemark] = useState("");
   // A deposit opened for editing in the record panel (owner, October 13, 2026: edit it, or void it).
   const [editingDeposit, setEditingDeposit] = useState<Report["deposits"][number] | null>(null);
+  // An expense opened for editing (owner, October 16, 2026: edit or delete expenses on the report, as deposits).
+  const [editingExpense, setEditingExpense] = useState<Report["expenses"][number] | null>(null);
   // A Fidelity entry (handed in after encoding) opened for editing (October 13, 2026).
   const [editingFidelity, setEditingFidelity] = useState<Report["fidelitySlips"][number] | null>(null);
   // Every entry filters (owner, October 14, 2026): kind, remitted / returned / missing photo, OR search, MAS, program.
@@ -143,7 +145,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
               <Grid title="Expenses/Other Cash Out Section" color={tone.expenses}
                 headers={["Account Name/Type of Expense", report.whenLabel, "Amount", "Receipt/CV", "Purpose", "Rmks"]}
                 rows={report.expenses.map((item) => [item.account, item.when, money(item.amount), item.receipt, item.purpose, item.remarks])}
-                total={report.expenseTotal} />
+                total={report.expenseTotal}
+                action={own ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this expense being deleted?"); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></span> : undefined} />
               <Grid title="Cash Flow Transaction and Other Cash Ins" color={tone.cashFlow}
                 headers={["Bank Account Name", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
                 rows={report.deposits.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, item.remarks])}
@@ -190,7 +193,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
       {report && kind !== "daily" && <MasSummary report={report} />}
 
-      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}`} report={report} act={act} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
+      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}-${editingExpense?.id ?? ""}`} report={report} act={act} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
+        editingExpense={editingExpense} onExpenseDone={() => setEditingExpense(null)}
         masChoices={data?.masChoices ?? []} editingFidelity={editingFidelity} onFidelityDone={() => setEditingFidelity(null)} />}
       {report && own && data?.branch === "all" && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">Choose one branch to record expenses, deposits, Cash Beg and notes for it.</p>}
 
@@ -423,11 +427,20 @@ function MasSummary({ report }: { report: Report }) {
 }
 
 /** The clerk records what the report needs besides New Sales and Collections. */
-function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFidelity, onFidelityDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; editing: Report["deposits"][number] | null; onEditDone: () => void;
+/** The form values of a saved expense: "Other: X" splits into Other and its detail. */
+function expenseForm(item: Report["expenses"][number]) {
+  const split = (value: string, options: readonly string[], fallback: string) => options.includes(value) ? { choice: value, other: "" }
+    : value.startsWith("Other: ") ? { choice: "Other", other: value.slice(7) } : value ? { choice: "Other", other: value } : { choice: fallback, other: "" };
+  const account = split(item.account, EXPENSE_ACCOUNTS, "Transportation"), approver = split(item.approvedBy, EXPENSE_APPROVERS, "VP Finance");
+  return { category: account.choice, categoryOther: account.other, date: item.date, amount: String(item.amount), receiptNumber: item.receipt, description: item.purpose, remarks: item.remarks, approvedBy: approver.choice, approvedByOther: approver.other };
+}
+
+function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFidelity, onFidelityDone, editingExpense, onExpenseDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; editing: Report["deposits"][number] | null; onEditDone: () => void;
+  editingExpense: Report["expenses"][number] | null; onExpenseDone: () => void;
   masChoices: Array<{ id: string; name: string }>; editingFidelity: Report["fidelitySlips"][number] | null; onFidelityDone: () => void }) {
   const today = todayInManila();
   const inPeriod = today >= report.from && today <= report.to ? today : report.to;
-  const [expense, setExpense] = useState({ category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
+  const [expense, setExpense] = useState(editingExpense ? expenseForm(editingExpense) : { category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
   const [deposit, setDeposit] = useState(editing
     ? { date: editing.date, bankAccount: editing.bankAccount, amount: String(editing.amount), transferType: editing.transferType, mas: editing.mas, remarks: editing.remarks }
     : { date: inPeriod, bankAccount: "DSRDPI", amount: "", transferType: "", mas: "", remarks: "" });
@@ -448,8 +461,12 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
           className={`border-b-2 px-3 py-3 text-sm font-medium ${section === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
       </div></div>
       <div className="p-4">
-      {section === "expense" && <form className="space-y-4" onSubmit={async (event) => { event.preventDefault(); if (await act({ action: "add-expense", ...expense, amount: Number(expense.amount), attachments: [] })) setExpense((current) => ({ ...current, amount: "", receiptNumber: "", description: "", remarks: "" })); }}>
-        <FormTitle title="Add expense / other cash out" note="Saved to Expenses for your branch; Finance can void a wrong one." />
+      {section === "expense" && <form id="expense-form" className="space-y-4" onSubmit={async (event) => {
+        event.preventDefault();
+        if (editingExpense) { if (await act({ action: "edit-expense", id: editingExpense.id, ...expense, amount: Number(expense.amount) })) onExpenseDone(); return; }
+        if (await act({ action: "add-expense", ...expense, amount: Number(expense.amount), attachments: [] })) setExpense((current) => ({ ...current, amount: "", receiptNumber: "", description: "", remarks: "" }));
+      }}>
+        <FormTitle title={editingExpense ? `Edit expense ${editingExpense.id}` : "Add expense / other cash out"} note={editingExpense ? "Saved to Expenses as well; the report and the cash on hand follow." : "Saved to Expenses for your branch. Edit or delete it from the Expenses list above."} />
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Account name / type of expense"><select className={field} value={expense.category} onChange={(event) => setExpense({ ...expense, category: event.target.value })}>{EXPENSE_ACCOUNTS.map((item) => <option key={item}>{item}</option>)}</select></Field>
           {expense.category === "Other" ? <Field label="Specify the expense"><Input value={expense.categoryOther} onChange={(event) => setExpense({ ...expense, categoryOther: event.target.value })} /></Field> : <div className="hidden sm:block" />}
@@ -461,7 +478,7 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
           <Field label="Purpose *" wide><Input value={expense.description} onChange={(event) => setExpense({ ...expense, description: event.target.value })} /></Field>
           <Field label="Remarks" wide><Input value={expense.remarks} onChange={(event) => setExpense({ ...expense, remarks: event.target.value })} /></Field>
         </div>
-        <div className="flex gap-2"><Button type="submit" size="sm" disabled={!expense.amount || !expense.description.trim()}>Save expense</Button></div>
+        <div className="flex gap-2"><Button type="submit" size="sm" disabled={!expense.amount || !expense.description.trim()}>{editingExpense ? "Save changes" : "Save expense"}</Button>{editingExpense && <Button type="button" size="sm" variant="outline" onClick={onExpenseDone}>Cancel</Button>}</div>
       </form>}
 
       {section === "deposit" && <form id="deposit-form" className="space-y-4" onSubmit={async (event) => {

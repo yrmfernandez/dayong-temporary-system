@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-99032555",
+      "program": "DP-0015",
+      "receipts": ["16115N", "14788 N", "19986 N", "20299 N", "21084 N", "21938 N", "22724 N", "24350 N"],
+      "startNop": 27,
+      "coverageStart": "2026-01",
+      "expectedDoi": "2023-10-01",
+      "note": "Owner explicitly confirmed 16115N starts January 2026/NOP 27, October 16, 2026. First six PHP 270 receipts cover January-June/NOP 27-32, PHP 540 receipt 22724 N covers July-August/NOP 33-34, and 24350 N covers September/NOP 35. Preserve recorded October 1, 2023 DOI, D-270 (300), receipt dates and PHP 2430 total. Record owner-specified month/NOP alignment and recalculate incentives/company shares and account status."
+    }
+  ]
+}

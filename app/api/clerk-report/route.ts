@@ -7,7 +7,7 @@ import { manilaNow } from "@/lib/remittance-deadline";
 import { getReportRemarks } from "@/lib/report-remarks";
 import { addDeposit, editDeposit, saveCashBeg, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
 import { withEncoder } from "@/lib/encoder-context";
-import { createExpense } from "@/lib/finance-data";
+import { createExpense, deleteExpense, editExpense } from "@/lib/finance-data";
 import { getBranches } from "@/lib/google-sheets-data";
 import { createFidelitySlip, editFidelitySlip, voidFidelitySlip } from "@/lib/remittance-workflow";
 
@@ -109,6 +109,12 @@ export const POST = withEncoder(async (request: Request) => {
       case "void-fidelity":
         await voidFidelitySlip(text(body.id), text(body.reason), { employeeId: user.employeeId, isAdmin: await canManageUsers() });
         return Response.json({ success: true, message: "Fidelity voided." });
+      case "edit-expense":
+        await editExpense(String(body.id ?? ""), body, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+        return Response.json({ success: true, message: "Expense updated." });
+      case "delete-expense":
+        await deleteExpense(String(body.id ?? ""), String(body.reason ?? ""), { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+        return Response.json({ success: true, message: "Expense deleted." });
       case "edit-deposit":
         await editDeposit(String(body.id ?? ""), body, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
         return Response.json({ success: true, message: "Deposit updated." });

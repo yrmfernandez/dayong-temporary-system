@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-58645726",
+      "program": "DP-0067",
+      "receipts": ["10063 C", "13790 C", "3582 B", "15912 C", "16860 C", "19758 C", "21591 C", "22189 C"],
+      "startNop": 4,
+      "coverageStart": "2026-01",
+      "expectedDoi": "2025-09-01",
+      "note": "Owner explicitly confirmed: keep September 1, 2025 DOI, but January 2026 must be NOP 4 (October 16, 2026). This is an owner-authorized exception to DOI-derived NOP alignment. First PHP 600 receipt covers January-February/NOP 4-5, second March-April/NOP 6-7, six PHP 300 receipts May-October/NOP 8-13. Preserve program, months, DOI, receipt dates and PHP 3000 total. Recalculate incentives/company shares and account status."
+    }
+  ]
+}
