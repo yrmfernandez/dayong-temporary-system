@@ -2,6 +2,8 @@ import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { getEmployees } from "@/lib/employees";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { createReadableId } from "@/lib/readable-id";
+import { sql } from "drizzle-orm";
+import { getDb } from "@/lib/db";
 const text=(value:unknown)=>String(value??"").trim();
 const amount=(value:unknown)=>Math.round((Number(value)||0)*100)/100;
 const peso=(value:number)=>value.toLocaleString("en-PH",{style:"currency",currency:"PHP"});
@@ -15,9 +17,29 @@ export const WITHDRAWAL_TYPES={excess:"Excess Withdrawal",separation:"Separation
 // "Claim" rows are the earlier release-at-the-cap records; they still count as money paid out.
 const PAID_OUT=new Set(["claim",...Object.values(WITHDRAWAL_TYPES).map(type=>type.toLowerCase())]);
 async function source(){const response=await sheets.spreadsheets.values.batchGet({spreadsheetId:GOOGLE_SHEET_ID,ranges:["'Remittances'!A:Y","'Fidelity'!A:O"],valueRenderOption:"UNFORMATTED_VALUE",dateTimeRenderOption:"FORMATTED_STRING"});const remittances=response.data.valueRanges?.[0]?.values??[],claims=response.data.valueRanges?.[1]?.values??[];return{remittances,claims}}
+/**
+ * Who encoded each slip's Fidelity (owner, October 16, 2026): slips are created by "System", so the history shows the
+ * person who encoded the entries on the slip (any linked entry; a returned slip keeps its links), else who received a
+ * Fidelity handed in after encoding (Remittances R), else the slip's encoder.
+ */
+async function encodersOf(slipIds:string[]){
+ if(!slipIds.length)return new Map<string,string>();
+ const result=await getDb().execute(sql`select rc.remittance_id as id, min(coalesce(nullif(c.encoded_by_name,''), nullif(s.encoded_by_name,''))) as name
+   from remittance_collections rc left join collections c on c.collection_id = rc.collection_id left join sales s on s.sale_id = rc.collection_id
+   where rc.remittance_id in (${sql.join(slipIds.map(id=>sql`${id}`),sql`, `)}) group by rc.remittance_id`);
+ const rows=(Array.isArray(result)?result:(result as {rows?:unknown[]}).rows??[]) as Array<{id:string;name:string|null}>;
+ return new Map(rows.filter(row=>text(row.name)).map(row=>[row.id,text(row.name)]));
+}
+/** A rejected slip went back to the clerk to fix: shown as Returned, as on the entries (owner, October 16, 2026). */
+const shownStatus=(status:string)=>status==="Rejected"?"Returned":status;
 export async function getFidelityData(employeeId:string,viewAll:boolean){
  const {remittances,claims}=await source();
- const contributions=remittances.slice(1).filter(row=>text(row[0])&&text(row[13])&&amount(row[24])>0).map(row=>({id:text(row[0]),masEmployeeId:text(row[13]),masName:text(row[2]),date:text(row[3]),status:text(row[4]),amount:amount(row[24]),type:"Contribution",encodedBy:text(row[8]),remarks:text(row[22]),branch:text(row[1])}));
+ const slips=remittances.slice(1).filter(row=>text(row[0])&&text(row[13])&&amount(row[24])>0);
+ const encoders=await encodersOf(slips.map(row=>text(row[0])));
+ const contributions=slips.map(row=>{
+  const slipEncoder=/^system$/i.test(text(row[8]))?"":text(row[8]);
+  return{id:text(row[0]),masEmployeeId:text(row[13]),masName:text(row[2]),date:text(row[3]),status:shownStatus(text(row[4])),amount:amount(row[24]),type:"Contribution",encodedBy:encoders.get(text(row[0]))||text(row[17])||slipEncoder,remarks:text(row[22]),branch:text(row[1])};
+ });
  const withdrawals=claims.slice(1).filter(row=>text(row[0])&&PAID_OUT.has(text(row[5]).toLowerCase())).map(row=>({id:text(row[0]),masEmployeeId:text(row[1]),masName:text(row[2]),date:text(row[8]),status:text(row[9])||"Released",amount:amount(row[7]),type:text(row[5]),encodedBy:text(row[13]),remarks:text(row[10]),branch:""}));
  const transactions=[...contributions,...withdrawals].filter(item=>viewAll||item.masEmployeeId===employeeId).sort((a,b)=>b.date.localeCompare(a.date));
  const employees=await getEmployees();

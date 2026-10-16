@@ -3243,3 +3243,31 @@ test('an employee marked Day Off cannot encode, change or delete entries that da
   }
   assert.equal(await count('sales'), 1, 'the entry encoded before the mark stays');
 });
+
+test('Fidelity history: a rejected slip shows as Returned and names the clerk who encoded it, not System', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-0009', name: 'finance', roleNames: ['Finance'], permissions: {} });
+  h.rows.Employees = [[], ['DPE-0002', 'MAS Two', 'BR-1', 'MAS', 'active']];
+  const slip = (id, status, receivedBy = '') => { const row = Array(25).fill(''); Object.assign(row, { 0: id, 1: 'BR-1', 2: 'MAS Two', 3: '2026-10-10', 4: status, 8: 'System', 13: 'DPE-0002', 17: receivedBy, 24: 100 }); return row; };
+  h.rows.Remittances = [['remittance_id'], slip('REM-1', 'Rejected'), slip('REM-2', 'Approved'), slip('REM-3', 'Pending Approval', 'Clerk Bee')];
+  h.rows.Fidelity = [['claim_id']];
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS Two' }]);
+  await seed('programs', [{ program_id: 'DP-1', program_name: 'P', base_pay: 100 }]);
+  await seed('members', [{ member_id: 'M1', member_number: 'PH-1', surname: 'S', first_name: 'A' }]);
+  await seed('member_programs', [{ enrollment_id: 'E1', member_id: 'M1', member_number: 'PH-1', program_id: 'DP-1', doi: '2026-09-01', status: 'Active' }]);
+  await seed('remittances', [{ remittance_id: 'REM-1', status: 'Rejected' }, { remittance_id: 'REM-2', status: 'Approved' }]);
+  await seed('collections', [
+    { collection_id: 'C1', collection_batch_id: 'B1', enrollment_id: 'E1', member_id: 'M1', program_id: 'DP-1', or_number: '1 C', or_date: '2026-10-09', amount_collected: 100, status: 'Posted', encoded_by_name: 'Clerk Ann' },
+    { collection_id: 'C2', collection_batch_id: 'B1', enrollment_id: 'E1', member_id: 'M1', program_id: 'DP-1', or_number: '2 C', or_date: '2026-10-10', amount_collected: 100, status: 'Posted', encoded_by_name: 'Clerk Ann' },
+  ]);
+  await seed('remittance_collections', [
+    { remittance_collection_id: 'RC-1', remittance_id: 'REM-1', collection_id: 'C1', amount: 50 },
+    { remittance_collection_id: 'RC-2', remittance_id: 'REM-2', collection_id: 'C2', amount: 50 },
+  ]);
+  await h.sync();
+  const { getFidelityData } = h.load('lib/fidelity.ts');
+  const data = await getFidelityData('', true);
+  const shown = Object.fromEntries(data.transactions.map((item) => [item.id, [item.status, item.encodedBy]]));
+  assert.deepEqual(shown, { 'REM-1': ['Returned', 'Clerk Ann'], 'REM-2': ['Approved', 'Clerk Ann'], 'REM-3': ['Pending Approval', 'Clerk Bee'] });
+  const account = data.accounts.find((item) => item.masEmployeeId === 'DPE-0002');
+  assert.deepEqual([account.approved, account.pending], [100, 100], 'a returned slip still does not count');
+});

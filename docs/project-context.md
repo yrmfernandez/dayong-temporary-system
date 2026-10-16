@@ -369,6 +369,12 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Cause (found from the screenshot):** the photo picker's file input was visually hidden (`sr-only`) but still focusable. When the file picker closed, the browser focused it and scrolled the form card (`overflow-hidden`, which can still be scrolled by the browser) to show it, so the card's content slid up and left white space below. Two earlier guesses (solid entry cards; removing the masked light-edge overlay from every card) did not fix it; they are kept, as they do no harm.
 - **Done:** the input is `display: none` and a button opens it (`components/receipt-photos-picker.tsx`), as the My Entries photo button already did; the two Collections panels use `overflow-clip`, which cannot be scrolled at all. Build and tests checked; to confirm on a clerk's computer.
 
+### Fidelity history: Returned and the real encoder (2026-10-16)
+
+- **Owner:** why Rejected and Encoded by System in the Fidelity history; show Returned for returned batches, and the real encoder.
+- **Cause:** contributions are remittance slips; a rejected (returned) slip keeps its Fidelity amount, and slips are created by System.
+- **Done:** Rejected shows as Returned; Encoded by is the encoder of the slip's entries, else who received the Fidelity, else the slip's encoder unless System. Balances unchanged. Tested; build and all tests pass.
+
 ### Fidelity filters (2026-10-16)
 
 - **Owner:** add filters in Fidelity: date, roles, status, etc.

@@ -420,6 +420,8 @@ PHP 10,000 is the locked portion, **not a lifetime contribution cap**. Staff may
 
 **Filters on Fidelity Monitoring (October 16, 2026).** Employee (search by name or ID), branch, role, employment status, Fidelity status (Saving, Excess withdrawable, Left with a balance to release, Left with nothing to release) and balance (with savings or pending, or none yet) narrow both the balances and the history; History from/to dates, type (Contribution, Excess Withdrawal, Separation Release, Claim) and status narrow the history. The line under the filters counts what is shown and, with dates, the approved savings and the amounts paid out in that period. **Clear filters** resets them. The history shows each entry's branch. [fidelity-views.tsx](../app/fidelity/fidelity-views.tsx).
 
+**History status and Encoded by (October 16, 2026).** A contribution whose slip the approver rejected shows as **Returned** (the batch went back to the clerk; it never counts toward the balance, and the resubmitted batch's slip carries the Fidelity again). Slips are created by System, so **Encoded by** names the person who encoded the slip's entries (a returned slip keeps its links), or who received a Fidelity handed in after encoding ([fidelity.ts](../lib/fidelity.ts)).
+
 **Example:** PHP 12,500 approved savings means PHP 10,000 locked and PHP 2,500 available for excess withdrawal. On separation, the full remaining approved balance may be released.
 
 Fidelity withdrawal records currently do **not** automatically post cash outflows; the savings register and finance ledger need reconciliation. The withdrawal function's recorded date uses UTC date text, while operational cutoffs use Manila time.
