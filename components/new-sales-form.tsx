@@ -275,6 +275,24 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // The first sale starts expanded, so its form is ready to fill in.
   const [initialSale] = useState(emptyNewSale);
   const [sales, setSales] = useState<NewSale[]>([initialSale]);
+  // The remittance method is the batch's, as on Collections (owner, October 16, 2026): every sale of the batch is paid
+  // the same way and goes on one remittance. A cash method needs no receipt photo.
+  const [paymentMethods, setPaymentMethods] = useState<Array<{ name: string; isCash: boolean }>>([]);
+  const [paymentMethod, setPaymentMethod] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/remittance-methods", { cache: "no-store", signal: controller.signal })
+      .then((response) => response.json())
+      .then((result) => {
+        const active: Array<{ name: string; isCash: boolean }> = (result.methods ?? []).filter((method: { status: string }) => method.status === "active");
+        setPaymentMethods(active);
+        setPaymentMethod((current) => current || active.find((method) => method.isCash)?.name || active[0]?.name || "");
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  // A method marked cash, or named Cash, as the server counts it (cashMethodNames in lib/entry-batches.ts).
+  const allCash = Boolean(paymentMethods.find((method) => method.name === paymentMethod)?.isCash) || paymentMethod.trim().toLowerCase() === "cash";
 
   const [expandedSales, setExpandedSales] =
     useState<Record<string, boolean>>(() => ({ [initialSale.id]: true }));
@@ -305,7 +323,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
 
   // The unsaved form survives leaving the page (e.g. to Collections) and coming back.
-  const draftSnapshot = { branch, mas, dateRemitted, clearingId, clearedDate, dateRemittedReason, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId };
+  const draftSnapshot = { branch, mas, dateRemitted, clearingId, clearedDate, dateRemittedReason, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId, paymentMethod };
   type SalesDraft = typeof draftSnapshot;
   const restoreDraft = (draft: Partial<SalesDraft>) => {
       setSubmissionId(draft.submissionId ?? "");
@@ -320,6 +338,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       setPenalty(draft.penalty ?? "");
       setPenaltyNote(draft.penaltyNote ?? "");
       setFidelity(draft.fidelity ?? "");
+      if (draft.paymentMethod) setPaymentMethod(draft.paymentMethod);
     };
   useFormDraft(masMode ? "mas-sales" : "new-sales", draftSnapshot, restoreDraft);
   // Batches set aside to finish later (owner, October 14, 2026; lib/use-parked-drafts.ts).
@@ -369,7 +388,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  // The batch's receipt photos (clerk save only): at least one, as many as needed (owner, October 14, 2026).
+  // The batch's receipt photos (clerk save only): at least one, as many as needed (owner, October 14, 2026); none needed
+  // when the batch is paid in cash (October 16, 2026).
   const [receiptPhotos, setReceiptPhotos] = useState<PickedPhoto[]>([]);
 
   useEffect(() => {
@@ -1161,7 +1181,13 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       return;
     }
 
-    if (!receiptPhotos.length) {
+    if (!masMode && !paymentMethod) {
+      setSaveMessage("Remittance method is required.");
+      return;
+    }
+
+    // A batch paid in cash needs no photo (owner, October 16, 2026): it was counted at Clearing.
+    if (!receiptPhotos.length && !allCash) {
       setSaveMessage("Add at least one receipt photo for this batch.");
       return;
     }
@@ -1195,7 +1221,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
             orNumber: "",
             orDate: sale.orDate,
             backdateReason: sale.backdateReason ?? "",
-            paymentMethod: sale.program.modeOfPayment,
+            paymentMethod: masMode ? sale.program.modeOfPayment : paymentMethod,
             registrationFee: sale.program.withRegistrationFee ? "Yes" : "No",
             registrationAmount: String(sale.program.registrationAmount),
             amountPaid: String(amountPaidOf(sale)),
@@ -1252,7 +1278,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       const savedText = `${sales.length} ${sales.length === 1 ? "new sale" : "new sales"} saved`;
       setSaveMessage(uploaded.problem
         ? `${savedText}; ${uploaded.saved} of ${photos.length} receipt photo(s) attached. ${uploaded.problem} Add the rest in My Entries.`
-        : `${savedText} with ${uploaded.saved} receipt photo(s).`);
+        : `${savedText}${uploaded.saved ? ` with ${uploaded.saved} receipt photo(s)` : ""}.`);
 
       resetForm();
       if (submissionId) setSubmissionRevision((value) => value + 1);
@@ -1669,61 +1695,6 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                         />
                         {lockedProgram(sale) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
                       </div>
-                        <div className="space-y-2">
-                          <Label>
-                            Remittance Method *
-                          </Label>
-
-                          <Select
-                            value={
-                              sale.program
-                                .modeOfPayment
-                            }
-                            onValueChange={(
-                              value,
-                            ) =>
-                              updateSale(
-                                sale.id,
-                                (current) => ({
-                                  ...current,
-
-                                  program: {
-                                    ...current.program,
-
-                                    modeOfPayment:
-                                      value ?? "",
-                                  },
-                                }),
-                              )
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Remittance method" />
-                            </SelectTrigger>
-
-                            <SelectContent>
-                              <SelectItem value="cash">
-                                Cash
-                              </SelectItem>
-
-                              <SelectItem value="gcash">
-                                GCash
-                              </SelectItem>
-
-                              <SelectItem value="maya">
-                                Maya
-                              </SelectItem>
-
-                              <SelectItem value="bank">
-                                Bank
-                              </SelectItem>
-
-                              <SelectItem value="others">
-                                Others
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
                         <div className="space-y-2">
                           <Label>
                             Registration Fee *
@@ -2782,6 +2753,14 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       {/* PENALTY AND FIDELITY (optional) and the totals; the control total and Save are in the bar below. */}
       {!masMode && <Card>
         <CardContent className="space-y-3 pt-5">
+          <div className="max-w-sm space-y-1">
+            <Label htmlFor="sales-remittance-method">Remittance method (whole batch) *</Label>
+            <select id="sales-remittance-method" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+              {!paymentMethods.length && <option value="">Loading...</option>}
+              {paymentMethods.map((method) => <option key={method.name} value={method.name}>{method.name}</option>)}
+            </select>
+            <p className="text-xs text-muted-foreground">{allCash ? "Cash: no receipt photo needed." : "Not cash: add the receipt photo of the transfer below."}</p>
+          </div>
           <div className="grid gap-3 lg:grid-cols-2">
           <fieldset className={`space-y-2 rounded-lg border p-3 ${penaltyAmount > 0 ? "border-red-300 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20" : ""}`}>
             <legend className="px-1 text-sm font-medium">Remittance penalty (optional)</legend>
@@ -2816,7 +2795,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.orDate || "—"}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p></div>}
 
       {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
-      {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" />}
+      {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" optional={allCash} />}
 
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}

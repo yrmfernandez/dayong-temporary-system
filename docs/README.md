@@ -1,5 +1,11 @@
 # Dayong System documentation
 
+The [October 16 OR 8574 M correction](or8574m-dpb420-20261016.md) moves the PHP 420 receipt to DPB-420 and recalculates affected coverage and incentives.
+
+The [October 16 OR 5151 B correction](or5151b-d190-20261016.md) moves the PHP 380 receipt to D-190 and recalculates affected coverage and incentives.
+
+The [October 16 OR 13743 C correction](or13743c-dpb350-20261016.md) moves the flagged duplicate receipt to DPB-350 and recalculates affected coverage and incentives.
+
 The [October 16 D-460 correction](d460-seven-receipts-20261016.md) consolidates seven receipts onto D-460 and recalculates their coverage and incentives.
 
 The [October 15 incentive correction](corrected-entry-finance-20261015.md) makes incentives follow corrected programs and NOPs, and backfills the seven accounts corrected in this session.

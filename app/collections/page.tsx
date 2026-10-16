@@ -333,7 +333,8 @@ export default function CollectionsPage() {
   // Batches set aside to finish later (owner, October 14, 2026; lib/use-parked-drafts.ts).
   const parked = useParkedDrafts<CollectionsDraft>("collections");
   const selectedPaymentMethod = paymentMethods.find((method) => method.name === paymentMethod);
-  const isCashPayment = selectedPaymentMethod?.isCash ?? false;
+  // A method marked cash, or named Cash, as the server counts it (cashMethodNames in lib/entry-batches.ts).
+  const isCashPayment = Boolean(selectedPaymentMethod?.isCash) || paymentMethod.trim().toLowerCase() === "cash";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -821,7 +822,8 @@ export default function CollectionsPage() {
       return;
     }
 
-    if (!receiptPhotos.length) {
+    // Cash needs no photo (owner, October 16, 2026): it was counted at Clearing and goes straight to approval.
+    if (!receiptPhotos.length && !isCashPayment) {
       setSaveMessage("Add at least one receipt photo for this batch.");
       return;
     }
@@ -902,7 +904,7 @@ export default function CollectionsPage() {
       resetForm();
       setSaveMessage(uploaded.problem
         ? `${ids.length} collection(s) saved; ${uploaded.saved} of ${receiptPhotos.length} receipt photo(s) attached. ${uploaded.problem} Add the rest in My Entries.`
-        : `${ids.length} collection(s) saved with ${uploaded.saved} receipt photo(s). ${result.message}`);
+        : `${ids.length} collection(s) saved${uploaded.saved ? ` with ${uploaded.saved} receipt photo(s)` : ""}. ${result.message}`);
     } catch (error) {
       setSaveMessage(
         error instanceof Error ? error.message : "Unable to save collections.",
@@ -1627,7 +1629,7 @@ export default function CollectionsPage() {
               <RemittanceSummary collected={totalCollected} remittance={totalRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} />
 
               {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026). */}
-              <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="collection" />
+              <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="collection" optional={isCashPayment} />
 
               {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatCurrency(totalCollected)} · Total remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p></div>}
             </CardContent>

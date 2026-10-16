@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {
+      "member": "PH-55734639",
+      "program": "DP-0017",
+      "fromAccounts": ["ENR-LEG-01B4CDC3E0"],
+      "startNop": 3,
+      "note": "Owner confirmed OR 8574 M, COL-LEG-160EF52457, belongs to DPB-420 (October 16, 2026). The source DPB-350 account contains only this PHP 420 receipt and no sale or transfer. Move to existing DPB-420 account, retain October 1, 2025 DOI, renumber coverage from NOP 3, and recalculate incentives/company shares. Preserve gross payments, receipt dates and actual cash."
+    }
+  ]
+}

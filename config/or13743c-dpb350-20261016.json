@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {
+      "member": "PH-40915886",
+      "program": "DP-0010",
+      "fromAccounts": ["ENR-LEG-D80F51A1DE"],
+      "startNop": 6,
+      "note": "Owner confirmed OR 13743 C (duplicated), COL-LEG-7D6A980C67, belongs to DPB-350 (October 16, 2026). The source D-230 account contains only this receipt and no sale or transfer. Move it to the existing DPB-350 account, preserve its duplicate label/flag, DOI, amount and receipt date; renumber coverage and recalculate incentives/company shares."
+    }
+  ]
+}

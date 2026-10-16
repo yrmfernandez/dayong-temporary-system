@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 122 library files, 52 component files; 446 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 122 library files, 52 component files; 451 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -437,6 +437,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/delete-test-entries.mts](../scripts/delete-test-entries.mts) | `@next/env` | Yes; read source for semantics |
 | [scripts/exceptions-summary.mts](../scripts/exceptions-summary.mts) | `node:fs`, `@next/env` | No flag detected; read source before running |
 | [scripts/fill-member-contacts.mjs](../scripts/fill-member-contacts.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/find-misfiled-program-receipts.mjs](../scripts/find-misfiled-program-receipts.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/find-name-variants.mjs](../scripts/find-name-variants.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/find-split-program-candidates.mjs](../scripts/find-split-program-candidates.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/fix-21532-21533-receipts.mjs](../scripts/fix-21532-21533-receipts.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -546,6 +547,7 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/d350-receipt-correction-20261015.json](../config/d350-receipt-correction-20261015.json)
 - [config/d350-receipt-correction-20261015b.json](../config/d350-receipt-correction-20261015b.json)
 - [config/d350-two-receipts-20261015.json](../config/d350-two-receipts-20261015.json)
+- [config/d460-seven-receipts-20261016.json](../config/d460-seven-receipts-20261016.json)
 - [config/dpb350-receipt-correction-20261015.json](../config/dpb350-receipt-correction-20261015.json)
 - [config/duplicate-fixes.json](../config/duplicate-fixes.json)
 - [config/employee-merges.json](../config/employee-merges.json)
@@ -556,6 +558,9 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/member-merges.json](../config/member-merges.json)
 - [config/member-splits.json](../config/member-splits.json)
 - [config/name-merges.json](../config/name-merges.json)
+- [config/or13743c-dpb350-20261016.json](../config/or13743c-dpb350-20261016.json)
+- [config/or5151b-d190-20261016.json](../config/or5151b-d190-20261016.json)
+- [config/or8574m-dpb420-20261016.json](../config/or8574m-dpb420-20261016.json)
 - [config/ph24556150-dfpp650-merge-20261015.json](../config/ph24556150-dfpp650-merge-20261015.json)
 - [config/program-moves.json](../config/program-moves.json)
 - [config/receipt-consolidations.json](../config/receipt-consolidations.json)

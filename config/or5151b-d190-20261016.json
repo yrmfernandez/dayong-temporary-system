@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {
+      "member": "PH-43209975",
+      "program": "DP-0062",
+      "fromAccounts": ["ENR-LEG-BB0449A8B1"],
+      "startNop": 65,
+      "note": "Owner confirmed OR 5151 B, COL-LEG-529833FAD0, belongs to D-190 (October 16, 2026). The source D-180 account contains only this PHP 380 receipt and no sale or transfer. Move to the existing D-190 account, retain that account's August 1, 2020 DOI, renumber coverage from NOP 65, and recalculate incentives/company shares. Preserve receipt dates, gross amounts and actual cash."
+    }
+  ]
+}

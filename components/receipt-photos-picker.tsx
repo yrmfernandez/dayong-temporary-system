@@ -9,10 +9,11 @@ export type PickedPhoto = { dataUrl: string; width: number; height: number; byte
 
 /**
  * The receipt photos of a New Sales or Collections batch (owner, October 14, 2026): at least one is required to save,
- * and as many as needed may be added. Each is compressed in the browser (components/receipt-photo.tsx) and attached to
+ * and as many as needed may be added. Not required when the batch is paid in cash (`optional`, owner, October 16, 2026:
+ * the cash was counted at Clearing), though photos can still be added. Each is compressed in the browser (components/receipt-photo.tsx) and attached to
  * every entry of the batch right after it is saved (uploadBatchPhotos).
  */
-export function ReceiptPhotosPicker({ photos, onChange, kind }: { photos: PickedPhoto[]; onChange: (photos: PickedPhoto[]) => void; kind: string }) {
+export function ReceiptPhotosPicker({ photos, onChange, kind, optional = false }: { photos: PickedPhoto[]; onChange: (photos: PickedPhoto[]) => void; kind: string; optional?: boolean }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   // The file input stays display:none and a button opens it. A visually hidden (sr-only) input took focus when the
@@ -31,11 +32,11 @@ export function ReceiptPhotosPicker({ photos, onChange, kind }: { photos: Picked
     setBusy(false);
   };
   return (
-    <div className={`min-w-0 space-y-2 rounded-xl border p-3 text-card-foreground ${photos.length ? "bg-card" : "border-amber-300 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20"}`}>
+    <div className={`min-w-0 space-y-2 rounded-xl border p-3 text-card-foreground ${photos.length || optional ? "bg-card" : "border-amber-300 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-medium">Receipt photos for this batch *</p>
-          <p className="text-xs text-muted-foreground">At least one is required; add as many as the batch needs. They are attached to every {kind} in this batch.</p>
+          <p className="text-sm font-medium">Receipt photos for this batch{optional ? " (optional)" : " *"}</p>
+          <p className="text-xs text-muted-foreground">{optional ? "Paid in cash: no photo is needed (the cash was counted at Clearing). Photos added here are" : "At least one is required; add as many as the batch needs. They are"} attached to every {kind} in this batch.</p>
         </div>
         <button type="button" disabled={busy} className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-60" onClick={() => input.current?.click()}>
           <ImagePlus className="size-4" />{busy ? "Reading..." : photos.length ? "Add more photos" : "Add photos"}
