@@ -418,6 +418,8 @@ Withdrawable = max(0, balance − PHP 10,000), while employed
 
 PHP 10,000 is the locked portion, **not a lifetime contribution cap**. Staff may continue adding money. Active employees can withdraw only the excess; once employment status is no longer Active, a Separation Release pays the whole remaining balance. Old Claim records still count as paid out.
 
+**Filters on Fidelity Monitoring (October 16, 2026).** Employee (search by name or ID), branch, role, employment status, Fidelity status (Saving, Excess withdrawable, Left with a balance to release, Left with nothing to release) and balance (with savings or pending, or none yet) narrow both the balances and the history; History from/to dates, type (Contribution, Excess Withdrawal, Separation Release, Claim) and status narrow the history. The line under the filters counts what is shown and, with dates, the approved savings and the amounts paid out in that period. **Clear filters** resets them. The history shows each entry's branch. [fidelity-views.tsx](../app/fidelity/fidelity-views.tsx).
+
 **Example:** PHP 12,500 approved savings means PHP 10,000 locked and PHP 2,500 available for excess withdrawal. On separation, the full remaining approved balance may be released.
 
 Fidelity withdrawal records currently do **not** automatically post cash outflows; the savings register and finance ledger need reconciliation. The withdrawal function's recorded date uses UTC date text, while operational cutoffs use Manila time.

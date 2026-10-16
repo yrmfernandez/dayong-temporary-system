@@ -369,6 +369,11 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Cause (found from the screenshot):** the photo picker's file input was visually hidden (`sr-only`) but still focusable. When the file picker closed, the browser focused it and scrolled the form card (`overflow-hidden`, which can still be scrolled by the browser) to show it, so the card's content slid up and left white space below. Two earlier guesses (solid entry cards; removing the masked light-edge overlay from every card) did not fix it; they are kept, as they do no harm.
 - **Done:** the input is `display: none` and a button opens it (`components/receipt-photos-picker.tsx`), as the My Entries photo button already did; the two Collections panels use `overflow-clip`, which cannot be scrolled at all. Build and tests checked; to confirm on a clerk's computer.
 
+### Fidelity filters (2026-10-16)
+
+- **Owner:** add filters in Fidelity: date, roles, status, etc.
+- **Done:** Fidelity Monitoring filters by employee, branch, role, employment status, Fidelity status and balance (balances and history), and by date range, type and status (history), with period totals and Clear filters; `lib/fidelity.ts` adds each employee's branch and roles. Build and all tests pass.
+
 ### Forfeiture: 12 months for Pay the Balance, 6 for others (2026-10-16)
 
 - **Owner:** Pay the Balance: up to and including 12 months, still not forfeited; others: up to and including 6 months.

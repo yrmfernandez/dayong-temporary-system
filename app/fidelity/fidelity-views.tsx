@@ -9,8 +9,8 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-type Account = { masEmployeeId: string; masName: string; employmentStatus: string; approved: number; pending: number; claimed: number; locked: number; withdrawable: number; remaining: number; separated: boolean; readyForRelease: boolean };
-type Transaction = { id: string; masEmployeeId: string; masName: string; date: string; status: string; amount: number; type: string; encodedBy: string };
+type Account = { masEmployeeId: string; masName: string; employmentStatus: string; branch?: string; roles?: string[]; approved: number; pending: number; claimed: number; locked: number; withdrawable: number; remaining: number; separated: boolean; readyForRelease: boolean };
+type Transaction = { id: string; masEmployeeId: string; masName: string; date: string; status: string; amount: number; type: string; encodedBy: string; branch?: string; remarks?: string };
 type Data = { canViewAll: boolean; canMonitor: boolean; canClaim: boolean; currentEmployeeId: string; currentName: string; cap: number; accounts: Account[]; transactions: Transaction[] };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
@@ -113,15 +113,66 @@ export function MyFidelity() {
   </section>;
 }
 
+type Filters = { masId: string; branch: string; role: string; employment: string; standing: string; balance: string; from: string; to: string; type: string; status: string };
+const emptyFilters: Filters = { masId: "", branch: "", role: "", employment: "", standing: "", balance: "", from: "", to: "", type: "", status: "" };
+const field = "h-9 w-full rounded-md border bg-background px-2 text-sm";
+/** An employee's Fidelity standing, as the Status column shows it. */
+const STANDINGS: Array<[string, string]> = [["saving", "Saving (below the locked amount)"], ["excess", "Excess withdrawable"], ["release", "Left the company, balance to release"], ["left", "Left the company, nothing to release"]];
+const standingOf = (item: Account) => item.separated ? (item.readyForRelease ? "release" : "left") : item.withdrawable > 0 ? "excess" : "saving";
+
+/** A labelled dropdown filter; `options` are values, or [value, label] pairs. */
+function Choice({ label, value, onChange, all, options }: { label: string; value: string; onChange: (value: string) => void; all: string; options: Array<string | [string, string]> }) {
+  return <label className="space-y-1 text-sm">{label}
+    <select className={field} value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">{all}</option>
+      {options.map((option) => { const [optionValue, optionLabel] = Array.isArray(option) ? option : [option, option.charAt(0).toUpperCase() + option.slice(1)]; return <option key={optionValue} value={optionValue}>{optionLabel}</option>; })}
+    </select>
+  </label>;
+}
+
 /** Company-wide monitoring for Finance, executives, and administrators. */
 export function FidelityMonitoring() {
   const { data, error, setError, load } = useFidelity("all");
   const [message, setMessage] = useState("");
-  // Pick one MAS from the dropdown (searchable) to focus both the balances and the history on them.
-  const [masId, setMasId] = useState("");
+  // Filters (owner, October 16, 2026): employee, branch, role, employment status and Fidelity standing narrow the
+  // balances and the history; dates, type and status narrow the history (and the period totals).
+  const [filters, setFilters] = useState(emptyFilters);
+  const set = (key: keyof Filters) => (value: string) => setFilters((current) => ({ ...current, [key]: value }));
+  const masId = filters.masId;
   const [busy, setBusy] = useState(false);
-  const accounts = useMemo(() => data?.accounts.filter((item) => !masId || item.masEmployeeId === masId) ?? [], [data, masId]);
-  const transactions = useMemo(() => data?.transactions.filter((item) => !masId || item.masEmployeeId === masId) ?? [], [data, masId]);
+  const options = useMemo(() => {
+    const list = data?.accounts ?? [];
+    const sorted = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    return {
+      branches: sorted(list.map((item) => item.branch ?? "")), roles: sorted(list.flatMap((item) => item.roles ?? [])),
+      employment: sorted(list.map((item) => item.employmentStatus.toLowerCase())),
+      types: sorted((data?.transactions ?? []).map((item) => item.type)), statuses: sorted((data?.transactions ?? []).map((item) => item.status)),
+    };
+  }, [data]);
+  const accounts = useMemo(() => (data?.accounts ?? []).filter((item) => {
+    if (masId && item.masEmployeeId !== masId) return false;
+    if (filters.branch && (item.branch ?? "") !== filters.branch) return false;
+    if (filters.role && !(item.roles ?? []).includes(filters.role)) return false;
+    if (filters.employment && item.employmentStatus.toLowerCase() !== filters.employment) return false;
+    if (filters.standing && standingOf(item) !== filters.standing) return false;
+    if (filters.balance === "with" && !(item.approved > 0 || item.pending > 0)) return false;
+    if (filters.balance === "none" && (item.approved > 0 || item.pending > 0)) return false;
+    return true;
+  }), [data, masId, filters]);
+  const shownIds = useMemo(() => new Set(accounts.map((item) => item.masEmployeeId)), [accounts]);
+  const branchOf = useMemo(() => new Map((data?.accounts ?? []).map((item) => [item.masEmployeeId, item.branch ?? ""])), [data]);
+  const transactions = useMemo(() => (data?.transactions ?? []).filter((item) => {
+    if (!shownIds.has(item.masEmployeeId)) return false;
+    const day = item.date.slice(0, 10);
+    if (filters.from && day < filters.from) return false;
+    if (filters.to && day > filters.to) return false;
+    if (filters.type && item.type !== filters.type) return false;
+    if (filters.status && item.status !== filters.status) return false;
+    return true;
+  }), [data, shownIds, filters]);
+  const periodIn = transactions.filter((item) => item.type === "Contribution" && item.status === "Approved").reduce((sum, item) => sum + item.amount, 0);
+  const periodOut = transactions.filter((item) => item.type !== "Contribution").reduce((sum, item) => sum + item.amount, 0);
+  const filtered = JSON.stringify(filters) !== JSON.stringify(emptyFilters);
   const total = accounts.reduce((sum, item) => sum + item.approved, 0);
   const pending = accounts.reduce((sum, item) => sum + item.pending, 0);
 
@@ -165,11 +216,28 @@ export function FidelityMonitoring() {
         <MetricTile tone="warning" icon={Clock3} label="Pending" value={money(pending)} detail="Awaiting remittance approval" />
         <MetricTile tone="teal" icon={CheckCircle2} label="With withdrawable excess" value={String(accounts.filter((item) => item.withdrawable > 0).length)} detail={money(accounts.reduce((sum, item) => sum + item.withdrawable, 0))} />
       </div>
-      <div className="max-w-md space-y-1">
-        <SearchSelect aria-label="Find a MAS" className="h-10" clearable placeholder={data.accounts.length ? "All MAS - search name or employee ID" : "No MAS yet"} disabled={!data.accounts.length} value={masId} onValueChange={setMasId}
-          options={data.accounts.map((item) => ({ value: item.masEmployeeId, label: item.masName, description: `${item.masEmployeeId} · balance ${money(item.approved)}` }))} />
+      <Card><CardContent className="space-y-3 p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="space-y-1 text-sm sm:col-span-2">Employee
+            <SearchSelect aria-label="Find a MAS" className="h-9" clearable placeholder={data.accounts.length ? "All - search name or employee ID" : "No MAS yet"} disabled={!data.accounts.length} value={masId} onValueChange={set("masId")}
+              options={data.accounts.map((item) => ({ value: item.masEmployeeId, label: item.masName, description: `${item.masEmployeeId}${item.branch ? ` · ${item.branch}` : ""} · balance ${money(item.approved)}` }))} />
+          </label>
+          <Choice label="Branch" value={filters.branch} onChange={set("branch")} all="All branches" options={options.branches} />
+          <Choice label="Role" value={filters.role} onChange={set("role")} all="All roles" options={options.roles} />
+          <Choice label="Employment" value={filters.employment} onChange={set("employment")} all="Any" options={options.employment} />
+          <Choice label="Fidelity status" value={filters.standing} onChange={set("standing")} all="Any" options={STANDINGS} />
+          <Choice label="Balance" value={filters.balance} onChange={set("balance")} all="Everyone" options={[["with", "With savings or pending"], ["none", "No savings yet"]]} />
+          <label className="space-y-1 text-sm">History from<input type="date" className={field} value={filters.from} max={filters.to || undefined} onChange={(event) => set("from")(event.target.value)} /></label>
+          <label className="space-y-1 text-sm">History to<input type="date" className={field} value={filters.to} min={filters.from || undefined} onChange={(event) => set("to")(event.target.value)} /></label>
+          <Choice label="History type" value={filters.type} onChange={set("type")} all="All types" options={options.types} />
+          <Choice label="History status" value={filters.status} onChange={set("status")} all="All statuses" options={options.statuses} />
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {filtered && <Button type="button" size="sm" variant="outline" onClick={() => setFilters(emptyFilters)}>Clear filters</Button>}
+          <span className="text-muted-foreground">{accounts.length} of {data.accounts.length} employees · {transactions.length} history entr{transactions.length === 1 ? "y" : "ies"}{filters.from || filters.to ? ` · in the period: ${money(periodIn)} saved (approved), ${money(periodOut)} paid out` : ""}</span>
+        </div>
         {!data.accounts.length && <p className="text-xs text-muted-foreground">Every active employee can hand over Fidelity with a remittance and appears here; none are registered yet.</p>}
-      </div>
+      </CardContent></Card>
       <Card>
         <CardHeader><CardTitle>MAS balances</CardTitle></CardHeader>
         <CardContent>
@@ -184,13 +252,13 @@ export function FidelityMonitoring() {
                   <td className="p-3 tabular-nums">{money(item.withdrawable)}</td>
                   <td className="p-3 tabular-nums">{money(item.pending)}</td>
                   <td className="p-3 tabular-nums">{money(item.claimed)}</td>
-                  <td className="p-3"><StatusBadge status={item.separated ? `Left (${item.employmentStatus})` : item.withdrawable > 0 ? "Excess withdrawable" : "Saving"} tone={item.separated ? "warning" : item.withdrawable > 0 ? "success" : "info"} /></td>
+                  <td className="p-3"><StatusBadge status={item.separated ? `Left (${item.employmentStatus})` : item.withdrawable > 0 ? "Excess withdrawable" : "Saving"} tone={item.separated ? "warning" : item.withdrawable > 0 ? "success" : "info"} />{item.branch && <span className="mt-1 block text-xs text-muted-foreground">{item.branch}</span>}</td>
                   <td className="p-3">{data.canClaim && (item.withdrawable > 0 || item.readyForRelease) ? <div className="flex flex-wrap gap-2">
                     {item.withdrawable > 0 && !item.separated && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void withdraw(item, "excess")}>Withdraw excess</Button>}
                     {item.readyForRelease && <Button type="button" size="sm" disabled={busy} onClick={() => void withdraw(item, "separation")}>Release all (left company)</Button>}
                   </div> : "—"}</td>
                 </tr>)}
-                {!accounts.length && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No Fidelity records found.</td></tr>}
+                {!accounts.length && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{filtered ? "No employees match these filters." : "No Fidelity records found."}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -201,18 +269,19 @@ export function FidelityMonitoring() {
         <CardContent>
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full min-w-[800px] text-left text-sm">
-              <thead><tr>{["Date", "Reference", "Employee", "Type", "Amount", "Status", "Encoded by"].map((item) => <th key={item} className="p-3">{item}</th>)}</tr></thead>
+              <thead><tr>{["Date", "Reference", "Employee", "Branch", "Type", "Amount", "Status", "Encoded by"].map((item) => <th key={item} className="p-3">{item}</th>)}</tr></thead>
               <tbody>
                 {transactions.map((item) => <tr key={item.id} className="border-t">
                   <td className="p-3">{item.date}</td>
                   <td className="p-3 font-mono text-xs">{item.id}</td>
                   <td className="p-3">{item.masName}</td>
+                  <td className="p-3">{item.branch || branchOf.get(item.masEmployeeId) || "—"}</td>
                   <td className="p-3">{item.type}</td>
                   <td className="p-3 font-semibold tabular-nums">{item.type === "Contribution" ? "+" : "−"}{money(item.amount)}</td>
                   <td className="p-3"><StatusBadge status={item.status} /></td>
                   <td className="p-3">{item.encodedBy || "—"}</td>
                 </tr>)}
-                {!transactions.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No Fidelity activity has been recorded.</td></tr>}
+                {!transactions.length && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{filtered ? "No Fidelity activity matches these filters." : "No Fidelity activity has been recorded."}</td></tr>}
               </tbody>
             </table>
           </div>
