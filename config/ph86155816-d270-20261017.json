@@ -1,0 +1,11 @@
+{
+  "cases": [{
+    "member": "PH-86155816",
+    "program": "DP-0015",
+    "expectedDoi": "2023-07-01",
+    "receipts": ["10923 C", "13570C", "14657 C", "9875 M (duplicated)", "15854 C", "18458 C", "19640 C", "21697 C", "22149 C"],
+    "startNop": 31,
+    "financeScope": "changed",
+    "note": "Owner requested PH-86155816 repair October 17, 2026. M3-COLL rows1446,3426,4698,6463,8454,10783,12516,14286,15945 show January-September2026. March NOP15 shifted imported history to NOP15-23 and September2024-May2025. July1,2023 DOI and April-September source NOP34-39 establish January-September NOP31-39; January30 and February31 source NOPs are each one low. Restore DOI-consistent NOP31-39 and January-September2026 coverage, preserving dates and nine PHP270 amounts (PHP2430 total). Preserve April OR9875M duplicate label/flag: the old sheet also assigns that number to a different member's PHP210 payment; actual receipt number needs owner confirmation. Recalculate financial fields and account status."
+  }]
+}

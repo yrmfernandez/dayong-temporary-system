@@ -1,0 +1,11 @@
+{
+  "cases": [{
+    "member": "PH-96391262",
+    "program": "DP-0063",
+    "expectedDoi": "2022-04-01",
+    "receipts": ["9249 C", "11901C", "13597 C", "9874 M", "15380 C", "16948 C", "19605 C", "21676 C", "22129 C"],
+    "startNop": 46,
+    "financeScope": "changed",
+    "note": "Owner requested PH-96391262 repair October 17, 2026. Original M3-COLL rows 388,2248,4118,6222,8145,10046,11931,14025,15868 show January-September 2026. January-February NOP46-47 and April-September NOP49-54 agree with April 1, 2022 DOI. March source NOP28 is a typo for48, causing imported NOP28-36 and July2024-March2025 coverage. Restore January-September2026 NOP46-54, preserving DOI, program, member identity, OR dates and nine PHP230 amounts (PHP2070 total); recalculate financial fields and account status."
+  }]
+}

@@ -243,7 +243,8 @@ export async function getRemittanceDashboard(clerkId = "") {
   const available = ledger.collections.filter((collection) => ["Outstanding", "Returned"].includes(collection.remittanceStatus));
   const accountable = ledger.collections.filter((collection) => ["Outstanding", "Returned", "Pending Remittance Approval"].includes(collection.remittanceStatus));
   const pending = ledger.remittances.filter((remittance) => ["Pending Approval", "Discrepancy"].includes(remittance.status));
-  const approvedToday = ledger.remittances.filter((remittance) => remittance.status === "Approved" && remittance.decisionAt.slice(0, 10) === today);
+  // decisionAt is a UTC stamp: its Manila date, so approvals before 8:00 AM count on the right day.
+  const approvedToday = ledger.remittances.filter((remittance) => remittance.status === "Approved" && manilaDateOf(remittance.decisionAt) === today);
   // Receipt photos and approval may come after 3 PM; cash already cleared on time keeps its incentive.
   // Resolve one receipt time per saved batch, and keep pending slips at the amounts already recorded on them.
   const batches = new Map<string, CashCollection[]>();

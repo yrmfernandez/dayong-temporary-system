@@ -37,7 +37,8 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   // Start everything that does not depend on who the user is at once, instead of one step after another.
   const mainRead = read(unique);
   const todayModeRead = needsSales ? getTodayMode() : Promise.resolve("remittance" as const);
-  const remittanceRead = needsSales && (kind === "admin" || kind === "entry") ? getRemittanceDashboard() : Promise.resolve(null);
+  // An Entry Clerk's Remittance Status covers only what they encoded, like the Remittances page (owner, October 17, 2026).
+  const remittanceRead = needsSales && (kind === "admin" || kind === "entry") ? getRemittanceDashboard(kind === "entry" ? user.employeeId : "") : Promise.resolve(null);
   // Their errors surface in the Promise.all below; this only stops an early failure from leaving them unhandled.
   for (const pending of [mainRead, todayModeRead, remittanceRead]) pending.catch(() => undefined);
   // MAS and Collector dashboards are scoped to the person, so their name comes first (a small, cached read).

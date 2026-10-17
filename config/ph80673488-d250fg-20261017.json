@@ -1,4 +1,5 @@
 {
+  "executionNote": "Consolidation dry runs rolled back: first-year MAS tiers missing in both environments. Use scripts/fix-ph80673488-d250fg.mjs instead; it verifies all five receipts have empty financial fields and no remittance links, preserves them, and records the missing-tier limitation.",
   "cases": [
     {
       "member": "PH-80673488",

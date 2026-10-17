@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 123 library files, 52 component files; 478 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 123 library files, 52 component files; 484 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -456,6 +456,8 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-or-letters.mjs](../scripts/fix-or-letters.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-ph11841180-coverage.mjs](../scripts/fix-ph11841180-coverage.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph56409915-year.mjs](../scripts/fix-ph56409915-year.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/fix-ph73303959-or-date.mjs](../scripts/fix-ph73303959-or-date.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/fix-ph80673488-d250fg.mjs](../scripts/fix-ph80673488-d250fg.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-remitted-before-receipt.mjs](../scripts/fix-remitted-before-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-tangal-incentives.mjs](../scripts/fix-tangal-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/flag-ph96295172-receipt.mjs](../scripts/flag-ph96295172-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -581,11 +583,15 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/ph13726515-d46059b-20261016.json](../config/ph13726515-d46059b-20261016.json)
 - [config/ph17113133-january-nop22-20261016.json](../config/ph17113133-january-nop22-20261016.json)
 - [config/ph24556150-dfpp650-merge-20261015.json](../config/ph24556150-dfpp650-merge-20261015.json)
+- [config/ph39400344-d230-20261017.json](../config/ph39400344-d230-20261017.json)
 - [config/ph47317014-february-nop22-20261016.json](../config/ph47317014-february-nop22-20261016.json)
 - [config/ph58645726-january-coverage-20261016.json](../config/ph58645726-january-coverage-20261016.json)
 - [config/ph61149554-d280-coverage-20261016.json](../config/ph61149554-d280-coverage-20261016.json)
 - [config/ph68531118-all-d210hg-20261016.json](../config/ph68531118-all-d210hg-20261016.json)
 - [config/ph72833261-january-nop21-20261016.json](../config/ph72833261-january-nop21-20261016.json)
+- [config/ph80673488-d250fg-20261017.json](../config/ph80673488-d250fg-20261017.json)
+- [config/ph86155816-d270-20261017.json](../config/ph86155816-d270-20261017.json)
+- [config/ph96391262-d230-20261017.json](../config/ph96391262-d230-20261017.json)
 - [config/ph99032555-january-nop27-20261016.json](../config/ph99032555-january-nop27-20261016.json)
 - [config/program-moves.json](../config/program-moves.json)
 - [config/receipt-consolidations.json](../config/receipt-consolidations.json)

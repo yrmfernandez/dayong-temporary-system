@@ -1,5 +1,37 @@
 # Dayong System project context
 
+### PH-86155816: D-270 (300) shifted coverage repaired (2026-10-17)
+
+- Owner requested repair. Source M3-COLL rows1446,3426,4698,6463,8454,10783,12516,14286,15945 show January–September2026. March NOP15 caused imported NOP15–23/September2024–May2025. July1,2023 DOI and April–September source NOP34–39 establish January–September NOP31–39; January30/February31 source NOPs are one low.
+- Backed up, passed production dry run, then applied `consolidate-member-receipts.mjs --config=config/ph86155816-d270-20261017.json --apply`. Restored January–September2026/NOP31–39; stored status150D becomes U. Nine PHP270 amounts (PHP2,430), OR dates and DOI preserved; financial fields recalculated with no remittance expectation changes. Fresh account/receipt verification passed; audited and recorded in Record Corrections.
+- April OR9875M duplicate flag/label retained: M3-COLL row6223 assigns the same number to PH-29539584's April14 PHP210 payment, while this member's row6463 is April17 PHP270. Actual receipt number requires owner confirmation. No payment removed or renamed.
+- Staging dry run rolled back on missing MAS incentive tiers for NOP36; production tiers are configured and production dry run passed.
+
+### PH-96391262: D-230 coverage shifted by March NOP typo (2026-10-17)
+
+- Owner requested repair. Original M3-COLL rows 388,2248,4118,6222,8145,10046,11931,14025,15868 show January–September 2026. January–February NOP46–47 and April–September NOP49–54 agree with April 1, 2022 DOI; March NOP28 is a typo for48. The import used that minimum and shifted nine receipts to NOP28–36, July2024–March2025.
+- Account/receipt backup saved; production dry run passed; applied `consolidate-member-receipts.mjs --config=config/ph96391262-d230-20261017.json --apply`. Restored January–September2026/NOP46–54 and status 150D to U. Nine PHP230 payments (PHP2,070 total), OR dates, DOI and program retained. Financial fields recalculated; no remittance expectations changed. Audited and recorded in Record Corrections; fresh receipt/account verification passed.
+- Staging dry run skipped: this member has no D-230 account there. Verified production account and original workbook directly.
+
+### PH-39400344: D-230 coverage shifted by a source NOP typo (2026-10-17)
+
+- Owner requested member repair. Original M3-COLL rows 667,2619,4631,6504,8343,10388,12298,14292,16014 show January–September 2026. January NOP47 and March–September NOP49–55 agree with March 1, 2022 DOI; February NOP28 is a typo for48. The import used that minimum and shifted all nine receipts to NOP28–36, June2024–February2025.
+- Backup saved, production dry run passed, then applied `consolidate-member-receipts.mjs --config=config/ph39400344-d230-20261017.json --apply`. Restored January–September2026/NOP47–55; status 150D becomes U. Nine PHP230 amounts (PHP2,070 total), dates, DOI and program retained. Financial fields recalculated; no remittance expectations changed. Recorded in Audit Log and Record Corrections; fresh receipt/account verification passed.
+- Staging dry run skipped because staging has no D-230 account for this member; production source and account were verified directly.
+
+### PH-73303959: historical Needs review repaired (2026-10-17)
+
+- Read-only production diagnosis reproduced D-280 historical coverage-gap errors for February–June 2026. OR 13335 B (`COL-LEG-C8A2D15A6B`) pays June, NOP 44, PHP280, but is dated January 31, 2026. Earlier NOP 39–43 receipts arrive February–July. Today's D-280 calculation succeeds (90D), but stored status is stale (150D); D-350 (5Y) calculates 150D with no history errors.
+- Original workbook M1-COLL row 9359 also says January 31, with encoding timestamp September 1 and Date Remitted September 1. Owner confirmed the actual OR date is **September 1, 2026**.
+- Backup saved with `member-accounts.mjs PH-73303959 --show-payments --backup`. Applied on production with `scripts/fix-ph73303959-or-date.mjs --or-date=2026-09-01 --apply`, after the exact-date dry run. Historical February–June review errors are cleared; D-280 stored status updated from 150D to 90D, D-350 (5Y) remains 150D. All six receipt amounts (PHP2,030 collections), coverage, financial fields and both programs retained. Audit Log and Record Corrections record the repair; a fresh read verified the corrected date and error-free historical calculations.
+
+### PH-80673488: all payments to D-250 FG (2026-10-17)
+
+- Owner confirmed all payments belong to D-250 FG. Moved ORs 4481 M and 8270 M from the erroneous D-210 HG account into the existing D-250 FG enrollment, then removed the empty D-210 HG account (no New Sale or transfers).
+- Five PHP500 receipts (4481 M, 8270 M, 8056 B, 8073 B, 08100 B) retain their dates, amounts, NOP 10–19 and continuous February–November 2026 coverage. DOI remains May 1, 2025; status recalculated to ADV; collections total PHP2,500.
+- Applied on production with `scripts/fix-ph80673488-d250fg.mjs --apply`, following member/account backup and staging/production dry runs. Audited and summarized in Record Corrections.
+- Financial limitation: the general consolidation script rolled back because D-250 FG lacks first-year MAS incentive tiers. The scoped repair verified all five imported receipts had empty financial fields and no remittance links, and preserved those fields. No incentive rates were invented. Configure applicable first-year tiers before pricing those legacy receipts. Reviewed consolidation plan: `config/ph80673488-d250fg-20261017.json`.
+
 ### PH-08543913: five-OR member data repair (2026-10-17)
 
 - Owner supplied 9918 M, 16667C, 18751C, 19293 C and 22770 C to identify a member needing correction. All belong to PH-08543913, D-350 (5Y), DOI March 13, 2026; the account also has September OR 24379 C.

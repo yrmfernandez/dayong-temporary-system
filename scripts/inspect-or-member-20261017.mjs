@@ -4,7 +4,8 @@ import postgres from 'postgres';
 import {loadLegacySources} from './legacy-sources.mjs';
 nextEnv.loadEnvConfig(process.cwd());
 const db = postgres(process.env.DIRECT_DATABASE_URL, {max:1, connect_timeout:15, onnotice:()=>{}});
-const keys=['9918M','16667C','18751C','19293C','22770C'];
+const receiptArg=process.argv.find(arg=>arg.startsWith('--receipts='))?.slice(11);
+const keys=receiptArg ? receiptArg.split(',').map(v=>v.toUpperCase().replace(/[^A-Z0-9]/g,'')) : ['9918M','16667C','18751C','19293C','22770C'];
 if(process.argv.includes('--legacy')) {
  const sources=await loadLegacySources(['legacy-data/old-data/2026 DATABASE (NS + COLL).xlsx']);
  for(const source of sources) for(const tab of source.tabs) {
@@ -13,7 +14,7 @@ if(process.argv.includes('--legacy')) {
   const orCol=headers.findIndex(v=>norm(v)==='ORNUMBER');
   if(orCol<0)continue;
   for(const [i,row] of rows.entries()) if([...keys,'24379C'].includes(norm(row[orCol]))) {
-   const metadata=Object.fromEntries(headers.map((h,j)=>[String(h),row[j]]).filter(([h])=>/OR|NOP|MONTH|PROGRAM|AMOUNT|DOI/i.test(h) && !/MARKETING|COLLECTOR/i.test(h)));
+   const metadata=Object.fromEntries(headers.map((h,j)=>[String(h),row[j]]).filter(([h])=>/OR|NOP|MONTH|PROGRAM|AMOUNT|DOI|REMITTED|TIMESTAMP/i.test(h) && !/MARKETING|COLLECTOR/i.test(h)));
    console.log(JSON.stringify({source:tab.title,row:tab.firstRow+i+1,metadata}));
   }
  }
