@@ -2474,6 +2474,32 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
   assert.deepEqual([...ranges].sort(), ["'Report Notes'!A2=MD-2026-0042|daily|2026-10-01", "'Users'!B2=MD-2026-0042"]);
 });
 
+test('remittance write guard rejects entries submitted after another request read them as outstanding', async () => {
+  const h = harness();
+  await seedSaleLinks();
+  await seed('members', [{ member_id: 'MEM-RACE', member_number: 'PH-RACE', surname: 'Test', first_name: 'Test' }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-RACE', member_id: 'MEM-RACE', program_id: 'DP-1' }]);
+  await seed('sales', [{ sale_id: 'SALE-RACE', program_id: 'DP-1', remittance_status: 'Outstanding' }]);
+  await seed('collections', [{ collection_id: 'COL-RACE', collection_batch_id: 'BATCH-RACE', enrollment_id: 'ENR-RACE', member_id: 'MEM-RACE', program_id: 'DP-1', amount_collected: 350, status: 'Posted', remittance_status: 'Outstanding' }]);
+  const { inTransaction, schema } = h.load('lib/db.ts');
+  const { lockOutstandingRemittanceEntries } = h.load('lib/remittance-workflow.ts');
+  const { eq } = require('drizzle-orm');
+  for (const [kind, id, table, idColumn] of [
+    ['New Sales', 'SALE-RACE', schema.sales, schema.sales.sale_id],
+    ['Collections', 'COL-RACE', schema.collections, schema.collections.collection_id],
+  ]) {
+    // Both requests selected the same Outstanding entry. The first commits its
+    // slip/link; the second must recheck the live row before writing another slip.
+    await inTransaction(async tx => {
+      await lockOutstandingRemittanceEntries(tx, kind, [id]);
+      await tx.insert(schema.remittances).values({ remittance_id: `REM-${id}`, status: 'Pending Approval' });
+      await tx.update(table).set({ remittance_status: 'Pending Remittance Approval', linked_remittance_id: `REM-${id}` }).where(eq(idColumn, id));
+    });
+    await assert.rejects(inTransaction(tx => lockOutstandingRemittanceEntries(tx, kind, [id])), /no longer outstanding/);
+    assert.equal((await query('select count(*)::int as n from remittances where remittance_id=$1', [`REM-${id}`]))[0].n, 1);
+  }
+});
+
 test('entries go to Pending Approval on their own once every receipt photo is attached, and clerks see only theirs', async () => {
   const setup = (photos, method = 'GCash') => {
     const h = harness({ userId: 'USR-7', employeeId: 'DPE-7', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });

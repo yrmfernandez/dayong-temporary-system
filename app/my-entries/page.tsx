@@ -17,7 +17,9 @@ import type { DayEntry } from "@/lib/todays-entries";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Totals = { count: number; amount: number };
-type Result = { success: boolean; message?: string; from: string; to: string; today: string; employeeId: string; isAdmin: boolean; clerks: Array<{ employeeId: string; name: string }>; entries: DayEntry[]; sales: Totals; collections: Totals; withPhoto: number };
+type Result = { success: boolean; message?: string; from: string; to: string; today: string; employeeId: string; isAdmin: boolean; clerks: Array<{ employeeId: string; name: string }>; entries: DayEntry[]; sales: Totals; collections: Totals; withPhoto: number;
+  /** Returned or not-yet-sent entries encoded before the period, listed too so they can be fixed and sent. */
+  earlierUnfinished?: number };
 type Period = "today" | "week" | "month" | "custom";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
@@ -126,6 +128,8 @@ export default function MyEntriesPage() {
       </Card>
 
       {message && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">{message}</p>}
+      {Boolean(data?.earlierUnfinished) && <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        Also listed: {data?.earlierUnfinished} entr{data?.earlierUnfinished === 1 ? "y" : "ies"} encoded before this period that {data?.earlierUnfinished === 1 ? "is" : "are"} still returned or not yet sent for approval. A returned batch stays Returned after Edit batch until you press <strong>Resubmit batch</strong>.</p>}
 
       {data && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

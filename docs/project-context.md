@@ -1012,6 +1012,12 @@ Owner confirmed MD-2026-0053's incentive for October 13 must be PHP 196.50. Corr
 ### October 13, 2026: TANGAL incentive correction
 Owner subsequently requested fixing TANGAL, MARY JEAN's MATINA entry encoded by ABESIA, DARYL JANE, superseding the earlier leave-as-is decision. OR 17552B (COL-20261013081610-4ARZ), D-320 NOP 29, kept its encoded Collector role and was recalculated using the now-configured 10% tier: PHP 32.00 incentive, PHP 288.00 remittance. Pending slip REM-20261013081611-ZVKX and its mapping were updated together in one audited transaction, with a Record Corrections summary. scripts/fix-tangal-incentives.mjs passed a production rollback dry run before applying; readback verified incentive, balanced slip/mapping and correction record. Staging did not have this entry.
 
+### Duplicate remittance correction (October 17, 2026)
+
+REM-20261017074154-GUDN could not be approved because two overlapping submissions attached the same New Sale to separate slips. REM-20261017074155-FU2X had already been approved for PHP 220 and held the sale's Remitted link. Production correction `scripts/fix-rem-gudn-duplicate.mjs` passed a rollback dry run, retired only GUDN as Rejected with a duplicate explanation, and recorded COR-REM-GUDN-DUPLICATE. The approved slip, sale, mappings and cash amounts remain intact; repeat verification passed. `scripts/inspect-remittance-approval.mjs` provides read-only investigation by slip ID.
+
+Submission now locks the selected New Sales or Collections inside the write transaction and rechecks their live Outstanding status and empty remittance link before creating a slip. A second overlapping request stops before writing. The approval guard remains in place. All 204 tests passed, including regression coverage for both entry kinds and automatic submission; TypeScript and targeted lint also passed. Code change awaits deployment.
+
 ### Attendance fixes (2026-10-17)
 
 - **Done:** shift progress on the clock-in page uses the server's clock (the one that records the clock-in), not the device's. A device clock a few minutes slow kept someone who clocked in at 8:00 below 100% at 5:00 PM. The progress math itself was already right (8:00 to 17:00 less lunch is 8 hours).

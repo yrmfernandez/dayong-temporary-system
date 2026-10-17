@@ -11,6 +11,8 @@ import { withEncoder } from "@/lib/encoder-context";
 import { resubmitReturned, submitReadyEntries } from "@/lib/remittance-workflow";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+const addDays = (date: string, count: number) => new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10);
+const UNFINISHED_DAYS = 60;
 
 /**
  * What an Entry Clerk encoded from `from` to `to` (by the date encoded), with each entry's receipt photo. A clerk sees
@@ -27,10 +29,17 @@ export async function GET(request: Request) {
     const isAdmin = await canManageUsers();
     const clerks = isAdmin ? await auditedEmployees() : [];
     const employeeId = isAdmin ? params.get("employeeId") || user.employeeId : user.employeeId;
-    const { entries, sales, collections } = await getEntriesForRange(from, to, "encoded", { encodedBy: employeeId });
+    const [{ entries: inPeriod, sales, collections }, earlier] = await Promise.all([
+      getEntriesForRange(from, to, "encoded", { encodedBy: employeeId }),
+      // Unfinished entries of earlier days stay in sight (owner, October 17, 2026): a batch returned yesterday, or not yet
+      // sent, was invisible on "Today" and could not be fixed or resubmitted. Same 60 days back as the Clearing page.
+      getEntriesForRange(addDays(from, -UNFINISHED_DAYS), addDays(from, -1), "encoded", { encodedBy: employeeId }),
+    ]);
+    const carried = earlier.entries.filter((entry) => entry.remittanceStatus === "Returned" || entry.remittanceStatus === "Outstanding");
+    const entries = [...inPeriod, ...carried];
     return Response.json({
       success: true, from, to, today, employeeId, isAdmin, clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name })),
-      entries, sales, collections, withPhoto: entries.filter((entry) => entry.photoId).length,
+      entries, sales, collections, withPhoto: entries.filter((entry) => entry.photoId).length, earlierUnfinished: carried.length,
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load your entries." }, { status: 400 });

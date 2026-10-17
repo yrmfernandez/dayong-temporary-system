@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 123 library files, 52 component files; 497 scanned source/configuration/public-text files in total.
+43 page routes, 67 API handlers, 124 library files, 52 component files; 501 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -97,6 +97,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/mam` | GET, POST | [app/api/mam/route.ts](../app/api/mam/route.ts) |
 | `/api/mas` | GET | [app/api/mas/route.ts](../app/api/mas/route.ts) |
 | `/api/member-programs/check` | GET | [app/api/member-programs/check/route.ts](../app/api/member-programs/check/route.ts) |
+| `/api/members/account-status` | POST | [app/api/members/account-status/route.ts](../app/api/members/account-status/route.ts) |
 | `/api/members/directory` | GET, PATCH, DELETE | [app/api/members/directory/route.ts](../app/api/members/directory/route.ts) |
 | `/api/members` | GET | [app/api/members/route.ts](../app/api/members/route.ts) |
 | `/api/members/standing` | GET | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) |
@@ -135,6 +136,7 @@ All routes pass through the authentication proxy except the three public auth en
 | --- | --- | --- |
 | [lib/access-control.ts](../lib/access-control.ts) | `AccessContext`, `executiveRoles`, `normalizeRoleName`, `isAdministratorRole`, `itRoles`, `hrRoles`, `isFinanceFamilyRole`, `canManageAccountsFor`, `canManageEmployeesFor`, `canManageConfigurationFor`, `canCorrectEntriesFor`, `defaultRoutesForRole`, `pageTicked`, `routesForRole`, `accessibleRoutes`, `canAccessPath`, `DashboardKind`, `dashboardKind` | — |
 | [lib/account-data.ts](../lib/account-data.ts) | `AccountScope`, `LoadedAccount`, `AccountData`, `loadAccountData`, `accountReport`, `ProgramStanding`, `memberStanding`, `mamReport`, `memberMam`, `syncAccountStatuses`, `NewCollection`, `commitCollections` | `@/lib/account-rules`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance`, `@/lib/mam-report` |
+| [lib/account-deactivation.ts](../lib/account-deactivation.ts) | `DEACTIVATED`, `isDeactivated`, `setAccountActive`, `deactivationNotes` | `@/lib/db`, `@/lib/record-corrections` |
 | [lib/account-rules.ts](../lib/account-rules.ts) | `AccountStatus`, `Account`, `PAY_THE_BALANCE_CATEGORY_ID`, `forfeitMonthsFor`, `AccountPayment`, `todayInManila`, `validDate`, `validMonth`, `monthIndex`, `monthName`, `monthCount`, `dateInMonth`, `addMonths`, `addDay`, `allocations`, `paymentsByEnrollment`, `accountState`, `COLLECTION_CHANNELS`, `CollectionChannel`, `incentiveRoleFor`, `FORFEITED_PAYMENT_DAYS`, `forfeitedPaymentsAllowed`, `PaymentInput`, `validatePayment` | `./program-payment-limit.mjs` |
 | [lib/admin-delete.ts](../lib/admin-delete.ts) | `DELETE_KINDS`, `DeleteKind`, `isDeleteKind`, `canDeleteRecords`, `DeletionPlan`, `planDeletion`, `deleteRecord` | `@/lib/auth`, `@/lib/access-control`, `@/lib/db`, `@/lib/readable-id` |
 | [lib/api-response.ts](../lib/api-response.ts) | `readApiResponse`, `parseJsonResponse` | `@/lib/friendly-api-errors` |
@@ -194,7 +196,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/mam-report.ts](../lib/mam-report.ts) | `MamAccount`, `monitoringMonths`, `buildMamReport` | `@/lib/account-rules` |
 | [lib/mas-expected.ts](../lib/mas-expected.ts) | `Expected`, `duesIn`, `expectedByMas` | `@/lib/db` |
 | [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `ProgramInput`, `updateProgramRecord`, `ProgramBulkChanges`, `updateProgramsBulk`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `MemberRecordInput`, `getMemberRecord`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/encoder-sheets`, `@/lib/sheet-rows`, `@/lib/users-sheet`, `@/lib/program-incentive-store`, `@/lib/member-records` |
-| [lib/member-directory-data.ts](../lib/member-directory-data.ts) | `loadMemberDirectory`, `DirectoryQuery`, `queryMemberDirectory` | `@/lib/db`, `@/lib/account-data`, `@/lib/member-directory`, `@/lib/member-scope`, `@/lib/employees`, `@/lib/google-sheets-data` |
+| [lib/member-directory-data.ts](../lib/member-directory-data.ts) | `loadMemberDirectory`, `DirectoryQuery`, `queryMemberDirectory` | `@/lib/db`, `@/lib/account-data`, `@/lib/account-deactivation`, `@/lib/member-directory`, `@/lib/member-scope`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [lib/member-directory.ts](../lib/member-directory.ts) | `DirectoryEnrollment`, `DirectoryMember`, `DECEASED_STATUS`, `MEMBER_STATUSES`, `STANDING_FILTERS`, `Standing`, `matchesStanding`, `DirectoryFilters`, `emptyDirectoryFilters`, `MemberRecord`, `EnrollmentRecord`, `CollectorRecord`, `buildMemberDirectory`, `filterMemberDirectory` | — |
 | [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `memberContactOrClaimant`, `memberColumns`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `searchBranchMembers`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
 | [lib/member-scope.ts](../lib/member-scope.ts) | `ownMembersScope`, `isOwnAccount` | `@/lib/auth`, `@/lib/access-control`, `@/lib/employees` |
@@ -227,7 +229,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/record-corrections.ts](../lib/record-corrections.ts) | `ensureCorrectionsSheet`, `recordCorrection` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/remittance-deadline.ts](../lib/remittance-deadline.ts) | `REMITTANCE_CUTOFF`, `INCENTIVE_GRACE_DAYS`, `validTime`, `incentiveDeadline`, `keepsIncentive`, `manilaNow`, `manilaDateOf`, `formatDeadline` | `@/lib/working-days` |
 | [lib/remittance-methods.ts](../lib/remittance-methods.ts) | `PaymentMethod`, `getPaymentMethods`, `findActivePaymentMethod`, `savePaymentMethod` | `@/lib/db`, `@/lib/readable-id` |
-| [lib/remittance-workflow.ts](../lib/remittance-workflow.ts) | `RemittanceKind`, `SlipType`, `CashCollection`, `CashRemittance`, `forfeitsIncentive`, `amountDue`, `getRemittanceDashboard`, `RemittanceEntry`, `getRemittanceEntries`, `CASH_IN_FULL_NOTE`, `createCashRemittance`, `decideCashRemittance`, `createFidelitySlip`, `editFidelitySlip`, `voidFidelitySlip`, `receivedAtOf`, `submitReadyEntries`, `submitCashAfterSave`, `resubmitReturned` | `@/lib/db`, `@/lib/sheets-on-db`, `@/lib/readable-id`, `@/lib/sheet-ranges`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/cash-count`, `@/lib/receipt-photos`, `@/lib/clearing`, `@/lib/entry-batches` |
+| [lib/remittance-workflow.ts](../lib/remittance-workflow.ts) | `RemittanceKind`, `SlipType`, `CashCollection`, `CashRemittance`, `forfeitsIncentive`, `amountDue`, `getRemittanceDashboard`, `RemittanceEntry`, `getRemittanceEntries`, `CASH_IN_FULL_NOTE`, `lockOutstandingRemittanceEntries`, `createCashRemittance`, `decideCashRemittance`, `createFidelitySlip`, `editFidelitySlip`, `voidFidelitySlip`, `receivedAtOf`, `submitReadyEntries`, `submitCashAfterSave`, `resubmitReturned` | `@/lib/db`, `@/lib/sheets-on-db`, `@/lib/readable-id`, `@/lib/sheet-ranges`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/cash-count`, `@/lib/receipt-photos`, `@/lib/clearing`, `@/lib/entry-batches` |
 | [lib/remittance.ts](../lib/remittance.ts) | `IncentiveTier`, `tiersForBranch`, `SaleIncentiveSetting`, `SaleProgram`, `normalizeSaleIncentive`, `calculateSaleIncentive`, `REACTIVATION_RATE`, `calculateRemittance` | `./program-payment-limit.mjs` |
 | [lib/report-remarks.ts](../lib/report-remarks.ts) | `getReportRemarks`, `addReportRemark` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/sheets-on-db`, `@/lib/google-sheets`, `@/lib/sheet-ranges` |
@@ -353,7 +355,8 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/mam/route.ts](../app/api/mam/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/encoder-context`, `@/lib/account-data`, `@/lib/mam-report`, `@/lib/account-rules`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/member-records` |
 | [app/api/mas/route.ts](../app/api/mas/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees` |
 | [app/api/member-programs/check/route.ts](../app/api/member-programs/check/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-records` |
-| [app/api/members/directory/route.ts](../app/api/members/directory/route.ts) | `GET`, `PATCH`, `DELETE` | `@/lib/access-control`, `@/lib/admin-delete`, `@/lib/member-scope`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/master-data-crud`, `@/lib/member-directory-data`, `@/lib/member-directory`, `@/lib/member-transfer`, `@/lib/program-transfer` |
+| [app/api/members/account-status/route.ts](../app/api/members/account-status/route.ts) | `POST` | `@/lib/account-deactivation`, `@/lib/encoder-context`, `@/lib/member-transfer` |
+| [app/api/members/directory/route.ts](../app/api/members/directory/route.ts) | `GET`, `PATCH`, `DELETE` | `@/lib/access-control`, `@/lib/admin-delete`, `@/lib/member-scope`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/master-data-crud`, `@/lib/member-directory-data`, `@/lib/member-directory`, `@/lib/member-transfer`, `@/lib/account-deactivation`, `@/lib/program-transfer` |
 | [app/api/members/route.ts](../app/api/members/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-records` |
 | [app/api/members/standing/route.ts](../app/api/members/standing/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/account-data` |
 | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/member-transfer` |
@@ -461,6 +464,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-ph73303959-or-date.mjs](../scripts/fix-ph73303959-or-date.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph80673488-d250fg.mjs](../scripts/fix-ph80673488-d250fg.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph97483925-month-of.mts](../scripts/fix-ph97483925-month-of.mts) | `@next/env` | Yes; read source for semantics |
+| [scripts/fix-rem-gudn-duplicate.mjs](../scripts/fix-rem-gudn-duplicate.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-remitted-before-receipt.mjs](../scripts/fix-remitted-before-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-tangal-incentives.mjs](../scripts/fix-tangal-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/flag-ph96295172-receipt.mjs](../scripts/flag-ph96295172-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -475,6 +479,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/inspect-or-member-20261017.mjs](../scripts/inspect-or-member-20261017.mjs) | `@next/env`, `postgres`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-ph97483925-split.mjs](../scripts/inspect-ph97483925-split.mjs) | `@next/env`, `postgres`, `node:crypto`, `node:fs`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-program-tiers.mjs](../scripts/inspect-program-tiers.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/inspect-remittance-approval.mjs](../scripts/inspect-remittance-approval.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-sheet-headers.mjs](../scripts/inspect-sheet-headers.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/legacy-programs.mjs](../scripts/legacy-programs.mjs) | `node:fs`, `@next/env`, `googleapis`, `./legacy-sources.mjs` | Yes; read source for semantics |
 | [scripts/legacy-site-compare.mjs](../scripts/legacy-site-compare.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |

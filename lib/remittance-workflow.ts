@@ -1,6 +1,6 @@
 import { inArray, sql } from "drizzle-orm";
 
-import { getDb, schema } from "@/lib/db";
+import { getDb, inTransaction, schema, type Queryable } from "@/lib/db";
 
 import { readSheetRowsNumbered } from "@/lib/sheets-on-db";
 ﻿import { createReadableId } from "@/lib/readable-id";
@@ -362,6 +362,19 @@ function requirePhotos(items: CashCollection[]) {
 
 export const CASH_IN_FULL_NOTE = "Cash received in full and confirmed during encoding.";
 
+/** Called inside the write transaction, after all ledger reads and before any slip writes. */
+export async function lockOutstandingRemittanceEntries(tx: Queryable, kind: RemittanceKind, ids: string[]) {
+  const table = kind === "New Sales" ? schema.sales : schema.collections;
+  const idColumn = kind === "New Sales" ? schema.sales.sale_id : schema.collections.collection_id;
+  const result = await tx.execute(sql`select ${idColumn} as id, remittance_status, linked_remittance_id from ${table}
+    where ${inArray(idColumn, ids)} order by ${idColumn} for update`);
+  type Link = { remittance_status: unknown; linked_remittance_id: unknown };
+  const locked = (Array.isArray(result) ? result : (result as { rows?: Link[] })?.rows ?? []) as Link[];
+  if (locked.length !== ids.length || locked.some((row) => text(row.remittance_status) !== "Outstanding" || text(row.linked_remittance_id))) {
+    throw new Error("One or more selected Collections are no longer outstanding. Refresh and try again.");
+  }
+}
+
 export async function createCashRemittance(input: { collectionIds: string[]; actualAmount: number; fidelityAmount: number; remittanceDate: string; remittanceTime: string; cashCount?: string; remarks?: string; cashConfirmed?: boolean; actualIsExpected?: boolean }) {
   const actor = getEncoder();
   const ledger = await loadLedger();
@@ -427,7 +440,12 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
     ...collections.map((collection) => statusUpdate(sheet, collection, approved ? "Remitted" : "Pending Remittance Approval", id)),
     ...forfeits.flatMap((collection) => forfeitUpdate(sheet, collection, collection.amount, incentiveOf(collection))),
   ];
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
+  await inTransaction(async (tx) => {
+    // Both concurrent requests may have read Outstanding above. Only one may
+    // commit a slip: the second waits, then sees the first request's entry link.
+    await lockOutstandingRemittanceEntries(tx, kind, ids);
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
+  });
   // The person's clearing for that day is done once their entries are on a slip (lib/clearing.ts). A DTO slip has no
   // clearing: its accountable person is the clerk who received the cash, whose own clearing (as a MAS) stays open.
   if (owner.accountableRole !== "DTO") await closeClearings(owner.accountableEmployeeId, owner.branch, owner.dateRemitted || input.remittanceDate, id, kind);
