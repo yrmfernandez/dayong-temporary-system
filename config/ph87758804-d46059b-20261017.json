@@ -1,0 +1,12 @@
+{
+  "cases": [{
+    "member": "PH-87758804",
+    "program": "DP-0022",
+    "expectedDoi": "2025-04-01",
+    "fromAccounts": ["ENR-LEG-9CE4CFE9F3"],
+    "receipts": ["15231 N", "15655 N", "19306 N", "20859 N", "21597 N", "23055 N", "23129 N", "23898 N", "24798 N"],
+    "startNop": 9,
+    "financeScope": "changed",
+    "note": "Owner confirmed October17,2026: PH-87758804's payments all belong to D-460 (59B). Move OR23129N and24798N from erroneous D-460 into existing D-460(59B), renumber all receipts in OR-date order NOP9-18, preserving April1,2025 DOI and first PHP920 two-month payment. Coverage December2025-September2026; eight PHP460 plus PHP920 totalPHP4600. Preserve dates/amounts/member identity/branch/MAS; remove empty erroneous account, recalculate changed financial fields and account status."
+  }]
+}

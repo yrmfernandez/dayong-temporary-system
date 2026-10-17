@@ -1,0 +1,11 @@
+{
+  "merges": [{
+    "keep": "ENR-LEG-D7DD31DE26",
+    "other": "ENR-LEG-F98136C187",
+    "keepMember": "PH-93383039",
+    "otherMember": "PH-79193890",
+    "fillDetails": true,
+    "reprice": true,
+    "note": "Owner requested merge of PH-93383039 and PH-79193890 on October17,2026. Retain first-listed PH-93383039; same D-250 FG, September1,2024 DOI, TORIL and MAS. Source M1-COLL rows1026,2251,3518,4592,5817,7219,8395,9713 confirm January-August2026 NOP17-24; the June payment was split to the other member, shifting July/August back one month. Preserve eight PHP250 payments (PHP2000 total), dates and June OR9577B duplicate flag; combine into one account, restore NOP17-24 coverage, fill blank personal details, recalculate financial fields/status and remove redundant member/account."
+  }]
+}

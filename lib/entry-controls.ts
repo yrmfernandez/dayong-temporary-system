@@ -44,7 +44,8 @@ export function controlTotalProblem(controlTotal: unknown, totalRemittance: numb
 
 /**
  * An application number that is only the year and series letters ("2026SP", "2026 SP-"): the form number itself was
- * left out. Such sales were imported before; they are labelled "(need edit)" and new ones are refused.
+ * left out. Such sales were imported before; they are labelled "(need edit)" and new ones are refused. A number
+ * without a dash between the series and the form number ("2026SP00154") is refused too (owner, October 17, 2026).
  */
-export const isIncompleteApplicationNumber = (value: string) => /^\s*\d{2,4}\s*[A-Za-z]+\s*-?\s*$/.test(value);
-export const INCOMPLETE_APPLICATION_MESSAGE = "enter the whole Application Number, including the number after the series letters (e.g. 2026SP-00154).";
+export const isIncompleteApplicationNumber = (value: string) => /^\s*\d{2,4}\s*[A-Za-z]+\s*-?\s*$/.test(value) || !String(value ?? "").includes("-");
+export const INCOMPLETE_APPLICATION_MESSAGE = "enter the whole Application Number with its dash, including the number after the series letters (e.g. 2026SP-00154).";

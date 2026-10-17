@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 123 library files, 52 component files; 486 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 123 library files, 52 component files; 497 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -147,7 +147,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/auth-server.ts](../lib/auth-server.ts) | `getSessionUser`, `userWithPageAccess`, `canManageAccounts`, `canManageEmployees`, `canManageConfiguration`, `canManageUsers`, `canManageAttendance` | `@/lib/access-control`, `@/lib/auth` |
 | [lib/auth.ts](../lib/auth.ts) | `SessionUser`, `SESSION_COOKIE`, `SESSION_SECONDS`, `sessionCookieOptions`, `sessionMaxAge`, `serializeSessionCookie`, `createSessionToken`, `verifySessionToken` | `@/lib/server-environment` |
 | [lib/auto-absence.ts](../lib/auto-absence.ts) | `SYSTEM_ABSENCE_NOTE`, `isSystemAbsence`, `systemAbsences`, `closeFinishedAttendanceDays`, `closeFinishedAttendanceDaysQuietly`, `SYSTEM_ABSENCE_REVIEW_DAYS`, `systemAbsencesWaiting` | `@/lib/attendance-calendar`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/system-settings` |
-| [lib/batch-edit.ts](../lib/batch-edit.ts) | `BatchKind`, `EditableBatch`, `getReturnedBatch`, `BatchEditInput`, `saveReturnedBatch` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/admin-delete`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/date-checks`, `@/lib/db`, `@/lib/duplicate-entries`, `@/lib/entry-batches`, `@/lib/entry-controls`, `@/lib/google-sheets-data`, `@/lib/or-number`, `@/lib/program-amount-lock`, `@/lib/record-corrections`, `@/lib/work-calendar`, `@/lib/working-days`, `@/lib/remittance`, `@/lib/remittance-methods`, `@/lib/remittance-deadline` |
+| [lib/batch-edit.ts](../lib/batch-edit.ts) | `BatchKind`, `EditableBatch`, `SaleBeneficiary`, `SaleDetails`, `getReturnedBatch`, `BatchEditInput`, `saveReturnedBatch` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/admin-delete`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/date-checks`, `@/lib/db`, `@/lib/duplicate-entries`, `@/lib/employees`, `@/lib/entry-batches`, `@/lib/entry-controls`, `@/lib/google-sheets-data`, `@/lib/member-records`, `@/lib/program-age`, `@/lib/or-number`, `@/lib/program-amount-lock`, `@/lib/record-corrections`, `@/lib/work-calendar`, `@/lib/working-days`, `@/lib/remittance`, `@/lib/remittance-methods`, `@/lib/remittance-deadline` |
 | [lib/calculations.ts](../lib/calculations.ts) | `CollectionStatus`, `calculateTMD`, `calculateBalance`, `getNextNOP`, `getProgramBasePay`, `calculateCollectionTMD` | `./types` |
 | [lib/cash-count.ts](../lib/cash-count.ts) | `DENOMINATIONS`, `CashCount`, `cashCountTotal`, `formatCashCount`, `parseCashCount`, `cashCountProblem` | — |
 | [lib/clearing-kinds.ts](../lib/clearing-kinds.ts) | `ClearingKind`, `ClearingCovers`, `CLEARING_COVERS`, `coveredKinds`, `DATE_REMITTED_REASON_MIN` | — |
@@ -196,9 +196,9 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `ProgramInput`, `updateProgramRecord`, `ProgramBulkChanges`, `updateProgramsBulk`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `MemberRecordInput`, `getMemberRecord`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/encoder-sheets`, `@/lib/sheet-rows`, `@/lib/users-sheet`, `@/lib/program-incentive-store`, `@/lib/member-records` |
 | [lib/member-directory-data.ts](../lib/member-directory-data.ts) | `loadMemberDirectory`, `DirectoryQuery`, `queryMemberDirectory` | `@/lib/db`, `@/lib/account-data`, `@/lib/member-directory`, `@/lib/member-scope`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [lib/member-directory.ts](../lib/member-directory.ts) | `DirectoryEnrollment`, `DirectoryMember`, `DECEASED_STATUS`, `MEMBER_STATUSES`, `STANDING_FILTERS`, `Standing`, `matchesStanding`, `DirectoryFilters`, `emptyDirectoryFilters`, `MemberRecord`, `EnrollmentRecord`, `CollectorRecord`, `buildMemberDirectory`, `filterMemberDirectory` | — |
-| [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `memberContactOrClaimant`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `searchBranchMembers`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
+| [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `memberContactOrClaimant`, `memberColumns`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `searchBranchMembers`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
 | [lib/member-scope.ts](../lib/member-scope.ts) | `ownMembersScope`, `isOwnAccount` | `@/lib/auth`, `@/lib/access-control`, `@/lib/employees` |
-| [lib/member-transfer.ts](../lib/member-transfer.ts) | `canTransferMembers`, `BranchMode`, `TransferCandidate`, `transferCandidates`, `transferEnrollment`, `EmployeeAccount`, `employeeAccounts`, `transferEmployeeAccounts`, `getTransferHistory` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/readable-id` |
+| [lib/member-transfer.ts](../lib/member-transfer.ts) | `canTransferMembers`, `BranchMode`, `TransferCandidate`, `transferCandidates`, `transferEnrollment`, `EmployeeAccount`, `employeeAccounts`, `transferEmployeeAccounts`, `getTransferHistory`, `branchChangeOptions`, `employeeBranchOptions`, `changeEnrollmentsBranch` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/readable-id` |
 | [lib/members.ts](../lib/members.ts) | `getMemberPrograms`, `getProgram`, `getMember` | `./types` |
 | [lib/mock-members.ts](../lib/mock-members.ts) | `mockMembers` | `./types` |
 | [lib/navigation.ts](../lib/navigation.ts) | `NavItem`, `NavSection`, `normalizeRole`, `workspaceFor`, `routeMatches`, `visibleNavigation`, `isInWorkspace`, `locatePage`, `activeHref` | `@/lib/access-control` |
@@ -264,7 +264,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/admin-delete.tsx](../components/admin-delete.tsx) | `AdminDeletePanel` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/admin-delete` |
 | [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/friendly-api-errors`, `@/lib/use-live-refresh`, `@/lib/ui-preferences` |
 | [components/attendance-calendar.tsx](../components/attendance-calendar.tsx) | `AttendanceCalendar` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/philippine-holidays` |
-| [components/batch-editor.tsx](../components/batch-editor.tsx) | `BatchEditor` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/batch-edit` |
+| [components/batch-editor.tsx](../components/batch-editor.tsx) | `BatchEditor` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/batch-edit`, `@/lib/entry-controls` |
 | [components/brand-logo.tsx](../components/brand-logo.tsx) | `BrandLogo` | — |
 | [components/bulk-member-transfer.tsx](../components/bulk-member-transfer.tsx) | `BulkMemberTransfer` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/transfer-branch-choice`, `@/lib/member-transfer` |
 | [components/clearing-picker.tsx](../components/clearing-picker.tsx) | `ClearingPicker` | `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/use-live-refresh` |
@@ -455,9 +455,12 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-merge-mas.mjs](../scripts/fix-merge-mas.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-or-letters.mjs](../scripts/fix-or-letters.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-ph11841180-coverage.mjs](../scripts/fix-ph11841180-coverage.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/fix-ph29986586-dsp290.mjs](../scripts/fix-ph29986586-dsp290.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
+| [scripts/fix-ph34623670-branch.mjs](../scripts/fix-ph34623670-branch.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-ph56409915-year.mjs](../scripts/fix-ph56409915-year.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph73303959-or-date.mjs](../scripts/fix-ph73303959-or-date.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph80673488-d250fg.mjs](../scripts/fix-ph80673488-d250fg.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/fix-ph97483925-month-of.mts](../scripts/fix-ph97483925-month-of.mts) | `@next/env` | Yes; read source for semantics |
 | [scripts/fix-remitted-before-receipt.mjs](../scripts/fix-remitted-before-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-tangal-incentives.mjs](../scripts/fix-tangal-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/flag-ph96295172-receipt.mjs](../scripts/flag-ph96295172-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -470,6 +473,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/inspect-legacy-sheets.mjs](../scripts/inspect-legacy-sheets.mjs) | `@next/env`, `googleapis`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-lugon-import.mjs](../scripts/inspect-lugon-import.mjs) | `./legacy-sources.mjs`, `node:fs` | No flag detected; read source before running |
 | [scripts/inspect-or-member-20261017.mjs](../scripts/inspect-or-member-20261017.mjs) | `@next/env`, `postgres`, `./legacy-sources.mjs` | No flag detected; read source before running |
+| [scripts/inspect-ph97483925-split.mjs](../scripts/inspect-ph97483925-split.mjs) | `@next/env`, `postgres`, `node:crypto`, `node:fs`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-program-tiers.mjs](../scripts/inspect-program-tiers.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-sheet-headers.mjs](../scripts/inspect-sheet-headers.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/legacy-programs.mjs](../scripts/legacy-programs.mjs) | `node:fs`, `@next/env`, `googleapis`, `./legacy-sources.mjs` | Yes; read source for semantics |
@@ -486,7 +490,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/merge-employees.mjs](../scripts/merge-employees.mjs) | `node:fs`, `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/merge-legacy-mas.mjs](../scripts/merge-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/merge-members.mjs](../scripts/merge-members.mjs) | `node:fs`, `@next/env`, `postgres` | Yes; read source for semantics |
-| [scripts/merge-name-variants.mjs](../scripts/merge-name-variants.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/merge-name-variants.mjs](../scripts/merge-name-variants.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/migrate-account-status.mjs](../scripts/migrate-account-status.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-audit-transfers.mjs](../scripts/migrate-audit-transfers.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-batch-extras.mjs](../scripts/migrate-batch-extras.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
@@ -538,6 +542,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/set-clearing-covers.mjs](../scripts/set-clearing-covers.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/set-collector-tiers.mts](../scripts/set-collector-tiers.mts) | `drizzle-orm`, `@/lib/batch-edit`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-workflow` | Yes; read source for semantics |
 | [scripts/split-member.mjs](../scripts/split-member.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/split-ph97483925-jr-sr.mjs](../scripts/split-ph97483925-jr-sr.mjs) | `@next/env`, `postgres`, `node:crypto` | Yes; read source for semantics |
 | [scripts/test-access-control.mjs](../scripts/test-access-control.mjs) | `node:assert/strict`, `node:test`, `../lib/access-control.ts` | No flag detected; read source before running |
 | [scripts/test-account-rules.mjs](../scripts/test-account-rules.mjs) | `node:assert/strict`, `node:test`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/test-attendance-board.mjs](../scripts/test-attendance-board.mjs) | `node:assert/strict`, `node:test`, `../lib/attendance-board.ts` | No flag detected; read source before running |
@@ -549,6 +554,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/test-sheets-cache.mjs](../scripts/test-sheets-cache.mjs) | `node:test`, `node:assert/strict`, `../lib/sheets-read-cache.ts` | No flag detected; read source before running |
 | [scripts/time-dashboards.mts](../scripts/time-dashboards.mts) | `@next/env` | No flag detected; read source before running |
 | [scripts/transfer-mas-members.mjs](../scripts/transfer-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./name-match.mjs` | Yes; read source for semantics |
+| [scripts/transfer-ph56293596-dpb1000.mjs](../scripts/transfer-ph56293596-dpb1000.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/web-left-out-sheet.mjs](../scripts/web-left-out-sheet.mjs) | `node:fs` | No flag detected; read source before running |
 
 ## Configuration and public text files
@@ -584,15 +590,20 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/ph08543913-receipt-sequence-20261017.json](../config/ph08543913-receipt-sequence-20261017.json)
 - [config/ph13726515-d46059b-20261016.json](../config/ph13726515-d46059b-20261016.json)
 - [config/ph17113133-january-nop22-20261016.json](../config/ph17113133-january-nop22-20261016.json)
+- [config/ph23767391-d280-20261017.json](../config/ph23767391-d280-20261017.json)
 - [config/ph24556150-dfpp650-merge-20261015.json](../config/ph24556150-dfpp650-merge-20261015.json)
+- [config/ph25389794-dpb420-20261017.json](../config/ph25389794-dpb420-20261017.json)
 - [config/ph39400344-d230-20261017.json](../config/ph39400344-d230-20261017.json)
 - [config/ph47317014-february-nop22-20261016.json](../config/ph47317014-february-nop22-20261016.json)
 - [config/ph58645726-january-coverage-20261016.json](../config/ph58645726-january-coverage-20261016.json)
 - [config/ph61149554-d280-coverage-20261016.json](../config/ph61149554-d280-coverage-20261016.json)
 - [config/ph68531118-all-d210hg-20261016.json](../config/ph68531118-all-d210hg-20261016.json)
 - [config/ph72833261-january-nop21-20261016.json](../config/ph72833261-january-nop21-20261016.json)
+- [config/ph76371335-status-20261017.json](../config/ph76371335-status-20261017.json)
 - [config/ph80673488-d250fg-20261017.json](../config/ph80673488-d250fg-20261017.json)
 - [config/ph86155816-d270-20261017.json](../config/ph86155816-d270-20261017.json)
+- [config/ph87758804-d46059b-20261017.json](../config/ph87758804-d46059b-20261017.json)
+- [config/ph93383039-ph79193890-merge-20261017.json](../config/ph93383039-ph79193890-merge-20261017.json)
 - [config/ph96391262-d230-20261017.json](../config/ph96391262-d230-20261017.json)
 - [config/ph99032555-january-nop27-20261016.json](../config/ph99032555-january-nop27-20261016.json)
 - [config/program-moves.json](../config/program-moves.json)

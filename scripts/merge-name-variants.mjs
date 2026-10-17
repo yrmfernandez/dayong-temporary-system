@@ -9,6 +9,9 @@
  *   node scripts/merge-name-variants.mjs                      dry run on staging
  *   node scripts/merge-name-variants.mjs --apply              merge on staging
  *   npm run prod -- node scripts/merge-name-variants.mjs [--apply]
+ *   Add --config=config/<scoped-file>.json to run only a reviewed pair. Optional
+ *   fillDetails preserves blank personal fields from the removed member; reprice
+ *   recalculates financial entries. Dry runs execute changes then roll back.
  *
  * For each pair, the other account's collections move to the kept account (and member). This only happens when the
  * combined payments form one valid history under the kept account's DOI and program rate (lib/account-rules.ts). When
@@ -25,6 +28,7 @@ import { createHash } from "node:crypto";
 import nextEnv from "@next/env";
 import postgres from "postgres";
 import { accountState, monthIndex, monthName, todayInManila } from "../lib/account-rules.ts";
+import { repriceEntries } from "../lib/entry-finance.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
 const apply = process.argv.includes("--apply");
@@ -32,7 +36,9 @@ const url = process.env.DIRECT_DATABASE_URL;
 if (!url) throw new Error("Missing DIRECT_DATABASE_URL.");
 const project = /postgres\.([a-z0-9]+)[:@]/.exec(url)?.[1] ?? "unknown";
 const sql = postgres(url, { max: 1, onnotice: () => {} });
-const merges = JSON.parse(fs.readFileSync("config/name-merges.json", "utf8")).merges ?? [];
+const configFile = process.argv.find(arg => arg.startsWith('--config='))?.slice(9) || "config/name-merges.json";
+const merges = JSON.parse(fs.readFileSync(configFile, "utf8")).merges ?? [];
+class Rollback extends Error { constructor(outcome) { super('Dry run'); this.outcome = outcome; } }
 const today = todayInManila();
 const text = (value) => String(value ?? "").trim();
 
@@ -42,7 +48,7 @@ async function load(db, enrollmentId) {
       coalesce(p.pay_balance_total, 0)::float8 as pay_balance_total, p.flexible, p.max_monthly_payment::float8 as max_monthly_payment,
       exists (select 1 from sales s where s.member_number = mp.member_number and s.program_id = mp.program_id) as has_sale
     from member_programs mp join members m on m.member_id = mp.member_id left join programs p on p.program_id = mp.program_id
-    where mp.enrollment_id = ${enrollmentId}`;
+    where mp.enrollment_id = ${enrollmentId} for update of mp`;
   if (!account) return null;
   const payments = (await db`select collection_id, or_date::text as or_date, or_number, month_from, month_to, nop_from, nop_to, amount_collected::float8 as amount
     from collections where enrollment_id = ${enrollmentId} and lower(coalesce(status, '')) = 'posted'`).map((row) => ({
@@ -60,6 +66,7 @@ try {
     const outcome = await sql.begin(async (tx) => {
       const keep = await load(tx, pair.keep), other = await load(tx, pair.other);
       if (!keep || !other) return { status: "missing", reason: `${!keep ? "kept" : "other"} account not found (already merged?)` };
+      if ((pair.keepMember && keep.member_number !== pair.keepMember) || (pair.otherMember && other.member_number !== pair.otherMember)) throw new Error('Account member differs from reviewed config.');
       if (keep.program_id !== other.program_id) return { status: "left", reason: "different programs" };
       if (keep.has_sale && other.has_sale) return { status: "left", reason: "both accounts have a New Sale" };
       const differentMas = text(keep.mas).toLowerCase() !== text(other.mas).toLowerCase();
@@ -91,7 +98,6 @@ try {
         catch (again) { return { status: "left", reason: `the payments do not form one history even renumbered (${(again.message || String(error)).replace(/^(Payment|Account) \S+ /, "")})` }; }
       }
       const nops = renumbered ? `; renumbered NOP ${payments[0].nopFrom}–${payments.at(-1).nopTo}` : "";
-      if (!apply) return { status: "merged", detail: `${other.payments.length} collection(s) move${nops}; status ${state.status}` };
       await tx`select set_config('app.user_name', 'Same-person merge', true)`;
       await tx`update collections set enrollment_id = ${keep.enrollment_id}, member_id = ${keep.member_id}, member_number = ${keep.member_number} where enrollment_id = ${other.enrollment_id}`;
       // Renumbered payments get their new months and NOPs (the Audit Log keeps the old ones).
@@ -107,18 +113,29 @@ try {
         (select count(*)::int from sales where member_number = ${other.member_number}) as sales, (select count(*)::int from collections where member_id = ${other.member_id}) as collections`;
       let memberRemoved = false;
       if (other.member_id !== keep.member_id && !left.accounts && !left.sales && !left.collections) {
+        if (pair.fillDetails) {
+          const [keptPerson] = await tx`select * from members where member_id=${keep.member_id} for update`;
+          const [otherPerson] = await tx`select * from members where member_id=${other.member_id} for update`;
+          if (keptPerson.birthdate && otherPerson.birthdate && String(keptPerson.birthdate) !== String(otherPerson.birthdate)) throw new Error('Birthdates conflict; merge rolled back.');
+          for (const field of ['birthdate','age','member_contact','address','birthplace','gender','civil_status','claimant_name','claimant_contact','claimant_address']) {
+            if (!text(keptPerson[field]) && text(otherPerson[field])) await tx`update members set ${tx({[field]:otherPerson[field]})} where member_id=${keep.member_id}`;
+          }
+        }
         await tx`update beneficiaries set member_id = ${keep.member_id} where member_id = ${other.member_id}`;
         await tx`delete from members where member_id = ${other.member_id}`;
         memberRemoved = true;
       }
       // The account keeps the MAS the owner chose; the database relinks it to that employee.
       await tx`update member_programs set account_status = ${state.status}, mas = ${masOfMerged} where enrollment_id = ${keep.enrollment_id}`;
+      const finance = pair.reprice ? await repriceEntries((query, params) => tx.unsafe(query, params), { collectionIds: payments.map(payment => payment.id) }) : null;
       await tx`insert into record_corrections ${tx({ correction_id: `COR-MRG-${createHash("sha1").update(`${keep.enrollment_id}|${other.enrollment_id}`).digest("hex").slice(0, 10).toUpperCase()}`,
-        module: "Same-person merge", record_id: keep.enrollment_id, reason: `Same person, different spelling: ${other.name} merged into ${keep.name} (owner, October 8, 2026)`,
+        module: "Same-person merge", record_id: keep.enrollment_id, reason: pair.note || `Same person, different spelling: ${other.name} merged into ${keep.name} (owner, October 8, 2026)`,
         before_json: { keep: keep.enrollment_id, other: other.enrollment_id, otherMember: other.member_id, movedCollections: other.payments.map((payment) => payment.id) },
-        after_json: { status: state.status, memberRemoved, renumbered: renumbered ? payments.map((payment) => ({ id: payment.id, nop: [payment.nopFrom, payment.nopTo], months: [payment.monthFrom, payment.monthTo] })) : null }, corrected_at: new Date().toISOString(), encoded_by_name: "Same-person merge", encoded_at: new Date().toISOString() })}`;
-      return { status: "merged", detail: `${other.payments.length} collection(s) moved${nops}; status ${state.status}${memberRemoved ? "; duplicate member removed" : ""}` };
-    });
+        after_json: { status: state.status, memberRemoved, finance, renumbered: renumbered ? payments.map((payment) => ({ id: payment.id, nop: [payment.nopFrom, payment.nopTo], months: [payment.monthFrom, payment.monthTo] })) : null }, corrected_at: new Date().toISOString(), encoded_by_name: "Same-person merge", encoded_at: new Date().toISOString() })}`;
+      const outcome = { status: "merged", detail: `${other.payments.length} collection(s) moved${nops}; status ${state.status}${memberRemoved ? "; duplicate member removed" : ""}${finance ? `; ${finance.changes.length} financial entries recalculated` : ""}` };
+      if (!apply) throw new Rollback(outcome);
+      return outcome;
+    }).catch(error => { if (error instanceof Rollback) return error.outcome; throw error; });
     result[outcome.status]++;
     console.log(`${label}: ${outcome.status === "merged" ? (apply ? "MERGED" : "would merge") : outcome.status === "left" ? "LEFT AS IS" : "SKIPPED"} · ${outcome.detail ?? outcome.reason}`);
   }

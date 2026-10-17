@@ -7,10 +7,13 @@ import { clearingProblem } from "@/lib/clearing";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { currentDb, inTransaction, schema, type Transaction } from "@/lib/db";
-import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/duplicate-entries";
+import { entryKey, personKey, recordedApplicationNumbers, recordedMembersByPerson, recordedOrNumbers } from "@/lib/duplicate-entries";
+import { getEmployees } from "@/lib/employees";
 import { saleBatchKey } from "@/lib/entry-batches";
 import { checkBackdate, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
+import { addBeneficiaries, memberColumns, type MemberDetails } from "@/lib/member-records";
+import { ageOn, ageRestrictionError, isoDate } from "@/lib/program-age";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { recordCorrection } from "@/lib/record-corrections";
@@ -25,7 +28,10 @@ import { manilaNow } from "@/lib/remittance-deadline";
  * the Entry Clerk who encoded it, or an administrator, can fix the whole batch in My Entries: the batch details (Date
  * Remitted, remittance method, reference, collected by, penalty, Fidelity) and every entry (Collections: OR number, OR
  * date, amount, months to; New Sales: application number and date, amount, notes), or remove an entry that should not
- * be there. Members and programs stay as they are: a wrong member is removed and encoded again. Entries keep their IDs,
+ * be there. A New Sale's details can all be corrected too (owner, October 17, 2026): the member's name, birthdate,
+ * birthplace, gender, civil status, contact and address, the claimant, the program (while the account has no
+ * collections) and the beneficiaries; the member's record follows. A Collection keeps its member and program: a wrong
+ * one is removed and encoded again. Entries keep their IDs,
  * receipt photos and encoder; the same checks as encoding apply, every change is kept in Record Corrections, and the
  * batch stays Returned until the clerk resubmits it.
  */
@@ -59,10 +65,22 @@ export type EditableBatch = {
     monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; basePay: number; flexible: boolean;
     // New Sales
     applicationNumber: string; notes: string;
+    /** New Sales: everything else on the sale, editable (owner, October 17, 2026). */
+    sale?: SaleDetails & { hasCollections: boolean };
   }>;
+  /** New Sales: the active programs the sale may move to, with how their amount works. */
+  programs?: Array<{ id: string; name: string; rate: number; amount: number; flexible: boolean; amountEditable: boolean }>;
 };
 
-const { sales, collections, members, programs, remittances, member_programs: memberPrograms } = schema;
+export type SaleBeneficiary = { surname: string; firstName: string; middleName: string; birthdate: string; relationship: string };
+export type SaleDetails = {
+  surname: string; firstName: string; middleName: string; nameExtension: string; birthdate: string; birthplace: string;
+  gender: string; civilStatus: string; contactNumber: string; address: string;
+  claimantName: string; claimantContact: string; claimantSameAddress: boolean; claimantAddress: string;
+  programId: string; beneficiaries: SaleBeneficiary[];
+};
+
+const { sales, collections, members, programs, remittances, member_programs: memberPrograms, beneficiaries } = schema;
 
 /** The Returned entries `ids` name, checked to be one whole batch the user may edit. */
 async function returnedBatch(ids: string[], by: By, db = currentDb()) {
@@ -107,7 +125,20 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
     const programRows = await db.select({ id: programs.program_id, name: programs.program_name, code: programs.program_code }).from(programs).where(inArray(programs.program_id, [...new Set(rows.map((row) => row.program_id))]));
     const programName = new Map(programRows.map((row) => [row.id, text(row.code) || text(row.name)]));
     const first = rows[0];
+    const [programList, beneficiaryRows, accounts] = await Promise.all([
+      getPrograms(),
+      db.select().from(beneficiaries).where(inArray(beneficiaries.sale_id, rows.map((row) => row.sale_id))).orderBy(asc(beneficiaries.row_seq)),
+      db.select({ memberNumber: memberPrograms.member_number, programId: memberPrograms.program_id, paid: sql<number>`(select count(*)::int from collections c where c.enrollment_id = ${memberPrograms.enrollment_id})` })
+        .from(memberPrograms).where(inArray(memberPrograms.member_number, [...new Set(rows.map((row) => text(row.member_number)))])),
+    ]);
+    const details = (row: (typeof rows)[number]): SaleDetails & { hasCollections: boolean } => ({
+      ...saleDetailsOf(row, beneficiaryRows.filter((item) => item.sale_id === row.sale_id).map(beneficiaryOf)),
+      hasCollections: accounts.some((account) => text(account.memberNumber) === text(row.member_number) && account.programId === row.program_id && Number(account.paid) > 0),
+    });
     return {
+      programs: programList.filter((program) => program.status === "active" || rows.some((row) => row.program_id === program.id))
+        .map((program) => ({ id: program.id, name: program.name, rate: Number(program.basePay) || 0, amount: fixedNewSaleAmount(program), flexible: Boolean(program.flexible), amountEditable: Boolean(program.newSaleAmountEditable) }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
       kind: "New Sale", branch: text(first.branch), person: text(first.mas), returnReason: await returnReason(first.linked_remittance_id),
       dateRemitted: day(first.date_remitted), dateRemittedReason: text(first.date_remitted_reason), paymentMethod: text(first.payment_method) || "Cash", paymentReference: "", collectedBy: "",
       penalty: rows.reduce((sum, row) => sum + Number(row.penalty_amount ?? 0), 0), penaltyNote: rows.map((row) => text(row.penalty_note)).find(Boolean) ?? "",
@@ -115,7 +146,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
       entries: rows.map((row) => ({
         ...blank, id: row.sale_id, memberNumber: text(row.member_number), memberName: `${text(row.first_name)} ${text(row.surname)}`.trim(), program: programName.get(row.program_id) ?? row.program_id,
         orNumber: "", orDate: day(row.or_date), amount: Number(row.amount_paid ?? 0), backdateReason: text(row.backdate_reason),
-        applicationNumber: text(row.application_no), notes: text(row.notes),
+        applicationNumber: text(row.application_no), notes: text(row.notes), sale: details(row),
       })),
     };
   }
@@ -142,7 +173,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
   };
 }
 
-type EntryInput = { id: string; remove?: boolean; orNumber?: string; orDate?: string; amount?: number; monthTo?: string; backdateReason?: string; applicationNumber?: string; notes?: string };
+type EntryInput = { id: string; remove?: boolean; orNumber?: string; orDate?: string; amount?: number; monthTo?: string; backdateReason?: string; applicationNumber?: string; notes?: string; sale?: Partial<SaleDetails> };
 export type BatchEditInput = {
   ids: string[];
   dateRemitted: string; dateRemittedReason?: string; paymentMethod: string; paymentReference?: string; collectedBy?: string;
@@ -237,11 +268,58 @@ async function removeEntry(tx: Transaction, kind: "sale" | "collection", id: str
 
 type Common = { calendar: WorkCalendar; dateRemitted: string; dateRemittedReason: string | null; method: string; penalty: number; penaltyNote: string; fidelity: number; encodedOn: string; today: string; branchId: string; corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> };
 
-async function saveSales(tx: Transaction, rows: Array<typeof sales.$inferSelect>, changes: Map<string, EntryInput>, common: Common) {
+type SaleRow = typeof sales.$inferSelect;
+const beneficiaryOf = (item: typeof beneficiaries.$inferSelect): SaleBeneficiary => ({ surname: text(item.surname), firstName: text(item.first_name), middleName: text(item.middle_name), birthdate: isoDate(item.birthdate), relationship: text(item.relationship) });
+
+/** The details a New Sale was saved with, as the editor shows them. */
+function saleDetailsOf(row: SaleRow, saleBeneficiaries: SaleBeneficiary[]): SaleDetails {
+  return {
+    surname: text(row.surname), firstName: text(row.first_name), middleName: text(row.middle_name), nameExtension: text(row.name_extension), birthdate: isoDate(row.birthdate),
+    birthplace: text(row.birthplace), gender: text(row.gender), civilStatus: text(row.civil_status), contactNumber: text(row.member_contact), address: text(row.address),
+    claimantName: text(row.claimant_name), claimantContact: text(row.claimant_contact), claimantSameAddress: Boolean(row.claimant_same_address), claimantAddress: text(row.claimant_address),
+    programId: row.program_id, beneficiaries: saleBeneficiaries,
+  };
+}
+
+/** The edited details with the clerk's values cleaned up; anything not sent keeps what the sale has. */
+function editedDetails(current: SaleDetails, given: Partial<SaleDetails> | undefined): SaleDetails {
+  if (!given) return current;
+  const pick = (key: Exclude<keyof SaleDetails, "claimantSameAddress" | "beneficiaries">) => (given[key] === undefined ? current[key] : text(given[key]));
+  const next: SaleDetails = {
+    surname: pick("surname"), firstName: pick("firstName"), middleName: pick("middleName"), nameExtension: pick("nameExtension"), birthdate: pick("birthdate"),
+    birthplace: pick("birthplace"), gender: pick("gender"), civilStatus: pick("civilStatus"), contactNumber: pick("contactNumber"), address: pick("address"),
+    claimantName: pick("claimantName"), claimantContact: pick("claimantContact"), claimantSameAddress: given.claimantSameAddress ?? current.claimantSameAddress, claimantAddress: pick("claimantAddress"),
+    programId: pick("programId"),
+    beneficiaries: given.beneficiaries === undefined ? current.beneficiaries : given.beneficiaries.map((item) => ({ surname: text(item.surname), firstName: text(item.firstName), middleName: text(item.middleName), birthdate: text(item.birthdate), relationship: text(item.relationship) })),
+  };
+  if (next.claimantSameAddress) next.claimantAddress = next.address;
+  return next;
+}
+
+const memberDetailsOf = (details: SaleDetails, today: string): MemberDetails => ({
+  surname: details.surname, firstName: details.firstName, middleName: details.middleName, nameExtension: details.nameExtension, birthdate: details.birthdate, birthplace: details.birthplace,
+  gender: details.gender, age: details.birthdate ? String(ageOn(details.birthdate, today) ?? "") : "", civilStatus: details.civilStatus, contactNumber: details.contactNumber, addressHouse: details.address,
+  claimantName: details.claimantName, claimantContact: details.claimantContact, claimantSameAsMember: details.claimantSameAddress ? "Yes" : "No", claimantAddressHouse: details.claimantAddress,
+});
+
+/** Philippine mobile numbers compared without spaces, dashes or +63; blank when there is no usable number. */
+function phoneKey(value: unknown) {
+  let digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.startsWith("63")) digits = `0${digits.slice(2)}`;
+  return digits.length >= 10 ? digits : "";
+}
+
+async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, EntryInput>, common: Common) {
   const programList = await getPrograms();
   const used = await recordedApplicationNumbers(rows.map((row) => changes.get(row.sale_id)?.applicationNumber ?? row.application_no), tx);
   const inBatch = new Map<string, string>();
   const ids = rows.map((row) => row.sale_id);
+  const [beneficiaryRows, memberRows, employees] = await Promise.all([
+    tx.select().from(beneficiaries).where(inArray(beneficiaries.sale_id, ids)).orderBy(asc(beneficiaries.row_seq)),
+    tx.select({ memberId: members.member_id, memberNumber: members.member_number }).from(members).where(inArray(members.member_number, [...new Set(rows.map((row) => text(row.member_number)))])),
+    getEmployees(),
+  ]);
+  const employeeContacts = new Map(employees.map((employee) => [phoneKey(employee.contact), employee] as const).filter(([key]) => key));
   // Every entry is checked before anything is written.
   const writes: Array<() => Promise<unknown>> = [];
   // Application numbers are unique: clear the batch's changed ones first, so two entries can swap numbers.
@@ -269,34 +347,80 @@ async function saveSales(tx: Transaction, rows: Array<typeof sales.$inferSelect>
     const dateProblem = blockingDateProblem({ receiptDate: orDate, receiptLabel: "application date", dateRemitted: common.dateRemitted, today: common.today });
     if (dateProblem) throw new Error(`${label}: ${dateProblem}`);
     checkBackdate(orDate, backdateReason, label, common.encodedOn, common.calendar);
-    const program = programList.find((item) => item.id === row.program_id);
-    if (!program || !Number.isFinite(amount) || amount < 0) throw new Error(`${label}: enter a valid amount paid.`);
+
+    // The sale's details: member, claimant, program and beneficiaries (owner, October 17, 2026).
+    const current = saleDetailsOf(row, beneficiaryRows.filter((item) => item.sale_id === row.sale_id).map(beneficiaryOf));
+    const details = editedDetails(current, change.sale);
+    const memberId = memberRows.find((item) => text(item.memberNumber) === text(row.member_number))?.memberId ?? "";
+    if (!details.surname || !details.firstName) throw new Error(`${label}: the member's surname and first name are required.`);
+    if (!details.address) throw new Error(`${label}: the member's complete address is required.`);
+    if (details.birthdate && (!/^\d{4}-\d{2}-\d{2}$/.test(details.birthdate) || details.birthdate > common.today)) throw new Error(`${label}: enter a valid birthdate, today or earlier.`);
+    for (const [who, value, before] of [["Member", details.contactNumber, current.contactNumber], ["Claimant", details.claimantContact, current.claimantContact]] as const) {
+      if (phoneKey(value) === phoneKey(before) && text(value) === text(before)) continue;
+      if (!/^09\d{9}$/.test(value.replace(/\D/g, ""))) throw new Error(`${label}: ${who} contact number must use the Philippine mobile format 09XX XXX XXXX.`);
+      const employee = employeeContacts.get(phoneKey(value));
+      if (employee) throw new Error(`${label}: ${who} contact number ${value} belongs to employee ${employee.name} (${employee.id}). Use the member's or claimant's own number.`);
+    }
+    if (details.beneficiaries.length > 20) throw new Error(`${label}: at most 20 beneficiaries.`);
+    if (details.beneficiaries.some((item) => !item.surname || !item.firstName || !item.relationship)) throw new Error(`${label}: each beneficiary needs a surname, first name, and relationship.`);
+    if (details.beneficiaries.some((item) => item.birthdate && (!/^\d{4}-\d{2}-\d{2}$/.test(item.birthdate) || item.birthdate > common.today))) throw new Error(`${label}: enter a valid beneficiary birthdate, today or earlier.`);
+    // A changed name or birthdate must not make this member a copy of another member already on record.
+    if (personKey(details) && personKey(details) !== personKey(current)) {
+      const onRecord = (await recordedMembersByPerson([details], tx)).get(personKey(details));
+      if (onRecord && onRecord.memberId !== memberId) throw new Error(`${label}: ${onRecord.name} with this birthdate is already member ${onRecord.memberNumber}. Remove this entry and encode the sale for that member instead.`);
+    }
+    const programChanged = details.programId !== row.program_id;
+    const program = programList.find((item) => item.id === details.programId);
+    if (!program) throw new Error(`${label}: choose a program.`);
+    // The account (this member in the sale's program); its DOI follows the application date while it has no collections.
+    const [account] = await tx.select({ id: memberPrograms.enrollment_id }).from(memberPrograms).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id)));
+    const [paid] = account ? await tx.select({ n: sql<number>`count(*)::int` }).from(collections).where(eq(collections.enrollment_id, account.id)) : [{ n: 0 }];
+    const hasCollections = Boolean(Number(paid?.n));
+    if (programChanged) {
+      if (program.status !== "active") throw new Error(`${label}: ${program.name} is not active.`);
+      if (hasCollections) throw new Error(`${label}: this account already has collections, so its program cannot change here. Ask an administrator (Edit / Corrections).`);
+      const [taken] = await tx.select({ id: memberPrograms.enrollment_id }).from(memberPrograms).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, program.id)));
+      if (taken) throw new Error(`${label}: this member already has ${program.name}.`);
+    }
+    if (programChanged || details.birthdate !== current.birthdate) {
+      const ageError = ageRestrictionError(program, details.birthdate, common.today);
+      if (ageError) throw new Error(`${label}: ${ageError}`);
+    }
+    if (!Number.isFinite(amount) || amount < 0) throw new Error(`${label}: enter a valid amount paid.`);
     if (program.flexible && cents(amount) < cents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
     if (!program.flexible && !program.newSaleAmountEditable && cents(amount) !== cents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program)}.`);
     const quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, common.branchId) }, amount);
-    // The New Sale is the account's first month, so its DOI follows the application date while the account has no collections.
     let doi = day(row.doi);
-    if (orDate && orDate !== day(row.or_date) && doi === day(row.or_date)) {
-      const [account] = await tx.select({ id: memberPrograms.enrollment_id }).from(memberPrograms).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id)));
-      const [paid] = account ? await tx.select({ n: sql<number>`count(*)::int` }).from(collections).where(eq(collections.enrollment_id, account.id)) : [{ n: 0 }];
-      if (account && !Number(paid?.n)) { doi = orDate; writes.push(() => tx.update(memberPrograms).set({ doi: orDate }).where(eq(memberPrograms.enrollment_id, account.id))); }
-    }
+    if (account && !hasCollections && orDate && orDate !== day(row.or_date) && doi === day(row.or_date)) { doi = orDate; writes.push(() => tx.update(memberPrograms).set({ doi: orDate }).where(eq(memberPrograms.enrollment_id, account.id))); }
+    const registration = { registration_fee: program.registrationFeeRequired, registration_amount: program.registrationFeeRequired ? program.registrationAmount : 0 };
     const firstRow = index === 0;
+    const memberAfter = memberColumns(memberDetailsOf(details, common.today)), memberBefore = memberColumns(memberDetailsOf(current, common.today));
     const after = {
       application_no: applicationNumber, or_date: orDate || null, doi: doi || null, amount_paid: amount, notes: notes || null, backdate_reason: backdateReason || null,
       date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), payment_method: common.method, mas_incentive: quote.incentive, remittance_amount: quote.remittance,
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
+      program_id: details.programId, ...(programChanged ? registration : {}), ...memberAfter,
     };
     const before = {
       application_no: row.application_no, or_date: day(row.or_date) || null, doi: day(row.doi) || null, amount_paid: Number(row.amount_paid ?? 0), notes: row.notes || null, backdate_reason: row.backdate_reason || null,
       date_remitted: day(row.date_remitted), date_remitted_reason: row.date_remitted_reason || null, payment_method: row.payment_method, mas_incentive: Number(row.mas_incentive ?? 0), remittance_amount: Number(row.remittance_amount ?? 0),
       penalty_amount: row.penalty_amount === null ? null : Number(row.penalty_amount), penalty_note: row.penalty_note || null, fidelity_amount: row.fidelity_amount === null ? null : Number(row.fidelity_amount),
+      program_id: row.program_id, ...(programChanged ? { registration_fee: row.registration_fee, registration_amount: row.registration_amount === null ? null : Number(row.registration_amount) } : {}), ...memberBefore,
     };
-    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+    const beneficiariesChanged = JSON.stringify(details.beneficiaries) !== JSON.stringify(current.beneficiaries);
+    if (JSON.stringify(before) === JSON.stringify(after) && !beneficiariesChanged) continue;
     writes.push(() => tx.update(sales).set(after).where(eq(sales.sale_id, row.sale_id)));
-    writes.push(() => tx.update(memberPrograms).set({ amount_paid: amount, remittance_method: common.method }).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))));
-    common.corrections.push({ module: "New Sales", id: row.sale_id, before, after });
+    writes.push(() => tx.update(memberPrograms).set({ amount_paid: amount, remittance_method: common.method, ...(programChanged ? { program_id: details.programId, ...registration } : {}) })
+      .where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))));
+    // The member's record follows the details the clerk changed on this sale; others on the record stay.
+    const memberChanges = Object.fromEntries(Object.entries(memberAfter).filter(([column, value]) => value !== memberBefore[column as keyof typeof memberBefore]));
+    if (memberId && Object.keys(memberChanges).length) writes.push(() => tx.update(members).set(memberChanges).where(eq(members.member_id, memberId)));
+    if (memberId && beneficiariesChanged) {
+      writes.push(() => tx.delete(beneficiaries).where(eq(beneficiaries.sale_id, row.sale_id)));
+      writes.push(() => addBeneficiaries(memberId, row.sale_id, details.beneficiaries.map((item) => ({ ...item, age: item.birthdate ? ageOn(item.birthdate, common.today) : null }))));
+    }
+    common.corrections.push({ module: "New Sales", id: row.sale_id, before: { ...before, ...(beneficiariesChanged ? { beneficiaries: current.beneficiaries } : {}) }, after: { ...after, ...(beneficiariesChanged ? { beneficiaries: details.beneficiaries } : {}) } });
   }
   for (const write of writes) await write();
 }

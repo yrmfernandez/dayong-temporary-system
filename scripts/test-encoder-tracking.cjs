@@ -2732,6 +2732,43 @@ test('a returned New Sales batch: application number, date and amount can be fix
   assert.equal(await count('members'), 1, 'the removed sale\'s new member went with it');
 });
 
+test('a returned New Sale: every detail can be corrected and the member record follows (October 17, 2026)', async () => {
+  const h = harness();
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active', '09170000002']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0, '', '', '', '', '', '', 'TRUE', 'FALSE']];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+  const saved = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 200,
+    sales: [{ existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', surname: 'Uno', firstName: 'Ana', birthdate: '1980-01-02', contactNumber: '09171112222', addressHouse: 'Old Address', beneficiaries: [] }] }));
+  assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
+  await query(`update sales set remittance_status = 'Returned'`);
+  const [{ sale_id: id }] = await query('select sale_id from sales');
+  const route = h.load('app/api/my-entries/batch/route.ts');
+  const loaded = await (await route.GET(new Request(`http://localhost/api/my-entries/batch?ids=${id}`))).json();
+  assert.equal(loaded.success, true, JSON.stringify(loaded));
+  const sale = loaded.batch.entries[0].sale;
+  assert.deepEqual([sale.surname, sale.birthdate, sale.contactNumber, sale.address, sale.beneficiaries.length, sale.hasCollections], ['Uno', '1980-01-02', '09171112222', 'Old Address', 0, false]);
+  const edit = (patch, applicationNumber = 'APP-1') => route.POST(request({ ids: [id], dateRemitted: '2026-09-25', paymentMethod: 'Cash', entries: [{ id, applicationNumber, sale: { ...sale, ...patch } }] }));
+  assert.match((await (await edit({}, 'APP1')).json()).message, /with its dash/, 'an application number needs its dash');
+  const { isIncompleteApplicationNumber } = h.load('lib/entry-controls.ts');
+  for (const ok of ['2026SP-00154', '2026 SP-154', 'APP-1']) assert.equal(isIncompleteApplicationNumber(ok), false, ok);
+  for (const bad of ['2026SP', '2026 SP-', '2026SP00154', '00154', '']) assert.equal(isIncompleteApplicationNumber(bad), true, bad);
+  assert.match((await (await edit({ contactNumber: '12345' })).json()).message, /Philippine mobile format/);
+  assert.match((await (await edit({ claimantContact: '0917 000 0002' })).json()).message, /belongs to employee different-mas/);
+  assert.match((await (await edit({ beneficiaries: [{ surname: 'Dos', firstName: '', middleName: '', birthdate: '', relationship: 'Son' }] })).json()).message, /each beneficiary needs/);
+  const fixed = await edit({ surname: 'Unoh', middleName: 'Cruz', birthdate: '1981-03-04', contactNumber: '09173334444', address: 'New Address', claimantName: 'Ben Unoh', claimantContact: '09175556666', claimantSameAddress: true,
+    beneficiaries: [{ surname: 'Unoh', firstName: 'Cara', middleName: '', birthdate: '2010-05-06', relationship: 'Daughter' }] });
+  assert.equal(fixed.status, 200, JSON.stringify(await fixed.clone().json()));
+  const [row] = await query('select surname, middle_name, birthdate::text as birthdate, member_contact, address, claimant_name, claimant_address, remittance_status from sales');
+  assert.deepEqual(row, { surname: 'Unoh', middle_name: 'Cruz', birthdate: '1981-03-04', member_contact: '09173334444', address: 'New Address', claimant_name: 'Ben Unoh', claimant_address: 'New Address', remittance_status: 'Returned' });
+  const [member] = await query('select surname, middle_name, birthdate::text as birthdate, member_contact, address from members');
+  assert.deepEqual(member, { surname: 'Unoh', middle_name: 'Cruz', birthdate: '1981-03-04', member_contact: '09173334444', address: 'New Address' }, 'the member record follows');
+  assert.deepEqual(await query('select surname, first_name, relationship, sale_id from beneficiaries'), [{ surname: 'Unoh', first_name: 'Cara', relationship: 'Daughter', sale_id: id }]);
+});
+
 test('entry deadlines skip Sundays and declared non-working days', async () => {
   const h = harness();
   const { needsBackdateReason } = h.load('lib/entry-controls.ts');

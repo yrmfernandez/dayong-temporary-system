@@ -1,0 +1,11 @@
+{
+  "cases": [{
+    "member": "PH-23767391",
+    "program": "DP-0066",
+    "expectedDoi": "2023-09-01",
+    "receipts": ["14832 N", "15536 N", "18705N", "19573N", "02808T", "20176N", "21510 N", "2344 N", "25072 N"],
+    "startNop": 29,
+    "financeScope": "changed",
+    "note": "Owner requested repair using nine ORs October17,2026. Original DDO1-COLL rows666,1554,2711,3629,4450,5427,6060,7039,7833 show January-September2026. September1,2023 DOI and source January-May NOP29-33/July-September35-37 establish June NOP34. June source NOP24 is a typo causing imported NOP24-32 and August2025-April2026 coverage. Restore January-September2026/NOP29-37, preserving all OR labels (including source2344N), dates, DOI, member/program and nine PHP280 amounts (PHP2520 total); recalculate financial fields and account status."
+  }]
+}

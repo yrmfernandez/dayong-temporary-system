@@ -1,0 +1,11 @@
+{
+  "cases": [{
+    "member": "PH-76371335",
+    "program": "DP-0005",
+    "expectedDoi": "2023-12-01",
+    "receipts": ["5165M", "6331 M", "7498 M", "8483 M", "6285 B", "9267 B", "13307 B", "15606 B"],
+    "startNop": 24,
+    "financeScope": "changed",
+    "note": "Owner explicitly confirmed October17,2026: keep November2025-June2026 coverage and correct stale status only for PH-76371335. Source M1-COLL rows172/1347 explicitly show November/December2025; later source labels conflict. Preserve existing continuous NOP24-31, December1,2023 DOI, OR dates/amounts, program and financial figures. Eight PHP210 receipts totalPHP1680. Recalculate saved status150D to90D using the existing account rules; do not shift coverage to January-August."
+  }]
+}

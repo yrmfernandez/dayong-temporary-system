@@ -55,7 +55,8 @@ export function memberContactOrClaimant(contact: unknown, claimantContact: unkno
   return own || (claimant.replace(/[^0-9]/g, "").length >= 7 ? claimant : "");
 }
 
-const memberColumns = (details: MemberDetails) => ({
+/** Member detail columns, the same on members and sales (a New Sale keeps a copy of the details it was encoded with). */
+export const memberColumns = (details: MemberDetails) => ({
   surname: text(details.surname), first_name: text(details.firstName), middle_name: optional(details.middleName), name_extension: optional(details.nameExtension),
   birthdate: optionalDate(details.birthdate), birthplace: optional(details.birthplace), gender: optional(details.gender), age: optionalInteger(details.age),
   civil_status: optional(details.civilStatus), member_contact: optional(memberContactOrClaimant(details.contactNumber, details.claimantContact)), address: optional(details.addressHouse),

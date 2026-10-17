@@ -1,0 +1,11 @@
+{
+  "cases": [{
+    "member": "PH-25389794",
+    "program": "DP-0017",
+    "expectedDoi": "2025-09-01",
+    "receipts": ["5357 M", "6407 M", "8142 M", "3924 B", "8504 B", "8537 B", "13963 B"],
+    "startNop": 5,
+    "financeScope": "changed",
+    "note": "Owner requested repair using seven ORs October17,2026. Original M1-COLL rows514,1494,3666,4966,6135,7303,9466 show January-August2026 coverage. September1,2025 DOI and source January5/February6/April8/May9/June10/July-August11-12 establish March NOP7; March source NOP3 is a typo that shifted imported coverage to November2025-June2026/NOP3-10. Restore January-August2026/NOP5-12, retaining OR dates, six PHP420 payments and final PHP840 two-month payment (PHP3360 total). Preserve DOI, member identity and program; recalculate financial fields and account status."
+  }]
+}

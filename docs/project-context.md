@@ -1,5 +1,64 @@
 # Dayong System project context
 
+### PH-97483925: JR D-300 Bracketing separated from SR DSP-290 (2026-10-17)
+
+- Owner confirmed PH-97483925 is JR and owns D-300 (Bracketing); SR is a separate person and owns DSP-290. Buhangin New Sale M2-NS row188, September30,2026, application record `SALE-LEG-3C06924F7B`, is the DSP-290 enrollment. The source name omits suffix; owner explicitly supplies JR/SR identity distinction.
+- Backed up; production dry run passed; applied `scripts/split-ph97483925-jr-sr.mjs --apply`. JR keeps **PH-97483925**, D-300 Bracketing/account `ENR-LEG-4F3C2FA919`, February1,2023 DOI and all10 PHP300 collections (PHP3,000). SR is **PH-39696532**, member `MEM-LEG-` ID derived deterministically by split script; existing DSP-290 account `ENR-LEG-60FBF0375D` and PHP500 New Sale moved intact to SR. Both members have explicit suffixes; no payments or finances altered.
+- Personal details matched the SR New Sale, so retained on SR and cleared from JR rather than assigning SR's birthdate/address/contact to JR. No JR-specific personal data was available. Beneficiary references and DSP-290 transfer records follow SR (no beneficiaries on this sale). Audited and summarized in Record Corrections; fresh split verification passed. Staging differed from reviewed production snapshot and stopped without changes.
+- `scripts/inspect-ph97483925-split.mjs` searches source identities without printing personal fields; existing generic split script handles splitting receipts within one program, so this separate-program ownership split uses a scoped script with exact account/sale guards.
+
+### PH-29986586: DSP-290 only; registration and advance collection joined (2026-10-17)
+
+- Owner confirmed DSP-290 is the only program. PHP500 New Sale `SALE-LEG-7B3B0C216D` dated September22,2026 was under DSP-500/account `ENR-LEG-1BFA80F55F`; DSP-290/account `ENR-LEG-A07E8CFF51` held PHP580 OR24069N, paid the same day, with separately inferred October1 DOI and NOP1–2. Source DDO2-COLL row3163 confirms October–November coverage.
+- Backed up; production dry run passed; applied `scripts/fix-ph29986586-dsp290.mjs --apply`. Moved New Sale to DSP-290, corrected registration metadata to the configured PHP500 fee, set enrollment DOI to actual September22,2026 New Sale date, aligned October–November collection to NOP2–3, removed empty DSP-500 account. Preserved PHP1,080 total, OR dates, beneficiary/member data, MONKAYO branch and MAS. Status ADV; two financial entries recalculated, no remittance slip changes. Audited and recorded in Record Corrections; fresh read/idempotent verification passed.
+
+### PH-56293596: transferred to DPB-1000 with January coverage (2026-10-17)
+
+- Owner supplied OR4459M,4485M,8254M,8268M,8287B,8299M,8074B,8091B,15002B. All nine PHP1,000 payments belong to PH-56293596/current DPB-420 account `ENR-LEG-C443E4D5B4`, DOI January1,2025. Existing ranges NOP10–24 cover October2025–December2026, with mixed one/two-month spans. Total PHP9,000; current calculated/stored status ADV.
+- Original M1-COLL rows361,1867,2766,3864,5114,6070,7422,8543,9664 conflict: January/February labels each claim two NOPs, March source D-420 claims two, April says May–June, May says June, June says July, July says August–September, August says October but two NOPs, September says September/NOP24. PHP1,000 does not equal a whole number of PHP420 installments. No reliable coverage/program correction can be inferred from this source alone.
+- OR8287B has another member's PHP350 D-350 receipt (PH-02047575, source row6165); this member's PHP1,000 May15 receipt retains its duplicate flag. Do not combine them or overwrite either amount/receipt number.
+- Owner confirmed **transfer to DPB-1000**, then **January2026 starting coverage for OR4459M**. DPB-1000 is DP-0042, PHP1,000 monthly, Pay the Balance category. Nine receipts each cover one month; retained January1,2025 DOI means January–September2026/NOP13–21.
+- Backups saved; production exact-plan dry run passed; applied `scripts/transfer-ph56293596-dpb1000.mjs --start=2026-01 --apply`. Same member/account moved from DP-0017 to DP-0042; all nine receipts follow. Status ADV becomes U. PHP9,000 total, OR dates/labels, DOI, branch/MAS preserved; all nine financial entries recalculated with no remittance slip changes. Other member's OR8287B untouched; this account's duplicate flag retained. Fresh per-member receipt/account verification passed. Record Corrections and Audit Log record changes.
+- Staging dry run stopped on differing account structure; production snapshot was explicitly guarded and validated. Scoped transfer reuses existing source-independent account and finance rules; generic bulk program mover could not express this member-only correction with changed installment spans.
+
+### PH-76371335: keep coverage, correct stale status (2026-10-17)
+
+- Owner supplied OR5165M,6331M,7498M,8483M,6285B,9267B,13307B,15606B, then explicitly confirmed **keep November2025–June2026 coverage; correct stale status**. Source M1-COLL rows172/1347 explicitly show November/December2025; later source month/NOP labels conflict. Do not shift these payments to January–August2026.
+- Backed up; production dry run passed; applied `consolidate-member-receipts.mjs --config=config/ph76371335-status-20261017.json --apply`. D-210 HG saved status150D updated to90D; NOP24–31, November2025–June2026 coverage, December1,2023 DOI, eight PHP210 amounts (PHP1,680 total), dates and all financial fields preserved. No financial entries repriced. Fresh receipt/account verification passed; audited and summarized in Record Corrections.
+
+### PH-04542944: current branch to NABUNTURAN (2026-10-17)
+
+- Owner requested NABUNTURAN. Backed up account/history; production dry run passed; applied `scripts/fix-ph34623670-branch.mjs --member=PH-04542944 --to=NABUNTURAN --from=MAWAB --account=ENR-LEG-7BA440C577 --apply`. Current DPB-350 enrollment and branch link changed from MAWAB to NABUNTURAN. MAS DNDO-2026-0027 already assigned to NABUNTURAN; retained. Historical receipt branches/payment data preserved. Fresh read verified the branch/link; audited and summarized in Record Corrections. Existing branch script now accepts explicit member/to/from/account parameters while retaining original defaults.
+
+### PH-87758804: all receipts to D-460 (59B) (2026-10-17)
+
+- Owner confirmed all payments belong to D-460 (59B). Source DDO2-COLL rows293,709,1494,1821,2255,2408,2631,3210,3273 confirm December2025–September2026/NOP9–18; OR15231N is PHP920 covering December–January. OR23129N and24798N were misfiled under D-460; source August/September NOP17/18 had been shifted by the split.
+- Backed up; production dry run passed; applied `consolidate-member-receipts.mjs --config=config/ph87758804-d46059b-20261017.json --apply`. Nine payments now belong to DP-0022/account `ENR-LEG-308903D268`; empty D-460/account `ENR-LEG-9CE4CFE9F3` removed. Corrected continuous coverage/NOP9–18 and status U. PHP4,600 total, OR dates, April1,2025 DOI, COMPOSTELA branch and MAS preserved. Three financial entries recalculated, no remittance expectation changes. Fresh receipt/account verification passed; audited and summarized in Record Corrections.
+- Staging dry run rolled back on missing MAS tier NOP18; production configuration passed.
+
+### PH-93383039 / PH-79193890: owner-requested member/account merge (2026-10-17)
+
+- Owner requested merging both members. Kept first-listed PH-93383039 (`MEM-LEG-6FACD9762B`, account `ENR-LEG-D7DD31DE26`); removed redundant PH-79193890/account `ENR-LEG-F98136C187`. Same D-250 FG, September1,2024 DOI, TORIL, MAS ABENOJA JESSICA. Seven receipts joined the kept account's June receipt.
+- Original M1-COLL rows1026,2251,3518,4592,5817,7219,8395,9713 establish January–August2026/NOP17–24. July/August payments had been shifted to June/July because the true June receipt was on the other member. Restored continuous history; all eight PHP250 payments retained (PHP2,000), dates/DOI/branch/MAS preserved, status U. OR9577B duplicate label/flag retained because another source receipt uses that number.
+- Backed up both members, passed production dry run and applied `merge-name-variants.mjs --config=config/ph93383039-ph79193890-merge-20261017.json --apply`. Fresh reads verified all receipts on the retained member/account and removed member absent. Financial fields recalculated; missing personal fields filled from removed member where available. Audit Log and Record Corrections record changes.
+- Extended existing merge script with scoped config, optional detail filling/repricing, account locks and rollback dry runs. Staging dry run rolled back on missing MAS tier at NOP23; production configuration passed.
+
+### PH-23767391: nine D-280 receipts shifted by June NOP typo (2026-10-17)
+
+- Owner supplied OR14832N,15536N,18705N,19573N,02808T,20176N,21510N,2344N,25072N. Source DDO1-COLL rows666,1554,2711,3629,4450,5427,6060,7039,7833 and September1,2023 DOI establish January–September2026/NOP29–37. June NOP24 is a typo for34, which caused imported August2025–April2026/NOP24–32.
+- Backup saved; production dry run passed; applied `consolidate-member-receipts.mjs --config=config/ph23767391-d280-20261017.json --apply`. Restored January–September2026/NOP29–37, status150D to U. Nine PHP280 amounts (PHP2,520 total), OR dates/labels (including source2344N), DOI and program retained. Financial fields recalculated; no remittance expectations changed. Fresh account/receipt verification passed; audited and summarized in Record Corrections.
+- Staging dry run skipped because this member has no D-280 account there; production account and original workbook verified directly.
+
+### PH-25389794: seven listed DPB-420 receipts repaired (2026-10-17)
+
+- Owner supplied OR5357M,6407M,8142M,3924B,8504B,8537B,13963B. Original M1-COLL rows514,1494,3666,4966,6135,7303,9466 establish January–August2026 coverage/NOP5–12. March source NOP3 is a typo for7; September1,2025 DOI and all other source NOPs agree. Import shifted coverage to November2025–June2026/NOP3–10.
+- Backup saved; production dry run passed; applied `consolidate-member-receipts.mjs --config=config/ph25389794-dpb420-20261017.json --apply`. Restored NOP5–12/January–August2026; OR13963B remains PHP840 covering July–August. Status150D becomes U. Six PHP420 receipts plus PHP840 total PHP3,360; OR dates, DOI and program retained. Financial fields recalculated with no remittance expectation changes; fresh verification passed. Audited and recorded in Record Corrections.
+- Staging dry run rolled back because its first-year MAS tiers are missing; production has the required configuration and passed.
+
+### PH-34623670: current branch to MAWAB (2026-10-17)
+
+- Owner requested branch MAWAB. Backed up account/history, passed production dry run, then applied `scripts/fix-ph34623670-branch.mjs --apply`: DPB-350 enrollment `ENR-LEG-DEB62351C9` moved from NABUNTURAN to MAWAB, including its branch link. Existing MAS DNDO-2026-0027 already assigned to MAWAB; retained. Historical receipt branches and payment data preserved. Audit Log and Record Corrections record the change; fresh read confirmed MAWAB and matching branch ID.
+
 ### Lugon Arman and Lugon Juliet: selected 2025 workbook import (2026-10-17)
 
 - Owner supplied `legacy-data/old-data/2025 - DATABASE (NS + COLL).xlsx` and requested these two people only. Source M2 - COL. rows8949/8950 contain OR13395/13396, each PHP2,760 paid October9,2025 and remitted October10,2025, NOP49–60 covering October2025–September2026, D-230, AGDAO, Capacite C.
