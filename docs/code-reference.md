@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 123 library files, 52 component files; 476 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 123 library files, 52 component files; 478 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -142,7 +142,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/attendance-calendar.ts](../lib/attendance-calendar.ts) | `ALL_BRANCHES`, `Holiday`, `Closure`, `validDate`, `getHolidays`, `saveHoliday`, `deleteHoliday`, `addPhilippineHolidays`, `getClosures`, `closureCovers`, `closureLabel`, `closureForBranch`, `employeeAttendanceBranches`, `declareClosure`, `removeClosure` | `@/lib/attendance-data`, `@/lib/encoder-sheets`, `@/lib/encoder-schema`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/philippine-holidays`, `@/lib/readable-id`, `@/lib/sheet-rows` |
 | [lib/attendance-data.ts](../lib/attendance-data.ts) | `AttendanceRecord`, `sheetDateText`, `sheetTimeText`, `getAttendanceForEmployeeDate`, `addAttendanceRecord`, `getAttendanceRowsForDate`, `addAttendanceRecords`, `getAllAttendanceForRange`, `updateAttendanceRecord`, `getAttendanceRecordsForDate`, `getNonWorkingDayRecords`, `cancelClockInsForNonWorkingDay`, `getAttendanceRecordsForRange`, `getEmployeeAttendance`, `recordApprovedLeaveAttendance` | `@/lib/db`, `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/attendance` |
 | [lib/attendance-sheet.ts](../lib/attendance-sheet.ts) | `SheetDayStatus`, `SheetDay`, `SheetSummary`, `SheetEmployee`, `PAPER_SHEET_NOTE`, `emptySummary`, `attendanceSheet`, `GridTone`, `GridCell`, `gridCell`, `sumSummaries` | `@/lib/attendance-data`, `@/lib/attendance-board`, `@/lib/attendance`, `@/lib/working-days` |
-| [lib/attendance.ts](../lib/attendance.ts) | `ATTENDANCE_TIME_ZONE`, `SCHEDULED_TIME_IN`, `SCHEDULED_TIME_OUT`, `LATE_GRACE_MINUTES`, `BREAK_START`, `BREAK_END`, `timeToMinutes`, `workingMinutesBetween`, `lateMinutesFor`, `clockOutFigures`, `dayTotals`, `withDayTotals`, `WORKING_DAYS`, `AttendanceStatus`, `getPhilippineDate`, `getPhilippineTime`, `isWorkingDay` | — |
+| [lib/attendance.ts](../lib/attendance.ts) | `ATTENDANCE_TIME_ZONE`, `SCHEDULED_TIME_IN`, `SCHEDULED_TIME_OUT`, `LATE_GRACE_MINUTES`, `BREAK_START`, `BREAK_END`, `timeToMinutes`, `workingMinutesBetween`, `lateMinutesFor`, `clockOutFigures`, `dayTotals`, `withDayTotals`, `WORKING_DAYS`, `AttendanceStatus`, `getPhilippineDate`, `getPhilippineTime`, `isWorkingDay`, `carriedNotRequired`, `carriedNotRequiredNote` | — |
 | [lib/audit-log.ts](../lib/audit-log.ts) | `AUDIT_SHEET`, `AUDIT_HEADERS`, `AuditActor`, `AuditAction`, `AuditChanges`, `parseRange`, `planValuesUpdate`, `planValuesBatchUpdate`, `planBatchUpdate`, `diffRow`, `auditedWrite`, `resetAuditSheetCache` | — |
 | [lib/auth-server.ts](../lib/auth-server.ts) | `getSessionUser`, `userWithPageAccess`, `canManageAccounts`, `canManageEmployees`, `canManageConfiguration`, `canManageUsers`, `canManageAttendance` | `@/lib/access-control`, `@/lib/auth` |
 | [lib/auth.ts](../lib/auth.ts) | `SessionUser`, `SESSION_COOKIE`, `SESSION_SECONDS`, `sessionCookieOptions`, `sessionMaxAge`, `serializeSessionCookie`, `createSessionToken`, `verifySessionToken` | `@/lib/server-environment` |
@@ -465,6 +465,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/inspect-clerk-report.cjs](../scripts/inspect-clerk-report.cjs) | See source | No flag detected; read source before running |
 | [scripts/inspect-entry-clearings.mjs](../scripts/inspect-entry-clearings.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-legacy-sheets.mjs](../scripts/inspect-legacy-sheets.mjs) | `@next/env`, `googleapis`, `./legacy-sources.mjs` | No flag detected; read source before running |
+| [scripts/inspect-or-member-20261017.mjs](../scripts/inspect-or-member-20261017.mjs) | `@next/env`, `postgres`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-program-tiers.mjs](../scripts/inspect-program-tiers.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-sheet-headers.mjs](../scripts/inspect-sheet-headers.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/legacy-programs.mjs](../scripts/legacy-programs.mjs) | `node:fs`, `@next/env`, `googleapis`, `./legacy-sources.mjs` | Yes; read source for semantics |
@@ -576,6 +577,7 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/or5151b-d190-20261016.json](../config/or5151b-d190-20261016.json)
 - [config/or8574m-dpb420-20261016.json](../config/or8574m-dpb420-20261016.json)
 - [config/ph04464351-january-nop31-20261016.json](../config/ph04464351-january-nop31-20261016.json)
+- [config/ph08543913-receipt-sequence-20261017.json](../config/ph08543913-receipt-sequence-20261017.json)
 - [config/ph13726515-d46059b-20261016.json](../config/ph13726515-d46059b-20261016.json)
 - [config/ph17113133-january-nop22-20261016.json](../config/ph17113133-january-nop22-20261016.json)
 - [config/ph24556150-dfpp650-merge-20261015.json](../config/ph24556150-dfpp650-merge-20261015.json)

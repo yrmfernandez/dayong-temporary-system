@@ -31,6 +31,8 @@ type EmployeeAttendance = {
   closed: boolean;
   // Recorded Absent by the system at the end of the day because management did not mark it.
   systemAbsent: boolean;
+  // No record yet, but the latest earlier day was No attendance needed: the system carries it over at 11:59 PM.
+  carriesNotRequired: string | null;
   record: AttendanceRecord | null;
 };
 
@@ -179,7 +181,7 @@ export default function AttendanceReviewsPage() {
           Attendance Review
         </h1>
         <p className="text-sm text-muted-foreground">
-          Mark a missing attendance as Absent or AWOL, give an employee the Day Off (not counted as absent in payroll; they cannot clock in that day), or mark No attendance needed for someone who does not have to clock in that day, such as MAS (not counted as absent; a clock-in replaces it). To mark many at once, tick them (or Select all after filtering by branch or role) and use Mark selected. Clocked attendance and approved leave cannot be changed here. Anyone still unmarked after 11:59 PM is recorded Absent by the system and shown as &quot;Absent · by system&quot;; marking them here replaces it.
+          Mark a missing attendance as Absent or AWOL, give an employee the Day Off (not counted as absent in payroll; they cannot clock in that day), or mark No attendance needed for someone who does not have to clock in that day, such as MAS (not counted as absent; a clock-in replaces it). To mark many at once, tick them (or Select all after filtering by branch or role) and use Mark selected. Clocked attendance and approved leave cannot be changed here. Anyone still unmarked after 11:59 PM is recorded Absent by the system and shown as &quot;Absent · by system&quot;; marking them here replaces it. No attendance needed carries over: someone marked so on their last working day stays No attendance needed (not Absent) until they clock in or you mark the day otherwise.
         </p>
       </div>
 
@@ -298,7 +300,7 @@ export default function AttendanceReviewsPage() {
                     </label>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={employee.record?.status === "Present" ? "default" : "secondary"}>
-                        {employee.closed ? "Branch closed" : employee.systemAbsent ? "Absent · by system" : employee.record?.status === "Not Required" ? "No attendance needed" : employee.record?.status || "No record"}
+                        {employee.closed ? "Branch closed" : employee.systemAbsent ? "Absent · by system" : employee.record?.status === "Not Required" ? "No attendance needed" : employee.record?.status || (employee.carriesNotRequired ? "No attendance needed · carried over" : "No record")}
                       </Badge>
                       {!locked && (
                         <select

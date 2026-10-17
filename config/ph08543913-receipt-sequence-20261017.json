@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-08543913",
+      "program": "DP-0009",
+      "expectedDoi": "2026-03-13",
+      "receipts": ["9918 M", "16667C", "18751C", "19293 C", "22770 C", "24379 C"],
+      "startNop": 2,
+      "financeScope": "changed",
+      "note": "Owner requested repair using five OR numbers on October 17, 2026. All belong to PH-08543913's existing D-350 (5Y) account, DOI March 13, 2026. June OR 18751C is incorrectly placed after September as NOP 7, shifting July through September back one month. Restore OR-date order: April through September 2026, NOP 2 through 7, including existing September OR 24379 C. Preserve receipt amounts and dates, member identity and program; recalculate changed NOP incentives and account status."
+    }
+  ]
+}

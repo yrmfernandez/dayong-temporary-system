@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 
 import { closureCovers, employeeAttendanceBranches, getClosures, type Closure } from "@/lib/attendance-calendar";
 import { addAttendanceRecords, getAllAttendanceForRange, type AttendanceRecord } from "@/lib/attendance-data";
-import { getPhilippineDate, SCHEDULED_TIME_IN, SCHEDULED_TIME_OUT } from "@/lib/attendance";
+import { carriedNotRequired, carriedNotRequiredNote, getPhilippineDate, SCHEDULED_TIME_IN, SCHEDULED_TIME_OUT } from "@/lib/attendance";
 import { getDb } from "@/lib/db";
 import { runAsSystem } from "@/lib/encoder-context";
 import { withWriteLock } from "@/lib/google-sheets";
@@ -16,7 +16,9 @@ import { getSetting, saveSetting } from "@/lib/system-settings";
  * still change it to AWOL or Absent in Attendance Review, which replaces the note.
  *
  * There is no scheduler, so the days are closed the first time an attendance page or payroll is opened afterwards.
- * Sundays and declared non-working days (for the employee's branch) are skipped. Days before this rule started
+ * Sundays and declared non-working days (for the employee's branch) are skipped. Someone whose last day was marked
+ * No attendance needed is not recorded Absent: the mark is carried over to the day instead (lib/attendance.ts
+ * carriedNotRequired). Days before this rule started
  * (System Settings `auto_absent_from`, set on first run) are never touched, so old history is not rewritten.
  */
 export const SYSTEM_ABSENCE_NOTE = "Absent by system: no clock-in by 11:59 PM and not marked by management.";
@@ -30,32 +32,36 @@ const MAX_DAYS_PER_RUN = 62;
 
 /**
  * Who is absent on each day from `from` to `to`: active employees with no record that day, skipping Sundays and
- * non-working days declared for their branch.
+ * non-working days declared for their branch. An employee whose latest earlier day is No attendance needed gets that
+ * mark carried over instead of an absence; `records` should reach back a week before `from` so the mark is seen.
  */
 export function systemAbsences({ from, to, employees, branches, records, closures, timestamp }: {
   from: string; to: string; employees: Array<{ employeeId: string }>; branches: Map<string, string>;
-  records: Array<Pick<AttendanceRecord, "employeeId" | "attendanceDate">>; closures: Closure[]; timestamp: string;
+  records: Array<Pick<AttendanceRecord, "employeeId" | "attendanceDate" | "status" | "notes">>; closures: Closure[]; timestamp: string;
 }) {
   const recorded = new Set(records.map((record) => `${record.employeeId}|${record.attendanceDate}`));
   const absences: AttendanceRecord[] = [];
   for (let date = from; date <= to; date = addDays(date, 1)) {
     if (new Date(`${date}T00:00:00Z`).getUTCDay() === 0) continue;
     const closure = closures.find((item) => item.date === date);
+    // Records made earlier in this run count too, so a mark carries over day after day.
+    const carried = carriedNotRequired([...records, ...absences], date);
     for (const employee of employees) {
       if (recorded.has(`${employee.employeeId}|${date}`)) continue;
       if (closure && closureCovers(closure, branches.get(employee.employeeId) ?? "")) continue;
+      const markedOn = carried.get(employee.employeeId);
       absences.push({
         id: `ATT-${date.replaceAll("-", "")}-${employee.employeeId}`, employeeId: employee.employeeId, attendanceDate: date,
         branch: branches.get(employee.employeeId) ?? "", scheduledTimeIn: SCHEDULED_TIME_IN, scheduledTimeOut: SCHEDULED_TIME_OUT,
-        timeIn: "", timeOut: "", workedHours: 0, overtimeHours: 0, status: "Absent", lateMinutes: 0, undertimeMinutes: 0,
-        leaveType: "", leaveApprovalStatus: "", notes: SYSTEM_ABSENCE_NOTE, createdAt: timestamp, updatedAt: timestamp,
+        timeIn: "", timeOut: "", workedHours: 0, overtimeHours: 0, status: markedOn ? "Not Required" : "Absent", lateMinutes: 0, undertimeMinutes: 0,
+        leaveType: "", leaveApprovalStatus: "", notes: markedOn ? carriedNotRequiredNote(markedOn) : SYSTEM_ABSENCE_NOTE, createdAt: timestamp, updatedAt: timestamp,
       });
     }
   }
   return absences;
 }
 
-/** Records the system absences for every finished day not closed yet. Returns how many were recorded. */
+/** Records the system absences (and carried-over marks) for every finished day not closed yet. Returns how many were recorded. */
 export function closeFinishedAttendanceDays() {
   return withWriteLock("auto-absence", () => runAsSystem(async () => {
     const today = getPhilippineDate();
@@ -67,7 +73,7 @@ export function closeFinishedAttendanceDays() {
     if (from > yesterday) return 0;
     // A long gap is closed in parts so one page load never waits on months of work.
     const to = addDays(from, MAX_DAYS_PER_RUN - 1) < yesterday ? addDays(from, MAX_DAYS_PER_RUN - 1) : yesterday;
-    const [employees, branches, records, closures] = await Promise.all([getActiveAttendanceEmployees(), employeeAttendanceBranches(), getAllAttendanceForRange(from, to), getClosures(from, to)]);
+    const [employees, branches, records, closures] = await Promise.all([getActiveAttendanceEmployees(), employeeAttendanceBranches(), getAllAttendanceForRange(addDays(from, -7), to), getClosures(from, to)]);
     const absences = systemAbsences({ from, to, employees, branches, records, closures, timestamp: new Date().toISOString() });
     await addAttendanceRecords(absences);
     await saveSetting(CLOSED_KEY, to, "System");

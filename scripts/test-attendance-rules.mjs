@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clockOutFigures, dayTotals, lateMinutesFor, withDayTotals, workingMinutesBetween } from "../lib/attendance.ts";
+import { carriedNotRequired, clockOutFigures, dayTotals, lateMinutesFor, withDayTotals, workingMinutesBetween } from "../lib/attendance.ts";
 
 test("late starts after the 20-minute grace period and counts from 08:20", () => {
   assert.equal(lateMinutesFor("07:45"), 0);
@@ -66,4 +66,18 @@ test("history totals count each day once by category and group a year by month",
   assert.equal(result.punctuality, 67);
   assert.deepEqual(result.breakdown.map((group) => [group.label, group.totals.early + group.totals.onTime + group.totals.late]), [["Sep", 2], ["Oct", 1]]);
   assert.equal(result.days[0].attendanceDate, "2026-10-03");
+});
+
+test("No attendance needed carries over until another record replaces it", () => {
+  const day = (employeeId, attendanceDate, status, notes = "") => ({ employeeId, attendanceDate, status, notes });
+  const records = [
+    day("A", "2026-10-16", "Not Required"),
+    day("B", "2026-10-15", "Not Required"), day("B", "2026-10-16", "Present"),
+    day("C", "2026-10-16", "Absent", "Absent by system: no clock-in"), day("C", "2026-10-16", "Not Required"),
+    day("D", "2026-10-17", "Not Required"),
+    day("SYSTEM", "2026-10-16", "Not Required"),
+    day("E", "2026-10-16", "Not Required"), day("E", "2026-10-17", "Non-working Day"),
+  ];
+  assert.deepEqual([...carriedNotRequired(records, "2026-10-17")].sort(), [["A", "2026-10-16"], ["C", "2026-10-16"], ["E", "2026-10-16"]]);
+  assert.deepEqual([...carriedNotRequired(records, "2026-10-19")].sort(), [["A", "2026-10-16"], ["C", "2026-10-16"], ["D", "2026-10-17"], ["E", "2026-10-16"]]);
 });

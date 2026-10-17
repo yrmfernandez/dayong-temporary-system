@@ -95,11 +95,16 @@ export default function AttendancePage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [now, setNow] = useState(() => new Date());
+  // Server time minus device time. Clock-in times come from the server, so the clock and progress run on its time:
+  // a device clock a few minutes slow would otherwise keep the shift short of 100% at 5 PM.
+  const [clockOffset, setClockOffset] = useState(0);
 
   const loadAttendance = async () => {
     try {
+      const sentAt = Date.now();
       const response = await fetch("/api/attendance", { cache: "no-store" });
       const result = await response.json();
+      if (typeof result.serverTime === "number") setClockOffset(result.serverTime - (sentAt + Date.now()) / 2);
 
       if (!response.ok || !result.success) {
         throw new Error(result.message || "Unable to load attendance.");
@@ -119,9 +124,9 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    const timer = window.setInterval(() => setNow(new Date(Date.now() + clockOffset)), 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [clockOffset]);
 
   useEffect(() => {
     const loadPage = async () => {

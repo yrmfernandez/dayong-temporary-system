@@ -1,5 +1,12 @@
 # Dayong System project context
 
+### PH-08543913: five-OR member data repair (2026-10-17)
+
+- Owner supplied 9918 M, 16667C, 18751C, 19293 C and 22770 C to identify a member needing correction. All belong to PH-08543913, D-350 (5Y), DOI March 13, 2026; the account also has September OR 24379 C.
+- Original workbook M3-COLL rows 6295, 8904, 10179, 12237, 14386 and 16135 confirm April–September coverage. June's source OR date is malformed (`6/12/0206`); July/August source NOPs are inconsistent. Stored June OR 18751C had been placed as NOP 7 for September, displacing the later receipts.
+- Applied on production with `scripts/consolidate-member-receipts.mjs --config=config/ph08543913-receipt-sequence-20261017.json --apply`, after backup and production dry run: six receipts now cover April–September as NOP 2–7; stored status 90D becomes U. Existing OR dates, amounts (PHP 2,100 collections), DOI, member identity and program retained. Changed NOP financial fields and the New Sale were priced from production's configured tiers; no remittance slip changed. Audit Log and Record Corrections retain the correction.
+- Staging dry run rolled back because its D-350 (5Y) first-year MAS incentive tiers are missing; production has the required tiers and passed. `scripts/inspect-or-member-20261017.mjs` provides read-only record inspection; `--legacy` also checks source workbook metadata.
+
 The [user-provided specification](dayong-system-specification.md) is the baseline business and architecture reference, supplied on 2026-09-25. It is preserved as provided and includes historical descriptions, intended features, examples, and unresolved rules; it is not a verified inventory of implemented features.
 
 This is a living project. Later explicit user decisions supersede earlier requirements. Record confirmed changes here or in the relevant feature document as development progresses. Verify implementation claims against the code and live schema when working on a feature. Do not treat unfinished examples as final policy or implement all planned features merely because they appear in the specification.
@@ -590,7 +597,7 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Cause of 99+:** the number counted Absent by system records of the last 7 days, while the page shows one day. On October 13 all 90 marks were No attendance needed for today, but October 6, 7, 8 and 12 still had about 90 unmarked system absences each (about 85 of the 95 on October 12 are MAS); about 49 a day belonged to employees no longer active, who cannot be marked at all.
 - **Done:** Leave Approvals in tabs with counts. Attendance Review: Employee search dropdown; a bar of the waiting days with counts, click to open. The sidebar number counts only active employees the page lists, once per person and day, and not when a manager's mark exists. Tested.
 - **To do (owner):** mark the waiting days (filter role MAS, Select all, Mark selected as No attendance needed) to bring the number down.
-- **Open question:** MAS must be marked No attendance needed by hand every day, or the system records them Absent. A standing setting (e.g. per role or per employee: no attendance needed) would stop that.
+- **Answered (October 17, 2026):** MAS must be marked No attendance needed by hand every day, or the system records them Absent. A standing setting (e.g. per role or per employee: no attendance needed) would stop that. The owner chose carry-over: a No attendance needed mark now carries to the next working day until the employee clocks in or is marked otherwise (see Attendance fixes, October 17).
 
 ### Collections: account not found when the MAS name differs in capitals (2026-10-13)
 
@@ -906,3 +913,9 @@ Owner confirmed MD-2026-0053's incentive for October 13 must be PHP 196.50. Corr
 
 ### October 13, 2026: TANGAL incentive correction
 Owner subsequently requested fixing TANGAL, MARY JEAN's MATINA entry encoded by ABESIA, DARYL JANE, superseding the earlier leave-as-is decision. OR 17552B (COL-20261013081610-4ARZ), D-320 NOP 29, kept its encoded Collector role and was recalculated using the now-configured 10% tier: PHP 32.00 incentive, PHP 288.00 remittance. Pending slip REM-20261013081611-ZVKX and its mapping were updated together in one audited transaction, with a Record Corrections summary. scripts/fix-tangal-incentives.mjs passed a production rollback dry run before applying; readback verified incentive, balanced slip/mapping and correction record. Staging did not have this entry.
+
+### Attendance fixes (2026-10-17)
+
+- **Done:** shift progress on the clock-in page uses the server's clock (the one that records the clock-in), not the device's. A device clock a few minutes slow kept someone who clocked in at 8:00 below 100% at 5:00 PM. The progress math itself was already right (8:00 to 17:00 less lunch is 8 hours).
+- **Done:** No attendance needed carries over. When the system closes a day, an employee with no record whose latest earlier day was No attendance needed gets No attendance needed again (note "carried over from <date> by the system") instead of Absent by system, so they are no longer flagged. It stops when they clock in or management marks the day otherwise. Attendance Review shows "No attendance needed · carried over" for today before the day closes. The about 30 marked on October 16 are carried to October 17 when it closes. No migration.
+- **To do (owner):** to end someone's carry-over without a clock-in, mark that day Absent, AWOL or Day Off in Attendance Review.

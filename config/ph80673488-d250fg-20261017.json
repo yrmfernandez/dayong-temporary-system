@@ -1,0 +1,15 @@
+{
+  "cases": [
+    {
+      "member": "PH-80673488",
+      "program": "DP-0016",
+      "expectedDoi": "2025-05-01",
+      "fromAccounts": ["ENR-LEG-AAC8A4DBAE"],
+      "receipts": ["4481 M", "8270 M", "8056 B", "8073 B", "08100 B"],
+      "startNop": 10,
+      "receiptMonths": {"4481M": 2, "8270M": 2, "8056B": 2, "8073B": 2, "08100B": 2},
+      "financeScope": "changed",
+      "note": "Owner confirmed October 17, 2026: PH-80673488's payments all belong to D-250 FG. Move the two PHP500 payments from the erroneous D-210 HG account to the existing D-250 FG account, retaining each payment's two-month span. Five PHP500 receipts cover February through November 2026, NOP 10 through 19, from DOI May 1, 2025. Preserve OR dates, amounts and member identity; remove the empty erroneous account and recalculate financial fields for moved payments and account status."
+    }
+  ]
+}

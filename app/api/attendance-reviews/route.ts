@@ -8,10 +8,12 @@ import {
   addAttendanceRecord,
   getAttendanceForEmployeeDate,
   getAttendanceRecordsForDate,
+  getAttendanceRecordsForRange,
   type AttendanceRecord,
   updateAttendanceRecord,
 } from "@/lib/attendance-data";
 import {
+  carriedNotRequired,
   getPhilippineDate,
   SCHEDULED_TIME_IN,
   SCHEDULED_TIME_OUT,
@@ -62,7 +64,8 @@ export async function GET(request: Request) {
     }
 
     await closeFinishedAttendanceDaysQuietly();
-    const [employees, records, closures, branches, register, waiting] = await Promise.all([
+    const weekBefore = new Date(Date.parse(`${attendanceDate}T00:00:00Z`) - 7 * 86400000).toISOString().slice(0, 10);
+    const [employees, records, closures, branches, register, waiting, earlier] = await Promise.all([
       getActiveAttendanceEmployees(),
       getAttendanceRecordsForDate(attendanceDate),
       getClosures(attendanceDate, attendanceDate),
@@ -70,7 +73,10 @@ export async function GET(request: Request) {
       getEmployees(),
       // Days of the last week with system absences still unmarked (the sidebar number), to jump to.
       systemAbsencesWaiting(),
+      // The week before, to show whose No attendance needed carries over to this date (lib/attendance.ts).
+      getAttendanceRecordsForRange(weekBefore, attendanceDate),
     ]);
+    const carried = carriedNotRequired(earlier, attendanceDate);
     // Operational roles, for the review's role filter.
     const rolesOf = new Map(register.map((employee) => [employee.id, employee.roles]));
     const closure = closures[0] ?? null;
@@ -92,6 +98,7 @@ export async function GET(request: Request) {
           closed: Boolean(closure && closureCovers(closure, branch)),
           // Recorded Absent by the system at the end of the day because nobody marked the employee.
           systemAbsent: isSystemAbsence(recordsByEmployee.get(employee.employeeId)),
+          carriesNotRequired: recordsByEmployee.has(employee.employeeId) ? null : carried.get(employee.employeeId) ?? null,
           record: recordsByEmployee.get(employee.employeeId) ?? null,
         };
       }),

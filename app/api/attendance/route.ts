@@ -69,6 +69,9 @@ export async function GET() {
       assignedBranch: branches.primary,
       assignedBranches: branches.all,
       nonWorkingDay,
+      // The page's clock and shift progress follow the server's time, not the device's (a slow phone clock kept
+      // the progress short of 100% at 5 PM).
+      serverTime: Date.now(),
     });
   } catch (error) {
     console.error("Load attendance error:", error);
