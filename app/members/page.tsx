@@ -56,6 +56,7 @@ export default function MembersPage() {
   // New members are added through New Sales, which only encoders can open.
   const [canAddMember, setCanAddMember] = useState(false);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [deactivations, setDeactivations] = useState<Record<string, Deactivation>>({});
   const [editing, setEditing] = useState<DirectoryMember | null>(null);
   // The member just saved, so the confirmation shows on that row.
   const [savedId, setSavedId] = useState("");
@@ -71,7 +72,7 @@ export default function MembersPage() {
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load members.");
       setError(""); setMembers(result.members); setTotals({ total: result.total, matched: result.matched, pages: result.pages }); setCounts(result.counts ?? {}); setChoices(result.options);
       if (result.page !== page) setPage(result.page);
-      setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanDelete(Boolean(result.canDelete)); setCanTransfer(Boolean(result.canTransfer)); setCanMoveProgram(Boolean(result.canMoveProgram)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []);
+      setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanDelete(Boolean(result.canDelete)); setCanTransfer(Boolean(result.canTransfer)); setCanMoveProgram(Boolean(result.canMoveProgram)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []); setDeactivations(result.deactivations ?? {});
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -136,7 +137,9 @@ export default function MembersPage() {
         ["Claimant", selected.claimant], ["Claimant contact", selected.claimantContact], ["Claimant address", selected.claimantAddress],
       ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1">{value || "Not recorded"}</dd></div>)}</dl>
       <h3 className="font-semibold">All program enrollments</h3>
-      <EnrollmentTable enrollments={selected.enrollments} canTransfer={canTransfer} canMoveProgram={canMoveProgram} transfers={transfers} onTransferred={(enrollmentId, toMas) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, mas: toMas } : item) }); setRevision((value) => value + 1); }}
+      <EnrollmentTable enrollments={selected.enrollments} canTransfer={canTransfer} canMoveProgram={canMoveProgram} transfers={transfers} deactivations={deactivations}
+        onStatusChanged={(enrollmentId, status) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, status, accountStatus: status === "Deactivated" ? "Deactivated" : item.accountStatus } : item) }); setRevision((value) => value + 1); }}
+        onTransferred={(enrollmentId, toMas) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, mas: toMas } : item) }); setRevision((value) => value + 1); }}
         onBranchChanged={(enrollmentId, branch) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, branch } : item) }); setRevision((value) => value + 1); }}
         onProgramMoved={(enrollmentId, programId, programName, merged) => { setSelected((current) => current && { ...current, enrollments: merged ? current.enrollments.filter((item) => item.id !== enrollmentId) : current.enrollments.map((item) => item.id === enrollmentId ? { ...item, programId, programName } : item) }); setRevision((value) => value + 1); }} />
       <MemberMam memberId={selected.id} />
@@ -148,7 +151,9 @@ export default function MembersPage() {
   </section>;
 }
 
-type Mode = "mas" | "branch" | "program";
+type Mode = "mas" | "branch" | "program" | "status";
+type Deactivation = { reason: string; by: string; at: string };
+const deactivated = (status: string | undefined) => (status ?? "").trim().toLowerCase() === "deactivated";
 type Transfer = { enrollmentId: string; fromMas: string; toMas: string; reason: string; by: string; at: string };
 type Enrollment = DirectoryMember["enrollments"][number];
 
@@ -159,7 +164,8 @@ type Enrollment = DirectoryMember["enrollments"][number];
  * To another branch (October 17, 2026): the same MAS keeps the account in a new branch (lib/member-transfer.ts
  * changeEnrollmentBranch), for those who may transfer.
  */
-function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, onTransferred, onBranchChanged, onProgramMoved }: { enrollments: Enrollment[]; canTransfer: boolean; canMoveProgram: boolean; transfers: Transfer[]; onTransferred: (enrollmentId: string, toMas: string) => void;
+function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, deactivations, onStatusChanged, onTransferred, onBranchChanged, onProgramMoved }: { enrollments: Enrollment[]; canTransfer: boolean; canMoveProgram: boolean; transfers: Transfer[];
+  deactivations: Record<string, Deactivation>; onStatusChanged: (enrollmentId: string, status: string) => void; onTransferred: (enrollmentId: string, toMas: string) => void;
   onBranchChanged: (enrollmentId: string, branch: string) => void; onProgramMoved: (enrollmentId: string, programId: string, programName: string, merged: boolean) => void }) {
   const [open, setOpen] = useState("");
   const [mode, setMode] = useState<Mode>("mas");
@@ -177,11 +183,13 @@ function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, 
     setNote(""); setTarget(""); setReason(""); setBranchChoice(noBranchChoice); setTargetProgram(""); setNewBranch("");
     if (open === enrollment.id) { setOpen(""); return; }
     setOpen(enrollment.id); setCandidates([]); setPrograms([]); setBranchOptions({ branches: [], masBranches: [] });
-    const first = canTransfer ? "mas" : "program";
+    // A deactivated program can only be reactivated.
+    const first: Mode = deactivated(enrollment.status) ? "status" : canTransfer ? "mas" : "program";
     setMode(first);
     await load(enrollment, first);
   }
   async function load(enrollment: Enrollment, which: Mode) {
+    if (which === "status") { setNote(""); return; }
     setBusy(true); setNote("");
     if (which === "branch") {
       try {
@@ -248,8 +256,23 @@ function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, 
     } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to change the branch."); }
     finally { setBusy(false); }
   }
+  // Deactivate (owner, October 17, 2026): the member no longer has the program; history stays (lib/account-deactivation.ts).
+  async function setActive(enrollment: Enrollment, active: boolean) {
+    setBusy(true); setNote("");
+    try {
+      const response = await fetch("/api/members/account-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enrollmentId: enrollment.id, active, reason }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to change the program.");
+      setOpen(""); setNote(active ? `${enrollment.programName} is active again for this member and takes collections.` : `${enrollment.programName} is deactivated for this member. Its New Sale and past collections stay in the history; it takes no more collections.`);
+      onStatusChanged(enrollment.id, result.status);
+    } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to change the program."); }
+    finally { setBusy(false); }
+  }
   const canAct = canTransfer || canMoveProgram;
-  const modes = ([["mas", "To another MAS", canTransfer], ["branch", "To another branch (same MAS)", canTransfer], ["program", "To another program", canMoveProgram]] as const).filter(([, , allowed]) => allowed);
+  const modesFor = (e: Enrollment) => (deactivated(e.status)
+    ? ([["status", "Reactivate", canTransfer]] as const)
+    : ([["mas", "To another MAS", canTransfer], ["branch", "To another branch (same MAS)", canTransfer], ["program", "To another program", canMoveProgram], ["status", "Deactivate this program", canTransfer]] as const)
+  ).filter(([, , allowed]) => allowed);
   const masIsIn = (branch: string) => branchOptions.masBranches.some((item) => item.toLowerCase() === branch.toLowerCase());
   const headers = ["Program", "DOI", "Branch", "MAS / Officer", "Collector", "Remittance method", "Enrollment status", "Payment status", ...(canAct ? [""] : [])];
   return <div className="overflow-x-auto">
@@ -261,15 +284,23 @@ function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, 
           <tr className="border-t">
             <td className="p-2">{e.programName || "-"}</td><td className="p-2">{e.doi || "-"}</td><td className="p-2">{e.branch || "-"}</td>
             <td className="p-2">{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">Transferred from {last.fromMas}{last.at ? ` on ${last.at.slice(0, 10)}` : ""} · {last.reason}</span>}</td>
-            <td className="p-2">{e.collector || "-"}</td><td className="p-2">{e.paymentMethod || "-"}</td><td className="p-2">{e.status || "-"}</td>
-            <td className="p-2">{e.accountError || <span className="flex flex-wrap items-center gap-1">{e.accountStatus || "Needs review"}<StandingBadge enrollment={e} /></span>}</td>
-            {canAct && <td className="p-2 text-right"><Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{open === e.id ? "Transferring" : "Transfer"}</Button></td>}
+            <td className="p-2">{e.collector || "-"}</td><td className="p-2">{e.paymentMethod || "-"}</td>
+            <td className="p-2">{deactivated(e.status) ? <><StatusBadge status="Deactivated" tone="danger" />{deactivations[e.id] && <span className="block text-xs text-muted-foreground">{deactivations[e.id].reason}{deactivations[e.id].by ? ` · ${deactivations[e.id].by}` : ""}{deactivations[e.id].at ? ` · ${deactivations[e.id].at.slice(0, 10)}` : ""}</span>}</> : e.status || "-"}</td>
+            <td className="p-2">{deactivated(e.status) ? "—" : e.accountError || <span className="flex flex-wrap items-center gap-1">{e.accountStatus || "Needs review"}<StandingBadge enrollment={e} /></span>}</td>
+            {canAct && <td className="p-2 text-right">{modesFor(e).length > 0 && <Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{deactivated(e.status) ? "Reactivate" : open === e.id ? "Changing" : "Transfer / deactivate"}</Button>}</td>}
           </tr>
           {open === e.id && <InlineRow colSpan={headers.length}>
-            {modes.length > 1 && <div className="mb-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Transfer to">
-              {modes.map(([value, label]) => <Button key={value} type="button" size="sm" role="radio" aria-checked={mode === value} variant={mode === value ? "default" : "outline"} onClick={() => { if (mode !== value) { setMode(value); setReason(""); void load(e, value); } }}>{label}</Button>)}
+            {modesFor(e).length > 1 && <div className="mb-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Transfer to">
+              {modesFor(e).map(([value, label]) => <Button key={value} type="button" size="sm" role="radio" aria-checked={mode === value} variant={mode === value ? "default" : "outline"} onClick={() => { if (mode !== value) { setMode(value); setReason(""); void load(e, value); } }}>{label}</Button>)}
             </div>}
-            {mode === "branch" ? <>
+            {mode === "status" ? <>
+              <p className="text-sm font-semibold">{deactivated(e.status) ? `Reactivate ${e.programName} for this member` : `Deactivate ${e.programName} for this member`}</p>
+              <p className="mb-3 text-xs text-muted-foreground">{deactivated(e.status)
+                ? "The program becomes active again: it takes collections and shows in MAM, statuses and Follow Up, with its standing worked out from its payments."
+                : "The member will no longer have this program: it takes no more collections and leaves MAM, payment statuses, Follow Up and account counts. Its New Sale and past collections stay in the reports and the member's history, and it can be reactivated later. Entries still waiting on a remittance must be settled first."}</p>
+              <label className="block max-w-xl text-sm">Reason *<Input className="mt-1 h-9" maxLength={300} value={reason} placeholder={deactivated(e.status) ? "e.g. Member resumed paying" : "e.g. Member asked to drop this program"} onChange={(event) => setReason(event.target.value)} /></label>
+              <div className="mt-3 flex gap-2"><Button type="button" variant={deactivated(e.status) ? "default" : "destructive"} disabled={busy || reason.trim().length < 3} onClick={() => void setActive(e, deactivated(e.status))}>{busy ? "Saving..." : deactivated(e.status) ? "Reactivate" : "Deactivate program"}</Button><Button type="button" variant="ghost" onClick={() => setOpen("")}>Cancel</Button></div>
+            </> : mode === "branch" ? <>
               <p className="text-sm font-semibold">Move {e.programName} from branch {e.branch || "none"}, keeping {e.mas || "no MAS"}</p>
               <p className="mb-3 text-xs text-muted-foreground">Future collections are recorded in the new branch; past collections, the New Sale and cash already owed stay under {e.branch || "the current branch"}. The MAS stays the same.</p>
               <div className="grid gap-3 sm:grid-cols-2">

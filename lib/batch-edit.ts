@@ -429,7 +429,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
   if (!(COLLECTION_CHANNELS as readonly string[]).includes(common.collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");
   if (common.reference.length > 100) throw new Error("The payment reference must be 100 characters or fewer.");
   const ids = rows.map((row) => row.collection_id);
-  const data = await loadAccountData({ enrollmentIds: [...new Set(rows.map((row) => row.enrollment_id))] }, tx, { lock: true });
+  const data = await loadAccountData({ enrollmentIds: [...new Set(rows.map((row) => row.enrollment_id))], includeDeactivated: true }, tx, { lock: true });
   const orNumbers = rows.map((row) => normalizeOrNumber(text(changes.get(row.collection_id)?.orNumber ?? row.or_number)));
   const recorded = await recordedOrNumbers(orNumbers, tx);
   // The other payments of these accounts; the batch's own are checked again one by one, in NOP order.

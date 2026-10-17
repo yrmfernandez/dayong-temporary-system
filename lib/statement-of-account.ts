@@ -30,7 +30,7 @@ export async function listStatementAccounts() {
  * the same rules as MAM and Collections (lib/account-rules.ts), so the SOA always agrees with them.
  */
 export async function getStatementOfAccount(enrollmentId: string) {
-  const data = await loadAccountData({ enrollmentIds: [enrollmentId] });
+  const data = await loadAccountData({ enrollmentIds: [enrollmentId], includeDeactivated: true });
   const account = data.accounts.find((item) => item.id === enrollmentId);
   if (!account) throw new Error("Select a member program account.");
   const db = currentDb();

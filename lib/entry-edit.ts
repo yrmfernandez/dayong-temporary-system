@@ -150,7 +150,7 @@ export async function repriceCollections(tx: Queryable, ids: string[]) {
   const unique = [...new Set(ids.filter(Boolean))];
   if (!unique.length) return { repriced: 0, slips: [] as string[], unpriced: [] as string[] };
   const rows = await tx.select().from(collections).where(and(sql`${collections.collection_id} in (${sql.join(unique.map((id) => sql`${id}`), sql`, `)})`, eq(collections.status, "Posted")));
-  const data = await loadAccountData({ enrollmentIds: [...new Set(rows.map((row) => row.enrollment_id))] }, tx);
+  const data = await loadAccountData({ enrollmentIds: [...new Set(rows.map((row) => row.enrollment_id))], includeDeactivated: true }, tx);
   const branchIds = new Map((await getBranches()).map((branch) => [branch.name.trim().toLowerCase(), branch.id]));
   let repriced = 0;
   const slips = new Set<string>(), unpriced: string[] = [];
@@ -210,7 +210,7 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
  * The callers move the New Sale and work out the incentives again.
  */
 export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId: string, today = manilaNow().date) {
-  const data = await loadAccountData({ enrollmentIds: [sourceId, targetId] }, tx, { lock: true });
+  const data = await loadAccountData({ enrollmentIds: [sourceId, targetId], includeDeactivated: true }, tx, { lock: true });
   const source = data.accounts.find((account) => account.id === sourceId), target = data.accounts.find((account) => account.id === targetId);
   if (!source || !target) throw new Error("The accounts to merge were not found.");
   if (source.memberId !== target.memberId) throw new Error("Only two accounts of the same member can be merged.");
@@ -255,7 +255,7 @@ async function editCollection(tx: Transaction, input: EntryEditInput): Promise<O
   if (text(row.status) !== "Posted") throw new Error("Only a posted collection can be edited.");
   const today = manilaNow().date;
   const targetId = text(input.enrollmentId) || row.enrollment_id;
-  const data = await loadAccountData({ enrollmentIds: [...new Set([row.enrollment_id, targetId])] }, tx, { lock: true });
+  const data = await loadAccountData({ enrollmentIds: [...new Set([row.enrollment_id, targetId])], includeDeactivated: true }, tx, { lock: true });
   const from = data.accounts.find((account) => account.id === row.enrollment_id);
   const to = data.accounts.find((account) => account.id === targetId);
   if (!from || !to) throw new Error("The account was not found.");
@@ -380,7 +380,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   const changesProgram = programId !== row.program_id;
   let accountNote = "", status: string | null = null, doi = day(account?.doi), mergeTarget = "";
   if (account) {
-    const data = await loadAccountData({ enrollmentIds: [account.enrollment_id] }, tx, { lock: true });
+    const data = await loadAccountData({ enrollmentIds: [account.enrollment_id], includeDeactivated: true }, tx, { lock: true });
     const loaded = data.accounts[0];
     const paid = data.payments.filter((payment) => payment.enrollmentId === account.enrollment_id);
     // The New Sale is the account's first month: the DOI follows the application date while nothing else is paid.

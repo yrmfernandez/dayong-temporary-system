@@ -2732,6 +2732,44 @@ test('a returned New Sales batch: application number, date and amount can be fix
   assert.equal(await count('members'), 1, 'the removed sale\'s new member went with it');
 });
 
+test('a program deactivated for a member takes no collections, leaves the account lists, and can be reactivated (October 17, 2026)', async () => {
+  const h = harness();
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0, '', '', '', '', '', '', 'TRUE', 'FALSE']];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+  const saved = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 200,
+    sales: [{ existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', surname: 'Uno', firstName: 'Ana', addressHouse: 'Address', beneficiaries: [] }] }));
+  assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
+  const [{ enrollment_id: id, member_id: memberId }] = await query('select enrollment_id, member_id from member_programs');
+  h.setUser({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const route = h.load('app/api/members/account-status/route.ts');
+  const post = async (body) => (await route.POST(request(body))).json();
+  await query(`update sales set remittance_status = 'Pending Remittance Approval'`);
+  assert.match((await post({ enrollmentId: id, active: false, reason: 'Member dropped it' })).message, /still waiting on a remittance/, 'settle pending entries first');
+  await query(`update sales set remittance_status = 'Remitted'`);
+  assert.match((await post({ enrollmentId: id, active: false, reason: '' })).message, /reason/);
+  const off = await post({ enrollmentId: id, active: false, reason: 'Member dropped it' });
+  assert.equal(off.success, true, JSON.stringify(off));
+  assert.deepEqual(await query('select status from member_programs'), [{ status: 'Deactivated' }]);
+  const { loadAccountData } = h.load('lib/account-data.ts');
+  assert.equal((await loadAccountData({ memberId })).accounts.length, 0, 'left out of MAM, statuses and Collections');
+  assert.equal((await loadAccountData({ memberId, includeDeactivated: true })).accounts.length, 1, 'still there for corrections and the statement');
+  assert.equal(await count('sales'), 1, 'its New Sale stays');
+  const collections = await h.load('app/api/collections/route.ts').GET(new Request(`http://localhost/api/collections?memberId=${memberId}&programId=DP-1&branch=BR-1&mas=different-mas`));
+  assert.equal(collections.status, 404);
+  assert.match((await collections.json()).message, /deactivated for this member takes no collections/);
+  assert.match((await post({ enrollmentId: id, active: false, reason: 'again' })).message, /already deactivated/);
+  const on = await post({ enrollmentId: id, active: true, reason: 'Member resumed' });
+  assert.equal(on.success, true, JSON.stringify(on));
+  assert.deepEqual(await query('select status from member_programs'), [{ status: 'Active' }]);
+  h.setUser({ userId: 'U2', employeeId: 'DPE-0005', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.match((await post({ enrollmentId: id, active: false, reason: 'Member dropped it' })).message, /Only Administrators, HR Officers and IT/);
+});
+
 test('a returned New Sale: every detail can be corrected and the member record follows (October 17, 2026)', async () => {
   const h = harness();
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];

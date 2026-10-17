@@ -18,6 +18,11 @@ export type AccountScope = {
   branch?: string;
   /** Accounts matching any of these member number + program pairs (a Collections batch). */
   memberPrograms?: Array<{ memberNumber: string; programId: string }>;
+  /**
+   * Deactivated accounts (lib/account-deactivation.ts) are left out unless asked for: they take no collections and
+   * leave MAM, statuses and Follow Up. Corrections of their past entries and their statement ask for them.
+   */
+  includeDeactivated?: boolean;
 };
 export type LoadedAccount = Account & { memberName: string; programName: string };
 export type AccountData = Awaited<ReturnType<typeof loadAccountData>>;
@@ -35,6 +40,7 @@ function scopeCondition(scope: AccountScope): SQL | undefined {
     const pairs = scope.memberPrograms.filter((pair) => pair.memberNumber && pair.programId);
     conditions.push(pairs.length ? sql`(${memberPrograms.member_number}, ${memberPrograms.program_id}) in (${sql.join(pairs.map((pair) => sql`(${pair.memberNumber}, ${pair.programId})`), sql`, `)})` : sql`false`);
   }
+  if (!scope.includeDeactivated) conditions.push(sql`lower(trim(coalesce(${memberPrograms.status}, ''))) <> 'deactivated'`);
   return conditions.length ? and(...conditions) : undefined;
 }
 
@@ -45,7 +51,8 @@ function scopeCondition(scope: AccountScope): SQL | undefined {
  */
 export async function loadAccountData(scope: AccountScope = {}, db: Queryable = currentDb(), { lock = false }: { lock?: boolean } = {}) {
   const where = scopeCondition(scope);
-  const scoped = Boolean(where);
+  // Scoped: the caller named which accounts (the deactivated filter alone still reads every payment at once).
+  const scoped = Boolean(scopeCondition({ ...scope, includeDeactivated: true }));
   let accountQuery = db.select({
     id: memberPrograms.enrollment_id, memberId: memberPrograms.member_id, memberNumber: memberPrograms.member_number, programId: memberPrograms.program_id,
     doi: memberPrograms.doi, branch: memberPrograms.branch, mas: memberPrograms.mas, storedStatus: memberPrograms.account_status,

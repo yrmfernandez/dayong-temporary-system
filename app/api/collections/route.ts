@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     // A DTO batch takes any account of the branch, whatever its MAS (owner, October 13, 2026).
     const dto = searchParams.get("dto") === "1";
     const matches = data.accounts.filter((a) => a.programId === searchParams.get("programId") && sameName(a.branch, searchParams.get("branch")) && (dto || sameName(a.mas, searchParams.get("mas"))));
-    if (matches.length !== 1) return Response.json({ success: false, message: "A unique program enrollment was not found." }, { status: 404 });
+    if (matches.length !== 1) return Response.json({ success: false, message: "A unique active program enrollment was not found. A program deactivated for this member takes no collections." }, { status: 404 });
     const account = matches[0];
     const history = data.payments.filter((p) => p.enrollmentId === account.id).sort((a, b) => b.nopTo - a.nopTo);
     return Response.json({ success: true, account: { ...account, ...accountState(account, history) }, history: history.map((p) => ({ ...p, memberId: account.memberId, programId: account.programId, monthOf: p.monthTo, nop: p.nopTo, amountCollected: p.amount })) });
@@ -139,7 +139,7 @@ async function saveCollections(request: Request) {
       let grossCents = 0, remittanceCents = 0;
       for (const entry of entries) {
         const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
-        if (matches.length !== 1) throw new Error("A unique program enrollment was not found.");
+        if (matches.length !== 1) throw new Error("A unique active program enrollment was not found. A program deactivated for this member takes no collections.");
         const account = matches[0];
         if (!sameName(account.branch, branch) || (!dto && !sameName(account.mas, mas))) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch${dto ? "" : " and MAS"}.`);
         // The payment keeps the account's MAS on record; in a DTO batch the clerk is only accountable for the cash.
