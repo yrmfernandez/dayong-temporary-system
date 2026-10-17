@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRightLeft, Pencil, Search, Shuffle, Trash2, Wrench } from "lucide-react";
+import { ArrowRightLeft, Building2, Pencil, Search, Shuffle, Trash2, Wrench } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 
 import { AdminDeletePanel } from "@/components/admin-delete";
@@ -17,17 +17,18 @@ import type { FoundEntry, SearchKind } from "@/lib/entry-search";
 
 type Result = { success: boolean; message?: string; entries: FoundEntry[]; limit: number; canDelete: boolean };
 type Options = { employees: Array<{ id: string; name: string; branch: string; roles: string[]; status: string }>; programs: Array<{ id: string; name: string; code: string; rate: number; status: string }> };
-type Tab = "entries" | "mas" | "programs" | "more";
+type Tab = "entries" | "mas" | "branches" | "programs" | "more";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const KINDS: Array<[SearchKind, string]> = [["all", "New Sales and Collections"], ["New Sale", "New Sales"], ["Collection", "Collections"]];
-const TABS: Array<[Tab, string, typeof Pencil]> = [["entries", "Entries", Pencil], ["mas", "Move between MAS", ArrowRightLeft], ["programs", "Move between programs", Shuffle], ["more", "Other corrections", Wrench]];
+const TABS: Array<[Tab, string, typeof Pencil]> = [["entries", "Entries", Pencil], ["mas", "Move between MAS", ArrowRightLeft], ["branches", "Move between branches", Building2], ["programs", "Move between programs", Shuffle], ["more", "Other corrections", Wrench]];
 
 /**
  * Edit / Corrections (owner, October 15, 2026): one place for IT and Administrators to change data.
  *   Entries: search New Sales and Collections (remitted too) and edit everything about one (lib/entry-edit.ts), or
  *     delete it (Administrators, lib/admin-delete.ts).
  *   Move between MAS: an employee's members to another MAS (lib/member-transfer.ts).
+ *   Move between branches (October 17, 2026): a MAS's members to another branch, same MAS (lib/member-transfer.ts).
  *   Move between programs: a program's accounts to another program with the same pay (lib/program-transfer.ts).
  *   Other corrections: where the rest is changed (member details, employee IDs, data problems, history).
  * Every change needs a reason and is kept in the Audit Log and Record Corrections.
@@ -46,6 +47,7 @@ export default function EditCorrectionsPage() {
     {message && <p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">{message}</p>}
     {tab === "entries" && <EntriesTab />}
     {tab === "mas" && <MoveBetweenMas onDone={setMessage} />}
+    {tab === "branches" && <MoveBetweenMas key="branches" byBranch onDone={setMessage} />}
     {tab === "programs" && <MoveBetweenPrograms onDone={setMessage} />}
     {tab === "more" && <OtherCorrections />}
   </section>;
@@ -144,20 +146,22 @@ function useOptions() {
   return { options, error };
 }
 
-function MoveBetweenMas({ onDone }: { onDone: (message: string) => void }) {
+function MoveBetweenMas({ byBranch = false, onDone }: { byBranch?: boolean; onDone: (message: string) => void }) {
   const { options, error } = useOptions();
   const [employeeId, setEmployeeId] = useState("");
   return <Card>
-    <CardHeader><CardTitle>Move members between MAS</CardTitle>
-      <p className="text-sm text-muted-foreground">Choose the MAS the members are under now, tick the members (or all), then choose the MAS they go to. Each account gets a transfer record with the reason. Past collections and cash stay with the MAS who handled them.</p></CardHeader>
+    {byBranch ? <CardHeader><CardTitle>Move members to another branch</CardTitle>
+      <p className="text-sm text-muted-foreground">Choose the MAS, tick their members (or all), then choose the branch they go to. The MAS stays the same and is assigned to the new branch if needed. Each account gets a transfer record with the reason. Past collections stay under the old branch; future collections are recorded in the new one.</p></CardHeader>
+    : <CardHeader><CardTitle>Move members between MAS</CardTitle>
+      <p className="text-sm text-muted-foreground">Choose the MAS the members are under now, tick the members (or all), then choose the MAS they go to. Each account gets a transfer record with the reason. Past collections and cash stay with the MAS who handled them.</p></CardHeader>}
     <CardContent className="space-y-4">
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      <div className="max-w-xl space-y-1 text-sm">From MAS
-        <SearchSelect aria-label="From MAS" clearable value={employeeId} placeholder={options ? "Search employee name or ID" : "Loading..."} disabled={!options}
+      <div className="max-w-xl space-y-1 text-sm">{byBranch ? "MAS" : "From MAS"}
+        <SearchSelect aria-label={byBranch ? "MAS" : "From MAS"} clearable value={employeeId} placeholder={options ? "Search employee name or ID" : "Loading..."} disabled={!options}
           options={(options?.employees ?? []).map((employee) => ({ value: employee.id, label: employee.name, description: `${employee.id}${employee.branch ? ` · ${employee.branch}` : ""}${employee.status !== "active" ? ` · ${employee.status}` : ""}`, keywords: employee.id }))}
           onValueChange={setEmployeeId} />
       </div>
-      {employeeId && <BulkMemberTransfer key={employeeId} employeeId={employeeId} onClose={() => setEmployeeId("")} onDone={(text) => { setEmployeeId(""); onDone(text); }} />}
+      {employeeId && <BulkMemberTransfer key={employeeId} employeeId={employeeId} mode={byBranch ? "branch" : "mas"} onClose={() => setEmployeeId("")} onDone={(text) => { setEmployeeId(""); onDone(text); }} />}
     </CardContent>
   </Card>;
 }
@@ -182,7 +186,7 @@ function MoveBetweenPrograms({ onDone }: { onDone: (message: string) => void }) 
 
 function OtherCorrections() {
   const places: Array<[string, string, string]> = [
-    ["/members", "Members", "Edit a member's details (name, birthdate, contact, claimant), move one account to another MAS, or delete a member entered by mistake."],
+    ["/members", "Members", "Edit a member's details (name, birthdate, contact, claimant), move one account to another MAS or another branch, or delete a member entered by mistake."],
     ["/employees", "Employees", "Change an Employee ID (every record that uses it follows), branches and roles."],
     ["/exceptions", "Exceptions", "Lists of data problems to fix: dates, amounts, duplicate numbers, missing branch letters."],
     ["/remittances", "Remittances", "Approve, return or delete remittance slips."],

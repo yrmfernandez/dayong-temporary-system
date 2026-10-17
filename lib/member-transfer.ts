@@ -172,3 +172,79 @@ export async function getTransferHistory() {
   const rows = await currentDb().select().from(transfers).orderBy(desc(transfers.encoded_at));
   return rows.map((row) => ({ enrollmentId: text(row.enrollment_id), fromMas: text(row.from_mas), toMas: text(row.to_mas), reason: text(row.reason), by: text(row.encoded_by_name), at: row.encoded_at ?? "" }));
 }
+
+// ---------------------------------------------------------------- same MAS, another branch
+
+/** Active branch names, sorted, and a map from branch ID to name. */
+async function activeBranchNames() {
+  const branches = await getBranches();
+  return {
+    branches,
+    names: branches.filter((branch) => branch.status === "active").map((branch) => branch.name).sort((a, b) => a.localeCompare(b)),
+    nameOf: new Map(branches.map((branch) => [branch.id, branch.name])),
+  };
+}
+
+/** The active branches an account can move to (all but its own) and its MAS's branches, for Change branch. */
+export async function branchChangeOptions(enrollmentId: string) {
+  const enrollment = await enrollmentRow(enrollmentId);
+  const [{ names, nameOf }, employees, [row]] = await Promise.all([activeBranchNames(), getEmployees(),
+    currentDb().select({ masId: schema.member_programs.mas_employee_id }).from(schema.member_programs).where(eq(schema.member_programs.enrollment_id, enrollmentId))]);
+  const mas = employees.find((item) => item.id === row?.masId) ?? employees.find((item) => enrollment.mas && same(item.name, enrollment.mas));
+  return {
+    enrollment,
+    masBranches: mas ? mas.branchIds.map((id) => nameOf.get(id) ?? "").filter(Boolean) : [],
+    branches: names.filter((name) => !same(name, enrollment.branch)),
+  };
+}
+
+/** Every active branch and the employee's own branches, for moving several of one MAS's accounts (Edit / Corrections). */
+export async function employeeBranchOptions(employeeId: string) {
+  const [{ names, nameOf }, employees] = await Promise.all([activeBranchNames(), getEmployees()]);
+  const employee = employees.find((item) => item.id === text(employeeId));
+  return { branches: names, masBranches: employee ? employee.branchIds.map((id) => nameOf.get(id) ?? "").filter(Boolean) : [] };
+}
+
+/**
+ * Moves accounts to another branch, keeping their MAS (owner, October 17, 2026): one from Members → Transfer, or
+ * several of one MAS's from Edit / Corrections → Move between branches. Future collections are recorded in the new
+ * branch; past collections, sales and cash already owed stay under the old one. Collections and Clearing need the MAS
+ * assigned to the account's branch, so a MAS not yet assigned to the new branch is assigned to it here. Accounts
+ * already in that branch are skipped. Each moved account gets a member_transfers record (same MAS on both sides) with
+ * the reason, all in one transaction.
+ */
+export async function changeEnrollmentsBranch(input: { enrollmentIds: string[]; branch: string; reason: string }) {
+  const reason = text(input.reason);
+  if (reason.length < 3 || reason.length > 300) throw new Error("Give the reason for the branch change (3–300 characters).");
+  const ids = [...new Set(input.enrollmentIds.map(text).filter(Boolean))];
+  if (!ids.length) throw new Error("Choose the accounts to move.");
+  const [{ branches, names, nameOf }, employees] = await Promise.all([activeBranchNames(), getEmployees()]);
+  const to = names.find((name) => same(name, text(input.branch)));
+  if (!to) throw new Error("Choose an active branch.");
+  const branchId = branches.find((branch) => same(branch.name, to))?.id ?? "";
+  const actor = getEncoder();
+  return inTransaction(async (tx) => {
+    const rows = await tx.select().from(schema.member_programs).where(inArray(schema.member_programs.enrollment_id, ids));
+    if (rows.length !== ids.length) throw new Error("Some of the chosen accounts were not found. Reload and try again.");
+    const moving = rows.filter((row) => !same(text(row.branch), to));
+    if (!moving.length) throw new Error(`The chosen account${ids.length === 1 ? " is" : "s are"} already in ${to}.`);
+    // The MAS of each account (by its link, else its name); those not yet assigned to the new branch are assigned.
+    const masOf = (row: AccountRow) => employees.find((item) => item.id === row.mas_employee_id) ?? employees.find((item) => text(row.mas) && same(item.name, text(row.mas)));
+    const assigned: string[] = [];
+    for (const mas of new Map(moving.map((row) => masOf(row)).filter((item) => item !== undefined).map((item) => [item.id, item])).values()) {
+      if (mas.branchIds.some((id) => same(nameOf.get(id) ?? "", to))) continue;
+      await tx.insert(schema.employee_branches).values({ assignment_id: `EBA-${mas.id}-${Date.now()}-${assigned.length + 1}`, employee_id: mas.id, branch_id: branchId, ...encodedBy() }).onConflictDoNothing();
+      assigned.push(mas.name);
+    }
+    // The database re-links branch_id from the new name (trigger fill_links); the MAS and its link stay.
+    await tx.update(schema.member_programs).set({ branch: to }).where(inArray(schema.member_programs.enrollment_id, moving.map((row) => row.enrollment_id)));
+    const records = moving.map((row) => ({
+      transfer_id: createReadableId("MTR"), enrollment_id: row.enrollment_id, member_id: row.member_id, member_number: text(row.member_number), program_id: row.program_id,
+      branch: text(row.branch), from_mas: text(row.mas), to_mas: text(row.mas), to_employee_id: masOf(row)?.id ?? null,
+      reason: `Branch ${text(row.branch) || "none"} → ${to}: ${reason}`.slice(0, 500),
+      encoded_by_user_id: actor.userId, encoded_by_employee_id: actor.employeeId, encoded_by_name: actor.name, encoded_at: actor.encodedAt,
+    }));
+    for (let i = 0; i < records.length; i += 500) await tx.insert(schema.member_transfers).values(records.slice(i, i + 500));
+    return { to, moved: moving.length, skipped: rows.length - moving.length, from: [...new Set(moving.map((row) => text(row.branch) || "none"))], mas: [...new Set(moving.map((row) => text(row.mas)).filter(Boolean))], assigned };
+  });
+}
