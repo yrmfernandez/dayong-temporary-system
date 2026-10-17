@@ -59,6 +59,8 @@ function downloadCsv(name: string, rows: Array<Array<string | number>>) {
 const summaryHeadings = ["Working days", "Present", "Days payable", "Late days", "Late", "Undertime", "Overtime hrs", "Regular hrs", "Total hrs", "Approved leave", "Other leave", "Day off", "Not required", "Absent", "AWOL", "No record", "No time-out", "Attendance"];
 const summaryCells = (summary: SheetSummary) => [summary.scheduledDays, summary.present, summary.daysPayable, summary.lateDays, summary.lateMinutes, summary.undertimeMinutes, hours(summary.overtimeHours), hours(summary.regularHours), hours(summary.totalHours), summary.approvedLeave, summary.otherLeave, summary.dayOff, summary.notRequired, summary.absent, summary.awol, summary.noRecord, summary.missingTimeOut, rate(summary.attendanceRate)];
 
+const NO_BRANCH = "No primary branch";
+
 /**
  * Attendance sheet (owner, October 14, 2026): for Finance to check attendance before paying salaries. All employees'
  * totals for a date range, and each employee's day-by-day sheet (every day, including days with no record), with
@@ -71,6 +73,9 @@ export function AttendanceSheet() {
   const [employeeId, setEmployeeId] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [search, setSearch] = useState("");
+  // Role and branch filters (owner, October 17, 2026); branch is the employee's primary branch.
+  const [role, setRole] = useState("");
+  const [branch, setBranch] = useState("");
   const [view, setView] = useState<"sheet" | "summary">("sheet");
   const [all, setAll] = useState<AllResult | null>(null);
   const [one, setOne] = useState<OneResult | null>(null);
@@ -101,8 +106,12 @@ export function AttendanceSheet() {
 
   const shownRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return (all?.rows ?? []).filter((row) => !needle || `${row.employee.name} ${row.employee.id} ${row.employee.branch} ${row.employee.roles.join(" ")}`.toLowerCase().includes(needle));
-  }, [all, search]);
+    return (all?.rows ?? []).filter((row) => (!role || row.employee.roles.includes(role)) && (!branch || (row.employee.branch || NO_BRANCH) === branch)
+      && (!needle || `${row.employee.name} ${row.employee.id} ${row.employee.branch} ${row.employee.roles.join(" ")}`.toLowerCase().includes(needle)));
+  }, [all, search, role, branch]);
+  const roleOptions = useMemo(() => [...new Set((all?.rows ?? []).flatMap((row) => row.employee.roles))].sort((a, b) => a.localeCompare(b)), [all]);
+  const branchOptions = useMemo(() => [...new Set((all?.rows ?? []).map((row) => row.employee.branch || NO_BRANCH))].sort((a, b) => a.localeCompare(b)), [all]);
+  const filtered = Boolean(search.trim() || role || branch);
 
   const period = `${longDate(from)} – ${longDate(to)}`;
   const showingOne = Boolean(employeeId && one);
@@ -124,9 +133,11 @@ export function AttendanceSheet() {
     {showingOne && one ? <EmployeeSheet result={one} period={period} from={from} to={to} onBack={backToAll} />
       : all && <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-          <div><CardTitle>{view === "sheet" ? "Attendance sheet" : "Attendance summary"} · {period}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{all.rows.length} employees. Click an employee for the day-by-day sheet. {view === "sheet" ? "Total days" : "Days payable"} = present + approved leave, as payroll counts them.</p></div>
+          <div><CardTitle>{view === "sheet" ? "Attendance sheet" : "Attendance summary"} · {period}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{filtered ? `${shownRows.length} of ${all.rows.length}` : all.rows.length} employees{role ? ` · ${role}` : ""}{branch ? ` · ${branch}` : ""}. Click an employee for the day-by-day sheet. {view === "sheet" ? "Total days" : "Days payable"} = present + approved leave, as payroll counts them.</p></div>
           <div className="flex flex-wrap gap-2 print:hidden">
             <div className="flex rounded-md border p-0.5">{(["sheet", "summary"] as const).map((option) => <Button key={option} type="button" size="sm" variant={view === option ? "default" : "ghost"} onClick={() => setView(option)}>{option === "sheet" ? "Sheet" : "Summary"}</Button>)}</div>
+            <select aria-label="Filter by role" className="h-9 rounded-md border bg-background px-2 text-sm" value={role} onChange={(event) => setRole(event.target.value)}><option value="">All roles</option>{roleOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select>
+            <select aria-label="Filter by branch" className="h-9 rounded-md border bg-background px-2 text-sm" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">All branches</option>{branchOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select>
             <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Search employees" className="w-56 pl-8" placeholder="Search name, ID, branch" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
             <Button type="button" variant="outline" onClick={() => view === "sheet"
               ? downloadCsv(`attendance-sheet-${from}-to-${to}.csv`, [["Employee ID", "Employee Name", ...sheetDates(from, to).map((day) => `${day.weekday} ${Number(day.date.slice(8))}`), "Total Days", ...(all.showRates ? ["Rate"] : [])], ...shownRows.map((row) => [row.employee.id, row.employee.name, ...row.cells.map((cell) => cell.code), row.summary.daysPayable, ...(all.showRates ? [row.rate] : [])])])
@@ -149,7 +160,7 @@ export function AttendanceSheet() {
                 </tr>)}
                 {!shownRows.length && <tr><td colSpan={16} className="p-8 text-center text-muted-foreground">No employees match.</td></tr>}
               </tbody>
-              {shownRows.length > 1 && !search.trim() && <tfoot className="border-t-2 bg-muted/50 font-semibold"><tr><td className="sticky left-0 bg-muted p-2">All employees</td><SummaryRow summary={all.totals} /></tr></tfoot>}
+              {shownRows.length > 1 && !filtered && <tfoot className="border-t-2 bg-muted/50 font-semibold"><tr><td className="sticky left-0 bg-muted p-2">All employees</td><SummaryRow summary={all.totals} /></tr></tfoot>}
             </table>
           </div>
           </>}

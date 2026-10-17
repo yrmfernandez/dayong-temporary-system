@@ -1,5 +1,12 @@
 # Dayong System project context
 
+### Lugon Arman and Lugon Juliet: selected 2025 workbook import (2026-10-17)
+
+- Owner supplied `legacy-data/old-data/2025 - DATABASE (NS + COLL).xlsx` and requested these two people only. Source M2 - COL. rows8949/8950 contain OR13395/13396, each PHP2,760 paid October9,2025 and remitted October10,2025, NOP49–60 covering October2025–September2026, D-230, AGDAO, Capacite C.
+- Imported on production: Arman **PH-12779702** (`MEM-LEG-DD0C1DFE98`, account `ENR-LEG-AD31E73D58`, receipt `COL-LEG-434F5E56F7`); Juliet **PH-98306704** (`MEM-LEG-4DCF27D7F3`, account `ENR-LEG-73259330E0`, receipt `COL-LEG-D02C36606A`). Both U as of October17,2026. DOI October1,2021 inferred from October2025/NOP49, following the existing collections-only migration convention. No source New Sale, birthdate, address or contact exists; none invented. Financial shares remain unpriced as in the existing workbook importer.
+- Existing `migrate-legacy-members.mjs` was inspected and a staging dry run attempted, but its MONTH OF parser does not support this cross-year range. `scripts/import-lugon-2025.mjs` reuses `legacy-sources.mjs` and `account-rules.ts`, strictly checks both original source rows, resolves existing people/receipts before insertion, checks unambiguous AGDAO/MAS mappings, and saves both people/accounts/payments in one transaction. MAS linked to MD-2026-0035, branch BR-0005. Deterministic IDs match the legacy import conventions; reruns skip already imported matching receipts and stop on conflicts.
+- Production dry run rolled back successfully before `npm run prod -- node scripts/import-lugon-2025.mjs --apply`. Fresh per-receipt verification confirmed PHP2,760 each (PHP5,520 total), 12-month coverage, NOP49–60, separate member accounts and error-free account states. Record Corrections stores source references and workbook SHA256; local backups store preview/applied summaries. `scripts/inspect-lugon-import.mjs` scans the source without printing personal details.
+
 ### PH-86155816: D-270 (300) shifted coverage repaired (2026-10-17)
 
 - Owner requested repair. Source M3-COLL rows1446,3426,4698,6463,8454,10783,12516,14286,15945 show January–September2026. March NOP15 caused imported NOP15–23/September2024–May2025. July1,2023 DOI and April–September source NOP34–39 establish January–September NOP31–39; January30/February31 source NOPs are one low.

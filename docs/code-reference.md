@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 66 API handlers, 123 library files, 52 component files; 484 scanned source/configuration/public-text files in total.
+43 page routes, 66 API handlers, 123 library files, 52 component files; 486 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -463,10 +463,12 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/flag-ph96295172-receipt.mjs](../scripts/flag-ph96295172-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/generate-code-reference.mjs](../scripts/generate-code-reference.mjs) | `node:fs`, `node:path`, `typescript` | Yes; read source for semantics |
 | [scripts/hash-password.mjs](../scripts/hash-password.mjs) | `bcryptjs` | No flag detected; read source before running |
+| [scripts/import-lugon-2025.mjs](../scripts/import-lugon-2025.mjs) | `@next/env`, `postgres`, `node:crypto`, `node:fs`, `./legacy-sources.mjs`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/import-paper-attendance-20261015.mjs](../scripts/import-paper-attendance-20261015.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/inspect-clerk-report.cjs](../scripts/inspect-clerk-report.cjs) | See source | No flag detected; read source before running |
 | [scripts/inspect-entry-clearings.mjs](../scripts/inspect-entry-clearings.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-legacy-sheets.mjs](../scripts/inspect-legacy-sheets.mjs) | `@next/env`, `googleapis`, `./legacy-sources.mjs` | No flag detected; read source before running |
+| [scripts/inspect-lugon-import.mjs](../scripts/inspect-lugon-import.mjs) | `./legacy-sources.mjs`, `node:fs` | No flag detected; read source before running |
 | [scripts/inspect-or-member-20261017.mjs](../scripts/inspect-or-member-20261017.mjs) | `@next/env`, `postgres`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-program-tiers.mjs](../scripts/inspect-program-tiers.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-sheet-headers.mjs](../scripts/inspect-sheet-headers.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
