@@ -125,11 +125,11 @@ export function isWorkingDay(
  * `date` is Not Required, the date of that day. Non-working days and SYSTEM rows are skipped; on a day with two
  * records, the one not written by the system wins.
  */
-export function carriedNotRequired(records: Array<{ employeeId: string; attendanceDate: string; status: string; notes: string }>, date: string) {
+export function carriedNotRequired(records: Array<{ employeeId: string; attendanceDate: string; status: string; notes?: string }>, date: string) {
   const latest = new Map<string, { attendanceDate: string; status: string; bySystem: boolean }>();
   for (const record of records) {
     if (!record.employeeId || record.employeeId === "SYSTEM" || record.status === "Non-working Day" || record.attendanceDate >= date) continue;
-    const kept = latest.get(record.employeeId), bySystem = record.notes.startsWith("Absent by system");
+    const kept = latest.get(record.employeeId), bySystem = (record.notes ?? "").startsWith("Absent by system");
     if (!kept || record.attendanceDate > kept.attendanceDate || (record.attendanceDate === kept.attendanceDate && kept.bySystem && !bySystem)) {
       latest.set(record.employeeId, { attendanceDate: record.attendanceDate, status: record.status, bySystem });
     }

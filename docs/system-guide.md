@@ -260,32 +260,33 @@ Historical coverage starts from the first stored Collection month when one exist
 
 ### Calculated payment status and displayed balance
 
-Only posted Collections with OR date on/before the calculation date count. With collections, unpaid months are counted from the first stored covered month through the calculation month. Status follows these rules:
+Only posted Collections with OR date on/before the calculation date count. **Missed months follow the payment day (owner, October 17, 2026, restoring the old day-to-day count):** the account is **paid through** its last covered month ("Month of") on the day of the month of its last payment (the DOI day before any Collection; a day a short month lacks is its last day), and each later month is missed on that day. Status follows these rules:
 
 | Status | Meaning | Displayed balance multiplier |
 | --- | --- | --- |
 | NS | No Collection yet; new-account state. | 1 × monthly rate |
-| U | At most one month has ended unpaid (this month never counts as missed; owner, October 14, 2026). | months due now (this one included), at least 1 |
-| ADV | No due month unpaid, and latest covered month is after this month. | 0 |
-| 60D | Two months ended unpaid (a month is missed only after it ends; owner, October 14, 2026). | months due now, this one included (up to 5 ×) |
-| 90D | Three months ended unpaid. | same |
-| 120D | Four months ended unpaid. | same |
-| 150D | Five or more months ended unpaid; label caps here. | same, capped at 5 × |
+| U | At most one month missed. | months missed, at least 1 (the next month) |
+| ADV | The latest covered month is after this month. | 0 |
+| 60D | Two months missed (paid October 10 for October: from December 10). | 2 × |
+| 90D | Three months missed (from January 10 in that example). | 3 × |
+| 120D | Four months missed. | 4 × |
+| 150D | Five or more months missed; label caps here. | 5 × |
 | Paid | Positive payoff total reached by sum of qualifying Collections. | 0 |
 | Forfeited | Stored forfeiture marker or timing threshold reached, unless Paid takes precedence. | `null`, displayed as unavailable |
 
-**Displayed balance is a status-based figure, not an exact arrears ledger.** It counts the months due now, the current one included: at PHP 350, U with September missed shows PHP 700 in October, 60D from November 1 shows PHP 1,050; past five unpaid months 150D still shows five. TMD is also not the sum of Collections. Read SOA history and unpaid-month count when reconciling real payments.
+**Displayed balance is a status-based figure, not an exact arrears ledger.** It counts the months missed, at least one: at PHP 350, paid October 10 for October shows PHP 350 until December 9, 60D from December 10 shows PHP 700; past five missed months 150D still shows five. TMD is also not the sum of Collections. Read SOA history and unpaid-month count when reconciling real payments.
 
 The payoff calculation uses Collections, **excluding the New Sale amount**. Current `validatePayment` explicitly blocks Forfeited but has no separate Paid-account block; status labels are not a substitute for checking remaining balance.
 
 ### Suspension and forfeiture clock
 
-**Since October 14, 2026 (owner):** temporary suspension starts the same day as 60D: the 1st of the third month after the last covered month (the New Sale covers the DOI month). Paid in July for July and August, then nothing: U through October, 60D and suspended from November 1. Forfeiture is unchanged (below).
+**Since October 17, 2026 (owner):** temporary suspension starts the same day as 60D: two months after the paid-through date (the last covered month on the last payment's day). Paid October 10 for October: paid through October 10, one month missed November 10, 60D and suspended from December 10. **A late payment for an old month counts from that month:** paid October 10 for July means paid through July 10, so the account was suspended from September 10 and that payment needed a Waiver. (October 14–16 counted calendar months instead: suspended on the 1st of the third month after the last covered one.) Forfeiture is unchanged (below).
 
-Start with the latest actual Collection OR date, or DOI before any Collection. Advance coverage can move that anchor forward to **DOI's day in the last advance-covered month**. A nonexistent day is clamped to the month end.
+Forfeiture starts from the anchor: the latest actual Collection OR date, or DOI before any Collection. Advance coverage can move that anchor forward to **DOI's day in the last advance-covered month**. A nonexistent day is clamped to the month end.
 
 ```text
-suspension date = the 1st of the 3rd month after the last covered month (since October 14, 2026; was anchor + 2 months)
+paid through    = the last covered month, on the day of the last payment's OR date (DOI day before any Collection)
+suspension date = paid through + 2 months, same day (since October 17, 2026)
 forfeiture date = anchor + 6 calendar months + 1 day      (Pay the Balance programs: anchor + 12 calendar months + 1 day)
 ```
 
@@ -293,7 +294,7 @@ forfeiture date = anchor + 6 calendar months + 1 day      (Pay the Balance progr
 
 On/after suspension, another payment requires `If Suspended = Waiver`. Other dropdown values do not satisfy this rule. On/after forfeiture, payment is blocked. These rules apply to each enrollment independently; payment to another program does not reset the clock.
 
-**Example:** DOI September 15; September receipt covers through November. Anchor becomes November 15; suspension begins February 1 (December and January ended unpaid) and forfeiture begins May 16. The receipt remains dated September; no future Collections are invented.
+**Example:** DOI September 15; a receipt dated September 20 covers through November. Paid through November 20, so December is missed on December 20 and January on January 20: 60D and suspended from January 20. The forfeiture anchor becomes November 15 (DOI day) and forfeiture begins May 16. The receipt remains dated September; no future Collections are invented.
 
 Status is calculated on reads, updated on Collection saves, and persisted by MAM's **Sync current statuses** action. There is no background status scheduler.
 

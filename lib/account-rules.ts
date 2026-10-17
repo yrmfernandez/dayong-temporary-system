@@ -104,15 +104,23 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
     }
   }
   /*
-   * Missed months (owner, October 14, 2026): a month counts as missed only after it has ended, so the current month
-   * never does. 60D is two missed months, 90D three, 120D four, 150D five or more, and the account is temporarily
-   * suspended from the same day as 60D: the 1st of the third month after the last covered one (paid in July for July and
-   * August, then nothing: U through October, 60D and suspended from November 1). The New Sale covers the DOI month.
+   * Missed months follow the payment day (owner, October 17, 2026, restoring the old day-to-day count): the account is
+   * paid through the last covered month ("Month of") on the day of the last payment, and each later month is missed on
+   * that day. Paid October 10 for October: paid through October 10, one month missed on November 10, 60D and
+   * temporarily suspended on December 10, 90D January 10, 120D February 10, 150D March 10 or later. Paid October 10 for
+   * July: paid through July 10, so already suspended on September 10 and the payment needs a Waiver. Before any
+   * collection, the New Sale covers the DOI month on the DOI day.
    * Forfeiture counts from the anchor (the last payment date, or the DOI day of an advance's last month): 6 months, or
    * 12 for Pay the Balance programs (forfeitMonthsFor, owner, October 16, 2026).
    */
   const lastPaidMonth = lastCoveredMonth || account.doi.slice(0, 7);
-  const suspendedAt = `${monthName(monthIndex(lastPaidMonth) + 3)}-01`;
+  const payDay = Number((latest?.orDate ?? account.doi).slice(8, 10));
+  // The day the k-th month after the last covered one is missed (k = 0: the paid-through date), clamped to short months.
+  const missedOn = (k: number) => dateInMonth(monthName(monthIndex(lastPaidMonth) + k), payDay);
+  const paidThrough = missedOn(0);
+  let missedMonths = Math.max(0, monthIndex(today) - monthIndex(lastPaidMonth));
+  if (missedMonths > 0 && missedOn(missedMonths) > today) missedMonths--;
+  const suspendedAt = missedOn(2);
   const forfeitedAt = addDay(addMonths(anchor, account.forfeitMonths ?? 6));
   const paid = account.payBalanceTotal > 0 && payments.reduce((sum, payment) => sum + payment.amount, 0) >= account.payBalanceTotal;
   // A stored Forfeited status holds (for example one carried from the old system), except on Pay the Balance programs:
@@ -124,26 +132,21 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   const currentMonth = today.slice(0, 7);
   const firstMonth = months[0] ?? account.doi.slice(0, 7);
   if (months.length && monthCount(firstMonth, lastCoveredMonth) !== months.length) throw new Error(`Account ${account.id} has gaps in payment coverage. Review its history.`);
-  // Months due now (the current month included, for the amount due) and months missed (ended unpaid, for the status).
-  let monthsDue = 0, unpaidMonths = 0;
-  for (let index = monthIndex(firstMonth); index <= monthIndex(currentMonth); index++) {
-    if (coverage.has(monthName(index))) continue;
-    monthsDue++;
-    if (index < monthIndex(currentMonth)) unpaidMonths++;
-  }
+  const unpaidMonths = missedMonths;
   let status: AccountStatus = "NS";
   if (paid) status = "Paid";
   else if (forfeited) status = "Forfeited";
   else if (payments.length) {
-    status = monthsDue === 0 && lastCoveredMonth > currentMonth ? "ADV"
+    status = lastCoveredMonth > currentMonth ? "ADV"
       : unpaidMonths <= 1 ? "U" : (["60D", "90D", "120D", "150D"] as const)[Math.min(unpaidMonths, 5) - 2];
   }
   // The New Sale itself is NOP 1 (the DOI month), so an NS account's first Collection is NOP 2, the month after DOI.
   const nop = Math.max(1, ...[...coverage.values()].map((value) => value.nop));
-  // Amount due: every month due now, the current one included (at least one; capped at five, as before).
-  const dueNow = status === "NS" ? 1 : status === "ADV" || status === "Paid" ? 0 : Math.max(1, Math.min(monthsDue, 5));
+  // Amount due: the missed months (U one, 60D two, 90D three, 120D four, 150D five, as before October 12), or the next
+  // month when none is missed yet.
+  const dueNow = status === "NS" ? 1 : status === "ADV" || status === "Paid" ? 0 : Math.max(1, Math.min(unpaidMonths, 5));
   return {
-    status, temporarilySuspended, anchor, suspendedAt, forfeitedAt, nop, nextNop: nop + 1,
+    status, temporarilySuspended, anchor, paidThrough, suspendedAt, forfeitedAt, nop, nextNop: nop + 1,
     lastCoveredMonth, nextMonth: monthName(monthIndex(lastCoveredMonth || account.doi.slice(0, 7)) + 1),
     monthlyAmount: account.basePay, tmd: account.basePay * nop,
     balance: forfeited ? null : account.basePay * dueNow,
