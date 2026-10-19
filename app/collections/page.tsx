@@ -42,7 +42,7 @@ import {
 import type { Member } from "@/lib/types";
 import { calculateRemittance, tiersForBranch, type IncentiveTier } from "@/lib/remittance";
 import { forfeitedPaymentsAllowed } from "@/lib/account-rules";
-import { isValidOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
+import { isValidOrNumber, nextOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
 
 type CollectionChannel = "MAS" | "Collector" | "DTO";
 type PaymentMethodOption = { id: string; name: string; isCash: boolean; requiresReference: boolean };
@@ -730,9 +730,11 @@ export default function CollectionsPage() {
 
     const newId = `collection-${nextCollectionId}`;
 
+    // The next OR number follows the last entry's, letter kept (owner, October 19, 2026); the clerk can change it, and
+    // the entry after that follows the changed one.
     setCollections((current) => [
       ...current,
-      createEmptyCollection(newId),
+      { ...createEmptyCollection(newId), orNumber: nextOrNumber(current.at(-1)?.orNumber ?? "") },
     ]);
 
     setActiveCollectionId(newId);

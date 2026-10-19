@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {
+      "member": "PH-34342562",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-2FE5A09309"],
+      "startNop": 14,
+      "expectedDoi": "2024-07-01",
+      "note": "Owner requested correction October 19, 2026. SDS-COLL row 177 OR 4571 covers August, September, October 2025 (source NOP16-18 is shifted); row 815 numeric OR4649, stored4649 S, covers November-December2025/January2026 NOP17-19. Rows2119,2672,3660 confirm February-April/NOP20-22 on1075 S, May/NOP23 on1443 S, June-August/NOP24-26 on2807 S, agreeing with July1,2024 DOI. Restore August2025-October2026/NOP14-28, carrying later PHP420 OR03247 S datedOctober17 to September-October2026/NOP27-28. Preserve program, DOI, all six amounts/PHP3150, dates, ORlabels, branch/MAS and actual remitted cash. Recalculate financial snapshots/status without creating/deleting receipts."
+    }
+  ]
+}

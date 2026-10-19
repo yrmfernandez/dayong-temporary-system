@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-33970911",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-F68146AD58"],
+      "startNop": 26,
+      "expectedDoi": "2023-11-01",
+      "receiptMonths": {"5478M": 2},
+      "note": "Owner requested PH-33970911 correction October 19, 2026. Account is already solely D-210 HG. Original M1-COLL row791 explicitly records January, December/NOP26,27 for PHP420 OR5478 M; restore December2025-January2026/NOP26-27 instead of December only. Rows3466,4594,5898,6318,8313,9176 confirm February-July2026/NOP28-33 on subsequent PHP210 receipts. Exact collection ID COL-LEG-12CB698B97 maps 13318 B (duplicated) to row9176/July, not the other member's row9177/May. Preserve November1,2023 DOI, program, all seven amounts/PHP1680 total, dates, OR labels, branch and MAS; recalculate finance/status based on actual July last coverage."
+    }
+  ]
+}

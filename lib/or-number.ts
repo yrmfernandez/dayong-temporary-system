@@ -15,3 +15,14 @@ export function orNumberProblem(value: string) {
 }
 /** The letter in capitals, as staff write it ("12345 c" → "12345 C"). */
 export const normalizeOrNumber = (value: string) => String(value ?? "").trim().replace(/([A-Za-z])$/, (letter) => letter.toUpperCase());
+/**
+ * The OR number after this one, for the next entry of a Collections batch (owner, October 19, 2026): the number plus
+ * one, keeping its letter, the space before it and any leading zeros ("17671 N" → "17672 N", "0099C" → "0100C").
+ * "" when the value is not a complete OR number, so nothing is guessed.
+ */
+export function nextOrNumber(value: string) {
+  const match = /^(\d+)(\s?)([A-Za-z])$/.exec(String(value ?? "").trim());
+  if (!match) return "";
+  const [, digits, space, letter] = match;
+  return `${(BigInt(digits) + BigInt(1)).toString().padStart(digits.length, "0")}${space}${letter.toUpperCase()}`;
+}

@@ -1056,6 +1056,16 @@ test('collection batch is encoded atomically without creating a remittance', asy
   assert.match(result.message, /₱50.00 penalty/);
 });
 
+test('the next OR number of a Collections batch is the last one plus one, letter kept', () => {
+  const { nextOrNumber } = harness().load('lib/or-number.ts');
+  assert.equal(nextOrNumber('17671 N'), '17672 N');
+  assert.equal(nextOrNumber('13584c'), '13585C', 'the letter in capitals');
+  assert.equal(nextOrNumber('0099C'), '0100C', 'leading zeros kept');
+  assert.equal(nextOrNumber('999 B'), '1000 B');
+  assert.equal(nextOrNumber('1004'), '', 'no letter: nothing guessed');
+  assert.equal(nextOrNumber(''), '');
+});
+
 test('collection member search matches branch and MAS and returns eligible programs', async () => {
   const h = harness();
   await seed('members', [{ member_id: 'M1', member_number: 'PH-001', surname: 'Santos', first_name: 'Ana' }, { member_id: 'M2', member_number: 'PH-002', surname: 'Santos', first_name: 'Ana Two' }]);

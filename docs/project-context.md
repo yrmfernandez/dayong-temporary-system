@@ -1,5 +1,13 @@
 # Dayong System project context
 
+### Collections: next OR number filled in (2026-10-19)
+
+- **Owner:** automate the OR number: the last entry's number plus 1 with the same letter; editable, and later entries follow the edited one. Look at the batches for the pattern.
+- **Checked (production, read-only, OR numbers only):** inside batches encoded in this system, 1,039 steps between entries are +1, a few +2 (a skipped receipt), a handful descending; each batch keeps one letter and one way of writing it (`09006T`, `03234 S`, `16243B`); after a jump (24750 N → 25901 N) the next ones follow the new number.
+- **Done:** Add collection fills the new entry's OR with `nextOrNumber` (`lib/or-number.ts`) of the last entry: number + 1, letter, space and leading zeros kept; blank when the last OR has no letter. The clerk edits it as before; the next entry follows the edited one. Tested; build and all 206 tests pass.
+- **In progress:** none.
+- **To do (owner):** none; deploy with the other changes.
+
 ### New Sales: DOI time (2026-10-19)
 
 - **Owner:** add a Time field to New Sales, joined to the DOI; by default the time it is encoded, but editable, because some programs need the time of the DOI.
@@ -1033,6 +1041,14 @@ Owner confirmed MD-2026-0053's incentive for October 13 must be PHP 196.50. Corr
 
 ### October 13, 2026: TANGAL incentive correction
 Owner subsequently requested fixing TANGAL, MARY JEAN's MATINA entry encoded by ABESIA, DARYL JANE, superseding the earlier leave-as-is decision. OR 17552B (COL-20261013081610-4ARZ), D-320 NOP 29, kept its encoded Collector role and was recalculated using the now-configured 10% tier: PHP 32.00 incentive, PHP 288.00 remittance. Pending slip REM-20261013081611-ZVKX and its mapping were updated together in one audited transaction, with a Record Corrections summary. scripts/fix-tangal-incentives.mjs passed a production rollback dry run before applying; readback verified incentive, balanced slip/mapping and correction record. Staging did not have this entry.
+
+### PH-33970911: missing month on first PHP 420 receipt (October 19, 2026)
+
+Owner requested correction. Account already solely D-210 HG/DP-0005, ENR-LEG-F68146AD58. Original M1-COLL row 791 explicitly records December-January/NOP 26-27 on PHP 420 OR 5478 M, imported as December only. Rows 3466,4594,5898,6318,8313,9176 confirm February-July/NOP 28-33. Exact hash of source row 9176 matches this member's 13318 B (duplicated), distinguishing other member's repeated OR on row 9177. Saved complete backup, then existing consolidation script/config/ph33970911-two-month-start-20261019.json passed rollback dry run and applied. First receipt now December 2025-January 2026/NOP 26-27, subsequent receipts February-July 2026/NOP 28-33. Seven receipt amounts/PHP 1,680, dates, duplicate label, November 1, 2023 DOI, program and attribution preserved. Status recalculated to 60D based on July last coverage. Seven financial snapshots recalculated with no net incentive change or linked slip adjustments. Audit Log and Record Corrections retain the repair.
+
+### PH-34342562: legacy coverage and later receipt corrected (October 19, 2026)
+
+Owner requested correction of D-210 HG account ENR-LEG-2FE5A09309/DP-0005. Original SDS-COLL row 177 says OR 4571 covers August-October; its NOP 16-18 is shifted. Row 815 (numeric OR 4649, stored 4649 S) says November-December/January, NOP 17-19; rows 2119,2672,3660 confirm February-April/NOP 20-22, May/NOP 23 and June-August/NOP 24-26, all aligning to July 1, 2024 DOI. Restored August 2025-August 2026/NOP 14-26 on legacy receipts and carried October 17 receipt 03247 S/PHP 420 back to September-October 2026/NOP 27-28. Saved backup; existing consolidation script/config/ph34342562-source-coverage-20261019.json passed rollback dry run then applied. Preserved six receipts/PHP 3,150, dates, labels, DOI, program and attribution. Status U; six financial snapshots recalculated without net incentive change or linked slip adjustments. Verified all receipts, complete history and total. Pending slip REM-20261019054636-TNC8 remained Pending Approval, expected/actual PHP 1,180, difference zero, and all three mapping amounts unchanged (including this member's PHP 420). Audit Log and Record Corrections retain the repair.
 
 ### PH-11741830 merged into PH-71670920 (October 19, 2026)
 
