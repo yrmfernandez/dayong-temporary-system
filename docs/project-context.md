@@ -1,5 +1,19 @@
 # Dayong System project context
 
+### Danilo Quiñones Sr.: nine receipts separated from JR (2026-10-19)
+
+- **Done in production:** created **PH-26172119**, Danilo Quiñones Sr., D-230 (`DP-0063`), MINTAL. The nine requested receipts (10576 C through 24509 C) already existed under JR, **PH-89863784**. M3-COLL source rows explicitly distinguish SR from JR. Moved SR's existing receipts to his new account; JR retains his own nine receipts. Each now covers January–September 2026, NOP52–60, PHP2,070, DOI October1,2021, status Updated. No receipts duplicated and no unverified personal details copied to SR.
+- **Evidence:** pre-change backup `backups/member-accounts-PH-89863784-1792390784001.json`; scoped config `config/ph89863784-quinones-sr-split-20261019.json`; dry run followed by apply and independent production readback (`scripts/check-quinones-split-20261019.mjs --verify`). All 18 collection IDs, OR labels, dates and amounts match the backup, all NOPs match the source, combined total PHP4,140. Duplicate OR labels preserved. Financial snapshots recalculated for 18 receipts; existing incentive change zero; no linked remittances changed. Audit Log and Record Corrections recorded the split.
+- **Script reuse:** `split-member.mjs` now accepts `--config=`, optional new-member suffix, snapshot guards and optional shared financial repricing; default remains rollback. Source inspector: `scripts/inspect-nine-receipt-owner-20261019.mjs`.
+
+### New Sales: next application number and date; Collections: OR date (2026-10-19)
+
+- **Owner:** apply the same to New Sales application numbers, and to the OR date and the application date.
+- **Checked (production, read-only, numbers and dates only):** application numbers in one save mostly go up by one in the digits after the dash (`062026-01616`, `-01617`, ...; `2026SP-0790`, `-0791`), the series as written (some `2026sp`); OR dates in Collections batches equal the previous entry's 1,144 times of 1,191.
+- **Done:** New Sales → Add another sale fills the Application No. (`nextApplicationNumber`, `lib/entry-controls.ts`: digits after the dash + 1, series and leading zeros kept; blank when there is no dash) and the Application Date (same as the last sale). Collections → Add collection also fills the OR date (same as the last entry). All editable; the next one follows the edited value. Tested; build and all 207 tests pass.
+- **In progress:** none.
+- **To do (owner):** none; deploy.
+
 ### Collections: next OR number filled in (2026-10-19)
 
 - **Owner:** automate the OR number: the last entry's number plus 1 with the same letter; editable, and later entries follow the edited one. Look at the batches for the pattern.

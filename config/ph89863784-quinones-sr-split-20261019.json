@@ -1,0 +1,34 @@
+{
+  "splits": [{
+    "member": "PH-89863784",
+    "expectedMemberId": "MEM-LEG-4A71AA4418",
+    "program": "DP-0063",
+    "expectedDoi": "2021-10-01",
+    "keepFirstName": "DANILO",
+    "newMember": { "surname": "QUI\u00d1ONES", "firstName": "DANILO", "nameExtension": "Sr.", "doi": "2021-10-01" },
+    "reprice": true,
+    "keep": [
+      { "or": "10575 C", "collectionId": "COL-LEG-6EDE6C743C", "amount": 230, "nop": 52 },
+      { "or": "11623 C", "collectionId": "COL-LEG-67A106FADD", "amount": 230, "nop": 53 },
+      { "or": "14346 C", "collectionId": "COL-LEG-BC96A93E04", "amount": 230, "nop": 54 },
+      { "or": "4401 B", "collectionId": "COL-LEG-B53FA101A3", "amount": 230, "nop": 55 },
+      { "or": "15528 C", "collectionId": "COL-LEG-9F7B04CAA0", "amount": 230, "nop": 56 },
+      { "or": "17559 C", "collectionId": "COL-LEG-F835A3F6D1", "amount": 230, "nop": 57 },
+      { "or": "20217 C", "collectionId": "COL-LEG-270D143414", "amount": 230, "nop": 58 },
+      { "or": "22653 C (duplicated)", "collectionId": "COL-LEG-1600956AF8", "amount": 230, "nop": 59 },
+      { "or": "24510 C", "collectionId": "COL-LEG-1C84501CDB", "amount": 230, "nop": 60 }
+    ],
+    "move": [
+      { "or": "10576 C", "collectionId": "COL-LEG-1B33CDD138", "amount": 230, "nop": 52 },
+      { "or": "11622 C", "collectionId": "COL-LEG-2917405C87", "amount": 230, "nop": 53 },
+      { "or": "14345 C", "collectionId": "COL-LEG-94C90C82B0", "amount": 230, "nop": 54 },
+      { "or": "4402 B", "collectionId": "COL-LEG-778DB19305", "amount": 230, "nop": 55 },
+      { "or": "15527 C", "collectionId": "COL-LEG-87DFA922F6", "amount": 230, "nop": 56 },
+      { "or": "17558 C", "collectionId": "COL-LEG-4F8A1C96C1", "amount": 230, "nop": 57 },
+      { "or": "20216 C", "collectionId": "COL-LEG-984A1E4D43", "amount": 230, "nop": 58 },
+      { "or": "22654 C (duplicated)", "collectionId": "COL-LEG-E6F219C568", "amount": 230, "nop": 59 },
+      { "or": "24509 C", "collectionId": "COL-LEG-6818A43622", "amount": 230, "nop": 60 }
+    ],
+    "reason": "Owner requested nine SR receipts added to the database. M3-COLL source rows 794,2554,4788,6482,8390,10502,12198,14023,16086 explicitly name Danilo Quinones Sr.; their paired rows name Jr. Import merged both people into PH-89863784. Separate SR from JR, retain existing receipt IDs/dates/amounts and duplicate OR labels, restore each source history January-September 2026 NOP52-60 under D-230 in MINTAL. No duplicate receipts inserted."
+  }]
+}

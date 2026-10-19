@@ -53,3 +53,16 @@ export const INCOMPLETE_APPLICATION_MESSAGE = "enter the whole Application Numbe
 /** The DOI time of a New Sale (owner, October 19, 2026): HH:MM, 24-hour. */
 export const isDoiTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 export const DOI_TIME_MESSAGE = "Enter the DOI time as hours and minutes (for example 14:30).";
+
+/**
+ * The application number after this one, for the next sale of a New Sales batch (owner, October 19, 2026): the digits
+ * after the dash plus one, the series and leading zeros kept ("062026-01616" → "062026-01617", "2026SP-0790" →
+ * "2026SP-0791"). "" when the value is not a complete application number, so nothing is guessed.
+ */
+export function nextApplicationNumber(value: string) {
+  const text = String(value ?? "").trim();
+  const match = /^(.*-\s*)(\d+)$/.exec(text);
+  if (!match || isIncompleteApplicationNumber(text)) return "";
+  const [, series, digits] = match;
+  return `${series}${(BigInt(digits) + BigInt(1)).toString().padStart(digits.length, "0")}`;
+}

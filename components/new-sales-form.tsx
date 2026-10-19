@@ -29,7 +29,7 @@ import { todayInManila } from "@/lib/account-rules";
 import type { ProgramStanding } from "@/lib/account-data";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
-import { BACKDATE_REASON_MIN, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, needsBackdateReason } from "@/lib/entry-controls";
+import { BACKDATE_REASON_MIN, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { useFormDraft } from "@/lib/use-form-draft";
@@ -733,10 +733,17 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
    * =========================================================
    */
   const addSale = () => {
-    const newSale = emptyNewSale(
-      branch,
-      mas,
-    );
+    // The next application number and the same application date as the last sale (owner, October 19, 2026: forms are
+    // encoded in order, mostly of one day); both can be changed, and the sale after follows the changed ones.
+    const last = sales.at(-1);
+    const newSale = {
+      ...emptyNewSale(
+        branch,
+        mas,
+      ),
+      applicationNumber: nextApplicationNumber(last?.applicationNumber ?? ""),
+      orDate: last?.orDate ?? "",
+    };
 
     setSales((current) => [
       ...current,

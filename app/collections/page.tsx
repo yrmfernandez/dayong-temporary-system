@@ -734,7 +734,8 @@ export default function CollectionsPage() {
     // the entry after that follows the changed one.
     setCollections((current) => [
       ...current,
-      { ...createEmptyCollection(newId), orNumber: nextOrNumber(current.at(-1)?.orNumber ?? "") },
+      // The OR date too: the same as the last entry's (owner, October 19, 2026; 1,144 of 1,191 entries in a batch share it).
+      { ...createEmptyCollection(newId), orNumber: nextOrNumber(current.at(-1)?.orNumber ?? ""), orDate: current.at(-1)?.orDate ?? "" },
     ]);
 
     setActiveCollectionId(newId);

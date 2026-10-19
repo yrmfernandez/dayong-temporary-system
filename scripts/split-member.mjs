@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 import nextEnv from "@next/env";
 import postgres from "postgres";
 import { accountState, monthIndex, monthName, todayInManila } from "../lib/account-rules.ts";
+import { repriceEntries } from "../lib/entry-finance.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
 const apply = process.argv.includes("--apply");
@@ -26,7 +27,8 @@ const url = process.env.DIRECT_DATABASE_URL;
 if (!url) throw new Error("Missing DIRECT_DATABASE_URL.");
 const project = /postgres\.([a-z0-9]+)[:@]/.exec(url)?.[1] ?? "unknown";
 const sql = postgres(url, { max: 1, onnotice: () => {} });
-const { splits = [] } = JSON.parse(fs.readFileSync("config/member-splits.json", "utf8"));
+const config = process.argv.find(arg => arg.startsWith('--config='))?.slice('--config='.length) || 'config/member-splits.json';
+const { splits = [] } = JSON.parse(fs.readFileSync(config, "utf8"));
 const today = todayInManila();
 const now = new Date().toISOString();
 const text = (value) => String(value ?? "").trim();
@@ -50,10 +52,12 @@ try {
   await sql.begin(async (tx) => {
     await tx`select set_config('app.user_name', 'Member split', true)`;
     for (const split of splits) {
-      const [member] = await tx`select * from members where member_number = ${split.member}`;
+      const [member] = await tx`select * from members where member_number = ${split.member} for update`;
       if (!member) throw new Error(`${split.member}: member not found.`);
-      const [account] = await tx`select * from member_programs where member_id = ${member.member_id} and program_id = ${split.program}`;
+      if (split.expectedMemberId && member.member_id !== split.expectedMemberId) throw new Error('Member differs from reviewed snapshot.');
+      const [account] = await tx`select * from member_programs where member_id = ${member.member_id} and program_id = ${split.program} for update`;
       if (!account) throw new Error(`${split.member}: no ${split.program} account.`);
+      if (split.expectedDoi && text(account.doi.toISOString?.() ?? account.doi).slice(0, 10) !== split.expectedDoi) throw new Error('Enrollment date differs from reviewed snapshot.');
       const newMemberId = hashId("MEM", "SPLIT", member.member_id, split.newMember.firstName);
       const [already] = await tx`select member_number from members where member_id = ${newMemberId}`;
       if (already) { console.log(`${split.member}: already split (${already.member_number}).`); continue; }
@@ -65,21 +69,24 @@ try {
       const newEnrollment = hashId("ENR", newMemberId, split.program);
 
       await tx`update members set first_name = ${split.keepFirstName} where member_id = ${member.member_id}`;
-      await tx`insert into members ${tx({ member_id: newMemberId, member_number: newNumber, surname: split.newMember.surname, first_name: split.newMember.firstName, claimant_same_address: false, status: member.status, encoded_by_name: "Member split", encoded_at: now })}`;
+      await tx`insert into members ${tx({ member_id: newMemberId, member_number: newNumber, surname: split.newMember.surname, first_name: split.newMember.firstName, name_extension: split.newMember.nameExtension ?? null, claimant_same_address: false, status: member.status, encoded_by_name: "Member split", encoded_at: now })}`;
       await tx`insert into member_programs ${tx({ enrollment_id: newEnrollment, member_id: newMemberId, member_number: newNumber, program_id: account.program_id, doi: split.newMember.doi, branch: account.branch, mas: account.mas,
         remittance_method: account.remittance_method, registration_fee: false, status: account.status, date_created: now, encoded_by_name: "Member split", encoded_at: now, branch_id: account.branch_id, mas_employee_id: account.mas_employee_id })}`;
       console.log(`${split.member} ${member.surname}, ${member.first_name} → first name ${split.keepFirstName}`);
       console.log(`New member ${newNumber} ${split.newMember.surname}, ${split.newMember.firstName} (${newMemberId}), account ${newEnrollment}, DOI ${split.newMember.doi}`);
 
-      const receipts = await tx`select * from collections where enrollment_id = ${account.enrollment_id}`;
+      const receipts = await tx`select * from collections where enrollment_id = ${account.enrollment_id} for update`;
       const byOr = new Map(receipts.map((row) => [key(row.or_number), row]));
       const listed = [...split.keep, ...split.move].map((item) => key(item.or));
+      if (byOr.size !== receipts.length || new Set(listed).size !== listed.length) throw new Error('Duplicate receipt key in account or split config.');
       const unlisted = receipts.filter((row) => !listed.includes(key(row.or_number)));
       if (unlisted.length) throw new Error(`${split.member}: receipts on the account not in the config: ${unlisted.map((row) => row.or_number).join(", ")}.`);
       const template = receipts[0];
       const place = async (item, enrollment, memberId, memberNumber, doi, label) => {
         const row = byOr.get(key(item.or));
         if (!row) throw new Error(`OR ${item.or}: not on the account.`);
+        if (item.collectionId && row.collection_id !== item.collectionId) throw new Error(`OR ${item.or}: collection ID changed.`);
+        if (item.amount != null && Number(row.amount_collected) !== item.amount) throw new Error(`OR ${item.or}: amount changed.`);
         const month = monthOf(doi, item.nop);
         await tx`update collections set enrollment_id = ${enrollment}, member_id = ${memberId}, member_number = ${memberNumber}, nop_from = ${item.nop}, nop_to = ${item.nop}, month_from = ${month}, month_to = ${month} where collection_id = ${row.collection_id}`;
         console.log(`   ${label} OR ${row.or_number} ${row.or_date.toISOString?.().slice(0, 10) ?? row.or_date} ₱${Number(row.amount_collected)} · NOP ${row.nop_from} → ${item.nop} (${month})`);
@@ -99,11 +106,13 @@ try {
       console.log(` ${split.newMember.firstName}:`);
       for (const item of split.move) await place(item, newEnrollment, newMemberId, newNumber, split.newMember.doi, "move");
       for (const item of split.addNew ?? []) await add(item, newEnrollment, newMemberId, newNumber, split.newMember.doi, "add ");
+      const finance = split.reprice ? await repriceEntries((query, parameters) => tx.unsafe(query, parameters), { collectionIds: receipts.map(row => row.collection_id) }) : null;
+      if (finance) console.log(JSON.stringify({ financialSnapshots: finance.changes.length, incentiveChange: finance.incentiveChange, linkedRemittances: finance.slips.length }));
       const keptStatus = await statusOf(tx, account.enrollment_id), newStatus = await statusOf(tx, newEnrollment);
       console.log(` status: ${split.member} ${account.account_status || "—"} → ${keptStatus}; ${newNumber} → ${newStatus}\n`);
       await tx`insert into record_corrections ${tx({ correction_id: `COR-SPLIT-${member.member_id}-${Date.now().toString(36).toUpperCase()}`, module: "Member split", record_id: member.member_id, reason: split.reason,
         before_json: { member: member.member_id, memberNumber: member.member_number, firstName: member.first_name, account: account.enrollment_id, status: account.account_status },
-        after_json: { firstName: split.keepFirstName, newMember: newMemberId, newMemberNumber: newNumber, newAccount: newEnrollment, moved: split.move.map((item) => item.or), added: [...(split.addKeep ?? []), ...(split.addNew ?? [])].map((item) => item.or), status: keptStatus, newStatus },
+        after_json: { firstName: split.keepFirstName, newMember: newMemberId, newMemberNumber: newNumber, newNameExtension: split.newMember.nameExtension ?? null, newAccount: newEnrollment, moved: split.move.map((item) => item.or), added: [...(split.addKeep ?? []), ...(split.addNew ?? [])].map((item) => item.or), status: keptStatus, newStatus, finance },
         corrected_at: now, encoded_by_name: "Member split", encoded_at: now })}`;
     }
     if (!apply) throw new Rollback();

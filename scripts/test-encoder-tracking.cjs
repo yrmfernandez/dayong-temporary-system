@@ -1066,6 +1066,17 @@ test('the next OR number of a Collections batch is the last one plus one, letter
   assert.equal(nextOrNumber(''), '');
 });
 
+test('the next application number of a New Sales batch is the last one plus one, series kept', () => {
+  const { nextApplicationNumber } = harness().load('lib/entry-controls.ts');
+  assert.equal(nextApplicationNumber('062026-01616'), '062026-01617');
+  assert.equal(nextApplicationNumber('2026SP-0790'), '2026SP-0791');
+  assert.equal(nextApplicationNumber('2026sp-0999'), '2026sp-1000', 'the series as written');
+  assert.equal(nextApplicationNumber('2026T-00405 '), '2026T-00406');
+  assert.equal(nextApplicationNumber('016'), '', 'no dash: nothing guessed');
+  assert.equal(nextApplicationNumber('2026SP-'), '');
+  assert.equal(nextApplicationNumber(''), '');
+});
+
 test('collection member search matches branch and MAS and returns eligible programs', async () => {
   const h = harness();
   await seed('members', [{ member_id: 'M1', member_number: 'PH-001', surname: 'Santos', first_name: 'Ana' }, { member_id: 'M2', member_number: 'PH-002', surname: 'Santos', first_name: 'Ana Two' }]);
