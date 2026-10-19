@@ -3132,6 +3132,30 @@ test('a Date Remitted moved earlier with a reason counts the cash as received th
   assert.equal((await dateRemittedReasons([])).size, 0);
 });
 
+test('Remittances explains a discrepancy: balanced when made, then a correction raised one entry share', async () => {
+  const h = harness();
+  await seedAccount({ doi: '2026-09-01' });
+  await seed('remittances', [{ remittance_id: 'REM-D', branch: 'BR-1', status: 'Pending Approval', remittance_type: 'Collections', created_at: '2026-10-17T03:20:28Z', date_remitted: '2026-10-17', time_remitted: '11:00', gross_collection: 404.8, total_remittance: 404.8, difference: 0, fidelity_amount: 0 }]);
+  await seed('collections', [{ collection_id: 'C-D', collection_batch_id: 'CBT-D', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', or_number: '08878T', amount_collected: 460, status: 'Posted', remittance_status: 'Pending Remittance Approval', linked_remittance_id: 'REM-D', remittance_amount: 404.8, encoded_by_employee_id: 'DPE-0007' }]);
+  await seed('remittance_collections', [{ remittance_collection_id: 'RCL-D', remittance_id: 'REM-D', collection_id: 'C-D', amount: 404.8 }]);
+  // A correction moves the entry to another program; its share and the slip follow (as followSlip does).
+  await query(`select set_config('app.user_name', 'it clerk', false)`);
+  await query(`update collections set remittance_amount = 414 where collection_id = 'C-D'`);
+  await query(`update remittance_collections set amount = 414 where remittance_collection_id = 'RCL-D'`);
+  await query(`update remittances set gross_collection = 414, difference = -9.2 where remittance_id = 'REM-D'`);
+  await query(`select set_config('app.user_name', '', false)`);
+  await seed('record_corrections', [{ correction_id: 'COR-D', module: 'Edit Collection', record_id: 'C-D', reason: 'D-460 to D-460 (59B)', corrected_at: new Date().toISOString() }]);
+  const { getDiscrepancyBreakdown } = h.load('lib/remittance-discrepancy.ts');
+  const result = await getDiscrepancyBreakdown('REM-D');
+  assert.deepEqual([result.expected, result.actual, result.difference, result.expectedAtStart, result.actualAtStart], [414, 404.8, -9.2, 404.8, 404.8]);
+  assert.match(result.causes[0], /balanced when it was made/);
+  assert.match(result.causes[1], /expected amount went up by ₱9\.20 .*entry C-D \(OR 08878T\) was corrected: "D-460 to D-460 \(59B\)", by it clerk/);
+  assert.deepEqual(result.changes.map((change) => [change.what, change.from, change.to, change.entryId]), [['Entry share', 404.8, 414, 'C-D'], ['Expected', 404.8, 414, 'C-D']]);
+  assert.deepEqual(result.entries.map((entry) => [entry.id, entry.shareOnSlip, entry.shareNow]), [['C-D', 414, 414]]);
+  await assert.rejects(getDiscrepancyBreakdown('REM-D', 'DPE-0099'), /only view remittances you encoded/);
+  await assert.rejects(getDiscrepancyBreakdown('REM-NONE'), /not found/);
+});
+
 test('the clearing receipt time survives Encoded status and late encoding for either kind', async () => {
   const h = harness();
   await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);

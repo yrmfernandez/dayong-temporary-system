@@ -10,12 +10,14 @@ type MetricTileProps = {
   icon?: LucideIcon;
   tone?: Tone;
   href?: string;
+  /** Makes the tile a button (for example to open a filtered list on the same page). */
+  onClick?: () => void;
 };
 
 /** KPI tile: the number reads first, a tinted icon and top accent say which family it belongs to. */
-export function MetricTile({ label, value, detail, icon: Icon, tone = "brand", href }: MetricTileProps) {
+export function MetricTile({ label, value, detail, icon: Icon, tone = "brand", href, onClick }: MetricTileProps) {
   const body = (
-    <div data-slot="card" className={`tone-${tone} group relative h-full overflow-hidden rounded-[1.25rem] p-4 transition-transform ${href ? "hover:-translate-y-0.5" : ""}`}>
+    <div data-slot="card" className={`tone-${tone} group relative h-full overflow-hidden rounded-[1.25rem] p-4 transition-transform ${href || onClick ? "hover:-translate-y-0.5" : ""}`}>
       <span className="tone-bar absolute inset-x-0 top-0 h-1 opacity-80" aria-hidden />
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
@@ -25,5 +27,6 @@ export function MetricTile({ label, value, detail, icon: Icon, tone = "brand", h
       {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
     </div>
   );
+  if (onClick) return <button type="button" onClick={onClick} className="block w-full rounded-[1.25rem] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</button>;
   return href ? <Link href={href} className="block rounded-[1.25rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</Link> : body;
 }

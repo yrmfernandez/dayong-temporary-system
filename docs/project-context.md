@@ -1,5 +1,12 @@
 # Dayong System project context
 
+### Remittances: see what causes a discrepancy (2026-10-19)
+
+- **Owner:** there are discrepancies in Remittance but they cannot be clicked to see the cause.
+- **Done:** the Discrepancies tile opens Pending Approval filtered to slips with a difference; **Why the difference?** on each (and on the Difference in Remittance Records) explains it: what the slip expected and recorded when made, every later change to its expected, actual or Fidelity amount and to its entries' shares (Audit Log), with who, when, the entry and OR and the correction's reason (Record Corrections), and each entry's share on the slip against now. Read-only (`lib/remittance-discrepancy.ts`, `GET /api/remittances/discrepancy`, `components/remittance-discrepancy.tsx`). Tested with the PHP9.20 pattern (balanced slip, then a program correction raising one share); build and all 208 tests pass.
+- **In progress:** none.
+- **To do (owner):** deploy, then open the Discrepancies tile; slips whose amounts were changed by scripts show "system / script" as who.
+
 ### Remittances: why the Date Remitted was changed (2026-10-19)
 
 - **Owner:** in Remittance, show the reason why the Date Remitted was changed.

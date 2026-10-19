@@ -6,6 +6,7 @@ import { AlertTriangle, BarChart3, CheckCircle2, ChevronDown, ChevronUp, Clock3,
 import { AdminDeletePanel } from "@/components/admin-delete";
 import { MetricTile } from "@/components/metric-tile";
 import { ReceiptPhotoView } from "@/components/receipt-photo";
+import { RemittanceDiscrepancy } from "@/components/remittance-discrepancy";
 import { RemittanceEntries } from "@/components/remittance-entries";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -87,9 +88,14 @@ export default function RemittancesPage() {
   // Search narrows every list: slip or entry ID, accountable person, branch, or Entry Clerk.
   const term = search.trim().toLowerCase();
   const matches = (...values: string[]) => !term || values.some((value) => value.toLowerCase().includes(term));
-  const pending = useMemo(() => (data?.remittances ?? []).filter((item) => ["Pending Approval", "Discrepancy"].includes(item.status) && matches(item.id, item.accountableName, item.branch, ...item.clerkNames)),
+  // The Discrepancies tile opens Pending Approval showing only the slips that are short or over (owner, October 19, 2026).
+  const [onlyDifferences, setOnlyDifferences] = useState(false);
+  const pending = useMemo(() => (data?.remittances ?? []).filter((item) => ["Pending Approval", "Discrepancy"].includes(item.status) && (!onlyDifferences || item.difference !== 0) && matches(item.id, item.accountableName, item.branch, ...item.clerkNames)),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- matches depends only on term
-    [data, term]);
+    [data, term, onlyDifferences]);
+  // The slip whose difference is explained (Why the difference?).
+  const [explainingId, setExplainingId] = useState("");
+  const toggleExplain = (id: string) => setExplainingId((current) => current === id ? "" : id);
   const records = (data?.remittances ?? []).filter((item) => ["Approved", "Rejected"].includes(item.status) && matches(item.id, item.accountableName, item.branch, ...item.clerkNames));
   const waitingForPhotos = (data?.outstanding ?? []).filter((item) => item.remittanceStatus === "Outstanding" && !item.photoId && !item.cash && matches(item.id, item.accountableName, item.branch, item.encodedByName));
   const returned = (data?.outstanding ?? []).filter((item) => item.remittanceStatus === "Returned" && matches(item.id, item.accountableName, item.branch, item.encodedByName));
@@ -152,7 +158,7 @@ export default function RemittancesPage() {
         <MetricTile tone="warning" icon={Wallet} label="Not yet approved" value={money(data?.summary.outstandingAmount ?? 0)} detail={`${data?.summary.outstandingCount ?? 0} entries`} />
         <MetricTile tone="info" icon={Clock3} label="Pending Approval" value={money(data?.summary.pendingAmount ?? 0)} detail={`${data?.summary.pendingCount ?? 0} remittances`} />
         <MetricTile tone="success" icon={CheckCircle2} label="Approved Today" value={money(data?.summary.approvedTodayAmount ?? 0)} detail={`${data?.summary.approvedTodayCount ?? 0} remittances`} />
-        <MetricTile tone={(data?.summary.discrepancyAmount ?? 0) ? "danger" : "teal"} icon={AlertTriangle} label="Discrepancies" value={money(data?.summary.discrepancyAmount ?? 0)} detail="Absolute shortage / overage" />
+        <MetricTile tone={(data?.summary.discrepancyAmount ?? 0) ? "danger" : "teal"} icon={AlertTriangle} label="Discrepancies" value={money(data?.summary.discrepancyAmount ?? 0)} detail={(data?.summary.discrepancyAmount ?? 0) ? "Absolute shortage / overage · click to see why" : "Absolute shortage / overage"} onClick={(data?.summary.discrepancyAmount ?? 0) ? () => { setView("approval"); setOnlyDifferences(true); } : undefined} />
       </div>
 
       <div className="overflow-x-auto border-b"><div className="flex min-w-max gap-1" role="tablist">{views.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" role="tab" aria-selected={view === item.id} onClick={() => setView(item.id)} className={`inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium ${view === item.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}><Icon className="size-4" />{item.label}{item.id === "approval" && pending.length ? <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{pending.length}</span> : null}</button>; })}</div></div>
@@ -180,6 +186,7 @@ export default function RemittancesPage() {
             )}
           </CardHeader>
           <CardContent className="space-y-3">
+            {onlyDifferences && <p className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-200">Showing only slips that are short or over. Open <strong>Why the difference?</strong> on each.<Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={() => setOnlyDifferences(false)}>Show all</Button></p>}
             {canApprove && pending.length > 0 && (
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selected.length === pending.length} onChange={(event) => setSelected(event.target.checked ? pending.map((item) => item.id) : [])} />Select all shown</label>
             )}
@@ -193,7 +200,7 @@ export default function RemittancesPage() {
                         <button type="button" className="font-mono text-sm font-semibold hover:underline" aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}>{item.id}</button>
                         <p className="text-sm">{item.accountableName} · {item.branch} · {item.type === "Fidelity" ? "Fidelity only (handed in after encoding)" : `${item.collectionCount} ${item.type === "New Sales" ? "New Sale(s)" : "Collection(s)"}`}</p>
                         <p className="text-xs text-muted-foreground">Encoded by {item.clerkNames.join(", ") || "—"} · received {item.remittanceDate}{item.remittanceTime ? ` ${item.remittanceTime}` : ""}</p>
-                        <p className="text-xs text-muted-foreground">Expected {money(item.expectedAmount)} · Actual {money(item.actualAmount)} · Difference {money(item.difference)}</p>
+                        <p className="text-xs text-muted-foreground">Expected {money(item.expectedAmount)} · Actual {money(item.actualAmount)} · {item.difference !== 0 ? <button type="button" className="font-semibold text-red-700 underline-offset-2 hover:underline dark:text-red-400" aria-expanded={explainingId === item.id} onClick={() => toggleExplain(item.id)}>Difference {money(item.difference)}: why?</button> : <>Difference {money(item.difference)}</>}</p>
                       </div>
                       {canApprove && <div className="flex gap-2"><Button type="button" size="sm" disabled={saving || item.missingPhotos.length > 0} title={item.missingPhotos.length ? "Every item needs a receipt photo" : undefined} onClick={() => void decide([item.id], "approve")}>Approve</Button><Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void decide([item.id], "reject")}>Reject</Button>{canDelete && <Button type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => setDeletingId(deletingId === item.id ? "" : item.id)}>Delete</Button>}</div>}
                     </div>
@@ -205,8 +212,10 @@ export default function RemittancesPage() {
                       <StatusBadge status={item.status} /><StatusBadge status={`${item.type} slip`} tone={item.type === "New Sales" ? "info" : item.type === "Fidelity" ? "success" : "neutral"} />
                       {item.missingPhotos.length ? <span className="font-semibold text-amber-800">Receipt photos missing for {item.missingPhotos.join(", ")}.</span> : null}
                       {item.photoIds.map((photoId, index) => <ReceiptPhotoView key={photoId} photoId={photoId} label={`Receipt ${index + 1}`} />)}
+                      {item.difference !== 0 && <Button type="button" size="sm" variant={explainingId === item.id ? "default" : "outline"} aria-expanded={explainingId === item.id} onClick={() => toggleExplain(item.id)}><AlertTriangle className="size-3.5" />Why the difference?</Button>}
                       {item.type !== "Fidelity" && <Button type="button" size="sm" variant={viewingId === item.id ? "default" : "outline"} aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}><List className="size-3.5" />{viewingId === item.id ? "Hide entries" : `View entries (${item.collectionIds.length})`}{viewingId === item.id ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}</Button>}
                     </div>
+                    {explainingId === item.id && <div className="pt-2"><RemittanceDiscrepancy remittanceId={item.id} /></div>}
                     {viewingId === item.id && <div className="pt-2"><RemittanceEntries remittanceId={item.id} /></div>}
                     {deletePanel(item.id)}
                   </div>
@@ -226,8 +235,9 @@ export default function RemittancesPage() {
           </CardContent></Card>
           <Card><CardHeader><CardTitle>Remittance Records</CardTitle><p className="text-sm text-muted-foreground">Approved and rejected remittances.</p></CardHeader><CardContent>
             {deletingId && records.some((item) => item.id === deletingId) && <div className="mb-3">{deletePanel(deletingId)}</div>}
+            {explainingId && records.some((item) => item.id === explainingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Why {explainingId} is {(records.find((item) => item.id === explainingId)?.difference ?? 0) < 0 ? "short" : "over"}</p><Button type="button" size="sm" variant="ghost" onClick={() => setExplainingId("")}>Close</Button></div><RemittanceDiscrepancy remittanceId={explainingId} /></div>}
             {viewingId && records.some((item) => item.id === viewingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Entries on {viewingId}</p><Button type="button" size="sm" variant="ghost" onClick={() => setViewingId("")}>Close</Button></div><RemittanceEntries remittanceId={viewingId} /></div>}
-            <DataTable headers={["Remittance", "Slip", "Received", "Accountable person", "Encoded by", "Expected", "Actual", "Difference", "Status", "Remarks / Reason", "Decision by", ...(canDelete ? [""] : [])]} rows={records.map((item) => [<button key="id" type="button" className="font-mono text-left hover:underline" title="View the entries on this remittance" aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}>{item.id}</button>, item.type, item.remittanceTime ? `${item.remittanceDate} ${item.remittanceTime}` : item.remittanceDate, item.accountableName, item.clerkNames.join(", ") || "—", money(item.expectedAmount), money(item.actualAmount), money(item.difference), <StatusBadge key="status" status={item.status} />, <span key="reason">{item.decisionReason || item.remarks || "—"}{Boolean(item.dateRemittedReasons?.length) && <span className="block text-xs text-amber-800">Date Remitted changed: {item.dateRemittedReasons!.join("; ")}</span>}</span>, item.decisionByName,
+            <DataTable headers={["Remittance", "Slip", "Received", "Accountable person", "Encoded by", "Expected", "Actual", "Difference", "Status", "Remarks / Reason", "Decision by", ...(canDelete ? [""] : [])]} rows={records.map((item) => [<button key="id" type="button" className="font-mono text-left hover:underline" title="View the entries on this remittance" aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}>{item.id}</button>, item.type, item.remittanceTime ? `${item.remittanceDate} ${item.remittanceTime}` : item.remittanceDate, item.accountableName, item.clerkNames.join(", ") || "—", money(item.expectedAmount), money(item.actualAmount), item.difference !== 0 ? <button key="difference" type="button" className="font-semibold text-red-700 underline-offset-2 hover:underline dark:text-red-400" title="See why" aria-expanded={explainingId === item.id} onClick={() => toggleExplain(item.id)}>{money(item.difference)}</button> : money(item.difference), <StatusBadge key="status" status={item.status} />, <span key="reason">{item.decisionReason || item.remarks || "—"}{Boolean(item.dateRemittedReasons?.length) && <span className="block text-xs text-amber-800">Date Remitted changed: {item.dateRemittedReasons!.join("; ")}</span>}</span>, item.decisionByName,
               ...(canDelete ? [<Button key="delete" type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => setDeletingId(deletingId === item.id ? "" : item.id)}>Delete</Button>] : [])])} empty="No approved or rejected remittances." />
           </CardContent></Card>
         </div>
