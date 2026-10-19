@@ -5,7 +5,7 @@ import { accountState, COLLECTION_CHANNELS, forfeitMonthsFor, incentiveRoleFor, 
 import { loadAccountData } from "@/lib/account-data";
 import { currentDb, inTransaction, schema, type Queryable, type Transaction } from "@/lib/db";
 import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/duplicate-entries";
-import { INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
+import { DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
@@ -24,7 +24,8 @@ import { findActivePaymentMethod, getPaymentMethods } from "@/lib/remittance-met
  *     account's history must still pass the account rules (lib/account-rules.ts) or nothing is saved.
  *   New Sale: the program (its account moves with it; when the member already has an account in that program, the two
  *     are merged: mergeAccountInto),
- *     application number, OR number, application date (the DOI follows while the account has no collections), amount,
+ *     application number, OR number, application date (the DOI follows while the account has no collections), DOI time
+ *     (on the sale and its account; owner, October 19, 2026), amount,
  *     notes, remittance method, Date Remitted.
  *
  * When the amount, months, NOPs or program change, the entry's incentive and company share are worked out again (a
@@ -59,6 +60,8 @@ export type EditableEntry = {
     enrollmentId: string; programId: string; orNumber: string; orDate: string; amount: number; dateRemitted: string;
     monthFrom: string; monthTo: string; nopFrom: number; nopTo: number;
     applicationNumber: string; notes: string; paymentMethod: string;
+    /** New Sale: HH:MM, the time of the DOI; blank on sales saved before October 19, 2026. */
+    doiTime: string;
   };
 };
 
@@ -86,7 +89,7 @@ export async function getEditableEntry(kind: EditKind, id: string): Promise<Edit
       values: {
         enrollmentId: row.enrollment_id, programId: row.program_id, orNumber: text(row.or_number), orDate: day(row.or_date), amount: Number(row.amount_collected), dateRemitted: day(row.date_remitted),
         monthFrom: text(row.month_from).slice(0, 7), monthTo: text(row.month_to).slice(0, 7), nopFrom: row.nop_from ?? 0, nopTo: row.nop_to ?? 0,
-        applicationNumber: "", notes: "", paymentMethod: text(row.remittance_method),
+        applicationNumber: "", notes: "", paymentMethod: text(row.remittance_method), doiTime: "",
       },
     };
   }
@@ -100,6 +103,7 @@ export async function getEditableEntry(kind: EditKind, id: string): Promise<Edit
     values: {
       enrollmentId: "", programId: row.program_id, orNumber: text(row.or_number), orDate: day(row.or_date), amount: Number(row.amount_paid ?? 0), dateRemitted: day(row.date_remitted),
       monthFrom: "", monthTo: "", nopFrom: 0, nopTo: 0, applicationNumber: text(row.application_no), notes: text(row.notes), paymentMethod: text(row.payment_method),
+      doiTime: text(row.doi_time).slice(0, 5),
     },
   };
 }
@@ -110,6 +114,8 @@ export type EntryEditInput = {
   /** Collections: number of months the payment covers. */
   months?: number;
   applicationNumber?: string; notes?: string; paymentMethod?: string;
+  /** New Sale: HH:MM; blank keeps no time. */
+  doiTime?: string;
 };
 
 /** Saves an edited entry; returns a message saying what changed. */
@@ -364,6 +370,8 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   const amount = round(Number(input.amount ?? row.amount_paid));
   const notes = text(input.notes ?? row.notes);
   const dateRemitted = day(input.dateRemitted ?? row.date_remitted);
+  const doiTime = text(input.doiTime ?? text(row.doi_time).slice(0, 5));
+  if (doiTime && !isDoiTime(doiTime)) throw new Error(DOI_TIME_MESSAGE);
   const method = text(input.paymentMethod) && text(input.paymentMethod) !== text(row.payment_method) ? (await findActivePaymentMethod(text(input.paymentMethod))).name : text(row.payment_method);
   if (!applicationNumber) throw new Error("The application number is required.");
   if (entryKey(applicationNumber) !== entryKey(row.application_no)) {
@@ -404,11 +412,11 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   const repriced = changesProgram || cents(amount) !== cents(Number(row.amount_paid ?? 0));
   const share = !repriced ? Number(row.remittance_amount ?? 0) : forfeited ? amount : quote.remittance;
   const after = {
-    program_id: programId, application_no: applicationNumber, or_number: orNumber || null, or_date: orDate || null, doi: doi || null, amount_paid: amount, notes: notes || null,
+    program_id: programId, application_no: applicationNumber, or_number: orNumber || null, or_date: orDate || null, doi: doi || null, doi_time: doiTime || null, amount_paid: amount, notes: notes || null,
     payment_method: method || null, date_remitted: dateRemitted || null, mas_incentive: repriced ? round(amount - share) : Number(row.mas_incentive ?? 0), remittance_amount: share, forfeited_incentive: repriced && forfeited ? quote.incentive : row.forfeited_incentive,
   };
   const before = {
-    program_id: row.program_id, application_no: text(row.application_no), or_number: text(row.or_number) || null, or_date: day(row.or_date) || null, doi: day(row.doi) || null, amount_paid: Number(row.amount_paid ?? 0), notes: text(row.notes) || null,
+    program_id: row.program_id, application_no: text(row.application_no), or_number: text(row.or_number) || null, or_date: day(row.or_date) || null, doi: day(row.doi) || null, doi_time: text(row.doi_time).slice(0, 5) || null, amount_paid: Number(row.amount_paid ?? 0), notes: text(row.notes) || null,
     payment_method: text(row.payment_method) || null, date_remitted: day(row.date_remitted) || null, mas_incentive: Number(row.mas_incentive ?? 0), remittance_amount: Number(row.remittance_amount ?? 0), forfeited_incentive: row.forfeited_incentive,
   };
   const changedKeys = (Object.keys(after) as Array<keyof typeof after>).filter((key) => JSON.stringify(after[key]) !== JSON.stringify(before[key]));
@@ -424,7 +432,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
       + (followed.repriced ? `; ${followed.repriced} collection(s) with new incentives${followed.slips.length ? ` (slips ${followed.slips.join(", ")} follow)` : ""}` : "")
       + (Number(n) > 1 ? `; the member now has ${n} New Sales in ${program.name}: delete the extra one if it was entered twice` : "");
   } else if (account) {
-    await tx.update(memberPrograms).set({ program_id: programId, doi: doi || null, amount_paid: amount, remittance_method: method || null, ...(status ? { account_status: status } : {}) }).where(eq(memberPrograms.enrollment_id, account.enrollment_id));
+    await tx.update(memberPrograms).set({ program_id: programId, doi: doi || null, doi_time: doiTime || null, amount_paid: amount, remittance_method: method || null, ...(status ? { account_status: status } : {}) }).where(eq(memberPrograms.enrollment_id, account.enrollment_id));
     if (changesProgram) {
       await tx.update(collections).set({ program_id: programId }).where(eq(collections.enrollment_id, account.enrollment_id));
       const moved = await tx.select({ id: collections.collection_id }).from(collections).where(eq(collections.enrollment_id, account.enrollment_id));
@@ -435,7 +443,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
     }
   }
   const slip = repriced && text(row.linked_remittance_id) && !["", "Outstanding", "Returned"].includes(text(row.remittance_status)) ? await followSlip(tx, row.sale_id, text(row.linked_remittance_id), share) : null;
-  const shown = changedKeys.filter((key) => !["mas_incentive", "remittance_amount", "forfeited_incentive", "doi"].includes(key)).map((key) => key === "program_id" ? `program (${program.name})` : key.replace(/_/g, " "));
+  const shown = changedKeys.filter((key) => !["mas_incentive", "remittance_amount", "forfeited_incentive", "doi"].includes(key)).map((key) => key === "program_id" ? `program (${program.name})` : key === "doi_time" ? `DOI time ${doiTime || "cleared"}` : key.replace(/_/g, " "));
   const parts = [shown.join(", "), accountNote, after.doi !== before.doi ? `DOI ${after.doi}` : "", slip ? `slip ${slip.slipId} expected ${slip.expectedChange > 0 ? "+" : ""}${slip.expectedChange.toFixed(2)} (difference ${slip.difference.toFixed(2)})` : ""].filter(Boolean);
   return { changed: true, summary: parts.join("; "), before, after: { ...after, account: account?.enrollment_id ?? null, status, slip } };
 }

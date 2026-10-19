@@ -182,6 +182,8 @@ export type MemberProgramSheetData = {
   memberNumber: string;
   programId: string;
   doi: string;
+  /** HH:MM, the time of the DOI. */
+  doiTime?: string;
   branch: string;
   mas: string;
   paymentMethod: string;
@@ -205,7 +207,7 @@ export async function findMemberProgramEnrollment(memberNumber: string, programI
 export async function addMemberProgram(enrollment: MemberProgramSheetData) {
   await currentDb().insert(memberPrograms).values({
     enrollment_id: enrollment.enrollmentId, member_id: enrollment.memberId, member_number: text(enrollment.memberNumber), program_id: text(enrollment.programId),
-    doi: optionalDate(enrollment.doi), branch: optional(enrollment.branch), mas: optional(enrollment.mas), remittance_method: optional(enrollment.paymentMethod),
+    doi: optionalDate(enrollment.doi), doi_time: optional(enrollment.doiTime), branch: optional(enrollment.branch), mas: optional(enrollment.mas), remittance_method: optional(enrollment.paymentMethod),
     registration_fee: yes(enrollment.registrationFee), registration_amount: optionalMoney(enrollment.registrationAmount), amount_paid: optionalMoney(enrollment.amountPaid),
     program_terms: optional(enrollment.programTerms), status: optional(enrollment.status), date_created: optional(enrollment.dateCreated), ...encoded(), account_status: "NS",
   });
@@ -235,6 +237,8 @@ export type SaleSheetData = {
   claimantAddressHouse: string;
   programId: string;
   doi: string;
+  /** HH:MM, the time of the DOI. */
+  doiTime?: string;
   paymentMethod: string;
   registrationFee: string;
   registrationAmount: string;
@@ -262,7 +266,7 @@ export async function addSale(
 ) {
   await currentDb().insert(sales).values({
     sale_id: sale.saleId, date_created: optional(sale.dateCreated), branch: optional(sale.branch), mas: optional(sale.mas), date_remitted: optionalDate(sale.dateRemitted),
-    member_number: optional(sale.memberNumber), ...memberColumns(sale), program_id: text(sale.programId), doi: optionalDate(sale.doi),
+    member_number: optional(sale.memberNumber), ...memberColumns(sale), program_id: text(sale.programId), doi: optionalDate(sale.doi), doi_time: optional(sale.doiTime),
     payment_method: optional(sale.paymentMethod), registration_fee: yes(sale.registrationFee), registration_amount: optionalMoney(sale.registrationAmount),
     amount_paid: optionalMoney(sale.amountPaid), notes: optional(sale.programTerms), application_no: optional(sale.applicationNo), or_number: optional(sale.orNumber),
     or_date: optionalDate(sale.orDate), ...encoded(), remittance_status: "Outstanding", accountable_employee_id: accountableEmployeeId,

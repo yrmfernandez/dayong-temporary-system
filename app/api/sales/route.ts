@@ -3,7 +3,7 @@ import { clearedEmployee, clearingProblem, dateRemittedReasonProblem, waitingBat
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
-import { checkBackdate, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
+import { checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -74,6 +74,8 @@ type SalePayloadItem = {
   amountPaid: string;
 
   doi: string;
+  /** HH:MM (24-hour), the time of the DOI; the time it is saved when left out (owner, October 19, 2026). */
+  doiTime?: string;
   programId: string;
   programTerms: string;
   beneficiaries?: Array<{
@@ -340,6 +342,11 @@ async function saveSales(request: Request, user: SessionUser) {
       }
       if (isIncompleteApplicationNumber(sale.applicationNo)) {
         return NextResponse.json({ success: false, message: `Sale #${saleNumber}: ${INCOMPLETE_APPLICATION_MESSAGE}` }, { status: 400 });
+      }
+      // The DOI time: some programs need the hour of enrollment; the encoding time by default.
+      sale.doiTime = String(sale.doiTime ?? "").trim() || manilaNow().time;
+      if (!isDoiTime(sale.doiTime)) {
+        return NextResponse.json({ success: false, message: `Sale #${saleNumber}: ${DOI_TIME_MESSAGE}` }, { status: 400 });
       }
 
       if (
@@ -685,6 +692,7 @@ async function saveSales(request: Request, user: SessionUser) {
             programId:
               sale.programId,
             doi: sale.doi,
+            doiTime: sale.doiTime,
 
             branch:
               body.branch.trim(),
@@ -773,6 +781,8 @@ async function saveSales(request: Request, user: SessionUser) {
             sale.programId,
           doi:
             sale.doi,
+          doiTime:
+            sale.doiTime,
 
           paymentMethod:
             sale.paymentMethod,

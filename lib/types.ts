@@ -110,6 +110,8 @@ export type NewSale = {
 
   applicationNumber: string;
   orDate: string;
+  /** HH:MM, the time of the DOI (the application date): when it was encoded unless changed; some programs need it. */
+  doiTime?: string;
   /** Why an application date more than a day old is encoded late. */
   backdateReason?: string;
 

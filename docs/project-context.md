@@ -1,5 +1,13 @@
 # Dayong System project context
 
+### New Sales: DOI time (2026-10-19)
+
+- **Owner:** add a Time field to New Sales, joined to the DOI; by default the time it is encoded, but editable, because some programs need the time of the DOI.
+- **Done:** **DOI time** under Application Date (`components/new-sales-form.tsx`), filled with the Manila time the sale card is started, editable; `/api/sales` saves it on the New Sale and the account (`doi_time`, migration `0024_doi_time`), using the time of saving when blank and refusing anything but HH:MM. MAS submissions carry it. `scripts/check-database.mjs` checks the column. Tested (typed time, default time, refused time); build and all 205 tests pass.
+- **In progress:** none.
+- **Done (owner: migration run on production):** the DOI time shows in Members (directory and each member's accounts, beside the DOI) and can be changed in Edit / Corrections → New Sale and My Entries → Edit batch (returned New Sales), on the sale and its account, checked as HH:MM (`isDoiTime` in `lib/entry-controls.ts`); the change is in Record Corrections and the Audit Log. Tested; build and all 205 tests pass.
+- **To do (owner):** commit and push. Sales saved before October 19, 2026 have no time; add one through Edit / Corrections when a program needs it.
+
 ### Audits: no empty branch in the report's branch list (2026-10-19)
 
 - **Owner:** in Audit, don't show the entry branch in the branch list if the report is empty.

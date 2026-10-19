@@ -66,7 +66,7 @@ export const PUT = withEncoder(async (request: Request) => {
     const message = await saveEntryEdit({
       kind: editKind(body.kind), id: String(body.id ?? ""), reason: String(body.reason ?? ""),
       enrollmentId: string("enrollmentId"), programId: string("programId"), orNumber: string("orNumber"), orDate: string("orDate"), amount: number("amount"), months: number("months"),
-      dateRemitted: string("dateRemitted"), applicationNumber: string("applicationNumber"), notes: string("notes"), paymentMethod: string("paymentMethod"),
+      dateRemitted: string("dateRemitted"), applicationNumber: string("applicationNumber"), notes: string("notes"), paymentMethod: string("paymentMethod"), doiTime: string("doiTime"),
     });
     return Response.json({ success: true, message });
   } catch (error) {

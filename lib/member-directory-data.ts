@@ -43,7 +43,7 @@ export async function loadMemberDirectory(onlyMas: string | null = null) {
     claimantSameAddress: row.claimant_same_address, claimantAddress: text(row.claimant_address),
   }));
   const enrollmentRecords: EnrollmentRecord[] = enrollmentRows.map((row) => ({
-    id: row.enrollment_id, memberId: row.member_id, memberNumber: text(row.member_number), programId: row.program_id, doi: row.doi ?? "",
+    id: row.enrollment_id, memberId: row.member_id, memberNumber: text(row.member_number), programId: row.program_id, doi: row.doi ?? "", doiTime: text(row.doi_time).slice(0, 5),
     branch: text(row.branch), mas: text(row.mas), paymentMethod: text(row.remittance_method), status: text(row.status),
   }));
   const programNames = Object.fromEntries(programRows.map((row) => [row.id, text(row.name) || text(row.code)]));

@@ -33,7 +33,7 @@ export function EntryEditor({ kind, id, onCancel, onSaved }: { kind: EditKind; i
         setEntry(result.entry);
         setForm({
           enrollmentId: v.enrollmentId, programId: v.programId, orNumber: v.orNumber, orDate: v.orDate, amount: String(v.amount), dateRemitted: v.dateRemitted,
-          months: String(Math.max(1, v.nopTo - v.nopFrom + 1)), applicationNumber: v.applicationNumber, notes: v.notes, paymentMethod: v.paymentMethod,
+          months: String(Math.max(1, v.nopTo - v.nopFrom + 1)), applicationNumber: v.applicationNumber, notes: v.notes, paymentMethod: v.paymentMethod, doiTime: v.doiTime,
         });
       })
       .catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load the entry."); });
@@ -83,6 +83,7 @@ export function EntryEditor({ kind, id, onCancel, onSaved }: { kind: EditKind; i
       {kind === "New Sale" && <div className="space-y-1"><Label>Application no.</Label><Input value={form.applicationNumber} onChange={set("applicationNumber")} /></div>}
       <div className="space-y-1"><Label>OR number</Label><Input value={form.orNumber} onChange={set("orNumber")} /></div>
       <div className="space-y-1"><Label>{kind === "New Sale" ? "Application date" : "OR date"}</Label><Input type="date" value={form.orDate} onChange={set("orDate")} /></div>
+      {kind === "New Sale" && <div className="space-y-1"><Label>DOI time</Label><Input type="time" value={form.doiTime ?? ""} onChange={set("doiTime")} /></div>}
       <div className="space-y-1"><Label>Amount</Label><Input type="number" min="0" step="0.01" value={form.amount} onWheel={(event) => event.currentTarget.blur()} onChange={set("amount")} /></div>
       {kind === "Collection" && <div className="space-y-1"><Label>Months paid</Label><Input type="number" min="1" max="120" step="1" value={form.months} onWheel={(event) => event.currentTarget.blur()} onChange={set("months")} /></div>}
       <div className="space-y-1"><Label>Date Remitted</Label><Input type="date" value={form.dateRemitted} onChange={set("dateRemitted")} /></div>

@@ -49,3 +49,7 @@ export function controlTotalProblem(controlTotal: unknown, totalRemittance: numb
  */
 export const isIncompleteApplicationNumber = (value: string) => /^\s*\d{2,4}\s*[A-Za-z]+\s*-?\s*$/.test(value) || !String(value ?? "").includes("-");
 export const INCOMPLETE_APPLICATION_MESSAGE = "enter the whole Application Number with its dash, including the number after the series letters (e.g. 2026SP-00154).";
+
+/** The DOI time of a New Sale (owner, October 19, 2026): HH:MM, 24-hour. */
+export const isDoiTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+export const DOI_TIME_MESSAGE = "Enter the DOI time as hours and minutes (for example 14:30).";

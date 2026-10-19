@@ -868,7 +868,7 @@ for (const existingMember of [false, true]) {
     const response = await h.load('app/api/sales/route.ts').POST(request({
       branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 200,
       encodedBy: 'attacker', userId: 'attacker',
-      sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', encodedBy: 'attacker', beneficiaries: existingMember ? [] : [{ surname: 'Santos', firstName: 'Ben', middleName: '', birthdate: '2000-01-02', age: 26, relationship: 'Child' }] }],
+      sales: [{ existingMember, memberNumber: existingMember ? 'PH-1' : '', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', encodedBy: 'attacker', ...(existingMember ? { doiTime: '08:15' } : {}), beneficiaries: existingMember ? [] : [{ surname: 'Santos', firstName: 'Ben', middleName: '', birthdate: '2000-01-02', age: 26, relationship: 'Child' }] }],
     }));
     assert.equal(response.status, 200, JSON.stringify(await response.json()));
     const [member] = await query('select * from members');
@@ -892,6 +892,10 @@ for (const existingMember of [false, true]) {
       ['Outstanding', null, 'DPE-0002', null, null, 150, 200, null]);
     assert.deepEqual([sale.address, sale.program_id, sale.application_no], ['Complete Address', 'DP-1', 'APP-1']);
     assert.equal((await query('select account_status from member_programs'))[0].account_status, 'NS', 'a new account starts as a New Sale');
+    // The DOI time (owner, October 19, 2026): as typed, otherwise the time the sale was saved, on the sale and the account.
+    const times = [sale.doi_time, (await query('select doi_time from member_programs'))[0].doi_time];
+    if (existingMember) assert.deepEqual(times, ['08:15:00', '08:15:00']);
+    else { assert.match(times[0], /^\d{2}:\d{2}:00$/); assert.equal(times[1], times[0]); }
     if (!existingMember) {
       const [beneficiary] = await query('select * from beneficiaries');
       assert.match(beneficiary.beneficiary_id, /^BEN-/);
@@ -2065,6 +2069,7 @@ test('New Sales refuses a member or claimant contact number that belongs to an e
   const member = await post({ contactNumber: '+63 917 123 4567' });
   assert.equal(member.status, 400);
   assert.match(member.body.message, /Member contact number .* belongs to employee different-mas \(DPE-0002\)/);
+  assert.match((await post({ doiTime: '25:00' })).body.message, /DOI time as hours and minutes/, 'a DOI time that is not a time is refused');
   const claimant = await post({ claimantContact: '09171234567' });
   assert.match(claimant.body.message, /Claimant contact number .* belongs to employee different-mas/);
   assert.equal(h.writes.length, 0, 'nothing is saved');
@@ -2796,8 +2801,11 @@ test('a returned New Sales batch: application number, date and amount can be fix
   assert.deepEqual(loaded.batch.entries.map((entry) => entry.applicationNumber), ['APP-1', 'APP-2']);
   const edit = (entries) => route.POST(request({ ids, dateRemitted: '2026-09-25', paymentMethod: 'Cash', entries }));
   assert.match((await (await edit([{ id: ids[0], applicationNumber: 'APP-2' }, { id: ids[1] }])).json()).message, /entered twice/);
-  const fixed = await edit([{ id: ids[0], applicationNumber: 'APP-10', amount: 700 }, { id: ids[1], remove: true }]);
+  assert.ok(loaded.batch.entries.every((entry) => /^\d{2}:\d{2}$/.test(entry.doiTime)), 'each sale shows its DOI time');
+  assert.match((await (await edit([{ id: ids[0], doiTime: '24:10' }, { id: ids[1] }])).json()).message, /DOI time as hours and minutes/);
+  const fixed = await edit([{ id: ids[0], applicationNumber: 'APP-10', amount: 700, doiTime: '16:05' }, { id: ids[1], remove: true }]);
   assert.equal(fixed.status, 200, JSON.stringify(await fixed.clone().json()));
+  assert.deepEqual([(await query('select doi_time from sales'))[0].doi_time, (await query('select doi_time from member_programs'))[0].doi_time], ['16:05:00', '16:05:00'], 'the DOI time follows on the sale and its account');
   const rows = await query('select application_no, amount_paid::float8 as amount, remittance_amount::float8 as remit, remittance_status from sales');
   assert.deepEqual(rows, [{ application_no: 'APP-10', amount: 700, remit: 550, remittance_status: 'Returned' }], 'the removed sale is gone; the kept one is fixed');
   assert.equal(await count('members'), 1, 'the removed sale\'s new member went with it');
@@ -3351,6 +3359,12 @@ test('Edit / Corrections: a New Sale changes program with its account, merged wh
   const saved = await (await route.PUT(request({ kind: 'New Sale', id: 'S1', programId: 'DP-C', applicationNumber: 'APP-1B', reason: 'Clerk chose D-350' }))).json();
   assert.equal(saved.success, true, JSON.stringify(saved));
   assert.deepEqual(await query('select program_id, application_no from sales'), [{ program_id: 'DP-C', application_no: 'APP-1B' }]);
+  // The DOI time (October 19, 2026): edited on the sale and its account; not a time is refused.
+  assert.equal((await (await route.GET(new Request('http://localhost/api/entry-corrections?kind=New+Sale&id=S1'))).json()).entry.values.doiTime, '', 'a sale saved before has no time');
+  assert.match((await (await route.PUT(request({ kind: 'New Sale', id: 'S1', doiTime: '9am', reason: 'time' }))).json()).message, /DOI time as hours and minutes/);
+  const timed = await (await route.PUT(request({ kind: 'New Sale', id: 'S1', doiTime: '09:40', reason: 'Enrolled in the morning' }))).json();
+  assert.match(timed.message, /DOI time 09:40/);
+  assert.deepEqual([(await query('select doi_time from sales'))[0].doi_time, (await query('select doi_time from member_programs'))[0].doi_time], ['09:40:00', '09:40:00']);
   assert.deepEqual(await query('select enrollment_id, program_id from member_programs'), [{ enrollment_id: 'ENR-S', program_id: 'DP-C' }]);
   // Its collections moved to the new program and took that program's incentive: reports follow.
   assert.deepEqual(await query('select program_id, remittance_amount::float8 as share from collections'), [{ program_id: 'DP-C', share: 200 }]);

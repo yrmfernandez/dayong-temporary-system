@@ -83,7 +83,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
       const response = await fetch("/api/my-entries/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
         ids: entryIds, ...form, penalty: Number(form.penalty) || 0, fidelity: Number(form.fidelity) || 0,
         entries: entries.map((entry) => ({ id: entry.id, remove: entry.remove, orNumber: entry.orNumber, orDate: entry.orDate, amount: Number(entry.amountText), monthTo: entry.monthTo,
-          backdateReason: entry.backdateReason, applicationNumber: entry.applicationNumber, notes: entry.notes, ...(entry.sale ? { sale: entry.sale } : {}) })),
+          backdateReason: entry.backdateReason, applicationNumber: entry.applicationNumber, notes: entry.notes, ...(isSale ? { doiTime: entry.doiTime } : {}), ...(entry.sale ? { sale: entry.sale } : {}) })),
       }) });
       const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the batch.");
@@ -145,7 +145,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="p-2">Member</th>
-                  {isSale ? <><th className="p-2">Application no.</th><th className="p-2">Application date</th></> : <><th className="p-2">OR number</th><th className="p-2">OR date</th><th className="p-2">Months</th></>}
+                  {isSale ? <><th className="p-2">Application no.</th><th className="p-2">Application date / DOI time</th></> : <><th className="p-2">OR number</th><th className="p-2">OR date</th><th className="p-2">Months</th></>}
                   <th className="p-2">Amount</th>
                   {isSale && <th className="p-2">Notes</th>}
                   <th className="p-2">Late-entry reason</th>
@@ -165,7 +165,8 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
                       {isSale ? (
                         <>
                           <td className="p-2"><Input aria-label="Application number" className={field} disabled={entry.remove} value={entry.applicationNumber} onChange={(event) => change(entry.id, { applicationNumber: event.target.value })} /></td>
-                          <td className="p-2"><Input aria-label="Application date" type="date" className={field} disabled={entry.remove} value={entry.orDate} onChange={(event) => change(entry.id, { orDate: event.target.value })} /></td>
+                          <td className="p-2"><Input aria-label="Application date" type="date" className={field} disabled={entry.remove} value={entry.orDate} onChange={(event) => change(entry.id, { orDate: event.target.value })} />
+                            <Input aria-label="DOI time" type="time" className={`${field} mt-1`} disabled={entry.remove} value={entry.doiTime} onChange={(event) => change(entry.id, { doiTime: event.target.value })} /></td>
                         </>
                       ) : (
                         <>

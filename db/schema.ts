@@ -8,7 +8,7 @@
  * Supabase's public API can never reach it; the app connects as the database owner from the server only.
  */
 import { sql } from "drizzle-orm";
-import { bigint, boolean, date, doublePrecision, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, date, doublePrecision, index, integer, jsonb, numeric, pgTable, primaryKey, text, time, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const money = (name: string) => numeric(name, { precision: 12, scale: 2, mode: "number" });
 const day = (name: string) => date(name, { mode: "string" });
@@ -222,6 +222,8 @@ export const member_programs = pgTable("member_programs", {
   member_number: text(),
   program_id: text().notNull().references(() => programs.program_id),
   doi: day("doi"),
+  /** The time of the DOI (owner, October 19, 2026: some programs need it); the New Sale's encoding time unless edited. */
+  doi_time: time("doi_time"),
   branch: text(),
   mas: text(),
   remittance_method: text(),
@@ -328,6 +330,8 @@ export const sales = pgTable("sales", {
   claimant_address: text(),
   program_id: text().notNull().references(() => programs.program_id),
   doi: day("doi"),
+  /** The time of the DOI, as on the account (member_programs.doi_time). */
+  doi_time: time("doi_time"),
   payment_method: text(),
   registration_fee: boolean().notNull().default(false),
   registration_amount: money("registration_amount"),

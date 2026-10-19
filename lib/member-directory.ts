@@ -2,7 +2,10 @@ export type DirectoryEnrollment = {
   id: string; programId: string; programName: string; branch: string; mas: string;
   /** The Collector on this enrollment's most recent posted Collection brought in by a Collector; blank when none. */
   collector: string;
-  doi: string; paymentMethod: string; status: string;
+  doi: string;
+  /** HH:MM, the time of the DOI (New Sales since October 19, 2026); blank before. */
+  doiTime?: string;
+  paymentMethod: string; status: string;
   accountStatus?: string; temporarilySuspended?: boolean; accountError?: string;
 };
 export type DirectoryMember = {
@@ -45,7 +48,7 @@ export type MemberRecord = {
   claimant: string; claimantContact: string; claimantSameAddress: boolean; claimantAddress: string;
 };
 export type EnrollmentRecord = {
-  id: string; memberId: string; memberNumber: string; programId: string; doi: string; branch: string; mas: string; paymentMethod: string; status: string;
+  id: string; memberId: string; memberNumber: string; programId: string; doi: string; doiTime?: string; branch: string; mas: string; paymentMethod: string; status: string;
 };
 /** A posted Collection brought in by a Collector: who, for which member number and program, on which OR date. */
 export type CollectorRecord = { memberNumber: string; programId: string; date: string; person: string };
@@ -66,7 +69,7 @@ export function buildMemberDirectory(memberRecords: MemberRecord[], enrollmentRe
     const list = enrollments.get(record.memberId) ?? [];
     list.push({ id: record.id, programId: record.programId, programName: programNames[record.programId] || record.programId,
       collector: collectors.get(`${numbers.get(record.memberId) || record.memberNumber}::${record.programId}`)?.name ?? "",
-      doi: record.doi, branch: record.branch, mas: record.mas, paymentMethod: record.paymentMethod, status: record.status });
+      doi: record.doi, doiTime: record.doiTime ?? "", branch: record.branch, mas: record.mas, paymentMethod: record.paymentMethod, status: record.status });
     enrollments.set(record.memberId, list);
   }
   const members = new Map<string, DirectoryMember>();

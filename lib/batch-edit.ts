@@ -10,7 +10,7 @@ import { currentDb, inTransaction, schema, type Transaction } from "@/lib/db";
 import { entryKey, personKey, recordedApplicationNumbers, recordedMembersByPerson, recordedOrNumbers } from "@/lib/duplicate-entries";
 import { getEmployees } from "@/lib/employees";
 import { saleBatchKey } from "@/lib/entry-batches";
-import { checkBackdate, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
+import { checkBackdate, DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import { addBeneficiaries, memberColumns, type MemberDetails } from "@/lib/member-records";
 import { ageOn, ageRestrictionError, isoDate } from "@/lib/program-age";
@@ -65,6 +65,8 @@ export type EditableBatch = {
     monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; basePay: number; flexible: boolean;
     // New Sales
     applicationNumber: string; notes: string;
+    /** New Sales: HH:MM, the time of the DOI (owner, October 19, 2026); blank on older sales. */
+    doiTime: string;
     /** New Sales: everything else on the sale, editable (owner, October 17, 2026). */
     sale?: SaleDetails & { hasCollections: boolean };
   }>;
@@ -119,7 +121,7 @@ async function returnReason(remittanceId: string | null) {
 export async function getReturnedBatch(ids: string[], by: By): Promise<EditableBatch> {
   const batch = await returnedBatch(ids, by);
   const db = currentDb();
-  const blank = { monthFrom: "", monthTo: "", nopFrom: 0, nopTo: 0, basePay: 0, flexible: false, applicationNumber: "", notes: "" };
+  const blank = { monthFrom: "", monthTo: "", nopFrom: 0, nopTo: 0, basePay: 0, flexible: false, applicationNumber: "", notes: "", doiTime: "" };
   if (batch.kind === "New Sale") {
     const rows = batch.sales;
     const programRows = await db.select({ id: programs.program_id, name: programs.program_name, code: programs.program_code }).from(programs).where(inArray(programs.program_id, [...new Set(rows.map((row) => row.program_id))]));
@@ -146,7 +148,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
       entries: rows.map((row) => ({
         ...blank, id: row.sale_id, memberNumber: text(row.member_number), memberName: `${text(row.first_name)} ${text(row.surname)}`.trim(), program: programName.get(row.program_id) ?? row.program_id,
         orNumber: "", orDate: day(row.or_date), amount: Number(row.amount_paid ?? 0), backdateReason: text(row.backdate_reason),
-        applicationNumber: text(row.application_no), notes: text(row.notes), sale: details(row),
+        applicationNumber: text(row.application_no), notes: text(row.notes), doiTime: text(row.doi_time).slice(0, 5), sale: details(row),
       })),
     };
   }
@@ -173,7 +175,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
   };
 }
 
-type EntryInput = { id: string; remove?: boolean; orNumber?: string; orDate?: string; amount?: number; monthTo?: string; backdateReason?: string; applicationNumber?: string; notes?: string; sale?: Partial<SaleDetails> };
+type EntryInput = { id: string; remove?: boolean; orNumber?: string; orDate?: string; amount?: number; monthTo?: string; backdateReason?: string; applicationNumber?: string; notes?: string; doiTime?: string; sale?: Partial<SaleDetails> };
 export type BatchEditInput = {
   ids: string[];
   dateRemitted: string; dateRemittedReason?: string; paymentMethod: string; paymentReference?: string; collectedBy?: string;
@@ -334,6 +336,8 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
     const orDate = day(change.orDate ?? row.or_date);
     const amount = round(Number(change.amount ?? row.amount_paid));
     const notes = text(change.notes ?? row.notes);
+    const doiTime = text(change.doiTime ?? text(row.doi_time).slice(0, 5));
+    if (doiTime && !isDoiTime(doiTime)) throw new Error(`${label}: ${DOI_TIME_MESSAGE}`);
     const backdateReason = text(change.backdateReason ?? row.backdate_reason).slice(0, 300);
     if (!applicationNumber) throw new Error(`${label}: the Application Number is required.`);
     if (isIncompleteApplicationNumber(applicationNumber)) throw new Error(`${label}: ${INCOMPLETE_APPLICATION_MESSAGE}`);
@@ -396,14 +400,14 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
     const firstRow = index === 0;
     const memberAfter = memberColumns(memberDetailsOf(details, common.today)), memberBefore = memberColumns(memberDetailsOf(current, common.today));
     const after = {
-      application_no: applicationNumber, or_date: orDate || null, doi: doi || null, amount_paid: amount, notes: notes || null, backdate_reason: backdateReason || null,
+      application_no: applicationNumber, or_date: orDate || null, doi: doi || null, doi_time: doiTime || null, amount_paid: amount, notes: notes || null, backdate_reason: backdateReason || null,
       date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), payment_method: common.method, mas_incentive: quote.incentive, remittance_amount: quote.remittance,
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
       program_id: details.programId, ...(programChanged ? registration : {}), ...memberAfter,
     };
     const before = {
-      application_no: row.application_no, or_date: day(row.or_date) || null, doi: day(row.doi) || null, amount_paid: Number(row.amount_paid ?? 0), notes: row.notes || null, backdate_reason: row.backdate_reason || null,
+      application_no: row.application_no, or_date: day(row.or_date) || null, doi: day(row.doi) || null, doi_time: text(row.doi_time).slice(0, 5) || null, amount_paid: Number(row.amount_paid ?? 0), notes: row.notes || null, backdate_reason: row.backdate_reason || null,
       date_remitted: day(row.date_remitted), date_remitted_reason: row.date_remitted_reason || null, payment_method: row.payment_method, mas_incentive: Number(row.mas_incentive ?? 0), remittance_amount: Number(row.remittance_amount ?? 0),
       penalty_amount: row.penalty_amount === null ? null : Number(row.penalty_amount), penalty_note: row.penalty_note || null, fidelity_amount: row.fidelity_amount === null ? null : Number(row.fidelity_amount),
       program_id: row.program_id, ...(programChanged ? { registration_fee: row.registration_fee, registration_amount: row.registration_amount === null ? null : Number(row.registration_amount) } : {}), ...memberBefore,
@@ -411,7 +415,7 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
     const beneficiariesChanged = JSON.stringify(details.beneficiaries) !== JSON.stringify(current.beneficiaries);
     if (JSON.stringify(before) === JSON.stringify(after) && !beneficiariesChanged) continue;
     writes.push(() => tx.update(sales).set(after).where(eq(sales.sale_id, row.sale_id)));
-    writes.push(() => tx.update(memberPrograms).set({ amount_paid: amount, remittance_method: common.method, ...(programChanged ? { program_id: details.programId, ...registration } : {}) })
+    writes.push(() => tx.update(memberPrograms).set({ amount_paid: amount, remittance_method: common.method, doi_time: doiTime || null, ...(programChanged ? { program_id: details.programId, ...registration } : {}) })
       .where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))));
     // The member's record follows the details the clerk changed on this sale; others on the record stay.
     const memberChanges = Object.fromEntries(Object.entries(memberAfter).filter(([column, value]) => value !== memberBefore[column as keyof typeof memberBefore]));
