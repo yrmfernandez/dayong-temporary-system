@@ -1,0 +1,13 @@
+{
+  "merges": [
+    {
+      "keep": "ENR-LEG-5609D45070",
+      "other": "ENR-LEG-5CDD86AA5A",
+      "keepMember": "PH-71670920",
+      "otherMember": "PH-11741830",
+      "fillDetails": false,
+      "reprice": true,
+      "note": "Owner explicitly requested merge of PH-71670920 and PH-11741830, stating PH-11741830 does not exist as a separate person, October 19, 2026. Retain PH-71670920 and its personal details. Both accounts are D-230, September 1, 2021 DOI, MINTAL and same MAS; September OR 24425 C/NOP 61 continues kept January-August/NOP 53-60 with no overlap. Move the receipt and related records, preserve all nine PHP 230 amounts/PHP 2070 total, dates, coverage and NOPs; recalculate financial snapshots/status and remove redundant account/member."
+    }
+  ]
+}

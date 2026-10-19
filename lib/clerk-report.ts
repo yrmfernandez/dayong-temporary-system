@@ -141,6 +141,10 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   // Fidelity handed in after encoding (its own slips): cash received, so it is in the Fidelity Bond line.
   const fidelitySlips = fidelityAll.filter((item) => sameBranch(item.branch)).map((item) => ({ ...item, amount: Number(item.amount) || 0 }));
   const fidelityLater = round(fidelitySlips.reduce((total, item) => total + item.amount, 0));
+  // Branches whose report for the period has anything (entries, expenses, deposits, Fidelity slips): Audits list only
+  // these (owner, October 19, 2026: an empty branch report is not shown).
+  const activeBranches = [...new Map([...encoded.map((entry) => entry.branch), ...expensesAll.filter((item) => inPeriod(item.recordedOn)).map((item) => item.branch), ...depositsAll.filter((item) => inPeriod(item.date)).map((item) => item.branch), ...fidelityAll.map((item) => item.branch)]
+    .map(text).filter(Boolean).map((name) => [name.toLowerCase(), name])).values()].sort();
 
   const sales = entries.filter((entry) => entry.kind === "New Sale"), collections = entries.filter((entry) => entry.kind === "Collection");
   const newSales = section(kind, sales), collection = section(kind, collections);
@@ -186,7 +190,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
 
   return {
     company: COMPANY, kind, from: start, to: end, ...headings(kind, start, end),
-    branch: branch || branches.join(", ") || clerk.branch || "", encodedBranches, encoder: { employeeId: clerk.employeeId, name: clerk.name },
+    branch: branch || branches.join(", ") || clerk.branch || "", encodedBranches, activeBranches, encoder: { employeeId: clerk.employeeId, name: clerk.name },
     groupLabel: kind === "daily" ? "MAS" : kind === "weekly" ? "DATE" : kind === "monthly" ? "WEEK" : "MONTH",
     whenLabel: kind === "monthly" ? "WEEK" : kind === "yearly" ? "MONTH" : "DATE",
     newSales, collection,

@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 67 API handlers, 124 library files, 52 component files; 513 scanned source/configuration/public-text files in total.
+43 page routes, 67 API handlers, 124 library files, 52 component files; 523 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -424,7 +424,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/assign-source86-to-cinde.mjs](../scripts/assign-source86-to-cinde.mjs) | `@next/env`, `postgres`, `node:fs` | Yes; read source for semantics |
 | [scripts/audit-database-data.mjs](../scripts/audit-database-data.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/audit-sheet-database.mjs](../scripts/audit-sheet-database.mjs) | `node:fs`, `@next/env`, `googleapis` | No flag detected; read source before running |
-| [scripts/audit-source-month-coverage.mjs](../scripts/audit-source-month-coverage.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
+| [scripts/audit-source-month-coverage.mjs](../scripts/audit-source-month-coverage.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs`, `../lib/account-rules.ts`, `./source-cross-year-months.mjs` | No flag detected; read source before running |
 | [scripts/check-collections.mjs](../scripts/check-collections.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
 | [scripts/check-incentive-periods.mjs](../scripts/check-incentive-periods.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
@@ -540,7 +540,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/remove-oct10-expense.mjs](../scripts/remove-oct10-expense.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/repair-branch-ids.mjs](../scripts/repair-branch-ids.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/repair-sheet-rows.mjs](../scripts/repair-sheet-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
-| [scripts/repair-source-month-coverage.mjs](../scripts/repair-source-month-coverage.mjs) | `node:assert/strict`, `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/repair-source-month-coverage.mjs](../scripts/repair-source-month-coverage.mjs) | `node:assert/strict`, `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/reprice-corrected-entries.mjs](../scripts/reprice-corrected-entries.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/restore-clearing-incentives.mts](../scripts/restore-clearing-incentives.mts) | `@next/env`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow`, `@/lib/work-calendar` | Yes; read source for semantics |
 | [scripts/restore-ph70661323-4191s.mjs](../scripts/restore-ph70661323-4191s.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
@@ -549,6 +549,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/review-same-base-pay.mjs](../scripts/review-same-base-pay.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/set-clearing-covers.mjs](../scripts/set-clearing-covers.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/set-collector-tiers.mts](../scripts/set-collector-tiers.mts) | `drizzle-orm`, `@/lib/batch-edit`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-workflow` | Yes; read source for semantics |
+| [scripts/source-cross-year-months.mjs](../scripts/source-cross-year-months.mjs) | See source | No flag detected; read source before running |
 | [scripts/split-member.mjs](../scripts/split-member.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/split-ph97483925-jr-sr.mjs](../scripts/split-ph97483925-jr-sr.mjs) | `@next/env`, `postgres`, `node:crypto` | Yes; read source for semantics |
 | [scripts/test-access-control.mjs](../scripts/test-access-control.mjs) | `node:assert/strict`, `node:test`, `../lib/access-control.ts` | No flag detected; read source before running |
@@ -560,10 +561,12 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/test-program-payment-limit.mjs](../scripts/test-program-payment-limit.mjs) | `node:assert/strict`, `node:test`, `../lib/program-payment-limit.mjs`, `../lib/account-rules.ts`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/test-remittance.mjs](../scripts/test-remittance.mjs) | `node:assert/strict`, `node:test`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/test-sheets-cache.mjs](../scripts/test-sheets-cache.mjs) | `node:test`, `node:assert/strict`, `../lib/sheets-read-cache.ts` | No flag detected; read source before running |
+| [scripts/test-source-covered-months.mjs](../scripts/test-source-covered-months.mjs) | `node:test`, `node:assert/strict`, `./source-cross-year-months.mjs` | No flag detected; read source before running |
 | [scripts/time-dashboards.mts](../scripts/time-dashboards.mts) | `@next/env` | No flag detected; read source before running |
 | [scripts/transfer-mas-members.mjs](../scripts/transfer-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./name-match.mjs` | Yes; read source for semantics |
 | [scripts/transfer-ph56293596-dpb1000.mjs](../scripts/transfer-ph56293596-dpb1000.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/verify-four-d210-splits-20261019.mjs](../scripts/verify-four-d210-splits-20261019.mjs) | `node:assert/strict`, `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/verify-source-span-fixes-20261019.mjs](../scripts/verify-source-span-fixes-20261019.mjs) | `node:assert/strict`, `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/web-left-out-sheet.mjs](../scripts/web-left-out-sheet.mjs) | `node:fs` | No flag detected; read source before running |
 
 ## Configuration and public text files
@@ -585,6 +588,7 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/employee-merges.json](../config/employee-merges.json)
 - [config/five-receipt-program-moves-20261016.json](../config/five-receipt-program-moves-20261016.json)
 - [config/four-d210-split-fixes-20261019.json](../config/four-d210-split-fixes-20261019.json)
+- [config/four-source-span-fixes-20261019.json](../config/four-source-span-fixes-20261019.json)
 - [config/legacy-migration-map.json](../config/legacy-migration-map.json)
 - [config/legacy-programs.json](../config/legacy-programs.json)
 - [config/legacy-receipt-fixes.json](../config/legacy-receipt-fixes.json)
@@ -600,10 +604,13 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/ph07624278-two-programs-20261019.json](../config/ph07624278-two-programs-20261019.json)
 - [config/ph08354649-two-programs-20261019.json](../config/ph08354649-two-programs-20261019.json)
 - [config/ph08543913-receipt-sequence-20261017.json](../config/ph08543913-receipt-sequence-20261017.json)
+- [config/ph10533517-two-month-receipt-20261019.json](../config/ph10533517-two-month-receipt-20261019.json)
 - [config/ph13726515-d46059b-20261016.json](../config/ph13726515-d46059b-20261016.json)
 - [config/ph17113133-january-nop22-20261016.json](../config/ph17113133-january-nop22-20261016.json)
 - [config/ph17990283-all-d210hg-20261019.json](../config/ph17990283-all-d210hg-20261019.json)
+- [config/ph21465590-all-d280-20261019.json](../config/ph21465590-all-d280-20261019.json)
 - [config/ph23767391-d280-20261017.json](../config/ph23767391-d280-20261017.json)
+- [config/ph24403007-three-month-receipt-20261019.json](../config/ph24403007-three-month-receipt-20261019.json)
 - [config/ph24556150-dfpp650-merge-20261015.json](../config/ph24556150-dfpp650-merge-20261015.json)
 - [config/ph25389794-dpb420-20261017.json](../config/ph25389794-dpb420-20261017.json)
 - [config/ph29085041-month-of-20261019.json](../config/ph29085041-month-of-20261019.json)
@@ -614,11 +621,14 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/ph58645726-january-coverage-20261016.json](../config/ph58645726-january-coverage-20261016.json)
 - [config/ph61149554-d280-coverage-20261016.json](../config/ph61149554-d280-coverage-20261016.json)
 - [config/ph68531118-all-d210hg-20261016.json](../config/ph68531118-all-d210hg-20261016.json)
+- [config/ph71670920-ph11741830-merge-20261019.json](../config/ph71670920-ph11741830-merge-20261019.json)
 - [config/ph72833261-january-nop21-20261016.json](../config/ph72833261-january-nop21-20261016.json)
 - [config/ph76371335-status-20261017.json](../config/ph76371335-status-20261017.json)
 - [config/ph80673488-d250fg-20261017.json](../config/ph80673488-d250fg-20261017.json)
+- [config/ph84237783-nop3-20261019.json](../config/ph84237783-nop3-20261019.json)
 - [config/ph86155816-d270-20261017.json](../config/ph86155816-d270-20261017.json)
 - [config/ph87758804-d46059b-20261017.json](../config/ph87758804-d46059b-20261017.json)
+- [config/ph88243657-d320-coverage-20261019.json](../config/ph88243657-d320-coverage-20261019.json)
 - [config/ph93383039-ph79193890-merge-20261017.json](../config/ph93383039-ph79193890-merge-20261017.json)
 - [config/ph95756414-source-coverage-20261019.json](../config/ph95756414-source-coverage-20261019.json)
 - [config/ph96391262-d230-20261017.json](../config/ph96391262-d230-20261017.json)

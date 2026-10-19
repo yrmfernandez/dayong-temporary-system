@@ -1,0 +1,15 @@
+{
+  "cases": [
+    {
+      "member": "PH-21465590",
+      "program": "DP-0066",
+      "fromAccounts": ["ENR-LEG-EDB2311B8A"],
+      "startNop": 26,
+      "expectedDoi": "2023-12-01",
+      "amountCorrections": [
+        {"collectionId": "COL-LEG-4FF238B178", "receipt": "18140 C", "from": 230, "to": 280}
+      ],
+      "note": "Owner explicitly requested PH-21465590 all D-280 and amount changed from PHP 230 to PHP 280, October 19, 2026. Correct OR 18140 C from PHP 230 to 280 and move it from D-230 into existing D-280, restoring January-September 2026/NOP 26-34. Preserve December 1, 2023 DOI, all receipt dates, remaining eight PHP 280 amounts, branch and MAS. Total increases from PHP 2470 to PHP 2520. Recalculate financial snapshots/status and remove empty D-230 account in the same transaction."
+    }
+  ]
+}

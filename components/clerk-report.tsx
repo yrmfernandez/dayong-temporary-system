@@ -34,7 +34,7 @@ const tone = {
  * An Entry Clerk's report in the company's layout. A clerk sees their own and records expenses, bank deposits and notes
  * on it; with `review` (Report Review and Audits) the reviewer chooses the clerk and gets the entry checklist and remarks.
  */
-export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, date: fixedDate, branch: sharedBranch, onBranchChange }: { kind: Kind; review?: boolean; employeeId?: string; date?: string; branch?: string; onBranchChange?: (branch: string) => void }) {
+export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, date: fixedDate, branch: sharedBranch, onBranchChange, hideEmptyBranches = false }: { kind: Kind; review?: boolean; employeeId?: string; date?: string; branch?: string; onBranchChange?: (branch: string) => void; hideEmptyBranches?: boolean }) {
   const [date, setDate] = useState(fixedDate ?? todayInManila());
   const [employeeId, setEmployeeId] = useState(fixedEmployee ?? "");
   // Reports are per branch (owner, October 13, 2026): "" = the clerk's primary branch, "all" = every branch (Audits).
@@ -118,7 +118,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
         {data && !(sharedBranch !== undefined && !onBranchChange) && (
           <label className="text-sm">Branch
             <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={data.branch} onChange={(event) => setBranch(event.target.value)}>
-              {data.branchChoices.map((name) => <option key={name} value={name}>{name}</option>)}
+              {/* Audits (hideEmptyBranches): only the branches with something in the period, and the one chosen. */}
+              {data.branchChoices.filter((name) => !hideEmptyBranches || name === data.branch || data.report.activeBranches.some((active) => active.toLowerCase() === name.toLowerCase())).map((name) => <option key={name} value={name}>{name}</option>)}
               <option value="all">All branches</option>
             </select>
           </label>

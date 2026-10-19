@@ -175,7 +175,7 @@ export default function DailyAuditPage() {
                 <details className="rounded-lg border bg-background p-3">
                   <summary className="cursor-pointer text-sm font-semibold">Open {row.employeeName}&apos;s report and every entry</summary>
                   <p className="mt-1 text-xs text-muted-foreground">Check each entry from its dates (OR, remitted, encoded) to its numbers and receipt photo before deciding Balanced or With findings.</p>
-                  <div className="mt-3"><ClerkReport kind={period} review employeeId={row.employeeId} date={span.from || date} branch={reportBranch} onBranchChange={setReportBranch} /></div>
+                  <div className="mt-3"><ClerkReport kind={period} review hideEmptyBranches employeeId={row.employeeId} date={span.from || date} branch={reportBranch} onBranchChange={setReportBranch} /></div>
                 </details>
           </section>
           <section className="space-y-3 rounded-lg border bg-background p-3">

@@ -18,6 +18,8 @@
  *   npm run prod -- node scripts/consolidate-member-receipts.mjs     dry run on production
  *   ... --apply
  *   Add --config=config/<scoped-file>.json to run only one reviewed correction.
+ *   Optional amountCorrections: [{ collectionId, receipt, from, to }] requires an exact reviewed receipt/amount and
+ *   an explicit reason. Amount, program/coverage and financial corrections commit in the same transaction.
  */
 import fs from "node:fs";
 import nextEnv from "@next/env";
@@ -69,7 +71,17 @@ try {
       if (missing.length) console.log(`   NOT FOUND (no posted collection): ${missing.join(", ")}`);
       if (elsewhere.length) console.log(`   ON ANOTHER MEMBER (not moved; check): ${elsewhere.map((row) => `${row.or_number} (${row.program})`).join(", ")}`);
       const mine = found.filter((row) => row.member_id === member.member_id);
+      const beforeReceipts = mine.map(row => ({ ...row }));
       for (const row of mine) console.log(`   OR ${row.or_number} · ${row.or_date} · ${peso(row.amount)} · was ${row.program} NOP ${row.nop_from}${row.nop_to > row.nop_from ? `-${row.nop_to}` : ""}${row.enrollment_id === target.enrollment_id ? " (already here)" : ""}`);
+      for (const change of item.amountCorrections ?? []) {
+        if (!text(item.note) || !change.collectionId || !change.receipt || !Number.isFinite(change.from) || !Number.isFinite(change.to) || change.from <= 0 || change.to <= 0 || !Number.isInteger(change.from*100) || !Number.isInteger(change.to*100)) throw new Error('Amount correction needs exact ID, receipt, positive cent amounts and a reason.');
+        const matches = mine.filter(row => row.collection_id === change.collectionId && key(row.or_number) === key(change.receipt));
+        if (matches.length !== 1 || matches[0].amount !== change.from) throw new Error(`${label}: amount correction differs from reviewed receipt.`);
+        const updated = await tx`update collections set amount_collected=${change.to} where collection_id=${change.collectionId} and member_id=${member.member_id} and amount_collected=${change.from} and lower(coalesce(status,''))='posted' returning collection_id`;
+        if (updated.length !== 1) throw new Error(`${label}: amount changed before correction.`);
+        matches[0].amount = change.to;
+        console.log(`   OR ${change.receipt}: amount ${peso(change.from)} → ${peso(change.to)} (owner-confirmed).`);
+      }
       const movedIds = new Set(mine.filter((row) => row.enrollment_id !== target.enrollment_id).map((row) => row.collection_id));
       const sources = [...new Set(mine.filter((row) => row.enrollment_id !== target.enrollment_id).map((row) => row.enrollment_id))];
       if (movedIds.size) await tx`update collections set enrollment_id = ${target.enrollment_id}, program_id = ${target.program_id} where collection_id in ${tx([...movedIds])}`;
@@ -92,13 +104,13 @@ try {
         const origin = item.coverageStart ? monthIndex(item.coverageStart) - start : monthIndex(target.doi.slice(0, 7)) - 1;
         return { ...p, nopFrom, nopTo, monthFrom: monthName(origin + nopFrom), monthTo: monthName(origin + nopTo) };
       });
-      if (failed) { console.log(`   STOPPED: ${failed}. Nothing changes for this member.\n`); problems++; continue; }
+      if (failed) { if (item.amountCorrections?.length) throw new Error(failed); console.log(`   STOPPED: ${failed}. Nothing changes for this member.\n`); problems++; continue; }
       for (const p of renumbered) await tx`update collections set nop_from = ${p.nopFrom}, nop_to = ${p.nopTo}, month_from = ${p.monthFrom}, month_to = ${p.monthTo} where collection_id = ${p.collection_id}`;
       let status;
       try {
         status = accountState({ id: target.enrollment_id, memberId: member.member_id, memberNumber: "", programId: target.program_id, doi: target.doi, branch: "", mas: "", basePay: target.rate, payBalanceTotal: target.total, storedStatus: "", flexible: target.flexible, maxMonthlyPayment: target.max },
           renumbered.map((p) => ({ id: p.collection_id, enrollmentId: target.enrollment_id, orDate: p.or_date, orNumber: text(p.or_number), monthFrom: p.monthFrom, monthTo: p.monthTo, nopFrom: p.nopFrom, nopTo: p.nopTo, amount: p.amount, dateRemitted: "", mas: "" })), today).status;
-      } catch (error) { console.log(`   STOPPED: ${error.message}. Nothing changes for this member.\n`); problems++; continue; }
+      } catch (error) { if (item.amountCorrections?.length) throw error; console.log(`   STOPPED: ${error.message}. Nothing changes for this member.\n`); problems++; continue; }
       await tx`update member_programs set account_status = ${status} where enrollment_id = ${target.enrollment_id}`;
       console.log(`   Account ${target.enrollment_id} after: ${renumbered.map((p) => `${p.or_number} NOP ${p.nopFrom}${p.nopTo > p.nopFrom ? `-${p.nopTo}` : ""} (${p.monthFrom})`).join(", ")} · status ${status}`);
 
@@ -132,8 +144,8 @@ try {
       const finance = await repriceEntries((query, params) => tx.unsafe(query, params), { collectionIds: financialPayments.map(p => p.collection_id), saleIds: targetSales.map(s => s.sale_id) });
       console.log(`   Recalculated ${finance.changes.length} financial entries; incentive change ${peso(finance.incentiveChange)}; ${finance.slips.length} remittance expectations updated.`);
       await tx`insert into record_corrections ${tx({ correction_id: `COR-RCN-${member.member_number}-${Date.now().toString(36).toUpperCase()}`, module: "Receipt consolidation", record_id: target.enrollment_id,
-        reason: text(item.note) || `Receipts of ${member.member_number} put on ${target.program_name}`, before_json: { receipts: mine.map((row) => ({ or: row.or_number, enrollment: row.enrollment_id, program: row.program_id, nop: [row.nop_from, row.nop_to] })) },
-        after_json: { enrollment: target.enrollment_id, status, nops: renumbered.map((p) => ({ or: p.or_number, nop: [p.nopFrom, p.nopTo], month: p.monthFrom })), deleted: empty.map((account) => account.enrollment_id), finance },
+        reason: text(item.note) || `Receipts of ${member.member_number} put on ${target.program_name}`, before_json: { receipts: beforeReceipts.map((row) => ({ or: row.or_number, amount: row.amount, enrollment: row.enrollment_id, program: row.program_id, nop: [row.nop_from, row.nop_to] })) },
+        after_json: { enrollment: target.enrollment_id, status, nops: renumbered.map((p) => ({ or: p.or_number, amount: p.amount, nop: [p.nopFrom, p.nopTo], month: p.monthFrom })), deleted: empty.map((account) => account.enrollment_id), finance },
         corrected_at: new Date().toISOString(), encoded_by_name: "Receipt consolidation", encoded_at: new Date().toISOString() })}`;
       console.log("");
     }

@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {
+      "member": "PH-84237783",
+      "program": "DP-0010",
+      "fromAccounts": ["ENR-LEG-12FC5AA43F"],
+      "startNop": 3,
+      "expectedDoi": "2025-11-01",
+      "note": "Owner explicitly requested PH-84237783 NOP starts at 3, October 19, 2026. Set OR 11374 C January 2026 to NOP 3, then sequentially through September/NOP 11, preserving two months each on PHP 700 receipts 20120 C and 23585 C. Retain January-September coverage, November 1, 2025 DOI, DPB-350, seven receipt dates and PHP 3150 total, branch/MAS and duplicate label on 14529 C. Recalculate financial snapshots and status."
+    }
+  ]
+}

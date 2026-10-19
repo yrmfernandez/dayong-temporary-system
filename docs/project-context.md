@@ -1,5 +1,12 @@
 # Dayong System project context
 
+### Audits: no empty branch in the report's branch list (2026-10-19)
+
+- **Owner:** in Audit, don't show the entry branch in the branch list if the report is empty.
+- **Done:** the clerk report returns `activeBranches` (branches with entries, expenses, deposits or Fidelity slips in the period, `lib/clerk-report.ts`); on Audits (`hideEmptyBranches` on `ClerkReport`) the Branch list shows only those, plus the branch currently chosen, and All branches. Reports and Report Review are unchanged. Build and all 205 tests pass.
+- **In progress:** none.
+- **To do (owner):** deploy and open an audit for a clerk with several branches.
+
 ### Transfer to any program, months counted from the amount paid (2026-10-19)
 
 - **Owner:** the program transfer still only allowed programs with the same pay; it should transfer to any program as long as the amount paid can be calculated correctly in the new program.
@@ -1018,6 +1025,26 @@ Owner confirmed MD-2026-0053's incentive for October 13 must be PHP 196.50. Corr
 
 ### October 13, 2026: TANGAL incentive correction
 Owner subsequently requested fixing TANGAL, MARY JEAN's MATINA entry encoded by ABESIA, DARYL JANE, superseding the earlier leave-as-is decision. OR 17552B (COL-20261013081610-4ARZ), D-320 NOP 29, kept its encoded Collector role and was recalculated using the now-configured 10% tier: PHP 32.00 incentive, PHP 288.00 remittance. Pending slip REM-20261013081611-ZVKX and its mapping were updated together in one audited transaction, with a Record Corrections summary. scripts/fix-tangal-incentives.mjs passed a production rollback dry run before applying; readback verified incentive, balanced slip/mapping and correction record. Staging did not have this entry.
+
+### PH-11741830 merged into PH-71670920 (October 19, 2026)
+
+Owner explicitly requested merge, stating PH-11741830 does not exist as a separate person. Both records existed in production. Kept PH-71670920 (MEM-LEG-680DA2423A), D-230 account ENR-LEG-5609D45070; other account ENR-LEG-5CDD86AA5A had only September OR 24425 C/NOP 61. Both share September 1, 2021 DOI, MINTAL and same MAS; September continues kept January-August/NOP 53-60 without overlap. Saved complete member/account/financial backups; member-accounts.mjs --backup now includes the full member record. Existing merge-name-variants.mjs/config/ph71670920-ph11741830-merge-20261019.json passed rollback dry run, then applied. Preserved kept personal details (fillDetails false), moved the September receipt and removed redundant account/member. Nine receipts/PHP 2,070, dates, coverage/NOPs, program, DOI and MAS preserved. Status U; nine financial entries recalculated. Production verification confirmed all nine receipts under one kept account and zero member records for PH-11741830. Audit Log and Record Corrections retain the merge.
+
+### PH-21465590: all D-280 and PHP 230 amount correction (October 19, 2026)
+
+Owner explicitly requested all entries under 280 and changing PHP 230 to PHP 280. Production had eight D-280 receipts and one D-230 receipt, 18140 C. Saved full account/history backup. Extended existing consolidation script with guarded amountCorrections (exact collection ID, OR, expected old amount and reason); amount, account move, coverage and financial updates share the same audited transaction. Config/ph21465590-all-d280-20261019.json passed rollback dry run and applied. OR 18140 C is now PHP 280 under D-280/DP-0066, kept account ENR-LEG-4C1D7DBB0F; empty D-230 account removed. Nine PHP 280 receipts total PHP 2,520, up PHP 50 as instructed. Restored January-September 2026/NOP 26-34, preserving December 1, 2023 DOI, receipt dates, branch and MAS. Status U. Nine financial snapshots recalculated; no linked remittance expectations changed. Production receipt-count/total/program/history verification and script syntax check passed. Audit Log and Record Corrections record the before/after amount, program and coverage.
+
+### Source-confirmed NOP-only sweep (October 19, 2026)
+
+Owner requested finding/fixing NOP issues like PH-84237783. Added --nop-only audit mode: complete source receipt identities, dates/amounts, existing covered months and month counts must agree; NOPs align to preserved DOI and at least 80% of later source NOP ranges. Excluded explicit coverage/NOP exceptions, multiple-account members and prior corrections other than the earlier Month of-only sweep. Scanned 14,228 accounts/64,111 posted receipts; found 43 accounts/363 NOP corrections. Extended existing guarded repair with --nop-only: saved full backup, passed rollback dry run, then applied in one transaction. Changes NOPs and NOP-dependent finance snapshots only; covered months, amounts/dates, programs, DOIs, branch/MAS attribution, ownership and remittance links/status remain intact. No mapped remittance receipts are allowed in this sweep. All 363 finance snapshots recalculated with zero net incentive change and zero remittance slip changes. Both in-transaction and post-commit verification passed against complete backups and pricing results. Receipt total PHP 106,395 preserved. Per-account COR-NOP-20261019-* Record Corrections and Audit Log retain changes. Existing 39 U, 2 60D and 2 ADV statuses preserved by the coverage-based recalculation. Source parser tests and syntax checks passed. Full member/NOP list: docs/source-nop-corrections-20261019.md.
+
+### PH-84237783: owner-confirmed NOP 3 start (October 19, 2026)
+
+Owner explicitly requested NOP starts at 3. After saving backup and rollback dry run, applied existing consolidation script/config/ph84237783-nop3-20261019.json to DPB-350 account ENR-LEG-12FC5AA43F/DP-0010. OR 11374 C January 2026 is now NOP 3; subsequent receipts continue through September/NOP 11. Two-month payments 20120 C and 23585 C now cover NOP 8-9 and 10-11. January-September coverage, November 1, 2025 DOI, all seven dates/PHP 3,150, branch/MAS and 14529 C duplicate label preserved. Status U. Seven financial snapshots recalculated without net incentive change or linked slip adjustments. Audit Log and Record Corrections retain the repair.
+
+### Source cross-year and month-count follow-up (October 19, 2026)
+
+Owner requested finding/fixing similar issues again after PH-88243657. Expanded source audit with --prior-year and --source-spans, using conservative explicit-year parsing, full source identity checks, single-account histories, continuous covered months and at least 80% later-source NOP agreement with preserved DOI. Found/fixed five accounts after fresh backups and rollback dry runs: PH-10533517 (24862 C August-September), PH-50599167 (23600 C August-September), PH-80857861 (06766T July-August), PH-97019970 (06164T July-August; 08021T September-October), PH-70844674 (source one-month January-July receipts followed by August-November on 15617 B; removed imported extra coverage through May 2027). Thirteen month/NOP ranges changed. Verified all 37 receipts/PHP 11,280, dates, programs, DOIs, attribution, totals and remittance links/status against backups and source plans. Four statuses U; PH-70844674 ADV through November 2026. Financial snapshots recalculated with no net incentive changes or linked slip adjustments. Audit Log and Record Corrections retain all repairs. Three source-parser regression tests and syntax checks passed. Full report: docs/source-span-corrections-20261019.md. Scoped configs: ph10533517-two-month-receipt-20261019.json and four-source-span-fixes-20261019.json. Other ambiguous histories left unchanged.
 
 ### PH-88243657: D-320 coverage correction (October 19, 2026)
 

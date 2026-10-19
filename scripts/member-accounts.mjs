@@ -150,6 +150,7 @@ try {
   if (process.argv.includes('--backup') && members.length === 1) {
     const memberId = members[0].member_id;
     const snapshot = {
+      member: (await sql`select * from members where member_id=${memberId}`)[0],
       accounts: await sql`select * from member_programs where member_id=${memberId}`,
       collections: await sql`select * from collections where member_id=${memberId}`,
       sales: await sql`select * from sales where member_number=${number}`,

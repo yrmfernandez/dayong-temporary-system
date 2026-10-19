@@ -9,7 +9,17 @@ import { crossYearMonths } from './source-cross-year-months.mjs';
 nextEnv.loadEnvConfig(process.cwd());
 const priorYear = process.argv.includes('--prior-year');
 const sourceSpans = process.argv.includes('--source-spans');
-const aligned = priorYear || sourceSpans;
+const nopOnly = process.argv.includes('--nop-only');
+const aligned = priorYear || sourceSpans || nopOnly;
+const protectedMembers = new Set();
+if (nopOnly) {
+  const visit = value => {
+    if (!value || typeof value !== 'object') return;
+    if (value.member && value.coverageStart) protectedMembers.add(value.member);
+    for (const child of Object.values(value)) if (child && typeof child === 'object') visit(child);
+  };
+  for (const file of fs.readdirSync('config').filter(f => f.endsWith('.json'))) visit(JSON.parse(fs.readFileSync(`config/${file}`,'utf8').replace(/^\uFEFF/,'')));
+}
 const sourceFile = 'legacy-data/old-data/2026 DATABASE (NS + COLL).xlsx';
 const sources = await loadLegacySources([sourceFile]);
 const norm = v => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -53,7 +63,7 @@ const db = postgres(process.env.DIRECT_DATABASE_URL,{max:1,connect_timeout:15,on
 try { await db.begin('isolation level repeatable read read only', async tx => {
   const accounts = await tx`select a.enrollment_id as id,a.member_id as "memberId",m.member_number as "memberNumber",a.program_id as "programId",p.program_name as program,a.doi::text,a.account_status as "storedStatus",p.base_pay::float8 as "basePay",p.pay_balance_total::float8 as "payBalanceTotal",p.flexible,p.max_monthly_payment::float8 as "maxMonthlyPayment" from member_programs a join members m on m.member_id=a.member_id join programs p on p.program_id=a.program_id`;
   const payments = await tx`select collection_id as id,enrollment_id as "enrollmentId",or_number as "orNumber",or_date::text as "orDate",amount_collected::float8 as amount,month_from as "monthFrom",month_to as "monthTo",nop_from as "nopFrom",nop_to as "nopTo",date_remitted::text as "dateRemitted" from collections where status='Posted' order by or_date,collection_id`;
-  const corrections = new Set((await tx`select distinct record_id from record_corrections`).map(r => r.record_id));
+  const corrections = new Set((await tx`select distinct record_id from record_corrections where (${nopOnly} = false or module is distinct from 'Source Month of correction')`).map(r => r.record_id));
   const grouped = new Map();
   for (const p of payments) { const list = grouped.get(p.enrollmentId) ?? []; list.push(p); grouped.set(p.enrollmentId,list); }
   const candidates = [], skipped = {};
@@ -61,6 +71,7 @@ try { await db.begin('isolation level repeatable read read only', async tx => {
   for (const account of accounts) {
     const history = grouped.get(account.id) ?? [];
     if (history.length < 6) { skip('fewerThanSixReceipts'); continue; }
+    if (nopOnly && protectedMembers.has(account.memberNumber)) { skip('explicitCoverageException'); continue; }
     if (aligned && accounts.filter(a => a.memberId === account.memberId).length !== 1) { skip('multipleAccounts'); continue; }
     if (corrections.has(account.id) || history.some(p => corrections.has(p.id))) { skip('previousCorrection'); continue; }
     const proposed = [];
@@ -75,6 +86,7 @@ try { await db.begin('isolation level repeatable read read only', async tx => {
       proposed.push({...p,monthFrom:names[0],monthTo:names.at(-1),nopFrom,nopTo,sourceRef:s.ref,sourceMonthText:s.sourceMonthText,sourceNop:s.sourceNop});
     }
     if (failed) { skip(failed); continue; }
+    if (nopOnly && proposed.some((p,i) => p.monthFrom !== history[i].monthFrom || p.monthTo !== history[i].monthTo || p.nopTo-p.nopFrom !== history[i].nopTo-history[i].nopFrom)) { skip('requiresCoverageChange'); continue; }
     if ((priorYear ? !proposed[0].monthFrom.startsWith('2025-') : proposed[0].monthFrom !== '2026-01') || proposed.some((p,i) => i && (monthIndex(p.monthFrom) !== monthIndex(proposed[i-1].monthTo)+1 || p.nopFrom !== proposed[i-1].nopTo+1))) { skip('notContinuousSourceHistory'); continue; }
     if (aligned) {
       const later = proposed.slice(1);
@@ -87,13 +99,13 @@ try { await db.begin('isolation level repeatable read read only', async tx => {
     const changed = proposed.filter((p,i) => p.monthFrom !== history[i].monthFrom || p.monthTo !== history[i].monthTo || p.nopFrom !== history[i].nopFrom || p.nopTo !== history[i].nopTo);
     if (!changed.length) { skip('alreadyMatchesSource'); continue; }
     try {
-      // Validate both histories independently. Only Month of/status is proposed; NOP/finance stays intact.
+      // Validate both histories independently; the selected mode controls whether NOP spans may change.
       accountState({...account,branch:'',mas:''},history,todayInManila());
       const state = accountState({...account,branch:'',mas:''},proposed,todayInManila());
       candidates.push({account,receipts:history,proposed,statusAfter:state.status,changedReceipts:changed.length,total:history.reduce((sum,p) => sum+p.amount,0)});
     } catch { skip('invalidHistory'); }
   }
   const report = {generatedAt:new Date().toISOString(),sourceFile,summary:{accounts:accounts.length,receipts:payments.length,indexedSourceRows:sourceRows.size,candidates:candidates.length,changedReceipts:candidates.reduce((sum,c) => sum+c.changedReceipts,0),skipped},cases:candidates};
-  fs.writeFileSync(priorYear ? 'legacy-data/source-cross-year-review-20261019.json' : sourceSpans ? 'legacy-data/source-span-review-20261019.json' : 'legacy-data/source-month-review-20261019.json',JSON.stringify(report,null,2));
+  fs.writeFileSync(priorYear ? 'legacy-data/source-cross-year-review-20261019.json' : sourceSpans ? 'legacy-data/source-span-review-20261019.json' : nopOnly ? 'legacy-data/source-nop-review-20261019.json' : 'legacy-data/source-month-review-20261019.json',JSON.stringify(report,null,2));
   console.log(JSON.stringify({summary:report.summary,first:candidates.slice(0,12).map(c => ({member:c.account.memberNumber,program:c.account.program,receipts:c.receipts.length,changed:c.changedReceipts,stored:[c.receipts[0].monthFrom,c.receipts.at(-1).monthTo],source:[c.proposed[0].monthFrom,c.proposed.at(-1).monthTo],status:[c.account.storedStatus,c.statusAfter]}))},null,2));
 }); } finally { await db.end(); }
