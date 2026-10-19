@@ -204,20 +204,22 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
  * Merges a member's account into their other account (owner, October 16, 2026: a program can be moved even when the
  * member's account in the target program already has payments). Every payment of both goes to the target account,
  * numbered one after another in OR-date order from the lowest NOP either had (2 when none: NOP 1 is the New Sale), each
- * keeping its number of months; months follow the earlier DOI, which the target keeps. This is the October 4 repair
+ * keeping its number of months (or, with sourceMonths, the source's receipts counted again at the target's pay); months follow the earlier DOI, which the target keeps. This is the October 4 repair
  * rule (scripts/fix-legacy-receipts.mjs). The combined history must pass the account rules with the target program,
  * or this throws and the caller's transaction saves nothing. Transfer records follow; the source account is deleted.
  * The callers move the New Sale and work out the incentives again.
  */
-export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId: string, today = manilaNow().date) {
+export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId: string, today = manilaNow().date, sourceMonths?: (payment: AccountPayment) => number) {
   const data = await loadAccountData({ enrollmentIds: [sourceId, targetId], includeDeactivated: true }, tx, { lock: true });
   const source = data.accounts.find((account) => account.id === sourceId), target = data.accounts.find((account) => account.id === targetId);
   if (!source || !target) throw new Error("The accounts to merge were not found.");
   if (source.memberId !== target.memberId) throw new Error("Only two accounts of the same member can be merged.");
   const doi = [source.doi, target.doi].filter(Boolean).sort()[0] ?? "";
+  const fromSource = new Set(data.payments.filter((payment) => payment.enrollmentId === source.id).map((payment) => payment.id));
   const payments = data.payments.map((payment) => ({ ...payment, enrollmentId: target.id }));
   const nops = payments.map((payment) => payment.nopFrom).filter((nop) => nop > 0);
-  const renumbered = renumber({ doi }, payments, nops.length ? Math.min(...nops) : 2, (payment) => Math.max(1, payment.nopTo - payment.nopFrom + 1));
+  // sourceMonths: the source's payments counted again at the target's monthly pay (a move between programs of different pay).
+  const renumbered = renumber({ doi }, payments, nops.length ? Math.min(...nops) : 2, (payment) => sourceMonths && fromSource.has(payment.id) ? sourceMonths(payment) : Math.max(1, payment.nopTo - payment.nopFrom + 1));
   let status: string;
   try { status = accountState({ ...target, doi }, renumbered, today).status; }
   catch (error) { throw new Error(`The payments of ${source.programName} and ${target.programName} do not fit together on one account (${error instanceof Error ? error.message : "coverage"}). Nothing was saved.`); }
@@ -238,7 +240,7 @@ export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId
  * Numbers an account's payments again in OR-date order from `first` (the account's lowest NOP before the edit, or 2
  * when it had none: NOP 1 is the New Sale); `count` gives each payment's months.
  */
-function renumber(account: { doi: string }, payments: AccountPayment[], first: number, count: (payment: AccountPayment) => number) {
+export function renumber(account: { doi: string }, payments: AccountPayment[], first: number, count: (payment: AccountPayment) => number) {
   const ordered = [...payments].sort((a, b) => a.orDate.localeCompare(b.orDate) || a.nopFrom - b.nopFrom || a.id.localeCompare(b.id));
   let next = first;
   const start = monthIndex(account.doi.slice(0, 7));

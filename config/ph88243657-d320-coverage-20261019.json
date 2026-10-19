@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {
+      "member": "PH-88243657",
+      "program": "DP-0011",
+      "fromAccounts": ["ENR-LEG-D8D12E7586"],
+      "startNop": 22,
+      "expectedDoi": "2024-03-01",
+      "note": "Owner requested correction October 19, 2026. Original M3-COLL row 1434 explicitly says January, Deccember 2025 on PHP 640 OR 10911 C: December 2025-January 2026, two PHP 320 months. Source first NOP 40 is inconsistent; rows 3002,4410,6611,8565,10431,12792,14316,16315 confirm February-September/NOP 24-31, matching March 1, 2024 DOI. Restore full December 2025-September 2026/NOP 22-31 history, first receipt NOP 22-23. Preserve D-320, DOI, all nine receipt dates and PHP 3200 total, branch and MAS; recalculate financial snapshots and account status."
+    }
+  ]
+}

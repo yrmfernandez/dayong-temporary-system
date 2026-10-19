@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-10533517",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-033A6C6617"],
+      "startNop": 16,
+      "expectedDoi": "2024-08-01",
+      "receiptMonths": {"24862C": 2},
+      "note": "Owner authorized finding and fixing similar coverage issues October 19, 2026. Full source history matched by source ID, OR/date/amount. M3-COLL row 16196 states August, September on PHP 420 OR 24862 C; source NOP 26 was imported as one month. Restore August-September 2026/NOP 25-26. Preserve November-December 2025 arrears on 10195 C (row 769) and all other source-covered months, August 1, 2024 DOI, program, receipt dates, PHP 2310 total, branch and MAS. Recalculate finances and status."
+    }
+  ]
+}

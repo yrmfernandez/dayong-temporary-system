@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "member": "PH-07624278",
+      "program": "DP-0067",
+      "fromAccounts": ["ENR-LEG-13FF9B23B3"],
+      "startNop": 2,
+      "expectedDoi": "2025-12-01",
+      "note": "Owner requested correction of the paired D-300 (Bracketing) and D-350 receipt lists on October 19, 2026. Verify and retain nine PHP 300 receipts, January-September 2026/NOP 2-10, under D-300 (Bracketing); preserve DOI, amounts, OR dates, branch and MAS. Recalculate status and financial snapshots."
+    },
+    {
+      "member": "PH-07624278",
+      "program": "DP-0013",
+      "fromAccounts": ["ENR-LEG-812A392CDE"],
+      "startNop": 40,
+      "expectedDoi": "2022-10-01",
+      "note": "Restore D-350 coverage to January-September 2026/NOP 40-48 per original M3-COLL: row 806 OR 10118 C January/NOP 40, row 2650 OR 11772C February/NOP 41, row 16246 OR 21978 C September/NOP 48. Current NOP 15-23/December 2023-August 2024 is inconsistent with source. Preserve October 1, 2022 DOI, nine PHP 350 amounts and OR dates. Keep 10118 C (duplicated) marker and other members' same-number receipts unchanged. Recalculate status and financial snapshots."
+    }
+  ]
+}

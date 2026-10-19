@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "member": "PH-15674914",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-06C60E682E"],
+      "startNop": 17,
+      "expectedDoi": "2024-09-01",
+      "note": "Owner approved the four shortlisted D-210 HG split-history corrections October 19, 2026. Move OR 5075 M from D-250 FG into D-210 HG. Preserve January-October 2026/NOP 17-26, ten recorded receipt amounts and dates, DOI, branch and MAS. Recalculate finances/status and remove the empty source account."
+    },
+    {
+      "member": "PH-50305112",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-7FA4F029D6"],
+      "startNop": 18,
+      "expectedDoi": "2024-08-01",
+      "note": "Owner approved all entries under D-210 HG for this shortlisted split case. Move OR 24468 C from DC-260. Preserve January-September 2026/NOP 18-26, nine recorded receipt amounts and dates, DOI, branch and MAS. Recalculate finances/status and remove the empty source account."
+    },
+    {
+      "member": "PH-60372421",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-322F86005F"],
+      "startNop": 8,
+      "expectedDoi": "2025-06-01",
+      "note": "Owner approved all entries under D-210 HG for this shortlisted split case. Move OR 11669 C from D-300 (Bracketing). Preserve January-September 2026/NOP 8-16, nine recorded receipt amounts and dates, DOI, branch and MAS. The PHP 500 September receipt retains its existing one-month coverage. Recalculate finances/status and remove the empty source account."
+    },
+    {
+      "member": "PH-60651860",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-AA0854CD05"],
+      "startNop": 18,
+      "expectedDoi": "2024-08-01",
+      "note": "Owner approved all entries under D-210 HG for this shortlisted split case. Move OR 21993 C from D-300 (Bracketing). Preserve January-September 2026/NOP 18-26, eight recorded receipt amounts and dates, DOI, branch and MAS. OR 18635 C retains two months of June-July coverage. Recalculate finances/status and remove the empty source account."
+    }
+  ]
+}

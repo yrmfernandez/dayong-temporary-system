@@ -1,0 +1,23 @@
+{
+  "previouslyAppliedCases": [
+    {
+      "member": "PH-34460062",
+      "program": "DP-0062",
+      "fromAccounts": ["ENR-LEG-38490EA56E"],
+      "startNop": 59,
+      "expectedDoi": "2021-03-01",
+      "note": "Owner requested six paired receipts corrected October 19, 2026. SDS-COLL rows 28,1510,2938 confirm D-190 receipts 3747,1021 S,1828 S cover January-September 2026/NOP 59-67, three months per PHP 570 receipt. Preserve DOI, OR dates, amounts and historical MAS; recalculate status and financial snapshots."
+    }
+  ],
+  "cases": [
+    {
+      "member": "PH-34460062",
+      "program": "DP-0027",
+      "fromAccounts": ["ENR-LEG-C11709611F"],
+      "startNop": 32,
+      "coverageStart": "2026-01",
+      "expectedDoi": "2021-03-01",
+      "note": "Owner confirmed follow the source when asked whether OR 3748 starts at source NOP 32-34 or DOI-derived 59-61. Use January-March 2026/NOP 32-34 then April-June/NOP 35-37 and July-September/NOP 38-40. SDS-COLL rows 29,1509,2937 confirm the three coverage quarters; row 2937 NOP 65-67 repeats D-190's range and is normalized to continue this account's sequence. Explicit coverageStart preserves source months despite the stored March 2021 DOI. Preserve DOI, OR dates, all three PHP 1950 amounts, program, branch and distinct MAS attribution; recalculate status and financial snapshots."
+    }
+  ]
+}

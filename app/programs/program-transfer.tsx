@@ -7,14 +7,15 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { TransferAccount } from "@/lib/program-transfer";
 
-type Options = { program: { id: string; name: string; code: string; rate: number; flexible: boolean }; accounts: TransferAccount[]; targets: Array<{ id: string; name: string; code: string; rate: number; status: string; accounts: number }> };
+type Options = { program: { id: string; name: string; code: string; rate: number; flexible: boolean }; accounts: TransferAccount[]; targets: Array<{ id: string; name: string; code: string; rate: number; flexible: boolean; status: string; accounts: number }> };
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 
 /**
  * Programs → Transfer members (administrators; lib/program-transfer.ts): move all of a program's accounts, or the
- * ticked ones, to another program with the same monthly pay. A member who already has an account there is merged into
- * it; two accounts that paid the same month are left. Optionally delete the program once it is empty.
+ * ticked ones, to any other program; with a different monthly pay each receipt's months are counted again from its
+ * amount, and an account whose receipts do not work out is left. A member who already has an account there is merged
+ * into it. Optionally delete the program once it is empty.
  */
 export function ProgramTransfer({ programId, onClose, onDone }: { programId: string; onClose: () => void; onDone: (message: string) => void }) {
   const [options, setOptions] = useState<Options | null>(null);
@@ -66,12 +67,12 @@ export function ProgramTransfer({ programId, onClose, onDone }: { programId: str
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-semibold">Transfer members of {options.program.name}</p>
-          <p className="text-xs text-muted-foreground">{options.accounts.length} account(s) · {money(options.program.rate)} a month{options.program.flexible ? " (flexible)" : ""}. Only programs with the same monthly pay are listed. A member who already has an account in the target program is merged into it (payments renumbered by month); two accounts that paid the same month are left as they are.</p>
+          <p className="text-xs text-muted-foreground">{options.accounts.length} account(s) · {money(options.program.rate)} a month{options.program.flexible ? " (flexible)" : ""}. Any program can take them. With a different monthly pay, each receipt covers its amount ÷ the new monthly pay and the payments are numbered again by OR date; an account whose receipts are not whole months of the new pay is left as it is. A member who already has an account in the target program is merged into it.</p>
         </div>
         <Button type="button" size="sm" variant="ghost" onClick={onClose}>Close</Button>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        <label className="text-sm">Move to *<SearchSelect aria-label="Move to program" className="mt-1 h-9" placeholder={options.targets.length ? "Choose a program with the same pay" : "No other program has the same pay"} value={target} onValueChange={setTarget} options={options.targets.map((item) => ({ value: item.id, label: item.name, description: `${item.id}${item.code && item.code !== item.name ? ` · ${item.code}` : ""} · ${money(item.rate)} · ${item.accounts} account(s)${item.status !== "active" ? ` · ${item.status}` : ""}` }))} /></label>
+        <label className="text-sm">Move to *<SearchSelect aria-label="Move to program" className="mt-1 h-9" placeholder={options.targets.length ? "Choose a program" : "No other program"} value={target} onValueChange={setTarget} options={options.targets.map((item) => ({ value: item.id, label: item.name, description: `${item.id}${item.code && item.code !== item.name ? ` · ${item.code}` : ""} · ${money(item.rate)}${item.flexible ? " minimum" : ""}${item.rate !== options.program.rate ? " (months recounted)" : ""} · ${item.accounts} account(s)${item.status !== "active" ? ` · ${item.status}` : ""}` }))} /></label>
         <label className="text-sm">Reason *<input className={fieldClass} maxLength={300} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. D-300 (NEW) is the same plan as D-300 (Bracketing)" /></label>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">

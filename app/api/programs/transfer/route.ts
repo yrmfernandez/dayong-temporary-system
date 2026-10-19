@@ -4,7 +4,7 @@ import { canMovePrograms, programTargets, programTransferOptions, transferProgra
 
 /**
  * Programs → Transfer members (lib/program-transfer.ts), administrators, and IT from Edit / Corrections: GET ?program=ID lists the program's
- * accounts and the programs with the same pay (&targets=1: only the programs, for Members → Transfer of one account);
+ * accounts and the programs they can move to (&targets=1: only the programs, for Members → Transfer of one account);
  * POST { from, to, enrollmentIds | all, removeWhenEmpty, reason } moves them.
  */
 async function allowed() {

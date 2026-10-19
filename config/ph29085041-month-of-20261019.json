@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-29085041",
+      "program": "DP-0015",
+      "fromAccounts": ["ENR-LEG-3EBA110F22"],
+      "startNop": 28,
+      "coverageStart": "2026-01",
+      "expectedDoi": "2023-11-01",
+      "note": "Owner requested Month of correction October 19, 2026. M3-COLL rows 2615,4489,6169,8540,10788,12795,16298,16966 explicitly cover February-September 2026 on the eight later receipts, confirming the nine-payment January-September sequence. Restore Month of from shifted February-October to January-September. Retain existing continuous NOP 28-36 and November 1, 2023 DOI, despite inconsistent source NOPs and DOI-to-month alignment; this correction targets covered months. Preserve program D-270 (300), all nine PHP 270 amounts, OR dates, branch and MAS. Recalculate status and financial snapshots."
+    }
+  ]
+}

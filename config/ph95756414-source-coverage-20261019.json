@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-95756414",
+      "program": "DP-0067",
+      "fromAccounts": ["ENR-LEG-1870926F75"],
+      "startNop": 2,
+      "coverageStart": "2026-01",
+      "expectedDoi": "2026-01-01",
+      "note": "Owner requested correction of nine listed receipts October 19, 2026. Original M3-COLL rows 788,2404,4650,7517,9413,11158,13515,15616,16984 explicitly cover January-September 2026 for D-300 (Bracketing). Restore these source months instead of stored February-October. Preserve source starting NOP 2 on 10091 C and existing continuous NOP 2-10; normalize source repeated NOP 3 and subsequent off-by-one ranges. Explicit coverageStart retains January source coverage despite January 1, 2026 DOI. Preserve DOI, all nine PHP 300 amounts, OR dates, branch and MAS; recalculate status and financial snapshots."
+    }
+  ]
+}

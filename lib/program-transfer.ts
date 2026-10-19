@@ -5,13 +5,16 @@ import { accountState, forfeitMonthsFor, todayInManila, type AccountPayment } fr
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { currentDb, inTransaction } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
-import { mergeAccountInto, repriceCollections, repriceSales } from "@/lib/entry-edit";
+import { mergeAccountInto, renumber, repriceCollections, repriceSales } from "@/lib/entry-edit";
 import { getEncoder } from "@/lib/encoder-context";
 
 /**
  * Moving accounts between programs from the Programs page (owner, October 10, 2026): an administrator moves all of a
- * program's accounts, or the ones they tick, to another program with the same monthly pay, the same rules as
- * scripts/move-program-accounts.mjs:
+ * program's accounts, or the ones they tick, to another program, the same rules as scripts/move-program-accounts.mjs:
+ *   - any program (owner, October 19, 2026), as long as what each receipt paid works out in the new monthly pay: with
+ *     the same pay every NOP stays; otherwise each receipt covers amount ÷ the new monthly pay (whole months; on a
+ *     flexible program at least the minimum a month) and the payments are numbered again in OR-date order from the
+ *     account's first NOP, months following the DOI (monthsAt). An account whose receipts do not work out is left and reported;
  *   - an account moves with its New Sale, collections and transfer records; its payment status is recalculated;
  *   - a member who already has an account in the target program is merged into it (their payments join that account,
  *     renumbered in OR-date order from the lowest NOP either had, the earlier DOI kept: mergeAccountInto in
@@ -30,6 +33,27 @@ const programById = async (id: string) => (await query<Program>(sql`select progr
     coalesce(pay_balance_total, 0)::float8 as total, coalesce(flexible, false) as flexible, max_monthly_payment::float8 as max, coalesce(status, 'active') as status
   from programs where program_id = ${text(id)}`))[0];
 const samePay = (a: Program, b: Program) => Math.round(a.rate * 100) === Math.round(b.rate * 100) && a.flexible === b.flexible;
+const peso = (value: number) => `₱${value.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
+
+/**
+ * The months each receipt covers in the target program, or null when they stay as they are (same pay). A fixed program:
+ * the amount ÷ its monthly pay, which must be a whole number of months. A flexible one: the months the receipt had when
+ * each still gets the minimum, otherwise as many whole minimums as it holds, and never above the monthly maximum.
+ * Throws, naming the receipt, when the amount does not work out.
+ */
+function monthsAt(from: Program, to: Program) {
+  if (samePay(from, to)) return null;
+  const rate = Math.round(to.rate * 100);
+  if (rate <= 0) throw new Error(`${to.program_name} has no monthly pay.`);
+  return (payment: Payment) => {
+    const paid = Math.round(payment.amount * 100), had = Math.max(1, payment.nopTo - payment.nopFrom + 1);
+    const months = to.flexible ? (paid >= rate * had ? had : Math.floor(paid / rate)) : paid % rate === 0 ? paid / rate : 0;
+    const receipt = `OR ${payment.orNumber || payment.id} (${peso(payment.amount)})`;
+    if (months < 1) throw new Error(to.flexible ? `${receipt} is less than the ${peso(to.rate)} minimum of ${to.program_name}.` : `${receipt} is not a whole number of ${peso(to.rate)} months of ${to.program_name}.`);
+    if (to.flexible && to.max && paid > Math.round(to.max * 100) * months) throw new Error(`${receipt} is more than the ${peso(to.max)} monthly maximum of ${to.program_name}.`);
+    return months;
+  };
+}
 
 export type TransferAccount = { enrollmentId: string; memberNumber: string; memberName: string; branch: string; mas: string; doi: string; status: string; payments: number };
 
@@ -39,7 +63,7 @@ export async function canMovePrograms() {
   return Boolean(user && ((await canManageUsers()) || (canCorrectEntriesFor(user) && canAccessPath(user, "/entry-corrections"))));
 }
 
-/** Only the programs with the same monthly pay a program's accounts can move to (Members → Transfer, one account). */
+/** The programs a program's accounts can move to (Members → Transfer, one account): any other active program. */
 export async function programTargets(programId: string) {
   const from = await programById(programId);
   if (!from) throw new Error("Program not found.");
@@ -48,11 +72,11 @@ export async function programTargets(programId: string) {
     from programs where program_id <> ${from.program_id} order by program_name`);
   return {
     program: { id: from.program_id, name: from.program_name, code: from.program_code, rate: from.rate, flexible: from.flexible },
-    targets: targets.filter((target) => samePay(target, from) && target.status !== "inactive").map((target) => ({ id: target.program_id, name: target.program_name, code: target.program_code, rate: target.rate, status: target.status, accounts: 0 })),
+    targets: targets.filter((target) => target.status !== "inactive").map((target) => ({ id: target.program_id, name: target.program_name, code: target.program_code, rate: target.rate, flexible: target.flexible, status: target.status, accounts: 0 })),
   };
 }
 
-/** A program's accounts and the programs with the same monthly pay they can move to. */
+/** A program's accounts and the programs they can move to (any other; a different pay recounts the months). */
 export async function programTransferOptions(programId: string) {
   const from = await programById(programId);
   if (!from) throw new Error("Program not found.");
@@ -70,7 +94,7 @@ export async function programTransferOptions(programId: string) {
   return {
     program: { id: from.program_id, name: from.program_name, code: from.program_code, rate: from.rate, flexible: from.flexible },
     accounts: accounts.map((row): TransferAccount => ({ enrollmentId: row.enrollment_id, memberNumber: row.member_number, memberName: row.name, branch: row.branch, mas: row.mas, doi: row.doi, status: row.status, payments: Number(row.payments) })),
-    targets: targets.filter((target) => samePay(target, from)).map((target) => ({ id: target.program_id, name: target.program_name, code: target.program_code, rate: target.rate, status: target.status, accounts: Number(target.accounts) })),
+    targets: targets.map((target) => ({ id: target.program_id, name: target.program_name, code: target.program_code, rate: target.rate, flexible: target.flexible, status: target.status, accounts: Number(target.accounts) })),
   };
 }
 
@@ -81,7 +105,7 @@ const paymentsOf = async (enrollmentId: string): Promise<Payment[]> => (await qu
     from collections where enrollment_id = ${enrollmentId} and lower(coalesce(status, '')) = 'posted'`))
   .map((row) => ({ id: row.collection_id, enrollmentId, orDate: row.or_date, orNumber: row.or_number, monthFrom: row.month_from, monthTo: row.month_to, nopFrom: Number(row.nop_from), nopTo: Number(row.nop_to), amount: Number(row.amount), dateRemitted: "", mas: "" }));
 
-/** Moves the chosen accounts (or all) of one program to another with the same monthly pay; see the file comment. */
+/** Moves the chosen accounts (or all) of one program to another; see the file comment. */
 export async function transferProgramAccounts(input: { fromProgramId: string; toProgramId: string; enrollmentIds?: string[]; all?: boolean; removeWhenEmpty?: boolean; reason?: string }) {
   const reason = text(input.reason);
   if (reason.length < 3 || reason.length > 300) throw new Error("Give the reason for the transfer (3 to 300 characters).");
@@ -89,7 +113,7 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
     const [from, to] = await Promise.all([programById(input.fromProgramId), programById(input.toProgramId)]);
     if (!from || !to) throw new Error("Program not found.");
     if (from.program_id === to.program_id) throw new Error("Choose a different program to move to.");
-    if (!samePay(from, to)) throw new Error(`${to.program_name} has a different monthly pay (₱${to.rate}${to.flexible ? ", flexible" : ""}) from ${from.program_name} (₱${from.rate}${from.flexible ? ", flexible" : ""}). Only programs with the same pay can take these accounts.`);
+    const months = monthsAt(from, to);
     const accounts = await query<{ enrollment_id: string; member_id: string; member_number: string; doi: string; target: string | null }>(sql`
       select mp.enrollment_id, mp.member_id, coalesce(mp.member_number, '') as member_number, coalesce(mp.doi::text, '') as doi,
         (select o.enrollment_id from member_programs o where o.member_id = mp.member_id and o.program_id = ${to.program_id} order by o.enrollment_id limit 1) as target
@@ -112,7 +136,7 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
         // Merge into the member's account in the target program: every payment of both, numbered again in OR-date order
         // (owner, October 16, 2026: a program moves even when that account already has payments). Refused only when the
         // combined payments break the account rules; then the account is left and reported.
-        try { await mergeAccountInto(currentDb(), account.enrollment_id, account.target, today); }
+        try { await mergeAccountInto(currentDb(), account.enrollment_id, account.target, today, months ?? undefined); }
         catch (error) { left.push({ enrollmentId: account.enrollment_id, why: `cannot merge into ${account.target}: ${error instanceof Error ? error.message : "payments do not fit"}` }); continue; }
         await currentDb().execute(sql`update sales set program_id = ${to.program_id} where program_id = ${from.program_id} and member_number = ${account.member_number}`);
         changedAccounts.add(account.target);
@@ -120,9 +144,13 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
         merged++;
         continue;
       }
-      let status: string;
-      try { status = accountState(base(account.enrollment_id, account.member_id, account.doi), own, today).status; }
-      catch (error) { left.push({ enrollmentId: account.enrollment_id, why: error instanceof Error ? error.message : "payments do not fit" }); continue; }
+      let status: string, recounted: Payment[] = [];
+      try {
+        // A different pay: every receipt counted again at the new monthly pay and numbered on from the account's first NOP.
+        if (months) { const nops = own.map((payment) => payment.nopFrom).filter((nop) => nop > 0); recounted = renumber({ doi: account.doi }, own, nops.length ? Math.min(...nops) : 2, months); }
+        status = accountState(base(account.enrollment_id, account.member_id, account.doi), months ? recounted : own, today).status;
+      } catch (error) { left.push({ enrollmentId: account.enrollment_id, why: error instanceof Error ? error.message : "payments do not fit" }); continue; }
+      for (const payment of recounted) await currentDb().execute(sql`update collections set nop_from = ${payment.nopFrom}, nop_to = ${payment.nopTo}, month_from = ${payment.monthFrom}, month_to = ${payment.monthTo} where collection_id = ${payment.id}`);
       await currentDb().execute(sql`update collections set program_id = ${to.program_id} where enrollment_id = ${account.enrollment_id}`);
       await currentDb().execute(sql`update member_transfers set program_id = ${to.program_id} where enrollment_id = ${account.enrollment_id}`);
       await currentDb().execute(sql`update sales set program_id = ${to.program_id} where program_id = ${from.program_id} and member_number = ${account.member_number}`);

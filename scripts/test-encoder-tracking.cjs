@@ -734,7 +734,7 @@ test('a member without a contact number gets the claimant contact, when it is a 
   assert.equal(memberContactOrClaimant(' ', '0'), '');
 });
 
-test('Programs → Transfer members moves, merges or leaves each account, only to a program with the same pay', async () => {
+test('Programs → Transfer members moves, merges or leaves each account', async () => {
   const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   await seed('programs', [{ program_id: 'DP-OLD', program_name: 'D-300 (NEW)', base_pay: 300 }, { program_id: 'DP-NEW', program_name: 'D-300 (Bracketing)', base_pay: 300 }, { program_id: 'DP-400', program_name: 'D-400', base_pay: 400 }]);
   await seed('members', [1, 2, 3].map((n) => ({ member_id: `MEM-${n}`, member_number: `PH-${n}`, surname: `S${n}`, first_name: 'A' })));
@@ -753,12 +753,14 @@ test('Programs → Transfer members moves, merges or leaves each account, only t
   ]);
   const route = h.load('app/api/programs/transfer/route.ts');
   const options = await (await route.GET(new Request('http://localhost/api/programs/transfer?program=DP-OLD'))).json();
-  assert.deepEqual(options.targets.map((item) => item.id), ['DP-NEW'], 'only programs with the same pay');
+  assert.deepEqual(options.targets.map((item) => item.id), ['DP-NEW', 'DP-400'], 'any other program, whatever its pay');
   const targetsOnly = await (await route.GET(new Request('http://localhost/api/programs/transfer?targets=1&program=DP-OLD'))).json();
-  assert.deepEqual([targetsOnly.targets.map((item) => item.id), targetsOnly.accounts], [['DP-NEW'], undefined], 'Members -> Transfer lists only the programs');
+  assert.deepEqual([targetsOnly.targets.map((item) => item.id), targetsOnly.accounts], [['DP-NEW', 'DP-400'], undefined], 'Members -> Transfer lists only the programs');
   assert.equal(options.accounts.length, 3);
   const post = (body) => route.POST(request(body));
-  assert.equal((await post({ from: 'DP-OLD', to: 'DP-400', all: true, reason: 'test' })).status, 400, 'a different pay is refused');
+  const notWhole = await (await post({ from: 'DP-OLD', to: 'DP-400', all: true, reason: 'test' })).json();
+  assert.deepEqual([notWhole.moved, notWhole.merged, notWhole.left.length], [0, 0, 3], 'P300 receipts are not whole P400 months: every account is left');
+  assert.match(notWhole.left[0].why, /not a whole number of ₱400 months/);
   const missingTier = await (await post({ from: 'DP-OLD', to: 'DP-NEW', all: true, reason: 'Same plan' })).json();
   assert.match(missingTier.message, /Cannot recalculate incentives/);
   assert.equal((await query("select program_id from member_programs where enrollment_id='E1'"))[0].program_id, 'DP-OLD', 'a missing tier rolls back the program/account move');
@@ -780,6 +782,49 @@ test('Programs → Transfer members moves, merges or leaves each account, only t
   assert.equal((await query("select count(*)::int as n from programs where program_id = 'DP-OLD'"))[0].n, 0, 'nothing uses the emptied program, so it is deleted');
   h.setUser({ userId: 'USR-1', employeeId: 'DPE-1', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
   assert.equal((await route.GET(new Request('http://localhost/api/programs/transfer?program=DP-NEW'))).status, 403, 'administrators only');
+});
+
+test('Transfer members to a program with a different pay counts each receipt again in the new monthly pay', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  await seed('programs', [{ program_id: 'DP-300', program_name: 'D-300', base_pay: 300 }, { program_id: 'DP-150', program_name: 'D-150', base_pay: 150 }, { program_id: 'DP-FLEX', program_name: 'D-210 HG', base_pay: 200, flexible: true }]);
+  await seed('members', [1, 2, 3].map((n) => ({ member_id: `MEM-${n}`, member_number: `PH-${n}`, surname: `S${n}`, first_name: 'A' })));
+  await seed('member_programs', [
+    { enrollment_id: 'E1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-300', doi: '2026-06-15', branch: 'BR-1', mas: 'M', status: 'Active' },
+    { enrollment_id: 'E2', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-300', doi: '2026-06-15', branch: 'BR-1', mas: 'M', status: 'Active' },
+    { enrollment_id: 'E2-150', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-150', doi: '2026-05-15', branch: 'BR-1', mas: 'M', status: 'Active' },
+    { enrollment_id: 'E3', member_id: 'MEM-3', member_number: 'PH-3', program_id: 'DP-300', doi: '2026-06-15', branch: 'BR-1', mas: 'M', status: 'Active' },
+  ]);
+  const col = (id, enrollment, member, program, month, nop, amount, months = 1) => ({ collection_id: id, collection_batch_id: 'CBT', enrollment_id: enrollment, member_id: member, member_number: member.replace('MEM', 'PH'), program_id: program, or_number: id, or_date: `${month}-05`, amount_collected: amount, month_from: month, month_to: `2026-${String(Number(month.slice(5)) + months - 1).padStart(2, '0')}`, nop_from: nop, nop_to: nop + months - 1, status: 'Posted' });
+  await seed('collections', [
+    col('C1a', 'E1', 'MEM-1', 'DP-300', '2026-07', 2, 300), col('C1b', 'E1', 'MEM-1', 'DP-300', '2026-08', 3, 600, 2),
+    col('C2a', 'E2-150', 'MEM-2', 'DP-150', '2026-06', 2, 150), col('C2b', 'E2', 'MEM-2', 'DP-300', '2026-07', 2, 300),
+    col('C3', 'E3', 'MEM-3', 'DP-300', '2026-07', 2, 450),
+  ]);
+  await seed('program_incentives', [{ incentive_id: '150-MAS', program_id: 'DP-150', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'fixed', mark_up: 0, incentive_amount: 50 }]);
+  const route = h.load('app/api/programs/transfer/route.ts');
+  const response = await route.POST(request({ from: 'DP-300', to: 'DP-150', all: true, reason: 'Wrong program' }));
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  assert.deepEqual([result.moved, result.merged, result.left.map((item) => item.enrollmentId)], [2, 1, []], 'P450 is three P150 months, so E3 moves too');
+  const rows = await query("select collection_id, enrollment_id, nop_from, nop_to, month_from, month_to, amount_collected::float8 as amount from collections order by collection_id");
+  assert.deepEqual(rows.map((row) => [row.collection_id, row.enrollment_id, row.nop_from, row.nop_to, row.month_from, row.month_to, row.amount]), [
+    ['C1a', 'E1', 2, 3, '2026-07', '2026-08', 300], ['C1b', 'E1', 4, 7, '2026-09', '2026-12', 600],
+    ['C2a', 'E2-150', 2, 2, '2026-06', '2026-06', 150], ['C2b', 'E2-150', 3, 4, '2026-07', '2026-08', 300],
+    ['C3', 'E3', 2, 4, '2026-07', '2026-09', 450],
+  ], 'amounts kept; months = amount / new pay, numbered on by OR date from the DOI');
+  assert.equal((await query("select account_status from member_programs where enrollment_id = 'E1'"))[0].account_status, 'ADV', 'paid through December');
+  assert.equal((await query("select remittance_amount::float8 as share from collections where collection_id = 'C1b'"))[0].share, 400, 'incentives of the new program for four months');
+
+  // Into a flexible program: a receipt keeps its months while each gets the minimum, else as many minimums as it holds;
+  // a receipt below the minimum leaves its account.
+  await seed('program_incentives', [{ incentive_id: 'FLEX-MAS', program_id: 'DP-FLEX', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'fixed', mark_up: 0, incentive_amount: 50 }]);
+  const flex = await (await route.POST(request({ from: 'DP-150', to: 'DP-FLEX', all: true, reason: 'Flexible plan' }))).json();
+  assert.deepEqual([flex.moved, flex.left.map((item) => item.enrollmentId)], [2, ['E2-150']], JSON.stringify(flex));
+  assert.match(flex.left[0].why, /less than the ₱200 minimum/);
+  const flexRows = await query("select collection_id, nop_from, nop_to, month_from, month_to from collections where enrollment_id in ('E1','E3') order by collection_id");
+  assert.deepEqual(flexRows.map((row) => [row.collection_id, row.nop_from, row.nop_to, row.month_from, row.month_to]), [
+    ['C1a', 2, 2, '2026-07', '2026-07'], ['C1b', 3, 5, '2026-08', '2026-10'], ['C3', 2, 3, '2026-07', '2026-08'],
+  ]);
 });
 
 test('per-MAS report CVE: what each MAS was expected to collect in the period', async () => {

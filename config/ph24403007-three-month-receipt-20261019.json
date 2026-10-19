@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "member": "PH-24403007",
+      "program": "DP-0067",
+      "fromAccounts": ["ENR-LEG-1B4FC12E28"],
+      "startNop": 19,
+      "expectedDoi": "2024-07-01",
+      "receiptMonths": {"22547N": 3},
+      "note": "Owner requested seven receipt corrections October 19, 2026. DDO 1-COLL row 6610 explicitly states June, July, August on PHP 900 OR 22547 N, but its NOP 24,25,25 typo was imported as two months. Correct to NOP 24-26/June-August 2026, matching three PHP 300 installments. Row 8017 confirms OR 25090 N September/NOP 27. Keep first five receipts January-May/NOP 19-23, July 1, 2024 DOI, program, dates, PHP 2700 total, branch and MAS; recalculate finances and status."
+    }
+  ]
+}

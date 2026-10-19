@@ -350,7 +350,7 @@ useState(false);
 const [showForm, setShowForm] =
 useState(false);
 const [canManage, setCanManage] = useState(false);
-// Administrators move a program's members to another program with the same pay (./program-transfer.tsx).
+// Administrators move a program's members to another program (./program-transfer.tsx).
 const [canTransfer, setCanTransfer] = useState(false);
 const [transferringId, setTransferringId] = useState<string | null>(null);
 const [transferMessage, setTransferMessage] = useState("");

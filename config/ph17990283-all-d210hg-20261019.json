@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {
+      "member": "PH-17990283",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-FF87FA7E94"],
+      "startNop": 15,
+      "expectedDoi": "2024-11-01",
+      "note": "Owner confirmed all PH-17990283 entries belong to 210 on October 19, 2026. Move OR 12652 C from D-300 (Bracketing) into existing flexible D-210 HG. Restore continuous January-September 2026/NOP 15-23 in OR-date order. Preserve each receipt's covered-month count, including two months on PHP 500 OR 22586 C and one month on moved PHP 300 OR 12652 C. Preserve November 1, 2024 DOI, recorded amounts, OR dates, branch and MAS. Recalculate status and financial snapshots; remove the empty D-300 (Bracketing) account."
+    }
+  ]
+}

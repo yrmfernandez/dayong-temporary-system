@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {
+      "member": "PH-29162192",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-D7D506D520"],
+      "startNop": 18,
+      "expectedDoi": "2024-08-01",
+      "note": "Owner requested all PH-29162192 entries under 210, October 19, 2026. Consolidate the sole D-350 receipt 23438 C into the existing D-210 HG account. Preserve recorded payment amounts, OR dates, August 1, 2024 DOI and January-September 2026 coverage/NOP 18-26. Each receipt covers one month on flexible D-210 HG. Recalculate financial entries and account status, and remove the empty D-350 account."
+    }
+  ]
+}

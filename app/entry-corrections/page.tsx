@@ -171,7 +171,7 @@ function MoveBetweenPrograms({ onDone }: { onDone: (message: string) => void }) 
   const [programId, setProgramId] = useState("");
   return <Card>
     <CardHeader><CardTitle>Move accounts between programs</CardTitle>
-      <p className="text-sm text-muted-foreground">Choose the program the accounts are in now, tick the accounts (or all), then the program they go to. Only programs with the same monthly pay can take them; a member who already has the other program is merged into it. For one wrong entry, use Edit on the Entries tab instead.</p></CardHeader>
+      <p className="text-sm text-muted-foreground">Choose the program the accounts are in now, tick the accounts (or all), then the program they go to. Any program can take them: with a different monthly pay each receipt covers its amount ÷ the new pay (accounts whose receipts do not work out are left); a member who already has the other program is merged into it. For one wrong entry, use Edit on the Entries tab instead.</p></CardHeader>
     <CardContent className="space-y-4">
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <div className="max-w-xl space-y-1 text-sm">From program

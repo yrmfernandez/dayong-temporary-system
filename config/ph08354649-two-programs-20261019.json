@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "member": "PH-08354649",
+      "program": "DP-0063",
+      "fromAccounts": ["ENR-LEG-2D34BFFDB0"],
+      "startNop": 48,
+      "expectedDoi": "2022-03-01",
+      "note": "Owner requested D-230 and D-210 HG for the eight listed receipts, October 19, 2026. Move OR 480 S from D-460 into existing D-230. SDS-COLL row 977 explicitly covers February-March/NOP 48-49 for PHP 460; rows 1983,3264,3868 continue April-September/NOP 50-55. Preserve DOI, dates, amounts, branch and MAS. Remove the empty D-460 account; recalculate financial entries and status."
+    },
+    {
+      "member": "PH-08354649",
+      "program": "DP-0005",
+      "fromAccounts": ["ENR-LEG-359431FE74"],
+      "startNop": 21,
+      "expectedDoi": "2024-05-01",
+      "note": "Verify and retain D-210 HG receipts 479 S,417 S,2438 S,3104 S. SDS-COLL rows 976,1984,3263,3869 confirm two months per PHP 420 receipt: January-August 2026/NOP 21-28. Preserve DOI, dates, amounts, branch and MAS. Recalculate financial entries and stale account status without extending coverage."
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+    "cases":  [
+                  {
+                      "member":  "PH-50599167",
+                      "program":  "DP-0062",
+                      "fromAccounts":  [
+                                           "ENR-LEG-DDBCBF9BDA"
+                                       ],
+                      "startNop":  66,
+                      "expectedDoi":  "2020-08-01",
+                      "receiptMonths":  {
+                                            "20685C":  1,
+                                            "23600C":  2,
+                                            "11398C":  1,
+                                            "9317M":  1,
+                                            "15583C":  1,
+                                            "13222C":  1,
+                                            "19468C":  1,
+                                            "17334C":  1
+                                        },
+                      "note":  "Owner authorized finding and correcting similar Month of and multi-month receipt issues October 19, 2026. Every source row matched by deterministic ID, receipt, date and amount. Complete source coverage is continuous; at least 80 percent of later source NOPs independently confirm existing DOI alignment. Restore source month spans and DOI-consistent NOPs; preserve program, DOI, receipt dates, amounts, branch and MAS. Source evidence: legacy-data/source-span-review-20261019.json."
+                  },
+                  {
+                      "member":  "PH-80857861",
+                      "program":  "DP-0005",
+                      "fromAccounts":  [
+                                           "ENR-LEG-AC17B4E7CB"
+                                       ],
+                      "startNop":  25,
+                      "expectedDoi":  "2024-01-01",
+                      "receiptMonths":  {
+                                            "02997T":  1,
+                                            "00934T":  1,
+                                            "00826T":  1,
+                                            "02965T":  1,
+                                            "06766T":  2,
+                                            "00070T":  1,
+                                            "04187T":  1
+                                        },
+                      "note":  "Owner authorized finding and correcting similar Month of and multi-month receipt issues October 19, 2026. Every source row matched by deterministic ID, receipt, date and amount. Complete source coverage is continuous; at least 80 percent of later source NOPs independently confirm existing DOI alignment. Restore source month spans and DOI-consistent NOPs; preserve program, DOI, receipt dates, amounts, branch and MAS. Source evidence: legacy-data/source-span-review-20261019.json."
+                  },
+                  {
+                      "member":  "PH-97019970",
+                      "program":  "DP-0061",
+                      "fromAccounts":  [
+                                           "ENR-LEG-B02517C9AF"
+                                       ],
+                      "startNop":  75,
+                      "expectedDoi":  "2019-11-01",
+                      "receiptMonths":  {
+                                            "08021T":  2,
+                                            "02025T":  2,
+                                            "03506T":  1,
+                                            "00702T":  2,
+                                            "06164T":  2,
+                                            "04786T":  1
+                                        },
+                      "note":  "Owner authorized finding and correcting similar Month of and multi-month receipt issues October 19, 2026. Every source row matched by deterministic ID, receipt, date and amount. Complete source coverage is continuous; at least 80 percent of later source NOPs independently confirm existing DOI alignment. Restore source month spans and DOI-consistent NOPs; preserve program, DOI, receipt dates, amounts, branch and MAS. Source evidence: legacy-data/source-span-review-20261019.json."
+                  },
+                  {
+                      "member":  "PH-70844674",
+                      "program":  "DP-0005",
+                      "fromAccounts":  [
+                                           "ENR-LEG-8C956C79FA"
+                                       ],
+                      "startNop":  27,
+                      "expectedDoi":  "2023-11-01",
+                      "receiptMonths":  {
+                                            "5464M":  1,
+                                            "3829B":  1,
+                                            "9555B":  1,
+                                            "6490M":  1,
+                                            "8354M":  1,
+                                            "12030B":  1,
+                                            "6097B":  1,
+                                            "15617B":  4
+                                        },
+                      "note":  "Owner authorized finding and correcting similar Month of and multi-month receipt issues October 19, 2026. Every source row matched by deterministic ID, receipt, date and amount. Complete source coverage is continuous; at least 80 percent of later source NOPs independently confirm existing DOI alignment. Restore source month spans and DOI-consistent NOPs; preserve program, DOI, receipt dates, amounts, branch and MAS. Source evidence: legacy-data/source-span-review-20261019.json."
+                  }
+              ]
+}
