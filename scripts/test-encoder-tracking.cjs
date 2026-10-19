@@ -3125,6 +3125,11 @@ test('a Date Remitted moved earlier with a reason counts the cash as received th
   assert.deepEqual(await receivedAtOf([item('M2')]), { date: '2026-10-13', time: '12:08' }, 'no reason: the clearing time, as before');
   // OR dated Sunday the 11th: due 3:00 PM Monday the 12th, so the moved batch keeps its incentive.
   assert.equal(h.load('lib/remittance-deadline.ts').keepsIncentive('2026-10-11', '2026-10-12 00:00'), true);
+  // Remittances shows why the Date Remitted was changed (October 19, 2026).
+  const { dateRemittedReasons } = h.load('lib/remittance-workflow.ts');
+  assert.deepEqual([...await dateRemittedReasons()], [['M1', { date: '2026-10-12', reason: "Entry clerks' meeting" }]], 'only entries with a reason');
+  assert.equal((await dateRemittedReasons(['M2'])).size, 0);
+  assert.equal((await dateRemittedReasons([])).size, 0);
 });
 
 test('the clearing receipt time survives Encoded status and late encoding for either kind', async () => {

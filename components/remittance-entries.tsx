@@ -42,7 +42,7 @@ export function RemittanceEntries({ remittanceId }: { remittanceId: string }) {
             <td className="p-2"><span className="block text-xs font-medium">{entry.kind === "New Sales" ? "New Sale" : "Collection"}</span><span className="block font-mono text-xs">{entry.id}</span></td>
             <td className="p-2">{entry.memberName || "—"}<span className="block text-xs text-muted-foreground">{entry.memberNumber}</span></td>
             <td className="p-2">{entry.program || "—"}</td>
-            <td className="p-2">{entry.orNumber || "—"}<span className="block text-xs text-muted-foreground">{entry.orDate}</span></td>
+            <td className="p-2">{entry.orNumber || "—"}<span className="block text-xs text-muted-foreground">{entry.orDate}</span>{entry.dateRemittedReason && <span className="block text-xs text-amber-800">Remitted {entry.dateRemitted}: {entry.dateRemittedReason}</span>}</td>
             <td className="p-2 text-xs">{entry.paymentMethod}{entry.paymentReference && <span className="block text-muted-foreground">ref {entry.paymentReference}</span>}</td>
             <td className="p-2 text-right tabular-nums">{money(entry.amount)}</td>
             <td className="p-2 text-right tabular-nums">{money(entry.remittanceAmount)}{entry.forfeitedIncentive > 0 && <span className="block text-xs text-red-700">incentive forfeited {money(entry.forfeitedIncentive)}</span>}</td>

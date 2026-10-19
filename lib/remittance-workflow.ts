@@ -233,9 +233,25 @@ export const amountDue = (collection: Pick<CashCollection, "amount" | "remittanc
  * Remittance figures. `clerkId` limits everything to what one Entry Clerk encoded (an Entry Clerk sees only theirs).
  * Items still waiting for receipt photos are Outstanding; items whose slip was rejected are Returned to the clerk.
  */
+/**
+ * Why each entry's Date Remitted was changed (date_remitted_reason, typed when it was moved off the clearing day), by
+ * entry ID; only entries with a reason (owner, October 19, 2026: Remittances shows it).
+ */
+export async function dateRemittedReasons(ids?: string[]) {
+  if (ids && !ids.length) return new Map<string, { date: string; reason: string }>();
+  const only = (column: string) => ids ? sql` and ${sql.raw(column)} in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})` : sql``;
+  const result = await getDb().execute(sql`select collection_id as id, coalesce(date_remitted::text, '') as date, trim(date_remitted_reason) as reason from collections where coalesce(trim(date_remitted_reason), '') <> ''${only("collection_id")}
+    union all select sale_id, coalesce(date_remitted::text, ''), trim(date_remitted_reason) from sales where coalesce(trim(date_remitted_reason), '') <> ''${only("sale_id")}`);
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; date: string; reason: string }>;
+  return new Map(rows.map((row) => [row.id, { date: row.date, reason: row.reason }]));
+}
+/** The distinct "date: reason" lines of these entries. */
+const reasonLines = (ids: string[], reasons: Map<string, { date: string; reason: string }>) =>
+  [...new Set(ids.map((id) => reasons.get(id)).filter((item): item is { date: string; reason: string } => Boolean(item)).map((item) => `${item.date ? `${item.date}: ` : ""}${item.reason}`))];
+
 export async function getRemittanceDashboard(clerkId = "") {
   // Read-only: the active part of the ledger is enough for the summary, the queues and the clerk list.
-  const all = await loadLedger();
+  const [all, reasons] = await Promise.all([loadLedger(), dateRemittedReasons()]);
   const ledger = clerkId
     ? { ...all, collections: all.collections.filter((item) => item.encodedByEmployeeId === clerkId), remittances: all.remittances.filter((remittance) => remittance.clerkIds.includes(clerkId)) }
     : all;
@@ -275,13 +291,13 @@ export async function getRemittanceDashboard(clerkId = "") {
       historicalReviewCount: ledger.collections.filter((collection) => collection.remittanceStatus === "Needs Historical Review").length,
     },
     accountability,
-    outstanding: available,
-    remittances: ledger.remittances,
+    outstanding: available.map((item) => ({ ...item, dateRemittedReason: reasons.get(item.id)?.reason ?? "" })),
+    remittances: ledger.remittances.map((remittance) => ({ ...remittance, dateRemittedReasons: reasonLines(remittance.collectionIds, reasons) })),
     clerks,
   };
 }
 
-export type RemittanceEntry = Pick<CashCollection, "kind" | "id" | "batchId" | "memberNumber" | "programId" | "orNumber" | "orDate" | "amount" | "remittanceAmount" | "forfeitedIncentive" | "remittanceStatus" | "paymentMethod" | "paymentReference" | "photoId" | "cash" | "encodedByName" | "encodedAt" | "penalty" | "fidelity"> & { memberName: string; program: string };
+export type RemittanceEntry = Pick<CashCollection, "kind" | "id" | "batchId" | "memberNumber" | "programId" | "orNumber" | "orDate" | "amount" | "remittanceAmount" | "forfeitedIncentive" | "remittanceStatus" | "paymentMethod" | "paymentReference" | "photoId" | "cash" | "encodedByName" | "encodedAt" | "penalty" | "fidelity" | "dateRemitted"> & { memberName: string; program: string; dateRemittedReason: string };
 
 /**
  * Every entry on one remittance slip, for the approver's View entries (owner, October 10, 2026): member, program, OR,
@@ -296,9 +312,10 @@ export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
   const items = remittance.collectionIds.map((id) => byId.get(id)).filter((item): item is CashCollection => Boolean(item));
   const numbers = [...new Set(items.map((item) => item.memberNumber).filter(Boolean))];
   const programIds = [...new Set(items.map((item) => item.programId).filter(Boolean))];
-  const [members, programs] = await Promise.all([
+  const [members, programs, reasons] = await Promise.all([
     numbers.length ? getDb().select({ number: schema.members.member_number, surname: schema.members.surname, first: schema.members.first_name }).from(schema.members).where(inArray(schema.members.member_number, numbers)) : [],
     programIds.length ? getDb().select({ id: schema.programs.program_id, code: schema.programs.program_code, name: schema.programs.program_name }).from(schema.programs).where(inArray(schema.programs.program_id, programIds)) : [],
+    dateRemittedReasons(items.map((item) => item.id)),
   ]);
   const names = new Map(members.map((member) => [member.number, `${text(member.first)} ${text(member.surname)}`.trim()]));
   const programNames = new Map(programs.map((program) => [program.id, text(program.name) || text(program.code)]));
@@ -306,6 +323,7 @@ export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
     kind: item.kind, id: item.id, batchId: item.batchId, memberNumber: item.memberNumber, memberName: names.get(item.memberNumber) ?? "", programId: item.programId, program: programNames.get(item.programId) ?? item.programId,
     orNumber: item.orNumber, orDate: item.orDate, amount: item.amount, remittanceAmount: item.remittanceAmount, forfeitedIncentive: item.forfeitedIncentive, remittanceStatus: item.remittanceStatus,
     paymentMethod: item.paymentMethod, paymentReference: item.paymentReference, photoId: item.photoId, cash: item.cash, encodedByName: item.encodedByName, encodedAt: item.encodedAt, penalty: item.penalty, fidelity: item.fidelity,
+    dateRemitted: item.dateRemitted, dateRemittedReason: reasons.get(item.id)?.reason ?? "",
   }));
   return { remittanceId: remittance.id, entries, missing: remittance.collectionIds.filter((id) => !byId.has(id)) };
 }

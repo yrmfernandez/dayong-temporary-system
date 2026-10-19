@@ -1,5 +1,16 @@
 # Dayong System project context
 
+### Remittances: why the Date Remitted was changed (2026-10-19)
+
+- **Owner:** in Remittance, show the reason why the Date Remitted was changed.
+- **Done:** the reason typed when a batch's Date Remitted was moved off the clearing day (`date_remitted_reason`) now shows on Remittances: on each slip waiting for approval and in Remittance Records ("Date Remitted changed: date: reason"), per entry in View entries ("Remitted date: reason"), and in Outstanding Cash Aging. One small query of the entries with a reason (`dateRemittedReasons`, `lib/remittance-workflow.ts`). Tested; build and all 207 tests pass.
+- **In progress:** none.
+- **To do (owner):** deploy.
+
+### Pending remittance discrepancy PHP9.20 explained (2026-10-19)
+
+- Read-only investigation: pending MACO slip `REM-20261017032028-DZHE` expects PHP13,069; actual cash remains PHP13,059.80, difference -PHP9.20. Audit Log October17,2026 07:37:36 UTC shows OR08878T, PH-87914816, changed D-460 to D-460 (59B). At NOP22 on PHP460, MAS incentive changed 12% (PHP55.20) to 10% (PHP46), increasing expected company share PHP404.80 to PHP414. The slip was balanced before that correction. This predates the Quiñones split, which affected no linked remittances. No database changes made during this investigation. Read-only helper: `scripts/inspect-discrepancy-920-20261019.mjs`.
+
 ### Danilo Quiñones Sr.: nine receipts separated from JR (2026-10-19)
 
 - **Done in production:** created **PH-26172119**, Danilo Quiñones Sr., D-230 (`DP-0063`), MINTAL. The nine requested receipts (10576 C through 24509 C) already existed under JR, **PH-89863784**. M3-COLL source rows explicitly distinguish SR from JR. Moved SR's existing receipts to his new account; JR retains his own nine receipts. Each now covers January–September 2026, NOP52–60, PHP2,070, DOI October1,2021, status Updated. No receipts duplicated and no unverified personal details copied to SR.
