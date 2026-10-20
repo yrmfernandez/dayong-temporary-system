@@ -131,7 +131,9 @@ export async function getPayrollOverview() {
   return {
     runs: runs.sort((a, b) => b.periodFrom.localeCompare(a.periodFrom) || b.id.localeCompare(a.id)),
     profiles,
-    employees: employees.filter((employee) => employee.status.toLowerCase() === "active").map((employee) => ({ id: employee.id, name: employee.name, roles: employee.roles })),
+    employees: employees.filter((employee) => employee.status.toLowerCase() === "active").map((employee) => ({ id: employee.id, name: employee.name, branch: employee.branch, roles: employee.roles })),
+    // Every employee's primary branch (inactive ones too, who may still be on an older payroll), for the branch filter.
+    employeeBranches: Object.fromEntries(employees.map((employee) => [employee.id, employee.branch])),
     cashAccounts: accounts.filter((account) => account.status === "active").map((account) => account.name),
     branches: branches.filter((branch) => branch.status === "active").map((branch) => branch.name),
     adjustmentCategories: ADJUSTMENT_CATEGORIES,

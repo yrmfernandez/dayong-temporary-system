@@ -1173,3 +1173,5 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Done:** receipt number required on every expense (Expenses page and clerk report, create and edit; `expenseNumbers` in `lib/expense-options.ts`). Cash Burial Assistance requires the member / deceased member name, saved in the existing `payee` column, so no database migration.
 - **Done:** Attendance sheet → **Choose people**: tick the employees to show; kept in the browser (`dayong-attendance-sheet-people`); none ticked = everyone.
 - **To do:** none. Expenses saved before today without a receipt number must get one when they are next edited.
+- **Owner (follow-up):** apply the attendance sheet's filters to Payroll's runs and pay rates.
+- **Done:** the filters are now one shared component, `components/people-filter.tsx` (Choose people, role, branch, search), used by the attendance sheet, the Employees table and Adjustments list of a payroll run, and Pay rates. The ticked people are shared by all three. Filters only narrow what is shown; a run's totals, approval and payment stay whole. `getPayrollOverview` now also returns each employee's primary branch.

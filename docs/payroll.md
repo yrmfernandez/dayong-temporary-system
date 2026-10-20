@@ -2,6 +2,10 @@
 
 Finance pays employees from **Payroll** (`/payroll`). Administrators and Finance prepare and pay; the CEO and President can review.
 
+## Filters (October 20, 2026)
+
+The **Pay rates** list and a payroll run's **Employees** table have the attendance sheet's filters: **Choose people** (a tick list), **All roles**, **All branches** (the employee's primary branch) and a search box. The ticked people are the same list as on the attendance sheet, and each browser remembers its own choice. With nobody ticked, everyone shows. On a run, the filters narrow the Employees table and the Adjustments list. Totals, approval and payment always cover the whole payroll, and the heading says how many employees are shown. The filters live in `components/people-filter.tsx`.
+
 ## Pay setup (Pay rates tab)
 
 Every employee who should be paid needs a pay setup. Active employees without one are listed as **Needs pay setup** and are left out of payroll (the draft says who was skipped).

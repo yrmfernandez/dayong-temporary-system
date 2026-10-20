@@ -12,12 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
+import { type FilterPerson, usePeopleFilter } from "@/components/people-filter";
 import { COMPANY_PROGRAM_CATEGORY, dailyRateOf, defaultPayrollSettings, lineTotals, type Adjustment, type PayProfile, type PayrollLine, type PayrollSettings } from "@/lib/payroll-calc";
 import { buildPayslip, PAYSLIP_COMPANY, payslipFileName, payslipPdf, type PayslipRow } from "@/lib/payslip";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Run = { id: string; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings; employeeCount: number; grossTotal: number; deductionsTotal: number; netTotal: number; preparedByUserId: string; preparedByName: string; approvedByName: string; approvedAt: string; paidAt: string; cashAccount: string; paymentReference: string; cashTransactionId: string; branch: string; voidReason: string; remarks: string };
-type Overview = { canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; roles: string[] }>; cashAccounts: string[]; branches: string[]; adjustmentCategories: Record<Adjustment["kind"], string[]>; programs: Array<{ id: string; code: string; name: string; basePay: number }> };
+type Overview = { canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; branch: string; roles: string[] }>; employeeBranches: Record<string, string>; cashAccounts: string[]; branches: string[]; adjustmentCategories: Record<Adjustment["kind"], string[]>; programs: Array<{ id: string; code: string; name: string; basePay: number }> };
 type Detail = { canManage: boolean; isAdministrator: boolean; currentUserId: string; run: Run; lines: PayrollLine[]; adjustments: Array<Adjustment & { status: string }>; totals: { gross: number; deductions: number; net: number } };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
@@ -218,6 +219,11 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
   const [payment, setPayment] = useState({ payDate: run.payDate || today(), cashAccount: overview.cashAccounts[0] ?? "", branch: overview.branches[0] ?? "", paymentReference: "" });
   const [payslip, setPayslip] = useState<PayrollLine | null>(null);
   const settingsChanged = JSON.stringify(settings) !== JSON.stringify(run.settings);
+  // The attendance sheet's filters (owner, October 20, 2026); they only narrow what is shown, the payroll stays whole.
+  const personOf = useCallback((line: PayrollLine): FilterPerson => ({ id: line.employeeId, name: line.employeeName, branch: overview.employeeBranches[line.employeeId] ?? "", roles: line.roles.split(",").map((role) => role.trim()).filter(Boolean) }), [overview.employeeBranches]);
+  const { shown: shownLines, filtered, controls, picker } = usePeopleFilter(lines, personOf);
+  const shownIds = new Set(shownLines.map((line) => line.employeeId));
+  const shownAdjustments = adjustments.filter((item) => shownIds.has(item.employeeId));
   const selfApproval = run.preparedByUserId === detail.currentUserId && !detail.isAdministrator;
 
   return <div className="space-y-6">
@@ -243,13 +249,17 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
     </Card>
 
     <Card>
-      <CardHeader><CardTitle>Employees</CardTitle></CardHeader>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <div><CardTitle>Employees</CardTitle>{filtered && <p className="mt-1 text-sm text-muted-foreground">Showing {shownLines.length} of {lines.length}. Totals, approval and payment are for the whole payroll.</p>}</div>
+        <div className="flex flex-wrap gap-2">{controls}</div>
+      </CardHeader>
       <CardContent>
+        {picker}
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[1180px] text-left text-sm">
             <thead><tr>{["Employee", "Base pay", "Overtime", "Late / Undertime", "Absences", "Commission", "Adjustments", "Net pay", ""].map((header) => <th key={header} className="p-3">{header}</th>)}</tr></thead>
             <tbody>
-              {lines.map((line) => {
+              {shownLines.map((line) => {
                 const lineTotal = lineTotals(line, adjustments);
                 return <Fragment key={line.employeeId}><tr className="border-t align-top">
                   <td className="p-3"><strong>{line.employeeName}</strong><span className="block text-xs text-muted-foreground">{line.employeeId} · {line.roles || "—"}</span></td>
@@ -296,6 +306,7 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
                 </Fragment>;
               })}
               {!lines.length && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No employees in this payroll.</td></tr>}
+              {lines.length > 0 && !shownLines.length && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No employees match.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -306,11 +317,12 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
       <CardHeader><CardTitle>Adjustments</CardTitle></CardHeader>
       <CardContent>
         <div className="divide-y rounded-lg border">
-          {adjustments.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+          {shownAdjustments.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
             <span><StatusBadge status={item.kind} tone={item.kind === "Addition" ? "success" : "danger"} /> <strong className="ml-1">{lines.find((line) => line.employeeId === item.employeeId)?.employeeName ?? item.employeeId}</strong> · {item.category}<span className="block text-xs text-muted-foreground">{item.reason}</span></span>
             <span className="flex items-center gap-3"><strong className="tabular-nums">{item.kind === "Addition" ? "+" : "−"}{money(item.amount)}</strong>{draft && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void act({ action: "removeAdjustment", adjustmentId: item.id }, "Adjustment removed.")}>Remove</Button>}</span>
           </div>)}
           {!adjustments.length && <p className="p-3 text-sm text-muted-foreground">No bonuses or deductions. Use Adjust on an employee to add one with a reason.</p>}
+          {adjustments.length > 0 && !shownAdjustments.length && <p className="p-3 text-sm text-muted-foreground">None for the employees shown.</p>}
         </div>
       </CardContent>
     </Card>
@@ -410,12 +422,14 @@ function PayslipSection({ title, rows, total, negative = false }: { title: strin
   </section>;
 }
 
+const personOfEmployee = (employee: Overview["employees"][number]): FilterPerson => employee;
+
 function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolean; onSave: (body: Record<string, unknown>) => Promise<unknown> }) {
   const profiles = useMemo(() => new Map(overview.profiles.map((profile) => [profile.employeeId, profile])), [overview.profiles]);
   const [editing, setEditing] = useState<(PayProfile & { employeeName: string }) | null>(null);
   const [savedId, setSavedId] = useState("");
-  const [search, setSearch] = useState("");
-  const employees = overview.employees.filter((employee) => `${employee.name} ${employee.id} ${employee.roles.join(" ")}`.toLowerCase().includes(search.toLowerCase()));
+  // The attendance sheet's filters (owner, October 20, 2026).
+  const { shown: employees, filtered, controls, picker } = usePeopleFilter(overview.employees, personOfEmployee);
 
   function edit(employee: Overview["employees"][number]) {
     setSavedId("");
@@ -426,8 +440,9 @@ function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolea
 
   return <div className="space-y-6">
     <Card>
-      <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>Employee pay rates</CardTitle><Input className="max-w-xs" placeholder="Search employee or role" value={search} onChange={(event) => setSearch(event.target.value)} /></div></CardHeader>
+      <CardHeader><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle>Employee pay rates</CardTitle>{filtered && <p className="mt-1 text-sm text-muted-foreground">Showing {employees.length} of {overview.employees.length}.</p>}</div><div className="flex flex-wrap gap-2">{controls}</div></div></CardHeader>
       <CardContent>
+        {picker}
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[820px] text-left text-sm">
             <thead><tr>{["Employee", "Roles", "Base pay", "Commission", "Overtime", "Status", ""].map((header) => <th key={header} className="p-3">{header}</th>)}</tr></thead>
@@ -435,7 +450,7 @@ function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolea
               {employees.map((employee) => {
                 const profile = profiles.get(employee.id);
                 return <Fragment key={employee.id}><tr className="border-t">
-                  <td className="p-3"><strong>{employee.name}</strong><span className="block text-xs text-muted-foreground">{employee.id}</span></td>
+                  <td className="p-3"><strong>{employee.name}</strong><span className="block text-xs text-muted-foreground">{employee.id}{employee.branch ? ` · ${employee.branch}` : ""}</span></td>
                   <td className="p-3">{employee.roles.join(", ") || "—"}</td>
                   <td className="p-3 tabular-nums">{!profile ? "—" : profile.baseType === "none" ? "No base" : `${money(profile.baseRate)} / ${profile.baseType === "monthly" ? "month" : "day"}`}</td>
                   <td className="p-3">{profile?.commissionEligible ? "Yes" : profile ? "No" : "—"}</td>
