@@ -11,7 +11,7 @@ Reports are per Entry Clerk, not company-wide: each clerk sees only the New Sale
 | Header | Company name, address, SEC Reg No., logo, report name, Branch, Entry Clerk, Date + Week. |
 | New Sales / Collections | Accts, Gross, Inc, Net, Fid/bond, Penalty. Rows by MAS (daily), date (weekly), week of the month (monthly), month (yearly). |
 | Expenses / Other Cash Out | Posted expenses the clerk encoded in the period. |
-| Cash Flow Transaction | Cash the clerk forwarded to the bank (`Bank Deposits`). |
+| Cash Flow Transaction | Cash the clerk forwarded to the bank (`Bank Deposits`). Daily and weekly list each deposit; monthly shows one total per week and yearly one per month, with the bank accounts, transfer types, MAS and the number of deposits (October 20, 2026). Deposits are edited or voided on the daily or weekly report. |
 | Cash summary | Cash Beg/Pending COH, Sales Net, Collection Net, Fidelity Bond, Penalty, Pending cash to be encoded, Total Cash In; Expenses, Cash forwarded to bank, Total Cash Out; Remaining Cash on Hand; TOTALS. |
 | Remarks | Specific Rmks, Pending Transactions, Other Comments (`Report Notes`). |
 | Summary sheet | Weekly, monthly, yearly: New Member and Collection by Marketing Account Staff. CVE columns are shown but not yet defined. |

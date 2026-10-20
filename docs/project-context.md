@@ -1165,3 +1165,11 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Done:** shift progress on the clock-in page uses the server's clock (the one that records the clock-in), not the device's. A device clock a few minutes slow kept someone who clocked in at 8:00 below 100% at 5:00 PM. The progress math itself was already right (8:00 to 17:00 less lunch is 8 hours).
 - **Done:** No attendance needed carries over. When the system closes a day, an employee with no record whose latest earlier day was No attendance needed gets No attendance needed again (note "carried over from <date> by the system") instead of Absent by system, so they are no longer flagged. It stops when they clock in or management marks the day otherwise. Attendance Review shows "No attendance needed · carried over" for today before the day closes. The about 30 marked on October 16 are carried to October 17 when it closes. No migration.
 - **To do (owner):** to end someone's carry-over without a clock-in, mark that day Absent, AWOL or Day Off in Attendance Review.
+
+### Report cash flow totals, expense receipt rules, attendance sheet people (2026-10-20)
+
+- **Owner:** monthly and yearly reports' cash flow should be the total of each week / month; expenses require the receipt number, and Cash Burial Assistance the member or deceased member's name; the attendance sheet should let them choose which people it shows.
+- **Done:** Cash Flow Transaction on monthly reports is one row per week, on yearly one per month, each its total (`depositTotals` in `lib/clerk-report.ts`); daily and weekly still list each deposit and are where deposits are edited or voided.
+- **Done:** receipt number required on every expense (Expenses page and clerk report, create and edit; `expenseNumbers` in `lib/expense-options.ts`). Cash Burial Assistance requires the member / deceased member name, saved in the existing `payee` column, so no database migration.
+- **Done:** Attendance sheet → **Choose people**: tick the employees to show; kept in the browser (`dayong-attendance-sheet-people`); none ticked = everyone.
+- **To do:** none. Expenses saved before today without a receipt number must get one when they are next edited.

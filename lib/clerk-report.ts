@@ -88,12 +88,12 @@ function section(kind: AuditPeriod, entries: DayEntry[]) {
   return { rows: [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, line]) => line), total: sum(entries) };
 }
 
-export type ExpenseRow = { id: string; date: string; when: string; account: string; amount: number; receipt: string; purpose: string; remarks: string; approvedBy: string };
+export type ExpenseRow = { id: string; date: string; when: string; account: string; amount: number; receipt: string; purpose: string; remarks: string; approvedBy: string; payee: string };
 
 /**
  * Posted expenses the clerk recorded on or before `to` (Expenses B date, C account, D purpose, E amount, H branch, K receipt,
  * L status, M remarks, N created, S encoder, U encoded at, W approved by). `recordedOn` is the day it was entered (Manila): an expense
- * belongs to the report of the day it was recorded, whatever expense date was typed (owner, October 14, 2026).
+ * belongs to the report of the day it was recorded, whatever expense date was typed (owner, October 14, 2026). F payee is the member or deceased member of a Cash Burial Assistance.
  */
 async function clerkExpenses(employeeId: string, to: string) {
   try {
@@ -101,7 +101,7 @@ async function clerkExpenses(employeeId: string, to: string) {
     return rows.slice(1)
       .map((row) => ({ row, recordedOn: manilaDateOf(text(row[20]) || text(row[13])) || text(row[1]).slice(0, 10) }))
       .filter(({ row, recordedOn }) => text(row[0]) && text(row[18]) === employeeId && (text(row[11]) || "Posted") === "Posted" && recordedOn <= to)
-      .map(({ row, recordedOn }) => ({ id: text(row[0]), date: text(row[1]).slice(0, 10), recordedOn, account: text(row[2]), purpose: text(row[3]), amount: Number(row[4]) || 0, branch: text(row[7]), receipt: text(row[10]), remarks: text(row[12]), approvedBy: text(row[22]) }));
+      .map(({ row, recordedOn }) => ({ id: text(row[0]), date: text(row[1]).slice(0, 10), recordedOn, account: text(row[2]), purpose: text(row[3]), amount: Number(row[4]) || 0, payee: text(row[5]), branch: text(row[7]), receipt: text(row[10]), remarks: text(row[12]), approvedBy: text(row[22]) }));
   } catch {
     return [];
   }
@@ -196,6 +196,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
     newSales, collection,
     expenses: expenses.map((item): ExpenseRow => ({ ...item, when: whenLabel(kind, item.date) })), expenseTotal,
     deposits: deposits.map((item: BankDeposit) => ({ ...item, when: whenLabel(kind, item.date) })), depositTotal,
+    cashFlowTotals: kind === "monthly" || kind === "yearly" ? depositTotals(kind, deposits) : null,
     fidelitySlips: fidelitySlips.map((item) => ({ ...item, when: whenLabel(kind, item.date) })), fidelityLater,
     /*
      * Every Fidelity received in the period (owner, October 13, 2026: its total equals the Fidelity Bond line): Fidelity
@@ -246,6 +247,25 @@ function byBranch(entries: DayEntry[], fidelitySlips: Array<{ branch: string; am
   }
   for (const slip of fidelitySlips) { const line = group(slip.branch); line.fidelity = round(line.fidelity + slip.amount); }
   return [...groups.values()].sort((a, b) => a.branch.localeCompare(b.branch));
+}
+
+/**
+ * The Cash Flow section of a monthly or yearly report (owner, October 20, 2026): one row per week (monthly) or month
+ * (yearly), its total, with the bank accounts, transfer types and MAS of its deposits.
+ */
+function depositTotals(kind: AuditPeriod, deposits: BankDeposit[]) {
+  const groups = new Map<string, { when: string; amount: number; count: number; bankAccounts: Set<string>; transferTypes: Set<string>; mas: Set<string> }>();
+  for (const item of deposits) {
+    const key = kind === "monthly" ? String(weekOfMonth(item.date)).padStart(2, "0") : item.date.slice(5, 7);
+    const group = groups.get(key) ?? { when: whenLabel(kind, item.date), amount: 0, count: 0, bankAccounts: new Set(), transferTypes: new Set(), mas: new Set() };
+    group.amount = round(group.amount + item.amount); group.count += 1;
+    if (text(item.bankAccount)) group.bankAccounts.add(text(item.bankAccount));
+    if (text(item.transferType)) group.transferTypes.add(text(item.transferType));
+    if (text(item.mas)) group.mas.add(text(item.mas));
+    groups.set(key, group);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, group]) => ({ when: group.when, amount: group.amount, count: group.count,
+    bankAccount: [...group.bankAccounts].join(", "), transferType: [...group.transferTypes].join(", "), mas: [...group.mas].join(", ") }));
 }
 
 function byProgram(entries: DayEntry[]) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Download, Printer, Search } from "lucide-react";
+import { ArrowLeft, Download, Printer, Search, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import type { GridCell, GridTone, SheetDay, SheetEmployee, SheetSummary } from "@/lib/attendance-sheet";
+import { readPreference, writePreference } from "@/lib/ui-preferences";
 
 type AllRow = { employee: SheetEmployee; summary: SheetSummary; cells: GridCell[]; rate: string };
 type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: AllRow[]; showRates: boolean; totals: SheetSummary };
@@ -60,6 +61,9 @@ const summaryHeadings = ["Working days", "Present", "Days payable", "Late days",
 const summaryCells = (summary: SheetSummary) => [summary.scheduledDays, summary.present, summary.daysPayable, summary.lateDays, summary.lateMinutes, summary.undertimeMinutes, hours(summary.overtimeHours), hours(summary.regularHours), hours(summary.totalHours), summary.approvedLeave, summary.otherLeave, summary.dayOff, summary.notRequired, summary.absent, summary.awol, summary.noRecord, summary.missingTimeOut, rate(summary.attendanceRate)];
 
 const NO_BRANCH = "No primary branch";
+// The people chosen to show (owner, October 20, 2026), kept in this browser; none chosen = everyone.
+const PEOPLE_KEY = "dayong-attendance-sheet-people";
+const readPeople = () => { try { const saved: unknown = JSON.parse(readPreference(PEOPLE_KEY, "[]")); return Array.isArray(saved) ? saved.map(String) : []; } catch { return []; } };
 
 /**
  * Attendance sheet (owner, October 14, 2026): for Finance to check attendance before paying salaries. All employees'
@@ -77,6 +81,11 @@ export function AttendanceSheet() {
   const [role, setRole] = useState("");
   const [branch, setBranch] = useState("");
   const [view, setView] = useState<"sheet" | "summary">("sheet");
+  const [people, setPeople] = useState<string[]>([]);
+  const [choosingPeople, setChoosingPeople] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- the saved choice is read after mount (no storage on the server)
+  useEffect(() => { setPeople(readPeople()); }, []);
+  const choosePeople = (ids: string[]) => { setPeople(ids); writePreference(PEOPLE_KEY, JSON.stringify(ids)); };
   const [all, setAll] = useState<AllResult | null>(null);
   const [one, setOne] = useState<OneResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,12 +115,15 @@ export function AttendanceSheet() {
 
   const shownRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return (all?.rows ?? []).filter((row) => (!role || row.employee.roles.includes(role)) && (!branch || (row.employee.branch || NO_BRANCH) === branch)
+    const chosen = new Set(people);
+    return (all?.rows ?? []).filter((row) => (!chosen.size || chosen.has(row.employee.id)) && (!role || row.employee.roles.includes(role)) && (!branch || (row.employee.branch || NO_BRANCH) === branch)
       && (!needle || `${row.employee.name} ${row.employee.id} ${row.employee.branch} ${row.employee.roles.join(" ")}`.toLowerCase().includes(needle)));
-  }, [all, search, role, branch]);
+  }, [all, search, role, branch, people]);
   const roleOptions = useMemo(() => [...new Set((all?.rows ?? []).flatMap((row) => row.employee.roles))].sort((a, b) => a.localeCompare(b)), [all]);
   const branchOptions = useMemo(() => [...new Set((all?.rows ?? []).map((row) => row.employee.branch || NO_BRANCH))].sort((a, b) => a.localeCompare(b)), [all]);
-  const filtered = Boolean(search.trim() || role || branch);
+  // Chosen people no longer in the list (left, or outside the range) do not count.
+  const chosenShown = (all?.rows ?? []).filter((row) => people.includes(row.employee.id)).length;
+  const filtered = Boolean(search.trim() || role || branch || people.length);
 
   const period = `${longDate(from)} – ${longDate(to)}`;
   const showingOne = Boolean(employeeId && one);
@@ -136,6 +148,7 @@ export function AttendanceSheet() {
           <div><CardTitle>{view === "sheet" ? "Attendance sheet" : "Attendance summary"} · {period}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{filtered ? `${shownRows.length} of ${all.rows.length}` : all.rows.length} employees{role ? ` · ${role}` : ""}{branch ? ` · ${branch}` : ""}. Click an employee for the day-by-day sheet. {view === "sheet" ? "Total days" : "Days payable"} = present + approved leave, as payroll counts them.</p></div>
           <div className="flex flex-wrap gap-2 print:hidden">
             <div className="flex rounded-md border p-0.5">{(["sheet", "summary"] as const).map((option) => <Button key={option} type="button" size="sm" variant={view === option ? "default" : "ghost"} onClick={() => setView(option)}>{option === "sheet" ? "Sheet" : "Summary"}</Button>)}</div>
+            <Button type="button" variant={people.length ? "default" : "outline"} aria-expanded={choosingPeople} onClick={() => setChoosingPeople((open) => !open)}><Users className="size-4" />{people.length ? `${chosenShown} chosen` : "Choose people"}</Button>
             <select aria-label="Filter by role" className="h-9 rounded-md border bg-background px-2 text-sm" value={role} onChange={(event) => setRole(event.target.value)}><option value="">All roles</option>{roleOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select>
             <select aria-label="Filter by branch" className="h-9 rounded-md border bg-background px-2 text-sm" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">All branches</option>{branchOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select>
             <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Search employees" className="w-56 pl-8" placeholder="Search name, ID, branch" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
@@ -146,6 +159,7 @@ export function AttendanceSheet() {
           </div>
         </CardHeader>
         <CardContent>
+          {choosingPeople && <PeoplePicker rows={all.rows} chosen={people} onChange={choosePeople} onClose={() => setChoosingPeople(false)} />}
           {view === "sheet" ? <AttendanceGrid rows={shownRows} from={from} to={to} showRates={all.showRates} onOpen={openEmployee} /> : <>
           <div className="max-h-[70vh] overflow-auto rounded-lg border print:max-h-none print:overflow-visible">
             <table className="w-full min-w-[1400px] text-sm print:min-w-0 print:text-[10px]">
@@ -167,6 +181,33 @@ export function AttendanceSheet() {
           <Legend />
         </CardContent>
       </Card>}
+  </div>;
+}
+
+/** Tick the people the sheet shows (owner, October 20, 2026); with none ticked it shows everyone. */
+function PeoplePicker({ rows, chosen, onChange, onClose }: { rows: AllRow[]; chosen: string[]; onChange: (ids: string[]) => void; onClose: () => void }) {
+  const [find, setFind] = useState("");
+  const needle = find.trim().toLowerCase();
+  const listed = rows.filter((row) => !needle || `${row.employee.name} ${row.employee.id} ${row.employee.branch} ${row.employee.roles.join(" ")}`.toLowerCase().includes(needle));
+  const toggle = (id: string) => onChange(chosen.includes(id) ? chosen.filter((item) => item !== id) : [...chosen, id]);
+  return <div className="mb-4 space-y-3 rounded-lg border bg-muted/30 p-3 print:hidden">
+    <div className="flex flex-wrap items-center gap-2">
+      <p className="text-sm font-medium">Show only these people</p>
+      <span className="text-xs text-muted-foreground">{chosen.length ? `${chosen.length} ticked` : "None ticked: everyone is shown"}. Kept on this device.</span>
+      <div className="ml-auto flex flex-wrap gap-2">
+        <Input aria-label="Find people" className="h-8 w-52" placeholder="Find name, ID, branch, role" value={find} onChange={(event) => setFind(event.target.value)} />
+        <Button type="button" size="sm" variant="outline" disabled={!listed.length} onClick={() => onChange([...new Set([...chosen, ...listed.map((row) => row.employee.id)])])}>Tick {needle ? "found" : "all"}</Button>
+        <Button type="button" size="sm" variant="outline" disabled={!chosen.length} onClick={() => onChange([])}>Show everyone</Button>
+        <Button type="button" size="sm" onClick={onClose}>Done</Button>
+      </div>
+    </div>
+    <div className="grid max-h-64 gap-1 overflow-auto sm:grid-cols-2 lg:grid-cols-3">
+      {listed.map(({ employee }) => <label key={employee.id} className="flex items-start gap-2 rounded px-2 py-1 text-sm hover:bg-muted">
+        <input type="checkbox" className="mt-1" checked={chosen.includes(employee.id)} onChange={() => toggle(employee.id)} />
+        <span><span className="font-medium">{employee.name}</span><span className="block text-xs text-muted-foreground">{employee.id}{employee.branch ? ` · ${employee.branch}` : ""}</span></span>
+      </label>)}
+      {!listed.length && <p className="p-2 text-sm text-muted-foreground">No one matches.</p>}
+    </div>
   </div>;
 }
 

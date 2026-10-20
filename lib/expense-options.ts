@@ -3,6 +3,8 @@ export const EXPENSE_ACCOUNTS = [
   "Transportation", "Meals/Snacks", "Electric Bill", "Water Bill", "Internet/Load", "Monthly Office Rent", "Bank Fee/Charge",
   "Cash Burial Assistance", "Allowance", "Office Supplies", "Cash Advance", "Miscellaneous", "Other",
 ] as const;
+/** Cash Burial Assistance names the member or deceased member it is for, saved as the payee (owner, October 20, 2026). */
+export const BURIAL_ACCOUNT = "Cash Burial Assistance";
 export const EXPENSE_ATTACHMENTS = ["Voucher", "Invoice", "Receipt", "MC Minutes", "Other"] as const;
 export const EXPENSE_APPROVERS = ["VP Finance", "CEO/President", "Other"] as const;
 
@@ -24,4 +26,12 @@ export function attachmentList(values: unknown, otherDetail: unknown) {
   return chosen.map((value) => value === "Other" ? choiceWithOther(EXPENSE_ATTACHMENTS, value, otherDetail, "attachment") : value)
     .sort((a, b) => EXPENSE_ATTACHMENTS.findIndex((item) => a.startsWith(item)) - EXPENSE_ATTACHMENTS.findIndex((item) => b.startsWith(item)))
     .join(", ");
+}
+
+/** Rules every expense follows (owner, October 20, 2026): a receipt number, and the member's name for Cash Burial Assistance. */
+export function expenseNumbers(account: string, receiptNumber: unknown, memberName: unknown) {
+  const receipt = text(receiptNumber).slice(0, 100), member = text(memberName).slice(0, 150);
+  if (!receipt) throw new Error("Enter the receipt number.");
+  if (account === BURIAL_ACCOUNT && !member) throw new Error("Enter the name of the member or deceased member for Cash Burial Assistance.");
+  return { receipt, member };
 }

@@ -3,7 +3,7 @@ import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
-import { attachmentList, choiceWithOther, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
+import { attachmentList, BURIAL_ACCOUNT, choiceWithOther, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS, expenseNumbers } from "@/lib/expense-options";
 
 // Expenses V attachments and W approved_by follow the encoder columns (R:U); see npm run sheets:expense-fields.
 export const EXPENSE_EXTRA_HEADERS = ["attachments", "approved_by"];
@@ -86,12 +86,13 @@ export async function createExpense(input: Record<string, unknown>) {
   const account = choiceWithOther(EXPENSE_ACCOUNTS, input.category, input.categoryOther, "account name");
   const approvedBy = choiceWithOther(EXPENSE_APPROVERS, input.approvedBy, input.approvedByOther, "approver");
   const attachments = attachmentList(input.attachments, input.attachmentOther);
+  const { receipt, member } = expenseNumbers(account, input.receiptNumber, input.payee);
   const header = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Expenses!V1:W1" })).data.values?.[0] ?? [];
   if (EXPENSE_EXTRA_HEADERS.some((name, index) => !headerMatches(header[index], name))) throw new Error("Run npm run sheets:expense-fields -- --apply to add the Attachments and Approved By columns before saving expenses.");
   const id = createReadableId("EXP");
   await appendEncodedRows({ range: "Expenses!A:Q", requestBody: { values: [[id, text(input.date), account,
-    required(input.description, "Purpose"), value, text(input.payee), text(input.paidBy) || "Cash on Hand", required(input.branch, "Branch"),
-    text(input.paymentMethod) || "Cash", text(input.referenceNumber), text(input.receiptNumber), "Posted", text(input.remarks),
+    required(input.description, "Purpose"), value, member, text(input.paidBy) || "Cash on Hand", required(input.branch, "Branch"),
+    text(input.paymentMethod) || "Cash", text(input.referenceNumber), receipt, "Posted", text(input.remarks),
     new Date().toISOString(), "", "", ""]] } }, [[attachments, approvedBy]]);
   return { id };
 }
@@ -118,12 +119,15 @@ export async function editExpense(id: string, input: Record<string, unknown>, by
   const account = choiceWithOther(EXPENSE_ACCOUNTS, input.category, input.categoryOther, "account name");
   const approvedBy = choiceWithOther(EXPENSE_APPROVERS, input.approvedBy, input.approvedByOther, "approver");
   const description = required(input.description, "Purpose");
+  const { receipt, member } = expenseNumbers(account, input.receiptNumber, input.payee);
   getEncoder();
   const row = await ownExpense(id, by);
-  // B date, C account, D purpose, E amount; K receipt; M remarks; W approved by. Branch, payee and status stay.
+  // B date, C account, D purpose, E amount; F payee (the member, for Cash Burial Assistance); K receipt; M remarks; W
+  // approved by. Branch and status stay; another account's payee stays unless one is sent.
   await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: [
     { range: `'Expenses'!B${row}:E${row}`, values: [[text(input.date), account, description, value]] },
-    { range: `'Expenses'!K${row}`, values: [[text(input.receiptNumber)]] },
+    ...(account === BURIAL_ACCOUNT || member ? [{ range: `'Expenses'!F${row}`, values: [[member]] }] : []),
+    { range: `'Expenses'!K${row}`, values: [[receipt]] },
     { range: `'Expenses'!M${row}`, values: [[text(input.remarks)]] },
     { range: `'Expenses'!W${row}`, values: [[approvedBy]] },
   ] } });

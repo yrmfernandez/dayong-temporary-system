@@ -15,7 +15,8 @@ The entry form follows the company expense form: Branch, Date of Expense, Accoun
 - **Account Name** (`category`): Transportation, Meals/Snacks, Electric Bill, Water Bill, Internet/Load, Monthly Office Rent, Bank Fee/Charge, Cash Burial Assistance, Allowance, Office Supplies, Cash Advance, Miscellaneous, Other. "Other" must be specified and is saved as `Other: <detail>`.
 - **Attachments** (column V `attachments`): a checklist of the supporting documents (Voucher, Invoice, Receipt, MC Minutes, Other), saved comma-separated. Files themselves are kept on paper; no upload is stored.
 - **Approved by** (column W `approved_by`): VP Finance, CEO/President, or Other with a name.
-- **Purpose** is saved in `description`; **Invoice/Receipt No.** in `receipt_number`.
+- **Purpose** is saved in `description`; **Invoice/Receipt No.** in `receipt_number`. The receipt number is required on every expense, on the Expenses page and on an Entry Clerk's report, when saving and when editing (October 20, 2026).
+- **Cash Burial Assistance** (October 20, 2026) also requires the name of the member or deceased member it is for. It is saved in `payee` (no new column), shown as *For: name* in the Expense Register and as *Cash Burial Assistance: name* on the clerk report; the optional Payee field is hidden for this account.
 
 Payee, payment method, payment reference and "Paid from" are optional payment details. "Paid from" defaults to Cash on Hand, which is how the expense leaves the cash ledger. Run `npm run sheets:expense-fields -- --apply` once to add columns V and W; expenses saved earlier read as no attachments and no approver recorded.
 

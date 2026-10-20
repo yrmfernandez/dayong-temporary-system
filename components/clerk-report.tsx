@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ClerkReport as Report, ReportLine } from "@/lib/clerk-report";
-import { EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
+import { BURIAL_ACCOUNT, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
@@ -145,14 +145,17 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
             <div className="grid gap-3 xl:grid-cols-2 print:grid-cols-2">
               <Grid title="Expenses/Other Cash Out Section" color={tone.expenses}
                 headers={["Account Name/Type of Expense", report.whenLabel, "Amount", "Receipt/CV", "Purpose", "Rmks"]}
-                rows={report.expenses.map((item) => [item.account, item.when, money(item.amount), item.receipt, item.purpose, item.remarks])}
+                rows={report.expenses.map((item) => [item.account === BURIAL_ACCOUNT && item.payee ? `${item.account}: ${item.payee}` : item.account, item.when, money(item.amount), item.receipt, item.purpose, item.remarks])}
                 total={report.expenseTotal}
                 action={own ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this expense being deleted?"); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></span> : undefined} />
               <Grid title="Cash Flow Transaction and Other Cash Ins" color={tone.cashFlow}
                 headers={["Bank Account Name", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
-                rows={report.deposits.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, item.remarks])}
+                rows={report.cashFlowTotals
+                  // Monthly and yearly: the total of each week / month (owner, October 20, 2026); deposits are edited on the daily or weekly report.
+                  ? report.cashFlowTotals.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, `${item.count} deposit${item.count === 1 ? "" : "s"}`])
+                  : report.deposits.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, item.remarks])}
                 total={report.depositTotal}
-                action={own ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this deposit being voided?"); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
+                action={own && !report.cashFlowTotals ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this deposit being voided?"); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
             </div>
 
             {(report.fidelityReceived.length > 0 || own) && (
@@ -433,7 +436,7 @@ function expenseForm(item: Report["expenses"][number]) {
   const split = (value: string, options: readonly string[], fallback: string) => options.includes(value) ? { choice: value, other: "" }
     : value.startsWith("Other: ") ? { choice: "Other", other: value.slice(7) } : value ? { choice: "Other", other: value } : { choice: fallback, other: "" };
   const account = split(item.account, EXPENSE_ACCOUNTS, "Transportation"), approver = split(item.approvedBy, EXPENSE_APPROVERS, "VP Finance");
-  return { category: account.choice, categoryOther: account.other, date: item.date, amount: String(item.amount), receiptNumber: item.receipt, description: item.purpose, remarks: item.remarks, approvedBy: approver.choice, approvedByOther: approver.other };
+  return { category: account.choice, categoryOther: account.other, date: item.date, amount: String(item.amount), receiptNumber: item.receipt, payee: item.payee, description: item.purpose, remarks: item.remarks, approvedBy: approver.choice, approvedByOther: approver.other };
 }
 
 function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFidelity, onFidelityDone, editingExpense, onExpenseDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; editing: Report["deposits"][number] | null; onEditDone: () => void;
@@ -441,7 +444,7 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
   masChoices: Array<{ id: string; name: string }>; editingFidelity: Report["fidelitySlips"][number] | null; onFidelityDone: () => void }) {
   const today = todayInManila();
   const inPeriod = today >= report.from && today <= report.to ? today : report.to;
-  const [expense, setExpense] = useState(editingExpense ? expenseForm(editingExpense) : { category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
+  const [expense, setExpense] = useState(editingExpense ? expenseForm(editingExpense) : { category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", payee: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
   const [deposit, setDeposit] = useState(editing
     ? { date: editing.date, bankAccount: editing.bankAccount, amount: String(editing.amount), transferType: editing.transferType, mas: editing.mas, remarks: editing.remarks }
     : { date: inPeriod, bankAccount: "DSRDPI", amount: "", transferType: "", mas: "", remarks: "" });
@@ -465,21 +468,23 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
       {section === "expense" && <form id="expense-form" className="space-y-4" onSubmit={async (event) => {
         event.preventDefault();
         if (editingExpense) { if (await act({ action: "edit-expense", id: editingExpense.id, ...expense, amount: Number(expense.amount) })) onExpenseDone(); return; }
-        if (await act({ action: "add-expense", ...expense, amount: Number(expense.amount), attachments: [] })) setExpense((current) => ({ ...current, amount: "", receiptNumber: "", description: "", remarks: "" }));
+        if (await act({ action: "add-expense", ...expense, amount: Number(expense.amount), attachments: [] })) setExpense((current) => ({ ...current, amount: "", receiptNumber: "", payee: "", description: "", remarks: "" }));
       }}>
         <FormTitle title={editingExpense ? `Edit expense ${editingExpense.id}` : "Add expense / other cash out"} note={editingExpense ? "Saved to Expenses as well; the report and the cash on hand follow." : "Saved to Expenses for your branch. Edit or delete it from the Expenses list above."} />
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Account name / type of expense"><select className={field} value={expense.category} onChange={(event) => setExpense({ ...expense, category: event.target.value })}>{EXPENSE_ACCOUNTS.map((item) => <option key={item}>{item}</option>)}</select></Field>
-          {expense.category === "Other" ? <Field label="Specify the expense"><Input value={expense.categoryOther} onChange={(event) => setExpense({ ...expense, categoryOther: event.target.value })} /></Field> : <div className="hidden sm:block" />}
+          {expense.category === "Other" ? <Field label="Specify the expense"><Input value={expense.categoryOther} onChange={(event) => setExpense({ ...expense, categoryOther: event.target.value })} /></Field>
+            : expense.category === BURIAL_ACCOUNT ? <Field label="Member / deceased member name *"><Input maxLength={150} value={expense.payee} onChange={(event) => setExpense({ ...expense, payee: event.target.value })} /></Field>
+            : <div className="hidden sm:block" />}
           <Field label="Date"><Input type="date" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} /></Field>
           <Field label="Amount"><Input type="number" min="0" step="0.01" placeholder="0.00" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} /></Field>
-          <Field label="Receipt / CV no."><Input value={expense.receiptNumber} onChange={(event) => setExpense({ ...expense, receiptNumber: event.target.value })} /></Field>
+          <Field label="Receipt / CV no. *"><Input value={expense.receiptNumber} onChange={(event) => setExpense({ ...expense, receiptNumber: event.target.value })} /></Field>
           <Field label="Approved by"><select className={field} value={expense.approvedBy} onChange={(event) => setExpense({ ...expense, approvedBy: event.target.value })}>{EXPENSE_APPROVERS.map((item) => <option key={item}>{item}</option>)}</select></Field>
           {expense.approvedBy === "Other" && <Field label="Who approved it" wide><Input value={expense.approvedByOther} onChange={(event) => setExpense({ ...expense, approvedByOther: event.target.value })} /></Field>}
           <Field label="Purpose *" wide><Input value={expense.description} onChange={(event) => setExpense({ ...expense, description: event.target.value })} /></Field>
           <Field label="Remarks" wide><Input value={expense.remarks} onChange={(event) => setExpense({ ...expense, remarks: event.target.value })} /></Field>
         </div>
-        <div className="flex gap-2"><Button type="submit" size="sm" disabled={!expense.amount || !expense.description.trim()}>{editingExpense ? "Save changes" : "Save expense"}</Button>{editingExpense && <Button type="button" size="sm" variant="outline" onClick={onExpenseDone}>Cancel</Button>}</div>
+        <div className="flex gap-2"><Button type="submit" size="sm" disabled={!expense.amount || !expense.description.trim() || !expense.receiptNumber.trim() || (expense.category === BURIAL_ACCOUNT && !expense.payee.trim())}>{editingExpense ? "Save changes" : "Save expense"}</Button>{editingExpense && <Button type="button" size="sm" variant="outline" onClick={onExpenseDone}>Cancel</Button>}</div>
       </form>}
 
       {section === "deposit" && <form id="deposit-form" className="space-y-4" onSubmit={async (event) => {

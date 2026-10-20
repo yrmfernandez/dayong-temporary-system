@@ -3319,7 +3319,12 @@ test('an expense on the report can be edited and deleted by the clerk who record
   const deleteExpense = (...args) => as(() => finance.deleteExpense(...args));
   const own = { employeeId: 'DPE-7', isAdmin: false };
   await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Other', categoryOther: '', amount: 80, description: 'Fare', approvedBy: 'VP Finance' }, own), /Specify the other account name/);
-  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Meals/Snacks', amount: 80, description: 'Lunch', approvedBy: 'VP Finance' }, { employeeId: 'DPE-8', isAdmin: false }), /only expenses you recorded/);
+  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Meals/Snacks', amount: 80, description: 'Lunch', receiptNumber: 'R-1', approvedBy: 'VP Finance' }, { employeeId: 'DPE-8', isAdmin: false }), /only expenses you recorded/);
+  // October 20, 2026: a receipt number on every expense, and the member's name for Cash Burial Assistance.
+  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Meals/Snacks', amount: 80, description: 'Lunch', approvedBy: 'VP Finance' }, own), /receipt number/);
+  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Cash Burial Assistance', amount: 80, description: 'Burial', receiptNumber: 'R-1', approvedBy: 'VP Finance' }, own), /deceased member/);
+  await editExpense('EXP-9', { date: '2026-10-11', category: 'Cash Burial Assistance', amount: 80, description: 'Burial', receiptNumber: 'R-1', payee: 'Juan Cruz', approvedBy: 'VP Finance' }, own);
+  assert.deepEqual(h.writes.at(-1).requestBody.data.find((item) => item.range === "'Expenses'!F2").values[0], ['Juan Cruz'], 'the member is saved as the payee');
   await editExpense('EXP-9', { date: '2026-10-11', category: 'Meals/Snacks', amount: 80, description: 'Lunch', receiptNumber: 'R-1', remarks: 'team', approvedBy: 'Other', approvedByOther: 'Branch head' }, own);
   // Row 2 of Expenses: B:E date, account, purpose, amount; K receipt; M remarks; W approver.
   const edit = h.writes.at(-1).requestBody.data;
