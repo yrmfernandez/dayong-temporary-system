@@ -30,10 +30,11 @@ try {
   const [{ cashBeg }] = await sql`select exists (select 1 from information_schema.columns where table_name = 'report_notes' and column_name = 'cash_beg') as "cashBeg"`;
   const [{ doiTime }] = await sql`select count(*) = 2 as "doiTime" from information_schema.columns where table_name in ('sales', 'member_programs') and column_name = 'doi_time'`;
   const [{ moved }] = await sql`select count(*) = 2 as moved from information_schema.columns where table_name in ('sales', 'collections') and column_name = 'date_remitted_reason'`;
+  const [{ noIncentive }] = await sql`select count(*) = 2 as "noIncentive" from information_schema.columns where table_name in ('sales', 'collections') and column_name = 'no_incentive_reason'`;
   console.log(`Tables: ${tables.n} (expected ${expectedTables})`);
   console.log(`Migrations applied: ${migrations.n} of ${expected}`);
-  console.log(`company_targets table (0017): ${targets ? "present" : "MISSING"} · program_incentives.non_commissionable (0018): ${flag ? "present" : "MISSING"} · notices_to_explain.explanation (0019): ${reply ? "present" : "MISSING"} · clearings.covers (0020): ${covers ? "present" : "MISSING"} · notices_to_explain.reviewed_at (0021): ${reviewed ? "present" : "MISSING"} · date_remitted_reason (0022): ${moved ? "present" : "MISSING"} · report_notes.cash_beg (0023): ${cashBeg ? "present" : "MISSING"} · doi_time (0024): ${doiTime ? "present" : "MISSING"}`);
-  console.log(tables.n === expectedTables && migrations.n === expected && targets && flag && reply && covers && reviewed && moved && cashBeg && doiTime ? "OK: every migration is applied." : "NOT READY: run npm run db:migrate again, then this check.");
+  console.log(`company_targets table (0017): ${targets ? "present" : "MISSING"} · program_incentives.non_commissionable (0018): ${flag ? "present" : "MISSING"} · notices_to_explain.explanation (0019): ${reply ? "present" : "MISSING"} · clearings.covers (0020): ${covers ? "present" : "MISSING"} · notices_to_explain.reviewed_at (0021): ${reviewed ? "present" : "MISSING"} · date_remitted_reason (0022): ${moved ? "present" : "MISSING"} · report_notes.cash_beg (0023): ${cashBeg ? "present" : "MISSING"} · doi_time (0024): ${doiTime ? "present" : "MISSING"} · no_incentive_reason (0025): ${noIncentive ? "present" : "MISSING"}`);
+  console.log(tables.n === expectedTables && migrations.n === expected && targets && flag && reply && covers && reviewed && moved && cashBeg && doiTime && noIncentive ? "OK: every migration is applied." : "NOT READY: run npm run db:migrate again, then this check.");
 } catch (error) {
   console.log(`ERROR: ${error.message}`);
   process.exitCode = 1;

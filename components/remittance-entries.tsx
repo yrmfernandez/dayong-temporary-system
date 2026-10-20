@@ -45,7 +45,7 @@ export function RemittanceEntries({ remittanceId }: { remittanceId: string }) {
             <td className="p-2">{entry.orNumber || "—"}<span className="block text-xs text-muted-foreground">{entry.orDate}</span>{entry.dateRemittedReason && <span className="block text-xs text-amber-800">Remitted {entry.dateRemitted}: {entry.dateRemittedReason}</span>}</td>
             <td className="p-2 text-xs">{entry.paymentMethod}{entry.paymentReference && <span className="block text-muted-foreground">ref {entry.paymentReference}</span>}</td>
             <td className="p-2 text-right tabular-nums">{money(entry.amount)}</td>
-            <td className="p-2 text-right tabular-nums">{money(entry.remittanceAmount)}{entry.forfeitedIncentive > 0 && <span className="block text-xs text-red-700">incentive forfeited {money(entry.forfeitedIncentive)}</span>}</td>
+            <td className="p-2 text-right tabular-nums">{money(entry.remittanceAmount)}{entry.noIncentiveReason ? <span className="block text-xs text-red-700">No incentive: {entry.noIncentiveReason}</span> : entry.forfeitedIncentive > 0 && <span className="block text-xs text-red-700">incentive forfeited {money(entry.forfeitedIncentive)}</span>}</td>
             <td className="p-2">{entry.photoId ? <ReceiptPhotoView photoId={entry.photoId} label="View" /> : entry.cash ? <span className="text-xs text-muted-foreground">Cash, none needed</span> : <StatusBadge status="Missing" tone="warning" />}</td>
             <td className="p-2 text-xs">{entry.encodedByName || "—"}<span className="block text-muted-foreground">{entry.encodedAt}</span></td>
           </tr>)}

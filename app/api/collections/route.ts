@@ -13,7 +13,7 @@ import { inTransaction, isUniqueViolation } from "@/lib/db";
 import { loadAccountData, commitCollections, type NewCollection } from "@/lib/account-data";
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
 import { findActivePaymentMethod } from "@/lib/remittance-methods";
-import { calculateRemittance, tiersForBranch } from "@/lib/remittance";
+import { calculateRemittance, noIncentiveReasonOf, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
@@ -166,15 +166,19 @@ async function saveCollections(request: Request) {
         const reactivation = entry.reactivation === "Yes";
         if (orc && reactivation) throw new Error(`Collection for ${account.memberNumber}: a reactivation cannot be in an ORC batch.`);
         const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), selectedBranch.id), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation });
+        // No incentive (owner, October 20, 2026): the collector earns nothing on this one; it is remitted whole. A DTO
+        // batch earns no incentive anyway.
+        const noIncentiveReason = dto ? "" : noIncentiveReasonOf(entry.noIncentive, entry.noIncentiveReason, `Collection for ${account.memberNumber}`);
+        const kept = noIncentiveReason ? withoutIncentive(input.amount, quote.remittance) : { remittance: quote.remittance, forfeited: 0 };
         // Client totals are only a preview. Persist the authoritative server calculation.
         grossCents += Math.round(quote.gross * 100);
-        remittanceCents += Math.round(quote.remittance * 100);
+        remittanceCents += Math.round(kept.remittance * 100);
         const id = createReadableId("COL");
         const payment: AccountPayment = { ...input, id, enrollmentId: account.id, dateRemitted, mas: accountMas };
         payments.push(payment);
         touched.set(account.id, account);
         // Penalty and Fidelity belong to the batch and are stored on its first row. forfeited_incentive is set at
-        // remittance; backdate_reason when the OR date is more than a day old; date_remitted is the batch's Date Remitted,
+        // remittance (or here, for No incentive); backdate_reason when the OR date is more than a day old; date_remitted is the batch's Date Remitted,
         // so the dates can be checked against each other later.
         const first = !rows.length;
         rows.push({
@@ -182,7 +186,7 @@ async function saveCollections(request: Request) {
           branch, mas: accountMas, or_number: input.orNumber, or_date: input.orDate, amount_collected: input.amount, month_from: input.monthFrom, month_to: input.monthTo,
           nop_from: input.nopFrom, nop_to: input.nopTo, reactivation: entry.reactivation === "Yes", transferred: entry.transferred === "Yes",
           suspended: input.waiver || null, original_mas: input.originalMas || null, status: "Posted", created_at: timestamp,
-          collected_by_role: input.collectedByRole, remittance_amount: quote.remittance, remittance_breakdown: quote.breakdown, remittance_status: "Outstanding",
+          collected_by_role: input.collectedByRole, remittance_amount: kept.remittance, forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null, no_incentive_reason: noIncentiveReason || null, remittance_breakdown: quote.breakdown, remittance_status: "Outstanding",
           accountable_employee_id: accountableEmployeeId, accountable_name: dto ? accountable.name : mas, accountable_role: dto ? "DTO" : "MAS", remittance_method: paymentMethod.name, payment_reference: paymentReference || null,
           penalty_amount: first && penalty > 0 ? penalty : null, penalty_note: first && penalty > 0 ? penaltyNote : null, fidelity_amount: first && fidelity > 0 ? fidelity : null,
           backdate_reason: backdateReason || null, date_remitted: dateRemitted, date_remitted_reason: dateRemittedReason || null,

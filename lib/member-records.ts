@@ -262,7 +262,7 @@ export async function addSale(
   sale: SaleSheetData,
   accountableEmployeeId: string,
   penalty: { amount: number; note: string } = { amount: 0, note: "" },
-  quote: { incentive: number; remittance: number; fidelity: number },
+  quote: { incentive: number; remittance: number; fidelity: number; forfeited?: number; noIncentiveReason?: string },
 ) {
   await currentDb().insert(sales).values({
     sale_id: sale.saleId, date_created: optional(sale.dateCreated), branch: optional(sale.branch), mas: optional(sale.mas), date_remitted: optionalDate(sale.dateRemitted),
@@ -273,6 +273,8 @@ export async function addSale(
     penalty_amount: penalty.amount > 0 ? penalty.amount : null, penalty_note: penalty.amount > 0 ? penalty.note : null,
     mas_incentive: quote.incentive, remittance_amount: quote.remittance, fidelity_amount: quote.fidelity > 0 ? quote.fidelity : null,
     backdate_reason: optional(sale.backdateReason), date_remitted_reason: optional(sale.dateRemittedReason),
+    // No incentive (owner, October 20, 2026): the incentive it would have earned is kept as forfeited.
+    forfeited_incentive: quote.forfeited && quote.forfeited > 0 ? quote.forfeited : null, no_incentive_reason: optional(quote.noIncentiveReason),
   });
 }
 

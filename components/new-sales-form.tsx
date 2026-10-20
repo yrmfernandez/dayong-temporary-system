@@ -34,7 +34,7 @@ import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { RemittanceSummary } from "@/components/remittance-summary";
-import { calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
+import { calculateSaleIncentive, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import {
   Select,
   SelectContent,
@@ -363,11 +363,17 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // Each sale's MAS incentive and company share, by the same rule the server saves (lib/remittance.ts).
   // A branch's own incentive tiers replace the program's base tiers there.
   const branchId = branches.find((item) => item.name === branch)?.id ?? "";
+  // Clerk saves only; a MAS submission has no No incentive choice.
+  const noIncentiveOn = (sale: (typeof sales)[number]) => !masMode && sale.noIncentive === true;
   const saleQuotes = sales.map((sale) => {
     const program = programOf(sale);
     if (!program) return null;
     try {
-      return calculateSaleIncentive({ basePay: program.basePay, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, amountPaidOf(sale));
+      const quote = calculateSaleIncentive({ basePay: program.basePay, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, amountPaidOf(sale));
+      // No incentive (owner, October 20, 2026): remitted whole, as the server saves it.
+      if (!noIncentiveOn(sale)) return quote;
+      const kept = withoutIncentive(amountPaidOf(sale), quote.remittance);
+      return { ...quote, incentive: 0, remittance: kept.remittance };
     } catch (error) {
       return { incentive: 0, remittance: 0, rule: "", error: error instanceof Error ? error.message : "The incentive could not be calculated." };
     }
@@ -1050,6 +1056,9 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       return `Sale #${impossible + 1}: ${blockingDateProblem({ receiptDate: sales[impossible].orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date })}`;
     }
 
+    const noReason = sales.findIndex((sale) => noIncentiveOn(sale) && (sale.noIncentiveReason ?? "").trim().length < NO_INCENTIVE_REASON_MIN);
+    if (noReason >= 0) return `Sale #${noReason + 1}: give the reason it earns no incentive.`;
+
     const late = sales.findIndex((sale) => isLateDate(sale.orDate) && (sale.backdateReason ?? "").trim().length < BACKDATE_REASON_MIN);
     if (late >= 0) {
       return `Sale #${late + 1}: the application date is more than one working day old. Enter the reason it is being encoded late.`;
@@ -1229,6 +1238,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
             orNumber: "",
             orDate: sale.orDate,
             backdateReason: sale.backdateReason ?? "",
+            noIncentive: noIncentiveOn(sale),
+            noIncentiveReason: noIncentiveOn(sale) ? (sale.noIncentiveReason ?? "").trim() : "",
             paymentMethod: masMode ? sale.program.modeOfPayment : paymentMethod,
             registrationFee: sale.program.withRegistrationFee ? "Yes" : "No",
             registrationAmount: String(sale.program.registrationAmount),
@@ -1669,6 +1680,17 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                           )}
                         </div>
                       </div>
+                      {/* NO INCENTIVE (owner, October 20, 2026): this one sale earns the MAS nothing; it is remitted whole. */}
+                      {!masMode && <div className={`rounded-md border px-3 py-2 text-sm ${noIncentiveOn(sale) ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30" : ""}`}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button type="button" size="sm" variant={noIncentiveOn(sale) ? "destructive" : "outline"} aria-pressed={noIncentiveOn(sale)} onClick={() => updateSale(sale.id, (current) => ({ ...current, noIncentive: !noIncentiveOn(current) }))}>{noIncentiveOn(sale) ? "No incentive ✓" : "No incentive"}</Button>
+                          <span className="text-xs text-muted-foreground">{noIncentiveOn(sale) ? "The MAS earns no incentive on this sale; the whole amount is remitted. Click again to undo." : "Click when the MAS should not earn an incentive on this sale."}</span>
+                        </div>
+                        {noIncentiveOn(sale) && <div className="mt-2 space-y-1">
+                          <Label className="text-xs text-red-800 dark:text-red-300">Reason for no incentive *</Label>
+                          <Input maxLength={300} value={sale.noIncentiveReason ?? ""} onChange={(event) => updateSale(sale.id, (current) => ({ ...current, noIncentiveReason: event.target.value }))} placeholder="e.g. Walk-in member, not brought in by the MAS" />
+                        </div>}
+                      </div>}
                       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
                       <div className="space-y-2">
                         <Label>

@@ -18,7 +18,7 @@ import { getEmployees } from "@/lib/employees";
 import { ageRestrictionError } from "@/lib/program-age";
 import { todayInManila } from "@/lib/account-rules";
 import { inTransaction, isUniqueViolation } from "@/lib/db";
-import { calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
+import { calculateSaleIncentive, noIncentiveReasonOf, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { newSalesDoubleEntry, personKey } from "@/lib/duplicate-entries";
 
 
@@ -67,6 +67,9 @@ type SalePayloadItem = {
   orDate: string;
   /** Required when the application date is more than a day old (lib/entry-controls.ts). */
   backdateReason?: string;
+  /** No incentive for the MAS on this sale, and why (owner, October 20, 2026). */
+  noIncentive?: boolean;
+  noIncentiveReason?: string;
 
   paymentMethod: string;
   registrationFee: string;
@@ -575,7 +578,7 @@ async function saveSales(request: Request, user: SessionUser) {
       try { checkBackdate(String(prepared.sale.orDate ?? "").trim(), String(prepared.sale.backdateReason ?? ""), `Sale #${index + 1}`, manilaNow().date, calendar); }
       catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Enter the reason for the late date." }, { status: 400 }); }
     }
-    const quotes: Array<{ incentive: number; remittance: number }> = [];
+    const quotes: Array<{ incentive: number; remittance: number; forfeited: number; noIncentiveReason: string }> = [];
     for (const [index, prepared] of preparedSales.entries()) {
       const program = programs.find((item) => item.id === prepared.sale.programId?.trim());
       const amountPaid = Number(prepared.sale.amountPaid);
@@ -589,7 +592,15 @@ async function saveSales(request: Request, user: SessionUser) {
         return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}. Ask an administrator to allow editing in Programs if this receipt is different.` }, { status: 400 });
       }
       // A branch's own incentive tiers replace the program's base tiers there.
-      try { quotes.push(calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, selectedBranch?.id ?? "") }, amountPaid)); }
+      // No incentive (owner, October 20, 2026): the MAS earns nothing on this sale; it is remitted whole.
+      let noIncentiveReason = "";
+      try { noIncentiveReason = noIncentiveReasonOf(prepared.sale.noIncentive, prepared.sale.noIncentiveReason, `Sale #${index + 1}`); }
+      catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Give the reason it earns no incentive." }, { status: 400 }); }
+      try {
+        const quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, selectedBranch?.id ?? "") }, amountPaid);
+        const kept = noIncentiveReason ? withoutIncentive(amountPaid, quote.remittance) : { remittance: quote.remittance, forfeited: 0 };
+        quotes.push({ incentive: Math.round((amountPaid - kept.remittance) * 100) / 100, remittance: kept.remittance, forfeited: kept.forfeited, noIncentiveReason });
+      }
       catch (error) { return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${error instanceof Error ? error.message : "The incentive could not be calculated."}` }, { status: 400 }); }
     }
     // The batch's total remittance (server calculation, plus Fidelity) must equal the net total on the turnover sheet.

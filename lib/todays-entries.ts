@@ -41,6 +41,8 @@ export type DayEntry = {
   /** Incentive the person keeps (zero once forfeited). */
   incentive: number;
   forfeitedIncentive: number;
+  /** Why it earns no incentive, when marked No incentive at encoding (owner, October 20, 2026); blank otherwise. */
+  noIncentiveReason: string;
   incentiveDeadline: string;
   remittanceStatus: string;
   remittanceId: string;
@@ -130,6 +132,9 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
   const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
   const money = (value: unknown) => (text(value) === "" ? "" : peso(number(value)));
   const today = manilaNow().date;
+  // no_incentive_reason was added after the sheet layout (migration 0025), so it is found by its header.
+  const saleNoIncentive = sales[0]?.indexOf("no_incentive_reason") ?? -1, collectionNoIncentive = collections[0]?.indexOf("no_incentive_reason") ?? -1;
+  const reasonAt = (row: unknown[], index: number) => (index >= 0 ? text(row[index]) : "");
 
   type Base = Omit<DayEntry, "remittedAt" | "onRemittance" | "incentiveDeadline" | "warnings" | "photoId" | "photoIds" | "returnReason" | "cash">;
   const entry = (values: Base): DayEntry => {
@@ -156,7 +161,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
         kind: "New Sale", id: text(row[0]), memberNumber: text(row[5]), memberName,
         program: programNames.get(text(row[21])) || text(row[21]), branch: text(row[2]), person: text(row[3]),
         orNumber: text(row[29]), orDate, applicationNumber: text(row[28]), notes: text(row[27]),
-        amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[43]),
+        amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[43]), noIncentiveReason: reasonAt(row, saleNoIncentive),
         remittanceStatus: text(row[35]), remittanceId: text(row[36]), encodedBy: text(row[33]), encodedAt: manilaTime(text(row[34]) || text(row[1])),
         dateRemitted, recordedOn, encodedByEmployeeId: text(row[32]), remittanceAmount: remittance, fidelity: number(row[42]), penalty: number(row[38]),
         paymentMethod: text(row[23]) || "Cash",
@@ -169,7 +174,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
           ["Date remitted", dateRemitted], ["Payment method", text(row[23])],
           ["Registration fee", /^yes$/i.test(text(row[24])) ? money(row[25]) : ""], ["Amount paid", peso(amount)],
           ["MAS incentive", peso(Math.max(0, round(amount - remittance)))], ["Company share (to remit)", peso(remittance)],
-          ["Forfeited incentive", number(row[43]) ? peso(number(row[43])) : ""],
+          ["Forfeited incentive", number(row[43]) ? peso(number(row[43])) : ""], ["No incentive", reasonAt(row, saleNoIncentive)],
           ["Penalty", number(row[38]) ? `${peso(number(row[38]))}${text(row[39]) ? ` · ${text(row[39])}` : ""}` : ""],
           ["Fidelity", number(row[42]) ? peso(number(row[42])) : ""],
           ["Remittance status", text(row[35])], ["Remittance slip", text(row[36]) ? `${text(row[36])} · received ${slipStamp(text(row[36]))}` : ""],
@@ -189,7 +194,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
         kind: "Collection", id: text(row[0]), memberNumber: text(row[4]), memberName,
         program: programNames.get(text(row[5])) || text(row[5]), branch: text(row[6]), person: text(row[32]) === "DTO" || text(row[25]) === "DTO" ? "DTO" : text(row[31]) || text(row[7]), // a DTO payment shows DTO, not the clerk or MAS (owner, October 13, 2026)
         orNumber: text(row[8]), orDate, applicationNumber: "", notes: "",
-        amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[38]),
+        amount, incentive: Math.max(0, round(amount - remittance)), forfeitedIncentive: number(row[38]), noIncentiveReason: reasonAt(row, collectionNoIncentive),
         remittanceStatus: text(row[28]), remittanceId: text(row[29]), encodedBy: text(row[23]), encodedAt: manilaTime(text(row[24]) || text(row[20])),
         dateRemitted, recordedOn, encodedByEmployeeId: text(row[22]), remittanceAmount: remittance, fidelity: number(row[37]), penalty: number(row[35]),
         paymentMethod: text(row[33]) || "Cash", batchId: text(row[1]),
@@ -200,7 +205,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
           ["OR number", text(row[8])], ["OR date", orDate], ["Date remitted", dateRemitted || "Not recorded"],
           ["Months covered", months], ["NOP", nop], ["Amount collected", peso(amount)],
           ["Company share (to remit)", peso(remittance)], ["Incentive", peso(Math.max(0, round(amount - remittance)))],
-          ["Forfeited incentive", number(row[38]) ? peso(number(row[38])) : ""],
+          ["Forfeited incentive", number(row[38]) ? peso(number(row[38])) : ""], ["No incentive", reasonAt(row, collectionNoIncentive)],
           ["Penalty", number(row[35]) ? `${peso(number(row[35]))}${text(row[36]) ? ` · ${text(row[36])}` : ""}` : ""],
           ["Fidelity", number(row[37]) ? peso(number(row[37])) : ""],
           ["Payment method", [text(row[33]), text(row[34]) && `ref ${text(row[34])}`].filter(Boolean).join(" · ")],

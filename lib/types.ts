@@ -114,6 +114,9 @@ export type NewSale = {
   doiTime?: string;
   /** Why an application date more than a day old is encoded late. */
   backdateReason?: string;
+  /** No incentive for the MAS on this sale, and why (owner, October 20, 2026): it is remitted whole. */
+  noIncentive?: boolean;
+  noIncentiveReason?: string;
 
   dateRemitted: string;
 };

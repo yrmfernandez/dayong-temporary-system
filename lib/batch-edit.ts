@@ -19,7 +19,7 @@ import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { recordCorrection } from "@/lib/record-corrections";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import type { WorkCalendar } from "@/lib/working-days";
-import { calculateRemittance, calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
+import { calculateRemittance, calculateSaleIncentive, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { findActivePaymentMethod } from "@/lib/remittance-methods";
 import { manilaNow } from "@/lib/remittance-deadline";
 
@@ -393,7 +393,10 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
     if (!Number.isFinite(amount) || amount < 0) throw new Error(`${label}: enter a valid amount paid.`);
     if (program.flexible && cents(amount) < cents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
     if (!program.flexible && !program.newSaleAmountEditable && cents(amount) !== cents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program)}.`);
-    const quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, common.branchId) }, amount);
+    const priced = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, common.branchId) }, amount);
+    // Marked No incentive at encoding (owner, October 20, 2026): still remitted whole.
+    const noIncentive = Boolean(text(row.no_incentive_reason)), kept = withoutIncentive(amount, priced.remittance);
+    const quote = noIncentive ? { incentive: 0, remittance: kept.remittance } : priced;
     let doi = day(row.doi);
     if (account && !hasCollections && orDate && orDate !== day(row.or_date) && doi === day(row.or_date)) { doi = orDate; writes.push(() => tx.update(memberPrograms).set({ doi: orDate }).where(eq(memberPrograms.enrollment_id, account.id))); }
     const registration = { registration_fee: program.registrationFeeRequired, registration_amount: program.registrationFeeRequired ? program.registrationAmount : 0 };
@@ -402,6 +405,7 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
     const after = {
       application_no: applicationNumber, or_date: orDate || null, doi: doi || null, doi_time: doiTime || null, amount_paid: amount, notes: notes || null, backdate_reason: backdateReason || null,
       date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), payment_method: common.method, mas_incentive: quote.incentive, remittance_amount: quote.remittance,
+      ...(noIncentive ? { forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null } : {}),
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
       program_id: details.programId, ...(programChanged ? registration : {}), ...memberAfter,
@@ -409,6 +413,7 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
     const before = {
       application_no: row.application_no, or_date: day(row.or_date) || null, doi: day(row.doi) || null, doi_time: text(row.doi_time).slice(0, 5) || null, amount_paid: Number(row.amount_paid ?? 0), notes: row.notes || null, backdate_reason: row.backdate_reason || null,
       date_remitted: day(row.date_remitted), date_remitted_reason: row.date_remitted_reason || null, payment_method: row.payment_method, mas_incentive: Number(row.mas_incentive ?? 0), remittance_amount: Number(row.remittance_amount ?? 0),
+      ...(noIncentive ? { forfeited_incentive: row.forfeited_incentive === null ? null : Number(row.forfeited_incentive) } : {}),
       penalty_amount: row.penalty_amount === null ? null : Number(row.penalty_amount), penalty_note: row.penalty_note || null, fidelity_amount: row.fidelity_amount === null ? null : Number(row.fidelity_amount),
       program_id: row.program_id, ...(programChanged ? { registration_fee: row.registration_fee, registration_amount: row.registration_amount === null ? null : Number(row.registration_amount) } : {}), ...memberBefore,
     };
@@ -481,12 +486,15 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
     // ORC and reactivation stay as encoded: ORC from the saved breakdown (set per batch), reactivation per entry.
     const orc = common.collectedBy === "Collector" && Array.isArray(row.remittance_breakdown) && (row.remittance_breakdown as Array<{ orc?: boolean }>).some((item) => item?.orc === true);
     const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), common.branchId), incentiveRoleFor(common.collectedBy), nopFrom, nopTo, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation: row.reactivation === true });
+    // Marked No incentive at encoding (owner, October 20, 2026): still remitted whole.
+    const noIncentive = Boolean(text(row.no_incentive_reason)), kept = withoutIncentive(amount, quote.remittance);
     payments = [...payments, { id: row.collection_id, enrollmentId: account.id, orDate, orNumber, monthFrom, monthTo, nopFrom, nopTo, amount, dateRemitted: common.dateRemitted, mas: text(row.mas) }];
     const firstRow = row === rows[0];
     const after = {
       or_number: orNumber, or_date: orDate, amount_collected: amount, month_to: monthTo, nop_to: nopTo, backdate_reason: backdateReason || null,
       date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), remittance_method: common.method, payment_reference: common.reference || null, collected_by_role: common.collectedBy,
-      original_mas: common.collectedBy === "Collector" ? text(row.mas) : null, remittance_amount: quote.remittance, remittance_breakdown: quote.breakdown,
+      original_mas: common.collectedBy === "Collector" ? text(row.mas) : null, remittance_amount: noIncentive ? kept.remittance : quote.remittance, remittance_breakdown: quote.breakdown,
+      ...(noIncentive ? { forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null } : {}),
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
     };
@@ -494,6 +502,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
       or_number: row.or_number, or_date: day(row.or_date), amount_collected: Number(row.amount_collected), month_to: text(row.month_to).slice(0, 7), nop_to: row.nop_to, backdate_reason: row.backdate_reason || null,
       date_remitted: day(row.date_remitted), date_remitted_reason: row.date_remitted_reason || null, remittance_method: row.remittance_method, payment_reference: row.payment_reference || null, collected_by_role: row.collected_by_role,
       original_mas: row.original_mas || null, remittance_amount: Number(row.remittance_amount ?? 0), remittance_breakdown: row.remittance_breakdown,
+      ...(noIncentive ? { forfeited_incentive: row.forfeited_incentive === null ? null : Number(row.forfeited_incentive) } : {}),
       penalty_amount: row.penalty_amount === null ? null : Number(row.penalty_amount), penalty_note: row.penalty_note || null, fidelity_amount: row.fidelity_amount === null ? null : Number(row.fidelity_amount),
     };
     updates.push({ row, after, before });

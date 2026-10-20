@@ -1175,3 +1175,9 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **To do:** none. Expenses saved before today without a receipt number must get one when they are next edited.
 - **Owner (follow-up):** apply the attendance sheet's filters to Payroll's runs and pay rates.
 - **Done:** the filters are now one shared component, `components/people-filter.tsx` (Choose people, role, branch, search), used by the attendance sheet, the Employees table and Adjustments list of a payroll run, and Pay rates. The ticked people are shared by all three. Filters only narrow what is shown; a run's totals, approval and payment stay whole. `getPayrollOverview` now also returns each employee's primary branch.
+
+### No incentive on one New Sale or Collection (2026-10-20)
+
+- **Owner:** in Collections and New Sales, a No incentive button on each entry: that one entry earns the collector (or MAS) no incentive, and the reason is asked.
+- **Done:** each entry has a **No incentive** button. Clicking it opens a required reason box. The entry is remitted whole, and what it would have earned is recorded as forfeited, so the control total includes the whole amount. Repricing, returned-batch edits and rejected slips keep it so. Today's Entries, My Entries and Remittances → View entries show the reason. New column `no_incentive_reason` on `sales` and `collections` (migration 0025). Details in `docs/collections-remittance-workflow.md`. Tested.
+- **To do (before deploying):** apply migration 0025 to production (`npm run db:migrate`, then `node scripts/check-database.mjs`).

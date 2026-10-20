@@ -2249,6 +2249,77 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
   assert.equal((await query('select backdate_reason from sales'))[0].backdate_reason, 'MAS turned in the form late', 'the reason is kept with the sale');
 });
 
+test('No incentive on one New Sale: the MAS earns nothing on it, it is remitted whole, and a reason is required (October 20, 2026)', async () => {
+  const h = harness();
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+  const post = async (body) => {
+    const sale = { existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', beneficiaries: [], noIncentive: true, ...body.sale };
+    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: body.controlTotal, sales: [sale] }));
+    return { status: response.status, body: await response.json() };
+  };
+  assert.match((await post({ controlTotal: 350, sale: { noIncentiveReason: ' ' } })).body.message, /reason it earns no incentive/);
+  // With no incentive the whole 350 is remitted, not 200.
+  assert.match((await post({ controlTotal: 200, sale: { noIncentiveReason: 'Walk-in member' } })).body.message, /total remittance is ₱350\.00/);
+  const saved = await post({ controlTotal: 350, sale: { noIncentiveReason: 'Walk-in member' } });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  const [row] = await query('select mas_incentive::float8 as incentive, remittance_amount::float8 as share, forfeited_incentive::float8 as forfeited, no_incentive_reason from sales');
+  assert.deepEqual(row, { incentive: 0, share: 350, forfeited: 150, no_incentive_reason: 'Walk-in member' });
+});
+
+test('No incentive on one collection of a batch: only that one is remitted whole, and a rejected slip keeps it so (October 20, 2026)', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1), afterNext = rules.monthName(rules.monthIndex(month) + 2);
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  await seedAccount({ doi: month + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('program_incentives', [
+    { incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 },
+    { incentive_id: 'I2', program_id: 'DP-1', role: 'Collector', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 20 },
+  ]);
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, true, 'active']];
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 B', orDate: today, noIncentive: true, noIncentiveReason: '' };
+  const tiers = [{ role: 'MAS', fromMonth: 1, toMonth: 999, incentiveType: 'percentage', markUp: 50, incentiveAmount: 50 }];
+  const share = h.load('lib/remittance.ts').calculateRemittance(350, tiers, 'MAS', 3, 3, 350).remittance;
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 350 + share,
+    collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: '1002 B', noIncentive: false }] };
+  const route = h.load('app/api/collections/route.ts');
+  assert.match((await (await route.POST(request(batch))).json()).message, /reason it earns no incentive/);
+  const response = await route.POST(request({ ...batch, collections: [{ ...entry, noIncentiveReason: 'Paid at the office' }, batch.collections[1]] }));
+  assert.equal(response.status, 201, JSON.stringify(await response.clone().json()));
+  const written = await query('select or_number, remittance_amount::float8 as share, forfeited_incentive::float8 as forfeited, no_incentive_reason from collections order by or_number');
+  assert.deepEqual(written, [
+    { or_number: '1001 B', share: 350, forfeited: 350 - share, no_incentive_reason: 'Paid at the office' },
+    { or_number: '1002 B', share, forfeited: null, no_incentive_reason: null },
+  ]);
+
+  // Its slip is rejected: the marked collection keeps no incentive (a late-cash forfeit would be given back).
+  const admin = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const id = (await query("select collection_id from collections where or_number = '1001 B'"))[0].collection_id;
+  const collectionsHeader = Array(39).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const pending = Array(39).fill(''); Object.assign(pending, { 0: id, 6: 'BR-1', 8: '1001 B', 9: today, 10: 350, 19: 'Posted', 26: 350, 28: 'Pending Remittance Approval', 29: 'REM-7', 38: 350 - share });
+  const remittancesHeader = Array(27).fill(''); remittancesHeader[12] = 'Difference';
+  const slip = Array(27).fill(''); slip[0] = 'REM-7'; slip[4] = 'Pending Approval'; slip[6] = 'USR-1'; slip[10] = 350; slip[11] = 350; slip[25] = 'Collections'; slip[26] = '08:00';
+  admin.rows.Collections = [collectionsHeader, pending]; admin.rows.Sales = [Array(44).fill('')]; admin.rows.Remittances = [remittancesHeader, slip];
+  admin.rows['Remittance Collections'] = [['Remittance Collection ID'], ['RCL-7', 'REM-7', id, 350]];
+  deadlineHeaders(admin);
+  // The harness copies these sheet rows into the database; the reason saved above goes back on the copy.
+  await admin.sync();
+  await query("update collections set no_incentive_reason = 'Paid at the office' where collection_id = $1", [id]);
+  const rejected = await admin.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: 'REM-7', decision: 'reject', reason: 'Recount needed' }));
+  assert.equal(rejected.status, 200, JSON.stringify(await rejected.clone().json()));
+  const amounts = admin.writes.at(-1).requestBody.requests.filter((item) => item.updateCells && [26, 38].includes(item.updateCells.range.startColumnIndex));
+  assert.deepEqual(amounts, [], 'no incentive is given back');
+});
+
 test('a MAS submits New Sales; only a clerk of that branch reviews them, saves once, or returns them', async () => {
   const users = {
     mas: { userId: 'USR-M', employeeId: 'DPE-0002', name: 'different-mas', roleNames: ['MAS'], permissions: {} },

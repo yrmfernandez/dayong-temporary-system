@@ -62,6 +62,14 @@ Each sale stores Sales AO `mas_incentive` and AP `remittance_amount`. The Entry 
 
 Every remittance whose batch has Fidelity says so: in the Remittances sheet remarks ("Fidelity ₱… (employee's own money), included in the expected amount"), on pending approvals, and in the records. It is part of the expected amount.
 
+## No incentive on one entry (October 20, 2026)
+
+Each New Sale and each Collection on the encoding forms has a **No incentive** button. Clicking it means the MAS or Collector earns no incentive on that one entry, and a **Reason for no incentive** box (at least 3 characters, up to 300) appears and is required. Click again to undo. The button is not shown on a DTO batch, which earns no incentive anyway, or on the MAS's own New Sales submissions.
+
+- **Saving.** The entry's whole amount is its company share (`remittance_amount`). For New Sales, `mas_incentive` is 0. The incentive it would have earned is stored in `forfeited_incentive`, so reports count it as a forfeited incentive. The reason is saved in `no_incentive_reason` (migration 0025, on `sales` and `collections`). The batch's total remittance, and so the control total from the turnover sheet, includes the whole amount. The server enforces all of this, and the form's preview matches it.
+- **Kept.** Repricing on Edit / Corrections, finance repricing and returned-batch edits keep the entry remitted whole (`lib/entry-edit.ts`, `lib/entry-finance.mjs`, `lib/batch-edit.ts`). A rejected slip gives late-cash forfeits back but not a No incentive one (`noIncentiveReasons` in `lib/remittance-workflow.ts`).
+- **Shown.** Today's Entries shows a *No incentive* badge with the reason, and the entry details (also in My Entries) list it. Remittances → View entries shows *No incentive: reason*.
+
 ## Fidelity at encoding
 
 The Entry Clerk may enter the MAS Fidelity with a Collections batch (Collections AL `fidelity_amount`, first row of the batch). It is the accountable employee's own money saved for them: incentives are unchanged and the batch's total remittance goes up by that amount. Any batch (MAS, Collector or DTO) may have it, and there is no limit. The remittance for that batch uses the stored amount (Remittances Y), so the Fidelity page counts it.

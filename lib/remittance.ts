@@ -134,3 +134,21 @@ export function calculateRemittance(basePay: number, tiers: IncentiveTier[], rol
   const standardRemittanceCents = breakdown.reduce((sum, item) => sum + Math.round(item.remittance * 100), 0);
   return { gross: grossCents / 100, excess: excessCents / 100, remittance: (standardRemittanceCents + excessCents) / 100, breakdown };
 }
+
+/**
+ * No incentive (owner, October 20, 2026): the encoder marks one New Sale or Collection as earning the MAS or Collector
+ * nothing, with a reason. Its whole amount is the company's remittance, and the incentive it would have earned is kept
+ * as forfeited so reports show it. Repricing and rejected slips keep it so (lib/entry-edit.ts, lib/entry-finance.mjs,
+ * lib/batch-edit.ts, lib/remittance-workflow.ts).
+ */
+export const NO_INCENTIVE_REASON_MIN = 3;
+export function noIncentiveReasonOf(marked: unknown, reason: unknown, label: string) {
+  const text = String(reason ?? "").trim().slice(0, 300);
+  if (marked !== true && marked !== "Yes") return "";
+  if (text.length < NO_INCENTIVE_REASON_MIN) throw new Error(`${label}: give the reason it earns no incentive.`);
+  return text;
+}
+export function withoutIncentive(amount: number, remittance: number) {
+  const share = Math.round(amount * 100) / 100;
+  return { remittance: share, forfeited: Math.max(0, Math.round((share - remittance) * 100) / 100) };
+}

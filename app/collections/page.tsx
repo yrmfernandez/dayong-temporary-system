@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/select";
 
 import type { Member } from "@/lib/types";
-import { calculateRemittance, tiersForBranch, type IncentiveTier } from "@/lib/remittance";
+import { calculateRemittance, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive, type IncentiveTier } from "@/lib/remittance";
 import { forfeitedPaymentsAllowed } from "@/lib/account-rules";
 import { isValidOrNumber, nextOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
 
@@ -108,6 +108,9 @@ type CollectionEntry = {
   reactivation: string;
   transferred: string;
   ifSuspended: string;
+  /** No incentive for the collector on this one, and why (owner, October 20, 2026): it is remitted whole. */
+  noIncentive: boolean;
+  noIncentiveReason: string;
 
   status: string;
   accountStatus: string;
@@ -145,6 +148,8 @@ function createEmptyCollection(id: string): CollectionEntry {
     reactivation: "No",
     transferred: "No",
     ifSuspended: "",
+    noIncentive: false,
+    noIncentiveReason: "",
 
     status: "Active",
     accountStatus: "", temporarilySuspended: false, collectedByRole: "MAS", accountLoading: false,
@@ -492,12 +497,15 @@ export default function CollectionsPage() {
       ? history[0]
       : null;
 
+  const noIncentiveOn = (entry: CollectionEntry) => !dto && entry.noIncentive === true;
   function quoteEntry(entry: CollectionEntry) {
     try {
       const selected = programs.find((p) => p.id === entry.programId);
       const count = getMonthDifference(entry.monthFrom, entry.monthTo);
       if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
-      return { ...calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto && collectedBy === "Collector", reactivation: entry.reactivation === "Yes" }), error: "" };
+      const quote = calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto && collectedBy === "Collector", reactivation: entry.reactivation === "Yes" });
+      // No incentive (owner, October 20, 2026): remitted whole, as the server saves it.
+      return { ...quote, ...(noIncentiveOn(entry) ? { remittance: withoutIncentive(Number(entry.amountCollected), quote.remittance).remittance } : {}), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
   }
   const quotes = collections.map(quoteEntry);
@@ -652,6 +660,7 @@ export default function CollectionsPage() {
 
     if (!dto && !mas) return "MAS is required.";
     if (orc && !dto && collectedBy === "Collector" && entry.reactivation === "Yes") return "A reactivation cannot be in an ORC batch. Set ORC to No, or encode the reactivation in its own batch.";
+    if (noIncentiveOn(entry) && (entry.noIncentiveReason ?? "").trim().length < NO_INCENTIVE_REASON_MIN) return "Give the reason this collection earns no incentive.";
 
     if (!dateRemitted) {
       return "Date Remitted is required.";
@@ -1457,6 +1466,18 @@ export default function CollectionsPage() {
                             {entry.accountStatus === "Forfeited" && <p className={`mt-1 ${forfeitedPaymentsAllowed() ? "text-amber-700" : "text-red-600"}`}>{forfeitedPaymentsAllowed() ? "Forfeited: payments are allowed today only." : "Payments are blocked for this program."}</p>}
                             {needsWaiver(entry) && <label className="mt-2 block text-foreground">If Suspended *<select className="ml-2 rounded border p-1" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
                           </div>
+
+                          {/* NO INCENTIVE (owner, October 20, 2026): this one collection earns the collector nothing; it is remitted whole. */}
+                          {!dto && <div className={`rounded-md border px-3 py-2 text-sm ${noIncentiveOn(entry) ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30" : ""}`}>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button type="button" size="sm" variant={noIncentiveOn(entry) ? "destructive" : "outline"} aria-pressed={noIncentiveOn(entry)} onClick={() => updateCollection(entry.id, { noIncentive: !noIncentiveOn(entry) })}>{noIncentiveOn(entry) ? "No incentive ✓" : "No incentive"}</Button>
+                              <span className="text-xs text-muted-foreground">{noIncentiveOn(entry) ? "The collector earns no incentive on this collection; the whole amount is remitted. Click again to undo." : "Click when the collector should not earn an incentive on this collection."}</span>
+                            </div>
+                            {noIncentiveOn(entry) && <div className="mt-2 space-y-1">
+                              <Label className="text-xs text-red-800 dark:text-red-300">Reason for no incentive *</Label>
+                              <Input maxLength={300} value={entry.noIncentiveReason ?? ""} onChange={(event) => updateCollection(entry.id, { noIncentiveReason: event.target.value })} placeholder="e.g. Receipt issued by the office, not the collector" />
+                            </div>}
+                          </div>}
 
                           {/* MORE DETAILS */}
                           <div className="rounded-lg border">

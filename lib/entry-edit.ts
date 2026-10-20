@@ -148,7 +148,8 @@ async function followSlip(tx: Queryable, entryId: string, slipId: string, newDue
 /**
  * Works out again the incentive and company share of collections whose program or NOPs changed (owner, October 15,
  * 2026: reports, commissions and payroll read the incentive as amount less company share, so they must follow the
- * program). A forfeited incentive stays forfeited (the whole amount is the company's). On a remittance slip, the slip's
+ * program). A forfeited incentive stays forfeited (the whole amount is the company's), as does one marked No incentive
+ * (no_incentive_reason, owner, October 20, 2026). On a remittance slip, the slip's
  * expected amount follows. Missing or conflicting tiers stop the correction so stale figures cannot be saved.
  * Returns how many changed and the slips touched.
  */
@@ -169,7 +170,7 @@ export async function repriceCollections(tx: Queryable, ids: string[]) {
     let quote: ReturnType<typeof calculateRemittance>;
     try { quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), row.branch_id || branchIds.get(text(row.branch).toLowerCase()) || ""), incentiveRoleFor(channel), row.nop_from, row.nop_to, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation: row.reactivation === true }); }
     catch (error) { throw new Error(`Cannot recalculate incentives for ${row.collection_id}: ${error instanceof Error ? error.message : "invalid incentive configuration"} Nothing was saved.`); }
-    const forfeited = Number(row.forfeited_incentive ?? 0) > 0;
+    const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
     const share = forfeited ? amount : quote.remittance;
     const forfeit = forfeited ? round(amount - quote.remittance) : row.forfeited_incentive;
     if (cents(share) === cents(Number(row.remittance_amount ?? 0)) && Number(forfeit ?? 0) === Number(row.forfeited_incentive ?? 0) && isDeepStrictEqual(row.remittance_breakdown, quote.breakdown)) continue;
@@ -196,7 +197,7 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
     let quote: ReturnType<typeof calculateSaleIncentive>;
     try { quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, branchId) }, amount); }
     catch (error) { throw new Error(`Cannot recalculate incentives for ${row.sale_id}: ${error instanceof Error ? error.message : "invalid incentive configuration"} Nothing was saved.`); }
-    const forfeited = Number(row.forfeited_incentive ?? 0) > 0;
+    const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
     const share = forfeited ? amount : quote.remittance;
     if (cents(share) === cents(Number(row.remittance_amount ?? 0)) && cents(amount - share) === cents(Number(row.mas_incentive ?? 0)) && (!forfeited || cents(quote.incentive) === cents(Number(row.forfeited_incentive ?? 0)))) continue;
     await tx.update(sales).set({ remittance_amount: share, mas_incentive: round(amount - share), forfeited_incentive: forfeited ? quote.incentive : row.forfeited_incentive }).where(eq(sales.sale_id, row.sale_id));
@@ -318,7 +319,7 @@ async function editCollection(tx: Transaction, input: EntryEditInput): Promise<O
   const branchId = branches.find((branch) => branch.name.trim().toLowerCase() === text(row.branch).toLowerCase())?.id ?? "";
   const orc = channel === "Collector" && Array.isArray(row.remittance_breakdown) && (row.remittance_breakdown as Array<{ orc?: boolean }>).some((item) => item?.orc === true);
   const quote = calculateRemittance(to.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === to.programId), branchId), incentiveRoleFor(channel), mine.nopFrom, mine.nopTo, amount, to.flexible, to.maxMonthlyPayment, { orc, reactivation: row.reactivation === true });
-  const forfeited = Number(row.forfeited_incentive ?? 0) > 0;
+  const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
   // The share is worked out again only when what it depends on changed; a receipt-number or date fix keeps the share
   // the entry was remitted with (imported entries carry their old system's figures).
   const repriced = moved || cents(amount) !== cents(Number(row.amount_collected)) || mine.nopFrom !== (row.nop_from ?? 0) || mine.nopTo !== (row.nop_to ?? 0);
@@ -407,7 +408,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
 
   const branchId = (await getBranches()).find((branch) => branch.name.trim().toLowerCase() === text(row.branch).toLowerCase())?.id ?? "";
   const quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, branchId) }, amount);
-  const forfeited = Number(row.forfeited_incentive ?? 0) > 0;
+  const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
   // As for collections: worked out again only when the amount or program changed.
   const repriced = changesProgram || cents(amount) !== cents(Number(row.amount_paid ?? 0));
   const share = !repriced ? Number(row.remittance_amount ?? 0) : forfeited ? amount : quote.remittance;

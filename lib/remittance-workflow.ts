@@ -245,6 +245,15 @@ export async function dateRemittedReasons(ids?: string[]) {
   const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; date: string; reason: string }>;
   return new Map(rows.map((row) => [row.id, { date: row.date, reason: row.reason }]));
 }
+/** Why each of these entries earns no incentive (no_incentive_reason, owner, October 20, 2026), by entry ID; only marked ones. */
+export async function noIncentiveReasons(ids: string[]) {
+  if (!ids.length) return new Map<string, string>();
+  const list = sql.join(ids.map((id) => sql`${id}`), sql`, `);
+  const result = await getDb().execute(sql`select collection_id as id, trim(no_incentive_reason) as reason from collections where collection_id in (${list}) and coalesce(trim(no_incentive_reason), '') <> ''
+    union all select sale_id, trim(no_incentive_reason) from sales where sale_id in (${list}) and coalesce(trim(no_incentive_reason), '') <> ''`);
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; reason: string }>;
+  return new Map(rows.map((row) => [row.id, row.reason]));
+}
 /** The distinct "date: reason" lines of these entries. */
 const reasonLines = (ids: string[], reasons: Map<string, { date: string; reason: string }>) =>
   [...new Set(ids.map((id) => reasons.get(id)).filter((item): item is { date: string; reason: string } => Boolean(item)).map((item) => `${item.date ? `${item.date}: ` : ""}${item.reason}`))];
@@ -297,7 +306,7 @@ export async function getRemittanceDashboard(clerkId = "") {
   };
 }
 
-export type RemittanceEntry = Pick<CashCollection, "kind" | "id" | "batchId" | "memberNumber" | "programId" | "orNumber" | "orDate" | "amount" | "remittanceAmount" | "forfeitedIncentive" | "remittanceStatus" | "paymentMethod" | "paymentReference" | "photoId" | "cash" | "encodedByName" | "encodedAt" | "penalty" | "fidelity" | "dateRemitted"> & { memberName: string; program: string; dateRemittedReason: string };
+export type RemittanceEntry = Pick<CashCollection, "kind" | "id" | "batchId" | "memberNumber" | "programId" | "orNumber" | "orDate" | "amount" | "remittanceAmount" | "forfeitedIncentive" | "remittanceStatus" | "paymentMethod" | "paymentReference" | "photoId" | "cash" | "encodedByName" | "encodedAt" | "penalty" | "fidelity" | "dateRemitted"> & { memberName: string; program: string; dateRemittedReason: string; noIncentiveReason: string };
 
 /**
  * Every entry on one remittance slip, for the approver's View entries (owner, October 10, 2026): member, program, OR,
@@ -312,10 +321,11 @@ export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
   const items = remittance.collectionIds.map((id) => byId.get(id)).filter((item): item is CashCollection => Boolean(item));
   const numbers = [...new Set(items.map((item) => item.memberNumber).filter(Boolean))];
   const programIds = [...new Set(items.map((item) => item.programId).filter(Boolean))];
-  const [members, programs, reasons] = await Promise.all([
+  const [members, programs, reasons, noIncentive] = await Promise.all([
     numbers.length ? getDb().select({ number: schema.members.member_number, surname: schema.members.surname, first: schema.members.first_name }).from(schema.members).where(inArray(schema.members.member_number, numbers)) : [],
     programIds.length ? getDb().select({ id: schema.programs.program_id, code: schema.programs.program_code, name: schema.programs.program_name }).from(schema.programs).where(inArray(schema.programs.program_id, programIds)) : [],
     dateRemittedReasons(items.map((item) => item.id)),
+    noIncentiveReasons(items.map((item) => item.id)),
   ]);
   const names = new Map(members.map((member) => [member.number, `${text(member.first)} ${text(member.surname)}`.trim()]));
   const programNames = new Map(programs.map((program) => [program.id, text(program.name) || text(program.code)]));
@@ -323,7 +333,7 @@ export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
     kind: item.kind, id: item.id, batchId: item.batchId, memberNumber: item.memberNumber, memberName: names.get(item.memberNumber) ?? "", programId: item.programId, program: programNames.get(item.programId) ?? item.programId,
     orNumber: item.orNumber, orDate: item.orDate, amount: item.amount, remittanceAmount: item.remittanceAmount, forfeitedIncentive: item.forfeitedIncentive, remittanceStatus: item.remittanceStatus,
     paymentMethod: item.paymentMethod, paymentReference: item.paymentReference, photoId: item.photoId, cash: item.cash, encodedByName: item.encodedByName, encodedAt: item.encodedAt, penalty: item.penalty, fidelity: item.fidelity,
-    dateRemitted: item.dateRemitted, dateRemittedReason: reasons.get(item.id)?.reason ?? "",
+    dateRemitted: item.dateRemitted, dateRemittedReason: reasons.get(item.id)?.reason ?? "", noIncentiveReason: noIncentive.get(item.id) ?? "",
   }));
   return { remittanceId: remittance.id, entries, missing: remittance.collectionIds.filter((id) => !byId.has(id)) };
 }
@@ -489,13 +499,15 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
   const sheet = await sheetIds();
   const timestamp = actor.encodedAt;
   const status = decision === "approve" ? "Approved" : "Rejected";
+  // Entries marked No incentive at encoding keep it forfeited when their slip is rejected.
+  const noIncentive = decision === "reject" ? await noIncentiveReasons(remittance.collectionIds) : new Map<string, string>();
   const requests = [
     { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 4, endColumnIndex: 5 }, rows: [{ values: [cell(status)] }], fields: "userEnteredValue" } },
     { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 18, endColumnIndex: 24 }, rows: [{ values: [actor.userId, actor.employeeId, actor.name, timestamp, remittance.remarks, text(reason)].map(cell) }], fields: "userEnteredValue" } },
     // Rejected items are Returned to the clerk with the slip still linked, so My Entries shows the reason.
     ...linked.map((collection) => statusUpdate(sheet, collection!, decision === "approve" ? "Remitted" : "Returned", remittance.id)),
-    // A rejected slip gives forfeited incentives back; the next slip decides again from its own time received.
-    ...(decision === "reject" ? linked.filter((collection) => collection!.forfeitedIncentive > 0).flatMap((collection) => forfeitUpdate(sheet, collection!, Math.round((collection!.amount - collection!.forfeitedIncentive) * 100) / 100, 0)) : []),
+    // A rejected slip gives forfeited incentives back (not No incentive ones); the next slip decides again from its own time received.
+    ...(decision === "reject" ? linked.filter((collection) => collection!.forfeitedIncentive > 0 && !noIncentive.has(collection!.id)).flatMap((collection) => forfeitUpdate(sheet, collection!, Math.round((collection!.amount - collection!.forfeitedIncentive) * 100) / 100, 0)) : []),
   ];
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
   return { id: remittance.id, status };
