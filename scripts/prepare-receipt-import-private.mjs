@@ -4,7 +4,7 @@ import nextEnv from '@next/env';
 import postgres from 'postgres';
 import {createHash} from 'node:crypto';
 import { loadLegacySources } from './legacy-sources.mjs';
-import { sourceDay, sourceCoverage, receiptKey, programKey, confirmedSequence } from './source-history-rules.mjs';
+import { sourceDay, sourceCoverage, sourceMonths,receiptKey, programKey, confirmedSequence } from './source-history-rules.mjs';
 import { accountState, forfeitMonthsFor, todayInManila,monthIndex,saleNops } from '../lib/account-rules.ts';
 nextEnv.loadEnvConfig(process.cwd());
 const key = String(process.argv[2] ?? '').toUpperCase().replace(/[^A-Z0-9]/g,'');
@@ -17,8 +17,17 @@ const words = (v) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g
 let db;
 async function main() {
   const location = JSON.parse(fs.readFileSync(`legacy-data/receipt-${key}-location-private.json`,'utf8'));
-  if (location.collections.length || location.sales.length || location.audits.length || location.sourceCollections.length !== 1) throw new Error('SOURCE_NOT_UNIQUE_OR_ALREADY_USED');
-  const match = location.sourceCollections[0];
+  const allowLegacyDuplicate=process.argv.includes('--allow-legacy-duplicate');
+  if(allowLegacyDuplicate&&!confirmedMember)throw new Error('MEMBER_REQUIRED');
+  let choices=location.sourceCollections;
+  if(allowLegacyDuplicate){
+    db=postgres(process.env.DIRECT_DATABASE_URL,{max:1,connect_timeout:15,onnotice:()=>{}});
+    const scopes=await db`select p.program_name,p.program_code from member_programs a join programs p using(program_id) where a.member_number=${confirmedMember}`;
+    choices=choices.filter(s=>scopes.some(p=>[programKey(p.program_name),programKey(p.program_code)].includes(s.program)));
+  }
+  if ((!allowLegacyDuplicate&&location.collections.length)||location.collections.some(r=>r.member_number===confirmedMember)||location.sales.length||location.audits.length||choices.length!==1) throw new Error('SOURCE_NOT_UNIQUE_OR_ALREADY_USED');
+  const match = choices[0];
+  if(location.collections.some(r=>r.collection_id===match.id))throw new Error('SOURCE_ROW_ALREADY_IMPORTED');
   let sourceRow = process.argv.includes('--cached') ? JSON.parse(fs.readFileSync(`legacy-data/receipt-${key}-import-plan-private.json`,'utf8')).source : undefined;
   const loadedSources = (!sourceRow || process.argv.includes('--trace-source')) ? await loadLegacySources(['legacy-data/old-data/2026 DATABASE (NS + COLL).xlsx']) : [];
   for (const source of loadedSources) for (const tab of source.tabs) {
@@ -48,7 +57,7 @@ async function main() {
       });
     }
   }
-  db = postgres(process.env.DIRECT_DATABASE_URL,{max:1,connect_timeout:15,onnotice:()=>{}});
+  db ??= postgres(process.env.DIRECT_DATABASE_URL,{max:1,connect_timeout:15,onnotice:()=>{}});
   await db.begin('isolation level repeatable read read only', async tx=>{
     const accounts = await tx`select a.*, a.doi::text as day, p.program_name, p.program_code, p.base_pay::float8 as rate,
       p.pay_balance_total::float8 as total, p.flexible, p.max_monthly_payment::float8 as maximum, p.registration_fee_required, p.category_id,
@@ -69,7 +78,22 @@ async function main() {
     const memberProfiles=await tx`select member_id,member_number,surname,first_name,middle_name,name_extension from members`;
     const matchingProfiles=memberProfiles.filter(personMatches);
     const candidates = accounts.filter(a=>programMatches(a)&&norm(a.branch)===norm(sourceRow.branch)&&(confirmedMember?a.member_number===confirmedMember:personMatches(a)||traced(a)));
-    const plan = { key, confirmedMember, source:sourceRow, candidates, matchingProfiles, ready:false, checks:{ candidateAccounts:candidates.length, sourceCoverageConfirmed:Boolean(sourceRow.coverage), matchingMemberProfiles:matchingProfiles.length,
+    let nopDerivedFromSourceMonths=false;
+    let sourceYearAligned=false;
+    if(confirmedMember&&candidates.length===1){
+      const positions=new Map(sourceRow.rawHeaders.map((h,i)=>[norm(h),i]));
+      const rawNop=sourceRow.rawRow[positions.get('NOP')],rawMonth=sourceRow.rawRow[positions.get('MONTHOF')],a=candidates[0];
+      let months=sourceMonths(rawMonth);
+      if(months&&!/20\d{2}/.test(String(rawMonth))&&Number(sourceRow.orDate.slice(0,4))<Number(months[0].slice(0,4))){
+        const delta=Number(sourceRow.orDate.slice(0,4))-Number(months[0].slice(0,4));
+        months=months.map(m=>`${Number(m.slice(0,4))+delta}${m.slice(4)}`);sourceYearAligned=true;
+      }
+      if(months&&!sourceCoverage(rawMonth,rawNop)&&/^\d{4}-\d\d-\d\dT/.test(String(rawNop))&&Math.round(sourceRow.amount*100)===Math.round(a.rate*100)*months.length){
+        const nopFrom=monthIndex(months[0])-monthIndex(a.day.slice(0,7))+saleNops({registrationFee:a.registration_fee_required});
+        sourceRow.coverage={monthFrom:months[0],monthTo:months.at(-1),nopFrom,nopTo:nopFrom+months.length-1};nopDerivedFromSourceMonths=true;
+      }
+    }
+    const plan = { key, confirmedMember, allowLegacyDuplicate, source:sourceRow, candidates, matchingProfiles, ready:false, checks:{ candidateAccounts:candidates.length, sourceCoverageConfirmed:Boolean(sourceRow.coverage),nopDerivedFromSourceMonths,sourceYearAligned, matchingMemberProfiles:matchingProfiles.length,
       matchingPersonAccounts:accounts.filter(personMatches).length, matchingProgramAccounts:accounts.filter(programMatches).length,
       programAndBranchAccounts:accounts.filter(a=>programMatches(a)&&norm(a.branch)===norm(sourceRow.branch)).length,
       relatedSourceRows:relatedIds.length,relatedExistingMemberMatches:new Set([...tracedMemberIds,...tracedNumbers]).size } };

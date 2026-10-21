@@ -27,7 +27,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
   const [batch, setBatch] = useState<EditableBatch | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [methods, setMethods] = useState<Method[]>([]);
-  const [form, setForm] = useState({ dateRemitted: "", dateRemittedReason: "", paymentMethod: "", paymentReference: "", collectedBy: "MAS", penalty: "", penaltyNote: "", fidelity: "", note: "" });
+  const [form, setForm] = useState({ masEmployeeId: "", dateRemitted: "", dateRemittedReason: "", paymentMethod: "", paymentReference: "", collectedBy: "MAS", penalty: "", penaltyNote: "", fidelity: "", note: "" });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -48,7 +48,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
         const loaded = result.batch;
         setBatch(loaded);
         setEntries(loaded.entries.map((entry) => ({ ...entry, remove: false, amountText: String(entry.amount) })));
-        setForm({ dateRemitted: loaded.dateRemitted, dateRemittedReason: "", paymentMethod: loaded.paymentMethod, paymentReference: loaded.paymentReference, collectedBy: loaded.collectedBy || "MAS",
+        setForm({ masEmployeeId: loaded.personEmployeeId, dateRemitted: loaded.dateRemitted, dateRemittedReason: "", paymentMethod: loaded.paymentMethod, paymentReference: loaded.paymentReference, collectedBy: loaded.collectedBy || "MAS",
           penalty: loaded.penalty ? String(loaded.penalty) : "", penaltyNote: loaded.penaltyNote, fidelity: loaded.fidelity ? String(loaded.fidelity) : "", note: "" });
       } catch (caught) {
         if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : "Unable to open the batch.");
@@ -112,6 +112,16 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
       {batch && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Another MAS for a returned New Sales batch (owner, October 21, 2026): only one cleared for New Sales that day. */}
+            {isSale && batch.masChoices && (
+              <div className="space-y-1">
+                <Label htmlFor="edit-mas">MAS</Label>
+                <select id="edit-mas" className="h-8 w-full rounded-md border bg-background px-2 text-sm" value={form.masEmployeeId} onChange={(event) => set("masEmployeeId", event.target.value)}>
+                  {batch.masChoices.map((choice) => <option key={choice.id} value={choice.id} disabled={!choice.cleared}>{choice.name}{choice.cleared ? "" : " (not in Clearing)"}</option>)}
+                </select>
+                {form.masEmployeeId !== batch.personEmployeeId && <p className="text-xs text-amber-800 dark:text-amber-300">The batch goes to this MAS: the sales, their accounts and the slip on Resubmit follow.</p>}
+              </div>
+            )}
             <div className="space-y-1">
               <Label htmlFor="edit-date-remitted">Date Remitted</Label>
               <Input id="edit-date-remitted" type="date" className={field} value={form.dateRemitted} onChange={(event) => set("dateRemitted", event.target.value)} />

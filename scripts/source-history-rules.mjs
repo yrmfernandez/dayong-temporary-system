@@ -8,8 +8,21 @@ export function sourceDay(v) {
   const value = v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? '').slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value ? value : '';
 }
+export function sourceMonths(monthText) {
+  const known=crossYearMonths(monthText);
+  if(known)return known;
+  const match=/^\s*([A-Za-z]+)(?:\s+(20\d{2}))?\s*(?:-|–|to)\s*([A-Za-z]+)(?:\s+(20\d{2}))?\s*$/i.exec(String(monthText??''));
+  if(!match)return null;
+  const names=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const start=names.indexOf(match[1].slice(0,3).toUpperCase()),end=names.indexOf(match[3].slice(0,3).toUpperCase());
+  const firstYear=Number(match[2]??match[4]??2026),lastYear=Number(match[4]??match[2]??2026);
+  if(start<0||end<0||![2025,2026].includes(firstYear)||![2025,2026].includes(lastYear))return null;
+  const from=firstYear*12+start,to=lastYear*12+end;
+  if(to<from||to-from>23)return null;
+  return Array.from({length:to-from+1},(_,i)=>{const value=from+i;return `${Math.floor(value/12)}-${String(value%12+1).padStart(2,'0')}`;});
+}
 export function sourceCoverage(monthText, nopText) {
-  const months = crossYearMonths(monthText);
+  const months = sourceMonths(monthText);
   const match = /^\s*(\d+)\s*(?:[-–]\s*(\d+))?\s*$/.exec(String(nopText ?? ''));
   if (!months || !match) return null;
   const from = Number(match[1]), to = Number(match[2] ?? match[1]);

@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmedSequence, sourceCoverage, programKey, receiptKey, sourceDay } from './source-history-rules.mjs';
+import { confirmedSequence, sourceCoverage, sourceMonths, programKey, receiptKey, sourceDay } from './source-history-rules.mjs';
+test('explicit month ranges expand without guessing bare cross-year labels',()=>{
+  assert.deepEqual(sourceMonths('April - June'),['2026-04','2026-05','2026-06']);
+  assert.deepEqual(sourceMonths('November 2025 to February 2026'),['2025-11','2025-12','2026-01','2026-02']);
+  assert.equal(sourceMonths('December - February'),null);
+  assert.equal(sourceMonths('April, June'),null);
+  assert.equal(sourceCoverage('April - June','2-3'),null);
+  assert.deepEqual(sourceCoverage('April - June','2-4'),{monthFrom:'2026-04',monthTo:'2026-06',nopFrom:2,nopTo:4});
+});
 test('source ranges must name every paid month and NOP', () => {
   assert.deepEqual(sourceCoverage('April, May', '2-3'), { monthFrom: '2026-04', monthTo: '2026-05', nopFrom: 2, nopTo: 3 });
   for (const [m, n] of [['April, May','2'],['April, June','2-3'],['April','2-3'],['April','0'],['April','2/3']]) assert.equal(sourceCoverage(m,n), null);

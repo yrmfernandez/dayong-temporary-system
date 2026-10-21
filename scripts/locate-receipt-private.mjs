@@ -2,13 +2,14 @@
 import fs from 'node:fs';
 import nextEnv from '@next/env';
 import postgres from 'postgres';
+import {receiptKey} from './source-history-rules.mjs';
 nextEnv.loadEnvConfig(process.cwd());
 const key = String(process.argv[2] ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 if (!/^\d+[A-Z]+$/.test(key)) throw new Error('Pass a receipt number and suffix.');
-const canonical = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^0+(?=\d)/, '');
+const canonical = (v) => receiptKey(v).replace(/^0+(?=\d)/, '');
 const db = postgres(process.env.DIRECT_DATABASE_URL, { max: 1, connect_timeout: 15, onnotice: () => {} });
 async function main() {
-  const collections = await db`select * from collections where regexp_replace(or_key, '^0+', '') = ${canonical(key)}`;
+  const collections = (await db`select * from collections where regexp_replace(or_key, '^0+', '') like ${canonical(key)+'%'}`).filter(r=>canonical(r.or_number)===canonical(key));
   const sales = await db`select * from sales where regexp_replace(regexp_replace(upper(coalesce(or_number,'')), '[^A-Z0-9]', '', 'g'), '^0+', '') = ${canonical(key)}`;
   const index = JSON.parse(fs.readFileSync('legacy-data/other-program-source-index-20261021.json', 'utf8'));
   const sourceCollections = Object.entries(index.collections).filter(([, s]) => canonical(s.or) === canonical(key)).map(([id,s]) => ({id,...s}));

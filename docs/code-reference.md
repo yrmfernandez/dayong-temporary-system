@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 55 component files; 562 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 55 component files; 567 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -459,6 +459,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/find-d210-split-histories.mjs](../scripts/find-d210-split-histories.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/find-misfiled-program-receipts.mjs](../scripts/find-misfiled-program-receipts.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/find-name-variants.mjs](../scripts/find-name-variants.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/find-older-receipts-private.mjs](../scripts/find-older-receipts-private.mjs) | `node:fs`, `./legacy-sources.mjs`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/find-shifted-coverage.mjs](../scripts/find-shifted-coverage.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/find-split-program-candidates.mjs](../scripts/find-split-program-candidates.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/fix-21532-21533-receipts.mjs](../scripts/fix-21532-21533-receipts.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -497,6 +498,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/inspect-legacy-sheets.mjs](../scripts/inspect-legacy-sheets.mjs) | `@next/env`, `googleapis`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-lugon-import.mjs](../scripts/inspect-lugon-import.mjs) | `./legacy-sources.mjs`, `node:fs` | No flag detected; read source before running |
 | [scripts/inspect-member-pair.mjs](../scripts/inspect-member-pair.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/inspect-member-source-private.mjs](../scripts/inspect-member-source-private.mjs) | `node:fs`, `node:crypto`, `./legacy-sources.mjs`, `./source-history-rules.mjs`, `./source-cross-year-months.mjs` | No flag detected; read source before running |
 | [scripts/inspect-member-source-rows.mjs](../scripts/inspect-member-source-rows.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-nine-receipt-owner-20261019.mjs](../scripts/inspect-nine-receipt-owner-20261019.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-or-member-20261017.mjs](../scripts/inspect-or-member-20261017.mjs) | `@next/env`, `postgres`, `./legacy-sources.mjs` | No flag detected; read source before running |
@@ -574,10 +576,12 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/repair-source-month-coverage.mjs](../scripts/repair-source-month-coverage.mjs) | `node:assert/strict`, `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/report-other-program-source.mjs](../scripts/report-other-program-source.mjs) | `node:fs` | Yes; read source for semantics |
 | [scripts/reprice-corrected-entries.mjs](../scripts/reprice-corrected-entries.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
+| [scripts/resolve-older-source-coverage-private.mjs](../scripts/resolve-older-source-coverage-private.mjs) | `node:fs`, `./source-history-rules.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/restore-clearing-incentives.mts](../scripts/restore-clearing-incentives.mts) | `@next/env`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow`, `@/lib/work-calendar` | Yes; read source for semantics |
 | [scripts/restore-ph70661323-4191s.mjs](../scripts/restore-ph70661323-4191s.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/restore-resubmit-incentives.mjs](../scripts/restore-resubmit-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/review-amount-discrepancies.mjs](../scripts/review-amount-discrepancies.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/review-member-finance-private.mjs](../scripts/review-member-finance-private.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | No flag detected; read source before running |
 | [scripts/review-member-private.mjs](../scripts/review-member-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/review-same-base-pay.mjs](../scripts/review-same-base-pay.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/set-clearing-covers.mjs](../scripts/set-clearing-covers.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -598,6 +602,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/test-source-covered-months.mjs](../scripts/test-source-covered-months.mjs) | `node:test`, `node:assert/strict`, `./source-cross-year-months.mjs` | No flag detected; read source before running |
 | [scripts/test-source-history-rules.mjs](../scripts/test-source-history-rules.mjs) | `node:test`, `node:assert/strict`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/time-dashboards.mts](../scripts/time-dashboards.mts) | `@next/env` | No flag detected; read source before running |
+| [scripts/trace-member-receipts-private.mjs](../scripts/trace-member-receipts-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/transfer-mas-members.mjs](../scripts/transfer-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./name-match.mjs` | Yes; read source for semantics |
 | [scripts/transfer-ph56293596-dpb1000.mjs](../scripts/transfer-ph56293596-dpb1000.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/verify-four-d210-splits-20261019.mjs](../scripts/verify-four-d210-splits-20261019.mjs) | `node:assert/strict`, `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |

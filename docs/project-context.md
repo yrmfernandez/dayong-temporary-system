@@ -1262,3 +1262,10 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Owner decision:** renumber only accounts started in this system; old-system history keeps the NOPs on its receipts and continues from its own numbering (only accounts opened from now start at NOP 1).
 - **Done:** the script skips any account or collection with a LEG id and keeps the figures of Remitted and Approved collections; `--counts` prints the counts only. Applied on production: 7 collections renumbered on 5 DSP-290 accounts, 5 with new incentives (2 remitted kept theirs); a recount shows 0 left, 5 now from NOP 1, 1,441 old-system accounts left as they are.
 - **In progress / To do:** none.
+
+### Returned New Sales batch to another MAS (2026-10-21)
+
+- **Owner:** when New Sales entries are rejected, the entry can change the MAS too, as long as that MAS is in Clearing.
+- **Done:** `lib/batch-edit.ts`: `getReturnedBatch` returns `personEmployeeId` and, for New Sales, `masChoices` (active employees of the branch, `cleared` when in Clearing for New Sales on the Date Remitted). `saveReturnedBatch` takes `masEmployeeId`: an active employee of the branch, `clearingProblem` and `waitingBatchProblem` as when encoding, then each sale's `mas`, `accountable_employee_id` and `mas_employee_id`, and its account's `mas`, change (Record Corrections keeps before/after). The batch editor (`components/batch-editor.tsx`) has a MAS picker with uncleared MAS disabled. Test added; 216 pass; build passes.
+- **In progress:** none.
+- **To do:** none. The old MAS's clearing for that day stays open with nothing encoded; remove it in Clearing if it is not needed.
