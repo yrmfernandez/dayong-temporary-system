@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 55 component files; 557 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 55 component files; 562 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -490,6 +490,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/hash-password.mjs](../scripts/hash-password.mjs) | `bcryptjs` | No flag detected; read source before running |
 | [scripts/import-lugon-2025.mjs](../scripts/import-lugon-2025.mjs) | `@next/env`, `postgres`, `node:crypto`, `node:fs`, `./legacy-sources.mjs`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/import-paper-attendance-20261015.mjs](../scripts/import-paper-attendance-20261015.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/import-receipt-private.mjs](../scripts/import-receipt-private.mjs) | `node:fs`, `node:assert/strict`, `node:crypto`, `@next/env`, `postgres`, `./source-history-rules.mjs`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/inspect-clerk-report.cjs](../scripts/inspect-clerk-report.cjs) | See source | No flag detected; read source before running |
 | [scripts/inspect-discrepancy-920-20261019.mjs](../scripts/inspect-discrepancy-920-20261019.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-entry-clearings.mjs](../scripts/inspect-entry-clearings.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
@@ -514,6 +515,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/link-cinde-calumbay.mjs](../scripts/link-cinde-calumbay.mjs) | `@next/env`, `postgres`, `node:fs` | Yes; read source for semantics |
 | [scripts/link-legacy-mas.mjs](../scripts/link-legacy-mas.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs`, `node:crypto` | Yes; read source for semantics |
 | [scripts/list-programs.mjs](../scripts/list-programs.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/locate-receipt-private.mjs](../scripts/locate-receipt-private.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/lookup-records.mjs](../scripts/lookup-records.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/member-accounts.mjs](../scripts/member-accounts.mjs) | `@next/env`, `postgres`, `./legacy-sources.mjs`, `node:fs`, `node:crypto` | No flag detected; read source before running |
 | [scripts/merge-employee-pair.mjs](../scripts/merge-employee-pair.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -554,10 +556,12 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/move-photos-to-storage.mjs](../scripts/move-photos-to-storage.mjs) | `@next/env`, `@supabase/supabase-js`, `postgres` | Yes; read source for semantics |
 | [scripts/move-program-accounts.mjs](../scripts/move-program-accounts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/name-match.mjs](../scripts/name-match.mjs) | See source | No flag detected; read source before running |
+| [scripts/prepare-receipt-import-private.mjs](../scripts/prepare-receipt-import-private.mjs) | `node:fs`, `@next/env`, `postgres`, `node:crypto`, `./legacy-sources.mjs`, `./source-history-rules.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/prod.mjs](../scripts/prod.mjs) | `node:child_process`, `node:fs` | No flag detected; read source before running |
 | [scripts/program-history.mjs](../scripts/program-history.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/reassign-ciara-ns-20261014.mjs](../scripts/reassign-ciara-ns-20261014.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/recalculate-moved-date-remitted.mts](../scripts/recalculate-moved-date-remitted.mts) | `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow` | Yes; read source for semantics |
+| [scripts/receipt-import-progress.mjs](../scripts/receipt-import-progress.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/recheck-forfeited-accounts.mjs](../scripts/recheck-forfeited-accounts.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/register-legacy-mas.mjs](../scripts/register-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/remove-blank-rows.mjs](../scripts/remove-blank-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
@@ -574,6 +578,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/restore-ph70661323-4191s.mjs](../scripts/restore-ph70661323-4191s.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/restore-resubmit-incentives.mjs](../scripts/restore-resubmit-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/review-amount-discrepancies.mjs](../scripts/review-amount-discrepancies.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/review-member-private.mjs](../scripts/review-member-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/review-same-base-pay.mjs](../scripts/review-same-base-pay.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/set-clearing-covers.mjs](../scripts/set-clearing-covers.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/set-collector-tiers.mts](../scripts/set-collector-tiers.mts) | `drizzle-orm`, `@/lib/batch-edit`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-workflow` | Yes; read source for semantics |

@@ -6,10 +6,12 @@ import postgres from 'postgres';
 import { repriceEntries } from '../lib/entry-finance.mjs';
 nextEnv.loadEnvConfig(process.cwd());
 const apply = process.argv.includes('--apply');
+const scopedMember=process.argv.find(arg=>arg.startsWith('--member='))?.slice(9);
+if(scopedMember&&!/^PH-\d{8}$/.test(scopedMember))throw new Error('Invalid member number.');
 const serial = (v) => JSON.parse(JSON.stringify(v));
 const omit = (row, keys) => Object.fromEntries(Object.entries(row).filter(([key]) => !keys.includes(key)));
-const actor = 'Other program source history correction';
-const prefix = 'other-program-source-applied-20261021-';
+const actor = scopedMember?'Member source history correction':'Other program source history correction';
+const prefix = scopedMember?`member-source-${scopedMember}-applied-20261021-`:'other-program-source-applied-20261021-';
 const db = postgres(process.env.DIRECT_DATABASE_URL, { max: 1, connect_timeout: 15, onnotice: () => {} });
 class Rollback extends Error {}
 async function verify(tx, snapshot) {
@@ -63,11 +65,17 @@ async function main() {
     console.log(JSON.stringify(await db.begin('isolation level repeatable read read only', (tx) => verify(tx,snapshot))));
     return;
   }
-  const plan = JSON.parse(fs.readFileSync('legacy-data/other-program-repair-plan-20261021.json', 'utf8'));
+  const plan = JSON.parse(fs.readFileSync(scopedMember?`legacy-data/member-repair-${scopedMember}-plan-private.json`:'legacy-data/other-program-repair-plan-20261021.json', 'utf8'));
+  if(scopedMember)assert.ok(plan.member===scopedMember&&plan.cases.every(c=>c.ready&&c.account.member_number===scopedMember));
   assert.ok(plan.cases.length);
   await db.begin(async (tx) => {
-    await tx`set transaction isolation level repeatable read`;
-    if (apply) await tx`lock table member_programs, collections, sales in share row exclusive mode`;
+    if(scopedMember){
+      await tx`set transaction isolation level serializable`;
+      await tx`select pg_advisory_xact_lock(hashtextextended(${`member-source-repair:${scopedMember}`},0))`;
+    }else{
+      await tx`set transaction isolation level repeatable read`;
+      if (apply) await tx`lock table member_programs, collections, sales in share row exclusive mode`;
+    }
     const [{ started }] = await tx`select transaction_timestamp()::text as started`;
     const ids = plan.cases.map((c) => c.account.enrollment_id);
     const accounts = serial(await tx`select * from member_programs where enrollment_id in ${tx(ids)} order by enrollment_id for update`);
@@ -95,7 +103,7 @@ async function main() {
     assert.equal(patches.length, plan.summary.changedReceipts);
     const snapshot = { plan, accounts, collections: collections.map((p) => omit(p,['day'])), nopIds, startedAt: started, accountChangedIds, collectionChangedIds: patches.map((p) => p.id) };
     fs.mkdirSync('backups', { recursive: true });
-    const stamp = Date.now(), file = `backups/${apply ? prefix : 'other-program-source-preview-20261021-'}${stamp}.json`;
+    const stamp = Date.now(), file = `backups/${apply ? prefix : scopedMember?`member-source-${scopedMember}-preview-20261021-`:'other-program-source-preview-20261021-'}${stamp}.json`;
     fs.writeFileSync(file, JSON.stringify(snapshot));
     console.log(JSON.stringify({ mode: apply ? 'apply' : 'preview', accounts: accounts.length, receiptCorrections: patches.length, financeChecks: nopIds.length, privateBackupSaved: true }));
     await tx`select set_config('app.user_name', ${actor}, true)`;
@@ -105,7 +113,7 @@ async function main() {
     if (accountPatches.length) await tx`update member_programs a set doi = p.doi::date, account_status = p.status from jsonb_to_recordset(${JSON.stringify(accountPatches)}::text::jsonb) as p(id text, doi text, status text) where a.enrollment_id = p.id`;
     const finance = await repriceEntries((query, params) => tx.unsafe(query,params), { collectionIds: nopIds });
     const corrections = plan.cases.map((c) => ({ correction_id: `COR-OTH-20261021-${stamp}-${c.account.enrollment_id}`, module: actor, record_id: c.account.enrollment_id,
-      reason: 'Owner requested scanning other programs for source-backed coverage/NOP/DOI errors and stale account statuses. Complete original receipt identities, amounts, source program and month/NOP spans confirmed; program registration and forfeiture rules checked. Prior corrections and owner overrides protected. Script-only processing; aggregate output.',
+      reason: scopedMember?`Owner requested fixing ${scopedMember}. Original receipt identities, amounts and covered months confirmed. Preserve current program: prior program changes in Audit Log explain original source label differences. Derive NOPs from retained account DOI and registration rule; preserve amounts/dates/member links and reprice corrected NOPs. Script-only processing; aggregate output.`:'Owner requested scanning other programs for source-backed coverage/NOP/DOI errors and stale account statuses. Complete original receipt identities, amounts, source program and month/NOP spans confirmed; program registration and forfeiture rules checked. Prior corrections and owner overrides protected. Script-only processing; aggregate output.',
       before_json: { doi: c.account.day, status: c.account.account_status, history: c.history },
       after_json: { doi: c.doi, status: c.status, proposed: c.proposed, nextNop: c.nextNop, nextMonth: c.nextMonth, finance: finance.changes.filter((p) => c.proposed.some((r) => r.id === p.id)) },
       corrected_at: new Date().toISOString(), encoded_by_name: actor, encoded_at: new Date().toISOString() }));
@@ -113,7 +121,7 @@ async function main() {
     snapshot.finance = finance; snapshot.correctionIds = corrections.map((c) => c.correction_id);
     fs.writeFileSync(file, JSON.stringify(snapshot));
     const result = await verify(tx,snapshot);
-    fs.writeFileSync('legacy-data/other-program-repair-result-20261021.json', JSON.stringify({ ...result, applied: apply, backup: file, summary: plan.summary, programCounts: plan.programCounts }, null, 2));
+    fs.writeFileSync(scopedMember?`legacy-data/member-repair-${scopedMember}-result-private.json`:'legacy-data/other-program-repair-result-20261021.json', JSON.stringify({ ...result, applied: apply, backup: file, summary: plan.summary, programCounts: plan.programCounts }, null, 2));
     console.log(JSON.stringify(result));
     if (!apply) throw new Rollback();
   });
