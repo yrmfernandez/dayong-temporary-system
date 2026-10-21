@@ -1,6 +1,7 @@
 "use client";
 
-import { confirmDialog, promptDialog } from "@/components/app-dialog";
+import { alertDialog, confirmDialog, promptDialog } from "@/components/app-dialog";
+import { SALE_CHECK_REMINDER } from "@/lib/entry-check-reminder";
 import {
   useCallback,
   useEffect,
@@ -2855,7 +2856,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
           )}
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={resetForm} disabled={saving}>Cancel</Button>
-            <Button type="button" onClick={() => showPreview ? void (masMode ? submitToClerk() : saveSales()) : setShowPreview(true)} disabled={saving}>
+            <Button type="button" onClick={async () => { if (showPreview) { void (masMode ? submitToClerk() : saveSales()); return; } if (!masMode) await alertDialog(SALE_CHECK_REMINDER, { title: "Check every sale before saving", warning: true, confirmLabel: "I have checked every sale" }); setShowPreview(true); }} disabled={saving}>
               {saving ? (masMode ? "Submitting..." : "Saving...") : showPreview ? (masMode ? "Confirm and Submit" : "Confirm and Save") : "Preview Sales"}
             </Button>
           </div>

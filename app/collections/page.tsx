@@ -1,4 +1,6 @@
 "use client";
+import { alertDialog } from "@/components/app-dialog";
+import { COLLECTION_CHECK_REMINDER } from "@/lib/entry-check-reminder";
 
 import { ClearingPicker } from "@/components/clearing-picker";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
@@ -1673,7 +1675,7 @@ export default function CollectionsPage() {
               </div>
               {saveMessage && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">{saveMessage}</div>}
               <div className="flex gap-2">
-                <Button type="button" className="flex-1" onClick={() => showPreview ? void saveCollections() : setShowPreview(true)} disabled={saving}>
+                <Button type="button" className="flex-1" onClick={async () => { if (showPreview) { void saveCollections(); return; } await alertDialog(COLLECTION_CHECK_REMINDER, { title: "Check every entry before saving", warning: true, confirmLabel: "I have checked every entry" }); setShowPreview(true); }} disabled={saving}>
                   <Save className="mr-2 size-4" />
                   {saving ? "Saving..." : showPreview ? "Confirm and Save" : "Preview Collections"}
                 </Button>

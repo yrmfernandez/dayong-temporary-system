@@ -24,6 +24,8 @@ type Options = {
   /** prompt only: OK stays off until something is typed. */
   required?: boolean;
   placeholder?: string;
+  /** alert only: a warning (amber triangle, heading in capitals) the reader must acknowledge. */
+  warning?: boolean;
 };
 type Request = Options & { kind: "confirm" | "prompt" | "alert"; message: string; resolve: (value: boolean | string | null) => void };
 
@@ -83,7 +85,8 @@ export function AppDialogHost() {
     if (!current) return;
     (current.kind === "prompt" ? input.current : ok.current)?.focus();
     input.current?.select();
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); cancel(); } };
+    // A warning is closed only with its button, so it is acknowledged.
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !current.warning) { event.preventDefault(); cancel(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cancel reads the current box
@@ -93,7 +96,8 @@ export function AppDialogHost() {
   const verb = current.message.trim().split(/\s/)[0];
   const action = current.confirmLabel ?? (current.kind === "alert" ? "OK" : ACTIONS.includes(verb) ? verb : "OK");
   const danger = current.danger ?? (current.kind === "confirm" && DANGER.includes(verb));
-  const Icon = current.kind === "alert" ? Info : current.kind === "prompt" ? MessageSquare : AlertTriangle;
+  const Icon = current.kind === "alert" && !current.warning ? Info : current.kind === "prompt" ? MessageSquare : AlertTriangle;
+  const iconTone = danger ? "bg-destructive/10 text-destructive" : current.warning ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" : "bg-primary/10 text-primary";
 
   return (
     // Centred on the screen over a dimmed, blurred page (owner, October 21, 2026: not at the top like the browser's).
@@ -102,9 +106,9 @@ export function AppDialogHost() {
         className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border bg-card p-5 text-card-foreground shadow-2xl animate-in fade-in zoom-in-95 duration-150"
         onSubmit={(event) => { event.preventDefault(); accept(); }}>
         <div className="flex gap-3">
-          <span className={`flex size-9 shrink-0 items-center justify-center rounded-full ${danger ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}><Icon className="size-4" /></span>
+          <span className={`flex size-9 shrink-0 items-center justify-center rounded-full ${iconTone}`}><Icon className="size-4" /></span>
           <div className="min-w-0 flex-1 space-y-1">
-            {current.title && <p className="font-semibold">{current.title}</p>}
+            {current.title && <p className={current.warning ? "font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400" : "font-semibold"}>{current.title}</p>}
             <p id="app-dialog-message" className="whitespace-pre-line break-words text-sm">{current.message}</p>
           </div>
         </div>
