@@ -104,10 +104,12 @@ export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId:
   useEffect(() => {
     if (!photo) return;
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    // The page scrolls in the app shell's main area (body does not scroll), and the viewer sits inside it, so scrolling
+    // over the photo moved the page behind it (owner, October 21, 2026). Lock every scrolling ancestor while open.
+    const locked = [document.body, ...document.querySelectorAll<HTMLElement>(".app-main")].map((element) => ({ element, overflow: element.style.overflow }));
+    for (const { element } of locked) element.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = overflow; };
+    return () => { window.removeEventListener("keydown", onKey); for (const { element, overflow } of locked) element.style.overflow = overflow; };
   }, [photo]);
 
   const open = async () => {
@@ -133,7 +135,7 @@ export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId:
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void open()}><ImageIcon className="size-3.5" />{busy ? "Loading..." : label}</Button>
       {error && <span className="text-xs text-red-700">{error}</span>}
       {photo && (
-        <div role="dialog" aria-modal="true" aria-label="Receipt photo" className="fixed inset-0 z-50 flex flex-col bg-black/95 text-white">
+        <div role="dialog" aria-modal="true" aria-label="Receipt photo" className="fixed inset-0 z-50 flex flex-col overscroll-contain bg-black/95 text-white">
           <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2">
             <p className="min-w-0 truncate text-xs text-white/70">Uploaded {new Date(photo.uploadedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {photo.uploadedByName}</p>
             <div className="flex shrink-0 items-center gap-1">
@@ -144,7 +146,7 @@ export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId:
               <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Close" onClick={close}><X className="size-6" /></Button>
             </div>
           </div>
-          <div className={`flex min-h-0 flex-1 overflow-auto ${zoom === 1 ? "items-center justify-center" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
+          <div className={`flex min-h-0 flex-1 overflow-auto overscroll-contain ${zoom === 1 ? "items-center justify-center" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
             {/* eslint-disable-next-line @next/next/no-img-element -- a data URL from the sheet, not an optimizable file */}
             <img src={photo.dataUrl} alt="Receipt" style={size}
               className={`m-auto h-auto object-contain ${zoom === 1 ? "cursor-zoom-in" : "cursor-zoom-out"}`}

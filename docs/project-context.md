@@ -1227,3 +1227,9 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Done:** `planDeletion` / `deleteRecord` in `lib/admin-delete.ts` take `withEntries` for a remittance: the slip, its `remittance_collections` and Fidelity, and its New Sales and collections (each with the usual cascade) go in one transaction; its own remittance no longer blocks deleting its entries. The delete panel (`components/admin-delete.tsx`) makes the administrator choose "remittance only" or "remittance and its entries" before Delete permanently appears. Logged as `Delete remittance with its entries`. Tested.
 - **In progress:** none.
 - **To do (owner):** the entries released by the October 16 duplicate deletions are still in the database as Outstanding. Find them (Today's Entries / Exceptions → Possible duplicates) and delete each duplicate on its own (Delete permanently on the entry). Production was not changed.
+
+### Receipt photo viewer no longer scrolls the page behind it (2026-10-21)
+
+- **Owner:** scrolling while viewing a photo also scrolled the page, so it was moved when the photo closed.
+- **Done:** the page scrolls in the app shell's main area (`.app-main`), not the body, so the viewer's body lock did nothing. `ReceiptPhotoView` (`components/receipt-photo.tsx`) now locks the body and `.app-main` while open and restores them on close, and the viewer stops scrolling at its own edges (`overscroll-contain`). Build passes.
+- **In progress / To do:** none.
