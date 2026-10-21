@@ -1269,3 +1269,10 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Done:** `lib/batch-edit.ts`: `getReturnedBatch` returns `personEmployeeId` and, for New Sales, `masChoices` (active employees of the branch, `cleared` when in Clearing for New Sales on the Date Remitted). `saveReturnedBatch` takes `masEmployeeId`: an active employee of the branch, `clearingProblem` and `waitingBatchProblem` as when encoding, then each sale's `mas`, `accountable_employee_id` and `mas_employee_id`, and its account's `mas`, change (Record Corrections keeps before/after). The batch editor (`components/batch-editor.tsx`) has a MAS picker with uncleared MAS disabled. Test added; 216 pass; build passes.
 - **In progress:** none.
 - **To do:** none. The old MAS's clearing for that day stays open with nothing encoded; remove it in Clearing if it is not needed.
+
+### Waiver and 60D from the last OR date again (2026-10-21)
+
+- **Owner:** the Waiver should count as before, from the last OR date instead of Month of, so 60D and the Waiver are the same again.
+- **Done:** `accountState` in `lib/account-rules.ts`: `suspendedAt` is the anchor plus two months (anchor: last OR date, or the DOI day of an advance's last covered month when later; the DOI before any collection), as before October 14; 60D/90D/120D/150D count whole months from the same anchor, so 60D and the Waiver start the same day. Paid October 10 for July: U until December 10, then 60D and suspended. The amount due (`unpaidMonths`, `paidThrough`) still counts missed months after Month of. Forfeiture unchanged. Tests updated (Waiver on the OR date, advance anchor, October-for-July); 216 pass; build passes. System guide's status table updated.
+- **In progress:** none.
+- **To do:** none. Statuses shown on screens are worked out live; the `account_status` stored on accounts (used by the executive dashboard's account-health counts) updates as each account is next saved.

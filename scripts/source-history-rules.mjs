@@ -37,3 +37,14 @@ export function confirmedSequence(account, proposed) {
     && monthIndex(p.monthTo) - monthIndex(p.monthFrom) === p.nopTo - p.nopFrom
     && (!i || (p.nopFrom === sorted[i - 1].nopTo + 1 && monthIndex(p.monthFrom) === monthIndex(sorted[i - 1].monthTo) + 1)));
 }
+export function isolatedSourceMonthTypo(account,current,source){
+  if(current.length<5||source.length!==current.length||!confirmedSequence(account,current))return false;
+  const byId=new Map(source.map(p=>[p.id,p]));
+  let different=0;
+  for(const p of current){
+    const s=byId.get(p.id);
+    if(!s||s.nopFrom!==p.nopFrom||s.nopTo!==p.nopTo)return false;
+    if(s.monthFrom!==p.monthFrom||s.monthTo!==p.monthTo)different++;
+  }
+  return different===1;
+}

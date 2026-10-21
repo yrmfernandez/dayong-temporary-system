@@ -1,5 +1,9 @@
 # Dayong System documentation
 
+The [October 21 PH-77690372 correction](ph77690372-source-correction-20261021.md) restores eight source remittance dates, recalculates eight financial snapshots and refreshes status while preserving the DOI/NOP-confirmed coverage.
+
+The [October 21 PH-53228425 receipt-date correction](ph53228425-receipt-dates-20261021.md) confirms both 5364 M and duplicate-marked 5367 M already exist, and corrects their remittance dates to the owner-provided values.
+
 The [October 21 PH-53228425 verification](ph53228425-verification-20261021.md) confirms all five receipts, coverage/NOPs, status and financial figures; no database change was needed after resolving a source-cell formatting issue.
 
 The [October 21 PH-43187023 correction](ph43187023-source-correction-20261021.md) restores nine source-backed receipt month/NOP spans while retaining the audited program assignment and recalculating financial snapshots/status.

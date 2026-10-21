@@ -35,7 +35,7 @@ test("advance coverage anchors to DOI day of the last covered month", () => {
   const state = accountState(a, [p], "2026-11-20");
   assert.equal(state.anchor, "2026-11-15");
   assert.equal(state.paidThrough, "2026-11-20", "covered through November, on the payment day (the 20th)");
-  assert.equal(state.suspendedAt, "2027-01-20", "December missed on December 20, January on January 20");
+  assert.equal(state.suspendedAt, "2027-01-15", "two months after the anchor (the DOI day of November)");
   assert.equal(state.forfeitedAt, "2027-05-16");
   assert.equal(state.status, "U");
   assert.equal(accountState(a, [p], "2026-09-20").status, "ADV");
@@ -106,20 +106,24 @@ test("a forfeited account takes payments only on the owner's chosen days (Octobe
 test("the Waiver is judged on the OR date, not the day it is encoded (October 14, 2026)", () => {
   const a = { ...account, doi: "2026-01-15" };
   const history = [payment({ id: "A", orDate: "2026-02-10", monthFrom: "2026-02", monthTo: "2026-07", nopFrom: 2, nopTo: 7, amount: 2100 })];
-  // Paid through July 10 (owner, October 17, 2026): August missed on August 10, September on September 10.
+  // Advance through July: the anchor is July 15 (the DOI day), so suspended from September 15 (October 21, 2026).
   const august = (orDate, waiver = "") => input({ monthFrom: "2026-08", monthTo: "2026-08", nopFrom: 8, nopTo: 8, orDate, orNumber: "OR-AUG", waiver });
   assert.equal(accountState(a, history, "2026-10-14").temporarilySuspended, true);
-  validatePayment(a, history, august("2026-09-09"), "2026-10-14");
-  assert.throws(() => validatePayment(a, history, august("2026-09-10"), "2026-10-14"), /Waiver/, "paid on September 10: two months missed, suspended then");
+  validatePayment(a, history, august("2026-09-14"), "2026-10-14");
+  assert.throws(() => validatePayment(a, history, august("2026-09-15"), "2026-10-14"), /Waiver/, "paid on September 15: two months after the anchor, suspended then");
   validatePayment(a, history, august("2026-10-02", "Waiver"), "2026-10-14");
 });
 
-test("paid October 10 for July: paid through July 10, so suspended since September 10 and a Waiver is needed (owner, October 17, 2026)", () => {
+test("paid October 10 for July: counted from the OR date, so 60D and the Waiver come together on December 10 (owner, October 21, 2026)", () => {
   const a = { ...account, doi: "2026-01-15" };
   const history = [payment({ id: "A", orDate: "2026-02-10", monthFrom: "2026-02", monthTo: "2026-06", nopFrom: 2, nopTo: 6, amount: 1750 }), payment({ id: "B", orDate: "2026-10-10", monthFrom: "2026-07", monthTo: "2026-07", nopFrom: 7, nopTo: 7, amount: 350, orNumber: "OR-JUL" })];
   const state = accountState(a, history, "2026-10-10");
-  assert.deepEqual([state.paidThrough, state.suspendedAt, state.temporarilySuspended, state.status], ["2026-07-10", "2026-09-10", true, "90D"]);
-  // The July payment itself, on October 10, needed a Waiver: before it the account was paid through June 10.
+  assert.deepEqual([state.paidThrough, state.suspendedAt, state.temporarilySuspended, state.status], ["2026-07-10", "2026-12-10", false, "U"]);
+  for (const [day, status, suspended] of [["2026-12-09", "U", false], ["2026-12-10", "60D", true], ["2027-01-10", "90D", true]]) {
+    const later = accountState(a, history, day);
+    assert.deepEqual([later.status, later.temporarilySuspended], [status, suspended], `${day}: 60D and the Waiver on the same day`);
+  }
+  // The July payment itself, on October 10, needed a Waiver: before it the anchor was June 15 (an advance through June).
   assert.throws(() => validatePayment(a, [history[0]], input({ monthFrom: "2026-07", monthTo: "2026-07", nopFrom: 7, nopTo: 7, orDate: "2026-10-10", orNumber: "OR-JUL" }), "2026-10-10"), /Waiver/);
   validatePayment(a, [history[0]], input({ monthFrom: "2026-07", monthTo: "2026-07", nopFrom: 7, nopTo: 7, orDate: "2026-10-10", orNumber: "OR-JUL", waiver: "Waiver" }), "2026-10-10");
 });

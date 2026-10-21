@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {loadLegacySources} from './legacy-sources.mjs';
-import {sourceCoverage} from './source-history-rules.mjs';
+import {sourceCoverage,sourceDay} from './source-history-rules.mjs';
 import {crossYearMonths} from './source-cross-year-months.mjs';
 const member=process.argv[2];
 if(!/^PH-\d{8}$/.test(member??''))throw new Error('Pass member number.');
@@ -22,7 +22,8 @@ async function main(){
   });
  }
  fs.writeFileSync(`legacy-data/member-source-${member}-private.json`,JSON.stringify(rows));
- console.log(JSON.stringify({receipts:wanted.size,sourceMatches:rows.length,parsedCoverage:rows.filter(r=>r.coverage).length,
+ const dates=rows.map(r=>{const positions=new Map(r.headers.map((h,i)=>[norm(h),i]));const date=sourceDay(r.row[positions.get('DATEREMITTED')]);const old=review.history.find(p=>p.collection_id===r.id);return{valid:Boolean(date&&date>=old?.day),changed:Boolean(date&&date!==String(old?.date_remitted??'').slice(0,10))};});
+ console.log(JSON.stringify({receipts:wanted.size,sourceMatches:rows.length,parsedCoverage:rows.filter(r=>r.coverage).length,confirmedSourceRemittanceDates:dates.filter(d=>d.valid).length,sourceRemittanceDateDifferences:dates.filter(d=>d.valid&&d.changed).length,
   diagnostics:rows.filter(r=>!r.coverage).map(r=>({monthsParsed:Boolean(r.months),parsedMonthCount:r.months?.length??0,nopNumberCount:r.nopNumbers.length,nopCellIsDate:r.nopText instanceof Date||/^\d{4}-\d\d-\d\dT/.test(String(r.nopText)),monthCellIsDate:r.monthText instanceof Date,
    monthWordsRecognized:(String(r.monthText??'').match(/[A-Za-z]+/g)??[]).filter(w=>['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'].includes(w.slice(0,3).toUpperCase())).length,
    explicitRangeFormat:/^\s*[A-Za-z]+(?:\s+20\d{2})?\s*(?:-|–|to)\s*[A-Za-z]+(?:\s+20\d{2})?\s*$/i.test(String(r.monthText??'')),

@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmedSequence, sourceCoverage, sourceMonths, programKey, receiptKey, sourceDay } from './source-history-rules.mjs';
+import { confirmedSequence, sourceCoverage, sourceMonths, programKey, receiptKey, sourceDay,isolatedSourceMonthTypo } from './source-history-rules.mjs';
+test('one source month typo cannot overturn a continuous DOI/NOP-confirmed history',()=>{
+  const current=Array.from({length:6},(_,i)=>({id:String(i),monthFrom:`2026-0${i+2}`,monthTo:`2026-0${i+2}`,nopFrom:i+2,nopTo:i+2}));
+  const source=current.map(p=>({...p}));source[2].monthFrom='2026-05';source[2].monthTo='2026-05';
+  assert.equal(isolatedSourceMonthTypo({doi:'2026-01-01'},current,source),true);
+  assert.equal(isolatedSourceMonthTypo({doi:'2026-02-01'},current,source),false);
+  assert.equal(isolatedSourceMonthTypo({doi:'2026-01-01'},current,source.map((p,i)=>i===2?{...p,nopFrom:9,nopTo:9}:p)),false);
+  assert.equal(isolatedSourceMonthTypo({doi:'2026-01-01'},current,source.map((p,i)=>i===3?{...p,monthFrom:'2026-06',monthTo:'2026-06'}:p)),false);
+});
 test('explicit month ranges expand without guessing bare cross-year labels',()=>{
   assert.deepEqual(sourceMonths('April - June'),['2026-04','2026-05','2026-06']);
   assert.deepEqual(sourceMonths('November 2025 to February 2026'),['2025-11','2025-12','2026-01','2026-02']);

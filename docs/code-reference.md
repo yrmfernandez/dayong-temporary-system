@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 55 component files; 567 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 55 component files; 569 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -439,6 +439,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-incentive-periods.mjs](../scripts/check-incentive-periods.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-mas-members.mjs](../scripts/check-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs`, `./name-match.mjs` | No flag detected; read source before running |
 | [scripts/check-member-transfer.mjs](../scripts/check-member-transfer.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/check-owner-receipts-private.mjs](../scripts/check-owner-receipts-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/check-pacios-report-20261016.mjs](../scripts/check-pacios-report-20261016.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | No flag detected; read source before running |
 | [scripts/check-pending-receipts.mjs](../scripts/check-pending-receipts.mjs) | `node:fs`, `@next/env`, `googleapis`, `postgres` | No flag detected; read source before running |
 | [scripts/check-quinones-split-20261019.mjs](../scripts/check-quinones-split-20261019.mjs) | `@next/env`, `postgres`, `node:fs`, `node:assert/strict` | No flag detected; read source before running |
@@ -473,6 +474,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-merge-mas.mjs](../scripts/fix-merge-mas.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-older-clearing-covers.mjs](../scripts/fix-older-clearing-covers.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-or-letters.mjs](../scripts/fix-or-letters.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/fix-owner-receipt-dates-private.mjs](../scripts/fix-owner-receipt-dates-private.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `./source-history-rules.mjs` | Yes; read source for semantics |
 | [scripts/fix-ph11841180-coverage.mjs](../scripts/fix-ph11841180-coverage.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph29986586-dsp290.mjs](../scripts/fix-ph29986586-dsp290.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/fix-ph34623670-branch.mjs](../scripts/fix-ph34623670-branch.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -517,7 +519,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/link-cinde-calumbay.mjs](../scripts/link-cinde-calumbay.mjs) | `@next/env`, `postgres`, `node:fs` | Yes; read source for semantics |
 | [scripts/link-legacy-mas.mjs](../scripts/link-legacy-mas.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs`, `node:crypto` | Yes; read source for semantics |
 | [scripts/list-programs.mjs](../scripts/list-programs.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
-| [scripts/locate-receipt-private.mjs](../scripts/locate-receipt-private.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/locate-receipt-private.mjs](../scripts/locate-receipt-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/lookup-records.mjs](../scripts/lookup-records.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/member-accounts.mjs](../scripts/member-accounts.mjs) | `@next/env`, `postgres`, `./legacy-sources.mjs`, `node:fs`, `node:crypto` | No flag detected; read source before running |
 | [scripts/merge-employee-pair.mjs](../scripts/merge-employee-pair.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -582,7 +584,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/restore-resubmit-incentives.mjs](../scripts/restore-resubmit-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/review-amount-discrepancies.mjs](../scripts/review-amount-discrepancies.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/review-member-finance-private.mjs](../scripts/review-member-finance-private.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | No flag detected; read source before running |
-| [scripts/review-member-private.mjs](../scripts/review-member-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
+| [scripts/review-member-private.mjs](../scripts/review-member-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs`, `node:util`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/review-same-base-pay.mjs](../scripts/review-same-base-pay.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/set-clearing-covers.mjs](../scripts/set-clearing-covers.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/set-collector-tiers.mts](../scripts/set-collector-tiers.mts) | `drizzle-orm`, `@/lib/batch-edit`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-workflow` | Yes; read source for semantics |

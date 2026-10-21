@@ -25,14 +25,16 @@ async function verify(tx, snapshot) {
   const proposed = new Map(plan.cases.flatMap((c) => c.proposed.map((p) => [p.id, p])));
   const cases = new Map(plan.cases.map((c) => [c.account.enrollment_id, c]));
   const nopIds = new Set(snapshot.nopIds), prices = new Map(finance.changes.map((p) => [p.id, p]));
+  const datePatches=new Map((snapshot.datePatches??[]).map(p=>[p.id,p.date]));
   let changed = 0, monthCorrections = 0, nopCorrections = 0;
   for (const row of savedCollections) {
     const old = collectionMap.get(row.collection_id), p = proposed.get(row.collection_id);
     assert.ok(old && p);
-    const fields = ['month_from','month_to','nop_from','nop_to', ...(nopIds.has(row.collection_id) ? ['remittance_amount','remittance_breakdown','forfeited_incentive'] : [])];
+    const fields = ['month_from','month_to','nop_from','nop_to', ...(nopIds.has(row.collection_id) ? ['remittance_amount','remittance_breakdown','forfeited_incentive'] : []),...(datePatches.has(row.collection_id)?['date_remitted']:[])];
     assert.deepEqual(omit(row, fields), omit(old, fields));
     assert.equal(row.month_from, p.monthFrom); assert.equal(row.month_to, p.monthTo);
     assert.equal(row.nop_from, p.nopFrom); assert.equal(row.nop_to, p.nopTo);
+    if(datePatches.has(row.collection_id))assert.equal(row.date_remitted?.slice(0,10),datePatches.get(row.collection_id));
     const monthChanged = row.month_from !== old.month_from || row.month_to !== old.month_to;
     const nopChanged = row.nop_from !== old.nop_from || row.nop_to !== old.nop_to;
     changed += monthChanged || nopChanged ? 1 : 0; monthCorrections += monthChanged ? 1 : 0; nopCorrections += nopChanged ? 1 : 0;
@@ -54,7 +56,7 @@ async function verify(tx, snapshot) {
   const required = [...snapshot.accountChangedIds, ...snapshot.collectionChangedIds];
   const audits = required.length ? await tx`select distinct record_id from audit_log where record_id in ${tx(required)} and user_name = ${actor} and logged_at >= ${snapshot.startedAt}` : [];
   assert.equal(audits.length, new Set(required).size);
-  return { accounts: savedAccounts.length, changedReceipts: changed, monthCorrections, nopCorrections, financialSnapshots: finance.changes.length,
+  return { accounts: savedAccounts.length, changedReceipts: changed, monthCorrections, nopCorrections, remittanceDateCorrections:datePatches.size,financialSnapshots: finance.changes.length,
     remittanceExpectations: finance.slips.length, verifiedCorrections: records.length, auditedRecords: audits.length, receiptAmountsAndIdentityPreserved: true };
 }
 async function main() {
@@ -85,7 +87,7 @@ async function main() {
     const grouped = new Map();
     for (const p of collections) grouped.set(p.enrollment_id, (grouped.get(p.enrollment_id) ?? 0) + 1);
     assert.equal(accounts.length, ids.length);
-    const patches = [], nopIds = [], accountChangedIds = [];
+    const patches = [], nopIds = [], accountChangedIds = [],datePatches=[];
     for (const a of accounts) {
       const c = cases.get(a.enrollment_id);
       for (const key of Object.keys(a)) if (key !== 'doi') assert.deepEqual(a[key], c.account[key]);
@@ -98,10 +100,12 @@ async function main() {
         if (row.month_from !== p.monthFrom || row.month_to !== p.monthTo || row.nop_from !== p.nopFrom || row.nop_to !== p.nopTo) patches.push(p);
         if (row.nop_from !== p.nopFrom || row.nop_to !== p.nopTo) nopIds.push(p.id);
       }
+      if(scopedMember)for(const id of c.financeIds??[]){assert.ok(c.history.some(p=>p.collection_id===id));if(!nopIds.includes(id))nopIds.push(id);}
+      if(scopedMember)for(const p of c.datePatches??[]){assert.ok(c.history.some(r=>r.collection_id===p.id));datePatches.push(p);}
       if (a.doi.slice(0,10) !== c.doi || a.account_status !== c.status) accountChangedIds.push(a.enrollment_id);
     }
     assert.equal(patches.length, plan.summary.changedReceipts);
-    const snapshot = { plan, accounts, collections: collections.map((p) => omit(p,['day'])), nopIds, startedAt: started, accountChangedIds, collectionChangedIds: patches.map((p) => p.id) };
+    const snapshot = { plan, accounts, collections: collections.map((p) => omit(p,['day'])), nopIds,datePatches, startedAt: started, accountChangedIds, collectionChangedIds: [...new Set([...patches.map(p=>p.id),...datePatches.map(p=>p.id)])] };
     fs.mkdirSync('backups', { recursive: true });
     const stamp = Date.now(), file = `backups/${apply ? prefix : scopedMember?`member-source-${scopedMember}-preview-20261021-`:'other-program-source-preview-20261021-'}${stamp}.json`;
     fs.writeFileSync(file, JSON.stringify(snapshot));
@@ -109,13 +113,15 @@ async function main() {
     await tx`select set_config('app.user_name', ${actor}, true)`;
     if (patches.length) await tx`update collections c set month_from = p."monthFrom", month_to = p."monthTo", nop_from = p."nopFrom", nop_to = p."nopTo"
       from jsonb_to_recordset(${JSON.stringify(patches)}::text::jsonb) as p(id text, "monthFrom" text, "monthTo" text, "nopFrom" integer, "nopTo" integer) where c.collection_id = p.id`;
+    if(datePatches.length)await tx`update collections c set date_remitted=p.date::date from jsonb_to_recordset(${JSON.stringify(datePatches)}::text::jsonb) as p(id text,date text) where c.collection_id=p.id`;
     const accountPatches = plan.cases.filter((c) => accountChangedIds.includes(c.account.enrollment_id)).map((c) => ({ id: c.account.enrollment_id, doi: c.doi, status: c.status }));
     if (accountPatches.length) await tx`update member_programs a set doi = p.doi::date, account_status = p.status from jsonb_to_recordset(${JSON.stringify(accountPatches)}::text::jsonb) as p(id text, doi text, status text) where a.enrollment_id = p.id`;
     const finance = await repriceEntries((query, params) => tx.unsafe(query,params), { collectionIds: nopIds });
+    snapshot.collectionChangedIds=[...new Set([...snapshot.collectionChangedIds,...finance.changes.filter(p=>p.kind==='Collection').map(p=>p.id)])];
     const corrections = plan.cases.map((c) => ({ correction_id: `COR-OTH-20261021-${stamp}-${c.account.enrollment_id}`, module: actor, record_id: c.account.enrollment_id,
-      reason: scopedMember?`Owner requested fixing ${scopedMember}. Original receipt identities, amounts and covered months confirmed. Preserve current program: prior program changes in Audit Log explain original source label differences. Derive NOPs from retained account DOI and registration rule; preserve amounts/dates/member links and reprice corrected NOPs. Script-only processing; aggregate output.`:'Owner requested scanning other programs for source-backed coverage/NOP/DOI errors and stale account statuses. Complete original receipt identities, amounts, source program and month/NOP spans confirmed; program registration and forfeiture rules checked. Prior corrections and owner overrides protected. Script-only processing; aggregate output.',
+      reason: scopedMember?`Owner requested fixing ${scopedMember}. Receipt identities and amounts confirmed. Retain current program and DOI; preserve audited program assignments. Use source-covered months and current registration rules; an isolated source month typo does not override continuous DOI/NOP-confirmed saved coverage. Restore source-confirmed remittance dates on or after OR dates, refresh account status and recalculate verified incorrect financial snapshots. Preserve other fields. Script-only processing; aggregate output.`:'Owner requested scanning other programs for source-backed coverage/NOP/DOI errors and stale account statuses. Complete original receipt identities, amounts, source program and month/NOP spans confirmed; program registration and forfeiture rules checked. Prior corrections and owner overrides protected. Script-only processing; aggregate output.',
       before_json: { doi: c.account.day, status: c.account.account_status, history: c.history },
-      after_json: { doi: c.doi, status: c.status, proposed: c.proposed, nextNop: c.nextNop, nextMonth: c.nextMonth, finance: finance.changes.filter((p) => c.proposed.some((r) => r.id === p.id)) },
+      after_json: { doi: c.doi, status: c.status, proposed: c.proposed,remittanceDates:c.datePatches??[], nextNop: c.nextNop, nextMonth: c.nextMonth, finance: finance.changes.filter((p) => c.proposed.some((r) => r.id === p.id)) },
       corrected_at: new Date().toISOString(), encoded_by_name: actor, encoded_at: new Date().toISOString() }));
     for (let i = 0; i < corrections.length; i += 250) await tx`insert into record_corrections ${tx(corrections.slice(i, i + 250))}`;
     snapshot.finance = finance; snapshot.correctionIds = corrections.map((c) => c.correction_id);

@@ -266,17 +266,17 @@ Historical coverage starts from the first stored Collection month when one exist
 
 ### Calculated payment status and displayed balance
 
-Only posted Collections with OR date on/before the calculation date count. **Missed months follow the payment day (owner, October 17, 2026, restoring the old day-to-day count):** the account is **paid through** its last covered month ("Month of") on the day of the month of its last payment (the DOI day before any Collection; a day a short month lacks is its last day), and each later month is missed on that day. Status follows these rules:
+Only posted Collections with OR date on/before the calculation date count. **60D and the Waiver count from the last OR date (owner, October 21, 2026, the rule before October 14):** the anchor is the last payment's OR date, or the DOI day of an advance's last covered month when that is later (the DOI before any Collection; a day a short month lacks is its last day). Two whole months after the anchor the account becomes **60D and temporarily suspended (Waiver needed) on the same day**; 90D after three, 120D four, 150D five or more. The month the payment covered no longer moves this: paid October 10 for July is 60D and needs a Waiver from December 10, like a payment for October. The **amount due** still counts the months missed after the last covered month ("Month of") on the payment day. Status follows these rules:
 
 | Status | Meaning | Displayed balance multiplier |
 | --- | --- | --- |
 | NS | No Collection yet; new-account state. | 1 × monthly rate |
-| U | At most one month missed. | months missed, at least 1 (the next month) |
+| U | Less than two months since the anchor. | months missed after Month of, at least 1 (the next month) |
 | ADV | The latest covered month is after this month. | 0 |
-| 60D | Two months missed (paid October 10 for October: from December 10). | 2 × |
-| 90D | Three months missed (from January 10 in that example). | 3 × |
-| 120D | Four months missed. | 4 × |
-| 150D | Five or more months missed; label caps here. | 5 × |
+| 60D | Two months since the anchor, the day the Waiver starts (paid October 10, for any month: from December 10). | months missed after Month of |
+| 90D | Three months since the anchor (from January 10 in that example). | months missed after Month of |
+| 120D | Four months since the anchor. | months missed after Month of |
+| 150D | Five or more months since the anchor; label caps here. | months missed after Month of, at most 5 |
 | Paid | Positive payoff total reached by sum of qualifying Collections. | 0 |
 | Forfeited | Stored forfeiture marker or timing threshold reached, unless Paid takes precedence. | `null`, displayed as unavailable |
 

@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import nextEnv from '@next/env';
 import postgres from 'postgres';
-import {receiptKey,programKey,confirmedSequence,sourceMonths} from './source-history-rules.mjs';
+import {receiptKey,programKey,confirmedSequence,sourceMonths,isolatedSourceMonthTypo,sourceDay} from './source-history-rules.mjs';
+import {isDeepStrictEqual} from 'node:util';
 import {accountState,forfeitMonthsFor,todayInManila,monthIndex,saleNops} from '../lib/account-rules.ts';
 nextEnv.loadEnvConfig(process.cwd());
 const member=process.argv[2];
@@ -26,12 +27,18 @@ async function main(){
    const rows=history.filter(p=>p.enrollment_id===a.enrollment_id),ownSales=sales.filter(s=>s.program_id===a.program_id),keys=new Set([programKey(a.program_name),programKey(a.program_code)]);
    const flags={receipts:rows.length,sourceIdentityFailures:0,sourceProgramDifferences:0,ambiguousSourceCoverage:0,monthDifferences:0,nopDifferences:0,sourceNopDoiConflicts:0,linkedReceipts:0,nopDerivedFromExplicitMonthRange:0};
    const sourceProgramCounts=new Map();
+   const datePatches=[];
    const proposed=[];
    let doi=a.day,saleConfirmed=false;
    if(ownSales.length===1){const s=ownSales[0],src=index.sales[s.sale_id];saleConfirmed=Boolean(src&&src.date===s.day&&s.day===s.receipt_day&&src.amount===Number(s.amount_paid)&&keys.has(src.program));if(saleConfirmed&&a.day.slice(0,7)===s.day.slice(0,7))doi=s.day;}
    for(const p of rows){
     const s=index.collections[p.collection_id];
     const raw=rawSources.get(p.collection_id);
+    if(raw&&raw.ref===s?.ref){
+      const positions=new Map(raw.headers.map((h,i)=>[String(h??'').toUpperCase().replace(/[^A-Z0-9]/g,''),i]));
+      const date=sourceDay(raw.row[positions.get('DATEREMITTED')]);
+      if(date&&date>=p.day&&date!==sourceDay(p.date_remitted))datePatches.push({id:p.collection_id,date});
+    }
     if(s&&!s.coverage&&raw&&raw.ref===s.ref&&/^\d{4}-\d\d-\d\dT/.test(String(raw.nopText))){
       const months=sourceMonths(raw.monthText);
       if(months&&months.length>1&&Math.round(Number(p.amount_collected)*100)===Math.round(a.rate*100)*months.length){
@@ -71,6 +78,10 @@ async function main(){
    const minorityRows=rows.filter(p=>resolveProgram(index.collections[p.collection_id]?.program)!==majority?.[0]);
    flags.minorityOnlyLatestReceipt=minorityRows.length===1&&minorityRows[0].collection_id===rows.at(-1)?.collection_id;
    flags.targetRegistrationRuleMatches=Boolean(target&&target.registration_fee_required===a.registration_fee_required);
+   const currentCoverage=rows.map(r=>({id:r.collection_id,monthFrom:r.month_from,monthTo:r.month_to,nopFrom:r.nop_from,nopTo:r.nop_to}));
+   const sourceCoverageRows=rows.map(r=>({id:r.collection_id,...index.collections[r.collection_id]?.coverage}));
+   flags.isolatedSourceMonthTypo=isolatedSourceMonthTypo({doi,registrationFee:a.registration_fee_required},currentCoverage,sourceCoverageRows);
+   if(flags.isolatedSourceMonthTypo)proposed.splice(0,proposed.length,...currentCoverage.map(p=>({...p,source:index.collections[p.id].ref,sourceNop:[p.nopFrom,p.nopTo],preservedDoiNopConfirmedCoverage:true})));
    flags.proposedSequenceValid=proposed.length===rows.length&&confirmedSequence({doi,registrationFee:a.registration_fee_required},proposed);
    const stateAccount={id:a.enrollment_id,doi,basePay:a.rate,payBalanceTotal:a.total||0,storedStatus:a.account_status,flexible:a.flexible,maxMonthlyPayment:a.maximum,registrationFee:a.registration_fee_required,forfeitMonths:forfeitMonthsFor(a.category_id)};
    const toPayment=(r,p)=>({id:r.collection_id,enrollmentId:a.enrollment_id,orDate:r.day,orNumber:r.or_number,amount:Number(r.amount_collected),...p});
@@ -81,12 +92,21 @@ async function main(){
    flags.proposedReceiptChanges=changed;
    const ready=rows.length>0&&!flags.sourceIdentityFailures&&(!flags.sourceProgramDifferences||flags.sourceProgramDifferencesExplainedByAudit)&&!flags.priorExplicitCoverageDecision&&!flags.ambiguousSourceCoverage&&!flags.linkedReceipts&&flags.proposedHistoryValid&&rows.every(r=>r.status==='Posted');
    flags.ready=Boolean(ready);
-   cases.push({account:a,history:rows,sales:ownSales,doi,proposed,beforeState,afterState,changed,flags,ready,majoritySourceProgram:target,priorCorrections});
+   const financeFile=`legacy-data/member-finance-${member}-private.json`;
+   const financialReview=fs.existsSync(financeFile)?JSON.parse(fs.readFileSync(financeFile,'utf8')):null;
+   const financeIds=[];
+   if(financialReview)for(const change of financialReview.finance.changes.filter(p=>p.kind==='Collection')){
+     const current=rows.find(r=>r.collection_id===change.id),original=financialReview.collections.find(r=>r.collection_id===change.id);
+     if(current&&original&&isDeepStrictEqual(serial(Object.fromEntries(Object.entries(current).filter(([k])=>k!=='day'))),original))financeIds.push(change.id);
+   }
+   flags.financialSnapshotsNeedingCorrection=financeIds.length;
+   flags.sourceRemittanceDateCorrections=datePatches.length;
+   cases.push({account:a,history:rows,sales:ownSales,doi,proposed,beforeState,afterState,changed,flags,ready,financeIds,datePatches,majoritySourceProgram:target,priorCorrections});
   }
   const snapshot=serial({member,members,accounts,history,sales,cases});
   fs.mkdirSync('backups',{recursive:true});fs.writeFileSync(`backups/member-review-${member}-${Date.now()}-private.json`,JSON.stringify(snapshot));
   fs.writeFileSync(`legacy-data/member-review-${member}-private.json`,JSON.stringify(snapshot));
-  const repairCases=serial(cases.filter(c=>c.ready&&(c.changed||c.doi!==c.account.day||c.afterState.status!==c.account.account_status))).map(c=>({...c,status:c.afterState.status,nextNop:c.afterState.nextNop,nextMonth:c.afterState.nextMonth}));
+  const repairCases=serial(cases.filter(c=>c.ready&&(c.changed||c.doi!==c.account.day||c.afterState.status!==c.account.account_status||c.financeIds.length||c.datePatches.length))).map(c=>({...c,status:c.afterState.status,nextNop:c.afterState.nextNop,nextMonth:c.afterState.nextMonth}));
   fs.writeFileSync(`legacy-data/member-repair-${member}-plan-private.json`,JSON.stringify({generatedAt:new Date().toISOString(),member,summary:{candidates:repairCases.length,historyAccounts:repairCases.filter(c=>c.changed).length,changedReceipts:repairCases.reduce((n,c)=>n+c.changed,0),doiChanges:repairCases.filter(c=>c.doi!==c.account.day).length,statusOnlyAccounts:repairCases.filter(c=>!c.changed&&c.doi===c.account.day).length},cases:repairCases,programCounts:[]}));
   console.log(JSON.stringify({memberRecords:members.length,accounts:accounts.length,receipts:history.length,newSales:sales.length,accountChecks:cases.map(c=>c.flags),privateSnapshotSaved:true}));
  });
