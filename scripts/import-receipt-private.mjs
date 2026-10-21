@@ -11,6 +11,7 @@ nextEnv.loadEnvConfig(process.cwd());
 const key=String(process.argv[2]??'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 if(!/^\d+[A-Z]+$/.test(key))throw new Error('Pass receipt number and suffix.');
 const apply=process.argv.includes('--apply'),actor='Owner-confirmed source receipt import';
+const ownerHistory=process.argv.includes('--owner-history');
 const serial=v=>JSON.parse(JSON.stringify(v));
 const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const canon=v=>receiptKey(v).replace(/^0+(?=\d)/,'');
@@ -21,7 +22,23 @@ async function verify(tx,snapshot){
   const [receipt]=serial(await tx`select * from collections where collection_id=${snapshot.inserted.collection_id}`);
   const history=serial(await tx`select * from collections where enrollment_id=${snapshot.account.enrollment_id} and collection_id<>${snapshot.inserted.collection_id} order by collection_id`);
   const [account]=serial(await tx`select * from member_programs where enrollment_id=${snapshot.account.enrollment_id}`);
-  assert.deepEqual(receipt,snapshot.inserted);assert.deepEqual(history,snapshot.history);
+  assert.deepEqual(receipt,snapshot.inserted);
+  for(const row of history){
+    const old=snapshot.history.find(r=>r.collection_id===row.collection_id);assert.ok(old);
+    const patch=snapshot.ownerPatches?.find(p=>p.id===row.collection_id);
+    const price=snapshot.finance?.changes.find(p=>p.id===row.collection_id);
+    const allowed=[...(patch?['month_from','month_to','nop_from','nop_to','date_remitted']:[]),...(price?['remittance_amount','remittance_breakdown','forfeited_incentive']:[])];
+    assert.deepEqual(omit(row,allowed),omit(old,allowed));
+    if(patch){assert.equal(row.month_from,patch.monthFrom);assert.equal(row.month_to,patch.monthTo);assert.equal(row.nop_from,patch.nopFrom);assert.equal(row.nop_to,patch.nopTo);assert.equal(row.date_remitted?.slice(0,10),patch.dateRemitted);}
+    if(price){assert.equal(Number(row.remittance_amount),price.after.remittance);assert.deepEqual(row.remittance_breakdown,price.after.breakdown);assert.equal(Number(row.forfeited_incentive),Number(price.after.forfeited));}
+  }
+  assert.equal(history.length,snapshot.history.length);
+  if(snapshot.linkedBefore){
+    const links=serial(await tx`select * from remittance_collections where collection_id in ${tx(snapshot.ownerPatches.map(p=>p.id))} order by remittance_collection_id`);
+    assert.deepEqual(links,snapshot.linkedBefore);
+    const parents=snapshot.parentBefore.length?serial(await tx`select * from remittances where remittance_id in ${tx(snapshot.parentBefore.map(r=>r.remittance_id))} order by remittance_id`):[];
+    assert.deepEqual(parents,snapshot.parentBefore);
+  }
   assert.deepEqual(omit(account,['account_status']),omit(snapshot.account,['account_status']));
   assert.equal(account.account_status,snapshot.status);
   const [{n}]=await tx`select count(*)::int as n from collections where regexp_replace(or_key,'^0+','')=${canon(key)}`;
@@ -29,6 +46,7 @@ async function verify(tx,snapshot){
   const corrections=await tx`select correction_id from record_corrections where correction_id=${snapshot.correctionId}`;
   const audits=await tx`select audit_id from audit_log where table_name='collections' and record_id=${snapshot.inserted.collection_id} and action='insert' and user_name=${actor}`;
   assert.equal(corrections.length,1);assert.equal(audits.length,1);
+  if(snapshot.ownerChangedIds?.length){const updates=await tx`select distinct record_id from audit_log where table_name='collections' and record_id in ${tx(snapshot.ownerChangedIds)} and action='update' and user_name=${actor}`;assert.equal(updates.length,snapshot.ownerChangedIds.length);}
   return{receiptCount:1,memberConfirmed:true,coverageValidated:true,financialSnapshotVerified:true,existingReceiptsPreserved:true,correctionVerified:true,auditVerified:true};
 }
 async function main(){
@@ -39,6 +57,8 @@ async function main(){
   }
   const plan=JSON.parse(fs.readFileSync(`legacy-data/receipt-${key}-import-plan-private.json`,'utf8'));
   assert.ok(plan.ready&&plan.confirmedMember&&plan.coverage);
+  assert.ok(ownerHistory||!plan.existingPatches,'Owner history requires --owner-history');
+  if(ownerHistory)assert.ok(plan.ownerHistoryReason&&plan.ownerExpected?.length===plan.existingPatches?.length+1&&plan.existingPatches.length<=plan.history.length);
   await db.begin(async tx=>{
     await tx`set transaction isolation level serializable`;
     await tx`select pg_advisory_xact_lock(hashtextextended(${`receipt-import:${canon(key)}`},0))`;
@@ -54,6 +74,21 @@ async function main(){
     fs.mkdirSync('backups',{recursive:true});
     const snapshot={account,history,plan};
     fs.writeFileSync(`backups/receipt-${key}-before-private-${Date.now()}.json`,JSON.stringify(snapshot));
+    if(ownerHistory){
+      snapshot.ownerPatches=plan.existingPatches;
+      snapshot.ownerChangedIds=[];
+      snapshot.linkedBefore=serial(await tx`select * from remittance_collections where collection_id in ${tx(plan.existingPatches.map(p=>p.id))} order by remittance_collection_id for update`);
+      snapshot.parentBefore=snapshot.linkedBefore.length?serial(await tx`select * from remittances where remittance_id in ${tx([...new Set(snapshot.linkedBefore.map(r=>r.remittance_id))])} order by remittance_id for update`):[];
+      for(const p of plan.existingPatches){
+        const old=history.find(r=>r.collection_id===p.id);assert.ok(old&&(p.allowLinked||!old.linked_remittance_id));
+        assert.equal(receiptKey(old.or_number),p.key);assert.equal(old.or_date.slice(0,10),p.orDate);assert.equal(Number(old.amount_collected),p.amount);
+        const links=snapshot.linkedBefore.filter(r=>r.collection_id===p.id);if(!p.allowLinked)assert.equal(links.length,0);
+        if(old.month_from!==p.monthFrom||old.month_to!==p.monthTo||old.nop_from!==p.nopFrom||old.nop_to!==p.nopTo||old.date_remitted?.slice(0,10)!==p.dateRemitted){
+          await tx`update collections set month_from=${p.monthFrom},month_to=${p.monthTo},nop_from=${p.nopFrom},nop_to=${p.nopTo},date_remitted=${p.dateRemitted} where collection_id=${p.id}`;
+          snapshot.ownerChangedIds.push(p.id);
+        }
+      }
+    }
     const source=plan.source,headers=source.rawHeaders.map(norm);
     const cell=name=>source.rawRow[headers.lastIndexOf(name)];
     const channel=/COLLECTOR/i.test(String(cell('STATUS')??''))?'Collector':/DTO/i.test(String(cell('STATUS')??''))?'DTO':'MAS';
@@ -86,7 +121,8 @@ async function main(){
       collected_by_role:channel,remittance_status:'Remitted',linked_remittance_id:null,accountable_employee_id:employee?.employee_id??null,accountable_name:agentName,
       accountable_role:channel==='Collector'?'Collector':'MAS',remittance_method:'Cash',date_remitted:dateRemitted,legacy_duplicate:false};
     await tx`insert into collections ${tx(receipt)}`;
-    const finance=await repriceEntries((query,params)=>tx.unsafe(query,params),{collectionIds:[source.id]});
+    const finance=await repriceEntries((query,params)=>tx.unsafe(query,params),{collectionIds:[source.id,...(snapshot.ownerChangedIds??[])]});
+    if(ownerHistory)assert.equal(finance.slips.length,0,'Remittance expectations must remain unchanged');
     const rows=await tx`select *,or_date::text as day from collections where enrollment_id=${account.enrollment_id}`;
     const a=plan.account;
     const state=accountState({id:a.enrollment_id,doi:a.day,basePay:a.rate,payBalanceTotal:a.total||0,storedStatus:a.account_status,flexible:a.flexible,maxMonthlyPayment:a.maximum,registrationFee:a.registration_fee_required,forfeitMonths:forfeitMonthsFor(a.category_id)},
@@ -97,8 +133,8 @@ async function main(){
     snapshot.inserted=saved;snapshot.status=state.status;snapshot.finance=finance;
     snapshot.correctionId=`COR-OR-${key}-${Date.now().toString(36).toUpperCase()}`;
     await tx`insert into record_corrections ${tx({correction_id:snapshot.correctionId,module:actor,record_id:source.id,
-      reason:`Owner requested adding OR ${key} and explicitly confirmed member ${plan.confirmedMember}. Original source receipt/date/amount/month retained; NOP aligned with confirmed account DOI and continuous existing history. Historical collection imported without a new turnover or changes to existing receipts.`,
-      before_json:{source:source.ref,accountStatus:account.account_status,sourceCoverage:source.coverage},after_json:{receipt:saved,accountStatus:state.status,finance},
+      reason:ownerHistory?plan.ownerHistoryReason:`Owner requested adding OR ${key} and explicitly confirmed member ${plan.confirmedMember}. Original source receipt/date/amount/month retained; NOP aligned with confirmed account DOI and continuous existing history. Historical collection imported without a new turnover or changes to existing receipts.`,
+      before_json:{source:source.ref,accountStatus:account.account_status,sourceCoverage:source.coverage,...(ownerHistory?{history}: {})},after_json:{receipt:saved,accountStatus:state.status,finance,...(ownerHistory?{explicitOwnerCoverage:plan.ownerExpected}: {})},
       corrected_at:new Date().toISOString(),encoded_by_name:actor,encoded_at:new Date().toISOString()})}`;
     await tx`insert into audit_log ${tx({action:'insert',table_name:'collections',record_id:source.id,changes_json:saved,user_name:actor})}`;
     fs.writeFileSync(apply?snapshotFile:`backups/receipt-${key}-preview-private.json`,JSON.stringify(snapshot));

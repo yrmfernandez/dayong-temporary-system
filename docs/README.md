@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+The [October 21 receipt 12665 B correction](receipt-12665b-review-20261021.md) restores the missing receipt to PH-77690372 and applies owner-confirmed August/NOP 23 and September/NOP 24 coverage to two existing payments.
+
 The [October 21 PH-77690372 correction](ph77690372-source-correction-20261021.md) restores eight source remittance dates, recalculates eight financial snapshots and refreshes status while preserving the DOI/NOP-confirmed coverage.
 
 The [October 21 PH-53228425 receipt-date correction](ph53228425-receipt-dates-20261021.md) confirms both 5364 M and duplicate-marked 5367 M already exist, and corrects their remittance dates to the owner-provided values.

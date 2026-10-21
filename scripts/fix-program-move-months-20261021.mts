@@ -1,4 +1,8 @@
 /**
+ * RETIRED (October 21, 2026): do not run again. It took each collection's month from the first change after its move,
+ * so it undid corrections made after the move (Source Month of / NOP correction, Receipt consolidation, Member split):
+ * 362 collections on 43 accounts, found on PH-00555176 and put back by scripts/restore-program-move-repair-20261021.mts.
+ *
  * Repairs Month of and NOP on accounts whose collections were moved between programs (owner, October 21, 2026: "when
  * transferring to another program the month of and NOP is mixed up"). Until today a move numbered the payments again
  * with months worked out from the DOI, which shifted every month on accounts whose DOI and NOPs do not line up (most
@@ -29,6 +33,7 @@ import { receiptMonthsAt, renumber, repriceCollections } from "@/lib/entry-edit"
 import { createReadableId } from "@/lib/readable-id";
 
 nextEnv.loadEnvConfig(process.cwd());
+if (!process.argv.includes("--i-know-it-is-retired")) { console.error("Retired: this repair undid later corrections. See the note at the top of the file."); process.exit(1); }
 const apply = process.argv.includes("--apply"), all = process.argv.includes("--all");
 const SINCE = "2026-10-01";
 const rows = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
