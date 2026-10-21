@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+The [October 21 other-program audit](other-program-source-repairs-20261021.md) checks 12,806 accounts across 46 programs using aggregate-only scripts, corrects two receipt-month histories and refreshes 973 additional statuses.
+
 The [October 21 Bracketing source audit](bracketing-source-repairs-20261021.md) scans 1,462 accounts, corrects 75 NOPs across 31 histories and refreshes 251 additional statuses, with a separate list of histories requiring review.
 
 The [October 21 PH-02795415 Bracketing correction](ph02795415-bracketing-20261021.md) restores April–September NOP 2–7, aligns the DOI with the March 31 New Sale and updates account status.

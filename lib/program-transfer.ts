@@ -1,11 +1,11 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
-import { accountState, firstCollectionNop, forfeitMonthsFor, saleNops, todayInManila, type AccountPayment } from "@/lib/account-rules";
+import { accountState, forfeitMonthsFor, saleNops, todayInManila, type AccountPayment } from "@/lib/account-rules";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { currentDb, inTransaction } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
-import { mergeAccountInto, renumber, repriceCollections, repriceSales } from "@/lib/entry-edit";
+import { mergeAccountInto, numberingStart, receiptMonthsAt, renumber, repriceCollections, repriceSales } from "@/lib/entry-edit";
 import { getEncoder } from "@/lib/encoder-context";
 
 /**
@@ -14,7 +14,8 @@ import { getEncoder } from "@/lib/encoder-context";
  *   - any program (owner, October 19, 2026), as long as what each receipt paid works out in the new monthly pay: with
  *     the same pay every NOP stays; otherwise each receipt covers amount ÷ the new monthly pay (whole months; on a
  *     flexible program at least the minimum a month) and the payments are numbered again in OR-date order from the
- *     account's first NOP, months following the DOI (monthsAt). An account whose receipts do not work out is left and reported;
+ *     account's first NOP and its own first month (monthsAt, numberingStart; October 21, 2026: months used to follow the
+ *     DOI, which mixed up Month of and NOP). An account whose receipts do not work out is left and reported;
  *   - an account moves with its New Sale, collections and transfer records; its payment status is recalculated;
  *   - a member who already has an account in the target program is merged into it (their payments join that account,
  *     renumbered in OR-date order from the lowest NOP either had, the earlier DOI kept: mergeAccountInto in
@@ -33,28 +34,11 @@ const programById = async (id: string) => (await query<Program>(sql`select progr
     coalesce(pay_balance_total, 0)::float8 as total, coalesce(flexible, false) as flexible, max_monthly_payment::float8 as max, coalesce(status, 'active') as status,
     coalesce(registration_fee_required, false) as registration_fee_required
   from programs where program_id = ${text(id)}`))[0];
-const samePay = (a: Program, b: Program) => Math.round(a.rate * 100) === Math.round(b.rate * 100) && a.flexible === b.flexible;
-const peso = (value: number) => `₱${value.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
 
-/**
- * The months each receipt covers in the target program, or null when they stay as they are (same pay). A fixed program:
- * the amount ÷ its monthly pay, which must be a whole number of months. A flexible one: the months the receipt had when
- * each still gets the minimum, otherwise as many whole minimums as it holds, and never above the monthly maximum.
- * Throws, naming the receipt, when the amount does not work out.
- */
-function monthsAt(from: Program, to: Program) {
-  if (samePay(from, to)) return null;
-  const rate = Math.round(to.rate * 100);
-  if (rate <= 0) throw new Error(`${to.program_name} has no monthly pay.`);
-  return (payment: Payment) => {
-    const paid = Math.round(payment.amount * 100), had = Math.max(1, payment.nopTo - payment.nopFrom + 1);
-    const months = to.flexible ? (paid >= rate * had ? had : Math.floor(paid / rate)) : paid % rate === 0 ? paid / rate : 0;
-    const receipt = `OR ${payment.orNumber || payment.id} (${peso(payment.amount)})`;
-    if (months < 1) throw new Error(to.flexible ? `${receipt} is less than the ${peso(to.rate)} minimum of ${to.program_name}.` : `${receipt} is not a whole number of ${peso(to.rate)} months of ${to.program_name}.`);
-    if (to.flexible && to.max && paid > Math.round(to.max * 100) * months) throw new Error(`${receipt} is more than the ${peso(to.max)} monthly maximum of ${to.program_name}.`);
-    return months;
-  };
-}
+
+/** The months each receipt covers in the target program, or null when the pay is the same (receiptMonthsAt). */
+const payRule = (program: Program) => ({ name: program.program_name, rate: program.rate, flexible: program.flexible, max: program.max });
+const monthsAt = (from: Program, to: Program) => receiptMonthsAt(payRule(from), payRule(to));
 
 export type TransferAccount = { enrollmentId: string; memberNumber: string; memberName: string; branch: string; mas: string; doi: string; status: string; payments: number };
 
@@ -150,7 +134,7 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
       let status: string, recounted: Payment[] = [];
       try {
         // A different pay: every receipt counted again at the new monthly pay and numbered on from the account's first NOP.
-        if (months) { const nops = own.map((payment) => payment.nopFrom).filter((nop) => nop > 0); recounted = renumber({ doi: account.doi, registrationFee: Boolean(to.registration_fee_required) }, own, nops.length ? Math.min(...nops) + nopShift : firstCollectionNop({ registrationFee: to.registration_fee_required }), months); }
+        if (months) recounted = renumber(numberingStart(own.map((payment) => ({ nop: payment.nopFrom + nopShift, month: payment.monthFrom })), { doi: account.doi, registrationFee: to.registration_fee_required }), own.filter((payment) => payment.nopFrom > 0), months);
         else if (nopShift) recounted = own.filter((payment) => payment.nopFrom > 0).map((payment) => ({ ...payment, nopFrom: payment.nopFrom + nopShift, nopTo: payment.nopTo + nopShift }));
         status = accountState(base(account.enrollment_id, account.member_id, account.doi), months || nopShift ? recounted : own, today).status;
       } catch (error) { left.push({ enrollmentId: account.enrollment_id, why: error instanceof Error ? error.message : "payments do not fit" }); continue; }

@@ -211,7 +211,8 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
  * Merges a member's account into their other account (owner, October 16, 2026: a program can be moved even when the
  * member's account in the target program already has payments). Every payment of both goes to the target account,
  * numbered one after another in OR-date order from the lowest NOP either had, on the target's numbering (saleNops), each
- * keeping its number of months (or, with sourceMonths, the source's receipts counted again at the target's pay); months follow the earlier DOI, which the target keeps. This is the October 4 repair
+ * keeping its number of months (or, with sourceMonths, the source's receipts counted again at the target's pay); months
+ * continue from that payment's own first month (numberingStart), and the target keeps the earlier DOI. This is the October 4 repair
  * rule (scripts/fix-legacy-receipts.mjs). The combined history must pass the account rules with the target program,
  * or this throws and the caller's transaction saves nothing. Transfer records follow; the source account is deleted.
  * The callers move the New Sale and work out the incentives again.
@@ -224,12 +225,12 @@ export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId
   const doi = [source.doi, target.doi].filter(Boolean).sort()[0] ?? "";
   const fromSource = new Set(data.payments.filter((payment) => payment.enrollmentId === source.id).map((payment) => payment.id));
   const payments = data.payments.map((payment) => ({ ...payment, enrollmentId: target.id }));
-  // Where numbering starts: the lowest NOP, moved onto the target's numbering when the two programs differ in registration
-  // fee (so its month stays), or the target's first collection NOP when there is none.
+  // Where numbering starts: the lowest NOP (moved onto the target's numbering when the two programs differ in registration
+  // fee) and that payment's own first month.
   const owner = (payment: AccountPayment) => (fromSource.has(payment.id) ? source : target);
-  const starts = data.payments.filter((payment) => payment.nopFrom > 0).map((payment) => payment.nopFrom - saleNops(owner(payment)) + saleNops(target));
+  const start = numberingStart(data.payments.map((payment) => ({ nop: payment.nopFrom - saleNops(owner(payment)) + saleNops(target), month: payment.monthFrom })), { doi, registrationFee: target.registrationFee });
   // sourceMonths: the source's payments counted again at the target's monthly pay (a move between programs of different pay).
-  const renumbered = renumber({ doi, registrationFee: target.registrationFee }, payments, starts.length ? Math.min(...starts) : firstCollectionNop(target), (payment) => sourceMonths && fromSource.has(payment.id) ? sourceMonths(payment) : Math.max(1, payment.nopTo - payment.nopFrom + 1));
+  const renumbered = renumber(start, payments, (payment) => sourceMonths && fromSource.has(payment.id) ? sourceMonths(payment) : Math.max(1, payment.nopTo - payment.nopFrom + 1));
   let status: string;
   try { status = accountState({ ...target, doi }, renumbered, today).status; }
   catch (error) { throw new Error(`The payments of ${source.programName} and ${target.programName} do not fit together on one account (${error instanceof Error ? error.message : "coverage"}). Nothing was saved.`); }
@@ -246,21 +247,58 @@ export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId
   return { status, doi, moved, renumbered: changed, collectionIds: renumbered.map((payment) => payment.id), target: target.id };
 }
 
+/** Where an account's numbering starts: a NOP and the month it covers. */
+export type NumberingStart = { nop: number; month: string };
+
 /**
- * Numbers an account's payments again in OR-date order from `first` (the account's lowest NOP before the edit, or its
- * first collection NOP when it had none); `count` gives each payment's months. NOP n covers the DOI month plus
- * (n - saleNops) months: 2 is the month after DOI without a registration fee, 1 with one.
+ * The start of an account's numbering (owner, October 21, 2026: moves between programs mixed up Month of and NOP): its
+ * lowest-NOP payment's NOP and that payment's own first month, so the history keeps where it began. Months used to be
+ * worked out again from the DOI, which shifted every month on accounts whose DOI and NOPs do not line up (most from the
+ * old system). With no payment: the first collection NOP and the month after DOI.
  */
-export function renumber(account: { doi: string; registrationFee?: boolean }, payments: AccountPayment[], first: number, count: (payment: AccountPayment) => number) {
+export function numberingStart(starts: Array<{ nop: number; month: string }>, account: { doi: string; registrationFee?: boolean | null }): NumberingStart {
+  const valid = starts.map((item) => ({ nop: item.nop, month: String(item.month ?? "").slice(0, 7) })).filter((item) => item.nop > 0 && /^\d{4}-\d{2}$/.test(item.month))
+    .sort((a, b) => a.nop - b.nop || a.month.localeCompare(b.month));
+  return valid[0] ?? { nop: firstCollectionNop(account), month: monthName(monthIndex(account.doi.slice(0, 7)) + 1) };
+}
+
+/**
+ * Numbers an account's payments again in OR-date order from `start` (numberingStart); `count` gives each payment's
+ * months, and each NOP keeps the same distance from the start's month.
+ */
+export function renumber(start: NumberingStart, payments: AccountPayment[], count: (payment: AccountPayment) => number) {
   const ordered = [...payments].sort((a, b) => a.orDate.localeCompare(b.orDate) || a.nopFrom - b.nopFrom || a.id.localeCompare(b.id));
-  let next = first;
-  const start = monthIndex(account.doi.slice(0, 7));
+  let next = start.nop;
+  const base = monthIndex(start.month) - start.nop;
   return ordered.map((payment) => {
     const months = count(payment), nopFrom = next, nopTo = next + months - 1;
     next = nopTo + 1;
-    const offset = saleNops(account);
-    return { ...payment, nopFrom, nopTo, monthFrom: monthName(start + nopFrom - offset), monthTo: monthName(start + nopTo - offset) };
+    return { ...payment, nopFrom, nopTo, monthFrom: monthName(base + nopFrom), monthTo: monthName(base + nopTo) };
   });
+}
+
+/** A program's pay, for counting a receipt's months in it. */
+export type PayRule = { name: string; rate: number; flexible: boolean; max: number | null };
+const peso = (value: number) => `₱${value.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
+
+/**
+ * The months each receipt covers in the target program, or null when they stay as they are (same pay). A fixed program:
+ * the amount ÷ its monthly pay, which must be a whole number of months. A flexible one: the months the receipt had when
+ * each still gets the minimum, otherwise as many whole minimums as it holds, and never above the monthly maximum.
+ * Throws, naming the receipt, when the amount does not work out.
+ */
+export function receiptMonthsAt(from: PayRule, to: PayRule) {
+  if (Math.round(from.rate * 100) === Math.round(to.rate * 100) && from.flexible === to.flexible) return null;
+  const rate = Math.round(to.rate * 100);
+  if (rate <= 0) throw new Error(`${to.name} has no monthly pay.`);
+  return (payment: AccountPayment) => {
+    const paid = Math.round(payment.amount * 100), had = Math.max(1, payment.nopTo - payment.nopFrom + 1);
+    const months = to.flexible ? (paid >= rate * had ? had : Math.floor(paid / rate)) : paid % rate === 0 ? paid / rate : 0;
+    const receipt = `OR ${payment.orNumber || payment.id} (${peso(payment.amount)})`;
+    if (months < 1) throw new Error(to.flexible ? `${receipt} is less than the ${peso(to.rate)} minimum of ${to.name}.` : `${receipt} is not a whole number of ${peso(to.rate)} months of ${to.name}.`);
+    if (to.flexible && to.max && paid > Math.round(to.max * 100) * months) throw new Error(`${receipt} is more than the ${peso(to.max)} monthly maximum of ${to.name}.`);
+    return months;
+  };
 }
 
 async function editCollection(tx: Transaction, input: EntryEditInput): Promise<Outcome> {
@@ -300,18 +338,18 @@ async function editCollection(tx: Transaction, input: EntryEditInput): Promise<O
   const others = (accountId: string) => data.payments.filter((payment) => payment.enrollmentId === accountId && payment.id !== row.collection_id);
   const span = (payment: AccountPayment) => (payment.id === row.collection_id ? months : Math.max(1, payment.nopTo - payment.nopFrom + 1));
   const plans = new Map<string, AccountPayment[]>();
-  // Where an account's numbering starts: its lowest NOP (the edited payment counts only on its own account), else its
-  // first collection NOP. A payment moving between accounts whose programs differ in registration fee keeps its month.
+  // Where an account's numbering starts: its lowest NOP and that payment's own month (the edited payment counts only on
+  // its own account), else its first collection NOP and the month after DOI. A payment moving between accounts whose
+  // programs differ in registration fee keeps its month.
   const firstNop = (accountId: string, withEdited: boolean) => {
     const account = accountId === to.id ? to : from;
     const shift = (payment: AccountPayment) => payment.id === row.collection_id ? saleNops(account) - saleNops(from) : 0;
-    const nops = [...others(accountId), ...(withEdited ? [edited] : [])].filter((payment) => payment.nopFrom > 0).map((payment) => payment.nopFrom + shift(payment));
-    return nops.length ? Math.min(...nops) : firstCollectionNop(account);
+    return numberingStart([...others(accountId), ...(withEdited ? [edited] : [])].map((payment) => ({ nop: payment.nopFrom + shift(payment), month: payment.monthFrom })), account);
   };
   if (reorder) {
     // The edited payment takes its place among the target account's payments by OR date.
-    plans.set(to.id, renumber(to, [...others(to.id), edited], firstNop(to.id, !moved), span));
-    if (moved) plans.set(from.id, renumber(from, others(from.id), firstNop(from.id, true), span));
+    plans.set(to.id, renumber(firstNop(to.id, !moved), [...others(to.id), edited], span));
+    if (moved) plans.set(from.id, renumber(firstNop(from.id, true), others(from.id), span));
   } else plans.set(to.id, [...others(to.id), edited]);
   const statuses = new Map<string, string>();
   for (const account of [to, ...(moved ? [from] : [])]) {
@@ -398,9 +436,9 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   const [account] = await tx.select().from(memberPrograms).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))).for("update");
   const changesProgram = programId !== row.program_id;
   let accountNote = "", status: string | null = null, doi = day(account?.doi), mergeTarget = "";
-  // Moving to a program that differs in registration fee renumbers the account's collections so their months stay
-  // (saleNops: NOP 2 is the month after DOI without a fee, NOP 1 with one).
-  let nopShift = 0;
+  // Moving to another program: with a different monthly pay each receipt is counted again at the new pay (as a program
+  // transfer does); with a different registration fee the NOPs shift by one so the months stay (saleNops).
+  let renumberedPaid: AccountPayment[] | null = null;
   if (account) {
     const data = await loadAccountData({ enrollmentIds: [account.enrollment_id], includeDeactivated: true }, tx, { lock: true });
     const loaded = data.accounts[0];
@@ -412,9 +450,17 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
       mergeTarget = existing?.id ?? "";
     }
     // Merging into the member's existing account is checked there (mergeAccountInto); otherwise the account moves as it is.
-    if (changesProgram && !mergeTarget) nopShift = saleNops({ registrationFee: program.registrationFeeRequired }) - saleNops(loaded);
-    const shifted = nopShift ? paid.map((payment) => ({ ...payment, nopFrom: payment.nopFrom + nopShift, nopTo: payment.nopTo + nopShift })) : paid;
-    if (!mergeTarget) try { status = accountState({ ...loaded, programId, doi, basePay: Number(program.basePay) || 0, payBalanceTotal: Number(program.payBalanceTotal) || 0, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(program.categoryId), registrationFee: program.registrationFeeRequired }, shifted, today).status; }
+    if (!mergeTarget) try {
+      if (changesProgram) {
+        const nopShift = saleNops({ registrationFee: program.registrationFeeRequired }) - saleNops(loaded);
+        const recount = receiptMonthsAt({ name: loaded.programName, rate: loaded.basePay, flexible: Boolean(loaded.flexible), max: loaded.maxMonthlyPayment ?? null }, { name: program.name, rate: Number(program.basePay) || 0, flexible: Boolean(program.flexible), max: program.maxMonthlyPayment ?? null });
+        const posted = paid.filter((payment) => payment.nopFrom > 0);
+        if (recount) renumberedPaid = renumber(numberingStart(posted.map((payment) => ({ nop: payment.nopFrom + nopShift, month: payment.monthFrom })), { doi, registrationFee: program.registrationFeeRequired }), posted, recount);
+        else if (nopShift) renumberedPaid = posted.map((payment) => ({ ...payment, nopFrom: payment.nopFrom + nopShift, nopTo: payment.nopTo + nopShift }));
+      }
+      const shifted = renumberedPaid ?? paid;
+      status = accountState({ ...loaded, programId, doi, basePay: Number(program.basePay) || 0, payBalanceTotal: Number(program.payBalanceTotal) || 0, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(program.categoryId), registrationFee: program.registrationFeeRequired }, shifted, today).status;
+    }
     catch (error) { throw new Error(`${program.name}: ${error instanceof Error ? error.message : "the account's payments do not fit"} Nothing was saved.`); }
     if (changesProgram && !mergeTarget) accountNote = `account ${account.enrollment_id} and its ${paid.length} collection(s) moved to ${program.name}`;
   } else if (changesProgram) accountNote = "no account was found for this New Sale; only the sale changed";
@@ -449,7 +495,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
     await tx.update(memberPrograms).set({ program_id: programId, doi: doi || null, doi_time: doiTime || null, amount_paid: amount, remittance_method: method || null, ...(status ? { account_status: status } : {}) }).where(eq(memberPrograms.enrollment_id, account.enrollment_id));
     if (changesProgram) {
       await tx.update(collections).set({ program_id: programId }).where(eq(collections.enrollment_id, account.enrollment_id));
-      if (nopShift) await tx.execute(sql`update collections set nop_from = nop_from + ${nopShift}, nop_to = nop_to + ${nopShift} where enrollment_id = ${account.enrollment_id} and status = 'Posted' and nop_from is not null`);
+      for (const payment of renumberedPaid ?? []) await tx.update(collections).set({ nop_from: payment.nopFrom, nop_to: payment.nopTo, month_from: payment.monthFrom, month_to: payment.monthTo }).where(eq(collections.collection_id, payment.id));
       const moved = await tx.select({ id: collections.collection_id }).from(collections).where(eq(collections.enrollment_id, account.enrollment_id));
       const followed = await repriceCollections(tx, moved.map((item) => item.id));
       if (followed.repriced) accountNote += `; ${followed.repriced} collection(s) with new incentives${followed.slips.length ? ` (slips ${followed.slips.join(", ")} follow)` : ""}`;

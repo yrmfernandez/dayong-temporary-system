@@ -61,4 +61,5 @@ Maintenance and data-repair scripts are in `scripts/` and listed in the [code re
 
 - Update the matching document in `docs/` with every change, and regenerate the code reference.
 - Member personal data is private: scripts print IDs, codes and counts, not member details.
+- For data investigations and repairs, process records through scripts and print aggregate results only. Keep individual records, source comparisons, backups and diagnostics in ignored private files; do not print raw member or receipt data into assistant/tool output (owner, October 21, 2026).
 - Every data change is recorded in the Audit Log; script corrections also add a summary to Record Corrections.

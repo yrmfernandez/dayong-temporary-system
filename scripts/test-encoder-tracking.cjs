@@ -888,14 +888,21 @@ test('deleting a remittance keeps its entries for adjustments, or deletes them w
   assert.deepEqual([correction.module, correction.reason], ['Delete remittance with its entries', 'Duplicate entries']);
 });
 
-test('renumbering keeps NOP n on the DOI month plus n less the NOPs the New Sale counts', () => {
+test('renumbering starts from the first payment of the account, never from the DOI', () => {
   const h = harness();
-  const { renumber } = h.load('lib/entry-edit.ts');
+  const { renumber, numberingStart } = h.load('lib/entry-edit.ts');
   const paid = [{ id: 'C1', enrollmentId: 'E1', orDate: '2026-01-20', orNumber: '1 A', monthFrom: '2026-02', monthTo: '2026-02', nopFrom: 1, nopTo: 1, amount: 350, dateRemitted: '', mas: '' }];
-  const [withFee] = renumber({ doi: '2026-01-15', registrationFee: true }, paid, 1, () => 2);
-  assert.deepEqual([withFee.nopFrom, withFee.nopTo, withFee.monthFrom, withFee.monthTo], [1, 2, '2026-02', '2026-03'], 'registration fee: NOP 1 is the month after DOI');
-  const [withoutFee] = renumber({ doi: '2026-01-15' }, paid, 2, () => 1);
-  assert.deepEqual([withoutFee.nopFrom, withoutFee.monthFrom], [2, '2026-02'], 'no registration fee: NOP 2 is the month after DOI');
+  // No payment yet: the first collection NOP and the month after DOI.
+  assert.deepEqual(numberingStart([], { doi: '2026-01-15', registrationFee: true }), { nop: 1, month: '2026-02' });
+  assert.deepEqual(numberingStart([], { doi: '2026-01-15' }), { nop: 2, month: '2026-02' });
+  const [withFee] = renumber({ nop: 1, month: '2026-02' }, paid, () => 2);
+  assert.deepEqual([withFee.nopFrom, withFee.nopTo, withFee.monthFrom, withFee.monthTo], [1, 2, '2026-02', '2026-03']);
+  // An old-system account whose DOI does not line up with its NOPs: NOP 30 paid June 2026 although the DOI is 2024-03.
+  // Counted again at half the pay, it keeps starting at NOP 30 in June (the DOI would have put NOP 30 in August 2026).
+  const legacy = [{ ...paid[0], id: 'L1', orDate: '2026-06-05', monthFrom: '2026-06', monthTo: '2026-06', nopFrom: 30, nopTo: 30 }, { ...paid[0], id: 'L2', orDate: '2026-07-05', monthFrom: '2026-07', monthTo: '2026-07', nopFrom: 31, nopTo: 31 }];
+  const start = numberingStart(legacy.map((payment) => ({ nop: payment.nopFrom, month: payment.monthFrom })), { doi: '2024-03-10' });
+  assert.deepEqual(start, { nop: 30, month: '2026-06' });
+  assert.deepEqual(renumber(start, legacy, () => 2).map((payment) => [payment.nopFrom, payment.nopTo, payment.monthFrom, payment.monthTo]), [[30, 31, '2026-06', '2026-07'], [32, 33, '2026-08', '2026-09']]);
 });
 
 test('all mutation routes reject unauthenticated requests before writing', async () => {

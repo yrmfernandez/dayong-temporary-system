@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 55 component files; 554 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 55 component files; 557 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -179,7 +179,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/entry-check-reminder.ts](../lib/entry-check-reminder.ts) | `COLLECTION_CHECK_REMINDER`, `SALE_CHECK_REMINDER` | — |
 | [lib/entry-controls.ts](../lib/entry-controls.ts) | `BACKDATE_REASON_MIN`, `needsBackdateReason`, `checkBackdate`, `controlTotalProblem`, `isIncompleteApplicationNumber`, `INCOMPLETE_APPLICATION_MESSAGE`, `isDoiTime`, `DOI_TIME_MESSAGE`, `nextApplicationNumber` | `@/lib/remittance-deadline`, `@/lib/working-days` |
 | [lib/entry-corrections.ts](../lib/entry-corrections.ts) | `correctSaleOrCollection` | `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/remittance-deadline`, `@/lib/record-corrections`, `@/lib/or-number` |
-| [lib/entry-edit.ts](../lib/entry-edit.ts) | `EditKind`, `EditAccount`, `EditableEntry`, `getEditableEntry`, `EntryEditInput`, `saveEntryEdit`, `repriceCollections`, `repriceSales`, `mergeAccountInto`, `renumber` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/duplicate-entries`, `@/lib/entry-controls`, `@/lib/google-sheets-data`, `@/lib/or-number`, `@/lib/program-amount-lock`, `@/lib/record-corrections`, `@/lib/remittance`, `@/lib/remittance-deadline`, `@/lib/remittance-methods` |
+| [lib/entry-edit.ts](../lib/entry-edit.ts) | `EditKind`, `EditAccount`, `EditableEntry`, `getEditableEntry`, `EntryEditInput`, `saveEntryEdit`, `repriceCollections`, `repriceSales`, `mergeAccountInto`, `NumberingStart`, `numberingStart`, `renumber`, `PayRule`, `receiptMonthsAt` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/duplicate-entries`, `@/lib/entry-controls`, `@/lib/google-sheets-data`, `@/lib/or-number`, `@/lib/program-amount-lock`, `@/lib/record-corrections`, `@/lib/remittance`, `@/lib/remittance-deadline`, `@/lib/remittance-methods` |
 | [lib/entry-finance.mjs](../lib/entry-finance.mjs) | `repriceEntries` | `./remittance.ts` |
 | [lib/entry-search.ts](../lib/entry-search.ts) | `SearchKind`, `isSearchKind`, `FoundEntry`, `SEARCH_LIMIT`, `searchEntries` | `@/lib/db` |
 | [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/lib/db`, `@/lib/sheets-on-db`, `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/date-checks` |
@@ -480,6 +480,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-ph73303959-or-date.mjs](../scripts/fix-ph73303959-or-date.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph80673488-d250fg.mjs](../scripts/fix-ph80673488-d250fg.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph97483925-month-of.mts](../scripts/fix-ph97483925-month-of.mts) | `@next/env` | Yes; read source for semantics |
+| [scripts/fix-program-move-months-20261021.mts](../scripts/fix-program-move-months-20261021.mts) | `@next/env`, `drizzle-orm`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/entry-edit`, `@/lib/readable-id` | Yes; read source for semantics |
 | [scripts/fix-registration-fee-nops-20261021.mts](../scripts/fix-registration-fee-nops-20261021.mts) | `@next/env`, `drizzle-orm`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/entry-edit`, `@/lib/readable-id` | Yes; read source for semantics |
 | [scripts/fix-rem-gudn-duplicate.mjs](../scripts/fix-rem-gudn-duplicate.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-remitted-before-receipt.mjs](../scripts/fix-remitted-before-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
@@ -564,8 +565,10 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/repair-account-source-history.mjs](../scripts/repair-account-source-history.mjs) | `node:fs`, `node:util`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/repair-bracketing-source.mjs](../scripts/repair-bracketing-source.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/repair-branch-ids.mjs](../scripts/repair-branch-ids.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
+| [scripts/repair-other-program-source.mjs](../scripts/repair-other-program-source.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/repair-sheet-rows.mjs](../scripts/repair-sheet-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/repair-source-month-coverage.mjs](../scripts/repair-source-month-coverage.mjs) | `node:assert/strict`, `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
+| [scripts/report-other-program-source.mjs](../scripts/report-other-program-source.mjs) | `node:fs` | Yes; read source for semantics |
 | [scripts/reprice-corrected-entries.mjs](../scripts/reprice-corrected-entries.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/restore-clearing-incentives.mts](../scripts/restore-clearing-incentives.mts) | `@next/env`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow`, `@/lib/work-calendar` | Yes; read source for semantics |
 | [scripts/restore-ph70661323-4191s.mjs](../scripts/restore-ph70661323-4191s.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |

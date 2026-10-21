@@ -1247,3 +1247,13 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **To do (owner):** preview on production, check the counts and the lists, then apply:
   - `node scripts/prod.mjs node node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.json scripts/fix-registration-fee-nops-20261021.mts`
   - the same with `--apply` at the end. Deploy the code change first or together, so new collections follow the new numbering.
+
+### Program moves keep Month of and NOP (2026-10-21)
+
+- **Owner:** transferring to another program mixes up Month of and NOP; fix it and the affected accounts.
+- **Found (from the code; production reads were blocked):** `renumber` worked months out from the DOI (NOP n = DOI month + n - 1). On accounts whose DOI and NOPs do not line up (most from the old system) every renumbered month shifted. It runs on program transfers with a different pay, merges into the member's existing account, and collection moves between accounts. Changing a New Sale's program moved the account as it was, so with a different pay the receipts kept their old month counts.
+- **Done:** `numberingStart` and a new `renumber(start, payments, count)` in `lib/entry-edit.ts`: numbering starts at the account's lowest NOP and that payment's own first month (no payment: first collection NOP and the month after DOI). `receiptMonthsAt` (moved from `lib/program-transfer.ts`) is shared; a New Sale program change now counts receipts again at the new pay like a transfer. Tests; 215 pass; build passes.
+- **Done:** `scripts/fix-program-move-months-20261021.mts`: for every account holding a collection moved between programs since October 1 (Audit Log), numbers the payments again from the current lowest NOP at the month that payment covered before its first move, with receipts counted again at the current pay where the original program differed; the history must pass the account rules or the account is listed and left. Reprices changed collections not on approved remittances, recalculates the account status, logs "Program move months" in Record Corrections. Staging preview: 26 moved collections on 10 accounts, all already right.
+- **In progress:** none.
+- **To do (owner):** deploy, then on production preview, check the before/after list, and apply this script; then run the registration-fee NOP script (its own preview first):
+  - `node scripts/prod.mjs node node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.json scripts/fix-program-move-months-20261021.mts` (add `--all` to list every change, `--apply` to write)
