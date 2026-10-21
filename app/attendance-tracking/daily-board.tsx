@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckSquare, Printer, RefreshCw } from "lucide-react";
+import { CheckSquare, Printer, RefreshCw, Undo2 } from "lucide-react";
+import { promptDialog } from "@/components/app-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -79,6 +80,8 @@ export function DailyBoard() {
   const sunday = new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
   const canMark = Boolean(board?.canMark) && !sunday;
   const isMarkable = (row: Row) => canMark && markableCategories.includes(row.category);
+  // A mark management made (not the system's absence, a clock-in or leave) can be reverted.
+  const isRevertable = (row: Row) => canMark && Boolean(row.record) && !row.record?.timeIn && !row.systemAbsent && (["Absent", "AWOL", "Day Off", "Not required"] as Category[]).includes(row.category);
   const shown = sections.filter((section) => (!focus || focus === section.category || (focus === "Present" && presentCategories.includes(section.category))) && count(section.category) > 0);
 
   async function saveCorrection() {
@@ -114,6 +117,25 @@ export function DailyBoard() {
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to mark attendance."); }
     finally { setMarking(false); }
   }
+
+  /** Reverts the marks of the given employees, with a reason (today: back to Not clocked in yet; earlier: Absent by system). */
+  async function revertMarks(ids: string[], who: string) {
+    if (!ids.length || !board) return;
+    const outcome = board.date === board.today ? "They go back to Not clocked in yet and can still clock in." : "That day becomes Absent by system, as for anyone with no record.";
+    const reason = await promptDialog(`Revert the mark of ${who}? ${outcome}\n\nGive the reason:`, { required: true, confirmLabel: "Revert", danger: true, placeholder: "e.g. Marked by mistake" });
+    if (!reason?.trim()) return;
+    setMarking(true); setError(""); setMessage("");
+    try {
+      const response = await fetch("/api/attendance-tracking/daily", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "revert", attendanceDate: date, employeeIds: ids, reason }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to revert the mark.");
+      const skipped = (result.skipped ?? []) as Array<{ employeeId: string; reason: string }>;
+      setMessage(`${result.message}${skipped.length ? ` ${skipped.slice(0, 5).map((item) => `${item.employeeId} (${item.reason})`).join(", ")}${skipped.length > 5 ? ", …" : ""}` : ""}`);
+      setSelected((current) => { const next = new Set(current); for (const id of ids) next.delete(id); return next; }); await load();
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to revert the mark."); }
+    finally { setMarking(false); }
+  }
+  const chosenRevertable = chosen.filter((id) => { const row = rows.find((item) => item.employeeId === id); return row ? isRevertable(row) : false; });
 
   const canCorrect = Boolean(board?.canAdjustLate || board?.canSetClockOut);
   const missingClockOuts = rows.filter((row) => presentCategories.includes(row.category) && row.record?.timeIn && !row.record.timeOut).length;
@@ -157,6 +179,7 @@ export function DailyBoard() {
         <div className="space-y-1"><Label htmlFor="mark-note">Note (optional)</Label><Input id="mark-note" maxLength={200} placeholder={markStatus === "Not Required" ? "e.g. MAS field work, no clock-in required" : "e.g. No call, no show"} value={markNote} onChange={(event) => setMarkNote(event.target.value)} /></div>
         <Button type="button" disabled={marking || !chosen.length} onClick={() => void markSelected()}>{marking ? "Marking..." : `Mark ${chosen.length} as ${markOptions.find((option) => option.value === markStatus)?.short}`}</Button>
       </div>
+      {chosenRevertable.length > 0 && <div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" variant="outline" disabled={marking} onClick={() => void revertMarks(chosenRevertable, `${chosenRevertable.length} selected employee${chosenRevertable.length === 1 ? "" : "s"}`)}><Undo2 className="size-4" />Revert {chosenRevertable.length} mark{chosenRevertable.length === 1 ? "" : "s"}</Button><span className="text-xs text-muted-foreground">Undo Absent, AWOL, Day Off or No attendance needed marked by mistake.</span></div>}
       <p className="text-xs text-muted-foreground">No attendance needed is for employees who do not have to clock in that day, such as MAS. It is not counted as absent, and the system will not mark them Absent at the end of the day. If they clock in anyway, the clock-in replaces the mark.</p>
     </CardContent></Card>}
     {focus && <p className="text-xs text-muted-foreground print:hidden">Showing {focus} only. <button type="button" className="font-medium text-primary hover:underline" onClick={() => setFocus("")}>Show everyone</button></p>}
@@ -169,7 +192,7 @@ export function DailyBoard() {
       const markable = list.filter(isMarkable).map((row) => row.employeeId);
       const allTicked = markable.length > 0 && markable.every((id) => selected.has(id));
       return <Card key={section.category} className="break-inside-avoid"><CardHeader className="pb-2"><CardTitle className={`text-base ${section.tone}`}>{section.title} <span className="font-normal text-muted-foreground">({list.length})</span></CardTitle></CardHeader><CardContent><div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[720px] text-sm">
-        <thead className="bg-muted/50 text-left"><tr>{markable.length > 0 && <th className="w-10 p-2.5 print:hidden"><input type="checkbox" aria-label={`Select all ${section.title}`} checked={allTicked} onChange={(event) => toggle(markable, event.target.checked)} /></th>}<th className="p-2.5">Employee</th><th className="p-2.5">Branch</th>{clocked && <><th className="p-2.5">Time in</th><th className="p-2.5">Time out</th></>}{showLate && <th className="p-2.5">Late by</th>}{showEarly && <th className="p-2.5">Early by</th>}<th className="p-2.5">Notes</th>{clocked && canCorrect && <th className="p-2.5 print:hidden" />}</tr></thead>
+        <thead className="bg-muted/50 text-left"><tr>{markable.length > 0 && <th className="w-10 p-2.5 print:hidden"><input type="checkbox" aria-label={`Select all ${section.title}`} checked={allTicked} onChange={(event) => toggle(markable, event.target.checked)} /></th>}<th className="p-2.5">Employee</th><th className="p-2.5">Branch</th>{clocked && <><th className="p-2.5">Time in</th><th className="p-2.5">Time out</th></>}{showLate && <th className="p-2.5">Late by</th>}{showEarly && <th className="p-2.5">Early by</th>}<th className="p-2.5">Notes</th>{clocked && canCorrect && <th className="p-2.5 print:hidden" />}{!clocked && list.some(isRevertable) && <th className="p-2.5 print:hidden" />}</tr></thead>
         <tbody>{list.map((row) => { const record = row.record; const isEditing = editing?.employeeId === row.employeeId; return [
           <tr key={row.employeeId} className="border-t align-top">
             {markable.length > 0 && <td className="p-2.5 print:hidden"><input type="checkbox" aria-label={`Select ${row.name}`} checked={selected.has(row.employeeId)} onChange={(event) => toggle([row.employeeId], event.target.checked)} /></td>}
@@ -179,6 +202,7 @@ export function DailyBoard() {
             {showLate && <td className="p-2.5 font-semibold text-amber-700 tabular-nums">{duration(record?.lateMinutes ?? 0)}</td>}
             {showEarly && <td className="p-2.5 text-emerald-700 tabular-nums">{duration(row.earlyMinutes)}</td>}
             <td className="max-w-80 p-2.5 text-xs">{record?.notes || (record?.leaveType ? `${record.leaveType} · ${record.leaveApprovalStatus}` : "—")}</td>
+            {!clocked && list.some(isRevertable) && <td className="p-2.5 text-right print:hidden">{isRevertable(row) && <Button type="button" size="sm" variant="outline" disabled={marking} onClick={() => void revertMarks([row.employeeId], row.name)}><Undo2 className="size-4" />Revert</Button>}</td>}
             {clocked && canCorrect && <td className="p-2.5 text-right print:hidden"><div className="flex flex-wrap justify-end gap-2">
               {isEditing ? <Button type="button" size="sm" variant="outline" onClick={() => setEditing(null)}>Cancel</Button> : <>
                 {board?.canAdjustLate && <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ employeeId: row.employeeId, mode: "late", hours: String(Math.floor((record?.lateMinutes ?? 0) / 60)), minutes: String((record?.lateMinutes ?? 0) % 60), timeOut: "", reason: "" })}>Adjust late</Button>}

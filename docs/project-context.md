@@ -1212,3 +1212,10 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **To do:** none.
 - **Owner (follow-up):** when the Entry Clerk clicks Preview in Collections and New Sales, a pop-up reminding them, firmly, to double-check every entry before saving.
 - **Done:** `alertDialog` gained `warning` (amber triangle, capitalised heading, closed only with its button). Preview Collections and Preview Sales (clerk only, not MAS submitting) show `COLLECTION_CHECK_REMINDER` / `SALE_CHECK_REMINDER` from `lib/entry-check-reminder.ts` before the preview opens. Build passes.
+
+### Revert attendance marks (2026-10-21)
+
+- **Owner:** a Revert button on the employees marked in attendance.
+- **Done:** `revertMarks` in `app/api/attendance-tracking/daily/route.ts` (PATCH, action `revert`, employee IDs, date, required reason). Today: the marked row is deleted (`deleteRowsWhere`, found again by employee, date, no clock-in and a mark status; Audit Log keeps it), so the employee is Not clocked in yet. Earlier day: the record becomes Absent by system with `<mark> mark reverted by <name> on <date>: <reason>` after the system note, so payroll still counts it. System absences, clock-ins and leave are skipped and reported. Daily board: **Revert** per marked row and **Revert N marks** for ticked rows; Attendance Review: **Revert** beside the mark. Both ask the reason in the app pop-up. Tested; no migration.
+- **In progress:** none.
+- **To do (owner, optional):** a mark reverted on the same day leaves no attendance record, so its reason is not stored; the Audit Log shows only that the row was removed and by whom. Say if the reason must be kept too.

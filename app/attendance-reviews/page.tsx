@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { promptDialog } from "@/components/app-dialog";
 import { AttendanceCalendar } from "@/components/attendance-calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -145,6 +146,28 @@ export default function AttendanceReviewsPage() {
           ? error.message
           : "Unable to update attendance.",
       );
+    } finally {
+      setUpdatingId("");
+    }
+  };
+
+  /** Reverts management's mark with a reason (today: back to no record; an earlier day: Absent by system). */
+  const revertMark = async (employee: EmployeeAttendance) => {
+    const who = employee.fullName || employee.employeeId;
+    const outcome = attendanceDate === todayInPhilippines() ? "They go back to no record and can still clock in." : "That day becomes Absent by system, as for anyone with no record.";
+    const reason = await promptDialog(`Revert the mark of ${who}? ${outcome}\n\nGive the reason:`, { required: true, confirmLabel: "Revert", danger: true, placeholder: "e.g. Marked by mistake" });
+    if (!reason?.trim()) return;
+    setUpdatingId(employee.employeeId);
+    setMessage("");
+    try {
+      const response = await fetch("/api/attendance-tracking/daily", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "revert", attendanceDate, employeeIds: [employee.employeeId], reason }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to revert the mark.");
+      const skipped = (result.skipped ?? []) as Array<{ reason: string }>;
+      await loadReview();
+      setMessage(skipped.length ? `Not reverted: ${skipped[0].reason}.` : result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to revert the mark.");
     } finally {
       setUpdatingId("");
     }
@@ -302,6 +325,10 @@ export default function AttendanceReviewsPage() {
                       <Badge variant={employee.record?.status === "Present" ? "default" : "secondary"}>
                         {employee.closed ? "Branch closed" : employee.systemAbsent ? "Absent · by system" : employee.record?.status === "Not Required" ? "No attendance needed" : employee.record?.status || (employee.carriesNotRequired ? "No attendance needed · carried over" : "No record")}
                       </Badge>
+                      {/* A mark management made (not the system's absence, a clock-in or leave) can be reverted. */}
+                      {!employee.systemAbsent && !employee.record?.timeIn && ["Absent", "AWOL", "Day Off", "Not Required"].includes(employee.record?.status ?? "") && (
+                        <Button type="button" size="sm" variant="outline" disabled={updatingId === employee.employeeId} onClick={() => void revertMark(employee)}>Revert</Button>
+                      )}
                       {!locked && (
                         <select
                           aria-label={`Mark ${employee.fullName || employee.employeeId} as`}

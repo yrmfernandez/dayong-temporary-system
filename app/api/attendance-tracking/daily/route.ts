@@ -1,13 +1,14 @@
 import { dayOffEntriesNote } from "@/lib/day-off";
 import { getSessionUser } from "@/lib/auth-server";
-import { closeFinishedAttendanceDaysQuietly, isSystemAbsence } from "@/lib/auto-absence";
+import { closeFinishedAttendanceDaysQuietly, isSystemAbsence, SYSTEM_ABSENCE_NOTE } from "@/lib/auto-absence";
 import { withEncoder } from "@/lib/encoder-context";
 import { closureCovers, closureLabel, employeeAttendanceBranches, getClosures } from "@/lib/attendance-calendar";
-import { addAttendanceRecords, getAttendanceForEmployeeDate, getAttendanceRecordsForDate, getAttendanceRowsForDate, updateAttendanceRecord, type AttendanceRecord } from "@/lib/attendance-data";
+import { addAttendanceRecords, getAttendanceForEmployeeDate, getAttendanceRecordsForDate, getAttendanceRowsForDate, sheetDateText, updateAttendanceRecord, type AttendanceRecord } from "@/lib/attendance-data";
 import { clockOutFigures, getPhilippineDate, SCHEDULED_TIME_IN, SCHEDULED_TIME_OUT } from "@/lib/attendance";
 import { boardCategory, canAdjustLateness, canViewAttendanceTracking, isMarkStatus, minutesBetween, type MarkStatus } from "@/lib/attendance-board";
 import { getEmployees } from "@/lib/employees";
 import { getActiveAttendanceEmployees, getBranches } from "@/lib/google-sheets-data";
+import { deleteRowsWhere } from "@/lib/sheet-rows";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const MAX_LATE_MINUTES = 24 * 60;
@@ -69,6 +70,7 @@ export const PATCH = withEncoder(async (request: Request) => {
     const body = await request.json();
     if (body.action === "clockOut") return Response.json(await setClockOut(body, user.name));
     if (body.action === "resume") return Response.json(await resumeClock(body, user.name));
+    if (body.action === "revert") return Response.json(await revertMarks(body, user.name));
     const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
     const date = typeof body.attendanceDate === "string" ? body.attendanceDate.trim() : "";
     const lateMinutes = Number(body.lateMinutes);
@@ -144,6 +146,47 @@ export const POST = withEncoder(async (request: Request) => {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to mark attendance." }, { status: 400 });
   }
 });
+
+/**
+ * Reverts management's marks (Absent, AWOL, Day Off, No attendance needed) for one day (owner, October 21, 2026), with a
+ * reason. Today the record is removed, so the employee is Not clocked in yet and can still clock in (the Audit Log keeps
+ * the removed row). An earlier day gets what the end-of-day rule gives someone with no record, Absent by system, with
+ * who reverted it and why in the notes, so payroll still counts the day. Clock-ins, approved leave and the system's own
+ * absences are not marks and are skipped.
+ */
+async function revertMarks(body: Record<string, unknown>, by: string) {
+  const date = typeof body.attendanceDate === "string" ? body.attendanceDate.trim() : "";
+  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 200) : "";
+  const ids = Array.isArray(body.employeeIds) ? [...new Set(body.employeeIds.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean))] : [];
+  const today = getPhilippineDate();
+  if (!validDate(date) || date > today) throw new Error("Choose a date, today or earlier.");
+  if (!ids.length) throw new Error("Select at least one employee.");
+  if (ids.length > MAX_MARKS) throw new Error(`Revert at most ${MAX_MARKS} employees at a time.`);
+  if (reason.length < 3) throw new Error("Enter the reason for reverting the mark.");
+  const existing = new Map((await getAttendanceRowsForDate(date)).map((row) => [row.record.employeeId, row]));
+  const timestamp = new Date().toISOString();
+  const skipped: Array<{ employeeId: string; reason: string }> = [];
+  const removed: string[] = [];
+  let changed = 0;
+  for (const employeeId of ids) {
+    const found = existing.get(employeeId), record = found?.record;
+    if (!found || !record) { skipped.push({ employeeId, reason: "no mark that day" }); continue; }
+    if (record.timeIn || record.timeOut) { skipped.push({ employeeId, reason: "clocked in" }); continue; }
+    if (!isMarkStatus(record.status)) { skipped.push({ employeeId, reason: record.status === "Leave" ? "on approved leave" : `not a mark (${record.status})` }); continue; }
+    if (isSystemAbsence(record)) { skipped.push({ employeeId, reason: "Absent by system, not a mark" }); continue; }
+    if (date === today) { removed.push(employeeId); continue; }
+    const note = `${markLabel(record.status)} mark reverted by ${by} on ${today}: ${reason}`;
+    await updateAttendanceRecord(found.rowNumber, { ...record, status: "Absent", leaveType: "", leaveApprovalStatus: "", notes: `${SYSTEM_ABSENCE_NOTE} | ${note}`, updatedAt: timestamp });
+    changed++;
+  }
+  // Found again by employee and date when deleting, never by an earlier row number; a clock-in made meanwhile is kept.
+  if (removed.length) {
+    const wanted = new Set(removed);
+    changed += await deleteRowsWhere("Attendance", (row) => wanted.has(String(row[1] ?? "").trim()) && sheetDateText(row[2]) === date && !String(row[6] ?? "").trim() && isMarkStatus(String(row[10] ?? "").trim()));
+  }
+  const outcome = date === today ? "back to Not clocked in yet" : "now Absent by system";
+  return { success: true, reverted: changed, skipped, message: `${changed} mark${changed === 1 ? "" : "s"} reverted, ${outcome}.${skipped.length ? ` ${skipped.length} skipped.` : ""}` };
+}
 
 /** Voids today's clock-out (clicked by mistake): the session runs on from the time in, and the employee clocks out again later. */
 async function resumeClock(body: Record<string, unknown>, by: string) {

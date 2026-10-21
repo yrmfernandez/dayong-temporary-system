@@ -135,7 +135,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
   const writes = [];
   const rows = {};
   let missingHeaders = false;
-  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales', 'Beneficiaries', 'Branches', 'Employees', 'Employee Branches', 'Users', 'User Roles', 'Roles', 'Program Incentives', 'Receipt Photos', 'Bank Deposits', 'Report Notes'];
+  const titles = ['Member programs', 'Members', 'Programs', 'Collections', 'Remittances', 'Remittance Collections', 'Sales', 'Beneficiaries', 'Branches', 'Employees', 'Employee Branches', 'Users', 'User Roles', 'Roles', 'Program Incentives', 'Receipt Photos', 'Bank Deposits', 'Report Notes', 'Attendance'];
   const sheets = { spreadsheets: {
     get: async () => ({ data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId } })) } }),
     batchUpdate: async (params) => { writes.push(params); return { data: {} }; },
@@ -2830,6 +2830,34 @@ test('the attendance board marks the selected employees together and skips anyon
   assert.ok(saved.includes('No attendance needed marked by Admin') && saved.includes('Field work'), 'who marked it and the note are kept');
   assert.equal((await route.POST(request({ attendanceDate: '2026-10-05', employeeIds: ['MD-5'], status: 'Present' }))).status, 400, 'only the review statuses');
   assert.equal((await route.POST(request({ attendanceDate: '2026-10-04', employeeIds: ['MD-5'], status: 'Absent' }))).status, 400, 'not on a Sunday');
+});
+
+test('a mark is reverted with a reason: today back to no record, an earlier day Absent by system', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'MD-1', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true, manageAttendance: true } });
+  const today = h.load('lib/attendance.ts').getPhilippineDate();
+  const row = (id, date, status, notes, timeIn = '') => [`ATT-${date.replaceAll('-', '')}-${id}`, id, date, 'MATINA', '08:00', '17:00', timeIn, '', 0, 0, status, 0, 0, '', '', notes, '', ''];
+  h.rows.Attendance = [['attendance_id'],
+    row('MD-5', '2026-10-05', 'AWOL', 'AWOL marked by Admin on 2026-10-05'),
+    row('MD-6', '2026-10-05', 'Absent', 'Absent by system: no clock-in by 11:59 PM and not marked by management.'),
+    row('MD-7', today, 'Day Off', 'Day Off marked by Admin'),
+    row('MD-8', today, 'Present', '', '08:01'),
+  ];
+  const route = h.load('app/api/attendance-tracking/daily/route.ts');
+  const patch = (body) => route.PATCH(new Request('http://localhost/api/attendance-tracking/daily', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'revert', ...body }) }));
+  assert.equal((await patch({ attendanceDate: '2026-10-05', employeeIds: ['MD-5'], reason: '' })).status, 400, 'a reason is required');
+  const past = await (await patch({ attendanceDate: '2026-10-05', employeeIds: ['MD-5', 'MD-6'], reason: 'Marked by mistake' })).json();
+  assert.equal(past.reverted, 1, JSON.stringify(past));
+  assert.deepEqual(past.skipped, [{ employeeId: 'MD-6', reason: 'Absent by system, not a mark' }]);
+  // The earlier day is rewritten as Absent by system, with who reverted it and why.
+  const saved = JSON.stringify(h.writes);
+  assert.ok(saved.includes('"ATT-20261005-MD-5","MD-5"') && saved.includes('"Absent"'), saved);
+  assert.ok(saved.includes('Absent by system: no clock-in by 11:59 PM and not marked by management. | AWOL mark reverted by Admin') && saved.includes('Marked by mistake'), saved);
+  assert.ok(!saved.includes('MD-6'), 'the system absence is left alone');
+  const now = await (await patch({ attendanceDate: today, employeeIds: ['MD-7', 'MD-8'], reason: 'Wrong person' })).json();
+  assert.equal(now.reverted, 1, JSON.stringify(now));
+  assert.deepEqual(now.skipped, [{ employeeId: 'MD-8', reason: 'clocked in' }]);
+  const deletes = h.writes.flatMap((write) => write.requestBody?.requests ?? []).filter((item) => item.deleteDimension).map((item) => item.deleteDimension.range.startIndex);
+  assert.deepEqual(deletes, [3], 'today only the marked row of MD-7 is removed, so they can still clock in; the clock-in stays');
 });
 
 test('a flexible program takes any amount from its minimum, counts months as chosen, and is paid off at its total', () => {
