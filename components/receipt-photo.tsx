@@ -78,11 +78,14 @@ export function ReceiptPhotoUpload({ entryIds, label = "Add receipt photo", repl
 /**
  * "View receipt": loads the photo only when asked, so lists stay light. It opens full screen, fitted to the screen;
  * zoom in (button or a click on the photo) to read small print and scroll around, rotate a sideways photo, Esc closes.
+ * It opens at the screen's width (at most 56rem), so a tall receipt is readable and scrolls up and down (owner,
+ * October 21, 2026: the photo could not be scrolled); Fit shows the whole photo at once, and 2×–4× zoom further.
  */
 export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId: string; label?: string }) {
   const [photo, setPhoto] = useState<{ dataUrl: string; uploadedAt: string; uploadedByName: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // 0 = Fit (the whole photo on screen), 1 = the screen's width (opens here), 2–4 = that width doubled and more.
   const [zoom, setZoom] = useState(1);
 
   const close = () => { setPhoto(null); setZoom(1); };
@@ -126,9 +129,11 @@ export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId:
     }
   };
 
-  // Fitted: the whole photo as large as the screen below the toolbar allows (small photos are enlarged too). Zoomed:
-  // wider than the screen, scrolled.
-  const size = zoom === 1 ? { width: "100%", height: "calc(100dvh - 3.5rem)" } : { width: `${zoom * 100}%`, maxWidth: "none" };
+  // Fit: the whole photo as large as the screen below the toolbar allows. Otherwise the photo's width is set and its
+  // height follows, so it scrolls in both directions. A block (not flex) container keeps the photo from being stretched
+  // to the screen's height, which stopped it scrolling up and down.
+  const fit = zoom === 0;
+  const size = fit ? { maxWidth: "100%", maxHeight: "calc(100dvh - 3.5rem)" } : { width: zoom === 1 ? "min(100%, 56rem)" : `calc(min(100%, 56rem) * ${zoom})`, maxWidth: "none" };
 
   return (
     <>
@@ -139,18 +144,18 @@ export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId:
           <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2">
             <p className="min-w-0 truncate text-xs text-white/70">Uploaded {new Date(photo.uploadedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {photo.uploadedByName}</p>
             <div className="flex shrink-0 items-center gap-1">
-              <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Zoom out" disabled={zoom === 1} onClick={() => setZoom((value) => Math.max(1, value - 1))}><ZoomOut className="size-5" /></Button>
-              <span className="w-10 text-center text-xs tabular-nums">{zoom === 1 ? "Fit" : `${zoom}×`}</span>
+              <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Zoom out" disabled={zoom === 0} onClick={() => setZoom((value) => Math.max(0, value - 1))}><ZoomOut className="size-5" /></Button>
+              <span className="w-10 text-center text-xs tabular-nums">{fit ? "Fit" : `${zoom}×`}</span>
               <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Zoom in" disabled={zoom === 4} onClick={() => setZoom((value) => Math.min(4, value + 1))}><ZoomIn className="size-5" /></Button>
               <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Rotate" onClick={() => void rotate()}><RotateCw className="size-5" /></Button>
               <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" aria-label="Close" onClick={close}><X className="size-6" /></Button>
             </div>
           </div>
-          <div className={`flex min-h-0 flex-1 overflow-auto overscroll-contain ${zoom === 1 ? "items-center justify-center" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
+          <div className={`min-h-0 flex-1 overflow-auto overscroll-contain ${fit ? "flex items-center justify-center" : "block"}`} onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
             {/* eslint-disable-next-line @next/next/no-img-element -- a data URL from the sheet, not an optimizable file */}
             <img src={photo.dataUrl} alt="Receipt" style={size}
-              className={`m-auto h-auto object-contain ${zoom === 1 ? "cursor-zoom-in" : "cursor-zoom-out"}`}
-              onClick={() => setZoom((value) => (value === 1 ? 2 : 1))} />
+              className={`h-auto ${fit ? "object-contain" : "mx-auto block pb-4"} ${zoom < 2 ? "cursor-zoom-in" : "cursor-zoom-out"}`}
+              onClick={() => setZoom((value) => (value < 2 ? 2 : 1))} />
           </div>
         </div>
       )}
