@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 55 component files; 573 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 56 component files; 575 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -154,7 +154,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/calculations.ts](../lib/calculations.ts) | `CollectionStatus`, `calculateTMD`, `calculateBalance`, `getNextNOP`, `getProgramBasePay`, `calculateCollectionTMD` | `./types` |
 | [lib/cash-count.ts](../lib/cash-count.ts) | `DENOMINATIONS`, `CashCount`, `cashCountTotal`, `formatCashCount`, `parseCashCount`, `cashCountProblem` | — |
 | [lib/clearing-kinds.ts](../lib/clearing-kinds.ts) | `ClearingKind`, `ClearingCovers`, `CLEARING_COVERS`, `coveredKinds`, `DATE_REMITTED_REASON_MIN` | — |
-| [lib/clearing.ts](../lib/clearing.ts) | `ClearingStage`, `CLEARING_COVERS`, `coveredKinds`, `ClearingCovers`, `ClearingKind`, `ClearingDecision`, `Clearing`, `withProgress`, `getClearingPage`, `getEncodableClearings`, `addClearing`, `removeClearing`, `editClearing`, `clearedEmployee`, `clearingProblem`, `waitingBatchProblem`, `dateRemittedReasonProblem`, `clearedAt`, `closeClearings`, `countOpenClearings` | `@/lib/db`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/clearing-kinds`, `@/lib/entry-batches`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
+| [lib/clearing.ts](../lib/clearing.ts) | `ClearingStage`, `CLEARING_COVERS`, `coveredKinds`, `ClearingCovers`, `ClearingKind`, `ClearingDecision`, `Clearing`, `withProgress`, `LIST_CLEARED`, `DayEndLine`, `getDayEndReview`, `settleDayEnd`, `getClearingPage`, `getEncodableClearings`, `addClearing`, `removeClearing`, `editClearing`, `clearedEmployee`, `clearingProblem`, `waitingBatchProblem`, `dateRemittedReasonProblem`, `clearedAt`, `closeClearings`, `countOpenClearings` | `@/lib/db`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/clearing-kinds`, `@/lib/entry-batches`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/clerk-cash.ts](../lib/clerk-cash.ts) | `CASH_BEG_REASON_MIN`, `depositRemarksProblem`, `BankDeposit`, `getDeposits`, `addDeposit`, `editDeposit`, `voidDeposit`, `CashBegEdit`, `ReportNotes`, `getReportNotes`, `getCashBegEdits`, `saveCashBeg`, `saveReportNotes` | `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/clerk-report.ts](../lib/clerk-report.ts) | `COMPANY`, `weekOfMonth`, `ReportLine`, `ExpenseRow`, `buildClerkReport`, `ClerkReport`, `BranchFigures` | `@/lib/clerk-cash`, `@/lib/db`, `@/lib/daily-audit`, `@/lib/google-sheets`, `@/lib/mas-expected`, `@/lib/receipt-photos`, `@/lib/remittance-deadline`, `@/lib/todays-entries` |
 | [lib/company-targets.ts](../lib/company-targets.ts) | `CompanyTarget`, `periodType`, `getCompanyTargets`, `saveCompanyTarget` | `@/lib/encoder-sheets`, `@/lib/encoder-schema`, `@/lib/encoder-context`, `@/lib/google-sheets` |
@@ -268,11 +268,12 @@ All routes pass through the authentication proxy except the three public auth en
 | --- | --- | --- |
 | [components/admin-delete.tsx](../components/admin-delete.tsx) | `AdminDeletePanel` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/admin-delete` |
 | [components/app-dialog.tsx](../components/app-dialog.tsx) | `confirmDialog`, `promptDialog`, `alertDialog`, `AppDialogHost` | `@/components/ui/button`, `@/components/ui/input` |
-| [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/friendly-api-errors`, `@/lib/use-live-refresh`, `@/lib/ui-preferences` |
+| [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/clearing-day-end`, `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/friendly-api-errors`, `@/lib/use-live-refresh`, `@/lib/ui-preferences` |
 | [components/attendance-calendar.tsx](../components/attendance-calendar.tsx) | `AttendanceCalendar` | `@/components/app-dialog`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/philippine-holidays` |
 | [components/batch-editor.tsx](../components/batch-editor.tsx) | `BatchEditor` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/batch-edit`, `@/lib/entry-controls` |
 | [components/brand-logo.tsx](../components/brand-logo.tsx) | `BrandLogo` | — |
 | [components/bulk-member-transfer.tsx](../components/bulk-member-transfer.tsx) | `BulkMemberTransfer` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/transfer-branch-choice`, `@/lib/member-transfer` |
+| [components/clearing-day-end.tsx](../components/clearing-day-end.tsx) | `ClearingDayEndPrompt` | `@/components/ui/button`, `@/lib/clearing` |
 | [components/clearing-picker.tsx](../components/clearing-picker.tsx) | `ClearingPicker` | `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/use-live-refresh` |
 | [components/clerk-report.tsx](../components/clerk-report.tsx) | `ClerkReport` | `@/components/app-dialog`, `@/components/brand-logo`, `@/components/entry-details`, `@/components/receipt-photo`, `@/components/receipt-photos-picker`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/lib/clerk-report`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
 | [components/company-reports.tsx](../components/company-reports.tsx) | `CompanyReports` | `@/components/metric-tile`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/reports`, `@/lib/use-live-refresh` |
@@ -425,6 +426,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | --- | --- | --- |
 | [scripts/_tmp-forf.mjs](../scripts/_tmp-forf.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/_tmp-g.mjs](../scripts/_tmp-g.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/_tmp-one-account.mjs](../scripts/_tmp-one-account.mjs) | `postgres` | No flag detected; read source before running |
 | [scripts/add-or-branch-letters.mjs](../scripts/add-or-branch-letters.mjs) | `node:fs`, `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/assign-baranda-m-to-marites.mjs](../scripts/assign-baranda-m-to-marites.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/assign-mas-branches.mjs](../scripts/assign-mas-branches.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |

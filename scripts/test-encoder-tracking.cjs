@@ -905,6 +905,37 @@ test('renumbering starts from the first payment of the account, never from the D
   assert.deepEqual(renumber(start, legacy, () => 2).map((payment) => [payment.nopFrom, payment.nopTo, payment.monthFrom, payment.monthTo]), [[30, 31, '2026-06', '2026-07'], [32, 33, '2026-08', '2026-09']]);
 });
 
+test('day-end Clearing review: earlier lines are kept or cleared, and what was encoded stays recorded (October 21, 2026)', async () => {
+  const h = harness();
+  const clearing = h.load('lib/clearing.ts');
+  const today = h.load('lib/remittance-deadline.ts').manilaNow().date;
+  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'MAS-2']);
+  await seed('employees', [{ employee_id: 'DPE-0003', full_name: 'MAS-3' }, { employee_id: 'DPE-0004', full_name: 'MAS-4' }], { skipExisting: true });
+  const line = (id, employee, covers, day = yesterday) => ({ clearing_id: id, branch: 'BR-1', employee_id: employee, employee_name: employee, cleared_at: `${day}T02:00:00Z`, cleared_date: day, status: 'Open', covers, encoded_by_employee_id: 'DPE-7' });
+  // Yesterday: MAS-2 cleared for both but only New Sales came; MAS-3 cleared for Collections, nothing encoded; MAS-4 kept.
+  await seed('clearings', [line('CLR-BOTH', 'DPE-0002', 'Both'), line('CLR-NONE', 'DPE-0003', 'Collections'), line('CLR-KEEP', 'DPE-0004', 'New Sales'), line('CLR-TODAY', 'DPE-0002', 'Both', today),
+    { ...line('CLR-OTHER', 'DPE-0003', 'New Sales'), encoded_by_employee_id: 'DPE-9' }]);
+  await seed('sales', [{ sale_id: 'SAL-1', member_number: 'PH-1', program_id: 'DP-1', amount_paid: 350, application_no: 'APP-1', branch: 'BR-1', mas: 'MAS-2', accountable_employee_id: 'DPE-0002',
+    date_remitted: yesterday, encoded_at: `${yesterday}T03:00:00Z`, remittance_status: 'Pending Remittance Approval' }]);
+  const review = await clearing.getDayEndReview('DPE-7');
+  assert.deepEqual(review.map((item) => item.id).sort(), ['CLR-BOTH', 'CLR-KEEP', 'CLR-NONE'], 'only the earlier lines of this clerk, not those of today');
+  assert.deepEqual(review.find((item) => item.id === 'CLR-BOTH').kinds.map((part) => [part.kind, part.encoded]), [['New Sales', 1], ['Collections', 0]]);
+  await assert.rejects(() => clearing.settleDayEnd({ clear: ['CLR-OTHER'] }, { employeeId: 'DPE-7', name: 'Clerk' }), /no longer waiting/, 'a line of another clerk cannot be answered');
+  const done = await clearing.settleDayEnd({ keep: ['CLR-KEEP'], clear: ['CLR-BOTH', 'CLR-NONE'] }, { employeeId: 'DPE-7', name: 'Clerk' });
+  assert.deepEqual(done, { kept: 1, removed: 1, narrowed: 1 });
+  const rows = Object.fromEntries((await query("select clearing_id, status, covers, closed_reason from clearings")).map((row) => [row.clearing_id, row]));
+  assert.deepEqual([rows['CLR-BOTH'].status, rows['CLR-BOTH'].covers], ['Encoded', 'New Sales'], 'keeps only the encoded kind and takes no more encoding');
+  assert.match(rows['CLR-BOTH'].closed_reason, /^Cleared from the list by Clerk.*Collections not encoded/);
+  assert.equal(rows['CLR-NONE'].status, 'Removed', 'nothing encoded: removed');
+  assert.equal(rows['CLR-KEEP'].status, 'Open', 'kept as it was');
+  assert.equal(await count('sales'), 1, 'the encoded New Sale stays recorded');
+  assert.equal(await clearing.clearedAt('DPE-0002', 'BR-1', yesterday, '', 'New Sales'), `${yesterday} 10:00`, 'still the evidence of when that cash was received');
+  assert.deepEqual(await clearing.getDayEndReview('DPE-7'), [], 'answered: not asked again today');
+  const page = await clearing.getClearingPage('DPE-7');
+  assert.deepEqual(page.clearings.map((item) => item.id).sort(), ['CLR-KEEP', 'CLR-TODAY'], 'cleared lines leave the Clearing list');
+});
+
 test('all mutation routes reject unauthenticated requests before writing', async () => {
   const h = harness(null);
   for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals', 'finance-options', 'vendor-payables', 'commissions']) {

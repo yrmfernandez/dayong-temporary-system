@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { ClearingDayEndPrompt } from "@/components/clearing-day-end";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { executiveRoles, type AccessContext } from "@/lib/access-control";
@@ -128,6 +129,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+      {/* Day-end Clearing review for the Entry Clerk (components/clearing-day-end.tsx). */}
+      {user && <ClearingDayEndPrompt />}
     </div>
   );
 }

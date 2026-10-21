@@ -143,8 +143,70 @@ export async function withProgress(list: Clearing[]): Promise<Clearing[]> {
 }
 
 /**
+ * Day-end review (owner, October 21, 2026). After 11:59 PM a day's clearing lines are done; the first time the clerk
+ * opens the system on a later day they are asked, for each of their own earlier lines still listed, to keep it or clear
+ * it (clerks often tick New Sales and Collections when only one of them comes). Clearing a line takes it off the
+ * Clearing list without touching what was encoded:
+ *   - nothing encoded: the clearing is Removed;
+ *   - something encoded: it keeps only the kinds that have entries (so it stays the evidence of when that cash was
+ *     received) and stops taking new encoding (Open becomes Encoded); the kinds with nothing encoded are dropped.
+ * The choice is kept in closed_reason: "Cleared from the list …" hides the line; "Kept on the list <date>" asks again
+ * the next day while it is still unfinished.
+ */
+export const LIST_CLEARED = "Cleared from the list";
+const KEPT = "Kept on the list";
+const listCleared = (item: Pick<Clearing, "closedReason">) => item.closedReason.startsWith(LIST_CLEARED);
+
+export type DayEndLine = { id: string; branch: string; employeeName: string; clearedDate: string; covers: ClearingCovers; kinds: Array<{ kind: ClearingKind; stage: ClearingStage; encoded: number }> };
+
+/** The clerk's own lines of earlier days still on the Clearing list and not yet answered today. */
+export async function getDayEndReview(employeeId: string): Promise<DayEndLine[]> {
+  if (!text(employeeId)) return [];
+  const today = manilaNow().date;
+  const rows = await currentDb().select().from(clearings).where(and(eq(clearings.encoded_by_employee_id, text(employeeId)), ne(clearings.status, "Removed"),
+    sql`${clearings.cleared_date} < ${today}`, gte(clearings.cleared_date, addDays(today, -UNFINISHED_DAYS))));
+  const listed = (await withProgress(rows.map(toClearing))).filter((item) => item.stage !== "Approved" && !listCleared(item) && item.closedReason !== `${KEPT} ${today}`);
+  return listed.sort((a, b) => a.clearedAt.localeCompare(b.clearedAt)).map((item) => ({
+    id: item.id, branch: item.branch, employeeName: item.employeeName, clearedDate: item.clearedDate, covers: item.covers,
+    kinds: (item.kinds ?? []).map((part) => ({ kind: part.kind, stage: part.stage, encoded: part.entries.total })),
+  }));
+}
+
+/** Saves the clerk's day-end answers: lines to keep (asked again tomorrow) and lines to clear from the list. */
+export async function settleDayEnd(input: { keep?: unknown; clear?: unknown }, by: { employeeId: string; name: string }) {
+  const ids = (value: unknown) => [...new Set((Array.isArray(value) ? value : []).map(text).filter(Boolean))];
+  const keep = ids(input.keep), clear = ids(input.clear).filter((id) => !keep.includes(id));
+  const pending = new Map((await getDayEndReview(by.employeeId)).map((line) => [line.id, line]));
+  const unknown = [...keep, ...clear].filter((id) => !pending.has(id));
+  if (unknown.length) throw new Error("Some lines are no longer waiting for an answer. Reload and try again.");
+  const today = manilaNow().date, now = new Date().toISOString();
+  if (keep.length) await currentDb().update(clearings).set({ closed_reason: `${KEPT} ${today}` }).where(and(inArray(clearings.clearing_id, keep), ne(clearings.status, "Removed")));
+  let removed = 0, narrowed = 0;
+  for (const id of clear) {
+    const line = pending.get(id)!;
+    const encoded = line.kinds.filter((part) => part.encoded > 0).map((part) => part.kind);
+    const note = `${LIST_CLEARED} by ${by.name} on ${today}`;
+    if (!encoded.length) {
+      await currentDb().update(clearings).set({ status: "Removed", closed_at: now, closed_reason: `${note}: nothing was encoded` }).where(eq(clearings.clearing_id, id));
+      removed++;
+      continue;
+    }
+    const covers: ClearingCovers = encoded.length === 2 ? "Both" : encoded[0];
+    const dropped = coveredKinds(line.covers).filter((kind) => !encoded.includes(kind));
+    const [row] = await currentDb().select({ status: clearings.status, closedAt: clearings.closed_at }).from(clearings).where(eq(clearings.clearing_id, id));
+    await currentDb().update(clearings).set({
+      covers, status: row?.status === "Open" ? "Encoded" : row?.status ?? "Encoded", closed_at: row?.closedAt ?? now,
+      closed_reason: `${note}: kept for the encoded ${encoded.join(" and ")}${dropped.length ? `; ${dropped.join(" and ")} not encoded` : ""}`,
+    }).where(eq(clearings.clearing_id, id));
+    narrowed++;
+  }
+  return { kept: keep.length, removed, narrowed };
+}
+
+/**
  * The Clearing page: today's clearings, and earlier ones not yet Approved (up to 60 days back), each with its progress;
- * with the branches and their people. An earlier day's line leaves once Approved or Removed.
+ * with the branches and their people. An earlier day's line leaves once Approved or Removed, or once the clerk cleared
+ * it from the list at day end (getDayEndReview).
  */
 export async function getClearingPage(clearedBy = "") {
   const today = manilaNow().date;
@@ -152,7 +214,7 @@ export async function getClearingPage(clearedBy = "") {
     currentDb().select().from(clearings).where(and(mine(clearedBy), or(eq(clearings.cleared_date, today), and(ne(clearings.status, "Removed"), gte(clearings.cleared_date, addDays(today, -UNFINISHED_DAYS)))))).orderBy(desc(clearings.cleared_at)),
     getBranches(), getEmployees(),
   ]);
-  const listed = (await withProgress(rows.map(toClearing))).filter((item) => item.clearedDate === today || item.stage !== "Approved");
+  const listed = (await withProgress(rows.map(toClearing))).filter((item) => item.clearedDate === today || (item.stage !== "Approved" && !listCleared(item)));
   return {
     today,
     clearings: listed,

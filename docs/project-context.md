@@ -1285,3 +1285,10 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Done:** the program-move repair script refuses to run (retired). The repair stays in effect on the other 29 accounts it changed (121 collections with no later correction).
 - **Note:** reading the workbook rows for this member printed the member's name column once; the inspection script's output filter should leave out the PH/MEMBER column.
 - **In progress / To do:** none.
+
+### Clearing day-end review (2026-10-21)
+
+- **Owner:** clear every clearing after the day (11:59 PM); when the Entry Clerk logs in the next day, ask whether to keep their Clearing list. Clerks often tick New Sales and Collections when only one is encoded; clearing such a line must keep what was encoded.
+- **Done:** `getDayEndReview(employeeId)` lists the clerk's own lines of earlier days still on the list (not Approved, not cleared, not kept today). `settleDayEnd({ keep, clear })`: keep sets `closed_reason` "Kept on the list <date>" (asked again tomorrow); clear removes a line with nothing encoded, or narrows `covers` to the encoded kinds, makes an Open line Encoded and sets `closed_reason` "Cleared from the list …" (evidence of receipt kept for the encoded entries). `getClearingPage` leaves cleared lines out. API: `GET /api/clearing?review=1`, `PATCH { action: "day-end", keep, clear }`. Pop-up `components/clearing-day-end.tsx` in the app shell. No migration (uses `closed_reason`). Test added; 217 pass; build passes.
+- **In progress:** none.
+- **To do:** none. Lines are not cleared without the clerk's answer; "Ask me later" brings the pop-up back on the next page load.
