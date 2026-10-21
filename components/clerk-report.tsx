@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BrandLogo } from "@/components/brand-logo";
 import { EntryDetails } from "@/components/entry-details";
 import { ReceiptPhotoView } from "@/components/receipt-photo";
+import { ReceiptPhotosPicker, type PickedPhoto } from "@/components/receipt-photos-picker";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -147,7 +148,12 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 headers={["Account Name/Type of Expense", report.whenLabel, "Amount", "Receipt/CV", "Purpose", "Rmks"]}
                 rows={report.expenses.map((item) => [item.account === BURIAL_ACCOUNT && item.payee ? `${item.account}: ${item.payee}` : item.account, item.when, money(item.amount), item.receipt, item.purpose, item.remarks])}
                 total={report.expenseTotal}
-                action={own ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this expense being deleted?"); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></span> : undefined} />
+                action={(index) => <span className="flex flex-wrap items-center justify-center gap-2 print:hidden">
+                  {/* Receipt photos (owner, October 21, 2026: required for every expense on the report). */}
+                  {report.expenses[index].photoIds.map((photoId, photo) => <ReceiptPhotoView key={photoId} photoId={photoId} label={report.expenses[index].photoIds.length > 1 ? `Receipt ${photo + 1}` : "Receipt"} />)}
+                  {!report.expenses[index].photoIds.length && <span className="text-xs text-amber-700 dark:text-amber-400">No receipt photo</span>}
+                  {own && <><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this expense being deleted?"); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></>}
+                </span>} />
               <Grid title="Cash Flow Transaction and Other Cash Ins" color={tone.cashFlow}
                 headers={["Bank Account Name", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
                 rows={report.cashFlowTotals
@@ -445,6 +451,10 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
   const today = todayInManila();
   const inPeriod = today >= report.from && today <= report.to ? today : report.to;
   const [expense, setExpense] = useState(editingExpense ? expenseForm(editingExpense) : { category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", payee: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
+  // Photos of the expense's receipt, sent with it: at least one, unless an expense being edited already has one.
+  const [expensePhotos, setExpensePhotos] = useState<PickedPhoto[]>([]);
+  const savedPhotos = editingExpense?.photoIds.length ?? 0;
+  const photoBodies = () => expensePhotos.map(({ dataUrl, width, height }) => ({ dataUrl, width, height }));
   const [deposit, setDeposit] = useState(editing
     ? { date: editing.date, bankAccount: editing.bankAccount, amount: String(editing.amount), transferType: editing.transferType, mas: editing.mas, remarks: editing.remarks }
     : { date: inPeriod, bankAccount: "DSRDPI", amount: "", transferType: "", mas: "", remarks: "" });
@@ -467,8 +477,8 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
       <div className="p-4">
       {section === "expense" && <form id="expense-form" className="space-y-4" onSubmit={async (event) => {
         event.preventDefault();
-        if (editingExpense) { if (await act({ action: "edit-expense", id: editingExpense.id, ...expense, amount: Number(expense.amount) })) onExpenseDone(); return; }
-        if (await act({ action: "add-expense", ...expense, amount: Number(expense.amount), attachments: [] })) setExpense((current) => ({ ...current, amount: "", receiptNumber: "", payee: "", description: "", remarks: "" }));
+        if (editingExpense) { if (await act({ action: "edit-expense", id: editingExpense.id, ...expense, amount: Number(expense.amount), photos: photoBodies() })) onExpenseDone(); return; }
+        if (await act({ action: "add-expense", ...expense, amount: Number(expense.amount), attachments: [], photos: photoBodies() })) { setExpense((current) => ({ ...current, amount: "", receiptNumber: "", payee: "", description: "", remarks: "" })); setExpensePhotos([]); }
       }}>
         <FormTitle title={editingExpense ? `Edit expense ${editingExpense.id}` : "Add expense / other cash out"} note={editingExpense ? "Saved to Expenses as well; the report and the cash on hand follow." : "Saved to Expenses for your branch. Edit or delete it from the Expenses list above."} />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -484,7 +494,10 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
           <Field label="Purpose *" wide><Input value={expense.description} onChange={(event) => setExpense({ ...expense, description: event.target.value })} /></Field>
           <Field label="Remarks" wide><Input value={expense.remarks} onChange={(event) => setExpense({ ...expense, remarks: event.target.value })} /></Field>
         </div>
-        <div className="flex gap-2"><Button type="submit" size="sm" disabled={!expense.amount || !expense.description.trim() || !expense.receiptNumber.trim() || (expense.category === BURIAL_ACCOUNT && !expense.payee.trim())}>{editingExpense ? "Save changes" : "Save expense"}</Button>{editingExpense && <Button type="button" size="sm" variant="outline" onClick={onExpenseDone}>Cancel</Button>}</div>
+        <ReceiptPhotosPicker photos={expensePhotos} onChange={setExpensePhotos} kind="expense" optional={savedPhotos > 0}
+          title={savedPhotos ? "Add more receipt photos" : "Photo of the receipt"}
+          note={savedPhotos ? `This expense has ${savedPhotos} receipt photo${savedPhotos === 1 ? "" : "s"}; photos added here are kept with them.` : "Take or choose a photo or scan of the receipt or voucher. At least one is required; add more if it has several pages."} />
+        <div className="flex gap-2"><Button type="submit" size="sm" disabled={!expense.amount || !expense.description.trim() || !expense.receiptNumber.trim() || (expense.category === BURIAL_ACCOUNT && !expense.payee.trim()) || (!savedPhotos && !expensePhotos.length)}>{editingExpense ? "Save changes" : "Save expense"}</Button>{editingExpense && <Button type="button" size="sm" variant="outline" onClick={onExpenseDone}>Cancel</Button>}</div>
       </form>}
 
       {section === "deposit" && <form id="deposit-form" className="space-y-4" onSubmit={async (event) => {

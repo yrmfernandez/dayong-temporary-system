@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, like } from "drizzle-orm";
 
 import { getDb, schema } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
@@ -51,11 +51,7 @@ export async function getReceiptPhoto(photoId: string) {
  */
 export async function saveReceiptPhoto(input: { entryIds: string[]; dataUrl: string; width: number; height: number }) {
   const actor = getEncoder();
-  const match = /^data:(image\/(?:webp|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(input.dataUrl);
-  if (!match) throw new Error("The photo must be a compressed WebP or JPEG image.");
-  const [, mime, base64] = match;
-  const bytes = Buffer.from(base64, "base64");
-  if (bytes.length > MAX_PHOTO_BYTES) throw new Error(`The photo is ${Math.round(bytes.length / 1000)} KB; the limit is ${MAX_PHOTO_BYTES / 1000} KB. Take it again closer to the receipt.`);
+  const { mime, bytes } = checkedPhoto(input.dataUrl);
   const entryIds = [...new Set(input.entryIds.map(text).filter(Boolean))];
   if (!entryIds.length) throw new Error("Choose the entries this receipt is for.");
   const photoId = createReadableId("RCP");
@@ -67,4 +63,40 @@ export async function saveReceiptPhoto(input: { entryIds: string[]; dataUrl: str
     uploaded_at: actor.encodedAt, uploaded_by_employee_id: actor.employeeId, uploaded_by_name: actor.name, storage_path: path,
   });
   return { photoId, sizeBytes: bytes.length, entryIds };
+}
+
+/** A compressed WebP or JPEG data URL within MAX_PHOTO_BYTES, as its type and bytes; anything else is refused. */
+function checkedPhoto(dataUrl: string) {
+  const match = /^data:(image\/(?:webp|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(text(dataUrl));
+  if (!match) throw new Error("The photo must be a compressed WebP or JPEG image.");
+  const [, mime, base64] = match;
+  const bytes = Buffer.from(base64, "base64");
+  if (bytes.length > MAX_PHOTO_BYTES) throw new Error(`The photo is ${Math.round(bytes.length / 1000)} KB; the limit is ${MAX_PHOTO_BYTES / 1000} KB. Take it again closer to the receipt.`);
+  return { mime, bytes };
+}
+
+/**
+ * Receipt photos of expenses (owner, October 21, 2026: an expense on the Entry Clerk's report needs at least one photo
+ * or scan of its receipt). They are kept like the photos of entries, with the expense ID (EXP-...) as the entry.
+ */
+export const MAX_EXPENSE_PHOTOS = 10;
+export type ExpensePhotoInput = { dataUrl: string; width: number; height: number };
+
+/** The photos sent with an expense, checked before anything is saved. */
+export function expensePhotosFrom(value: unknown): ExpensePhotoInput[] {
+  const list = Array.isArray(value) ? value as Array<Record<string, unknown>> : [];
+  if (list.length > MAX_EXPENSE_PHOTOS) throw new Error(`Attach at most ${MAX_EXPENSE_PHOTOS} receipt photos to one expense.`);
+  return list.map((photo) => { checkedPhoto(text(photo?.dataUrl)); return { dataUrl: text(photo.dataUrl), width: Number(photo.width), height: Number(photo.height) }; });
+}
+
+export async function saveExpensePhotos(expenseId: string, list: ExpensePhotoInput[]) {
+  for (const photo of list) await saveReceiptPhoto({ entryIds: [expenseId], ...photo });
+}
+
+/** Expense ID → its receipt photo IDs, oldest first. */
+export async function expensePhotoIds() {
+  const rows = await getDb().select({ id: photos.photo_id, entryIds: photos.entry_ids }).from(photos).where(like(photos.entry_ids, "EXP-%")).orderBy(asc(photos.row_seq));
+  const map = new Map<string, string[]>();
+  for (const row of rows) for (const id of text(row.entryIds).split(",").map(text).filter(Boolean)) map.set(id, [...(map.get(id) ?? []), row.id]);
+  return map;
 }

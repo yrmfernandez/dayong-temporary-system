@@ -10,6 +10,8 @@ import { addDeposit, editDeposit, saveCashBeg, saveReportNotes, voidDeposit } fr
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense, deleteExpense, editExpense } from "@/lib/finance-data";
 import { getBranches } from "@/lib/google-sheets-data";
+import { createReadableId } from "@/lib/readable-id";
+import { expensePhotoIds, expensePhotosFrom, saveExpensePhotos } from "@/lib/receipt-photos";
 import { createFidelitySlip, editFidelitySlip, voidFidelitySlip } from "@/lib/remittance-workflow";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -89,8 +91,14 @@ export const POST = withEncoder(async (request: Request) => {
     switch (body.action) {
       case "add-expense": {
         if (!clerk.branch) throw new Error("Choose the branch of the report, or ask an administrator to set your primary branch in Employees.");
-        const saved = await createExpense({ ...body, branch: clerk.branch, paidBy: "Cash on Hand", paymentMethod: "Cash" });
-        return Response.json({ success: true, message: `Expense ${saved.id} saved.` });
+        // At least one photo of the receipt (owner, October 21, 2026). The photos are checked first and saved before the
+        // expense, so an expense is never saved without them.
+        const photos = expensePhotosFrom(body.photos);
+        if (!photos.length) throw new Error("Attach a photo of the receipt.");
+        const id = createReadableId("EXP");
+        await saveExpensePhotos(id, photos);
+        const saved = await createExpense({ ...body, branch: clerk.branch, paidBy: "Cash on Hand", paymentMethod: "Cash" }, id);
+        return Response.json({ success: true, message: `Expense ${saved.id} saved with ${photos.length} receipt photo${photos.length === 1 ? "" : "s"}.` });
       }
       case "add-deposit": {
         const saved = await addDeposit(body, clerk);
@@ -113,9 +121,14 @@ export const POST = withEncoder(async (request: Request) => {
       case "void-fidelity":
         await voidFidelitySlip(text(body.id), text(body.reason), { employeeId: user.employeeId, isAdmin: await canManageUsers() });
         return Response.json({ success: true, message: "Fidelity voided." });
-      case "edit-expense":
-        await editExpense(String(body.id ?? ""), body, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
-        return Response.json({ success: true, message: "Expense updated." });
+      case "edit-expense": {
+        // More receipt photos may be added; an expense saved before photos were required gets one when it is edited.
+        const id = text(body.id), photos = expensePhotosFrom(body.photos);
+        if (!photos.length && !(await expensePhotoIds()).get(id)?.length) throw new Error("Attach a photo of the receipt.");
+        await editExpense(id, body, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+        await saveExpensePhotos(id, photos);
+        return Response.json({ success: true, message: photos.length ? `Expense updated; ${photos.length} receipt photo${photos.length === 1 ? "" : "s"} added.` : "Expense updated." });
+      }
       case "delete-expense":
         await deleteExpense(String(body.id ?? ""), String(body.reason ?? ""), { employeeId: user.employeeId, isAdmin: await canManageUsers() });
         return Response.json({ success: true, message: "Expense deleted." });

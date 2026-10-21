@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db";
 import { periodSpan, type AuditPeriod } from "@/lib/daily-audit";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { expectedByMas, type Expected } from "@/lib/mas-expected";
+import { expensePhotoIds } from "@/lib/receipt-photos";
 import { manilaDateOf } from "@/lib/remittance-deadline";
 import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
 
@@ -88,7 +89,7 @@ function section(kind: AuditPeriod, entries: DayEntry[]) {
   return { rows: [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, line]) => line), total: sum(entries) };
 }
 
-export type ExpenseRow = { id: string; date: string; when: string; account: string; amount: number; receipt: string; purpose: string; remarks: string; approvedBy: string; payee: string };
+export type ExpenseRow = { id: string; date: string; when: string; account: string; amount: number; receipt: string; purpose: string; remarks: string; approvedBy: string; payee: string; photoIds: string[] };
 
 /**
  * Posted expenses the clerk recorded on or before `to` (Expenses B date, C account, D purpose, E amount, H branch, K receipt,
@@ -97,11 +98,12 @@ export type ExpenseRow = { id: string; date: string; when: string; account: stri
  */
 async function clerkExpenses(employeeId: string, to: string) {
   try {
-    const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Expenses'!A:W", valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" })).data.values ?? [];
+    const [result, photoIds] = await Promise.all([sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Expenses'!A:W", valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }), expensePhotoIds()]);
+    const rows = result.data.values ?? [];
     return rows.slice(1)
       .map((row) => ({ row, recordedOn: manilaDateOf(text(row[20]) || text(row[13])) || text(row[1]).slice(0, 10) }))
       .filter(({ row, recordedOn }) => text(row[0]) && text(row[18]) === employeeId && (text(row[11]) || "Posted") === "Posted" && recordedOn <= to)
-      .map(({ row, recordedOn }) => ({ id: text(row[0]), date: text(row[1]).slice(0, 10), recordedOn, account: text(row[2]), purpose: text(row[3]), amount: Number(row[4]) || 0, payee: text(row[5]), branch: text(row[7]), receipt: text(row[10]), remarks: text(row[12]), approvedBy: text(row[22]) }));
+      .map(({ row, recordedOn }) => ({ id: text(row[0]), date: text(row[1]).slice(0, 10), recordedOn, account: text(row[2]), purpose: text(row[3]), amount: Number(row[4]) || 0, payee: text(row[5]), branch: text(row[7]), receipt: text(row[10]), remarks: text(row[12]), approvedBy: text(row[22]), photoIds: photoIds.get(text(row[0])) ?? [] }));
   } catch {
     return [];
   }

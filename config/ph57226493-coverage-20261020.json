@@ -1,0 +1,11 @@
+{
+  "cases": [{
+    "member": "PH-57226493",
+    "program": "DP-0066",
+    "fromAccounts": ["ENR-LEG-E2729791F8"],
+    "expectedDoi": "2024-03-01",
+    "startNop": 23,
+    "financeScope": "changed",
+    "note": "Owner requested PH-57226493 correction October20,2026. All nine D-280 payments PHP280 each are offset one month ahead, February-October instead of January-September2026. Original SDS-COLL source rows239,692,1228,1726,2247,2711,3206,3765,4191 establish one payment per January-September month. March-September source NOP25-31 and March1,2024 DOI consistently imply January/NOP23 and February/NOP24; the first two source NOPs24/25 are inconsistent by one. Restore continuous NOP23-31 and January-September coverage. Preserve DOI, nine receipt IDs/OR labels/dates/amounts/PHP2520 total, HINATUAN and MAS, reprice financial snapshots and recalculate status."
+  }]
+}

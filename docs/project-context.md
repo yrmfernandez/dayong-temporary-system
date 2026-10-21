@@ -1,5 +1,16 @@
 # Dayong System project context
 
+### PH-57226493: January–September D-280 history restored (2026-10-20)
+
+- Corrected nine PHP280 payments on `ENR-LEG-E2729791F8` from February–October/NOP24–32 to **January–September2026/NOP23–31**, D-280, HINATUAN. Original SDS-COLL rows239,692,1228,1726,2247,2711,3206,3765,4191 confirm the months; March–September NOP25–31 and DOI March1,2024 establish the sequence. January/February source NOP24/25 repeat the later sequence incorrectly; normalized to23/24, retaining the established DOI. All nine source rows matched by deterministic collection ID using `inspect-member-source-rows.mjs`, so corrected OR letters do not obscure source matches.
+- Backed up `backups/member-accounts-PH-57226493-1792484150296.json`; ran existing consolidator with `config/ph57226493-coverage-20261020.json`, rollback preview then apply. Independent production verification confirms nine receipts, PHP2,520, unchanged program/DOI/dates/amounts/labels, January–September and Updated status. Nine finance snapshots recalculated, net existing incentive change zero, no linked remittance expectation changes. Recorded in Audit Log and Record Corrections.
+- `lib/entry-finance.mjs` reads optional `no_incentive_reason` through row JSON, preserving the reason when present and treating it as null before that column's migration. This allows maintenance against the current production schema without an unrelated migration. Existing financial recalculation test passes against a schema without the column, including forfeitures, ORC, reactivation, linked slips and idempotence.
+
+### OR12617 C: correct member ownership (2026-10-20)
+
+- Owner reported OR12617 B does not belong to PH-68134668. Production and original M3-COLL row14208 identify the relevant receipt as **12617 C**, August18,2026, PHP700, D-350, July–August NOP42–43, **Dequiña, Dominador**. Moved existing collection `COL-LEG-F565251B04` from Felisa Dorado PH-68134668 to Dominador **PH-80648675**, account `ENR-LEG-FB7244DEAC`. Removed Felisa's empty erroneous D-350 account `ENR-LEG-8EE0C7DD4C` after confirming no sales/transfers/payments reference it. Her eight D-300 Bracketing receipts totaling PHP2,700 are retained.
+- Backed up both members through `member-accounts.mjs`; scoped transaction backup `backups/or12617-owner-apply-20261020.json`. `correct-or12617-owner-20261020.mjs` passed rollback preview, apply and independent `--verify` production readback. Every collection field except member/account ownership is unchanged, including financial snapshots; Dominador's earlier receipt is unchanged. No remittance links or monetary changes; target status recalculated 60D. Audit Log and Record Corrections retain the correction. `inspect-or12617b-20261020.mjs --legacy` records the workbook evidence. The unrelated MINTAL receipt12617 C (duplicated), PH-44324834, is untouched.
+
 ### Remittances: see what causes a discrepancy (2026-10-19)
 
 - **Owner:** there are discrepancies in Remittance but they cannot be clicked to see the cause.
@@ -1180,4 +1191,13 @@ Submission now locks the selected New Sales or Collections inside the write tran
 
 - **Owner:** in Collections and New Sales, a No incentive button on each entry: that one entry earns the collector (or MAS) no incentive, and the reason is asked.
 - **Done:** each entry has a **No incentive** button. Clicking it opens a required reason box. The entry is remitted whole, and what it would have earned is recorded as forfeited, so the control total includes the whole amount. Repricing, returned-batch edits and rejected slips keep it so. Today's Entries, My Entries and Remittances → View entries show the reason. New column `no_incentive_reason` on `sales` and `collections` (migration 0025). Details in `docs/collections-remittance-workflow.md`. Tested.
-- **To do (before deploying):** apply migration 0025 to production (`npm run db:migrate`, then `node scripts/check-database.mjs`).
+- **Done:** migration 0025 applied to production by the owner (2026-10-20), checked with `scripts/check-database.mjs`.
+- **To do:** none. Push to `main` to deploy.
+
+### Receipt photo required on report expenses (2026-10-21)
+
+- **Owner:** an expense recorded on the Entry Clerk's report must have a file or photo of its receipt attached.
+- **Done:** the report's expense form has **Photo of the receipt** (the New Sales / Collections photo picker, `components/receipt-photos-picker.tsx`, with its own wording). At least one photo is required to save, up to 10 (`MAX_EXPENSE_PHOTOS`). `add-expense` in `app/api/clerk-report/route.ts` checks the photos (`expensePhotosFrom`), saves them under a pre-made expense ID (`saveExpensePhotos`), then saves the expense with that ID (`createExpense(input, id)`), so no expense is saved without a photo. `edit-expense` can add photos and needs one when the expense has none.
+- **Done:** each expense on the report shows **Receipt** buttons for its photos (`photoIds` on `ExpenseRow`, from `expensePhotoIds` in `lib/receipt-photos.ts`), or **No receipt photo** for older ones. Photos use the existing `receipt_photos` table and Storage bucket, so no database migration. Tested.
+- **In progress:** none.
+- **To do (owner):** decide whether the Expenses page form (Finance) should also require a photo; today only the report's form does. Expenses saved before today get a photo when next edited on the report.

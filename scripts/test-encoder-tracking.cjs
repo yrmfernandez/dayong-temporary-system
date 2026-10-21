@@ -2532,6 +2532,23 @@ test('receipt photos must be small compressed images and may cover several entri
   assert.equal(viewed.dataUrl, `data:image/webp;base64,${data}`, 'viewing returns the same image');
 });
 
+test('an expense on the report keeps its receipt photos, and only compressed photos are accepted', async () => {
+  const h = harness();
+  const expense = Array(21).fill(''); Object.assign(expense, { 0: 'EXP-1', 1: '2026-06-16', 2: 'Fare', 4: 100, 11: 'Posted', 18: 'DPE-7', 20: '2026-06-16T02:00:00.000Z' });
+  h.rows.Expenses = [[], expense];
+  await h.sync();
+  const { expensePhotosFrom, saveExpensePhotos, expensePhotoIds, MAX_EXPENSE_PHOTOS } = h.load('lib/receipt-photos.ts');
+  assert.deepEqual(expensePhotosFrom(undefined), [], 'none sent: the route then asks for one');
+  assert.throws(() => expensePhotosFrom([{ dataUrl: 'data:image/png;base64,AAAA' }]), /WebP or JPEG/);
+  const photo = { dataUrl: `data:image/jpeg;base64,${'A'.repeat(4000)}`, width: 600, height: 800 };
+  assert.throws(() => expensePhotosFrom(Array(MAX_EXPENSE_PHOTOS + 1).fill(photo)), /at most 10/);
+  await h.load('lib/encoder-context.ts').runAsSystem(() => saveExpensePhotos('EXP-1', expensePhotosFrom([photo, photo])));
+  const ids = (await expensePhotoIds()).get('EXP-1');
+  assert.equal(ids.length, 2, 'every photo is kept with the expense');
+  const report = await h.load('lib/clerk-report.ts').buildClerkReport('daily', '2026-06-16', { employeeId: 'DPE-7', name: 'Clerk' });
+  assert.deepEqual(report.expenses.map((item) => item.photoIds), [ids], 'the report lists them for viewing');
+});
+
 test('bank deposits count as cash out, pending cash counts only in its own report, and Cash Beg is typed per report', async () => {
   const h = harness();
   const collection = Array(41).fill(''); Object.assign(collection, { 0: 'COL-1', 5: 'DP-1', 7: 'Maria', 9: '2026-09-03', 10: 1000, 19: 'Posted', 20: '2026-09-03T02:00:00.000Z', 22: 'DPE-7', 24: '2026-09-03T02:00:00.000Z', 26: 900, 28: 'Outstanding', 31: 'Maria' });

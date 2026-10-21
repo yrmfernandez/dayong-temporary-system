@@ -78,8 +78,11 @@ function required(value: unknown, label: string) {
   const result = text(value); if (!result) throw new Error(`${label} is required.`); return result;
 }
 
-/** Saves an entry from the company expense form. Payee and payment details are optional extras. */
-export async function createExpense(input: Record<string, unknown>) {
+/**
+ * Saves an entry from the company expense form. Payee and payment details are optional extras. `id` is given when the
+ * receipt photos were saved under it first (the Entry Clerk's report).
+ */
+export async function createExpense(input: Record<string, unknown>, id = createReadableId("EXP")) {
   const value = round(Number(input.amount));
   if (!datePattern.test(text(input.date))) throw new Error("Enter a valid date of expense.");
   if (!Number.isFinite(value) || value <= 0) throw new Error("Expense amount must be greater than zero.");
@@ -89,7 +92,6 @@ export async function createExpense(input: Record<string, unknown>) {
   const { receipt, member } = expenseNumbers(account, input.receiptNumber, input.payee);
   const header = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Expenses!V1:W1" })).data.values?.[0] ?? [];
   if (EXPENSE_EXTRA_HEADERS.some((name, index) => !headerMatches(header[index], name))) throw new Error("Run npm run sheets:expense-fields -- --apply to add the Attachments and Approved By columns before saving expenses.");
-  const id = createReadableId("EXP");
   await appendEncodedRows({ range: "Expenses!A:Q", requestBody: { values: [[id, text(input.date), account,
     required(input.description, "Purpose"), value, member, text(input.paidBy) || "Cash on Hand", required(input.branch, "Branch"),
     text(input.paymentMethod) || "Cash", text(input.referenceNumber), receipt, "Posted", text(input.remarks),
