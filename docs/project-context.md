@@ -1237,3 +1237,13 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Owner (follow-up):** still not working.
 - **Done (the real cause):** cards in `main` have `backdrop-filter` (glass), which makes a card the containing block of any `position: fixed` element inside it. The viewer opened inside a card was placed and clipped in that card, not the screen, so it never scrolled properly. `ReceiptPhotoView` now renders the viewer with `createPortal` on `document.body`, as the payslip overlay in Payroll already does. Build passes.
 - **In progress / To do:** none.
+
+### Registration-fee programs start at NOP 1 (2026-10-21)
+
+- **Owner:** a program with a registration fee starts at NOP 1; without one at NOP 2. Fix accounts already numbered by the old rule. Answers: NOP 1 is the month after DOI (only the numbering changes); renumber and recompute incentives, approved remittances untouched.
+- **Done:** `saleNops` / `firstCollectionNop` in `lib/account-rules.ts` (`Account.registrationFee`, loaded from `programs.registration_fee_required` in `lib/account-data.ts`). `accountState` starts the NOP at 0 for a registration-fee account, so its next NOP is 1; the next month is unchanged. `renumber` maps NOP n to the DOI month plus (n - saleNops); merges, collection edits, New Sale program changes and program transfers keep months when the two programs differ in registration fee (NOPs shift by one). Tests for the rule and renumbering; 215 pass; build passes.
+- **Done:** `scripts/fix-registration-fee-nops-20261021.mts`: finds accounts of registration-fee programs whose collections follow the old numbering (first month = DOI month + NOP - 1), checks the renumbered history passes the account rules, lowers every NOP by 1 (months unchanged) and reprices collections not on an approved remittance (`repriceCollections`; pending slips follow). Accounts already on the new numbering are left; ones that fit neither way, or would break the rules, are listed and left. Preview on staging: no such accounts there.
+- **In progress:** none.
+- **To do (owner):** preview on production, check the counts and the lists, then apply:
+  - `node scripts/prod.mjs node node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.json scripts/fix-registration-fee-nops-20261021.mts`
+  - the same with `--apply` at the end. Deploy the code change first or together, so new collections follow the new numbering.

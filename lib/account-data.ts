@@ -56,7 +56,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
   let accountQuery = db.select({
     id: memberPrograms.enrollment_id, memberId: memberPrograms.member_id, memberNumber: memberPrograms.member_number, programId: memberPrograms.program_id,
     doi: memberPrograms.doi, branch: memberPrograms.branch, mas: memberPrograms.mas, storedStatus: memberPrograms.account_status,
-    basePay: programs.base_pay, payBalanceTotal: programs.pay_balance_total, programName: programs.program_name, flexible: programs.flexible, maxMonthlyPayment: programs.max_monthly_payment,
+    basePay: programs.base_pay, payBalanceTotal: programs.pay_balance_total, programName: programs.program_name, flexible: programs.flexible, maxMonthlyPayment: programs.max_monthly_payment, registrationFee: programs.registration_fee_required,
     categoryId: programs.category_id, surname: members.surname, firstName: members.first_name, middleName: members.middle_name,
   }).from(memberPrograms)
     .innerJoin(programs, eq(programs.program_id, memberPrograms.program_id))
@@ -66,7 +66,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
   const accountRows = await accountQuery;
   const accounts: LoadedAccount[] = accountRows.map((row) => ({
     id: row.id, memberId: row.memberId, memberNumber: text(row.memberNumber), programId: row.programId, doi: row.doi ?? "",
-    branch: text(row.branch), mas: text(row.mas), basePay: row.basePay ?? 0, payBalanceTotal: row.payBalanceTotal ?? 0, storedStatus: text(row.storedStatus), flexible: row.flexible, maxMonthlyPayment: row.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(row.categoryId),
+    branch: text(row.branch), mas: text(row.mas), basePay: row.basePay ?? 0, payBalanceTotal: row.payBalanceTotal ?? 0, storedStatus: text(row.storedStatus), flexible: row.flexible, maxMonthlyPayment: row.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(row.categoryId), registrationFee: Boolean(row.registrationFee),
     memberName: memberName(row.surname, row.firstName, row.middleName) || text(row.memberNumber), programName: row.programName,
   }));
 

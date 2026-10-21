@@ -12,7 +12,18 @@ export type Account = {
   maxMonthlyPayment?: number | null;
   /** Months without payment before the account is forfeited: 12 for Pay the Balance programs, otherwise 6 (forfeitMonthsFor). */
   forfeitMonths?: number;
+  /** The program has a registration fee: its New Sale pays the registration only and is not a NOP (saleNops). */
+  registrationFee?: boolean;
 };
+
+/**
+ * NOPs the New Sale counts (owner, October 21, 2026). Without a registration fee the New Sale pays the first month and is
+ * NOP 1, so the first collection is NOP 2. With a registration fee the New Sale pays the registration only, so the first
+ * collection is NOP 1. Either way the first collection pays for the month after the DOI: NOP n covers the DOI month plus
+ * (n - saleNops) months.
+ */
+export const saleNops = (account: { registrationFee?: boolean | null }) => (account.registrationFee ? 0 : 1);
+export const firstCollectionNop = (account: { registrationFee?: boolean | null }) => saleNops(account) + 1;
 
 /**
  * Forfeiture (owner, October 16, 2026): an account of a program in the Pay the Balance category is still not forfeited
@@ -140,8 +151,9 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
     status = lastCoveredMonth > currentMonth ? "ADV"
       : unpaidMonths <= 1 ? "U" : (["60D", "90D", "120D", "150D"] as const)[Math.min(unpaidMonths, 5) - 2];
   }
-  // The New Sale itself is NOP 1 (the DOI month), so an NS account's first Collection is NOP 2, the month after DOI.
-  const nop = Math.max(1, ...[...coverage.values()].map((value) => value.nop));
+  // Without a registration fee the New Sale is NOP 1 (the DOI month), so an NS account's first Collection is NOP 2, the
+  // month after DOI; with one the New Sale is no NOP and the first Collection is NOP 1 (saleNops).
+  const nop = Math.max(saleNops(account), ...[...coverage.values()].map((value) => value.nop));
   // Amount due: the missed months (U one, 60D two, 90D three, 120D four, 150D five, as before October 12), or the next
   // month when none is missed yet.
   const dueNow = status === "NS" ? 1 : status === "ADV" || status === "Paid" ? 0 : Math.max(1, Math.min(unpaidMonths, 5));
@@ -186,7 +198,7 @@ export function validatePayment(account: Account, history: AccountPayment[], inp
   if (!validMonth(input.monthFrom) || !validMonth(input.monthTo)) throw new Error("Select valid covered months.");
   const count = monthCount(input.monthFrom, input.monthTo);
   if (count < 1 || count > 1200 || !Number.isInteger(input.nopFrom) || input.nopFrom < 1 || !Number.isInteger(input.nopTo) || input.nopTo - input.nopFrom + 1 !== count) throw new Error("NOP range must match the number of covered months.");
-  // NOP is never typed: it always continues from the account (NS starts at 2 because the sale is NOP 1).
+  // NOP is never typed: it always continues from the account (NS starts at 2, or 1 on a registration-fee program).
   if (input.nopFrom !== state.nextNop) throw new Error(`NOP must start at ${state.nextNop}. Refresh the account history.`);
   if (input.monthFrom !== state.nextMonth) throw new Error(`Payment must begin with ${state.nextMonth}; do not skip unpaid months or repay covered months.`);
   const expected = Math.round(account.basePay * 100) * count;

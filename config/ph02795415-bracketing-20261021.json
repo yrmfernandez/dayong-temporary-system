@@ -1,0 +1,13 @@
+{
+  "member": "PH-02795415",
+  "account": "ENR-LEG-B6366E7CA7",
+  "program": "DP-0067",
+  "sale": "SALE-LEG-CDB00BC23C",
+  "expectedDoi": "2026-03-01",
+  "doi": "2026-03-31",
+  "sourceFile": "legacy-data/PH-02795415-source-rows.json",
+  "receiptCount": 6,
+  "amount": 300,
+  "startNop": 2,
+  "note": "Owner requested correcting PH-02795415 D-300 Bracketing. Original M3-NS row452 and saved New Sale application2026 C-00080 confirm March31,2026 enrollment. M3-COLL rows6721,8925,10935,12367,14392,16145 confirm April-September2026 NOP2-7; the last source row calls it DC-300 but it is already on the correct Bracketing account. Restore six receipts from March-August/NOP1-6 to April-September/NOP2-7, correct account DOI to actual New Sale date, recalculate status and financial snapshots. Preserve six PHP300 amounts, OR labels/dates, branch, MAS and the separate D-350 account."
+}

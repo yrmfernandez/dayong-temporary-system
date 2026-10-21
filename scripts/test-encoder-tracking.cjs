@@ -888,6 +888,16 @@ test('deleting a remittance keeps its entries for adjustments, or deletes them w
   assert.deepEqual([correction.module, correction.reason], ['Delete remittance with its entries', 'Duplicate entries']);
 });
 
+test('renumbering keeps NOP n on the DOI month plus n less the NOPs the New Sale counts', () => {
+  const h = harness();
+  const { renumber } = h.load('lib/entry-edit.ts');
+  const paid = [{ id: 'C1', enrollmentId: 'E1', orDate: '2026-01-20', orNumber: '1 A', monthFrom: '2026-02', monthTo: '2026-02', nopFrom: 1, nopTo: 1, amount: 350, dateRemitted: '', mas: '' }];
+  const [withFee] = renumber({ doi: '2026-01-15', registrationFee: true }, paid, 1, () => 2);
+  assert.deepEqual([withFee.nopFrom, withFee.nopTo, withFee.monthFrom, withFee.monthTo], [1, 2, '2026-02', '2026-03'], 'registration fee: NOP 1 is the month after DOI');
+  const [withoutFee] = renumber({ doi: '2026-01-15' }, paid, 2, () => 1);
+  assert.deepEqual([withoutFee.nopFrom, withoutFee.monthFrom], [2, '2026-02'], 'no registration fee: NOP 2 is the month after DOI');
+});
+
 test('all mutation routes reject unauthenticated requests before writing', async () => {
   const h = harness(null);
   for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals', 'finance-options', 'vendor-payables', 'commissions']) {

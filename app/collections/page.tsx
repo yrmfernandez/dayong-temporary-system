@@ -1462,7 +1462,7 @@ export default function CollectionsPage() {
                             Account <strong className="text-foreground">{entry.accountLoading ? "Loading..." : entry.accountStatus || "—"}</strong>
                             {" · "}NOP <strong className="text-foreground">{entry.nopFrom ?? "—"}{entry.nopTo !== null && entry.nopTo !== entry.nopFrom ? `–${entry.nopTo}` : ""}</strong>
                             {" · "}Remittance <strong className="text-foreground">{(() => { const quote = quoteEntry(entry); return "remittance" in quote ? formatCurrency(quote.remittance) : "Pending"; })()}</strong>
-                            <span title="NOP is set from the covered months and the account's history (an NS account's New Sale is NOP 1, so its first collection is NOP 2). The remittance uses the MAS or Collector incentive tier and mark-up."> ⓘ</span>
+                            <span title="NOP is set from the covered months and the account's history (an NS account's New Sale is NOP 1, so its first collection is NOP 2; on a program with a registration fee the New Sale is not a NOP, so the first collection is NOP 1). The remittance uses the MAS or Collector incentive tier and mark-up."> ⓘ</span>
                             {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
                             {needsWaiver(entry) && <p className="mt-1 text-amber-700">Suspended on the OR date. Select Waiver under If Suspended.</p>}
                             {entry.accountStatus === "Forfeited" && <p className={`mt-1 ${forfeitedPaymentsAllowed() ? "text-amber-700" : "text-red-600"}`}>{forfeitedPaymentsAllowed() ? "Forfeited: payments are allowed today only." : "Payments are blocked for this program."}</p>}

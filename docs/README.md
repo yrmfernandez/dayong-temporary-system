@@ -1,5 +1,11 @@
 # Dayong System documentation
 
+The [October 21 Bracketing source audit](bracketing-source-repairs-20261021.md) scans 1,462 accounts, corrects 75 NOPs across 31 histories and refreshes 251 additional statuses, with a separate list of histories requiring review.
+
+The [October 21 PH-02795415 Bracketing correction](ph02795415-bracketing-20261021.md) restores April–September NOP 2–7, aligns the DOI with the March 31 New Sale and updates account status.
+
+The [October 21 PH-46732266 / PH-95168214 merge](ph46732266-ph95168214-merge-20261021.md) retains one person with D-210 HG and D-300 Bracketing and preserves all 15 receipts.
+
 The [October 21 Rutchelyn report cleanup](rutchelyn-report-cleared-20261021.md) removes 13 leftover entries traced to six remittances already deleted by the administrator.
 
 The [October 21 older Clearing correction](older-clearing-covers-20261021.md) fixes six lines ticked Both to their actual remitted kind; five approved lines can leave Clearing and one remains pending.

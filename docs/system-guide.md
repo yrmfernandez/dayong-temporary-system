@@ -232,6 +232,8 @@ Select branch, assigned MAS/accountable employee, channel (`MAS`, `Collector`, o
 
 Choose covered months. NOP continues from the account automatically. For a new account with September DOI, New Sale is NOP 1; the first Collection starts in October at NOP 2. October–December covers three months and NOP 2–4. At PHP 350 per month, amount is PHP 1,050.
 
+**Registration-fee programs (October 21, 2026).** When the program has a registration fee, the New Sale pays the registration only and is not a NOP, so the first Collection is **NOP 1**, still for the month after DOI: September DOI, first Collection October at NOP 1; October–December is NOP 1–3. Without a registration fee the New Sale is NOP 1 and the first Collection NOP 2, as above. Incentives follow the NOP, so a registration-fee program's first Collection uses the month-1 tier. Moving an account to a program that differs in registration fee renumbers its collections by one so their months stay (`saleNops` in `lib/account-rules.ts`).
+
 Server validation checks stored history **and earlier payments pending in this batch**. It rejects:
 
 - Forfeited accounts, including attempts to bypass forfeiture with a waiver.

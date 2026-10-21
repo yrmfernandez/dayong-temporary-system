@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { isDeepStrictEqual } from "node:util";
 
-import { accountState, COLLECTION_CHANNELS, forfeitMonthsFor, incentiveRoleFor, monthIndex, monthName, type AccountPayment } from "@/lib/account-rules";
+import { accountState, COLLECTION_CHANNELS, firstCollectionNop, forfeitMonthsFor, incentiveRoleFor, monthIndex, monthName, saleNops, type AccountPayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
 import { currentDb, inTransaction, schema, type Queryable, type Transaction } from "@/lib/db";
 import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/duplicate-entries";
@@ -210,7 +210,7 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
 /**
  * Merges a member's account into their other account (owner, October 16, 2026: a program can be moved even when the
  * member's account in the target program already has payments). Every payment of both goes to the target account,
- * numbered one after another in OR-date order from the lowest NOP either had (2 when none: NOP 1 is the New Sale), each
+ * numbered one after another in OR-date order from the lowest NOP either had, on the target's numbering (saleNops), each
  * keeping its number of months (or, with sourceMonths, the source's receipts counted again at the target's pay); months follow the earlier DOI, which the target keeps. This is the October 4 repair
  * rule (scripts/fix-legacy-receipts.mjs). The combined history must pass the account rules with the target program,
  * or this throws and the caller's transaction saves nothing. Transfer records follow; the source account is deleted.
@@ -224,9 +224,12 @@ export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId
   const doi = [source.doi, target.doi].filter(Boolean).sort()[0] ?? "";
   const fromSource = new Set(data.payments.filter((payment) => payment.enrollmentId === source.id).map((payment) => payment.id));
   const payments = data.payments.map((payment) => ({ ...payment, enrollmentId: target.id }));
-  const nops = payments.map((payment) => payment.nopFrom).filter((nop) => nop > 0);
+  // Where numbering starts: the lowest NOP, moved onto the target's numbering when the two programs differ in registration
+  // fee (so its month stays), or the target's first collection NOP when there is none.
+  const owner = (payment: AccountPayment) => (fromSource.has(payment.id) ? source : target);
+  const starts = data.payments.filter((payment) => payment.nopFrom > 0).map((payment) => payment.nopFrom - saleNops(owner(payment)) + saleNops(target));
   // sourceMonths: the source's payments counted again at the target's monthly pay (a move between programs of different pay).
-  const renumbered = renumber({ doi }, payments, nops.length ? Math.min(...nops) : 2, (payment) => sourceMonths && fromSource.has(payment.id) ? sourceMonths(payment) : Math.max(1, payment.nopTo - payment.nopFrom + 1));
+  const renumbered = renumber({ doi, registrationFee: target.registrationFee }, payments, starts.length ? Math.min(...starts) : firstCollectionNop(target), (payment) => sourceMonths && fromSource.has(payment.id) ? sourceMonths(payment) : Math.max(1, payment.nopTo - payment.nopFrom + 1));
   let status: string;
   try { status = accountState({ ...target, doi }, renumbered, today).status; }
   catch (error) { throw new Error(`The payments of ${source.programName} and ${target.programName} do not fit together on one account (${error instanceof Error ? error.message : "coverage"}). Nothing was saved.`); }
@@ -244,17 +247,19 @@ export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId
 }
 
 /**
- * Numbers an account's payments again in OR-date order from `first` (the account's lowest NOP before the edit, or 2
- * when it had none: NOP 1 is the New Sale); `count` gives each payment's months.
+ * Numbers an account's payments again in OR-date order from `first` (the account's lowest NOP before the edit, or its
+ * first collection NOP when it had none); `count` gives each payment's months. NOP n covers the DOI month plus
+ * (n - saleNops) months: 2 is the month after DOI without a registration fee, 1 with one.
  */
-export function renumber(account: { doi: string }, payments: AccountPayment[], first: number, count: (payment: AccountPayment) => number) {
+export function renumber(account: { doi: string; registrationFee?: boolean }, payments: AccountPayment[], first: number, count: (payment: AccountPayment) => number) {
   const ordered = [...payments].sort((a, b) => a.orDate.localeCompare(b.orDate) || a.nopFrom - b.nopFrom || a.id.localeCompare(b.id));
   let next = first;
   const start = monthIndex(account.doi.slice(0, 7));
   return ordered.map((payment) => {
     const months = count(payment), nopFrom = next, nopTo = next + months - 1;
     next = nopTo + 1;
-    return { ...payment, nopFrom, nopTo, monthFrom: monthName(start + nopFrom - 1), monthTo: monthName(start + nopTo - 1) };
+    const offset = saleNops(account);
+    return { ...payment, nopFrom, nopTo, monthFrom: monthName(start + nopFrom - offset), monthTo: monthName(start + nopTo - offset) };
   });
 }
 
@@ -295,10 +300,13 @@ async function editCollection(tx: Transaction, input: EntryEditInput): Promise<O
   const others = (accountId: string) => data.payments.filter((payment) => payment.enrollmentId === accountId && payment.id !== row.collection_id);
   const span = (payment: AccountPayment) => (payment.id === row.collection_id ? months : Math.max(1, payment.nopTo - payment.nopFrom + 1));
   const plans = new Map<string, AccountPayment[]>();
-  // Where an account's numbering starts: its lowest NOP (the edited payment counts only on its own account), else 2.
+  // Where an account's numbering starts: its lowest NOP (the edited payment counts only on its own account), else its
+  // first collection NOP. A payment moving between accounts whose programs differ in registration fee keeps its month.
   const firstNop = (accountId: string, withEdited: boolean) => {
-    const nops = [...others(accountId), ...(withEdited ? [edited] : [])].map((payment) => payment.nopFrom).filter((nop) => nop > 0);
-    return nops.length ? Math.min(...nops) : 2;
+    const account = accountId === to.id ? to : from;
+    const shift = (payment: AccountPayment) => payment.id === row.collection_id ? saleNops(account) - saleNops(from) : 0;
+    const nops = [...others(accountId), ...(withEdited ? [edited] : [])].filter((payment) => payment.nopFrom > 0).map((payment) => payment.nopFrom + shift(payment));
+    return nops.length ? Math.min(...nops) : firstCollectionNop(account);
   };
   if (reorder) {
     // The edited payment takes its place among the target account's payments by OR date.
@@ -390,6 +398,9 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   const [account] = await tx.select().from(memberPrograms).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))).for("update");
   const changesProgram = programId !== row.program_id;
   let accountNote = "", status: string | null = null, doi = day(account?.doi), mergeTarget = "";
+  // Moving to a program that differs in registration fee renumbers the account's collections so their months stay
+  // (saleNops: NOP 2 is the month after DOI without a fee, NOP 1 with one).
+  let nopShift = 0;
   if (account) {
     const data = await loadAccountData({ enrollmentIds: [account.enrollment_id], includeDeactivated: true }, tx, { lock: true });
     const loaded = data.accounts[0];
@@ -401,7 +412,9 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
       mergeTarget = existing?.id ?? "";
     }
     // Merging into the member's existing account is checked there (mergeAccountInto); otherwise the account moves as it is.
-    if (!mergeTarget) try { status = accountState({ ...loaded, programId, doi, basePay: Number(program.basePay) || 0, payBalanceTotal: Number(program.payBalanceTotal) || 0, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(program.categoryId) }, paid, today).status; }
+    if (changesProgram && !mergeTarget) nopShift = saleNops({ registrationFee: program.registrationFeeRequired }) - saleNops(loaded);
+    const shifted = nopShift ? paid.map((payment) => ({ ...payment, nopFrom: payment.nopFrom + nopShift, nopTo: payment.nopTo + nopShift })) : paid;
+    if (!mergeTarget) try { status = accountState({ ...loaded, programId, doi, basePay: Number(program.basePay) || 0, payBalanceTotal: Number(program.payBalanceTotal) || 0, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(program.categoryId), registrationFee: program.registrationFeeRequired }, shifted, today).status; }
     catch (error) { throw new Error(`${program.name}: ${error instanceof Error ? error.message : "the account's payments do not fit"} Nothing was saved.`); }
     if (changesProgram && !mergeTarget) accountNote = `account ${account.enrollment_id} and its ${paid.length} collection(s) moved to ${program.name}`;
   } else if (changesProgram) accountNote = "no account was found for this New Sale; only the sale changed";
@@ -436,6 +449,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
     await tx.update(memberPrograms).set({ program_id: programId, doi: doi || null, doi_time: doiTime || null, amount_paid: amount, remittance_method: method || null, ...(status ? { account_status: status } : {}) }).where(eq(memberPrograms.enrollment_id, account.enrollment_id));
     if (changesProgram) {
       await tx.update(collections).set({ program_id: programId }).where(eq(collections.enrollment_id, account.enrollment_id));
+      if (nopShift) await tx.execute(sql`update collections set nop_from = nop_from + ${nopShift}, nop_to = nop_to + ${nopShift} where enrollment_id = ${account.enrollment_id} and status = 'Posted' and nop_from is not null`);
       const moved = await tx.select({ id: collections.collection_id }).from(collections).where(eq(collections.enrollment_id, account.enrollment_id));
       const followed = await repriceCollections(tx, moved.map((item) => item.id));
       if (followed.repriced) accountNote += `; ${followed.repriced} collection(s) with new incentives${followed.slips.length ? ` (slips ${followed.slips.join(", ")} follow)` : ""}`;

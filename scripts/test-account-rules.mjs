@@ -143,3 +143,13 @@ test("forfeiture: Pay the Balance programs after more than 12 months, other prog
   assert.equal(accountState({ ...account, forfeitMonths: 12, storedStatus: "Forfeited" }, paid, "2026-09-01").status, "150D", "within 12 months: overdue, not forfeited");
   assert.equal(accountState({ ...account, storedStatus: "Forfeited" }, paid, "2026-03-01").status, "Forfeited", "other programs keep a stored Forfeited");
 });
+
+test("a program with a registration fee: the New Sale is no NOP, so the first collection is NOP 1 for the month after DOI (owner, October 21, 2026)", async () => {
+  const withFee = { ...account, registrationFee: true };
+  const state = accountState(withFee, [], "2026-01-20");
+  assert.deepEqual([state.status, state.nop, state.nextNop, state.nextMonth], ["NS", 0, 1, "2026-02"]);
+  validatePayment(withFee, [], input({ nopFrom: 1, nopTo: 1 }), "2026-01-20");
+  assert.throws(() => validatePayment(withFee, [], input(), "2026-01-20"), /NOP must start at 1/);
+  const afterFirst = accountState(withFee, [payment({ monthFrom: "2026-02", monthTo: "2026-02", nopFrom: 1, nopTo: 1, orDate: "2026-01-20" })], "2026-01-20");
+  assert.deepEqual([afterFirst.nop, afterFirst.nextNop, afterFirst.nextMonth, afterFirst.tmd], [1, 2, "2026-03", 350]);
+});
