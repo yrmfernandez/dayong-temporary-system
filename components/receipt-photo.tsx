@@ -2,6 +2,7 @@
 
 import { Camera, ImageIcon, RotateCw, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 
@@ -139,7 +140,9 @@ export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId:
     <>
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void open()}><ImageIcon className="size-3.5" />{busy ? "Loading..." : label}</Button>
       {error && <span className="text-xs text-red-700">{error}</span>}
-      {photo && (
+      {/* On the body, outside every card: a card's backdrop-filter makes it the box a fixed element is placed and clipped in,
+          so inside one the viewer was not full screen and did not scroll (owner, October 21, 2026). */}
+      {photo && createPortal(
         <div role="dialog" aria-modal="true" aria-label="Receipt photo" className="fixed inset-0 z-50 flex flex-col overscroll-contain bg-black/95 text-white">
           <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2">
             <p className="min-w-0 truncate text-xs text-white/70">Uploaded {new Date(photo.uploadedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {photo.uploadedByName}</p>
@@ -157,7 +160,8 @@ export function ReceiptPhotoView({ photoId, label = "View receipt" }: { photoId:
               className={`h-auto ${fit ? "object-contain" : "mx-auto block pb-4"} ${zoom < 2 ? "cursor-zoom-in" : "cursor-zoom-out"}`}
               onClick={() => setZoom((value) => (value < 2 ? 2 : 1))} />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
