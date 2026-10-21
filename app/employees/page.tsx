@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/app-dialog";
 import {
   Fragment,
   useEffect,
@@ -81,7 +82,7 @@ export default function EmployeesPage() {
   };
   async function changeEmployee(method: "PATCH" | "DELETE", employeeId: string, status?: string) {
     const label = employees.find((employee) => employee.id === employeeId)?.name ?? employeeId;
-    if (method === "DELETE" && !window.confirm(`Delete ${label} from the employee directory? This cannot be undone.`)) return;
+    if (method === "DELETE" && !await confirmDialog(`Delete ${label} from the employee directory? This cannot be undone.`)) return;
     setSavedId("");
     setMessage("");
     try {

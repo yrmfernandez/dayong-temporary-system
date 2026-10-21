@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog, promptDialog } from "@/components/app-dialog";
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Banknote, CalendarRange, Calculator, Download, FileText, MinusCircle, PlusCircle, Printer, Users, Wallet, X } from "lucide-react";
@@ -334,7 +335,7 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
           <p className="text-sm text-muted-foreground">Prepared by {run.preparedByName}. Approving locks the amounts. {selfApproval ? "Another Finance user or an Administrator must approve a payroll you prepared." : ""}</p>
           <Button type="button" disabled={busy || selfApproval || !lines.length} onClick={() => void act({ action: "approve" }, "Payroll approved.")}>Approve payroll ({money(totals.net)})</Button>
         </>}
-        {run.status === "Approved" && <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); if (window.confirm(`Record ${money(totals.net)} paid from ${payment.cashAccount}? This posts one payroll outflow to Cash Transactions and marks included commissions Paid.`)) void act({ action: "pay", ...payment }, "Payroll paid and posted to the cash ledger."); }}>
+        {run.status === "Approved" && <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={async (event) => { event.preventDefault(); if (await confirmDialog(`Record ${money(totals.net)} paid from ${payment.cashAccount}? This posts one payroll outflow to Cash Transactions and marks included commissions Paid.`)) void act({ action: "pay", ...payment }, "Payroll paid and posted to the cash ledger."); }}>
           <p className="text-sm text-muted-foreground sm:col-span-2 lg:col-span-4">Approved by {run.approvedByName}. Recording payment posts one cash outflow and marks the included commissions Paid.</p>
           <div className="space-y-2"><Label>Pay date *</Label><Input type="date" required value={payment.payDate} onChange={(event) => setPayment({ ...payment, payDate: event.target.value })} /></div>
           <div className="space-y-2"><Label>Paid from *</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" required value={payment.cashAccount} onChange={(event) => setPayment({ ...payment, cashAccount: event.target.value })}>{overview.cashAccounts.map((account) => <option key={account}>{account}</option>)}</select></div>
@@ -343,8 +344,8 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
           <div className="sm:col-span-2 lg:col-span-4"><Button type="submit" disabled={busy}>Record payment ({money(totals.net)})</Button></div>
         </form>}
         <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-          <Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={() => { const reason = window.prompt("Reason for voiding this payroll (required):"); if (reason?.trim()) void act({ action: "void", reason }, "Payroll voided. Its commissions are available to a new payroll."); }}>Void payroll</Button>
-          {run.status === "Draft" && <Button type="button" variant="destructive" disabled={busy} onClick={() => { if (window.confirm(`Delete this Draft payroll (${run.periodFrom} to ${run.periodTo})? Its lines and adjustments are removed from the database. This cannot be undone.`)) void act({ action: "delete" }, "Draft payroll deleted."); }}>Delete draft</Button>}
+          <Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={async () => { const reason = await promptDialog("Reason for voiding this payroll (required):", { required: true }); if (reason?.trim()) void act({ action: "void", reason }, "Payroll voided. Its commissions are available to a new payroll."); }}>Void payroll</Button>
+          {run.status === "Draft" && <Button type="button" variant="destructive" disabled={busy} onClick={async () => { if (await confirmDialog(`Delete this Draft payroll (${run.periodFrom} to ${run.periodTo})? Its lines and adjustments are removed from the database. This cannot be undone.`)) void act({ action: "delete" }, "Draft payroll deleted."); }}>Delete draft</Button>}
           <p className="w-full text-xs text-muted-foreground">Void keeps the payroll on record with a reason. {run.status === "Draft" ? "Delete removes a Draft made by mistake from the database entirely." : "Only a Draft can be deleted."}</p>
         </div>
       </CardContent>

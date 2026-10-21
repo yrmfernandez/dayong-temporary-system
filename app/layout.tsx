@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AppDialogHost } from "@/components/app-dialog";
 import { AppShell } from "@/components/app-shell";
 import { themeBootScript } from "@/lib/theme";
 
@@ -31,6 +32,8 @@ export default function RootLayout({
       </head>
       <body className="h-full overflow-hidden text-foreground antialiased">
         <AppShell>{children}</AppShell>
+        {/* Confirm, prompt and alert boxes for every page (components/app-dialog.tsx). */}
+        <AppDialogHost />
       </body>
     </html>
   );

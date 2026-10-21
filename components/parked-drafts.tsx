@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/app-dialog";
 import { PauseCircle, PlayCircle, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ export function ParkedDrafts({ drafts, canPark, onPark, onResume, onDelete }: {
           <span className="min-w-0"><span className="block truncate font-medium">{draft.label}</span><span className="block text-xs text-muted-foreground">Set aside {when(draft.savedAt)}</span></span>
           <span className="flex gap-2">
             <Button type="button" size="sm" onClick={() => onResume(draft.id)}><PlayCircle className="size-4" />Resume</Button>
-            <Button type="button" size="sm" variant="ghost" aria-label={`Delete draft ${draft.label}`} onClick={() => { if (window.confirm(`Delete the draft "${draft.label}"? Its entries are not saved anywhere else.`)) onDelete(draft.id); }}><Trash2 className="size-4" /></Button>
+            <Button type="button" size="sm" variant="ghost" aria-label={`Delete draft ${draft.label}`} onClick={async () => { if (await confirmDialog(`Delete the draft "${draft.label}"? Its entries are not saved anywhere else.`)) onDelete(draft.id); }}><Trash2 className="size-4" /></Button>
           </span>
         </li>)}
       </ul>}

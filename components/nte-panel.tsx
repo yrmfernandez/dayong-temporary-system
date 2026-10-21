@@ -1,5 +1,6 @@
 "use client";
 
+import { promptDialog } from "@/components/app-dialog";
 import { AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -98,7 +99,7 @@ export function NtePanel({ employees }: { employees: Array<{ id: string; name: s
                 : nte.acknowledgedAt ? <span className="text-xs text-muted-foreground">Read {when(nte.acknowledgedAt)}; no explanation yet</span>
                 : <span className="text-xs text-amber-700">Not yet read by the employee</span>}</td>
               <td className="p-2">{nte.issuedBy || "-"}</td>
-              <td className="p-2 text-right">{nte.status === "Active" && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { const reason = window.prompt(`Withdraw the notice to ${nte.employeeName}? Give the reason:`); if (reason) void send("PATCH", { id: nte.id, reason }); }}>Withdraw</Button>}</td>
+              <td className="p-2 text-right">{nte.status === "Active" && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={async () => { const reason = await promptDialog(`Withdraw the notice to ${nte.employeeName}? Give the reason:`, { required: true }); if (reason) void send("PATCH", { id: nte.id, reason }); }}>Withdraw</Button>}</td>
             </tr>;
           })}
           {!shown.length && <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">{data ? "No notices." : "Loading..."}</td></tr>}

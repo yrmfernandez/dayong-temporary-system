@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/app-dialog";
 import { useEffect, useState } from "react";
 
 import {
@@ -162,7 +163,7 @@ export default function BranchesPage() {
   // Edit opens under the branch itself; clicking Edit again closes it.
   const closeForm = () => { setEditingId(null); setForm(emptyBranchForm); setShowForm(false); };
   const editBranch = (branch: Branch) => { if (editingId === branch.id) { closeForm(); return; } const { id: _id, ...values } = branch; void _id; setMessage(""); setSavedId(null); setForm(values); setEditingId(branch.id); setShowForm(false); };
-  const deleteBranch = async (branch: Branch) => { if (!window.confirm(`Delete ${branch.name} from ${branch.territory}?`)) return; setMessage(""); try { const response = await fetch(`/api/branches?id=${encodeURIComponent(branch.id)}`, { method: "DELETE" }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to delete branch."); setMessage("Branch deleted successfully."); await loadBranches(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to delete branch."); } };
+  const deleteBranch = async (branch: Branch) => { if (!await confirmDialog(`Delete ${branch.name} from ${branch.territory}?`)) return; setMessage(""); try { const response = await fetch(`/api/branches?id=${encodeURIComponent(branch.id)}`, { method: "DELETE" }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to delete branch."); setMessage("Branch deleted successfully."); await loadBranches(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to delete branch."); } };
 
   const branchForm = (
       <form className="space-y-4" onSubmit={saveBranch}>

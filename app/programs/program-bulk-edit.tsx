@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/app-dialog";
 import { useState } from "react";
 import { CheckSquare, Square, SlidersHorizontal, X } from "lucide-react";
 
@@ -50,7 +51,7 @@ export function ProgramBulkEdit({ allIds, selected, onSelectedChange, categories
     if (fields.has("age")) changes.age = { restricted: values.ageRestricted === "yes", minAge: values.minAge, maxAge: values.maxAge };
     if (fields.has("saleIncentive")) changes.saleIncentive = { type: values.saleIncentiveType, amount: Number(values.saleIncentiveAmount) || 0 };
     const summary = [...fields].map((field) => FIELD_LABELS[field]).join(", ");
-    if (!window.confirm(`Change ${summary} on ${selected.length} program${selected.length === 1 ? "" : "s"}?`)) return;
+    if (!await confirmDialog(`Change ${summary} on ${selected.length} program${selected.length === 1 ? "" : "s"}?`)) return;
     setBusy(true); setMessage(null);
     try {
       const response = await fetch("/api/programs", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selected, changes }) });

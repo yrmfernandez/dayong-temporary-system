@@ -1203,3 +1203,10 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Owner (follow-up):** require it on the Expenses page too.
 - **Done:** the rule is now in `createExpense` (`lib/finance-data.ts`), used by both forms: fields and photos are checked, photos saved, then the expense row; a refused expense stores no photo. The Expenses page form has the photo picker, its register shows **Receipt** buttons (`photoIds` from `GET /api/expenses`), and `/expenses` may view receipt photos. Tested.
 - **To do:** none. Expenses saved before today keep no photo; one is asked for when an expense is next edited on the report (the Expenses page has no edit).
+
+### App pop-up boxes in place of the browser's (2026-10-21)
+
+- **Owner:** replace the browser's pop-ups (the plain boxes at the top of the page) with better ones that do not appear at the top.
+- **Done:** `components/app-dialog.tsx`: `confirmDialog`, `promptDialog` and `alertDialog` return promises like the browser's confirm, prompt and alert, and `AppDialogHost` (mounted once in `app/layout.tsx`) shows them one at a time, centred over a dimmed page. Every `window.confirm`, `window.prompt`, `confirm` and `alert` in the app now uses them: about 20 confirm and prompt boxes (delete, void, reject, reset password, payroll, Fidelity, transfers, drafts, calendar, NTE) and 22 Programs warnings. Reason prompts the server requires use `required: true`, so OK stays off until something is typed. No server or database change. Build and tests pass.
+- **In progress:** none.
+- **To do:** none.

@@ -78,6 +78,8 @@ There are also separate statuses: Member status, enrollment Active/Inactive stat
 
 Visibility depends on your roles and configured page access. A page you can review may still restrict management actions.
 
+**Pop-up boxes (October 21, 2026).** Every question the system asks (delete or void this? the reason? an amount?) and every warning opens in the app's own box in the middle of the screen, over a dimmed page, instead of the browser's plain box at the top. The OK button is named for the action (Delete, Void, Approve, …) and is red for ones that remove or undo something. When a reason is required, the button stays off until one is typed. Enter accepts; Esc, Cancel or a click outside closes it without doing anything (`components/app-dialog.tsx`: `confirmDialog`, `promptDialog`, `alertDialog`, shown by `AppDialogHost` in `app/layout.tsx`).
+
 | Page | What you use it for |
 | --- | --- |
 | `/` | Role-specific dashboard: administration, executive, HR, Finance, Entry Clerk, IT, MAS, or Collector. Workspace selection affects the dashboard. **Entry Clerk Remittance Status (October 17, 2026):** the panel (cash still with staff, entries not yet remitted, slips awaiting approval, approved today) counts only what that clerk encoded, the same as their Remittances page; before, it showed every clerk's totals. Approved today uses the Manila date of the approval, so an approval before 8:00 AM counts on its own day. |

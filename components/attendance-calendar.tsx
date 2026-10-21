@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/app-dialog";
 import { CalendarDays, ChevronLeft, ChevronRight, Flag, Lock, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -216,7 +217,7 @@ function DayDetails({ date, holidays, closure, data, busy, post }: {
             {canManage && (
               <div className="flex gap-2">
                 <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setEditing(holiday)}>Edit</Button>
-                <Button type="button" size="sm" variant="ghost" disabled={busy} aria-label={`Remove ${holiday.name}`} onClick={() => { if (window.confirm(`Remove ${holiday.name} from the calendar?`)) void post({ action: "delete-holiday", id: holiday.id }); }}><Trash2 className="size-4" /></Button>
+                <Button type="button" size="sm" variant="ghost" disabled={busy} aria-label={`Remove ${holiday.name}`} onClick={async () => { if (await confirmDialog(`Remove ${holiday.name} from the calendar?`)) void post({ action: "delete-holiday", id: holiday.id }); }}><Trash2 className="size-4" /></Button>
               </div>
             )}
           </div>
@@ -267,7 +268,7 @@ function DayDetails({ date, holidays, closure, data, busy, post }: {
               {closure ? "Update Non-working Day" : "Declare Non-working Day"}
             </Button>
             {closure && (
-              <Button type="button" variant="outline" disabled={busy} onClick={() => { if (window.confirm("Reopen attendance for this date? Clock-ins cancelled by this closure stay cancelled.")) void post({ action: "remove-closure", date }, true); }}>
+              <Button type="button" variant="outline" disabled={busy} onClick={async () => { if (await confirmDialog("Reopen attendance for this date? Clock-ins cancelled by this closure stay cancelled.")) void post({ action: "remove-closure", date }, true); }}>
                 Remove Non-working Day
               </Button>
             )}

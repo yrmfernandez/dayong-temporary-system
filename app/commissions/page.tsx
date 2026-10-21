@@ -1,4 +1,5 @@
 "use client";
+import { promptDialog } from "@/components/app-dialog";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,7 +85,7 @@ export default function CommissionsPage() {
     setShow(false); setForm(blank(from, to)); setMessage(`Commission ${result.id} recorded for payroll.`); await load();
   }
   async function pay(record: Commission) {
-    const reference = window.prompt("Payment reference number:", record.referenceNumber) || "";
+    const reference = await promptDialog("Payment reference number:", { defaultValue: record.referenceNumber }) || "";
     const response = await fetch("/api/commissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: record.id, referenceNumber: reference }) }), result = await response.json();
     if (!response.ok) { setError(result.message); return; }
     setMessage("Commission marked paid."); await load();

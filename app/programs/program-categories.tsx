@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/app-dialog";
 import { useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 
@@ -47,7 +48,7 @@ export function ProgramCategoriesManager({ categories, onChanged }: { categories
           {editing?.id !== category.id && <>
             <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setEditing({ id: category.id, name: category.name })}><Pencil className="mr-1 size-4" />Rename</Button>
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void send("PUT", { name: category.name, status: category.status === "active" ? "inactive" : "active", description: category.description }, category.id, category.status === "active" ? "Category set to inactive." : "Category reactivated.")}>{category.status === "active" ? "Set inactive" : "Reactivate"}</Button>
-            <Button type="button" size="sm" variant="ghost" className="text-destructive" disabled={busy} aria-label={`Delete ${category.name}`} onClick={() => { if (window.confirm(`Delete the category "${category.name}"?`)) void send("DELETE", null, category.id, "Category deleted."); }}><Trash2 className="size-4" /></Button>
+            <Button type="button" size="sm" variant="ghost" className="text-destructive" disabled={busy} aria-label={`Delete ${category.name}`} onClick={async () => { if (await confirmDialog(`Delete the category "${category.name}"?`)) void send("DELETE", null, category.id, "Category deleted."); }}><Trash2 className="size-4" /></Button>
           </>}
         </li>)}
         {!categories.length && <li className="p-4 text-center text-sm text-muted-foreground">No categories yet.</li>}

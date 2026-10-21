@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog, promptDialog } from "@/components/app-dialog";
 import {
   useCallback,
   useEffect,
@@ -1101,9 +1102,9 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   };
 
   /** Loads a submission into the form: the clerk to review and save it, the MAS to edit and submit it again. */
-  const openSubmission = (submission: SubmissionSummary) => {
+  const openSubmission = async (submission: SubmissionSummary) => {
     const hasWork = sales.some((sale) => sale.member.name.surname.trim() || sale.applicationNumber.trim());
-    if (hasWork && submission.id !== submissionId && !window.confirm("Replace the sales on the form with this submission? Unsaved changes on the form are lost.")) return;
+    if (hasWork && submission.id !== submissionId && !await confirmDialog("Replace the sales on the form with this submission? Unsaved changes on the form are lost.")) return;
     const cards = submission.sales.length ? submission.sales : [emptyNewSale(submission.branch, submission.mas)];
     setBranch(submission.branch);
     setMas(submission.mas);
@@ -1118,7 +1119,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
   /** Clerk: sends a submission back to the MAS with what to fix. */
   const returnToMas = async (submission: SubmissionSummary) => {
-    const reason = window.prompt(`What should ${submission.mas} fix?`)?.trim();
+    const reason = (await promptDialog(`What should ${submission.mas} fix?`, { required: true }))?.trim();
     if (!reason) return;
     const response = await fetch("/api/sale-submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: submission.id, reason }) });
     const result = await response.json();

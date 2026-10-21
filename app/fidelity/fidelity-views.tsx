@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog, promptDialog } from "@/components/app-dialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock3, HandCoins, PiggyBank, Target, Users } from "lucide-react";
 
@@ -180,12 +181,12 @@ export function FidelityMonitoring() {
   async function withdraw(account: Account, kind: "excess" | "separation") {
     let amount = account.approved;
     if (kind === "excess") {
-      const entered = window.prompt(`Amount to withdraw for ${account.masName} (up to ${money(account.withdrawable)}):`, String(account.withdrawable));
+      const entered = await promptDialog(`Amount to withdraw for ${account.masName} (up to ${money(account.withdrawable)}):`, { defaultValue: String(account.withdrawable), required: true });
       if (entered === null) return;
       amount = Number(entered);
       if (!(amount > 0) || amount > account.withdrawable) { setError(`Enter an amount from ₱0.01 to ${money(account.withdrawable)}.`); return; }
-    } else if (!window.confirm(`Release the whole ${money(account.approved)} Fidelity balance to ${account.masName}, who has left the company?`)) return;
-    const notes = window.prompt("Reference or notes (optional):") ?? "";
+    } else if (!await confirmDialog(`Release the whole ${money(account.approved)} Fidelity balance to ${account.masName}, who has left the company?`)) return;
+    const notes = await promptDialog("Reference or notes (optional):") ?? "";
     setBusy(true); setError(""); setMessage("");
     try {
       const response = await fetch("/api/fidelity", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ masEmployeeId: account.masEmployeeId, kind, amount, notes }) });

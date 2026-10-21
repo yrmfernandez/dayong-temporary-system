@@ -1,5 +1,6 @@
 "use client";
 
+import { promptDialog } from "@/components/app-dialog";
 import { AlertTriangle, ChevronDown, Eye, Printer, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -152,7 +153,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                   {/* Receipt photos (owner, October 21, 2026: required for every expense on the report). */}
                   {report.expenses[index].photoIds.map((photoId, photo) => <ReceiptPhotoView key={photoId} photoId={photoId} label={report.expenses[index].photoIds.length > 1 ? `Receipt ${photo + 1}` : "Receipt"} />)}
                   {!report.expenses[index].photoIds.length && <span className="text-xs text-amber-700 dark:text-amber-400">No receipt photo</span>}
-                  {own && <><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this expense being deleted?"); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></>}
+                  {own && <><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this expense being deleted?", { required: true }); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></>}
                 </span>} />
               <Grid title="Cash Flow Transaction and Other Cash Ins" color={tone.cashFlow}
                 headers={["Bank Account Name", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
@@ -161,7 +162,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                   ? report.cashFlowTotals.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, `${item.count} deposit${item.count === 1 ? "" : "s"}`])
                   : report.deposits.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, item.remarks])}
                 total={report.depositTotal}
-                action={own && !report.cashFlowTotals ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this deposit being voided?"); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
+                action={own && !report.cashFlowTotals ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this deposit being voided?", { required: true }); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
             </div>
 
             {(report.fidelityReceived.length > 0 || own) && (
@@ -170,7 +171,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 headers={["MAS", report.whenLabel, "Amount", "Status", "Rmks", "Ref"]}
                 rows={report.fidelityReceived.map((item) => [item.masName, item.when, money(item.amount), item.status, item.remarks, item.id])}
                 total={report.cash.fidelity}
-                action={own ? (index) => { const item = report.fidelitySlips.find((slip) => slip.id === report.fidelityReceived[index].id); return item && ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={() => { const reason = window.prompt("Why is this Fidelity entry being voided?"); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
+                action={own ? (index) => { const item = report.fidelitySlips.find((slip) => slip.id === report.fidelityReceived[index].id); return item && ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this Fidelity entry being voided?", { required: true }); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
             )}
 
             <div className="grid gap-3 lg:grid-cols-[1.1fr_0.8fr_1.6fr] print:grid-cols-[1.1fr_0.8fr_1.6fr]">

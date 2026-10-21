@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/app-dialog";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,7 @@ export function ProgramTransfer({ programId, onClose, onDone }: { programId: str
   const transfer = async () => {
     if (!options || !targetProgram) return;
     const count = selected.length;
-    if (!window.confirm(`Move ${all ? `all ${count}` : count} account${count === 1 ? "" : "s"} from ${options.program.name} to ${targetProgram.name}?${all && removeWhenEmpty ? ` ${options.program.name} will then be deleted (or set inactive if anything still uses it).` : ""}`)) return;
+    if (!await confirmDialog(`Move ${all ? `all ${count}` : count} account${count === 1 ? "" : "s"} from ${options.program.name} to ${targetProgram.name}?${all && removeWhenEmpty ? ` ${options.program.name} will then be deleted (or set inactive if anything still uses it).` : ""}`)) return;
     setBusy(true); setError(""); setLeft([]);
     try {
       const response = await fetch("/api/programs/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: options.program.id, to: target, all, enrollmentIds: all ? [] : selected, removeWhenEmpty: all && removeWhenEmpty, reason }) });

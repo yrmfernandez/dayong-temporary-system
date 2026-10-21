@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/app-dialog";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { InlineRow } from "@/components/inline-panel";
 import { Button } from "@/components/ui/button";
@@ -65,7 +66,7 @@ export default function RolesPage() {
   }
 
   async function remove(role: Role) {
-    if (!confirm(`Delete ${role.name}?`)) return;
+    if (!await confirmDialog(`Delete ${role.name}?`)) return;
     setSavedId("");
     const response = await fetch("/api/roles", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: role.id }) });
     const result = await response.json();

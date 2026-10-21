@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog, promptDialog } from "@/components/app-dialog";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, BarChart3, CheckCircle2, ChevronDown, ChevronUp, Clock3, FileCheck2, LayoutDashboard, List, RefreshCw, Search, Wallet } from "lucide-react";
 
@@ -111,9 +112,9 @@ export default function RemittancesPage() {
   const decide = async (ids: string[], decision: "approve" | "reject") => {
     if (!ids.length) return;
     const discrepancy = decision === "approve" && pending.some((item) => ids.includes(item.id) && item.difference !== 0);
-    const reason = decision === "reject" ? window.prompt(`Why ${ids.length === 1 ? "is this remittance" : `are these ${ids.length} remittances`} being rejected? The entries go back to the Entry Clerk with this reason.`) : discrepancy ? window.prompt("Explain how the discrepancy was resolved (required):") : "";
+    const reason = decision === "reject" ? await promptDialog(`Why ${ids.length === 1 ? "is this remittance" : `are these ${ids.length} remittances`} being rejected? The entries go back to the Entry Clerk with this reason.`, { required: true }) : discrepancy ? await promptDialog("Explain how the discrepancy was resolved (required):", { required: true }) : "";
     if ((decision === "reject" || discrepancy) && !reason?.trim()) return;
-    if (decision === "approve" && ids.length > 1 && !window.confirm(`Approve ${ids.length} remittances?`)) return;
+    if (decision === "approve" && ids.length > 1 && !await confirmDialog(`Approve ${ids.length} remittances?`)) return;
     setSaving(true); setError(""); setMessage("");
     try {
       const response = await fetch("/api/remittances", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remittanceIds: ids, decision, reason }) });

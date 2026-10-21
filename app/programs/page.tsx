@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { alertDialog, confirmDialog } from "@/components/app-dialog";
 import { useEffect, useState } from "react";
 import {
 ArrowRightLeft,
@@ -371,7 +372,7 @@ async function loadReference() {
 function copyBaseRatesToBranch(branchId: string) {
   if (!branchId) return;
   setForm((current) => {
-    if (current.incentiveTiers.some((tier) => tier.branchId === branchId)) { alert(`${branchName(branchId)} already has its own periods.`); return current; }
+    if (current.incentiveTiers.some((tier) => tier.branchId === branchId)) { void alertDialog(`${branchName(branchId)} already has its own periods.`); return current; }
     const base = current.incentiveTiers.filter((tier) => !tier.branchId);
     return { ...current, incentiveTiers: [...current.incentiveTiers, ...(base.length ? base : [createEmptyTier()]).map((tier) => ({ ...tier, branchId }))] };
   });
@@ -558,7 +559,7 @@ function validateTiers() {
 if (
 form.incentiveTiers.length === 0
 ) {
-alert(
+void alertDialog(
 "Please add at least one incentive period.",
 );
 
@@ -572,7 +573,7 @@ const normalizedPeriods: {
 }[] = [];
 
 if (!form.incentiveTiers.some((tier) => !tier.branchId)) {
-  alert("Add at least one period for All branches (base rates). Branch periods only replace the base rates in that branch.");
+  void alertDialog("Add at least one period for All branches (base rates). Branch periods only replace the base rates in that branch.");
   return false;
 }
 
@@ -622,7 +623,7 @@ for (
     !Number.isFinite(fromMonth) ||
     fromMonth < 1
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: From period must be 1 or greater.`,
     );
 
@@ -634,7 +635,7 @@ for (
     !Number.isFinite(toMonth) ||
     toMonth < fromMonth
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: To period must be greater than or equal to From period.`,
     );
 
@@ -645,7 +646,7 @@ for (
     !Number.isInteger(fromMonth) ||
     !Number.isInteger(toMonth)
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: Period values must be whole numbers.`,
     );
 
@@ -657,7 +658,7 @@ for (
     !Number.isFinite(markUp) ||
     markUp < 0
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: Mark Up must be 0 or greater.`,
     );
 
@@ -671,7 +672,7 @@ for (
     ) ||
     totalIncentive < 0
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: Total incentive must be 0 or greater.`,
     );
 
@@ -685,7 +686,7 @@ for (
     ) ||
     masIncentive < 0
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: MAS incentive must be 0 or greater.`,
     );
 
@@ -699,7 +700,7 @@ for (
     ) ||
     collectorIncentive < 0
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: Collector incentive must be 0 or greater.`,
     );
 
@@ -711,7 +712,7 @@ for (
       "percentage" &&
     totalIncentive > 100
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: Total percentage cannot be greater than 100%.`,
     );
 
@@ -723,7 +724,7 @@ for (
       "percentage" &&
     splitTotal > 100
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: MAS and Collector percentages cannot exceed 100% combined.`,
     );
 
@@ -736,7 +737,7 @@ for (
         totalIncentive,
     ) > 0.0001
   ) {
-    alert(
+    void alertDialog(
       `Tier ${index + 1}: MAS and Collector must add up to the Total Incentive.`,
     );
 
@@ -771,7 +772,7 @@ for (
     current.from <=
     previous.to
   ) {
-    alert(
+    void alertDialog(
       "Incentive periods for the same branch cannot overlap. Please adjust the ranges.",
     );
 
@@ -785,14 +786,14 @@ return true;
 
 async function saveProgram() {
 if (!form.code.trim()) {
-alert(
+void alertDialog(
 "Please enter a program code.",
 );
 return;
 }
 
 if (!form.name.trim()) {
-  alert(
+  void alertDialog(
     "Please enter a program name.",
   );
   return;
@@ -806,7 +807,7 @@ if (
   !Number.isFinite(basePay) ||
   basePay <= 0
 ) {
-  alert(
+  void alertDialog(
     form.flexible ? "Minimum monthly payment must be greater than 0." : "Base Pay must be greater than 0.",
   );
   return;
@@ -902,7 +903,7 @@ try {
       maxMonthlyPayment = normalizeMonthlyMaximum({ flexible: true, basePay, maxMonthlyPayment: form.maxMonthlyPayment });
     }
   } catch (error) {
-    alert(error instanceof Error ? error.message : "Enter a valid maximum monthly payment.");
+    void alertDialog(error instanceof Error ? error.message : "Enter a valid maximum monthly payment.");
     return;
   }
 
@@ -980,7 +981,7 @@ try {
 
   await loadPrograms();
 
-  alert(
+  void alertDialog(
     savedEditingId
       ? "Program updated successfully."
       : `Program saved successfully. ID: ${
@@ -993,7 +994,7 @@ try {
     error,
   );
 
-  alert(
+  void alertDialog(
     error instanceof Error
       ? error.message
       : "Failed to save program.",
@@ -1173,7 +1174,7 @@ async function deleteProgram(
 program: Program,
 ) {
 const confirmed =
-window.confirm(
+await confirmDialog(
 `Are you sure you want to delete ${program.id} - ${program.name}?`,
 );
 
@@ -1207,7 +1208,7 @@ try {
 
   await loadPrograms();
 
-  alert(
+  void alertDialog(
     "Program deleted successfully.",
   );
 } catch (error) {
@@ -1216,7 +1217,7 @@ try {
     error,
   );
 
-  alert(
+  void alertDialog(
     error instanceof Error
       ? error.message
       : "Failed to delete program.",
