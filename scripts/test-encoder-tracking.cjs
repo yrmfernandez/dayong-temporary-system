@@ -853,6 +853,41 @@ test('per-MAS report CVE: what each MAS was expected to collect in the period', 
   assert.deepEqual(year.get('intas, bellosa'), { accounts: 2, gross: 300 * (6 + 3) }, 'yearly adds every month due (July–December and October–December)');
 });
 
+test('deleting a remittance keeps its entries for adjustments, or deletes them with it for duplicates', async () => {
+  const h = harness();
+  const { planDeletion, deleteRecord } = h.load('lib/admin-delete.ts');
+  const run = (work) => h.load('lib/encoder-context.ts').runAsSystem(work);
+  const setUp = async (remittance) => {
+    await seed('remittances', [{ remittance_id: remittance, status: 'Pending Approval', mas: 'MAS-2', date_remitted: '2026-10-21' }]);
+    await seed('collections', [
+      { collection_id: `${remittance}-C1`, collection_batch_id: `${remittance}-B`, enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: `${remittance} 1 A`, amount_collected: 350, status: 'Posted', linked_remittance_id: remittance, remittance_status: 'Pending Approval' },
+      { collection_id: `${remittance}-C2`, collection_batch_id: `${remittance}-B`, enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: `${remittance} 2 A`, amount_collected: 350, status: 'Posted', remittance_status: 'Pending Approval' },
+    ]);
+    await seed('remittance_collections', [{ remittance_collection_id: `${remittance}-L2`, remittance_id: remittance, collection_id: `${remittance}-C2` }]);
+  };
+  await seedAccount();
+  await seed('collections', [{ collection_id: 'OTHER', collection_batch_id: 'CBT-O', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: '9 A', amount_collected: 350, status: 'Posted', remittance_status: 'Outstanding' }]);
+
+  // The remittance only: its entries stay, Outstanding again.
+  await setUp('REM-ADJ');
+  await run(() => deleteRecord('remittance', 'REM-ADJ', 'adjustments'));
+  assert.deepEqual((await query("select collection_id, remittance_status from collections where collection_id like 'REM-ADJ%' order by 1")).map((row) => [row.collection_id, row.remittance_status]), [['REM-ADJ-C1', 'Outstanding'], ['REM-ADJ-C2', 'Outstanding']]);
+
+  // With its entries: the slip, its links and its collections go; the member's other collection stays.
+  await setUp('REM-DUP');
+  const plan = await planDeletion('remittance', 'REM-DUP', undefined, { withEntries: true });
+  assert.deepEqual(plan.blockers, [], 'its own remittance does not block deleting its entries');
+  assert.deepEqual(plan.ids.collections.sort(), ['REM-DUP-C1', 'REM-DUP-C2']);
+  assert.ok(plan.effects.includes('1 remittance') && plan.effects.includes('2 collections'), plan.effects.join(', '));
+  await run(() => deleteRecord('remittance', 'REM-DUP', 'Duplicate entries', { withEntries: true }));
+  assert.equal((await query("select count(*)::int as n from remittances where remittance_id = 'REM-DUP'"))[0].n, 0);
+  assert.equal((await query("select count(*)::int as n from remittance_collections where remittance_id = 'REM-DUP'"))[0].n, 0);
+  assert.equal((await query("select count(*)::int as n from collections where collection_id like 'REM-DUP%'"))[0].n, 0, 'the duplicates leave reports and the OR check');
+  assert.equal((await query("select count(*)::int as n from collections where collection_id = 'OTHER'"))[0].n, 1, 'other entries of the member stay');
+  const [correction] = await query("select module, reason from record_corrections where record_id = 'REM-DUP'");
+  assert.deepEqual([correction.module, correction.reason], ['Delete remittance with its entries', 'Duplicate entries']);
+});
+
 test('all mutation routes reject unauthenticated requests before writing', async () => {
   const h = harness(null);
   for (const route of ['sales', 'collections', 'remittances', 'branches', 'programs', 'program-incentives', 'user-accounts', 'attendance', 'attendance-reviews', 'leave-requests', 'leave-approvals', 'finance-options', 'vendor-payables', 'commissions']) {

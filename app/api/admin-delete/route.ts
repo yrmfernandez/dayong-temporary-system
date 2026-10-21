@@ -3,7 +3,10 @@ import { getSessionUser } from "@/lib/auth-server";
 import { canDeleteRecords, deleteRecord, isDeleteKind, planDeletion } from "@/lib/admin-delete";
 import { withEncoder } from "@/lib/encoder-context";
 
-/** GET ?kind=&id=: what deleting the record would remove (nothing changes). POST { kind, id, reason, confirm: "DELETE" }: delete it. */
+/**
+ * GET ?kind=&id=[&entries=1]: what deleting the record would remove (nothing changes). POST { kind, id, reason,
+ * confirm: "DELETE", withEntries }: delete it. withEntries (remittances only) deletes the remittance's entries with it.
+ */
 async function administrator() {
   const user = await getSessionUser();
   if (!user) return { error: Response.json({ success: false, message: "Please sign in." }, { status: 401 }) };
@@ -18,7 +21,7 @@ export async function GET(request: Request) {
   const kind = params.get("kind");
   if (!isDeleteKind(kind)) return Response.json({ success: false, message: "Unknown record type." }, { status: 400 });
   try {
-    return Response.json({ success: true, plan: await planDeletion(kind, params.get("id") ?? "") }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, plan: await planDeletion(kind, params.get("id") ?? "", undefined, { withEntries: params.get("entries") === "1" }) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (failure) {
     return Response.json({ success: false, message: failure instanceof Error ? failure.message : "Unable to check the record." }, { status: 400 });
   }
@@ -34,7 +37,7 @@ export const POST = withEncoder(async (request: Request) => {
     const body = await request.json();
     if (!isDeleteKind(body.kind)) throw new Error("Unknown record type.");
     if (body.confirm !== "DELETE") throw new Error("Type DELETE to confirm.");
-    const plan = await deleteRecord(body.kind, String(body.id ?? ""), String(body.reason ?? ""));
+    const plan = await deleteRecord(body.kind, String(body.id ?? ""), String(body.reason ?? ""), { withEntries: body.withEntries === true });
     return Response.json({ success: true, message: `Deleted: ${plan.effects.join(", ")}.`, plan });
   } catch (failure) {
     return Response.json({ success: false, message: failure instanceof Error ? failure.message : "Unable to delete the record." }, { status: 400 });

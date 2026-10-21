@@ -767,7 +767,9 @@ Accounts already in a branch of the new MAS only change MAS. One transaction (as
 - collection: the collection, its Fidelity rows, receipt-photo links, copy exceptions;
 - New Sale: the sale, its beneficiaries, the account it opened (with that account's collections and transfers), and the member when they have no other account or sale;
 - member: the member with every account, New Sale, collection, beneficiary and transfer;
-- remittance: only the turnover; its New Sales and collections become Outstanding again.
+- remittance (October 21, 2026: the administrator must choose):
+  - **Delete the remittance only** (for adjustments): its New Sales and collections stay and become Outstanding again, to be corrected and turned over anew. They stay in reports and the OR check.
+  - **Delete the remittance and its entries** (for duplicates or entries that should not exist): its New Sales and collections go too, each as it would on its own (a New Sale with the account it opened, that account's collections, and the member when nothing else of theirs is left). Entries of that account on another remittance block it until that remittance is dealt with. Record Corrections shows it as "Delete remittance with its entries".
 
 An entry that is part of a remittance cannot be deleted until that remittance is deleted (its totals would no longer match the cash). One transaction; each deleted row is kept in full in the Audit Log (database trigger), and a summary with the reason goes to Record Corrections (module "Delete …"). Other roles keep the lifecycle rules ([CRUD policy](crud-policy.md)).
 

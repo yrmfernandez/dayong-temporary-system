@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 55 component files; 540 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 55 component files; 542 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -441,6 +441,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-pending-receipts.mjs](../scripts/check-pending-receipts.mjs) | `node:fs`, `@next/env`, `googleapis`, `postgres` | No flag detected; read source before running |
 | [scripts/check-quinones-split-20261019.mjs](../scripts/check-quinones-split-20261019.mjs) | `@next/env`, `postgres`, `node:fs`, `node:assert/strict` | No flag detected; read source before running |
 | [scripts/clear-payroll-runs.mjs](../scripts/clear-payroll-runs.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/clear-rutchelyn-report-20261021.mts](../scripts/clear-rutchelyn-report-20261021.mts) | `@next/env`, `drizzle-orm`, `@/lib/admin-delete`, `@/lib/db`, `@/lib/encoder-context` | Yes; read source for semantics |
 | [scripts/compare-double-accounts.mjs](../scripts/compare-double-accounts.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/compare-duplicates.mjs](../scripts/compare-duplicates.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/consolidate-member-receipts.mjs](../scripts/consolidate-member-receipts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
@@ -496,6 +497,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/inspect-ph97483925-split.mjs](../scripts/inspect-ph97483925-split.mjs) | `@next/env`, `postgres`, `node:crypto`, `node:fs`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-program-tiers.mjs](../scripts/inspect-program-tiers.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-remittance-approval.mjs](../scripts/inspect-remittance-approval.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/inspect-rutchelyn-clearing.mjs](../scripts/inspect-rutchelyn-clearing.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-sheet-headers.mjs](../scripts/inspect-sheet-headers.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/legacy-programs.mjs](../scripts/legacy-programs.mjs) | `node:fs`, `@next/env`, `googleapis`, `./legacy-sources.mjs` | Yes; read source for semantics |
 | [scripts/legacy-site-compare.mjs](../scripts/legacy-site-compare.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
