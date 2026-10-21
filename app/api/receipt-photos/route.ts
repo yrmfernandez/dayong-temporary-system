@@ -10,7 +10,7 @@ import { getReceiptPhoto, saveReceiptPhoto } from "@/lib/receipt-photos";
 
 const text = (value: unknown) => String(value ?? "").trim();
 // Pages where receipt photos are shown; anyone who can open one of them may view a photo.
-const VIEWING_PAGES = ["/my-entries", "/todays-entries", "/remittances", "/audit", "/admin-reports", "/reports", "/exceptions"];
+const VIEWING_PAGES = ["/my-entries", "/todays-entries", "/remittances", "/audit", "/admin-reports", "/reports", "/exceptions", "/expenses"];
 
 /** One receipt photo as a data URL (?photoId=RCP-...). */
 export async function GET(request: Request) {

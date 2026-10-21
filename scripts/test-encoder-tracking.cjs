@@ -303,7 +303,12 @@ test('user account edits preserve the primary role and save updated roles', asyn
 test('expense entries follow the company form: account, attachments, approver, and page access', async () => {
   const h = harness({ userId: 'U3', employeeId: 'DPE-0003', name: 'finance', roleNames: ['Finance'], permissions: {} });
   const route = h.load('app/api/expenses/route.ts');
-  const entry = { branch: 'BALIOK', date: '2026-09-30', category: 'Other', categoryOther: 'Parking', amount: 150, attachments: ['Receipt', 'Voucher', 'Other'], attachmentOther: 'Gate pass', receiptNumber: 'OR-77', description: 'Client visit parking', approvedBy: 'CEO/President', remarks: '' };
+  const entry = { branch: 'BALIOK', date: '2026-09-30', category: 'Other', categoryOther: 'Parking', amount: 150, attachments: ['Receipt', 'Voucher', 'Other'], attachmentOther: 'Gate pass', receiptNumber: 'OR-77', description: 'Client visit parking', approvedBy: 'CEO/President', remarks: '', photos: [{ dataUrl: `data:image/jpeg;base64,${'A'.repeat(4000)}`, width: 600, height: 800 }] };
+  // A photo of the receipt is required (October 21, 2026); a refused expense saves no photo.
+  const noPhoto = await route.POST(request({ ...entry, photos: [] }));
+  assert.equal(noPhoto.status, 400);
+  assert.match((await noPhoto.json()).message, /Attach a photo of the receipt/);
+  assert.equal(globalThis.dayongTestStorage.size, 0);
   const missing = await route.POST(request(entry));
   assert.equal(missing.status, 400);
   assert.match((await missing.json()).message, /sheets:expense-fields/, 'saving before the migration explains how to fix it');
@@ -317,6 +322,7 @@ test('expense entries follow the company form: account, attachments, approver, a
   assert.equal(row[3], 'Client visit parking');
   assert.equal(row[6], 'Cash on Hand', 'paid from defaults to Cash on Hand');
   assert.deepEqual(row.slice(-2), ['Voucher, Receipt, Other: Gate pass', 'CEO/President']);
+  assert.equal(globalThis.dayongTestStorage.size, 1, 'only the saved expense keeps a photo');
   assert.equal((await route.POST(request({ ...entry, category: 'Snacks' }))).status, 400, 'only listed accounts are accepted');
   assert.equal((await route.POST(request({ ...entry, approvedBy: 'Other', approvedByOther: '' }))).status, 400, 'an Other approver must be named');
   h.setUser({ userId: 'U8', employeeId: 'DPE-0008', name: 'mas', roleNames: ['MAS'], permissions: {} });
@@ -2542,6 +2548,9 @@ test('an expense on the report keeps its receipt photos, and only compressed pho
   assert.throws(() => expensePhotosFrom([{ dataUrl: 'data:image/png;base64,AAAA' }]), /WebP or JPEG/);
   const photo = { dataUrl: `data:image/jpeg;base64,${'A'.repeat(4000)}`, width: 600, height: 800 };
   assert.throws(() => expensePhotosFrom(Array(MAX_EXPENSE_PHOTOS + 1).fill(photo)), /at most 10/);
+  // The report and the Expenses page both save through createExpense: no photo, no expense.
+  const { createExpense } = h.load('lib/finance-data.ts');
+  await assert.rejects(() => h.load('lib/encoder-context.ts').runAsSystem(() => createExpense({ date: '2026-06-16', category: 'Transportation', amount: 50, receiptNumber: 'OR-1', description: 'Fare', approvedBy: 'VP Finance', branch: 'AGDAO' })), /Attach a photo of the receipt/);
   await h.load('lib/encoder-context.ts').runAsSystem(() => saveExpensePhotos('EXP-1', expensePhotosFrom([photo, photo])));
   const ids = (await expensePhotoIds()).get('EXP-1');
   assert.equal(ids.length, 2, 'every photo is kept with the expense');

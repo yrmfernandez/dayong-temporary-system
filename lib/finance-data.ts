@@ -3,6 +3,7 @@ import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEncoder } from "@/lib/encoder-context";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { headerMatches } from "@/lib/sheet-headers";
+import { expensePhotosFrom, saveExpensePhotos } from "@/lib/receipt-photos";
 import { attachmentList, BURIAL_ACCOUNT, choiceWithOther, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS, expenseNumbers } from "@/lib/expense-options";
 
 // Expenses V attachments and W approved_by follow the encoder columns (R:U); see npm run sheets:expense-fields.
@@ -79,10 +80,12 @@ function required(value: unknown, label: string) {
 }
 
 /**
- * Saves an entry from the company expense form. Payee and payment details are optional extras. `id` is given when the
- * receipt photos were saved under it first (the Entry Clerk's report).
+ * Saves an entry from the company expense form (the Expenses page and the Entry Clerk's report). Payee and payment
+ * details are optional extras. At least one photo of the receipt is required (owner, October 21, 2026): `input.photos`
+ * are checked with the other fields, then saved under the new expense's ID before the expense row, so an expense is never
+ * saved without them and a refused expense leaves no photo behind.
  */
-export async function createExpense(input: Record<string, unknown>, id = createReadableId("EXP")) {
+export async function createExpense(input: Record<string, unknown>) {
   const value = round(Number(input.amount));
   if (!datePattern.test(text(input.date))) throw new Error("Enter a valid date of expense.");
   if (!Number.isFinite(value) || value <= 0) throw new Error("Expense amount must be greater than zero.");
@@ -90,13 +93,18 @@ export async function createExpense(input: Record<string, unknown>, id = createR
   const approvedBy = choiceWithOther(EXPENSE_APPROVERS, input.approvedBy, input.approvedByOther, "approver");
   const attachments = attachmentList(input.attachments, input.attachmentOther);
   const { receipt, member } = expenseNumbers(account, input.receiptNumber, input.payee);
+  const description = required(input.description, "Purpose"), branch = required(input.branch, "Branch");
+  const photos = expensePhotosFrom(input.photos);
+  if (!photos.length) throw new Error("Attach a photo of the receipt.");
   const header = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Expenses!V1:W1" })).data.values?.[0] ?? [];
   if (EXPENSE_EXTRA_HEADERS.some((name, index) => !headerMatches(header[index], name))) throw new Error("Run npm run sheets:expense-fields -- --apply to add the Attachments and Approved By columns before saving expenses.");
+  const id = createReadableId("EXP");
+  await saveExpensePhotos(id, photos);
   await appendEncodedRows({ range: "Expenses!A:Q", requestBody: { values: [[id, text(input.date), account,
-    required(input.description, "Purpose"), value, member, text(input.paidBy) || "Cash on Hand", required(input.branch, "Branch"),
+    description, value, member, text(input.paidBy) || "Cash on Hand", branch,
     text(input.paymentMethod) || "Cash", text(input.referenceNumber), receipt, "Posted", text(input.remarks),
     new Date().toISOString(), "", "", ""]] } }, [[attachments, approvedBy]]);
-  return { id };
+  return { id, photos: photos.length };
 }
 
 /**

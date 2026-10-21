@@ -10,7 +10,6 @@ import { addDeposit, editDeposit, saveCashBeg, saveReportNotes, voidDeposit } fr
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense, deleteExpense, editExpense } from "@/lib/finance-data";
 import { getBranches } from "@/lib/google-sheets-data";
-import { createReadableId } from "@/lib/readable-id";
 import { expensePhotoIds, expensePhotosFrom, saveExpensePhotos } from "@/lib/receipt-photos";
 import { createFidelitySlip, editFidelitySlip, voidFidelitySlip } from "@/lib/remittance-workflow";
 
@@ -91,14 +90,9 @@ export const POST = withEncoder(async (request: Request) => {
     switch (body.action) {
       case "add-expense": {
         if (!clerk.branch) throw new Error("Choose the branch of the report, or ask an administrator to set your primary branch in Employees.");
-        // At least one photo of the receipt (owner, October 21, 2026). The photos are checked first and saved before the
-        // expense, so an expense is never saved without them.
-        const photos = expensePhotosFrom(body.photos);
-        if (!photos.length) throw new Error("Attach a photo of the receipt.");
-        const id = createReadableId("EXP");
-        await saveExpensePhotos(id, photos);
-        const saved = await createExpense({ ...body, branch: clerk.branch, paidBy: "Cash on Hand", paymentMethod: "Cash" }, id);
-        return Response.json({ success: true, message: `Expense ${saved.id} saved with ${photos.length} receipt photo${photos.length === 1 ? "" : "s"}.` });
+        // At least one photo of the receipt (owner, October 21, 2026).
+        const saved = await createExpense({ ...body, branch: clerk.branch, paidBy: "Cash on Hand", paymentMethod: "Cash" });
+        return Response.json({ success: true, message: `Expense ${saved.id} saved with ${saved.photos} receipt photo${saved.photos === 1 ? "" : "s"}.` });
       }
       case "add-deposit": {
         const saved = await addDeposit(body, clerk);

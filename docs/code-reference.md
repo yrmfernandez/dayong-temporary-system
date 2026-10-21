@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 125 library files, 54 component files; 537 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 125 library files, 54 component files; 538 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -26,7 +26,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/bulk-member-transfer`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password`, `@/components/nte-panel`, `@/lib/use-live-refresh` |
 | `/entry-corrections` | [app/entry-corrections/page.tsx](../app/entry-corrections/page.tsx) | `@/components/admin-delete`, `@/components/bulk-member-transfer`, `@/components/entry-editor`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select`, `@/app/programs/program-transfer`, `@/lib/api-response`, `@/lib/entry-search` |
 | `/exceptions` | [app/exceptions/page.tsx](../app/exceptions/page.tsx) | `@/components/entry-correction-form`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/api-response`, `@/lib/exceptions`, `@/lib/use-live-refresh` |
-| `/expenses` | [app/expenses/page.tsx](../app/expenses/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
+| `/expenses` | [app/expenses/page.tsx](../app/expenses/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/receipt-photo`, `@/components/receipt-photos-picker`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
 | `/fidelity/me` | [app/fidelity/me/page.tsx](../app/fidelity/me/page.tsx) |  |
 | `/fidelity` | [app/fidelity/page.tsx](../app/fidelity/page.tsx) | `@/lib/auth-server` |
 | `/history` | [app/history/page.tsx](../app/history/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/input`, `@/lib/use-live-refresh` |
@@ -186,7 +186,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `BURIAL_ACCOUNT`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList`, `expenseNumbers` | — |
 | [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/encoder-sheets`, `@/lib/readable-id`, `@/lib/db` |
 | [lib/finance-access.ts](../lib/finance-access.ts) | `canUseFinance` | `@/lib/auth-server` |
-| [lib/finance-data.ts](../lib/finance-data.ts) | `EXPENSE_EXTRA_HEADERS`, `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `editExpense`, `deleteExpense`, `createCashTransaction`, `voidFinanceRecord` | `@/lib/readable-id`, `@/lib/encoder-sheets`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/expense-options` |
+| [lib/finance-data.ts](../lib/finance-data.ts) | `EXPENSE_EXTRA_HEADERS`, `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `editExpense`, `deleteExpense`, `createCashTransaction`, `voidFinanceRecord` | `@/lib/readable-id`, `@/lib/encoder-sheets`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/receipt-photos`, `@/lib/expense-options` |
 | [lib/finance-operations.ts](../lib/finance-operations.ts) | `getCashAccounts`, `saveCashAccount`, `getVendorPayables`, `createVendorPayable`, `payVendorPayable`, `getCommissions`, `createCommission`, `payCommission` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
 | [lib/friendly-api-errors.ts](../lib/friendly-api-errors.ts) | `explainServerFailure`, `installFriendlyApiErrors` | — |
 | [lib/google-sheets-data.ts](../lib/google-sheets-data.ts) | `ProgramSheetData`, `BranchSheetData`, `getBranches`, `createBranch`, `ProgramIncentiveSheetData`, `CreateProgramData`, `getProgramIncentives`, `addProgramIncentive`, `getPrograms`, `programColumns`, `assertProgramCodeFree`, `createProgram`, `LoginRole`, `LoginUserData`, `AttendanceEmployee`, `getLoginUserByEmployeeId`, `AccountRole`, `CreateEmployeeAccountData`, `getActiveAccountRoles`, `createEmployeeAccount`, `getActiveAttendanceEmployees` | `@/lib/db`, `@/lib/program-amount-lock`, `@/lib/program-incentive-store`, `@/lib/employees`, `@/lib/employee-id`, `@/lib/encoder-sheets`, `@/lib/roles`, `@/lib/program-age`, `@/lib/remittance`, `@/lib/program-payment-limit.mjs`, `@/lib/users-sheet`, `@/lib/google-sheets` |
@@ -341,7 +341,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/cash-transactions/route.ts](../app/api/cash-transactions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data` |
 | [app/api/clearing/open/route.ts](../app/api/clearing/open/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing` |
 | [app/api/clearing/route.ts](../app/api/clearing/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing`, `@/lib/encoder-context` |
-| [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clerk-report`, `@/lib/daily-audit`, `@/lib/employees`, `@/lib/remittance-deadline`, `@/lib/report-remarks`, `@/lib/clerk-cash`, `@/lib/encoder-context`, `@/lib/finance-data`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/receipt-photos`, `@/lib/remittance-workflow` |
+| [app/api/clerk-report/route.ts](../app/api/clerk-report/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clerk-report`, `@/lib/daily-audit`, `@/lib/employees`, `@/lib/remittance-deadline`, `@/lib/report-remarks`, `@/lib/clerk-cash`, `@/lib/encoder-context`, `@/lib/finance-data`, `@/lib/google-sheets-data`, `@/lib/receipt-photos`, `@/lib/remittance-workflow` |
 | [app/api/collections/route.ts](../app/api/collections/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/clearing`, `@/lib/or-number`, `@/lib/remittance-workflow`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/db`, `@/lib/account-data`, `@/lib/account-rules`, `@/lib/remittance-methods`, `@/lib/remittance`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/duplicate-entries` |
 | [app/api/commissions/route.ts](../app/api/commissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/earned-commissions`, `@/lib/encoder-context`, `@/lib/finance-operations` |
 | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/company-targets`, `@/lib/encoder-context` |
@@ -349,7 +349,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/employees/route.ts](../app/api/employees/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/auth-server`, `@/lib/member-transfer`, `@/lib/employee-id-change`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/master-data-crud`, `@/lib/employee-accounts`, `@/lib/privilege-guard` |
 | [app/api/entry-corrections/route.ts](../app/api/entry-corrections/route.ts) | `GET`, `PATCH`, `PUT` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/entry-edit`, `@/lib/entry-search`, `@/lib/admin-delete`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [app/api/exceptions/route.ts](../app/api/exceptions/route.ts) | `GET`, `PATCH` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/exceptions` |
-| [app/api/expenses/route.ts](../app/api/expenses/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data` |
+| [app/api/expenses/route.ts](../app/api/expenses/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data`, `@/lib/receipt-photos` |
 | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) | `GET`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/fidelity`, `@/lib/encoder-context` |
 | [app/api/finance-options/route.ts](../app/api/finance-options/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/finance-access`, `@/lib/finance-operations`, `@/lib/google-sheets-data` |
 | [app/api/history/route.ts](../app/api/history/route.ts) | `GET`, `PATCH` | `@/lib/day-off`, `@/lib/sheets-on-db`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/entry-corrections`, `@/lib/encoder-schema`, `@/lib/audit-log` |
@@ -465,6 +465,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-impossible-doi.mjs](../scripts/fix-impossible-doi.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-legacy-receipts.mjs](../scripts/fix-legacy-receipts.mjs) | `node:fs`, `node:crypto`, `@next/env`, `googleapis`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/fix-merge-mas.mjs](../scripts/fix-merge-mas.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/fix-older-clearing-covers.mjs](../scripts/fix-older-clearing-covers.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-or-letters.mjs](../scripts/fix-or-letters.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-ph11841180-coverage.mjs](../scripts/fix-ph11841180-coverage.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph29986586-dsp290.mjs](../scripts/fix-ph29986586-dsp290.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
