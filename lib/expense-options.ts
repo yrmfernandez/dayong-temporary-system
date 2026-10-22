@@ -3,8 +3,8 @@
 export const EXPENSE_ACCOUNTS = [
   "CBA (Cash Burial Assistance)", "Allowances", "Services MAS incentives", "Services Tie-up", "Vehicle Maintenance", "Transportation",
   "Permit/License", "Office Supplies", "Gasoline", "Professional Fee", "ORC", "Sales incentives", "Collections incentives",
-  "Office Rental", "Monthly Bills", "Interment", "Funeral Supplies/stocks", "Preservation", "Pull-out", "Forms/Receipt",
-  "Vehicle Registration", "Medical Assistance", "SSS", "Philhealth", "Embalming Supplies", "Casket Procurement",
+  "Office Renovations", "Office Rental", "Monthly Bills", "Interment", "Funeral Supplies/stocks", "Preservation", "Pull-out", "Forms/Receipt",
+  "Vehicle Registration", "Meals", "Medical Assistance", "SSS", "Philhealth", "Embalming Supplies", "Casket Procurement",
   "Office Maintenance/renovations", "Others",
 ] as const;
 /** Cash Burial Assistance names the member or deceased member it is for, saved as the payee (owner, October 20, 2026). */
