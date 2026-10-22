@@ -438,10 +438,13 @@ function MasSummary({ report }: { report: Report }) {
 }
 
 /** The clerk records what the report needs besides New Sales and Collections. */
-/** The form values of a saved expense: "Other: X" splits into Other and its detail. */
+/** The form values of a saved expense: "Other: X" (accounts: "Others: X") splits into the choice and its detail; a value not on the list is its detail. */
 function expenseForm(item: Report["expenses"][number]) {
-  const split = (value: string, options: readonly string[], fallback: string) => options.includes(value) ? { choice: value, other: "" }
-    : value.startsWith("Other: ") ? { choice: "Other", other: value.slice(7) } : value ? { choice: "Other", other: value } : { choice: fallback, other: "" };
+  const split = (value: string, options: readonly string[], fallback: string) => {
+    const other = options.includes("Others") ? "Others" : "Other";
+    return options.includes(value) ? { choice: value, other: "" } : value.startsWith(`${other}: `) ? { choice: other, other: value.slice(other.length + 2) }
+      : value ? { choice: other, other: value } : { choice: fallback, other: "" };
+  };
   const account = split(item.account, EXPENSE_ACCOUNTS, "Transportation"), approver = split(item.approvedBy, EXPENSE_APPROVERS, "VP Finance");
   return { category: account.choice, categoryOther: account.other, date: item.date, amount: String(item.amount), receiptNumber: item.receipt, payee: item.payee, description: item.purpose, remarks: item.remarks, approvedBy: approver.choice, approvedByOther: approver.other };
 }
@@ -484,7 +487,7 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
         <FormTitle title={editingExpense ? `Edit expense ${editingExpense.id}` : "Add expense / other cash out"} note={editingExpense ? "Saved to Expenses as well; the report and the cash on hand follow." : "Saved to Expenses for your branch. Edit or delete it from the Expenses list above."} />
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Account name / type of expense"><select className={field} value={expense.category} onChange={(event) => setExpense({ ...expense, category: event.target.value })}>{EXPENSE_ACCOUNTS.map((item) => <option key={item}>{item}</option>)}</select></Field>
-          {expense.category === "Other" ? <Field label="Specify the expense"><Input value={expense.categoryOther} onChange={(event) => setExpense({ ...expense, categoryOther: event.target.value })} /></Field>
+          {expense.category === "Others" ? <Field label="Specify the expense"><Input value={expense.categoryOther} onChange={(event) => setExpense({ ...expense, categoryOther: event.target.value })} /></Field>
             : expense.category === BURIAL_ACCOUNT ? <Field label="Member / deceased member name *"><Input maxLength={150} value={expense.payee} onChange={(event) => setExpense({ ...expense, payee: event.target.value })} /></Field>
             : <div className="hidden sm:block" />}
           <Field label="Date"><Input type="date" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} /></Field>

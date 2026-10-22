@@ -1300,3 +1300,10 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **In progress:** none.
 - **Likely cause:** the GCash collection was already balanced by a cash forwarded to bank of its original net (₱127.50, at ₱150); the correction to ₱210 left only the extra ₱51 in Cash on Hand, and the new line took out the whole ₱178.50 again.
 - **To do:** confirm on BARRIENTOS, RUTCHELYN's October 21 report; if so, edit that deposit to ₱178.50 so Cash on Hand is 4,911.
+
+### Expense accounts: the company's list (2026-10-22)
+
+- **Owner:** change the expense accounts to the company's list (CBA (Cash Burial Assistance), Allowances, Services MAS incentives, Services Tie-up, Vehicle Maintenance, Transportation, Permit/License, Office Supplies, Gasoline, Professional Fee, ORC, Sales incentives, Collections incentives, Office Rental, Monthly Bills, Interment, Funeral Supplies/stocks, Preservation, Pull-out, Forms/Receipt, Vehicle Registration, Medical Assistance, SSS, Philhealth, Embalming Supplies, Casket Procurement, Office Maintenance/renovations, Others); list recorded accounts that are not on it so the owner decides where each moves.
+- **Done:** `lib/expense-options.ts` holds the new list (Expenses page, clerk report expense form, server validation). "Others" replaces "Other" and must be specified (`Others: <detail>`); CBA keeps the payee rule of Cash Burial Assistance. Tested.
+- **In progress:** listing the recorded accounts not on the list: `scripts/_tmp-expense-accounts.mts` (read-only), run on production by the owner.
+- **To do:** owner decides the new account for each old one (e.g. Cash Burial Assistance → CBA (Cash Burial Assistance), Allowance → Allowances, Other: X → Others: X); then a script moves them with the Audit Log, and the temporary script is deleted.

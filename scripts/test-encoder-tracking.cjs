@@ -303,7 +303,7 @@ test('user account edits preserve the primary role and save updated roles', asyn
 test('expense entries follow the company form: account, attachments, approver, and page access', async () => {
   const h = harness({ userId: 'U3', employeeId: 'DPE-0003', name: 'finance', roleNames: ['Finance'], permissions: {} });
   const route = h.load('app/api/expenses/route.ts');
-  const entry = { branch: 'BALIOK', date: '2026-09-30', category: 'Other', categoryOther: 'Parking', amount: 150, attachments: ['Receipt', 'Voucher', 'Other'], attachmentOther: 'Gate pass', receiptNumber: 'OR-77', description: 'Client visit parking', approvedBy: 'CEO/President', remarks: '', photos: [{ dataUrl: `data:image/jpeg;base64,${'A'.repeat(4000)}`, width: 600, height: 800 }] };
+  const entry = { branch: 'BALIOK', date: '2026-09-30', category: 'Others', categoryOther: 'Parking', amount: 150, attachments: ['Receipt', 'Voucher', 'Other'], attachmentOther: 'Gate pass', receiptNumber: 'OR-77', description: 'Client visit parking', approvedBy: 'CEO/President', remarks: '', photos: [{ dataUrl: `data:image/jpeg;base64,${'A'.repeat(4000)}`, width: 600, height: 800 }] };
   // A photo of the receipt is required (October 21, 2026); a refused expense saves no photo.
   const noPhoto = await route.POST(request({ ...entry, photos: [] }));
   assert.equal(noPhoto.status, 400);
@@ -318,7 +318,7 @@ test('expense entries follow the company form: account, attachments, approver, a
   const write = h.writes.find((item) => item.range === "'Expenses'!A:W");
   assert.ok(write, 'the row spans the business, encoder, and form columns');
   const row = write.requestBody.values[0];
-  assert.equal(row[2], 'Other: Parking');
+  assert.equal(row[2], 'Others: Parking');
   assert.equal(row[3], 'Client visit parking');
   assert.equal(row[6], 'Cash on Hand', 'paid from defaults to Cash on Hand');
   assert.deepEqual(row.slice(-2), ['Voucher, Receipt, Other: Gate pass', 'CEO/President']);
@@ -3561,18 +3561,18 @@ test('an expense on the report can be edited and deleted by the clerk who record
   const editExpense = (...args) => as(() => finance.editExpense(...args));
   const deleteExpense = (...args) => as(() => finance.deleteExpense(...args));
   const own = { employeeId: 'DPE-7', isAdmin: false };
-  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Other', categoryOther: '', amount: 80, description: 'Fare', approvedBy: 'VP Finance' }, own), /Specify the other account name/);
-  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Meals/Snacks', amount: 80, description: 'Lunch', receiptNumber: 'R-1', approvedBy: 'VP Finance' }, { employeeId: 'DPE-8', isAdmin: false }), /only expenses you recorded/);
+  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Others', categoryOther: '', amount: 80, description: 'Fare', approvedBy: 'VP Finance' }, own), /Specify the other account name/);
+  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Office Supplies', amount: 80, description: 'Lunch', receiptNumber: 'R-1', approvedBy: 'VP Finance' }, { employeeId: 'DPE-8', isAdmin: false }), /only expenses you recorded/);
   // October 20, 2026: a receipt number on every expense, and the member's name for Cash Burial Assistance.
-  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Meals/Snacks', amount: 80, description: 'Lunch', approvedBy: 'VP Finance' }, own), /receipt number/);
-  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Cash Burial Assistance', amount: 80, description: 'Burial', receiptNumber: 'R-1', approvedBy: 'VP Finance' }, own), /deceased member/);
-  await editExpense('EXP-9', { date: '2026-10-11', category: 'Cash Burial Assistance', amount: 80, description: 'Burial', receiptNumber: 'R-1', payee: 'Juan Cruz', approvedBy: 'VP Finance' }, own);
+  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Office Supplies', amount: 80, description: 'Lunch', approvedBy: 'VP Finance' }, own), /receipt number/);
+  await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'CBA (Cash Burial Assistance)', amount: 80, description: 'Burial', receiptNumber: 'R-1', approvedBy: 'VP Finance' }, own), /deceased member/);
+  await editExpense('EXP-9', { date: '2026-10-11', category: 'CBA (Cash Burial Assistance)', amount: 80, description: 'Burial', receiptNumber: 'R-1', payee: 'Juan Cruz', approvedBy: 'VP Finance' }, own);
   assert.deepEqual(h.writes.at(-1).requestBody.data.find((item) => item.range === "'Expenses'!F2").values[0], ['Juan Cruz'], 'the member is saved as the payee');
-  await editExpense('EXP-9', { date: '2026-10-11', category: 'Meals/Snacks', amount: 80, description: 'Lunch', receiptNumber: 'R-1', remarks: 'team', approvedBy: 'Other', approvedByOther: 'Branch head' }, own);
+  await editExpense('EXP-9', { date: '2026-10-11', category: 'Office Supplies', amount: 80, description: 'Lunch', receiptNumber: 'R-1', remarks: 'team', approvedBy: 'Other', approvedByOther: 'Branch head' }, own);
   // Row 2 of Expenses: B:E date, account, purpose, amount; K receipt; M remarks; W approver.
   const edit = h.writes.at(-1).requestBody.data;
   assert.deepEqual(edit.map((item) => [item.range, item.values[0]]), [
-    ["'Expenses'!B2:E2", ['2026-10-11', 'Meals/Snacks', 'Lunch', 80]], ["'Expenses'!K2", ['R-1']], ["'Expenses'!M2", ['team']], ["'Expenses'!W2", ['Other: Branch head']],
+    ["'Expenses'!B2:E2", ['2026-10-11', 'Office Supplies', 'Lunch', 80]], ["'Expenses'!K2", ['R-1']], ["'Expenses'!M2", ['team']], ["'Expenses'!W2", ['Other: Branch head']],
   ]);
   await assert.rejects(deleteExpense('EXP-9', 'x', own), /reason/);
   await deleteExpense('EXP-9', 'entered twice', own);

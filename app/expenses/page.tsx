@@ -17,8 +17,8 @@ const today=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila"}).format
 const empty=():Form=>({branch:"",date:today(),category:"",categoryOther:"",amount:"",attachments:[],attachmentOther:"",receiptNumber:"",description:"",approvedBy:"",approvedByOther:"",remarks:"",payee:"",paidBy:"Cash on Hand",paymentMethod:"Cash",referenceNumber:""});
 const money=(v:number)=>new Intl.NumberFormat("en-PH",{style:"currency",currency:"PHP"}).format(v);
 const selectClass="h-9 w-full rounded-md border bg-background px-3 text-sm";
-// Saved "Other: detail" values group under "Other" in the account filter.
-const accountOf=(category:string)=>category.startsWith("Other:")?"Other":category;
+// Saved "Others: detail" values group under "Others" in the account filter (older "Other: detail" under "Other").
+const accountOf=(category:string)=>category.startsWith("Others:")?"Others":category.startsWith("Other:")?"Other":category;
 
 export default function ExpensesPage(){
  const [financeBranches,setFinanceBranches]=useState<Array<{id:string;name:string;territory:string}>>([]),[cashAccounts,setCashAccounts]=useState<Array<{id:string;name:string;status:string}>>([]);
@@ -45,7 +45,7 @@ export default function ExpensesPage(){
    <Field label="Date of expense *"><Input type="date" required max={today()} value={form.date} onChange={e=>set("date",e.target.value)}/></Field>
    <Field label="Account name *"><select required className={selectClass} value={form.category} onChange={e=>set("category",e.target.value)}><option value="">Select account</option>{EXPENSE_ACCOUNTS.map(x=><option key={x}>{x}</option>)}</select></Field>
    <Field label="Amount *"><Input type="number" required min="0.01" step="0.01" value={form.amount} onChange={e=>set("amount",e.target.value)}/></Field>
-   {form.category==="Other"&&<Field label="Specify account *"><Input required maxLength={100} value={form.categoryOther} onChange={e=>set("categoryOther",e.target.value)}/></Field>}
+   {form.category==="Others"&&<Field label="Specify account *"><Input required maxLength={100} value={form.categoryOther} onChange={e=>set("categoryOther",e.target.value)}/></Field>}
    {form.category===BURIAL_ACCOUNT&&<Field label="Member / deceased member name *"><Input required maxLength={150} value={form.payee} onChange={e=>set("payee",e.target.value)}/></Field>}
    <Field label="Invoice / Receipt No. *"><Input required maxLength={100} value={form.receiptNumber} onChange={e=>set("receiptNumber",e.target.value)}/></Field>
    <Field label="Approved by *"><select required className={selectClass} value={form.approvedBy} onChange={e=>set("approvedBy",e.target.value)}><option value="">Select approver</option>{EXPENSE_APPROVERS.map(x=><option key={x}>{x}</option>)}</select></Field>
