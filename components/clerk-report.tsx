@@ -187,6 +187,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 <div className="h-2" />
                 <Cash label="Expenses" value={report.cash.expenses} />
                 <Cash label="Cash forwarded to bank" value={report.cash.forwardedToBank} />
+                <Cash label="Paid by GCash/bank (not cash)" value={report.cash.nonCash} />
                 <Cash label="Total Cash Out/Expense" value={report.cash.totalCashOut} color={tone.cashOut} strong />
                 <div className="h-2" />
                 <Cash label="Remaining Cash on Hand" value={report.cash.remainingCashOnHand} color={tone.remaining} strong />

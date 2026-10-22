@@ -2592,7 +2592,7 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   assert.equal(report.summaryLabel, '3RD WEEKLY REPORT');
   assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity, row.penalty]), [['6/15/2026', 1, 350, 50, 300, 20, 0], ['6/16/2026', 1, 700, 100, 600, 0, 50]], 'by date; the other clerk\'s COL-3 is not counted');
   assert.deepEqual([report.newSales.total.accounts, report.newSales.total.gross, report.newSales.total.incentives], [1, 500, 50]);
-  assert.deepEqual(report.cash, { cashBeg: 0, cashBegEdit: null, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, pendingCash: 0, totalCashIn: 1420, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
+  assert.deepEqual(report.cash, { cashBeg: 0, cashBegEdit: null, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, pendingCash: 0, totalCashIn: 1420, expenses: 100, forwardedToBank: 0, nonCash: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
   assert.deepEqual(report.masSummary.rows.map((row) => [row.name, row.sales.accounts, row.collections.accounts, row.collections.gross]), [['Maria', 1, 2, 1050]]);
   // Cash Beg is typed case by case (owner, October 13, 2026): the next week does not carry what was left.
   const next = await buildClerkReport('weekly', '2026-06-24', { employeeId: 'DPE-7', name: 'Clerk' });
@@ -2644,8 +2644,11 @@ test('an expense on the report keeps its receipt photos, and only compressed pho
 test('bank deposits count as cash out, pending cash counts only in its own report, and Cash Beg is typed per report', async () => {
   const h = harness();
   const collection = Array(41).fill(''); Object.assign(collection, { 0: 'COL-1', 5: 'DP-1', 7: 'Maria', 9: '2026-09-03', 10: 1000, 19: 'Posted', 20: '2026-09-03T02:00:00.000Z', 22: 'DPE-7', 24: '2026-09-03T02:00:00.000Z', 26: 900, 28: 'Outstanding', 31: 'Maria' });
-  h.rows.Collections = [[], collection];
+  // Paid by GCash (owner, October 22, 2026): in Collection Net, but never cash in the clerk's hands.
+  const gcash = [...collection]; Object.assign(gcash, { 0: 'COL-2', 10: 210, 26: 178.5, 33: 'GCash' });
+  h.rows.Collections = [[], collection, gcash];
   h.rows.Programs = [[], ['DP-1', 'CODE', 'Program']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, false, 'active']];
   h.rows['Bank Deposits'] = [[],
     ['DEP-1', '2026-09-03', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 700, 'RCBC', 'Maria', '', 'Posted', '', ''],
     ['DEP-2', '2026-09-03', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 50, 'RCBC', '', '', 'Voided', 'Typed twice', ''],
@@ -2655,7 +2658,7 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   const { buildClerkReport } = h.load('lib/clerk-report.ts');
   const day = await buildClerkReport('daily', '2026-09-03', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.deepEqual(day.deposits.map((item) => [item.id, item.amount, item.transferType]), [['DEP-1', 700, 'RCBC']], 'a voided deposit is left out');
-  assert.deepEqual([day.cash.collectionNet, day.cash.pendingCash, day.cash.totalCashIn, day.cash.forwardedToBank, day.cash.remainingCashOnHand], [900, 120, 1020, 700, 320]);
+  assert.deepEqual([day.cash.collectionNet, day.cash.pendingCash, day.cash.totalCashIn, day.cash.forwardedToBank, day.cash.nonCash, day.cash.totalCashOut, day.cash.remainingCashOnHand], [1078.5, 120, 1198.5, 700, 178.5, 878.5, 320], 'the GCash net leaves Cash on Hand');
   assert.equal(day.notes.specificRemarks, 'Penalty paid');
   const nextDay = await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.equal(nextDay.cash.cashBeg, 0, 'the 200 left the day before is not carried: Cash Beg is typed, case by case');
