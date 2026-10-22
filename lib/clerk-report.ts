@@ -18,8 +18,7 @@ import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
  *   bank, lib/clerk-cash.ts).
  * - The cash summary: Cash Beg/Pending COH (the cash received that the clerk typed for this report, else zero), Sales
  *   Net, Collection
- *   Net, Fidelity Bond, Penalty (since October 12, 2026), Pending cash to be encoded, Total Cash In; Expenses, Cash forwarded to bank,
- *   Paid by GCash/bank (the net of entries not paid in cash, October 22, 2026), Total Cash Out;
+ *   Net, Fidelity Bond, Penalty (since October 12, 2026), Pending cash to be encoded, Total Cash In; Expenses, Cash forwarded to bank, Total Cash Out;
  *   Remaining Cash on Hand = Total Cash In - Total Cash Out.
  * - The clerk's remarks, and the per-MAS summary sheet (New Member and Collection by Marketing Account Staff), whose
  *   CVE (%) columns compare each MAS's collections with what their accounts owed in the period (lib/mas-expected.ts).
@@ -171,10 +170,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const totalCashIn = round(cashBeg + newSales.total.net + collection.total.net + fidelity + penalty + notes.pendingCash);
   const expenseTotal = round(expenses.reduce((total, item) => total + item.amount, 0));
   const depositTotal = round(deposits.reduce((total, item) => total + item.amount, 0));
-  // Paid by GCash or bank (owner, October 22, 2026): the net is in Sales/Collection Net but never reached the clerk as
-  // cash, so it leaves Cash on Hand here (lib/entry-batches.ts isCashMethod, the Remittance Methods marked cash).
-  const nonCash = round(entries.filter((entry) => !entry.cash).reduce((total, entry) => total + entry.amount - entry.incentive, 0));
-  const totalCashOut = round(expenseTotal + depositTotal + nonCash);
+  const totalCashOut = round(expenseTotal + depositTotal);
 
   // Summary sheet: New Member and Collection by Marketing Account Staff.
   const byMas = new Map<string, { name: string; sales: ReportLine; collections: ReportLine }>();
@@ -215,7 +211,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
     ].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     cash: {
       cashBeg, cashBegEdit: typedCashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, pendingCash: notes.pendingCash, totalCashIn,
-      expenses: expenseTotal, forwardedToBank: depositTotal, nonCash, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,
+      expenses: expenseTotal, forwardedToBank: depositTotal, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,
     },
     notes,
     masSummary: { title: `REPORT FOR ${MONTHS[parts(start).month - 1].toUpperCase()} ${parts(start).year}`, rows: masRows, total: { sales: sum(sales), collections: sum(collections),

@@ -760,7 +760,7 @@ Programs can be age-restricted (Programs N:P: `age_restricted`, `min_age`, `max_
 - **Owner:** Cash Beg is the cash received, so the clerk should be able to edit it; it must not be affected by everything else, it is case by case.
 - **Done:** on their own report the clerk types Cash Beg for this report with a reason; the summary shows it with the calculated figure; it applies to that report only (kind and period), nothing recalculates it, and other reports keep their own; Clear removes it. The old calculated Cash Beg (carried from all earlier entries, expenses and deposits) is cleared at the owner's request: without a typed one, Cash Beg is zero. Migration `0023` adds four columns to `report_notes`. Tested.
 - **To do (owner):** run `npm run prod -- npm run db:migrate` and `npm run prod -- node scripts/check-database.mjs` (24 of 24) BEFORE pushing; otherwise the clerk report cannot be read on production.
-- **Open question (answered 2026-10-22):** bank and GCash batches counted as cash on hand in the report unless a matching cash forwarded to bank was recorded. Now they leave Cash on Hand on their own (see "Clerk report: GCash is not cash on hand").
+- **Open question:** bank and GCash batches count as cash on hand in the report unless a matching cash forwarded to bank is recorded.
 
 ### Leave Approvals tabs; Attendance Review search and its sidebar number (2026-10-13)
 
@@ -1293,10 +1293,10 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **In progress:** none.
 - **To do:** none. Lines are not cleared without the clerk's answer; "Ask me later" brings the pop-up back on the next page load.
 
-### Clerk report: GCash is not cash on hand (2026-10-22)
+### Clerk report: GCash cash-on-hand line reverted (2026-10-22)
 
-- **Owner:** BARRIENTOS, RUTCHELYN's report: the Cash on Hand should be 4,911 only. The ₱210 collection COL-20261021071827-0EJU (MAS BARRERA, MACRINE; corrected from ₱150, slip REM-20261021092707-KEFS) was paid by GCash, yet its ₱178.50 net was counted as cash.
-- **Cause:** the cash summary put every entry's net in Total Cash In whatever its remittance method; a GCash or bank entry was balanced only if the clerk also recorded a cash forwarded to bank.
-- **Done:** a Cash Out line **Paid by GCash/bank (not cash)**: the net (amount − incentive) of the report's entries whose method is not cash (Remittance methods not marked cash; blank is cash). Sales Net and Collection Net are unchanged. Tested.
+- **Owner:** the Cash Out line Paid by GCash/bank (not cash), added earlier today (b76ce0b), made Cash on Hand smaller than the 4,911 it should be; revert it.
+- **Done:** reverted; the cash summary is as before, and GCash or bank entries count as cash on hand again unless a matching cash forwarded to bank is recorded.
 - **In progress:** none.
-- **To do (owner):** check BARRIENTOS's October 21 report shows 4,911 after the push. A clerk who already recorded a GCash amount as cash forwarded to bank should void that deposit, or it is taken out twice.
+- **Likely cause:** the GCash collection was already balanced by a cash forwarded to bank of its original net (₱127.50, at ₱150); the correction to ₱210 left only the extra ₱51 in Cash on Hand, and the new line took out the whole ₱178.50 again.
+- **To do:** confirm on BARRIENTOS, RUTCHELYN's October 21 report; if so, edit that deposit to ₱178.50 so Cash on Hand is 4,911.

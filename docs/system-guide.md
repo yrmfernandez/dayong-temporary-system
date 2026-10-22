@@ -585,14 +585,14 @@ Today's Entries combines New Sales and posted Collections, with amount, incentiv
 ```text
 Sales Net / Collection Net = gross member payments − incentives (each section)
 Total Cash In   = Cash Beg + Sales Net + Collection Net + Fidelity Bond + Penalty + Pending cash to be encoded
-Total Cash Out  = Expenses + Cash forwarded to bank + Paid by GCash/bank (not cash)
+Total Cash Out  = Expenses + Cash forwarded to bank
 Remaining Cash on Hand = Total Cash In − Total Cash Out
 Cash Beg        = the Cash Beg the clerk typed for this report; zero when none is typed
 ```
 
 **Cash Beg is the cash received (owner, October 13, 2026).** On their own report the clerk types **Cash Beg for this report** (the cash actually received at the start of the period) with a reason (at least 5 characters); **Clear** removes it. The cash summary shows the typed figure with who typed it and the reason. It is case by case: a typed Cash Beg belongs to that report only (that kind and period), nothing recalculates it, and it does not carry into any other report. Without one, Cash Beg is zero: it is no longer calculated from the clerk's earlier entries, expenses and deposits (the old rule, cleared October 13, 2026), so the report reads only the period's entries. Stored on the period's Report Notes row (`cash_beg`, `cash_beg_reason`, `cash_beg_updated_at`, `cash_beg_updated_by`, migration `0023`), separately from the notes, so saving notes keeps it ([clerk-cash.ts](../lib/clerk-cash.ts) `saveCashBeg`).
 
-Pending cash is counted only in its own report. Every entry's net is in Sales Net or Collection Net, whatever its remittance method. **Paid by GCash/bank (owner, October 22, 2026):** the net of entries whose method is not cash (Master Data → Remittance methods, not marked cash; a blank method is cash) never reached the clerk as cash, so it is a Cash Out line and is not in Remaining Cash on Hand. Do not also record those amounts as cash forwarded to bank.
+Pending cash is counted only in its own report. Every entry's net counts as cash in, whatever its remittance method (a bank or GCash batch is balanced only by recording a matching cash forwarded to bank).
 
 **Fidelity handed in after encoding (October 13, 2026):** on their own report a clerk records **Add Fidelity** (MAS of the branch, date received, amount, remarks) when a MAS hands Fidelity after their entries were encoded. It is saved as a **Fidelity slip** in Remittances (`remittance_type` Fidelity, no entries, expected = actual = the Fidelity, the MAS accountable), listed on the report under *Fidelity received after encoding* and added to the Fidelity Bond line (cash in) at once. An approver approves it in Remittances like any slip; only then it counts in the MAS's Fidelity savings (`lib/fidelity.ts` reads approved slips' Fidelity), and the cash ledger takes it in. Until approved the clerk (or an administrator) can **Edit** or **Void** it ([remittance-workflow.ts](../lib/remittance-workflow.ts) `createFidelitySlip`, `editFidelitySlip`, `voidFidelitySlip`).
 
