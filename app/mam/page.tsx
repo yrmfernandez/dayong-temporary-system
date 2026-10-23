@@ -72,7 +72,9 @@ export default function MamPage() {
   const [branch, setBranch] = useState("");
   const [mas, setMas] = useState("");
   const [program, setProgram] = useState("");
-  const [status, setStatus] = useState("");
+  // Status range (owner, October 23, 2026): From and To in the order of `statuses`; either may be left open.
+  const [statusFrom, setStatusFrom] = useState("");
+  const [statusTo, setStatusTo] = useState("");
   const [search, setSearch] = useState("");
   // Branch first, then a MAS or employee assigned to it, then a member; only that slice is loaded.
   const [member, setMember] = useState("");
@@ -157,11 +159,14 @@ export default function MamPage() {
     return () => window.removeEventListener("keydown", close);
   }, [selected]);
 
+  const lowest = statusFrom ? statuses.indexOf(statusFrom) : 0;
+  const highest = statusTo ? statuses.indexOf(statusTo) : statuses.length - 1;
+  const inStatusRange = (value?: string) => { const index = statuses.indexOf(value ?? ""); return index >= Math.min(lowest, highest) && index <= Math.max(lowest, highest); };
   const rows =
     report?.rows.filter(
       (r) =>
         (!program || r.programId === program) &&
-        (!status || r.periods.some((p) => p.state?.status === status)) &&
+        ((!statusFrom && !statusTo) || r.periods.some((p) => inStatusRange(p.state?.status))) &&
         `${r.memberName} ${r.memberNumber} ${r.applicationNumber}`.toLowerCase().includes(search.toLowerCase())
     ) ?? [];
 
@@ -329,17 +334,23 @@ export default function MamPage() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Status</label>
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="">All statuses</option>
-              {statuses.map((s) => (
-                <option key={s}>{s}</option>
+            <label className="text-xs font-semibold text-muted-foreground">Status (from – to)</label>
+            <div className="flex items-center gap-1">
+              {([["From", statusFrom, setStatusFrom, "From any"], ["To", statusTo, setStatusTo, "To any"]] as const).map(([label, value, set, blank]) => (
+                <select
+                  key={label}
+                  aria-label={`Status ${label.toLowerCase()}`}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  value={value}
+                  onChange={(e) => set(e.target.value)}
+                >
+                  <option value="">{blank}</option>
+                  {statuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
               ))}
-            </select>
+            </div>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Search</label>
@@ -365,7 +376,8 @@ export default function MamPage() {
                 setMember("");
                 setMemberOptions([]);
                 setProgram("");
-                setStatus("");
+                setStatusFrom("");
+                setStatusTo("");
                 setSearch("");
               }}
             >

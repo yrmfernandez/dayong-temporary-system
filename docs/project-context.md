@@ -1316,3 +1316,9 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Done:** printing only (the screen is unchanged): the member column prints one line (name, PH#, program, APP, DOI, monthly), and each month one line (status, collected, OR numbers, NOP, balance, Suspended when temporarily suspended; Needs review / — otherwise). The detailed cards, receipt boxes and summary grid are not printed; rows have tight padding and the member column 28% of the width. A long member line or many receipts in a month may still wrap to a second line. Build passes.
 - **In progress:** none.
 - **To do (owner):** print a branch from MAM and check the paper count; say if a field should be dropped or added.
+
+### MAM status range filter (2026-10-23)
+
+- **Owner:** apply a range in statuses, e.g. from NS to a later status.
+- **Done:** the MAM Status filter has From and To (order NS, U, ADV, 60D, 90D, 120D, 150D, Forfeited); either can be left open (From only = that status onward, To only = up to it); picked in reverse it still works. An account shows when any month in the range has a status inside it, as the single status filter did. Reset clears both. Typecheck passes.
+- **In progress / To do:** none.
