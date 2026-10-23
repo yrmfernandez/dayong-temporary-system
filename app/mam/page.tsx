@@ -34,6 +34,18 @@ const money = (value: number) =>
 
 const statuses = ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Forfeited"];
 
+/** Sort choices; status and balance are the range's last month. */
+const SORTS = {
+  member: { label: "Member name", value: (r: Row) => r.memberName },
+  number: { label: "PH#", value: (r: Row) => r.memberNumber },
+  program: { label: "Program", value: (r: Row) => r.programName },
+  doi: { label: "DOI", value: (r: Row) => r.doi },
+  status: { label: "Status", value: (r: Row) => { const index = statuses.indexOf(r.periods.at(-1)?.state?.status ?? ""); return index < 0 ? statuses.length : index; } },
+  balance: { label: "Balance", value: (r: Row) => r.periods.at(-1)?.state?.balance ?? 0 },
+  collected: { label: "Collected in range", value: (r: Row) => r.periods.reduce((sum, period) => sum + period.collected, 0) },
+} satisfies Record<string, { label: string; value: (r: Row) => string | number }>;
+type SortKey = keyof typeof SORTS | "";
+
 const monthLabel = (value: string) =>
   new Intl.DateTimeFormat("en-PH", { month: "short", year: "numeric", timeZone: "UTC" }).format(
     new Date(`${value}-01T00:00:00Z`)
@@ -75,6 +87,9 @@ export default function MamPage() {
   // Status range (owner, October 23, 2026): From and To in the order of `statuses`; either may be left open.
   const [statusFrom, setStatusFrom] = useState("");
   const [statusTo, setStatusTo] = useState("");
+  // Sort by (owner, October 23, 2026): accounts within each MAS group, and the CSV, follow it.
+  const [sortBy, setSortBy] = useState<SortKey>("");
+  const [sortDescending, setSortDescending] = useState(false);
   const [search, setSearch] = useState("");
   // Branch first, then a MAS or employee assigned to it, then a member; only that slice is loaded.
   const [member, setMember] = useState("");
@@ -169,6 +184,14 @@ export default function MamPage() {
         ((!statusFrom && !statusTo) || r.periods.some((p) => inStatusRange(p.state?.status))) &&
         `${r.memberName} ${r.memberNumber} ${r.applicationNumber}`.toLowerCase().includes(search.toLowerCase())
     ) ?? [];
+  if (sortBy) {
+    const sorter = SORTS[sortBy].value;
+    rows.sort((a, b) => {
+      const x = sorter(a), y = sorter(b);
+      const order = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
+      return (sortDescending ? -order : order) || a.memberName.localeCompare(b.memberName);
+    });
+  }
 
   const groups = new Map<string, Row[]>();
   for (const row of rows) {
@@ -364,6 +387,32 @@ export default function MamPage() {
               />
             </div>
           </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Sort by</label>
+            <div className="flex items-center gap-1">
+              <select
+                aria-label="Sort by"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortKey)}
+              >
+                <option value="">As loaded</option>
+                {Object.entries(SORTS).map(([key, item]) => (
+                  <option key={key} value={key}>{item.label}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Sort order"
+                className="flex h-9 w-28 shrink-0 rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                disabled={!sortBy}
+                value={sortDescending ? "desc" : "asc"}
+                onChange={(e) => setSortDescending(e.target.value === "desc")}
+              >
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </div>
+          </div>
           <div className="flex items-end gap-2 pt-1">
             <Button className="w-full" disabled={busy} onClick={() => void load()}>
               {busy ? "Loading..." : "Apply Range"}
@@ -378,6 +427,8 @@ export default function MamPage() {
                 setProgram("");
                 setStatusFrom("");
                 setStatusTo("");
+                setSortBy("");
+                setSortDescending(false);
                 setSearch("");
               }}
             >

@@ -1322,3 +1322,9 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Owner:** apply a range in statuses, e.g. from NS to a later status.
 - **Done:** the MAM Status filter has From and To (order NS, U, ADV, 60D, 90D, 120D, 150D, Forfeited); either can be left open (From only = that status onward, To only = up to it); picked in reverse it still works. An account shows when any month in the range has a status inside it, as the single status filter did. Reset clears both. Typecheck passes.
 - **In progress / To do:** none.
+
+### MAM sort by (2026-10-23)
+
+- **Owner:** apply sort by on MAM.
+- **Done:** a Sort by choice (As loaded, Member name, PH#, Program, DOI, Status, Balance, Collected in range) with Ascending/Descending. Status and Balance use the range's last month; Status follows NS, U, ADV, 60D, 90D, 120D, 150D, Forfeited. Accounts stay grouped by MAS and are sorted inside each group; ties go by member name. The screen, the printout and the CSV follow it. Reset clears it. Typecheck passes.
+- **In progress / To do:** none.

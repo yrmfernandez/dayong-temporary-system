@@ -37,7 +37,7 @@ The server saves collection calculation snapshots so later incentive changes do 
 
 ## MAM
 
-`/mam` defaults to the current month and allows up to 120 months per selected range. Each month is a horizontal column, with account identity fixed on the left. It includes Branch/MAS grouping, Program/Status range (From – To, October 23, 2026)/Search filters, totals, account payment details, printing, and CSV export. Printing is compact: one line per member and month (status, collected, OR numbers, NOP, balance), so each member takes about one row (October 23, 2026).
+`/mam` defaults to the current month and allows up to 120 months per selected range. Each month is a horizontal column, with account identity fixed on the left. It includes Branch/MAS grouping, Program/Status range (From – To, October 23, 2026)/Search filters, Sort by (October 23, 2026), totals, account payment details, printing, and CSV export. Printing is compact: one line per member and month (status, collected, OR numbers, NOP, balance), so each member takes about one row (October 23, 2026).
 
 - Historical months calculate at month-end using receipts with OR Dates on or before that date; the current month calculates as of today. This is a reconstruction from current records, not an immutable “what staff knew then” snapshot.
 - Future columns are explicitly marked Projected and use only payments received by today.
