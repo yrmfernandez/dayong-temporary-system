@@ -17,7 +17,9 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  *   when, and every later slip follows it (lib/remittance-workflow.ts forfeitsIncentive), so a returned and resubmitted
  *   slip keeps it.
  * - On a slip still pending (Pending Approval or Discrepancy) the entry's company share, the slip's line and its
- *   expected amount change at once (the actual cash counted stays, so the difference shows what to give back or collect).
+ *   expected amount change at once. The actual cash stays (the difference then shows what to give back or collect), or,
+ *   with moveActual (owner, October 23, 2026: slips are made with the actual equal to the expected, so the change is
+ *   not cash that went missing), the actual moves by the same amount and the difference stays as it was.
  *   An entry not yet on a slip only keeps the decision. An approved entry is not changed here.
  * - An entry marked No incentive at encoding is refused: that is the encoder's own choice, corrected on the entry.
  * The Audit Log keeps every change and Record Corrections a summary.
@@ -58,7 +60,7 @@ export async function incentiveDecisions() {
   return new Map(rowsOf<{ id: string; decision: string; reason: string; by: string; at: string }>(result).map((row) => [row.id, row]));
 }
 
-export async function decideIncentive(input: { id: string; decision: string; reason: string }) {
+export async function decideIncentive(input: { id: string; decision: string; reason: string; moveActual?: boolean }) {
   const id = text(input.id), decision = text(input.decision) as IncentiveDecision, reason = text(input.reason).slice(0, 300);
   if (!INCENTIVE_DECISIONS.includes(decision)) throw new Error("Choose Keep, Forfeit, or Follow the rule.");
   if (reason.length < 5) throw new Error("Enter the reason for the decision (at least 5 characters).");
@@ -91,13 +93,22 @@ export async function decideIncentive(input: { id: string; decision: string; rea
     } else {
       await tx.update(schema.sales).set({ ...fields, ...(changesFigures ? { remittance_amount: share, mas_incentive: round(entry.amount - share), forfeited_incentive: forfeit ? incentive : null } : {}) }).where(sql`sale_id = ${id}`);
     }
-    const slip = changesFigures ? await followSlip(tx, id, entry.slip, share) : null;
+    let slip = changesFigures ? await followSlip(tx, id, entry.slip, share) : null;
+    const actualMoved = Boolean(input.moveActual && slip);
+    if (input.moveActual && slip) {
+      // gross_collection already holds the new expected; the actual moves by the same amount, so the difference stays.
+      const [moved] = rowsOf<{ difference: number }>(await tx.execute(sql`update remittances set total_remittance = round((coalesce(total_remittance, 0) + ${slip.expectedChange})::numeric, 2),
+          difference = round((coalesce(total_remittance, 0) + ${slip.expectedChange} - coalesce(gross_collection, 0))::numeric, 2),
+          status = case when status = 'Discrepancy' and round((coalesce(total_remittance, 0) + ${slip.expectedChange} - coalesce(gross_collection, 0))::numeric, 2) = 0 then 'Pending Approval' else status end
+        where remittance_id = ${slip.slipId} returning difference::float8 as difference`));
+      slip = { ...slip, difference: round(Number(moved?.difference ?? 0)) };
+    }
     await tx.insert(schema.record_corrections).values({
       correction_id: createReadableId("COR"), module: "Incentive decision", record_id: id,
       reason: `${decision ? `${decision} the incentive` : "Follow the 3:00 PM rule"}: ${reason}`,
-      before_json: before, after_json: { ...after, slip: slip ? { id: slip.slipId, expectedChange: slip.expectedChange, difference: slip.difference } : null },
+      before_json: before, after_json: { ...after, slip: slip ? { id: slip.slipId, expectedChange: slip.expectedChange, actualMoved, difference: slip.difference } : null },
       corrected_at: new Date().toISOString(), ...encodedBy(),
     });
-    return { id, decision, forfeited: forfeit, incentive, companyShare: share, slip, applied: changesFigures ? "now" : pending ? "unchanged" : "next slip" };
+    return { id, decision, forfeited: forfeit, incentive, companyShare: share, slip, actualMoved, applied: changesFigures ? "now" : pending ? "unchanged" : "next slip" };
   });
 }

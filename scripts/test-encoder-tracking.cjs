@@ -3257,6 +3257,25 @@ test('a person cleared for New Sales only can be cleared for Collections the sam
   assert.deepEqual((await query("select covers from clearings where status = 'Open' order by covers")).map((row) => row.covers), ['Collections', 'New Sales']);
 });
 
+test('clearing a person again after their clearing was encoded asks whether it is a new handover (October 23, 2026)', async () => {
+  const h = harness();
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  await seed('branches', [{ branch_id: 'BR-1', branch_name_code: 'BR-1', status: 'active' }]);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2', employment_status: 'Active' }]);
+  await seed('employee_branches', [{ assignment_id: 'EBA-1', employee_id: 'DPE-0002', branch_id: 'BR-1' }]);
+  const clearing = h.load('lib/clearing.ts');
+  const { runAsSystem } = h.load('lib/encoder-context.ts');
+  await runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Both' }));
+  await query("update clearings set status = 'Encoded'");
+  // The first batch was encoded: another batch of the same handover needs no new clearing.
+  await assert.rejects(() => runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Collections' })), (error) => error.code === 'ALREADY_CLEARED' && /already cleared in BR-1 today at/.test(error.message));
+  // A real new handover is confirmed.
+  await runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Collections', newHandover: true }));
+  assert.deepEqual((await query("select status from clearings order by cleared_at")).map((row) => row.status), ['Encoded', 'Open']);
+});
+
 test('a DTO batch: a member of a resigned MAS paid at the office, without a clearing; the clerk is accountable', async () => {
   const h = harness();
   const rules = h.load('lib/account-rules.ts');
@@ -3847,4 +3866,10 @@ test('an Administrator keeps or forfeits an incentive on a pending slip; the 3:0
   assert.deepEqual(await state(), { share: 350, forfeited: 35, decision: null, line: 350, expected: 350, difference: 0 }, 'the rule decides again from the slip time (late)');
   const [correction] = await query(`select module from record_corrections where record_id = 'C1' limit 1`);
   assert.equal(correction.module, 'Incentive decision');
+  // The actual moves with the expected (the slip's actual was set equal to the expected): the difference stays 0.
+  const moved = await runAsSystem(() => decideIncentive({ id: 'C1', decision: 'Keep', reason: 'Collector kept the incentive', moveActual: true }));
+  assert.equal(moved.actualMoved, true);
+  assert.deepEqual(await state(), { share: 315, forfeited: null, decision: 'Keep', line: 315, expected: 315, difference: 0 });
+  const [slip] = await query(`select total_remittance::float8 as actual from remittances where remittance_id = 'REM-1'`);
+  assert.equal(slip.actual, 315);
 });

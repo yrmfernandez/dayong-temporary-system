@@ -246,7 +246,17 @@ export async function getEncodableClearings(clearedBy = "") {
 }
 
 /** Lists a MAS or employee as cleared now, for one branch. */
-export async function addClearing(input: { branch: string; employeeId: string; amount?: unknown; notes?: unknown; covers?: unknown }) {
+/**
+ * The person was already cleared today for this kind and that clearing's entries are encoded (owner, October 23, 2026:
+ * RACHO, KRISTINE handed over her cash at 2:41 PM, but the clerk cleared her again at 3:18 and 3:23 PM for two more
+ * batches, and their incentives were forfeited from those times). An Encoded clearing still covers more batches the
+ * same day, so a new clearing is only for a new handover of cash: the clerk must confirm it (newHandover).
+ */
+export class AlreadyClearedError extends Error {
+  code = "ALREADY_CLEARED" as const;
+}
+
+export async function addClearing(input: { branch: string; employeeId: string; amount?: unknown; notes?: unknown; covers?: unknown; newHandover?: boolean }) {
   const branchName = text(input.branch), employeeId = text(input.employeeId), notes = text(input.notes);
   const covers = (text(input.covers) || "Both") as ClearingCovers;
   if (!CLEARING_COVERS.includes(covers)) throw new Error("Choose what is being remitted: New Sales, Collections or both.");
@@ -266,6 +276,16 @@ export async function addClearing(input: { branch: string; employeeId: string; a
     .where(and(eq(clearings.employee_id, employee.id), eq(clearings.branch, branch.name), eq(clearings.cleared_date, day), eq(clearings.status, "Open")));
   const overlap = open.flatMap((row) => coveredKinds((CLEARING_COVERS as string[]).includes(text(row.covers)) ? row.covers as ClearingCovers : "Both")).filter((kind) => coveredKinds(covers).includes(kind));
   if (overlap.length) throw new Error(`${employee.name} is already cleared for ${[...new Set(overlap)].join(" and ")} in ${branch.name} today and not yet encoded.`);
+  if (!input.newHandover) {
+    const encoded = await currentDb().select({ at: clearings.cleared_at, covers: clearings.covers }).from(clearings)
+      .where(and(eq(clearings.employee_id, employee.id), eq(clearings.branch, branch.name), eq(clearings.cleared_date, day), eq(clearings.status, "Encoded")))
+      .orderBy(clearings.cleared_at);
+    const earlier = encoded.filter((row) => coveredKinds((CLEARING_COVERS as string[]).includes(text(row.covers)) ? row.covers as ClearingCovers : "Both").some((kind) => coveredKinds(covers).includes(kind)));
+    if (earlier.length) {
+      const times = earlier.map((row) => manilaStamp(row.at).slice(11)).join(", ");
+      throw new AlreadyClearedError(`${employee.name} was already cleared in ${branch.name} today at ${times}. Encode the remaining batches under that clearing: no new clearing is needed. Clear again only for a new handover of cash; its time is the time received and decides the incentives.`);
+    }
+  }
   const id = createReadableId("CLR");
   await currentDb().insert(clearings).values({
     clearing_id: id, branch: branch.name, employee_id: employee.id, employee_name: employee.name, cleared_at: now.toISOString(), cleared_date: day,

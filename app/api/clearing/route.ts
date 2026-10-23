@@ -1,7 +1,7 @@
 import { refuseOnDayOff } from "@/lib/day-off";
 import { canAccessPath } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
-import { addClearing, editClearing, getClearingPage, getDayEndReview, removeClearing, settleDayEnd } from "@/lib/clearing";
+import { AlreadyClearedError, addClearing, editClearing, getClearingPage, getDayEndReview, removeClearing, settleDayEnd } from "@/lib/clearing";
 import { withEncoder } from "@/lib/encoder-context";
 
 /** Clearing (lib/clearing.ts): GET the day's list; POST { branch, employeeId, covers, amount?, notes? } clears; PATCH { id, reason } removes; PATCH { action: "edit", id, branch, employeeId, covers } corrects it. */
@@ -33,9 +33,13 @@ export const POST = withEncoder(async (request: Request) => {
   if (error) return error;
   try {
     const body = await request.json();
-    const cleared = await addClearing({ branch: String(body.branch ?? ""), employeeId: String(body.employeeId ?? ""), amount: body.amount, notes: body.notes, covers: body.covers });
+    const cleared = await addClearing({ branch: String(body.branch ?? ""), employeeId: String(body.employeeId ?? ""), amount: body.amount, notes: body.notes, covers: body.covers, newHandover: body.newHandover === true });
     return Response.json({ success: true, message: `${cleared.employeeName} cleared for ${cleared.branch} at ${cleared.clearedAt.slice(11)}. Their ${cleared.covers === "Both" ? "New Sales and Collections" : cleared.covers} for today can now be encoded.`, cleared });
-  } catch (failure) { return Response.json({ success: false, message: failure instanceof Error ? failure.message : "Unable to clear." }, { status: 400 }); }
+  } catch (failure) {
+    // Already cleared today: the page asks whether this is a new handover of cash (lib/clearing.ts AlreadyClearedError).
+    if (failure instanceof AlreadyClearedError) return Response.json({ success: false, code: failure.code, message: failure.message }, { status: 409 });
+    return Response.json({ success: false, message: failure instanceof Error ? failure.message : "Unable to clear." }, { status: 400 });
+  }
 });
 
 export const PATCH = withEncoder(async (request: Request) => {

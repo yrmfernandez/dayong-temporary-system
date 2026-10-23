@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { alertDialog, promptDialog } from "@/components/app-dialog";
+import { alertDialog, confirmDialog, promptDialog } from "@/components/app-dialog";
 import { ReceiptPhotoView } from "@/components/receipt-photo";
 import { StatusBadge } from "@/components/status-badge";
 import { parseJsonResponse } from "@/lib/api-response";
@@ -25,13 +25,19 @@ export function RemittanceEntries({ remittanceId, canDecideIncentive = false, on
     const label = decision === "Keep" ? "Keep the incentive" : decision === "Forfeit" ? "Forfeit the incentive" : "Let the 3:00 PM rule decide";
     const reason = (await promptDialog(`${label} on ${entry.orNumber || entry.id}. Why?`, { required: true, confirmLabel: "Save", placeholder: "e.g. cash was received at 1:30 PM; the clearing was recorded late" }))?.trim();
     if (!reason) return;
+    // On a pending slip the expected amount changes; the actual can move with it so the difference stays (slips are made
+    // with the actual equal to the expected). Asked only when the decision may change the figures.
+    const changes = decision === "Keep" ? entry.forfeitedIncentive > 0 : decision === "Forfeit" ? entry.forfeitedIncentive === 0 : true;
+    const moveActual = entry.remittanceStatus === "Pending Remittance Approval" && changes
+      ? await confirmDialog("Change the slip's actual cash by the same amount, so its difference stays as it is?\n\nChoose Yes when the actual was not counted separately (the slip was sent automatically) or the collector kept the incentive. Choose No when the cash really handed over differs: the difference then shows what to give back or collect.", { title: "Slip's actual cash", confirmLabel: "Yes, change the actual", cancelLabel: "No, keep the actual", requireChoice: true })
+      : false;
     setDeciding(entry.id);
     try {
-      const response = await fetch("/api/remittances/incentive", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: entry.id, decision, reason }) });
-      const result = await parseJsonResponse<{ success: boolean; message?: string; result?: { applied: string; slip?: { expectedChange: number; difference: number } | null } }>(response);
+      const response = await fetch("/api/remittances/incentive", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: entry.id, decision, reason, moveActual }) });
+      const result = await parseJsonResponse<{ success: boolean; message?: string; result?: { applied: string; actualMoved?: boolean; incentive?: number; slip?: { expectedChange: number; difference: number } | null } }>(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the decision.");
       const slip = result.result?.slip;
-      await alertDialog(result.result?.applied === "now" && slip ? `Saved. The slip's expected amount changed by ${money(slip.expectedChange)}; its difference is now ${money(slip.difference)}.` : result.result?.applied === "next slip" ? "Saved. It applies when this entry is put on a slip." : "Saved.");
+      await alertDialog(result.result?.applied === "now" && slip ? `Saved. The slip's expected amount changed by ${money(slip.expectedChange)}${result.result.actualMoved ? " and its actual cash with it" : ""}; its difference is now ${money(slip.difference)}.${result.result.actualMoved && decision === "Keep" ? `\n\nIf the collector handed over the full amount, give back the incentive (${money(result.result.incentive ?? 0)}).` : ""}` : result.result?.applied === "next slip" ? "Saved. It applies when this entry is put on a slip." : "Saved.");
       setVersion((value) => value + 1);
       onChanged?.();
     } catch (caught) {

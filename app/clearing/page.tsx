@@ -4,6 +4,7 @@ import { BadgeCheck, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
+import { confirmDialog } from "@/components/app-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -97,9 +98,15 @@ export default function ClearingPage() {
     event.preventDefault();
     setBusy(true); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/clearing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ branch, employeeId, amount, notes, covers }) });
-      const result = await readApiResponse(response);
-      if (!response.ok || !result.success) throw new Error(result.message || "Unable to clear.");
+      const send = (newHandover: boolean) => fetch("/api/clearing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ branch, employeeId, amount, notes, covers, newHandover }) }).then(readApiResponse);
+      let result = await send(false);
+      // Already cleared today (owner, October 23, 2026): a new clearing is only for a new handover of cash.
+      if (!result.success && result.code === "ALREADY_CLEARED") {
+        const newHandover = await confirmDialog(result.message, { title: "Already cleared today", confirmLabel: "New handover: clear again", cancelLabel: "Cancel", requireChoice: true });
+        if (!newHandover) { setMessage("Not cleared again. Encode the remaining batches under the earlier clearing."); return; }
+        result = await send(true);
+      }
+      if (!result.success) throw new Error(result.message || "Unable to clear.");
       setMessage(result.message || "Cleared."); setEmployeeId(""); setAmount(""); setNotes(""); setCovers("Both");
       await load();
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to clear."); }
