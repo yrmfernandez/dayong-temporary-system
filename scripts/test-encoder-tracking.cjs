@@ -3873,3 +3873,29 @@ test('an Administrator keeps or forfeits an incentive on a pending slip; the 3:0
   const [slip] = await query(`select total_remittance::float8 as actual from remittances where remittance_id = 'REM-1'`);
   assert.equal(slip.actual, 315);
 });
+
+test('a deposit reference number can be recorded only once (October 23, 2026)', async () => {
+  const h = harness();
+  h.rows['Bank Deposits'] = [['deposit_id', 'deposit_date', 'employee_id', 'employee_name', 'branch', 'bank_account_name', 'amount', 'transfer_type', 'mas', 'remarks', 'status', 'void_reason', 'created_at'],
+    ['DEP-1', '2026-10-19', 'DPE-7', 'CABALLERO, JENNY', 'MINTAL', 'JULIET GULTIANO', 880, 'GCASH', 'DTO', '8046291340931', 'Posted', '', '2026-10-20T02:25:15.000Z'],
+    ['DEP-2', '2026-10-18', 'DPE-7', 'CABALLERO, JENNY', 'MINTAL', 'RCBC', 500, 'BANK', '', '111222333', 'Voided', 'Typed twice', '2026-10-18T02:00:00.000Z']];
+  await h.sync();
+  const cash = h.load('lib/clerk-cash.ts');
+  const { runAsSystem } = h.load('lib/encoder-context.ts');
+  const clerk = { employeeId: 'DPE-7', name: 'CABALLERO, JENNY', branch: 'MINTAL' };
+  const deposit = { date: '2026-10-20', amount: 880, bankAccount: 'JULIET GULTIANO', transferType: 'GCASH', mas: 'DTO', remarks: '8046291340931 / ACTUAL DEPO DATE 10-19' };
+  await assert.rejects(() => runAsSystem(() => cash.addDeposit(deposit, clerk)), /Reference 8046291340931 is already recorded on deposit DEP-1 .*deposit date 2026-10-19/);
+  // A voided deposit's reference can be used again; a different reference is fine; editing a deposit keeps its own.
+  await runAsSystem(() => cash.addDeposit({ ...deposit, remarks: '111222333' }, clerk));
+  await runAsSystem(() => cash.editDeposit('DEP-1', { ...deposit, date: '2026-10-20' }, { employeeId: 'DPE-7', isAdmin: false }));
+  assert.equal(cash.duplicateReferenceProblem('ref 10-19 only', h.rows['Bank Deposits']), '', 'short numbers such as dates are not references');
+});
+
+test('a deposit is dated within the report it is entered on (October 23, 2026)', () => {
+  const { depositDayProblem } = harness().load('lib/deposit-day.ts');
+  assert.equal(depositDayProblem({ reportKind: 'daily', reportDate: '2026-10-20', date: '2026-10-20' }), '');
+  assert.match(depositDayProblem({ reportKind: 'daily', reportDate: '2026-10-20', date: '2026-10-19' }), /this report is for 2026-10-20\. To record it on 2026-10-19, open the report for that day/);
+  assert.equal(depositDayProblem({ reportKind: 'weekly', reportDate: '2026-10-20', date: '2026-10-25' }), '', 'any day of that week (October 19-25)');
+  assert.match(depositDayProblem({ reportKind: 'weekly', reportDate: '2026-10-20', date: '2026-10-18' }), /from 2026-10-19 to 2026-10-25/);
+  assert.equal(depositDayProblem({ date: '2026-10-01' }), '', 'no report sent: not checked here');
+});

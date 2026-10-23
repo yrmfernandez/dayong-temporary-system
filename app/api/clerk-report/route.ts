@@ -7,6 +7,7 @@ import { getEmployees } from "@/lib/employees";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { getReportRemarks } from "@/lib/report-remarks";
 import { addDeposit, editDeposit, saveCashBeg, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
+import { depositDayProblem } from "@/lib/deposit-day";
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense, deleteExpense, editExpense } from "@/lib/finance-data";
 import { getBranches } from "@/lib/google-sheets-data";
@@ -95,6 +96,8 @@ export const POST = withEncoder(async (request: Request) => {
         return Response.json({ success: true, message: `Expense ${saved.id} saved with ${saved.photos} receipt photo${saved.photos === 1 ? "" : "s"}.` });
       }
       case "add-deposit": {
+        const dayProblem = depositDayProblem(body);
+        if (dayProblem) throw new Error(dayProblem);
         const saved = await addDeposit(body, clerk);
         return Response.json({ success: true, message: `Deposit ${saved.id} saved.` });
       }
@@ -126,9 +129,12 @@ export const POST = withEncoder(async (request: Request) => {
       case "delete-expense":
         await deleteExpense(String(body.id ?? ""), String(body.reason ?? ""), { employeeId: user.employeeId, isAdmin: await canManageUsers() });
         return Response.json({ success: true, message: "Expense deleted." });
-      case "edit-deposit":
+      case "edit-deposit": {
+        const dayProblem = depositDayProblem(body);
+        if (dayProblem) throw new Error(dayProblem);
         await editDeposit(String(body.id ?? ""), body, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
         return Response.json({ success: true, message: "Deposit updated." });
+      }
       case "void-deposit":
         await voidDeposit(String(body.id ?? ""), String(body.reason ?? ""), { employeeId: user.employeeId, isAdmin: await canManageUsers() });
         return Response.json({ success: true, message: "Deposit voided." });

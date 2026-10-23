@@ -86,7 +86,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   /** Sends one of the clerk's own report actions, then reloads the report. */
   const act = async (body: Record<string, unknown>) => {
     setMessage("");
-    const response = await fetch("/api/clerk-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, date, branch: data?.branch === "all" ? "" : data?.branch ?? "", ...body }) });
+    const response = await fetch("/api/clerk-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, date, reportKind: kind, reportDate: date, branch: data?.branch === "all" ? "" : data?.branch ?? "", ...body }) });
     const result = await response.json();
     setMessage(result.message || (response.ok ? "Saved." : "Unable to save."));
     if (response.ok && result.success) await load();
@@ -509,11 +509,14 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
       {section === "deposit" && <form id="deposit-form" className="space-y-4" onSubmit={async (event) => {
         event.preventDefault();
         if (editing) { if (await act({ action: "edit-deposit", id: editing.id, ...deposit, amount: Number(deposit.amount) })) onEditDone(); return; }
-        if (await act({ action: "add-deposit", ...deposit, amount: Number(deposit.amount) })) setDeposit((current) => ({ ...current, amount: "", remarks: "" }));
+        if (await act({ action: "add-deposit", ...deposit, date: report.from === report.to ? report.from : deposit.date, amount: Number(deposit.amount) })) setDeposit((current) => ({ ...current, amount: "", remarks: "" }));
       }}>
         <FormTitle title={editing ? `Edit deposit ${editing.id}` : "Add cash forwarded to bank"} note="Cash out of this report: cash you deposited or sent to the bank." />
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Date"><Input type="date" value={deposit.date} onChange={(event) => setDeposit({ ...deposit, date: event.target.value })} /></Field>
+          {/* The report's day (owner, October 23, 2026): to record a deposit on another day, open that day's report. */}
+          <Field label="Date">{report.from === report.to
+            ? <Input type="date" value={report.from} readOnly title="This report's day. Open another day's report to record a deposit there." />
+            : <Input type="date" min={report.from} max={report.to} value={deposit.date} onChange={(event) => setDeposit({ ...deposit, date: event.target.value })} />}</Field>
           <Field label="Amount"><Input type="number" min="0" step="0.01" placeholder="0.00" value={deposit.amount} onChange={(event) => setDeposit({ ...deposit, amount: event.target.value })} /></Field>
           <Field label="Bank account name"><Input value={deposit.bankAccount} onChange={(event) => setDeposit({ ...deposit, bankAccount: event.target.value })} /></Field>
           <Field label="Type of transfer *"><Input value={deposit.transferType} onChange={(event) => setDeposit({ ...deposit, transferType: event.target.value })} placeholder="e.g. RCBC, GCash" /></Field>

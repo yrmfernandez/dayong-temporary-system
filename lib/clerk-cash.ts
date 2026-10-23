@@ -32,6 +32,24 @@ export const depositRemarksProblem = (value: unknown) => {
   if (!/\d/.test(remarks)) return "The remarks need a number (e.g. the deposit reference); letters only are not accepted.";
   return "";
 };
+/**
+ * One reference number, one deposit (owner, October 23, 2026: CABALLERO, JENNY recorded GCash reference 8046291340931
+ * twice, dated October 19 and October 20, so ₱880 left Cash on Hand in both reports). A reference is a run of 6 or more
+ * digits in the remarks; another deposit that is not voided with the same one refuses the save, naming that deposit so
+ * it is edited (its date or amount) or voided instead.
+ */
+const references = (remarks: unknown) => [...new Set(text(remarks).match(/\d{6,}/g) ?? [])];
+export function duplicateReferenceProblem(remarks: unknown, deposits: unknown[][], exceptId = "") {
+  const wanted = references(remarks);
+  if (!wanted.length) return "";
+  const peso = (value: unknown) => (Number(value) || 0).toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+  for (const row of deposits.slice(1)) {
+    if (!text(row[0]) || text(row[0]) === exceptId || text(row[10]) === "Voided") continue;
+    const shared = wanted.find((reference) => references(row[9]).includes(reference));
+    if (shared) return `Reference ${shared} is already recorded on deposit ${text(row[0])} (${peso(row[6])}, deposit date ${text(row[1])}, recorded by ${text(row[3]) || "another clerk"}, ${text(row[4])}). Edit that deposit (its date or amount) or void it; do not record the same transfer again.`;
+  }
+  return "";
+}
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 const column = (count: number) => String.fromCharCode(64 + count);
 
@@ -71,6 +89,8 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
   if (remarksProblem) throw new Error(remarksProblem);
   getEncoder();
   await ensure(DEPOSITS, DEPOSIT_HEADERS);
+  const duplicate = duplicateReferenceProblem(input.remarks, await rows(DEPOSITS, DEPOSIT_HEADERS.length));
+  if (duplicate) throw new Error(duplicate);
   const id = createReadableId("DEP");
   await sheets.spreadsheets.values.append({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!A:M`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values: [[
     id, date, clerk.employeeId, clerk.name, clerk.branch, bankAccount, amount, transferType, text(input.mas).slice(0, 100), text(input.remarks).slice(0, 200), "Posted", "", new Date().toISOString(),
@@ -97,6 +117,8 @@ export async function editDeposit(id: string, input: Record<string, unknown>, by
   if (index < 0) throw new Error("Deposit not found.");
   if (!by.isAdmin && text(all[index][2]) !== by.employeeId) throw new Error("You can edit only deposits you recorded.");
   if (text(all[index][10]) === "Voided") throw new Error("A voided deposit cannot be edited.");
+  const duplicate = duplicateReferenceProblem(input.remarks, all, text(id));
+  if (duplicate) throw new Error(duplicate);
   // B date, F bank account, G amount, H type of transfer, I MAS, J remarks; the clerk, branch and status stay.
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!B${index + 1}:B${index + 1}`, valueInputOption: "RAW", requestBody: { values: [[date]] } });
   await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!F${index + 1}:J${index + 1}`, valueInputOption: "RAW", requestBody: { values: [[bankAccount, amount, transferType, text(input.mas).slice(0, 100), text(input.remarks).slice(0, 200)]] } });

@@ -139,6 +139,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const entries = encoded.filter((entry) => sameBranch(entry.branch));
   // By the day the expense was recorded, not the expense date typed (owner, October 14, 2026).
   const expenses = expensesAll.filter((item) => inPeriod(item.recordedOn) && sameBranch(item.branch));
+  // A deposit belongs to the report it was entered on: its date is that report's day (owner, October 23, 2026).
   const deposits = depositsAll.filter((item) => inPeriod(item.date) && sameBranch(item.branch));
   // Fidelity handed in after encoding (its own slips): cash received, so it is in the Fidelity Bond line.
   const fidelitySlips = fidelityAll.filter((item) => sameBranch(item.branch)).map((item) => ({ ...item, amount: Number(item.amount) || 0 }));
