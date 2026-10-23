@@ -1,0 +1,335 @@
+{
+  "note": "Members registered twice, found by scripts/find-duplicate-members-20261023.mjs (same surname, first name and extension; middle initial and birthdate agree or one is blank). keep / other: PH numbers; # matches legacy-data/duplicate-members-review-20261023.csv. Merged by scripts/merge-members.mjs --file=config/member-merges-20261023.json. Owner, October 23, 2026: merge only the safe pairs; #4, #5, #10, #39, #52, #74, #75, #78, #87, #88, #89, #99, #101, #102, #106, #110, #117, #118 (different branches or both paying) are left as separate people; account-clash pairs are not in this list. Owner, October 23, 2026: never merge Jr. or Sr. (father and son share a name): #8, #40, #57 removed. Owner, October 23, 2026: the kept member takes the fuller name (useOtherName fuller).",
+  "merges": [
+    {
+      "keep": "PH-94041711",
+      "other": "PH-21058535",
+      "note": "#1 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-35377268",
+      "other": "PH-78473539",
+      "note": "#3 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-97782921",
+      "other": "PH-09181730",
+      "note": "#6 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-53640280",
+      "other": "PH-70877844",
+      "note": "#7 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-57412605",
+      "other": "PH-14133675",
+      "note": "#9 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-33026597",
+      "other": "PH-12732707",
+      "note": "#11 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-36231089",
+      "other": "PH-77763152",
+      "note": "#12 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-17054957",
+      "other": "PH-86446516",
+      "note": "#13 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-32959893",
+      "other": "PH-72921217",
+      "note": "#14 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-78093883",
+      "other": "PH-67994905",
+      "note": "#15 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-63406130",
+      "other": "PH-51524877",
+      "note": "#16 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-79710365",
+      "other": "PH-04631721",
+      "note": "#17 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-76421501",
+      "other": "PH-80578834",
+      "note": "#18 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-14076816",
+      "other": "PH-83311250",
+      "note": "#20 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-36853716",
+      "other": "PH-17025754",
+      "note": "#21 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-50169745",
+      "other": "PH-57091421",
+      "note": "#23 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-89439916",
+      "other": "PH-01782883",
+      "note": "#25 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-66362088",
+      "other": "PH-52866087",
+      "note": "#28 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-26229694",
+      "other": "PH-28542358",
+      "note": "#30 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-22632456",
+      "other": "PH-76639934",
+      "note": "#31 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-06148783",
+      "other": "PH-55077895",
+      "note": "#33 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-63970203",
+      "other": "PH-36340388",
+      "note": "#34 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-59355231",
+      "other": "PH-20229353",
+      "note": "#35 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-22428749",
+      "other": "PH-91920617",
+      "note": "#36 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-24653369",
+      "other": "PH-89653267",
+      "note": "#41 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-64091842",
+      "other": "PH-04668915",
+      "note": "#42 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-88759891",
+      "other": "PH-18282266",
+      "note": "#43 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-55381228",
+      "other": "PH-76438244",
+      "note": "#44 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-64545694",
+      "other": "PH-83078434",
+      "note": "#51 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-10332975",
+      "other": "PH-83229245",
+      "note": "#53 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-01077788",
+      "other": "PH-87614106",
+      "note": "#54 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-94262602",
+      "other": "PH-40755942",
+      "note": "#55 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-67297647",
+      "other": "PH-14038067",
+      "note": "#56 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-50355827",
+      "other": "PH-79961201",
+      "note": "#58 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-03519275",
+      "other": "PH-02339550",
+      "note": "#59 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-93996455",
+      "other": "PH-83005858",
+      "note": "#62 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-56044317",
+      "other": "PH-11981416",
+      "note": "#65 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-42128505",
+      "other": "PH-72238478",
+      "note": "#68 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-73408436",
+      "other": "PH-76499093",
+      "note": "#72 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-30291894",
+      "other": "PH-88670650",
+      "note": "#79 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-97741797",
+      "other": "PH-20594319",
+      "note": "#80 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-02261895",
+      "other": "PH-17104842",
+      "note": "#81 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-31322141",
+      "other": "PH-22090383",
+      "note": "#82 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-43516003",
+      "other": "PH-92906727",
+      "note": "#83 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-80962425",
+      "other": "PH-24593193",
+      "note": "#85 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-13670903",
+      "other": "PH-93268381",
+      "note": "#90 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-53055992",
+      "other": "PH-21436269",
+      "note": "#98 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-51622358",
+      "other": "PH-48130905",
+      "note": "#103 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-90614520",
+      "other": "PH-70634669",
+      "note": "#105 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-25190012",
+      "other": "PH-51841673",
+      "note": "#107 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-77573352",
+      "other": "PH-24225616",
+      "note": "#108 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-75320651",
+      "other": "PH-69621023",
+      "note": "#112 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-62707477",
+      "other": "PH-75475292",
+      "note": "#113 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-78713310",
+      "other": "PH-30060308",
+      "note": "#114 one birthdate blank",
+      "useOtherName": "fuller"
+    },
+    {
+      "keep": "PH-44004499",
+      "other": "PH-24877277",
+      "note": "#115 one birthdate blank",
+      "useOtherName": "fuller"
+    }
+  ]
+}

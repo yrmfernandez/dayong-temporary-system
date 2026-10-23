@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 56 component files; 582 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 56 component files; 584 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -200,7 +200,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `ProgramInput`, `updateProgramRecord`, `ProgramBulkChanges`, `updateProgramsBulk`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `MemberRecordInput`, `getMemberRecord`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/encoder-sheets`, `@/lib/sheet-rows`, `@/lib/users-sheet`, `@/lib/program-incentive-store`, `@/lib/member-records` |
 | [lib/member-directory-data.ts](../lib/member-directory-data.ts) | `loadMemberDirectory`, `DirectoryQuery`, `queryMemberDirectory` | `@/lib/db`, `@/lib/account-data`, `@/lib/account-deactivation`, `@/lib/member-directory`, `@/lib/member-scope`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [lib/member-directory.ts](../lib/member-directory.ts) | `DirectoryEnrollment`, `DirectoryMember`, `DECEASED_STATUS`, `MEMBER_STATUSES`, `STANDING_FILTERS`, `Standing`, `matchesStanding`, `DirectoryFilters`, `emptyDirectoryFilters`, `MemberRecord`, `EnrollmentRecord`, `CollectorRecord`, `buildMemberDirectory`, `filterMemberDirectory` | — |
-| [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `memberContactOrClaimant`, `memberColumns`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `searchBranchMembers`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
+| [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `memberContactOrClaimant`, `memberColumns`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `searchBranchMembers`, `findSameNameMembers`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
 | [lib/member-scope.ts](../lib/member-scope.ts) | `ownMembersScope`, `isOwnAccount` | `@/lib/auth`, `@/lib/access-control`, `@/lib/employees` |
 | [lib/member-transfer.ts](../lib/member-transfer.ts) | `canTransferMembers`, `BranchMode`, `TransferCandidate`, `transferCandidates`, `transferEnrollment`, `EmployeeAccount`, `employeeAccounts`, `transferEmployeeAccounts`, `getTransferHistory`, `branchChangeOptions`, `employeeBranchOptions`, `changeEnrollmentsBranch` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/readable-id` |
 | [lib/members.ts](../lib/members.ts) | `getMemberPrograms`, `getProgram`, `getMember` | `./types` |
@@ -424,6 +424,7 @@ These are an inventory, not instructions to run every script. Read each script's
 
 | Script | Imports | Supports literal --apply flag |
 | --- | --- | --- |
+| [scripts/_tmp-check-realtime-partitions.mts](../scripts/_tmp-check-realtime-partitions.mts) | `@next/env`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context` | No flag detected; read source before running |
 | [scripts/_tmp-forf.mjs](../scripts/_tmp-forf.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/_tmp-g.mjs](../scripts/_tmp-g.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/_tmp-one-account.mjs](../scripts/_tmp-one-account.mjs) | `postgres` | No flag detected; read source before running |
@@ -481,6 +482,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-owner-receipt-dates-private.mjs](../scripts/fix-owner-receipt-dates-private.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `./source-history-rules.mjs` | Yes; read source for semantics |
 | [scripts/fix-ph11841180-coverage.mjs](../scripts/fix-ph11841180-coverage.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/fix-ph13437031-nop.mjs](../scripts/fix-ph13437031-nop.mjs) | `node:fs`, `node:assert/strict`, `node:util`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `./source-history-rules.mjs` | Yes; read source for semantics |
+| [scripts/fix-ph21342295-remittance-dates.mjs](../scripts/fix-ph21342295-remittance-dates.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `./source-history-rules.mjs` | Yes; read source for semantics |
 | [scripts/fix-ph29986586-dsp290.mjs](../scripts/fix-ph29986586-dsp290.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/fix-ph34623670-branch.mjs](../scripts/fix-ph34623670-branch.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-ph46732266-details.mjs](../scripts/fix-ph46732266-details.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs`, `node:util` | Yes; read source for semantics |

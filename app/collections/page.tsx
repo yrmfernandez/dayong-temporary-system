@@ -5,7 +5,7 @@ import { COLLECTION_CHECK_REMINDER } from "@/lib/entry-check-reminder";
 import { ClearingPicker } from "@/components/clearing-picker";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { enterToNextField } from "@/lib/enter-to-next";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import {
   Plus,
   Trash2,
@@ -121,6 +121,9 @@ type CollectionEntry = {
   suspendedAt?: string;
   collectedByRole: string;
   accountLoading: boolean;
+  /** The account's next unpaid month and NOP when it was loaded, before this batch (see chainSameAccount). */
+  accountNextMonth?: string;
+  accountNextNop?: number | null;
 
   isExpanded: boolean;
 };
@@ -229,6 +232,34 @@ function lastMonthCovered(from: string, count: number) {
   return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
 }
 
+/**
+ * Several receipts for one account in one batch (owner, October 23, 2026: a member pays several months on separate
+ * ORs). The account's next month and NOP come from what is saved, so a second receipt for the same member and program
+ * would repeat the first one's and the save was refused. In batch order, each receipt after the first for an account
+ * starts the month and NOP after the previous one ends, keeping its number of months; the first starts where the
+ * account stands. The server checks the batch's receipts in the same order (app/api/collections/route.ts).
+ */
+function chainSameAccount(list: CollectionEntry[]) {
+  const ends = new Map<string, { month: string; nop: number }>();
+  let changed = false;
+  const next = list.map((entry) => {
+    if (!entry.memberId || !entry.programId || entry.accountLoading || !entry.accountNextMonth || entry.accountNextNop == null) return entry;
+    const key = `${entry.memberId}|${entry.programId}`;
+    const before = ends.get(key);
+    const startMonth = before ? lastMonthCovered(before.month, 2) : entry.accountNextMonth;
+    const startNop = before ? before.nop + 1 : entry.accountNextNop;
+    const count = entry.monthTo ? Math.max(1, getMonthDifference(entry.monthFrom, entry.monthTo)) : 0;
+    let result = entry;
+    if (entry.monthFrom !== startMonth || entry.nopFrom !== startNop) {
+      changed = true;
+      result = { ...entry, monthFrom: startMonth, nopFrom: startNop, monthTo: count ? lastMonthCovered(startMonth, count) : "", nopTo: count ? startNop + count - 1 : startNop };
+    }
+    ends.set(key, { month: result.monthTo || result.monthFrom, nop: result.nopTo ?? startNop });
+    return result;
+  });
+  return changed ? next : list;
+}
+
 function getMonthDifference(from: string, to: string) {
   if (!from || !to) return 0;
 
@@ -266,9 +297,13 @@ export default function CollectionsPage() {
   const [mas, setMas] = useState("");
   const [dateRemitted, setDateRemitted] = useState("");
 
-  const [collections, setCollections] = useState<CollectionEntry[]>([
+  const [collections, setCollectionsRaw] = useState<CollectionEntry[]>([
     createEmptyCollection("collection-1"),
   ]);
+  // Every change to the entries passes through chainSameAccount: later receipts for the same account continue after
+  // the earlier ones in this batch.
+  const setCollections = useCallback((value: SetStateAction<CollectionEntry[]>) =>
+    setCollectionsRaw((current) => chainSameAccount(typeof value === "function" ? value(current) : value)), []);
 
   const [activeCollectionId, setActiveCollectionId] =
     useState("collection-1");
@@ -598,7 +633,8 @@ export default function CollectionsPage() {
       const account = result.account;
       setHistories((current) => ({ ...current, [entryId]: result.history ?? [] }));
       updateCollection(entryId, { accountStatus: account.status, temporarilySuspended: account.temporarilySuspended, suspendedAt: account.suspendedAt ?? "", accountLoading: false,
-        amountCollected: String(account.monthlyAmount), monthFrom: account.nextMonth, monthTo: account.nextMonth, nopFrom: account.nextNop, nopTo: account.nextNop });
+        amountCollected: String(account.monthlyAmount), monthFrom: account.nextMonth, monthTo: account.nextMonth, nopFrom: account.nextNop, nopTo: account.nextNop,
+        accountNextMonth: account.nextMonth, accountNextNop: account.nextNop });
     } catch (error) {
       if (selectionVersions.current[entryId] !== version) return;
       updateCollection(entryId, { accountLoading: false, accountStatus: "" });
@@ -1408,7 +1444,7 @@ export default function CollectionsPage() {
                               <div className="flex flex-wrap items-center gap-3">
                                 <Input id={`months-${entry.id}`} type="number" min={1} max={120} step={1} className="w-28" disabled={!entry.monthFrom} value={entry.monthTo ? getMonthDifference(entry.monthFrom, entry.monthTo) || "" : ""} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateMonthCount(entry.id, event.target.value)} placeholder={entry.monthFrom ? "1" : "Program first"} />
                                 <span className="text-sm text-muted-foreground">
-                                  {entry.monthFrom ? <>Covers <strong className="text-foreground">{formatMonth(entry.monthFrom)}{entry.monthTo && entry.monthTo !== entry.monthFrom ? ` – ${formatMonth(entry.monthTo)}` : ""}</strong> (next unpaid month onward)</> : "Starts at the account's next unpaid month."}
+                                  {entry.monthFrom ? <>Covers <strong className="text-foreground">{formatMonth(entry.monthFrom)}{entry.monthTo && entry.monthTo !== entry.monthFrom ? ` – ${formatMonth(entry.monthTo)}` : ""}</strong> {entry.accountNextMonth && entry.monthFrom !== entry.accountNextMonth ? "(continues after the earlier receipt for this account in this batch)" : "(next unpaid month onward)"}</> : "Starts at the account's next unpaid month."}
                                 </span>
                               </div>
                             </div>
