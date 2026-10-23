@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 56 component files; 575 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 56 component files; 581 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -184,8 +184,8 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/entry-search.ts](../lib/entry-search.ts) | `SearchKind`, `isSearchKind`, `FoundEntry`, `SEARCH_LIMIT`, `searchEntries` | `@/lib/db` |
 | [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/lib/db`, `@/lib/sheets-on-db`, `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/date-checks` |
 | [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/db`, `@/lib/company-targets`, `@/lib/remittance-deadline`, `@/lib/google-sheets` |
-| [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `BURIAL_ACCOUNT`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList`, `expenseNumbers` | — |
-| [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/encoder-sheets`, `@/lib/readable-id`, `@/lib/db` |
+| [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `BURIAL_ACCOUNT`, `isOtherChoice`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList`, `expenseNumbers` | — |
+| [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `OPENING_TYPE`, `OLD_WITHDRAWAL_TYPE`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/encoder-sheets`, `@/lib/readable-id`, `@/lib/db` |
 | [lib/finance-access.ts](../lib/finance-access.ts) | `canUseFinance` | `@/lib/auth-server` |
 | [lib/finance-data.ts](../lib/finance-data.ts) | `EXPENSE_EXTRA_HEADERS`, `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `editExpense`, `deleteExpense`, `createCashTransaction`, `voidFinanceRecord` | `@/lib/readable-id`, `@/lib/encoder-sheets`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/sheet-headers`, `@/lib/receipt-photos`, `@/lib/expense-options` |
 | [lib/finance-operations.ts](../lib/finance-operations.ts) | `getCashAccounts`, `saveCashAccount`, `getVendorPayables`, `createVendorPayable`, `payVendorPayable`, `getCommissions`, `createCommission`, `payCommission` | `@/lib/encoder-sheets`, `@/lib/google-sheets`, `@/lib/readable-id` |
@@ -433,6 +433,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/assign-source86-to-cinde.mjs](../scripts/assign-source86-to-cinde.mjs) | `@next/env`, `postgres`, `node:fs` | Yes; read source for semantics |
 | [scripts/audit-bracketing-source.mjs](../scripts/audit-bracketing-source.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/audit-database-data.mjs](../scripts/audit-database-data.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | No flag detected; read source before running |
+| [scripts/audit-nop-offset-20261023.mjs](../scripts/audit-nop-offset-20261023.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs`, `./source-history-rules.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/audit-other-program-source.mjs](../scripts/audit-other-program-source.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs`, `../lib/account-rules.ts`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/audit-sheet-database.mjs](../scripts/audit-sheet-database.mjs) | `node:fs`, `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/audit-source-month-coverage.mjs](../scripts/audit-source-month-coverage.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs`, `../lib/account-rules.ts`, `./source-cross-year-months.mjs` | No flag detected; read source before running |
@@ -479,6 +480,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-or-letters.mjs](../scripts/fix-or-letters.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-owner-receipt-dates-private.mjs](../scripts/fix-owner-receipt-dates-private.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `./source-history-rules.mjs` | Yes; read source for semantics |
 | [scripts/fix-ph11841180-coverage.mjs](../scripts/fix-ph11841180-coverage.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
+| [scripts/fix-ph13437031-nop.mjs](../scripts/fix-ph13437031-nop.mjs) | `node:fs`, `node:assert/strict`, `node:util`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `./source-history-rules.mjs` | Yes; read source for semantics |
 | [scripts/fix-ph29986586-dsp290.mjs](../scripts/fix-ph29986586-dsp290.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/fix-ph34623670-branch.mjs](../scripts/fix-ph34623670-branch.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-ph46732266-details.mjs](../scripts/fix-ph46732266-details.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs`, `node:util` | Yes; read source for semantics |
@@ -494,6 +496,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/flag-ph96295172-receipt.mjs](../scripts/flag-ph96295172-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/generate-code-reference.mjs](../scripts/generate-code-reference.mjs) | `node:fs`, `node:path`, `typescript` | Yes; read source for semantics |
 | [scripts/hash-password.mjs](../scripts/hash-password.mjs) | `bcryptjs` | No flag detected; read source before running |
+| [scripts/import-fidelity-opening-20261023.mts](../scripts/import-fidelity-opening-20261023.mts) | `node:fs`, `@next/env`, `exceljs`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/fidelity`, `@/lib/readable-id` | Yes; read source for semantics |
 | [scripts/import-lugon-2025.mjs](../scripts/import-lugon-2025.mjs) | `@next/env`, `postgres`, `node:crypto`, `node:fs`, `./legacy-sources.mjs`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/import-paper-attendance-20261015.mjs](../scripts/import-paper-attendance-20261015.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/import-receipt-private.mjs](../scripts/import-receipt-private.mjs) | `node:fs`, `node:assert/strict`, `node:crypto`, `@next/env`, `postgres`, `./source-history-rules.mjs`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
@@ -530,6 +533,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/merge-legacy-mas.mjs](../scripts/merge-legacy-mas.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/merge-members.mjs](../scripts/merge-members.mjs) | `node:fs`, `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/merge-name-variants.mjs](../scripts/merge-name-variants.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
+| [scripts/merge-ph30278224-ph22250072.mjs](../scripts/merge-ph30278224-ph22250072.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/merge-ph46732266-ph95168214.mjs](../scripts/merge-ph46732266-ph95168214.mjs) | `@next/env`, `postgres`, `../lib/entry-finance.mjs`, `node:util` | Yes; read source for semantics |
 | [scripts/migrate-account-status.mjs](../scripts/migrate-account-status.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-audit-transfers.mjs](../scripts/migrate-audit-transfers.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
@@ -560,6 +564,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/migrate-sale-incentives.mjs](../scripts/migrate-sale-incentives.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-sales-remittance.mjs](../scripts/migrate-sales-remittance.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/migrate-single-address.mjs](../scripts/migrate-single-address.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
+| [scripts/move-expense-accounts-20261022.mts](../scripts/move-expense-accounts-20261022.mts) | `@next/env`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/expense-options`, `@/lib/readable-id` | Yes; read source for semantics |
 | [scripts/move-photos-to-storage.mjs](../scripts/move-photos-to-storage.mjs) | `@next/env`, `@supabase/supabase-js`, `postgres` | Yes; read source for semantics |
 | [scripts/move-program-accounts.mjs](../scripts/move-program-accounts.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/name-match.mjs](../scripts/name-match.mjs) | See source | No flag detected; read source before running |
@@ -577,6 +582,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/repair-account-source-history.mjs](../scripts/repair-account-source-history.mjs) | `node:fs`, `node:util`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/repair-bracketing-source.mjs](../scripts/repair-bracketing-source.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/repair-branch-ids.mjs](../scripts/repair-branch-ids.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
+| [scripts/repair-nop-offset-20261023.mjs](../scripts/repair-nop-offset-20261023.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/repair-other-program-source.mjs](../scripts/repair-other-program-source.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/repair-sheet-rows.mjs](../scripts/repair-sheet-rows.mjs) | `@next/env`, `googleapis` | Yes; read source for semantics |
 | [scripts/repair-source-month-coverage.mjs](../scripts/repair-source-month-coverage.mjs) | `node:assert/strict`, `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |

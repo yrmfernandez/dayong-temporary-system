@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Account = { masEmployeeId: string; masName: string; employmentStatus: string; branch?: string; roles?: string[]; approved: number; pending: number; claimed: number; locked: number; withdrawable: number; remaining: number; separated: boolean; readyForRelease: boolean };
-type Transaction = { id: string; masEmployeeId: string; masName: string; date: string; status: string; amount: number; type: string; encodedBy: string; branch?: string; remarks?: string };
+type Transaction = { id: string; masEmployeeId: string; masName: string; date: string; status: string; amount: number; type: string; direction: "in" | "out"; encodedBy: string; branch?: string; remarks?: string };
 type Data = { canViewAll: boolean; canMonitor: boolean; canClaim: boolean; currentEmployeeId: string; currentName: string; cap: number; accounts: Account[]; transactions: Transaction[] };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
@@ -100,7 +100,7 @@ export function MyFidelity() {
                   <td className="p-3">{item.date}</td>
                   <td className="p-3 font-mono text-xs">{item.id}</td>
                   <td className="p-3">{item.type}</td>
-                  <td className="p-3 font-semibold tabular-nums">{item.type === "Contribution" ? "+" : "−"}{money(item.amount)}</td>
+                  <td className="p-3 font-semibold tabular-nums">{item.direction === "in" ? "+" : "−"}{money(item.amount)}</td>
                   <td className="p-3"><StatusBadge status={item.status} /></td>
                   <td className="p-3">{item.encodedBy || "—"}</td>
                 </tr>)}
@@ -171,8 +171,8 @@ export function FidelityMonitoring() {
     if (filters.status && item.status !== filters.status) return false;
     return true;
   }), [data, shownIds, filters]);
-  const periodIn = transactions.filter((item) => item.type === "Contribution" && item.status === "Approved").reduce((sum, item) => sum + item.amount, 0);
-  const periodOut = transactions.filter((item) => item.type !== "Contribution").reduce((sum, item) => sum + item.amount, 0);
+  const periodIn = transactions.filter((item) => item.direction === "in" && item.status === "Approved").reduce((sum, item) => sum + item.amount, 0);
+  const periodOut = transactions.filter((item) => item.direction === "out").reduce((sum, item) => sum + item.amount, 0);
   const filtered = JSON.stringify(filters) !== JSON.stringify(emptyFilters);
   const total = accounts.reduce((sum, item) => sum + item.approved, 0);
   const pending = accounts.reduce((sum, item) => sum + item.pending, 0);
@@ -278,7 +278,7 @@ export function FidelityMonitoring() {
                   <td className="p-3">{item.masName}</td>
                   <td className="p-3">{item.branch || branchOf.get(item.masEmployeeId) || "—"}</td>
                   <td className="p-3">{item.type}</td>
-                  <td className="p-3 font-semibold tabular-nums">{item.type === "Contribution" ? "+" : "−"}{money(item.amount)}</td>
+                  <td className="p-3 font-semibold tabular-nums">{item.direction === "in" ? "+" : "−"}{money(item.amount)}</td>
                   <td className="p-3"><StatusBadge status={item.status} /></td>
                   <td className="p-3">{item.encodedBy || "—"}</td>
                 </tr>)}

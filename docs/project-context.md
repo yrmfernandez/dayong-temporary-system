@@ -1328,3 +1328,10 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Owner:** apply sort by on MAM.
 - **Done:** a Sort by choice (As loaded, Member name, PH#, Program, DOI, Status, Balance, Collected in range) with Ascending/Descending. Status and Balance use the range's last month; Status follows NS, U, ADV, 60D, 90D, 120D, 150D, Forfeited. Accounts stay grouped by MAS and are sorted inside each group; ties go by member name. The screen, the printout and the CSV follow it. Reset clears it. Typecheck passes.
 - **In progress / To do:** none.
+
+### Fidelity opening balances from the old system (2026-10-23)
+
+- **Owner:** import the old Fidelity Bond sheet (legacy-data/old-data/Sales + Fidelity Bond Record 2025.xlsx, tab "Fidelity Bond": 243 MAS, 2022-2023 / 2024 / 2025 / 2026, TOTAL 1,041,857.13, status, withdrawn) as opening balances. The 2026 column is old-system only. An Active MAS with a withdrawal: subtract it from the total. Inactive MAS with Withdrawn Y and no amount: list them for the owner.
+- **Done:** `lib/fidelity.ts` types Opening Balance (old system) (in, approved) and Withdrawal (old system) (out); every transaction has a direction, used by the Fidelity pages. `scripts/import-fidelity-opening-20261023.mts` reads the tab (checks each row and the 1,041,857.13 total), matches names to employees (same surname and first name or initial, one employee only; `legacy-data/fidelity-name-map.json` settles the rest), holds back inactive MAS with any withdrawal or note (paid to loan / DCC / shortages), imports "Resigned not yet released" in full, skips employees that already have an opening balance, and writes Record Corrections. Row 44 (Borde, Gina) has "40.5.0" in 2026, which the sheet's TOTAL leaves out; TOTAL governs. Staging preview: 7 matched (staging has few employees), 63 held back, 173 not matched. Typecheck passes.
+- **In progress:** production preview by the owner.
+- **To do:** owner decides the held-back inactive MAS and the unmatched names (match to an employee, register, or leave out); fill the name map; preview again; apply.

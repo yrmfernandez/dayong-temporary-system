@@ -3730,6 +3730,24 @@ test('Fidelity history: a rejected slip shows as Returned and names the clerk wh
   assert.deepEqual([account.approved, account.pending], [100, 100], 'a returned slip still does not count');
 });
 
+test('Fidelity opening balances from the old system count in; an old withdrawal counts out (October 23, 2026)', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-0009', name: 'finance', roleNames: ['Finance'], permissions: {} });
+  h.rows.Employees = [[], ['DPE-0002', 'MAS Two', 'BR-1', 'MAS', 'active']];
+  const slip = Array(25).fill(''); Object.assign(slip, { 0: 'REM-1', 1: 'BR-1', 2: 'MAS Two', 3: '2026-10-10', 4: 'Approved', 8: 'System', 13: 'DPE-0002', 24: 100 });
+  h.rows.Remittances = [['remittance_id'], slip];
+  h.rows.Fidelity = [['claim_id'],
+    ['FOB-1', 'DPE-0002', 'MAS Two', '', '', 'Opening Balance (old system)', 0, 16782.6, '2026-09-30', 'Approved', 'sheet row 4'],
+    ['FOW-1', 'DPE-0002', 'MAS Two', '', '', 'Withdrawal (old system)', 0, 4378.4, '2026-09-30', 'Released', '50%'],
+  ];
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS Two' }]);
+  await h.sync();
+  const { getFidelityData } = h.load('lib/fidelity.ts');
+  const data = await getFidelityData('', true);
+  assert.deepEqual(data.transactions.map((item) => [item.id, item.direction]).sort(), [['FOB-1', 'in'], ['FOW-1', 'out'], ['REM-1', 'in']]);
+  const account = data.accounts.find((item) => item.masEmployeeId === 'DPE-0002');
+  assert.deepEqual([account.approved, account.claimed, account.locked, account.withdrawable], [12504.2, 4378.4, 10000, 2504.2], 'total minus the old withdrawal, plus the new contribution');
+});
+
 test('a resubmitted batch keeps the time its cash was cleared, even when the MAS was cleared again later', async () => {
   const h = harness();
   await seedAccount({ doi: '2026-09-01' });

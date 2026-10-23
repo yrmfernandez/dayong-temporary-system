@@ -21,3 +21,12 @@ Fidelity is a voluntary savings benefit. It is the employee's **own money**, han
 - Remittances: Fidelity is part of the expected amount and of "Cash received in full". The remittance remarks say "Fidelity ₱… (employee's own money), included in the expected amount".
 - Reports show approved Fidelity in its own column. Report net and expected remittance are the company's share; Fidelity is taken back out of the approved cash when comparing.
 - Commissions are no longer reduced by Fidelity (the Commissions page shows it only for reference).
+
+## Opening balances from the old system (October 23, 2026)
+
+The old system's Fidelity Bond sheet (2022-2026 per Marketing Account Staff, old system only) is brought in with
+`scripts/import-fidelity-opening-20261023.mts`. Each employee gets an **Opening Balance (old system)**, dated
+2026-09-30, counted like an approved contribution. An employee who was Active and had withdrawn part of it there also
+gets a **Withdrawal (old system)** of that amount, counted as paid out, so the balance is the total minus the
+withdrawal. Inactive employees with a withdrawal are left out until the owner decides. Every transaction now carries
+a direction (in or out), which the Fidelity pages use for the + and − signs and the period totals.
