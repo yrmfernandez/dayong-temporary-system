@@ -1307,4 +1307,12 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Done:** `lib/expense-options.ts` holds the new list (Expenses page, clerk report expense form, server validation). "Others" replaces "Other" and must be specified (`Others: <detail>`); CBA keeps the payee rule of Cash Burial Assistance. Tested.
 - **Done:** Office Renovations and Meals added (30 accounts). Production had 21 old account names in use (posted and voided); the owner decided each: Allowance and Other: MOBILITY ALLOWANCE → Allowances; Cash Burial Assistance → CBA (Cash Burial Assistance); Electric Bill, Water Bill, Internet/Load → Monthly Bills; Monthly Office Rent → Office Rental; Other: Coolant 1L and Other: Monthly motorcycle payment → Vehicle Maintenance; Other: GASOLINE → Gasoline; Other: Travel expense for Ma'am Sheena → Transportation; Other: orc nagliba → ORC; Other: 10% Services Incentives and Other: MAS 10 % → Services MAS incentives; Meals/Snacks and the three 5KG/5KLS Starter up / Ultrapack → Meals; Bank Fee/Charge, Other: GCASH REMIT, Miscellaneous → Others: <same name>. `scripts/move-expense-accounts-20261022.mts` moves them (only the account name; refuses if any expense is left off the list; Audit Log and Record Corrections). The temporary listing script is deleted.
 - **In progress:** none.
-- **To do (owner):** preview on production, then apply: `node scripts/prod.mjs node node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.json scripts/move-expense-accounts-20261022.mts` (add `--apply`).
+- **Done (2026-10-23):** applied on production by the owner: 55 expenses moved (the preview matched the listing account by account). The Supabase Realtime warnings it printed (no partition of realtime.messages) only skipped live-refresh signals; open Expenses pages need a reload.
+- **To do:** none.
+
+### MAM prints one row per member (2026-10-23)
+
+- **Owner:** when printing MAM, each member should take one row as much as possible; it used too much paper.
+- **Done:** printing only (the screen is unchanged): the member column prints one line (name, PH#, program, APP, DOI, monthly), and each month one line (status, collected, OR numbers, NOP, balance, Suspended when temporarily suspended; Needs review / — otherwise). The detailed cards, receipt boxes and summary grid are not printed; rows have tight padding and the member column 28% of the width. A long member line or many receipts in a month may still wrap to a second line. Build passes.
+- **In progress:** none.
+- **To do (owner):** print a branch from MAM and check the paper count; say if a field should be dropped or added.

@@ -722,6 +722,10 @@ main [data-slot="card"].receipt-entry-card {
   .mam-report th, .mam-report td { position: static !important; min-width: 0 !important; padding: 4px !important; }
   .mam-report table { width: 100% !important; table-layout: fixed; }
   .mam-report tr { break-inside: avoid; }
+  /* MAM: each member prints as one compact row (owner, October 23, 2026); the member column is wider so its line rarely wraps. */
+  .mam-report tbody td { padding: 1px 3px !important; vertical-align: middle; }
+  .mam-report .mam-scroll th:first-child { width: 28%; }
+  .mam-print-line { margin: 0; line-height: 1.25; }
   /* Clerk report sheets stay readable on paper when printed from dark mode. */
   .clerk-report-sheet {
     --card: #fff; --card-foreground: #000; --muted-foreground: #555; --border: #bbb;

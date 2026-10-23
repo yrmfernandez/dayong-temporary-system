@@ -491,15 +491,19 @@ export default function MamPage() {
                 {group.map((row) => (
                   <tr key={row.id} className="align-top hover:bg-muted/10 transition-colors">
                     <td className="sticky left-0 z-10 max-w-72 bg-background p-4 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]">
+                      {/* Printed: one line per member, to save paper (owner, October 23, 2026). */}
+                      <p className="mam-print-line hidden print:block">
+                        <strong>{row.memberName}</strong> · {row.memberNumber} · {row.programName} · APP {row.applicationNumber || "—"} · DOI {row.doi} · {money(row.basePay)}/mo
+                      </p>
                       <button
-                        className="text-left font-semibold text-primary underline-offset-4 hover:underline text-sm"
+                        className="text-left font-semibold text-primary underline-offset-4 hover:underline text-sm print:hidden"
                         onClick={() => setSelected(row)}
                       >
                         {row.memberName}
                       </button>
-                      <p className="text-muted-foreground font-mono text-[11px]">{row.memberNumber}</p>
-                      <p className="font-medium mt-0.5 text-foreground">{row.programName}</p>
-                      <div className="mt-3 space-y-1 text-muted-foreground text-[11px] bg-muted/30 p-2 rounded border">
+                      <p className="text-muted-foreground font-mono text-[11px] print:hidden">{row.memberNumber}</p>
+                      <p className="font-medium mt-0.5 text-foreground print:hidden">{row.programName}</p>
+                      <div className="mt-3 space-y-1 text-muted-foreground text-[11px] bg-muted/30 p-2 rounded border print:hidden">
                         <div>
                           APP: <span className="font-mono text-foreground">{row.applicationNumber || "—"}</span>
                         </div>
@@ -511,6 +515,17 @@ export default function MamPage() {
 
                     {row.periods.map((period) => (
                       <td key={period.month} className="min-w-[20rem] max-w-96 border-l p-4">
+                        <p className="mam-print-line hidden print:block">
+                          {period.error ? "Needs review"
+                            : !period.state ? "—"
+                            : <>
+                                <strong>{period.state.status}</strong> {money(period.collected)}
+                                {period.receipts.length ? ` · OR ${period.receipts.map((p) => p.orNumber).join(", ")}` : ""}
+                                {` · NOP ${period.state.nop} · Bal ${period.state.balance === null ? "—" : money(period.state.balance)}`}
+                                {period.state.temporarilySuspended ? " · Suspended" : ""}
+                              </>}
+                        </p>
+                        <div className="print:hidden">
                         {period.error ? (
                           <div className="rounded border border-destructive/20 bg-destructive/10 p-2 text-destructive">
                             <span className="font-semibold">Needs review:</span> {period.error}
@@ -569,6 +584,7 @@ export default function MamPage() {
                             </div>
                           </div>
                         )}
+                        </div>
                       </td>
                     ))}
                   </tr>
