@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { userWithPageAccess } from "@/lib/auth-server";
 
-import { listMembersForMas, searchBranchMembers, searchMembersByName } from "@/lib/member-records";
+import { findSameNameMembers, listMembersForMas, searchBranchMembers, searchMembersByName } from "@/lib/member-records";
 
 export async function GET(request: Request) {
   if (!(await userWithPageAccess("/new-sales", "/mas-sales", "/collections"))) return NextResponse.json({ success: false, message: "You do not have access to member encoding." }, { status: 403 });
@@ -14,6 +14,12 @@ export async function GET(request: Request) {
     // Collections, DTO batch (paid at the office): any member with an active account in the branch, typed at least 2 letters.
     if (searchParams.get("dto") === "1") {
       return NextResponse.json({ success: true, members: await searchBranchMembers(search, branch) });
+    }
+
+    // New Sales: members with the exact surname and first name typed for a new member, to ask whether it is the same person.
+    if (searchParams.get("sameName") === "1") {
+      if (!(await userWithPageAccess("/new-sales", "/mas-sales"))) return NextResponse.json({ success: true, members: [] });
+      return NextResponse.json({ success: true, members: await findSameNameMembers(searchParams.get("surname") ?? "", searchParams.get("firstName") ?? "") });
     }
 
     // Collections: every member under the chosen branch and MAS, so the member field lists them before any typing.

@@ -26,6 +26,10 @@ type Options = {
   placeholder?: string;
   /** alert only: a warning (amber triangle, heading in capitals) the reader must acknowledge. */
   warning?: boolean;
+  /** confirm and prompt: the Cancel button's text. */
+  cancelLabel?: string;
+  /** confirm: answered only with a button, not Escape or a click outside (the "no" button is itself an answer). */
+  requireChoice?: boolean;
 };
 type Request = Options & { kind: "confirm" | "prompt" | "alert"; message: string; resolve: (value: boolean | string | null) => void };
 
@@ -86,7 +90,7 @@ export function AppDialogHost() {
     (current.kind === "prompt" ? input.current : ok.current)?.focus();
     input.current?.select();
     // A warning is closed only with its button, so it is acknowledged.
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !current.warning) { event.preventDefault(); cancel(); } };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !current.warning && !current.requireChoice) { event.preventDefault(); cancel(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cancel reads the current box
@@ -101,7 +105,7 @@ export function AppDialogHost() {
 
   return (
     // Centred on the screen over a dimmed, blurred page (owner, October 21, 2026: not at the top like the browser's).
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-150" onMouseDown={(event) => { if (event.target === event.currentTarget && current.kind !== "alert") cancel(); }}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-150" onMouseDown={(event) => { if (event.target === event.currentTarget && current.kind !== "alert" && !current.requireChoice) cancel(); }}>
       <form role={current.kind === "alert" ? "alertdialog" : "dialog"} aria-modal="true" aria-labelledby="app-dialog-message"
         className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border bg-card p-5 text-card-foreground shadow-2xl animate-in fade-in zoom-in-95 duration-150"
         onSubmit={(event) => { event.preventDefault(); accept(); }}>
@@ -114,7 +118,7 @@ export function AppDialogHost() {
         </div>
         {current.kind === "prompt" && <Input ref={input} className="mt-4" value={value} placeholder={current.placeholder} aria-label={current.message} onChange={(event) => setValue(event.target.value)} />}
         <div className="mt-5 flex justify-end gap-2">
-          {current.kind !== "alert" && <Button type="button" variant="outline" size="sm" onClick={cancel}>Cancel</Button>}
+          {current.kind !== "alert" && <Button type="button" variant="outline" size="sm" onClick={cancel}>{current.cancelLabel ?? "Cancel"}</Button>}
           <Button ref={ok} type="submit" size="sm" variant={danger ? "destructive" : "default"} className={danger ? "bg-destructive text-white hover:bg-destructive/90 dark:bg-destructive" : ""}
             disabled={current.kind === "prompt" && current.required && !value.trim()}>{action}</Button>
         </div>

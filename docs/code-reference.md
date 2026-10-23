@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 56 component files; 581 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 56 component files; 582 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -573,6 +573,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/prod.mjs](../scripts/prod.mjs) | `node:child_process`, `node:fs` | No flag detected; read source before running |
 | [scripts/program-history.mjs](../scripts/program-history.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/reassign-ciara-ns-20261014.mjs](../scripts/reassign-ciara-ns-20261014.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/reassign-col3650697726.mjs](../scripts/reassign-col3650697726.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/recalculate-moved-date-remitted.mts](../scripts/recalculate-moved-date-remitted.mts) | `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow` | Yes; read source for semantics |
 | [scripts/receipt-import-progress.mjs](../scripts/receipt-import-progress.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/recheck-forfeited-accounts.mjs](../scripts/recheck-forfeited-accounts.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |

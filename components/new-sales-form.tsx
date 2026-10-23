@@ -726,6 +726,61 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     dismissMemberChoices(saleId);
   };
 
+  /*
+   * Same person check (owner, October 23, 2026): members were registered twice because the clerk typed a member who
+   * already exists instead of picking them. Once a new member's surname and first name are typed, members with exactly
+   * that name are looked up; unless the typed middle initial or birthdate says otherwise, a pop-up shows the member's
+   * details and the clerk answers Yes (the sale uses the existing member) or No (a different person, not asked again).
+   */
+  const declinedMatches = useRef<Record<string, Set<string>>>({});
+  const askingSameName = useRef(new Set<string>());
+  const checkSameName = async (saleId: string, surname: string, firstName: string, middleName: string, birthdate: string) => {
+    if (askingSameName.current.has(saleId)) return;
+    askingSameName.current.add(saleId);
+    try {
+      const response = await fetch(`/api/members?sameName=1&surname=${encodeURIComponent(surname)}&firstName=${encodeURIComponent(firstName)}`, { cache: "no-store" });
+      const result = (await response.json()) as MemberSearchResponse;
+      if (!response.ok || !result.success) return;
+      const declined = declinedMatches.current[saleId] ?? new Set<string>();
+      declinedMatches.current[saleId] = declined;
+      const initial = (value: string) => value.trim().charAt(0).toLowerCase();
+      const candidates = (result.members ?? []).filter((member) => !declined.has(member.id)
+        && !(middleName && member.name.middleName && initial(middleName) !== initial(member.name.middleName))
+        && !(birthdate && member.birthdate && birthdate !== member.birthdate));
+      for (const member of candidates) {
+        const programNames = ((member as Member & { programIds?: string[] }).programIds ?? []).map((id) => programs.find((item) => item.id === id)?.name || id);
+        const details = [
+          `Name: ${[member.name.surname, [member.name.firstName, member.name.middleName, member.name.nameExtension].filter(Boolean).join(" ")].join(", ")}`,
+          member.phMemberNumber && `PH/Member: ${member.phMemberNumber}`,
+          member.birthdate && `Birthdate: ${member.birthdate}`,
+          member.gender && `Gender: ${member.gender}`,
+          member.contactNumber && `Contact: ${member.contactNumber}`,
+          member.address.houseBlockLot && `Address: ${member.address.houseBlockLot}`,
+          programNames.length ? `Programs: ${programNames.join(", ")}` : "",
+        ].filter(Boolean).join("\n");
+        const same = await confirmDialog(`A member with this name is already registered. Is this the same person?\n\n${details}`, {
+          title: "This member may already exist", confirmLabel: "Yes, same person", cancelLabel: "No, a different person", requireChoice: true,
+        });
+        if (same) { selectExistingMember(saleId, member); return; }
+        declined.add(member.id);
+      }
+    } catch (error: unknown) {
+      console.error("Same member check error:", error);
+    } finally {
+      askingSameName.current.delete(saleId);
+    }
+  };
+  const sameNameChecks = JSON.stringify(sales.filter((sale) => !sale.member.id).map((sale) => [
+    sale.id, sale.member.name.surname.trim(), sale.member.name.firstName.trim(), sale.member.name.middleName.trim(), sale.member.birthdate,
+  ]));
+  useEffect(() => {
+    const checks = JSON.parse(sameNameChecks) as Array<[string, string, string, string, string]>;
+    const timers = checks.filter(([, surname, firstName]) => surname.length >= 2 && firstName.length >= 2)
+      .map(([saleId, surname, firstName, middleName, birthdate]) => window.setTimeout(() => void checkSameName(saleId, surname, firstName, middleName, birthdate), 700));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when a new member's name or birthdate changes
+  }, [sameNameChecks]);
+
   // The encoder picked the wrong person: keep what is typed, but register it as a new member instead.
   const unlinkExistingMember = (saleId: string) => {
     updateSale(saleId, (current) => ({

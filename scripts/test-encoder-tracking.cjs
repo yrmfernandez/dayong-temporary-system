@@ -3802,3 +3802,20 @@ test('no second batch for the same person and day while one is waiting for appro
     assert.equal(await waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', '2026-10-15', 'Collections'), '');
   } finally { globalThis.dayongClearingNotRequired = true; }
 });
+
+test('New Sales same person check finds members with the exact surname and first name (October 23, 2026)', async () => {
+  const h = harness();
+  await seed('members', [
+    { member_id: 'M1', member_number: 'PH-1', surname: 'Dela Cruz', first_name: 'Juan', middle_name: 'Santos', birthdate: '1970-01-02' },
+    { member_id: 'M2', member_number: 'PH-2', surname: 'PEÑAS', first_name: 'Ana' },
+    { member_id: 'M3', member_number: 'PH-3', surname: 'Dela Cruz', first_name: 'Juana' },
+  ]);
+  await seed('programs', [{ program_id: 'DP-1', program_name: 'P', base_pay: 100 }]);
+  await seed('member_programs', [{ enrollment_id: 'E1', member_id: 'M1', member_number: 'PH-1', program_id: 'DP-1', doi: '2026-09-01', status: 'Active' }]);
+  await h.sync();
+  const { findSameNameMembers } = h.load('lib/member-records.ts');
+  const found = await findSameNameMembers('  dela   CRUZ ', 'juan');
+  assert.deepEqual(found.map((member) => [member.id, member.birthdate, member.programIds]), [['M1', '1970-01-02', ['DP-1']]], 'case and spaces do not matter; Juana is not Juan');
+  assert.deepEqual((await findSameNameMembers('Penas', 'ANA')).map((member) => member.id), ['M2'], 'ñ matches n');
+  assert.deepEqual(await findSameNameMembers('D', 'Juan'), [], 'too short to check');
+});

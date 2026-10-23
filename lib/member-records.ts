@@ -154,7 +154,27 @@ async function findMembers(search: string, branch: string, mas: string, limit: n
     ))
     .orderBy(asc(members.surname), asc(members.first_name), asc(members.member_number))
     .limit(limit);
-  return rows.map(({ member: row, programIds: ids }) => ({
+  return rows.map(({ member: row, programIds: ids }) => memberChoice(row, ids));
+}
+
+/**
+ * Members with this exact surname and first name (owner, October 23, 2026): New Sales asks whether a new member typed
+ * there is one of them, so the same person is not registered twice. Case, extra spaces and ñ do not matter.
+ */
+export async function findSameNameMembers(surname: string, firstName: string) {
+  const fold = (value: string) => text(value).toLowerCase().replace(/ñ/g, "n").replace(/\s+/g, " ");
+  const last = fold(surname), first = fold(firstName);
+  if (last.length < 2 || first.length < 2) return [];
+  const folded = (column: typeof members.surname | typeof members.first_name) => sql`translate(lower(regexp_replace(trim(${column}), '\\s+', ' ', 'g')), 'ñ', 'n')`;
+  const programIds = sql<string[]>`coalesce((select array_agg(mp.program_id order by mp.program_id) from member_programs mp where mp.member_id = "members"."member_id"), '{}')`;
+  const rows = await currentDb().select({ member: members, programIds }).from(members)
+    .where(and(sql`${folded(members.surname)} = ${last}`, sql`${folded(members.first_name)} = ${first}`))
+    .orderBy(asc(members.member_number)).limit(10);
+  return rows.map(({ member: row, programIds: ids }) => memberChoice(row, ids));
+}
+
+function memberChoice(row: typeof members.$inferSelect, ids: string[]) {
+  return ({
     id: row.member_id,
     phMemberNumber: row.member_number,
     programIds: ids,
@@ -173,7 +193,7 @@ async function findMembers(search: string, branch: string, mas: string, limit: n
       sameAsMemberAddress: row.claimant_same_address,
       address: { houseBlockLot: row.claimant_address ?? "" },
     },
-  }));
+  });
 }
 
 export type MemberProgramSheetData = {
