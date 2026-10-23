@@ -14,6 +14,7 @@ import { cashCountProblem } from "@/lib/cash-count";
 import { photosByEntry } from "@/lib/receipt-photos";
 import { clearedAt, closeClearings } from "@/lib/clearing";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
+import { incentiveDecisions } from "@/lib/incentive-decision";
 
 const titles = ["Collections", "Remittances", "Remittance Collections", "Sales"] as const;
 // The same ranges the dashboards and reports read, so one cached copy of each sheet serves them all.
@@ -58,6 +59,8 @@ export type CashCollection = {
   forfeitedIncentive: number;
   /** When the cash must be received to keep the incentive ("YYYY-MM-DD HH:MM", Manila); blank without a valid OR date. */
   incentiveDeadline: string;
+  /** An Administrator's decision on the incentive: "Keep" or "Forfeit" overrides the 3:00 PM rule (lib/incentive-decision.ts). */
+  incentiveDecision?: string;
   /** The receipt photo attached to this item; every non-cash item needs one before its remittance is approved. */
   photoId: string;
   /** Every receipt photo of the item, oldest first (a batch may have several; October 14, 2026). */
@@ -137,7 +140,7 @@ async function loadLedger() {
   const active = sql`(coalesce(remittance_status, '') <> 'Remitted' or coalesce(encoded_by_employee_id, '') <> '' or linked_remittance_id is not null)`;
   const others = titles.filter((title) => title !== "Collections" && title !== "Sales");
   // The receipt-photo index is read alongside, not after: one round trip less on every Remittances and Finance load.
-  const [response, activeCollections, activeSales, photos, cashNames, offDays] = await Promise.all([
+  const [response, activeCollections, activeSales, photos, cashNames, offDays, decisions] = await Promise.all([
     sheets.spreadsheets.values.batchGet({
       spreadsheetId: GOOGLE_SHEET_ID,
       ranges: others.map((title) => ledgerRanges[title]),
@@ -149,6 +152,7 @@ async function loadLedger() {
     photosByEntry(),
     cashMethodNames(),
     declaredNonWorkingDays(),
+    incentiveDecisions(),
   ]);
   // The incentive deadline skips Sundays and the branch's declared non-working days (lib/working-days.ts).
   const deadline = (date: string, branch: string) => incentiveDeadline(date, { days: offDays, branch });
@@ -188,7 +192,7 @@ async function loadLedger() {
   // A New Sales batch: the sales saved together (lib/entry-batches.ts), remitted on one slip like a Collections batch.
   for (const sale of sales) sale.batchId = saleBatchKey(sale);
   collections.push(...sales);
-  for (const item of collections) { item.photoId = photos.get(item.id)?.photoId ?? ""; item.photoIds = photos.get(item.id)?.allPhotoIds ?? []; item.cash = isCashMethod(item.paymentMethod, cashNames); }
+  for (const item of collections) { item.incentiveDecision = decisions.get(item.id)?.decision ?? ""; item.photoId = photos.get(item.id)?.photoId ?? ""; item.photoIds = photos.get(item.id)?.allPhotoIds ?? []; item.cash = isCashMethod(item.paymentMethod, cashNames); }
   const remittances: CashRemittance[] = rows.Remittances.slice(1).map((row, index) => ({
     id: text(row[0]), rowNumber: index + 2, branch: text(row[1]), accountableName: text(row[2]), remittanceDate: text(row[3]), remittanceTime: text(row[REMITTANCE_TIME_COLUMN]), cashCount: text(row[CASH_COUNT_COLUMN]), status: text(row[4]) || "Legacy",
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
@@ -218,15 +222,17 @@ const incentiveOf = (item: Pick<CashCollection, "amount" | "remittanceAmount">) 
  * True when cash received at `receivedAt` ("YYYY-MM-DD HH:MM") is too late to keep this item's incentive: after the
  * item's deadline (3:00 PM the next working day after its OR date, worked out when the ledger is read).
  */
-export const forfeitsIncentive = (item: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate" | "incentiveDeadline">, receivedAt: string) =>
-  // Cash received on a grace day keeps every incentive (lib/remittance-deadline.ts INCENTIVE_GRACE_DAYS).
+export const forfeitsIncentive = (item: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate" | "incentiveDeadline" | "incentiveDecision">, receivedAt: string) =>
+  // An Administrator's decision (lib/incentive-decision.ts) overrides the rule; cash received on a grace day keeps
+  // every incentive (lib/remittance-deadline.ts INCENTIVE_GRACE_DAYS).
+  item.incentiveDecision === "Keep" ? false : item.incentiveDecision === "Forfeit" ? incentiveOf(item) > 0 :
   incentiveOf(item) > 0 && !INCENTIVE_GRACE_DAYS.includes(receivedAt.slice(0, 10)) && (item.incentiveDeadline ? receivedAt > item.incentiveDeadline : !keepsIncentive(item.orDate, receivedAt));
 
 /**
  * What the accountable person must turn over for one item: the company remittance, or the full amount once the
  * incentive deadline has passed. A batch's Fidelity is added on top of it; a penalty is tracked separately.
  */
-export const amountDue = (collection: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate" | "incentiveDeadline">, receivedAt = "") =>
+export const amountDue = (collection: Pick<CashCollection, "amount" | "remittanceAmount" | "orDate" | "incentiveDeadline" | "incentiveDecision">, receivedAt = "") =>
   receivedAt && forfeitsIncentive(collection, receivedAt) ? collection.amount : collection.remittanceAmount;
 
 /**
@@ -306,7 +312,7 @@ export async function getRemittanceDashboard(clerkId = "") {
   };
 }
 
-export type RemittanceEntry = Pick<CashCollection, "kind" | "id" | "batchId" | "memberNumber" | "programId" | "orNumber" | "orDate" | "amount" | "remittanceAmount" | "forfeitedIncentive" | "remittanceStatus" | "paymentMethod" | "paymentReference" | "photoId" | "cash" | "encodedByName" | "encodedAt" | "penalty" | "fidelity" | "dateRemitted"> & { memberName: string; program: string; dateRemittedReason: string; noIncentiveReason: string };
+export type RemittanceEntry = Pick<CashCollection, "kind" | "id" | "batchId" | "memberNumber" | "programId" | "orNumber" | "orDate" | "amount" | "remittanceAmount" | "forfeitedIncentive" | "incentiveDecision" | "remittanceStatus" | "paymentMethod" | "paymentReference" | "photoId" | "cash" | "encodedByName" | "encodedAt" | "penalty" | "fidelity" | "dateRemitted"> & { memberName: string; program: string; dateRemittedReason: string; noIncentiveReason: string; incentiveDecisionNote: string };
 
 /**
  * Every entry on one remittance slip, for the approver's View entries (owner, October 10, 2026): member, program, OR,
@@ -321,11 +327,12 @@ export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
   const items = remittance.collectionIds.map((id) => byId.get(id)).filter((item): item is CashCollection => Boolean(item));
   const numbers = [...new Set(items.map((item) => item.memberNumber).filter(Boolean))];
   const programIds = [...new Set(items.map((item) => item.programId).filter(Boolean))];
-  const [members, programs, reasons, noIncentive] = await Promise.all([
+  const [members, programs, reasons, noIncentive, decisions] = await Promise.all([
     numbers.length ? getDb().select({ number: schema.members.member_number, surname: schema.members.surname, first: schema.members.first_name }).from(schema.members).where(inArray(schema.members.member_number, numbers)) : [],
     programIds.length ? getDb().select({ id: schema.programs.program_id, code: schema.programs.program_code, name: schema.programs.program_name }).from(schema.programs).where(inArray(schema.programs.program_id, programIds)) : [],
     dateRemittedReasons(items.map((item) => item.id)),
     noIncentiveReasons(items.map((item) => item.id)),
+    incentiveDecisions(),
   ]);
   const names = new Map(members.map((member) => [member.number, `${text(member.first)} ${text(member.surname)}`.trim()]));
   const programNames = new Map(programs.map((program) => [program.id, text(program.name) || text(program.code)]));
@@ -334,6 +341,7 @@ export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
     orNumber: item.orNumber, orDate: item.orDate, amount: item.amount, remittanceAmount: item.remittanceAmount, forfeitedIncentive: item.forfeitedIncentive, remittanceStatus: item.remittanceStatus,
     paymentMethod: item.paymentMethod, paymentReference: item.paymentReference, photoId: item.photoId, cash: item.cash, encodedByName: item.encodedByName, encodedAt: item.encodedAt, penalty: item.penalty, fidelity: item.fidelity,
     dateRemitted: item.dateRemitted, dateRemittedReason: reasons.get(item.id)?.reason ?? "", noIncentiveReason: noIncentive.get(item.id) ?? "",
+    incentiveDecision: item.incentiveDecision ?? "", incentiveDecisionNote: decisions.get(item.id) ? `${decisions.get(item.id)!.by} ${decisions.get(item.id)!.at}: ${decisions.get(item.id)!.reason}` : "",
   }));
   return { remittanceId: remittance.id, entries, missing: remittance.collectionIds.filter((id) => !byId.has(id)) };
 }
@@ -452,7 +460,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const penalized = collections.filter((collection) => collection.penalty > 0);
   const penaltyText = penalized.map((collection) => `Penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (separate from remittance): ${collection.penaltyNote}`).join("; ");
   const fidelityText = fidelityAmount > 0 ? `Fidelity ${fidelityAmount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (employee's own money), included in the expected amount` : "";
-  const forfeitText = forfeits.length ? `Incentive forfeited on ${forfeits.length} item${forfeits.length === 1 ? "" : "s"} (${forfeitedTotal.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}): cash received after 3:00 PM the day after the OR date` : "";
+  const forfeitText = forfeits.length ? `Incentive forfeited on ${forfeits.length} item${forfeits.length === 1 ? "" : "s"} (${forfeitedTotal.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}): cash received after 3:00 PM the day after the OR date, or an Administrator's decision` : "";
   const remarks = [text(input.remarks), penaltyText, fidelityText, forfeitText].filter(Boolean).join(" | ");
   const status = approved ? "Approved" : difference === 0 ? "Pending Approval" : "Discrepancy";
   const id = createReadableId("REM");

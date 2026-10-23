@@ -3819,3 +3819,32 @@ test('New Sales same person check finds members with the exact surname and first
   assert.deepEqual((await findSameNameMembers('Penas', 'ANA')).map((member) => member.id), ['M2'], 'ñ matches n');
   assert.deepEqual(await findSameNameMembers('D', 'Juan'), [], 'too short to check');
 });
+
+test('an Administrator keeps or forfeits an incentive on a pending slip; the 3:00 PM rule can decide again (October 23, 2026)', async () => {
+  const h = harness();
+  await seed('programs', [{ program_id: 'DP-1', program_name: 'P', base_pay: 350 }]);
+  await seed('members', [{ member_id: 'M1', member_number: 'PH-1', surname: 'S', first_name: 'A' }]);
+  await seed('member_programs', [{ enrollment_id: 'E1', member_id: 'M1', member_number: 'PH-1', program_id: 'DP-1', doi: '2026-01-01', status: 'Active' }]);
+  await seed('remittances', [{ remittance_id: 'REM-1', status: 'Pending Approval', date_remitted: '2026-10-21', time_remitted: '21:38', gross_collection: 350, total_remittance: 350, difference: 0 }]);
+  await seed('collections', [{ collection_id: 'C1', collection_batch_id: 'B1', enrollment_id: 'E1', member_id: 'M1', program_id: 'DP-1', or_number: '25618 N', or_date: '2026-10-20', branch: 'MONTEVISTA',
+    amount_collected: 350, remittance_amount: 350, forfeited_incentive: 35, status: 'Posted', remittance_status: 'Pending Remittance Approval', linked_remittance_id: 'REM-1' }]);
+  await seed('remittance_collections', [{ remittance_collection_id: 'RC-1', remittance_id: 'REM-1', collection_id: 'C1', amount: 350 }]);
+  await h.sync();
+  const { decideIncentive } = h.load('lib/incentive-decision.ts');
+  const { runAsSystem } = h.load('lib/encoder-context.ts');
+  const state = async () => (await query(`select c.remittance_amount::float8 as share, c.forfeited_incentive::float8 as forfeited, c.incentive_decision as decision, rc.amount::float8 as line, r.gross_collection::float8 as expected, r.difference::float8 as difference
+    from collections c join remittance_collections rc on rc.collection_id = c.collection_id join remittances r on r.remittance_id = rc.remittance_id where c.collection_id = 'C1'`))[0];
+  await assert.rejects(() => runAsSystem(() => decideIncentive({ id: 'C1', decision: 'Keep', reason: '' })), /reason/);
+  const kept = await runAsSystem(() => decideIncentive({ id: 'C1', decision: 'Keep', reason: 'Cash received at 1:30 PM; clearing recorded late' }));
+  assert.equal(kept.applied, 'now');
+  assert.deepEqual(await state(), { share: 315, forfeited: null, decision: 'Keep', line: 315, expected: 315, difference: 35 }, 'the incentive comes back; the slip expects less and shows the 35 over');
+  const { forfeitsIncentive } = h.load('lib/remittance-workflow.ts');
+  const item = { amount: 350, remittanceAmount: 315, orDate: '2026-10-20', incentiveDeadline: '2026-10-21 15:00' };
+  assert.equal(forfeitsIncentive({ ...item, incentiveDecision: 'Keep' }, '2026-10-21 21:38'), false, 'a resubmitted slip keeps it');
+  assert.equal(forfeitsIncentive({ ...item, incentiveDecision: '' }, '2026-10-21 21:38'), true, 'without a decision the rule forfeits it');
+  assert.equal(forfeitsIncentive({ ...item, incentiveDecision: 'Forfeit' }, '2026-10-21 10:00'), true, 'Forfeit forfeits even on time');
+  await runAsSystem(() => decideIncentive({ id: 'C1', decision: '', reason: 'Clearing time confirmed' }));
+  assert.deepEqual(await state(), { share: 350, forfeited: 35, decision: null, line: 350, expected: 350, difference: 0 }, 'the rule decides again from the slip time (late)');
+  const [correction] = await query(`select module from record_corrections where record_id = 'C1' limit 1`);
+  assert.equal(correction.module, 'Incentive decision');
+});

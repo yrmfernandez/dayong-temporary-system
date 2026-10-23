@@ -132,7 +132,7 @@ export async function saveEntryEdit(input: EntryEditInput) {
 type Outcome = { changed: boolean; summary: string; before: Record<string, unknown>; after: Record<string, unknown> };
 
 /** The slip's line for this entry and its expected amount follow the entry's new company share. */
-async function followSlip(tx: Queryable, entryId: string, slipId: string, newDue: number) {
+export async function followSlip(tx: Queryable, entryId: string, slipId: string, newDue: number) {
   if (!slipId) return null;
   const [link] = rowsOf<{ amount: number }>(await tx.execute(sql`select coalesce(amount, 0)::float8 as amount from remittance_collections where remittance_id = ${slipId} and collection_id = ${entryId} limit 1`));
   if (!link) return null;

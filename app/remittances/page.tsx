@@ -34,6 +34,8 @@ type Dashboard = {
   remittances: Remittance[];
   clerks: Array<{ employeeId: string; name: string }>;
   canApprove: boolean;
+  /** Administrators keep or forfeit an entry's incentive (lib/incentive-decision.ts). */
+  canDecideIncentive?: boolean;
   /** Administrators can delete a remittance permanently; its entries become Outstanding again (lib/admin-delete.ts). */
   canDelete?: boolean;
   clerk: string;
@@ -217,7 +219,7 @@ export default function RemittancesPage() {
                       {item.type !== "Fidelity" && <Button type="button" size="sm" variant={viewingId === item.id ? "default" : "outline"} aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}><List className="size-3.5" />{viewingId === item.id ? "Hide entries" : `View entries (${item.collectionIds.length})`}{viewingId === item.id ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}</Button>}
                     </div>
                     {explainingId === item.id && <div className="pt-2"><RemittanceDiscrepancy remittanceId={item.id} /></div>}
-                    {viewingId === item.id && <div className="pt-2"><RemittanceEntries remittanceId={item.id} /></div>}
+                    {viewingId === item.id && <div className="pt-2"><RemittanceEntries remittanceId={item.id} canDecideIncentive={Boolean(data?.canDecideIncentive)} onChanged={() => void load(clerk)} /></div>}
                     {deletePanel(item.id)}
                   </div>
                 </div>
@@ -237,7 +239,7 @@ export default function RemittancesPage() {
           <Card><CardHeader><CardTitle>Remittance Records</CardTitle><p className="text-sm text-muted-foreground">Approved and rejected remittances.</p></CardHeader><CardContent>
             {deletingId && records.some((item) => item.id === deletingId) && <div className="mb-3">{deletePanel(deletingId)}</div>}
             {explainingId && records.some((item) => item.id === explainingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Why {explainingId} is {(records.find((item) => item.id === explainingId)?.difference ?? 0) < 0 ? "short" : "over"}</p><Button type="button" size="sm" variant="ghost" onClick={() => setExplainingId("")}>Close</Button></div><RemittanceDiscrepancy remittanceId={explainingId} /></div>}
-            {viewingId && records.some((item) => item.id === viewingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Entries on {viewingId}</p><Button type="button" size="sm" variant="ghost" onClick={() => setViewingId("")}>Close</Button></div><RemittanceEntries remittanceId={viewingId} /></div>}
+            {viewingId && records.some((item) => item.id === viewingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Entries on {viewingId}</p><Button type="button" size="sm" variant="ghost" onClick={() => setViewingId("")}>Close</Button></div><RemittanceEntries remittanceId={viewingId} canDecideIncentive={Boolean(data?.canDecideIncentive)} onChanged={() => void load(clerk)} /></div>}
             <DataTable headers={["Remittance", "Slip", "Received", "Accountable person", "Encoded by", "Expected", "Actual", "Difference", "Status", "Remarks / Reason", "Decision by", ...(canDelete ? [""] : [])]} rows={records.map((item) => [<button key="id" type="button" className="font-mono text-left hover:underline" title="View the entries on this remittance" aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}>{item.id}</button>, item.type, item.remittanceTime ? `${item.remittanceDate} ${item.remittanceTime}` : item.remittanceDate, item.accountableName, item.clerkNames.join(", ") || "—", money(item.expectedAmount), money(item.actualAmount), item.difference !== 0 ? <button key="difference" type="button" className="font-semibold text-red-700 underline-offset-2 hover:underline dark:text-red-400" title="See why" aria-expanded={explainingId === item.id} onClick={() => toggleExplain(item.id)}>{money(item.difference)}</button> : money(item.difference), <StatusBadge key="status" status={item.status} />, <span key="reason">{item.decisionReason || item.remarks || "—"}{Boolean(item.dateRemittedReasons?.length) && <span className="block text-xs text-amber-800">Date Remitted changed: {item.dateRemittedReasons!.join("; ")}</span>}</span>, item.decisionByName,
               ...(canDelete ? [<Button key="delete" type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => setDeletingId(deletingId === item.id ? "" : item.id)}>Delete</Button>] : [])])} empty="No approved or rejected remittances." />
           </CardContent></Card>

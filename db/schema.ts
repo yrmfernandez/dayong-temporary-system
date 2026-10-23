@@ -355,6 +355,11 @@ export const sales = pgTable("sales", {
   date_remitted_reason: text(),
   /** Why this sale earns the MAS no incentive (owner, October 20, 2026): its whole amount is remitted. */
   no_incentive_reason: text(),
+  /** An Administrator's decision on the incentive (owner, October 23, 2026; lib/incentive-decision.ts): "Keep" or "Forfeit" overrides the 3:00 PM rule; blank follows it. */
+  incentive_decision: text(),
+  incentive_decision_reason: text(),
+  incentive_decision_by: text(),
+  incentive_decision_at: moment("incentive_decision_at"),
   /** Normalized application_no; one sale per application number. */
   application_key: text().generatedAlwaysAs(entryKey("application_no")),
   /** True only on the second or later copy of an application number that was already duplicated before the move. */
@@ -482,6 +487,11 @@ export const collections = pgTable("collections", {
   date_remitted_reason: text(),
   /** Why this collection earns the collector no incentive (owner, October 20, 2026): its whole amount is remitted. */
   no_incentive_reason: text(),
+  /** An Administrator's decision on the incentive (owner, October 23, 2026; lib/incentive-decision.ts): "Keep" or "Forfeit" overrides the 3:00 PM rule; blank follows it. */
+  incentive_decision: text(),
+  incentive_decision_reason: text(),
+  incentive_decision_by: text(),
+  incentive_decision_at: moment("incentive_decision_at"),
   /** Normalized or_number; a receipt is used by one posted collection only. */
   or_key: text().generatedAlwaysAs(entryKey("or_number")),
   /** True only on the second or later copy of an OR number that was already duplicated before the move. */

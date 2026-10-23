@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 68 API handlers, 126 library files, 56 component files; 584 scanned source/configuration/public-text files in total.
+43 page routes, 68 API handlers, 126 library files, 56 component files; 587 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -463,6 +463,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/exceptions-summary.mts](../scripts/exceptions-summary.mts) | `node:fs`, `@next/env` | No flag detected; read source before running |
 | [scripts/fill-member-contacts.mjs](../scripts/fill-member-contacts.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/find-d210-split-histories.mjs](../scripts/find-d210-split-histories.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/find-duplicate-members-20261023.mjs](../scripts/find-duplicate-members-20261023.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/find-misfiled-program-receipts.mjs](../scripts/find-misfiled-program-receipts.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/find-name-variants.mjs](../scripts/find-name-variants.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/find-older-receipts-private.mjs](../scripts/find-older-receipts-private.mjs) | `node:fs`, `./legacy-sources.mjs`, `./source-history-rules.mjs` | No flag detected; read source before running |
@@ -494,6 +495,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/fix-registration-fee-nops-20261021.mts](../scripts/fix-registration-fee-nops-20261021.mts) | `@next/env`, `drizzle-orm`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/entry-edit`, `@/lib/readable-id` | Yes; read source for semantics |
 | [scripts/fix-rem-gudn-duplicate.mjs](../scripts/fix-rem-gudn-duplicate.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/fix-remitted-before-receipt.mjs](../scripts/fix-remitted-before-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/fix-seven-member-dates-20261023.mjs](../scripts/fix-seven-member-dates-20261023.mjs) | `node:fs`, `node:assert/strict`, `@next/env`, `postgres`, `./source-history-rules.mjs` | Yes; read source for semantics |
 | [scripts/fix-tangal-incentives.mjs](../scripts/fix-tangal-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/flag-ph96295172-receipt.mjs](../scripts/flag-ph96295172-receipt.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/generate-code-reference.mjs](../scripts/generate-code-reference.mjs) | `node:fs`, `node:path`, `typescript` | Yes; read source for semantics |
@@ -650,6 +652,7 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/legacy-programs.json](../config/legacy-programs.json)
 - [config/legacy-receipt-fixes.json](../config/legacy-receipt-fixes.json)
 - [config/legacy-site-map.json](../config/legacy-site-map.json)
+- [config/member-merges-20261023.json](../config/member-merges-20261023.json)
 - [config/member-merges.json](../config/member-merges.json)
 - [config/member-splits.json](../config/member-splits.json)
 - [config/name-merges.json](../config/name-merges.json)
