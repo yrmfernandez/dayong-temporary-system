@@ -84,7 +84,9 @@ export function CompanyReports() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the chosen period and filters
     void load();
   }, [load]);
-  useLiveRefresh(["sales", "collections", "remittances", "expenses", "cash_transactions"], load, 15000);
+  // Everything the reports show (owner, October 23, 2026: any change that a report reflects must update it).
+  useLiveRefresh(["sales", "collections", "remittances", "remittance_collections", "expenses", "cash_transactions", "bank_deposits",
+    "members", "member_programs", "programs", "program_incentives", "employees", "branches", "commissions"], load, 15000);
 
   const choose = (next: Period) => { setPeriod(next); if (next !== "custom") setRange(rangeFor(next, todayInManila())); };
   const rows = useMemo(() => {

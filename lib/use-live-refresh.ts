@@ -16,6 +16,14 @@ import { useEffect, useRef } from "react";
 type Listener = (table: string) => void;
 const listeners = new Set<Listener>();
 let channel: RealtimeChannel | null = null;
+/** When the last broadcast arrived (any table): none for a while means Realtime may not be delivering. */
+let lastBroadcastAt = 0;
+/**
+ * Fallback (owner, October 23, 2026: a changed record sometimes did not show in an open report). Production's Realtime
+ * dropped broadcasts ("no partition of relation messages found"), so pages also reload when the tab is shown again or
+ * the window regains focus, and every POLL_MS while visible when no broadcast has arrived for QUIET_MS.
+ */
+const POLL_MS = 60_000, QUIET_MS = 120_000, FOCUS_GAP_MS = 15_000;
 
 function connect() {
   if (channel || typeof window === "undefined") return;
@@ -25,6 +33,7 @@ function connect() {
   channel = client.channel("db-changes", { config: { private: false } })
     .on("broadcast", { event: "change" }, ({ payload }) => {
       const table = typeof payload?.table === "string" ? payload.table : "";
+      lastBroadcastAt = Date.now();
       if (table) for (const listener of listeners) listener(table);
     })
     .subscribe();
@@ -41,13 +50,17 @@ export function useLiveRefresh(tables: string[], reload: () => unknown, delayMs 
 
   useEffect(() => {
     const watched = new Set(key.split(",").filter(Boolean));
-    let timer: number | undefined, stale = false;
-    const run = () => { timer = undefined; if (document.hidden) { stale = true; return; } void reloadRef.current(); };
+    let timer: number | undefined, stale = false, reloadedAt = Date.now();
+    const reload = () => { reloadedAt = Date.now(); void reloadRef.current(); };
+    const run = () => { timer = undefined; if (document.hidden) { stale = true; return; } reload(); };
     const listener: Listener = (table) => { if (watched.has(table) && timer === undefined) timer = window.setTimeout(run, delayMs); };
-    const onVisible = () => { if (!document.hidden && stale) { stale = false; void reloadRef.current(); } };
+    // Shown again or focused: reload if a change was missed while hidden, or if the last reload is a while ago.
+    const onVisible = () => { if (document.hidden) return; if (stale || Date.now() - reloadedAt > FOCUS_GAP_MS) { stale = false; reload(); } };
+    const poll = window.setInterval(() => { if (!document.hidden && Date.now() - lastBroadcastAt > QUIET_MS && Date.now() - reloadedAt >= POLL_MS) reload(); }, POLL_MS);
     connect();
     listeners.add(listener);
     document.addEventListener("visibilitychange", onVisible);
-    return () => { listeners.delete(listener); document.removeEventListener("visibilitychange", onVisible); if (timer !== undefined) window.clearTimeout(timer); };
+    window.addEventListener("focus", onVisible);
+    return () => { listeners.delete(listener); document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); window.clearInterval(poll); if (timer !== undefined) window.clearTimeout(timer); };
   }, [key, delayMs]);
 }
