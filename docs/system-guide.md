@@ -172,7 +172,7 @@ The mark-up always goes to the company. `M` must be between zero and `B`, and `I
 
 **Example:** monthly due PHP 350, mark-up PHP 50, MAS rate 20%: incentive is `(350 − 50) × 20% = PHP 60`; company share is PHP 290. Three installments at that tier produce PHP 1,050 gross, PHP 180 incentive, and PHP 870 company share.
 
-Branch overrides apply **per role**. If a branch has any own MAS tiers, those replace all base MAS tiers there; Collector tiers still use base rules unless separately overridden. This is replacement, not gap-filling: complete every NOP range that branch needs.
+Branch overrides apply **per role**. A branch's own MAS tiers replace the base MAS tiers **only for the months they cover**; every other month uses the base tiers (October 23, 2026; before, they replaced the whole base set, so a branch tier for months 1-6 left months 7 onward without a tier). Collector tiers work the same way, separately.
 
 ### New Sale incentives
 
@@ -960,7 +960,7 @@ Inspect helpers include sheet-header inspection, database audit, legacy inspecti
 | Unique enrollment not found | Member number/program/branch/MAS consistency and duplicate enrollments. |
 | Collection save fails | Next month/NOP, full installments, OR uniqueness/date, waiver/forfeiture, tier coverage, batch control total. "Attempting to write column … beyond the last requested column" means a migration column is missing: run `npm run sheets:remittance-deadline -- --apply`. |
 | Entry not in Pending Approval | Receipt photo missing, another Collection of the same batch still without a photo, or the entry was Returned (resubmit in My Entries). |
-| Tier missing for NOP | Role and NOP range; branch overrides replace the role's entire base tier set. |
+| Tier missing for NOP | Role and NOP range: neither the branch's own tiers nor the base tiers cover that month. |
 | Amount field locked | Program editability flag and server fixed/full-installment rules. |
 | Approval refuses | Receipt photo for every entry, complete slip links, reason for discrepancy, decision permission/self-decision rule. Bulk decisions report each slip that was not done. |
 | Cannot save New Sales or Collections | It is 3:00 PM or later (Manila); encoding opens again at midnight. The top bar clock's dot turns gold while encoding is closed. |

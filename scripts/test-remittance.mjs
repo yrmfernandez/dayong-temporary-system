@@ -83,6 +83,20 @@ test("a branch's own tiers replace the base tiers for that role only", () => {
   assert.deepEqual(tiersForBranch(tiers, ""), base, "no branch means base rates");
 });
 
+test("a branch's own tiers cover only their months; other months fall back to the base tiers (October 23, 2026)", () => {
+  // D-320 on October 23, 2026: base MAS 13-60, Nabunturan MAS 1-6 only; NOP 23 had no tier in Nabunturan.
+  const base = { id: "B", role: "MAS", fromMonth: 13, toMonth: 60, branchId: "" };
+  const nabunturan = { id: "N", role: "MAS", fromMonth: 1, toMonth: 6, branchId: "BR-15" };
+  assert.deepEqual(tiersForBranch([base, nabunturan], "BR-15"), [nabunturan, base], "months 13-60 still use the base tier");
+  // A base tier the branch partly covers is cut down to the months the branch leaves.
+  const wide = { id: "W", role: "MAS", fromMonth: 1, toMonth: 60, branchId: "" };
+  const middle = { id: "M", role: "MAS", fromMonth: 10, toMonth: 20, branchId: "BR-15" };
+  const used = tiersForBranch([wide, middle], "BR-15");
+  assert.deepEqual(used.map((tier) => [tier.id, tier.fromMonth, tier.toMonth]), [["M", 10, 20], ["W", 1, 9], ["W", 21, 60]]);
+  const quote = calculateRemittance(100, [...used, { role: "Collector", fromMonth: 1, toMonth: 60, incentiveType: "fixed", markUp: 0, incentiveAmount: 0 }].map((tier) => ({ incentiveType: "percentage", markUp: 0, incentiveAmount: tier.id === "M" ? 20 : 10, ...tier })), "MAS", 9, 11);
+  assert.deepEqual(quote.breakdown.map((item) => [item.nop, item.tierId, item.incentive]), [[9, "W", 10], [10, "M", 20], [11, "M", 20]], "exactly one tier per month");
+});
+
 test("who collected decides the incentive: MAS and Collector earn their own tier, DTO earns nothing (owner, October 10, 2026)", () => {
   const tiers = [
     { role: "MAS", fromMonth: 1, toMonth: 12, incentiveType: "percentage", markUp: 50, incentiveAmount: 50 },

@@ -573,7 +573,7 @@ const normalizedPeriods: {
 }[] = [];
 
 if (!form.incentiveTiers.some((tier) => !tier.branchId)) {
-  void alertDialog("Add at least one period for All branches (base rates). Branch periods only replace the base rates in that branch.");
+  void alertDialog("Add at least one period for All branches (base rates). Branch periods replace the base rates only for their months in that branch.");
   return false;
 }
 
@@ -1325,7 +1325,7 @@ return (
           {branchOptions.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.territory ? ` · ${item.territory}` : ""}</SelectItem>)}
         </SelectContent>
       </Select>
-      <p className="text-xs text-muted-foreground">Base rates apply in every branch. A branch with its own periods uses only those for that role, so give it every period it needs.</p>
+      <p className="text-xs text-muted-foreground">Base rates apply in every branch. A branch&apos;s own periods replace the base rates for the months they cover; every other month uses the base rates.</p>
     </div>
 
     {/* PERIOD */}

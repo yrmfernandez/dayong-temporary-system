@@ -15,15 +15,32 @@ export type IncentiveTier = {
 };
 
 /**
- * The tiers that apply in one branch: for each role, the branch's own tiers when it has any, else the base tiers.
- * A branch can therefore override MAS rates, Collector rates, or both.
+ * The tiers that apply in one branch, per role (MAS, Collector): the branch's own tiers for the months they cover, and
+ * the base (all-branches) tiers for every other month (owner, October 23, 2026; before, a branch's own tiers replaced
+ * all the base tiers of that role, so a branch tier for months 1-6 left months 7 onward without any tier). A base tier
+ * that partly overlaps the branch's months is cut down to the months the branch does not cover.
  */
-export function tiersForBranch<T extends { role: string; branchId?: string }>(tiers: T[], branchId: string): T[] {
+export function tiersForBranch<T extends { role: string; branchId?: string; fromMonth: number; toMonth: number }>(tiers: T[], branchId: string): T[] {
   const branch = (branchId ?? "").trim();
   return (["MAS", "Collector"] as const).flatMap((role) => {
     const forRole = tiers.filter((tier) => tier.role === role);
+    const base = forRole.filter((tier) => !(tier.branchId ?? "").trim());
     const own = branch ? forRole.filter((tier) => (tier.branchId ?? "").trim() === branch) : [];
-    return own.length ? own : forRole.filter((tier) => !(tier.branchId ?? "").trim());
+    if (!own.length) return base;
+    const covered = [...own].sort((a, b) => a.fromMonth - b.fromMonth);
+    const rest = base.flatMap((tier) => {
+      const pieces: T[] = [];
+      let from = tier.fromMonth;
+      for (const item of covered) {
+        if (item.toMonth < from || item.fromMonth > tier.toMonth) continue;
+        if (item.fromMonth > from) pieces.push({ ...tier, fromMonth: from, toMonth: Math.min(tier.toMonth, item.fromMonth - 1) });
+        from = Math.max(from, item.toMonth + 1);
+        if (from > tier.toMonth) break;
+      }
+      if (from <= tier.toMonth) pieces.push(from === tier.fromMonth ? tier : { ...tier, fromMonth: from, toMonth: tier.toMonth });
+      return pieces;
+    });
+    return [...own, ...rest];
   });
 }
 

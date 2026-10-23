@@ -5,7 +5,8 @@ import { createReadableId } from "@/lib/readable-id";
 
 /*
  * Program incentive tiers (program_incentives). A blank branch_id is the program's base tier for every branch; a
- * branch's own tiers replace the base tiers for that role in that branch (lib/remittance.ts tiersForBranch).
+ * branch's own tiers replace the base tiers for the months they cover in that branch; other months use the base tiers
+ * (lib/remittance.ts tiersForBranch, October 23, 2026).
  */
 export type StoredTier = { role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number; branchId?: string; nonCommissionable?: boolean };
 
