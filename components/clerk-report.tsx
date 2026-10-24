@@ -11,6 +11,7 @@ import { ReceiptPhotosPicker, type PickedPhoto } from "@/components/receipt-phot
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { readApiResponse } from "@/lib/api-response";
 import type { ClerkReport as Report, ReportLine } from "@/lib/clerk-report";
 import { BURIAL_ACCOUNT, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
@@ -47,6 +48,9 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   const [data, setData] = useState<Result | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  // The last save on the record panel, shown under its form too (the page message is at the top, out of view).
+  const [saved, setSaved] = useState<{ ok: boolean; text: string } | null>(null);
+  const [saving, setSaving] = useState(false);
   const [showEntries, setShowEntries] = useState(review);
   const [open, setOpen] = useState("");
   const [remark, setRemark] = useState("");
@@ -84,13 +88,25 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
     "members", "member_programs", "programs", "program_incentives", "receipt_photos", "employees", "branches", "remittance_methods"], load, 10000);
 
   /** Sends one of the clerk's own report actions, then reloads the report. */
+  // Never fails silently (owner, October 24, 2026: Save did nothing): a reply that is not the route's own (a time-out,
+  // an upload too large, an expired sign-in) or no connection is shown as a message; what was typed stays.
   const act = async (body: Record<string, unknown>) => {
-    setMessage("");
-    const response = await fetch("/api/clerk-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, date, reportKind: kind, reportDate: date, branch: data?.branch === "all" ? "" : data?.branch ?? "", ...body }) });
-    const result = await response.json();
-    setMessage(result.message || (response.ok ? "Saved." : "Unable to save."));
-    if (response.ok && result.success) await load();
-    return response.ok && result.success;
+    setMessage(""); setSaved(null); setSaving(true);
+    try {
+      const response = await fetch("/api/clerk-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, date, reportKind: kind, reportDate: date, branch: data?.branch === "all" ? "" : data?.branch ?? "", ...body }) });
+      const result = await readApiResponse(response) as { success?: boolean; message?: string };
+      const ok = response.ok && Boolean(result.success);
+      const text = result.message || (ok ? "Saved." : "Unable to save.");
+      setMessage(text); setSaved({ ok, text });
+      if (ok) await load();
+      return ok;
+    } catch (caught) {
+      const text = caught instanceof Error && caught.message !== "Failed to fetch" ? caught.message : "Not saved: no connection to the server. Check the internet and try again.";
+      setMessage(text); setSaved({ ok: false, text });
+      return false;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveRemark = async () => {
@@ -206,7 +222,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
       {report && kind !== "daily" && <MasSummary report={report} />}
 
-      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}-${editingExpense?.id ?? ""}`} report={report} act={act} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
+      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}-${editingExpense?.id ?? ""}`} report={report} act={act} saved={saved} saving={saving} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
         editingExpense={editingExpense} onExpenseDone={() => setEditingExpense(null)}
         masChoices={data?.masChoices ?? []} editingFidelity={editingFidelity} onFidelityDone={() => setEditingFidelity(null)} />}
       {report && own && data?.branch === "all" && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">Choose one branch to record expenses, deposits, Cash Beg and notes for it.</p>}
@@ -451,7 +467,7 @@ function expenseForm(item: Report["expenses"][number]) {
   return { category: account.choice, categoryOther: account.other, date: item.date, amount: String(item.amount), receiptNumber: item.receipt, payee: item.payee, description: item.purpose, remarks: item.remarks, approvedBy: approver.choice, approvedByOther: approver.other };
 }
 
-function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFidelity, onFidelityDone, editingExpense, onExpenseDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; editing: Report["deposits"][number] | null; onEditDone: () => void;
+function RecordPanel({ report, act, saved, saving, editing, onEditDone, masChoices, editingFidelity, onFidelityDone, editingExpense, onExpenseDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; saved: { ok: boolean; text: string } | null; saving: boolean; editing: Report["deposits"][number] | null; onEditDone: () => void;
   editingExpense: Report["expenses"][number] | null; onExpenseDone: () => void;
   masChoices: Array<{ id: string; name: string }>; editingFidelity: Report["fidelitySlips"][number] | null; onFidelityDone: () => void }) {
   const today = todayInManila();
@@ -503,7 +519,7 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
         <ReceiptPhotosPicker photos={expensePhotos} onChange={setExpensePhotos} kind="expense" optional={savedPhotos > 0}
           title={savedPhotos ? "Add more receipt photos" : "Photo of the receipt"}
           note={savedPhotos ? `This expense has ${savedPhotos} receipt photo${savedPhotos === 1 ? "" : "s"}; photos added here are kept with them.` : "Take or choose a photo or scan of the receipt or voucher. At least one is required; add more if it has several pages."} />
-        <div className="flex gap-2"><Button type="submit" size="sm" disabled={!expense.amount || !expense.description.trim() || !expense.receiptNumber.trim() || (expense.category === BURIAL_ACCOUNT && !expense.payee.trim()) || (!savedPhotos && !expensePhotos.length)}>{editingExpense ? "Save changes" : "Save expense"}</Button>{editingExpense && <Button type="button" size="sm" variant="outline" onClick={onExpenseDone}>Cancel</Button>}</div>
+        <div className="flex gap-2"><Button type="submit" size="sm" disabled={saving || !expense.amount || !expense.description.trim() || !expense.receiptNumber.trim() || (expense.category === BURIAL_ACCOUNT && !expense.payee.trim()) || (!savedPhotos && !expensePhotos.length)}>{editingExpense ? "Save changes" : "Save expense"}</Button>{editingExpense && <Button type="button" size="sm" variant="outline" onClick={onExpenseDone}>Cancel</Button>}</div>
       </form>}
 
       {section === "deposit" && <form id="deposit-form" className="space-y-4" onSubmit={async (event) => {
@@ -524,7 +540,7 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
           <Field label="Remarks * (with a number)"><Input value={deposit.remarks} onChange={(event) => setDeposit({ ...deposit, remarks: event.target.value })} placeholder="e.g. Ref 01101026001363" /></Field>
         </div>
         <div className="flex gap-2">
-          <Button type="submit" size="sm" disabled={!deposit.amount || !deposit.transferType.trim() || !/\d/.test(deposit.remarks)}>{editing ? "Save changes" : "Save deposit"}</Button>
+          <Button type="submit" size="sm" disabled={saving || !deposit.amount || !deposit.transferType.trim() || !/\d/.test(deposit.remarks)}>{editing ? "Save changes" : "Save deposit"}</Button>
           {deposit.remarks.trim() !== "" && !/\d/.test(deposit.remarks) && <span className="self-center text-xs text-red-700 dark:text-red-400">Remarks need a number; letters only are not accepted.</span>}
           {editing && <Button type="button" size="sm" variant="outline" onClick={onEditDone}>Cancel</Button>}
         </div>
@@ -547,7 +563,7 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
           <Field label="Remarks" wide><Input maxLength={300} placeholder="e.g. Fidelity for the Oct 12 collections" value={fidelity.remarks} onChange={(event) => setFidelity({ ...fidelity, remarks: event.target.value })} /></Field>
         </div>
         <div className="flex gap-2">
-          <Button type="submit" size="sm" disabled={!fidelity.masEmployeeId || !(Number(fidelity.amount) > 0)}>{editingFidelity ? "Save changes" : "Save Fidelity"}</Button>
+          <Button type="submit" size="sm" disabled={saving || !fidelity.masEmployeeId || !(Number(fidelity.amount) > 0)}>{editingFidelity ? "Save changes" : "Save Fidelity"}</Button>
           {editingFidelity && <Button type="button" size="sm" variant="outline" onClick={onFidelityDone}>Cancel</Button>}
         </div>
       </form>}
@@ -560,7 +576,7 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
           {cashBeg.amount !== "" ? <Field label="Reason *"><Input maxLength={300} placeholder="e.g. Counted cash on hand" value={cashBeg.reason} onChange={(event) => setCashBeg({ ...cashBeg, reason: event.target.value })} /></Field> : <div className="hidden sm:block" />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="sm" disabled={cashBeg.amount !== "" && cashBeg.reason.trim().length < 5}>Save Cash Beg</Button>
+          <Button type="submit" size="sm" disabled={saving || cashBeg.amount !== "" && cashBeg.reason.trim().length < 5}>Save Cash Beg</Button>
           {report.cash.cashBegEdit && <Button type="button" size="sm" variant="outline" onClick={() => { setCashBeg({ amount: "", reason: "" }); void act({ action: "save-cash-beg", cashBeg: "" }); }}>Clear</Button>}
           {report.cash.cashBegEdit?.updatedAt && <span className="text-xs text-muted-foreground">Saved {new Date(report.cash.cashBegEdit.updatedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {report.cash.cashBegEdit.updatedBy}</span>}
         </div>
@@ -576,10 +592,11 @@ function RecordPanel({ report, act, editing, onEditDone, masChoices, editingFide
           <Field label="Other comments / remarks"><textarea className={textarea} value={notes.otherComments} onChange={(event) => setNotes({ ...notes, otherComments: event.target.value })} /></Field>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="sm">Save notes</Button>
+          <Button type="submit" size="sm" disabled={saving}>{saving ? "Saving..." : "Save notes"}</Button>
           {report.notes.updatedAt && <span className="text-xs text-muted-foreground">Last saved {new Date(report.notes.updatedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {report.notes.updatedBy}</span>}
         </div>
       </form>}
+      {saved && <p role={saved.ok ? "status" : "alert"} className={`mt-4 rounded-lg border px-3 py-2 text-sm ${saved.ok ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200" : "border-red-300 bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200"}`}>{saved.text}</p>}
       </div>
     </div>
   );

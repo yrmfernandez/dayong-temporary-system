@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
 
+### Entry Clerk report saves show their result (2026-10-24)
+
+- **Owner:** all saving on the Entry Clerk report did nothing and the typed text was gone.
+- **Checked:** the server saves work (notes, Cash Beg, deposit and expense through the route, then the report reloads with them; reproduced in the test database). The page's save sent the request and read the reply as JSON with no error handling, and showed the result only at the top of the page, out of view of the form.
+- **Done:** `components/clerk-report.tsx`: a save that fails for any reason (time-out, photos too large, expired sign-in, no connection, a refusal such as Day Off) shows the reason under the form in red; a save shows in green; Save is disabled while saving. New read-only `scripts/check-clerk-report-saves.mjs`: per employee, the notes, Cash Beg, deposits, expenses and Fidelity slips saved in the last 3 Manila days, and who is marked Day Off today.
+- **In progress:** finding the production cause: the owner runs the check script and reports the message the clerk now sees.
+- **To do:** #8 joins by ID (after this).
+
 ### Upgrade #7: one time zone, Manila, for every date (2026-10-24)
 
 - **Owner:** start #7.

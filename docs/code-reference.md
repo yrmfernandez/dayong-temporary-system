@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-44 page routes, 73 API handlers, 133 library files, 59 component files; 607 scanned source/configuration/public-text files in total.
+44 page routes, 73 API handlers, 133 library files, 59 component files; 608 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -289,7 +289,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/cash-out-fields.tsx](../components/cash-out-fields.tsx) | `CashOut`, `manilaToday`, `cashOutReady`, `CashOutFields` | `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select` |
 | [components/clearing-day-end.tsx](../components/clearing-day-end.tsx) | `ClearingDayEndPrompt` | `@/components/ui/button`, `@/lib/clearing` |
 | [components/clearing-picker.tsx](../components/clearing-picker.tsx) | `ClearingPicker` | `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/use-live-refresh` |
-| [components/clerk-report.tsx](../components/clerk-report.tsx) | `ClerkReport` | `@/components/app-dialog`, `@/components/brand-logo`, `@/components/entry-details`, `@/components/receipt-photo`, `@/components/receipt-photos-picker`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/lib/clerk-report`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
+| [components/clerk-report.tsx](../components/clerk-report.tsx) | `ClerkReport` | `@/components/app-dialog`, `@/components/brand-logo`, `@/components/entry-details`, `@/components/receipt-photo`, `@/components/receipt-photos-picker`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/input`, `@/lib/api-response`, `@/lib/clerk-report`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
 | [components/clock-in-location-flag.tsx](../components/clock-in-location-flag.tsx) | `LocationCheck`, `ClockInLocationFlag` | `@/components/app-dialog`, `@/components/ui/button`, `@/lib/clock-in-location` |
 | [components/company-reports.tsx](../components/company-reports.tsx) | `CompanyReports` | `@/components/metric-tile`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/reports`, `@/lib/use-live-refresh` |
 | [components/company-targets.tsx](../components/company-targets.tsx) | `CompanyTargets` | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label` |
@@ -461,6 +461,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/audit-sheet-database.mjs](../scripts/audit-sheet-database.mjs) | `node:fs`, `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/audit-source-month-coverage.mjs](../scripts/audit-source-month-coverage.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs`, `../lib/account-rules.ts`, `./source-cross-year-months.mjs` | No flag detected; read source before running |
 | [scripts/check-12665b-link-private.mjs](../scripts/check-12665b-link-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs` | No flag detected; read source before running |
+| [scripts/check-clerk-report-saves.mjs](../scripts/check-clerk-report-saves.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-collections.mjs](../scripts/check-collections.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
 | [scripts/check-incentive-periods.mjs](../scripts/check-incentive-periods.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
