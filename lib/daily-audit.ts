@@ -1,10 +1,8 @@
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
-import { getDb } from "@/lib/db";
+import { currentDb, encodedBy, getDb, inTransaction, schema, type Queryable } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
-import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEmployees } from "@/lib/employees";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { getBranches } from "@/lib/google-sheets-data";
 import { createReadableId } from "@/lib/readable-id";
 import { buildClerkReport } from "@/lib/clerk-report";
@@ -12,14 +10,17 @@ import { buildClerkReport } from "@/lib/clerk-report";
 /**
  * Audits of each Entry Clerk's report: one per clerk per day, week (Monday to Sunday), month, or year (Entry Clerks only;
  * other roles are never audited here). HR and Administrators prepare and edit an audit; only an Administrator approves it.
- * An approved audit is locked until an Administrator reopens it with a reason. Sheets "Daily Audits", "Weekly Audits",
- * "Monthly Audits" and "Yearly Audits" share one layout (A:M business columns + encoder identity); report_date (B) holds
- * the first day of the period.
+ * An approved audit is locked until an Administrator reopens it with a reason. Tables daily_audits, weekly_audits,
+ * monthly_audits and yearly_audits share one layout; report_date holds the first day of the period.
+ *
+ * Read and written directly by ID (owner, October 24, 2026; upgrade #6 phase 4, replacing Sheets-style row writes):
+ * saving takes a lock on the clerk and period, so two saves at once keep one audit; approving and reopening lock the
+ * audit's row and update it once.
  */
 export const AUDIT_PERIODS = ["daily", "weekly", "monthly", "yearly"] as const;
 export type AuditPeriod = (typeof AUDIT_PERIODS)[number];
-const SHEETS: Record<AuditPeriod, string> = { daily: "Daily Audits", weekly: "Weekly Audits", monthly: "Monthly Audits", yearly: "Yearly Audits" };
-const rangeOf = (period: AuditPeriod) => `'${SHEETS[period]}'!A:Q`;
+type AuditTable = typeof schema.daily_audits;
+const TABLES: Record<AuditPeriod, AuditTable> = { daily: schema.daily_audits, weekly: schema.weekly_audits as unknown as AuditTable, monthly: schema.monthly_audits as unknown as AuditTable, yearly: schema.yearly_audits as unknown as AuditTable };
 export const asAuditPeriod = (value: unknown): AuditPeriod => ((AUDIT_PERIODS as readonly string[]).includes(String(value)) ? value as AuditPeriod : "daily");
 export const AUDIT_RESULTS = ["Balanced", "With findings"] as const;
 export type AuditStatus = "Not started" | "Draft" | "Approved";
@@ -48,24 +49,27 @@ export type AuditFigures = {
 };
 
 export type DailyAudit = {
-  id: string; rowNumber: number; date: string; employeeId: string; employeeName: string; status: AuditStatus;
+  id: string; date: string; employeeId: string; employeeName: string; status: AuditStatus;
   figures: AuditFigures | null; findings: string; result: string;
   approvedByName: string; approvedAt: string; reopenReason: string; updatedAt: string; preparedBy: string;
 };
 
-async function auditRows(period: AuditPeriod = "daily") {
-  try { return (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: rangeOf(period) })).data.values ?? []; }
-  catch { throw new Error(period === "daily" ? "Run npm run sheets:audit-transfers -- --apply to create the Daily Audits sheet." : "Run npm run sheets:period-audits -- --apply to create the Weekly, Monthly and Yearly Audits sheets."); }
+function readAudit(row: AuditTable["$inferSelect"]): DailyAudit {
+  let figures: unknown = row.figures_json;
+  // Audits saved through the Sheets layer kept the figures as JSON text.
+  if (typeof figures === "string") { try { figures = figures ? JSON.parse(figures) : null; } catch { figures = null; } }
+  return {
+    id: row.audit_id, date: text(row.report_date), employeeId: text(row.employee_id), employeeName: text(row.employee_name),
+    status: text(row.status) === "Approved" ? "Approved" : "Draft", figures: (figures ?? null) as AuditFigures | null, findings: text(row.findings), result: text(row.result),
+    approvedByName: text(row.approved_by_name), approvedAt: text(row.approved_at), reopenReason: text(row.reopen_reason), updatedAt: text(row.updated_at), preparedBy: text(row.encoded_by_name),
+  };
 }
 
-function readAudit(row: unknown[], index: number): DailyAudit {
-  let figures: AuditFigures | null = null;
-  try { figures = text(row[5]) ? JSON.parse(text(row[5])) as AuditFigures : null; } catch { figures = null; }
-  return {
-    id: text(row[0]), rowNumber: index + 2, date: text(row[1]), employeeId: text(row[2]), employeeName: text(row[3]),
-    status: text(row[4]) === "Approved" ? "Approved" : "Draft", figures, findings: text(row[6]), result: text(row[7]),
-    approvedByName: text(row[9]), approvedAt: text(row[10]), reopenReason: text(row[11]), updatedAt: text(row[12]), preparedBy: text(row[15]),
-  };
+/** A period's audits, optionally only those from one first day to another (report_date). */
+async function loadAudits(period: AuditPeriod = "daily", from = "", to = "", db: Queryable = currentDb()) {
+  const table = TABLES[period];
+  const rows = await db.select().from(table).where(from && to ? sql`${table.report_date} between ${from}::date and ${to}::date` : undefined);
+  return rows.map(readAudit).filter((audit) => audit.id);
 }
 
 /**
@@ -90,8 +94,8 @@ export async function auditedEmployees() {
  */
 async function figuresFor(period: AuditPeriod, date: string, employee: { name: string; employeeId: string }): Promise<AuditFigures> {
   const { start, end } = periodSpan(period, date);
-  const [report, dailyRows] = await Promise.all([buildClerkReport(period, start, employee), period === "daily" ? Promise.resolve([]) : auditRows("daily")]);
-  const daily = dailyRows.slice(1).map(readAudit).filter((audit) => audit.id && audit.employeeId === employee.employeeId && audit.date >= start && audit.date <= end);
+  const [report, dailyAudits] = await Promise.all([buildClerkReport(period, start, employee), period === "daily" ? Promise.resolve([] as DailyAudit[]) : loadAudits("daily", start, end)]);
+  const daily = dailyAudits.filter((audit) => audit.employeeId === employee.employeeId);
   const approved = daily.filter((audit) => audit.status === "Approved");
   return {
     ...(period === "daily" ? {} : { dailyAudits: { approved: approved.length, balanced: approved.filter((audit) => audit.result === "Balanced").length, withFindings: approved.filter((audit) => audit.result === "With findings").length, drafts: daily.length - approved.length } }),
@@ -112,8 +116,7 @@ async function presentEmployees(from: string, to: string) {
 
 export async function getDailyAudits(day: string, period: AuditPeriod = "daily") {
   const { start: date, end } = periodSpan(period, day);
-  const [employees, rows, present] = await Promise.all([auditedEmployees(), auditRows(period), presentEmployees(date, end)]);
-  const saved = rows.slice(1).map(readAudit).filter((audit) => audit.id && audit.date === date);
+  const [employees, saved, present] = await Promise.all([auditedEmployees(), loadAudits(period, date, date), presentEmployees(date, end)]);
   const all = await Promise.all(employees.map(async (employee) => {
     const audit = saved.find((item) => item.employeeId === employee.employeeId);
     // Approved audits show the figures they were approved on; open ones show the current report.
@@ -125,9 +128,11 @@ export async function getDailyAudits(day: string, period: AuditPeriod = "daily")
   return all.filter((row) => present.has(row.employeeId) || row.figures.accounts > 0 || row.audit);
 }
 
-async function findAudit(period: AuditPeriod, date: string, employeeId: string) {
-  const rows = await auditRows(period);
-  return rows.slice(1).map(readAudit).find((audit) => audit.id && audit.date === date && audit.employeeId === employeeId) ?? null;
+/** The clerk's audit for the period, locked for the rest of the caller's transaction. */
+async function lockedAudit(tx: Queryable, period: AuditPeriod, date: string, employeeId: string) {
+  const table = TABLES[period];
+  const [row] = await tx.select().from(table).where(and(eq(table.report_date, date), eq(table.employee_id, employeeId))).orderBy(table.row_seq).limit(1).for("update");
+  return row ? readAudit(row) : null;
 }
 
 /** HR or an Administrator saves the audit's findings and result. Approved audits are locked. */
@@ -139,40 +144,49 @@ export async function saveDailyAudit(input: { date: string; employeeId: string; 
   if (findings.length > 2000) throw new Error("Findings must be 2,000 characters or fewer.");
   const employee = (await auditedEmployees()).find((item) => item.employeeId === employeeId);
   if (!employee) throw new Error("Only active Entry Clerks are audited.");
-  const existing = await findAudit(period, date, employeeId);
-  if (existing?.status === "Approved") throw new Error("This audit is approved and locked. An Administrator must reopen it first.");
-  const figures = JSON.stringify(await figuresFor(period, date, employee));
-  const now = new Date().toISOString();
-  if (existing) {
-    await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEETS[period]}'!E${existing.rowNumber}:M${existing.rowNumber}`, valueInputOption: "RAW",
-      requestBody: { values: [["Draft", figures, findings, result, "", "", "", existing.reopenReason, now]] } });
-    return { id: existing.id, status: "Draft" as const };
-  }
-  const id = createReadableId("AUD");
-  await appendEncodedRows({ range: rangeOf(period), valueInputOption: "RAW", requestBody: { values: [[id, date, employeeId, employee.name, "Draft", figures, findings, result, "", "", "", "", now]] } });
-  return { id, status: "Draft" as const };
+  const figures = await figuresFor(period, date, employee);
+  const table = TABLES[period];
+  return inTransaction(async (tx) => {
+    // One audit per clerk and period: a second save at the same moment waits and then updates the same audit.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`audit:${period}:${date}:${employeeId}`}))`);
+    const existing = await lockedAudit(tx, period, date, employeeId);
+    if (existing?.status === "Approved") throw new Error("This audit is approved and locked. An Administrator must reopen it first.");
+    const now = new Date().toISOString();
+    if (existing) {
+      await tx.update(table).set({ status: "Draft", figures_json: figures, findings, result, approved_by_user_id: null, approved_by_name: null, approved_at: null, updated_at: now }).where(eq(table.audit_id, existing.id));
+      return { id: existing.id, status: "Draft" as const };
+    }
+    const id = createReadableId("AUD");
+    await tx.insert(table).values({ audit_id: id, report_date: date, employee_id: employeeId, employee_name: employee.name, status: "Draft", figures_json: figures, findings, result, updated_at: now, ...encodedBy() });
+    return { id, status: "Draft" as const };
+  });
 }
 
 /** Only an Administrator approves (locks the figures) or reopens (with a reason) an audit. */
 export async function decideDailyAudit(input: { date: string; employeeId: string; decision: "approve" | "reopen"; reason?: string; period?: AuditPeriod }) {
   const actor = getEncoder();
   const period = input.period ?? "daily";
-  const audit = await findAudit(period, periodSpan(period, text(input.date)).start, text(input.employeeId));
-  if (!audit) throw new Error("Save the audit before approving it.");
-  const now = new Date().toISOString();
-  if (input.decision === "approve") {
-    if (audit.status === "Approved") throw new Error("This audit is already approved.");
-    const figures = JSON.stringify(await figuresFor(period, audit.date, { name: audit.employeeName, employeeId: audit.employeeId }));
-    await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEETS[period]}'!E${audit.rowNumber}:M${audit.rowNumber}`, valueInputOption: "RAW",
-      requestBody: { values: [["Approved", figures, audit.findings, audit.result, actor.userId, actor.name, now, audit.reopenReason, now]] } });
-    return { id: audit.id, status: "Approved" as const };
-  }
+  const date = periodSpan(period, text(input.date)).start, employeeId = text(input.employeeId);
+  const table = TABLES[period];
   const reason = text(input.reason);
-  if (audit.status !== "Approved") throw new Error("Only an approved audit can be reopened.");
-  if (reason.length < 3) throw new Error("Give a reason for reopening the audit.");
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEETS[period]}'!E${audit.rowNumber}:M${audit.rowNumber}`, valueInputOption: "RAW",
-    requestBody: { values: [["Draft", JSON.stringify(audit.figures), audit.findings, audit.result, "", "", "", reason, now]] } });
-  return { id: audit.id, status: "Draft" as const };
+  // The figures to lock in are worked out before the transaction; the status is checked again inside it.
+  const before = await lockedAudit(currentDb(), period, date, employeeId);
+  if (!before) throw new Error("Save the audit before approving it.");
+  const figures = input.decision === "approve" ? await figuresFor(period, before.date, { name: before.employeeName, employeeId: before.employeeId }) : null;
+  return inTransaction(async (tx) => {
+    const audit = await lockedAudit(tx, period, date, employeeId);
+    if (!audit) throw new Error("Save the audit before approving it.");
+    const now = new Date().toISOString();
+    if (input.decision === "approve") {
+      if (audit.status === "Approved") throw new Error("This audit is already approved.");
+      await tx.update(table).set({ status: "Approved", figures_json: figures, approved_by_user_id: actor.userId, approved_by_name: actor.name, approved_at: now, updated_at: now }).where(eq(table.audit_id, audit.id));
+      return { id: audit.id, status: "Approved" as const };
+    }
+    if (audit.status !== "Approved") throw new Error("Only an approved audit can be reopened.");
+    if (reason.length < 3) throw new Error("Give a reason for reopening the audit.");
+    await tx.update(table).set({ status: "Draft", approved_by_user_id: null, approved_by_name: null, approved_at: null, reopen_reason: reason, updated_at: now }).where(eq(table.audit_id, audit.id));
+    return { id: audit.id, status: "Draft" as const };
+  });
 }
 
 export type AuditSummaryFilters = { from: string; to: string; branch?: string; employeeId?: string };
@@ -184,10 +198,10 @@ export type AuditSummaryFilters = { from: string; to: string; branch?: string; e
 export async function getAuditSummary(filters: AuditSummaryFilters) {
   const from = text(filters.from), to = text(filters.to), branch = text(filters.branch), employeeId = text(filters.employeeId);
   if (!datePattern.test(from) || !datePattern.test(to) || from > to) throw new Error("Choose a valid date range.");
-  const [clerks, rows] = await Promise.all([auditedEmployees(), auditRows()]);
+  const [clerks, saved] = await Promise.all([auditedEmployees(), loadAudits("daily", from, to)]);
   const inScope = clerks.filter((clerk) => (!branch || clerk.branches.includes(branch)) && (!employeeId || clerk.employeeId === employeeId));
   const ids = new Set(inScope.map((clerk) => clerk.employeeId));
-  const all = rows.slice(1).map(readAudit).filter((audit) => audit.id && audit.date >= from && audit.date <= to && ids.has(audit.employeeId));
+  const all = saved.filter((audit) => ids.has(audit.employeeId));
   const approved = all.filter((audit) => audit.status === "Approved").sort((a, b) => b.date.localeCompare(a.date) || a.employeeName.localeCompare(b.employeeName));
   const branchOf = new Map(clerks.map((clerk) => [clerk.employeeId, clerk.branch]));
   const zero = { accounts: 0, gross: 0, incentives: 0, fidelity: 0, penalty: 0, expectedRemittance: 0 };

@@ -11,11 +11,19 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | **Built 2026-10-24**: vendor, commission and Fidelity payouts record cash; payroll company-program deductions listed until their Collection is linked (owner chose the reminder list) |
 | 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | **Built 2026-10-24**: Member Corrections page with fix coverage, move receipts, insert missing receipt, merge and split |
 | 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | **Built 2026-10-24** (option 1, owner): Base Pay, flexible and registration fee locked once a program has collections |
-| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **In progress**: phases 1 Payroll, 2 clerk report cash and 3 finance built 2026-10-24; phase 4 (audits, attendance calendar, settings, roles, remarks) next |
-| 7 | One time zone (Manila) for every report date | To do |
+| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **Built 2026-10-24** (phases 1-4: payroll, clerk report cash, finance, audits/calendar/settings/roles/remarks). Follow-up still possible: attendance records, leave, users |
+| 7 | One time zone (Manila) for every report date | To do (next) |
 | 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Audits, calendar, settings, roles and remarks save by ID (2026-10-24, upgrade #6 phase 4)
+
+- **Owner:** continue upgrade #6 with phase 4.
+- **Done:** period audits (`lib/daily-audit.ts`) read and write daily/weekly/monthly/yearly audit tables by ID; a save takes a lock on the clerk and period (one audit even when saved twice at once), approve/reopen lock the audit and update it once; figures saved as JSON text by the old code are still read. Holidays (`lib/attendance-calendar.ts`) saved and deleted by ID; adding the Philippine holidays twice at once adds them once. Declaring a non-working day writes the closure and cancels clock-ins in one transaction; removing it deletes only that closure by ID. System settings (`lib/system-settings.ts`) one row per key, upserted. Roles (`lib/roles.ts`) created, edited and deleted by ID under a roles lock (names stay unique; a role assigned to accounts cannot be deleted). Report remarks (`lib/report-remarks.ts`) read and written directly. Employee ID change no longer rewrites Report Notes a second time through the Sheets layer. Tests moved to the database plus a new test for simultaneous saves; all 239 tests and the build pass. No migration.
+- **Not moved (documented in the system guide, limit 9):** attendance records, leave requests, users and user roles (sign-in), audit history reads, record corrections. Attendance is the largest; it can be its own follow-up.
+- **In progress:** none. Upgrade #6 is complete for its four phases.
+- **To do (owner):** deploy.
 
 ### Finance saves by ID in one step (2026-10-24, upgrade #6 phase 3)
 

@@ -59,11 +59,7 @@ export async function changeEmployeeId(oldIdRaw: string, newIdRaw: string, reaso
   targets.forEach((item, index) => (columns[index]?.values ?? []).forEach((row, rowIndex) => {
     if (rowIndex > 0 && text(row[0]).toUpperCase() === oldId.toUpperCase()) cells.push({ title: item.title, range: `${quoted(item.title)}!${column(item.col)}${rowIndex + 1}`, values: [[newId]] });
   }));
-  // Report Notes rows are keyed "<employee>|<kind>|<start>".
-  if (titles.includes("Report Notes")) {
-    const keys = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Report Notes'!A:A" })).data.values ?? [];
-    keys.forEach((row, rowIndex) => { const key = text(row[0]); if (rowIndex > 0 && key.startsWith(`${oldId}|`)) cells.push({ title: "Report Notes", range: `'Report Notes'!A${rowIndex + 1}`, values: [[`${newId}${key.slice(oldId.length)}`]] }); });
-  }
+  // Report notes are renamed in the database below (report_notes, keyed "<employee>|<kind>|<start>|<branch>").
   // The database first, in one transaction: the employee row (linked tables follow), then every other employee_id column.
   const bySheet: Record<string, number> = {};
   await inTransaction(async (tx) => {

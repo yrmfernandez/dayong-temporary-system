@@ -2092,7 +2092,6 @@ test('daily audit: HR, Finance, and Admin can open it; only Admin approves and a
   h.rows['User Roles'] = [[], ['USR-3', 'R-EC'], ['USR-4', 'R-MAS']];
   h.rows.Employees = [[], ['MD-3', 'Clerk One', 'MATINA', 'Entry Clerk', 'active'], ['MD-4', 'Only MAS', 'MATINA', 'MAS', 'active'], ['MD-8', 'Finance Person', 'TORIL', 'Finance', 'active'], ['MD-9', 'Old Clerk', 'TORIL', 'Entry Clerk', 'resigned']];
   h.rows['Employee Branches'] = [[]];
-  h.rows['Daily Audits'] = [[]];
   await h.sync();
   const audit = h.load('lib/daily-audit.ts');
   assert.deepEqual((await audit.auditedEmployees()).map((item) => item.name), ['Clerk One'], 'only active Entry Clerks are audited');
@@ -2102,18 +2101,21 @@ test('daily audit: HR, Finance, and Admin can open it; only Admin approves and a
   const route = h.load('app/api/audit/route.ts');
   const post = await route.POST(request({ date: '2026-09-28', employeeId: 'MD-3', findings: 'Receipts match', result: 'Balanced' }));
   assert.equal(post.status, 200, JSON.stringify(await post.clone().json()));
-  const saved = h.writes.find((write) => write.range.startsWith("'Daily Audits'!")).requestBody.values[0];
-  assert.deepEqual([saved[1], saved[2], saved[4], saved[6], saved[7]], ['2026-09-28', 'MD-3', 'Draft', 'Receipts match', 'Balanced']);
+  const audits = () => query("select report_date::text as date, employee_id, status, findings, result, approved_by_name, reopen_reason from daily_audits order by row_seq");
+  assert.deepEqual((await audits()).map((row) => [row.date, row.employee_id, row.status, row.findings, row.result]), [['2026-09-28', 'MD-3', 'Draft', 'Receipts match', 'Balanced']]);
+  // Saved again (and twice at once): still one audit for the clerk and day.
+  await Promise.all([route.POST(request({ date: '2026-09-28', employeeId: 'MD-3', findings: 'Receipts match, rechecked', result: 'Balanced' })), route.POST(request({ date: '2026-09-28', employeeId: 'MD-3', findings: 'Receipts match, rechecked', result: 'Balanced' }))]);
+  assert.deepEqual((await audits()).map((row) => row.findings), ['Receipts match, rechecked'], 'one audit per clerk and day');
   assert.equal((await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'approve' }))).status, 403, 'HR prepares; only Admin approves');
 
-  h.rows['Daily Audits'] = [[], [...saved.slice(0, 13)]];
   h.setUser({ userId: 'USR-1', employeeId: 'MD-0', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   const approved = await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'approve' }));
   assert.equal(approved.status, 200, JSON.stringify(await approved.clone().json()));
-  assert.equal(h.writes.at(-1).requestBody.values[0][0], 'Approved');
-  h.rows['Daily Audits'][1][4] = 'Approved';
+  assert.deepEqual((await audits()).map((row) => [row.status, row.approved_by_name]), [['Approved', 'Admin']]);
   assert.match((await (await route.POST(request({ date: '2026-09-28', employeeId: 'MD-3', findings: 'x', result: 'Balanced' }))).json()).message, /approved and locked/);
   assert.match((await (await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'reopen', reason: '' }))).json()).message, /reason/);
+  assert.equal((await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'reopen', reason: 'Recount needed' }))).status, 200);
+  assert.deepEqual((await audits()).map((row) => [row.status, row.approved_by_name, row.reopen_reason]), [['Draft', null, 'Recount needed']]);
 });
 
 test('a program enrollment transfers to an active employee of any branch, keeping or moving its branch, with a reason and history', async () => {
@@ -2182,15 +2184,16 @@ test('audit summary counts only approved Entry Clerk audits in the period, by br
   h.rows.Employees = [[], ['MD-3', 'Clerk One', 'MATINA', 'Entry Clerk', 'active'], ['MD-5', 'Clerk Two', 'TORIL', 'Entry Clerk', 'active'], ['MD-8', 'Finance Person', 'TORIL', 'Finance', 'active']];
   h.rows.Branches = [[], ['BR-1', 'MATINA', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'TORIL', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active'], ['BR-3', 'CALINAN', 'METRO DAVAO 1', '', '', '', '', '', '', '', '', '', 'active']];
   h.rows['Employee Branches'] = [[]];
-  const figures = (gross, remit) => JSON.stringify({ accounts: 1, gross, incentives: gross - remit, fidelity: 0, penalty: 0, expectedRemittance: remit, sales: [], collections: [] });
-  const audit = (id, date, employeeId, name, status, result, gross, remit) => [id, date, employeeId, name, status, figures(gross, remit), result === 'With findings' ? 'Short by 50' : '', result, '', status === 'Approved' ? 'Admin' : '', status === 'Approved' ? '2026-09-10T09:00:00Z' : '', '', ''];
-  h.rows['Daily Audits'] = [[],
+  const figures = (gross, remit) => ({ accounts: 1, gross, incentives: gross - remit, fidelity: 0, penalty: 0, expectedRemittance: remit, sales: [], collections: [] });
+  const audit = (id, date, employeeId, name, status, result, gross, remit) => ({ audit_id: id, report_date: date, employee_id: employeeId, employee_name: name, status, figures_json: figures(gross, remit), findings: result === 'With findings' ? 'Short by 50' : '', result, approved_by_name: status === 'Approved' ? 'Admin' : null, approved_at: status === 'Approved' ? '2026-09-10T09:00:00Z' : null });
+  await h.sync();
+  await seed('daily_audits', [
     audit('A1', '2026-09-01', 'MD-3', 'Clerk One', 'Approved', 'Balanced', 320, 270),
     audit('A2', '2026-09-02', 'MD-3', 'Clerk One', 'Approved', 'With findings', 640, 540),
     audit('A3', '2026-09-03', 'MD-3', 'Clerk One', 'Draft', 'Balanced', 100, 100),
     audit('A4', '2026-09-02', 'MD-5', 'Clerk Two', 'Approved', 'Balanced', 500, 500),
     audit('A5', '2026-08-31', 'MD-3', 'Clerk One', 'Approved', 'Balanced', 999, 999),
-    audit('A6', '2026-09-02', 'MD-8', 'Finance Person', 'Approved', 'Balanced', 777, 777)];
+    audit('A6', '2026-09-02', 'MD-8', 'Finance Person', 'Approved', 'Balanced', 777, 777)]);
   const route = h.load('app/api/audit/summary/route.ts');
   const get = async (query) => (await (await route.GET(new Request(`http://localhost/api/audit/summary?${query}`))).json()).summary;
   const all = await get('from=2026-09-01&to=2026-09-30');
@@ -2741,10 +2744,9 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
   const collection = (id, or, encoder, accountable) => ({ collection_id: id, collection_batch_id: 'CBT-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: or, amount_collected: 100, status: 'Posted', encoded_by_employee_id: encoder, accountable_employee_id: accountable });
   await seed('collections', [collection('COL-1', 'OR-1', 'MD-2026-0009', 'LEG-2026-0001'), collection('COL-2', 'OR-2', 'LEG-2026-0001', 'LEG-2026-0001'), collection('COL-3', 'OR-3', 'MD-2026-0009', 'MD-2026-0009')]);
   await seed('report_notes', [{ note_key: 'LEG-2026-0001|daily|2026-10-01', employee_id: 'LEG-2026-0001' }, { note_key: 'MD-2026-0009|daily|2026-10-01', employee_id: 'MD-2026-0009' }]);
-  // Still in the sheets: the sign-in account and the clerk's report notes.
+  // Still read through the Sheets layer: the sign-in account. Report notes are renamed in the database only.
   h.rows.Users = [['user_id', 'employee_id'], ['USR-1', 'LEG-2026-0001']];
   h.rows["'Users'!B:B"] = [['employee_id'], ['LEG-2026-0001']];
-  h.rows['Report Notes'] = [['note_key'], ['LEG-2026-0001|daily|2026-10-01'], ['MD-2026-0009|daily|2026-10-01']];
   const { changeEmployeeId } = h.load('lib/employee-id-change.ts');
   const run = (next) => h.load('lib/encoder-context.ts').runAsSystem(() => changeEmployeeId('LEG-2026-0001', next, 'Real ID assigned'));
   await assert.rejects(() => run('MD-2026-0009'), /already used/);
@@ -2752,7 +2754,7 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
   const result = await run('md-2026-0042');
   assert.equal(result.newId, 'MD-2026-0042');
   // Database: the employee row (linked columns follow it), the encoder column, and the report note key.
-  assert.deepEqual(result.bySheet, { employees: 1, collections: 1, report_notes: 1, Users: 1, 'Report Notes': 1 });
+  assert.deepEqual(result.bySheet, { employees: 1, collections: 1, report_notes: 1, Users: 1 });
   assert.deepEqual((await query('select employee_id from employees order by employee_id')).map((row) => row.employee_id), ['MD-2026-0009', 'MD-2026-0042']);
   assert.deepEqual(await query('select collection_id, encoded_by_employee_id, accountable_employee_id from collections order by collection_id'), [
     { collection_id: 'COL-1', encoded_by_employee_id: 'MD-2026-0009', accountable_employee_id: 'MD-2026-0042' },
@@ -2765,7 +2767,7 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
   ]);
   // Sheets: only the tabs that are still there.
   const ranges = h.writes.filter((write) => write.requestBody?.data).flatMap((write) => write.requestBody.data.map((item) => `${item.range}=${item.values[0][0]}`));
-  assert.deepEqual([...ranges].sort(), ["'Report Notes'!A2=MD-2026-0042|daily|2026-10-01", "'Users'!B2=MD-2026-0042"]);
+  assert.deepEqual([...ranges].sort(), ["'Users'!B2=MD-2026-0042"]);
 });
 
 test('remittance write guard rejects entries submitted after another request read them as outstanding', async () => {
@@ -4132,4 +4134,33 @@ test('company program deductions on paid payrolls wait until the Collection that
   assert.match((await link('501 A', 'PAJ-2')).body.message, /already linked to deduction/);
   assert.equal((await link('', deduction.body.id)).status, 200, 'unlink');
   assert.deepEqual((await overview()).map((item) => item.collectionId), ['', ''], 'both waiting again');
+});
+
+test('settings, roles and holidays save by key or ID, and saving twice at once adds nothing twice (upgrade #6 phase 4)', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const { runAsSystem } = h.load('lib/encoder-context.ts');
+  const settings = h.load('lib/system-settings.ts');
+  await Promise.all([settings.saveSetting('today_mode', 'or', 'Admin'), settings.saveSetting('today_mode', 'encoded', 'Admin')]);
+  assert.equal((await query("select count(*)::int as n from system_settings where setting_key = 'today_mode'"))[0].n, 1, 'one row per key');
+  await settings.saveSetting('today_mode', 'or', 'Admin');
+  assert.equal(await settings.getTodayMode(), 'or');
+
+  const roles = h.load('lib/roles.ts');
+  const results = await Promise.allSettled([runAsSystem(() => roles.createRole({ name: 'Branch Head' })), runAsSystem(() => roles.createRole({ name: 'branch head' }))]);
+  assert.deepEqual(results.map((result) => result.status).sort(), ['fulfilled', 'rejected']);
+  assert.match(results.find((result) => result.status === 'rejected').reason.message, /already exists/);
+  await runAsSystem(() => roles.updateRole('ROLE-BRANCH-HEAD', { name: 'Branch Head', description: 'Runs a branch', pages: ['/attendance'] }));
+  assert.deepEqual(await query("select role_name, description, page_access from roles where role_id = 'ROLE-BRANCH-HEAD'"), [{ role_name: 'Branch Head', description: 'Runs a branch', page_access: '/attendance' }]);
+  await runAsSystem(() => roles.deleteRole('ROLE-BRANCH-HEAD'));
+  await assert.rejects(runAsSystem(() => roles.deleteRole('ROLE-BRANCH-HEAD')), /Role not found/);
+
+  const calendar = h.load('lib/attendance-calendar.ts');
+  const [first, second] = await Promise.all([runAsSystem(() => calendar.addPhilippineHolidays(2031)), runAsSystem(() => calendar.addPhilippineHolidays(2031))]);
+  assert.ok(first > 0 && second === 0 || second > 0 && first === 0, 'the second finds them all added');
+  const christmas = (await calendar.getHolidays('2031-12-25', '2031-12-25'))[0];
+  assert.equal(christmas.name, 'Christmas Day');
+  await runAsSystem(() => calendar.saveHoliday({ id: christmas.id, date: '2031-12-25', name: 'Christmas', type: christmas.type }));
+  assert.equal((await calendar.getHolidays('2031-12-25', '2031-12-25'))[0].name, 'Christmas');
+  await runAsSystem(() => calendar.deleteHoliday(christmas.id));
+  await assert.rejects(runAsSystem(() => calendar.deleteHoliday(christmas.id)), /no longer exists/);
 });

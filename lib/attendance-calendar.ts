@@ -7,25 +7,22 @@ import {
   type AttendanceRecord,
   updateAttendanceRecord,
 } from "@/lib/attendance-data";
-import { appendEncodedRows } from "@/lib/encoder-sheets";
-import { encoderHeaders } from "@/lib/encoder-schema";
-import { getEncoder } from "@/lib/encoder-context";
+import { and, asc, eq, sql } from "drizzle-orm";
+
+import { currentDb, encodedBy, inTransaction, schema } from "@/lib/db";
 import { getEmployees } from "@/lib/employees";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { getBranches } from "@/lib/google-sheets-data";
 import { HOLIDAY_TYPES, philippineHolidays, type HolidayType } from "@/lib/philippine-holidays";
 import { createReadableId } from "@/lib/readable-id";
-import { deleteRowsById } from "@/lib/sheet-rows";
 
-const SHEET = "Holidays";
-const RANGE = `'${SHEET}'!A:E`;
+const { holidays: holidaysTable } = schema;
 const text = (value: unknown) => String(value ?? "").trim();
 
 /** The Attendance branch value of a closure that covers every branch; otherwise it holds branch IDs joined by ", ". */
 export const ALL_BRANCHES = "All branches";
 
-// Holidays!A:E business columns: holiday_id, holiday_date, name, holiday_type, notes. F:I encoder identity.
-// A holiday is information only; attendance closes only when an administrator declares a non-working day.
+// Holidays (table holidays, read and written by ID since October 24, 2026; upgrade #6 phase 4). A holiday is information
+// only; attendance closes only when an administrator declares a non-working day.
 export type Holiday = { id: string; date: string; name: string; type: HolidayType; notes: string };
 
 export type Closure = {
@@ -35,31 +32,14 @@ export type Closure = {
 export const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const isSunday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
 
-async function sheetExists() {
-  const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties.title" });
-  return Boolean(metadata.data.sheets?.some((sheet) => sheet.properties?.title === SHEET));
-}
-
-async function ensureSheet() {
-  if (await sheetExists()) return;
-  getEncoder();
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [{ addSheet: { properties: { title: SHEET, gridProperties: { frozenRowCount: 1 } } } }] } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A1:I1`, valueInputOption: "RAW", requestBody: { values: [["holiday_id", "holiday_date", "name", "holiday_type", "notes", ...encoderHeaders.map((header) => header.toLowerCase().replace(/ /g, "_"))]] } });
-}
-
-async function holidayRows() {
-  if (!(await sheetExists())) return [];
-  return (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: RANGE, valueRenderOption: "UNFORMATTED_VALUE" })).data.values ?? [];
-}
-
 const holidayType = (value: unknown): HolidayType => HOLIDAY_TYPES.find((type) => type === text(value)) ?? "Special non-working day";
-const readHoliday = (row: unknown[]): Holiday => ({ id: text(row[0]), date: sheetDateText(row[1]), name: text(row[2]), type: holidayType(row[3]), notes: text(row[4]) });
+const readHoliday = (row: typeof holidaysTable.$inferSelect): Holiday => ({ id: row.holiday_id, date: sheetDateText(row.holiday_date), name: text(row.name), type: holidayType(row.holiday_type), notes: text(row.notes) });
 
-/** Holidays dated within the range, oldest first. A missing sheet means none have been added yet. */
+/** Holidays dated within the range, oldest first. */
 export async function getHolidays(dateFrom: string, dateTo: string) {
-  return (await holidayRows()).slice(1).map(readHoliday)
-    .filter((holiday) => holiday.id && holiday.date >= dateFrom && holiday.date <= dateTo)
-    .sort((first, second) => first.date.localeCompare(second.date) || first.name.localeCompare(second.name));
+  const rows = await currentDb().select().from(holidaysTable)
+    .where(sql`${holidaysTable.holiday_date} between ${dateFrom}::date and ${dateTo}::date`).orderBy(asc(holidaysTable.holiday_date), asc(holidaysTable.name));
+  return rows.map(readHoliday).filter((holiday) => holiday.id);
 }
 
 function readHolidayInput(input: Record<string, unknown>) {
@@ -71,38 +51,38 @@ function readHolidayInput(input: Record<string, unknown>) {
   return { date, name, type, notes };
 }
 
-// A leading apostrophe keeps the date as the exact text written, as in Attendance.
-const holidayValues = (holiday: Omit<Holiday, "id"> & { id: string }) => [holiday.id, `'${holiday.date}`, holiday.name, holiday.type, holiday.notes];
-
 /** Adds a holiday, or edits the one with `input.id`. */
 export async function saveHoliday(input: Record<string, unknown>) {
   const holiday = readHolidayInput(input);
   const id = text(input.id);
-  await ensureSheet();
+  const values = { holiday_date: holiday.date, name: holiday.name, holiday_type: holiday.type, notes: holiday.notes || null };
   if (!id) {
     const created = { id: createReadableId("HOL"), ...holiday };
-    await appendEncodedRows({ range: RANGE, requestBody: { values: [holidayValues(created)] } });
+    await currentDb().insert(holidaysTable).values({ holiday_id: created.id, ...values, ...encodedBy() });
     return created;
   }
-  const rows = await holidayRows();
-  const index = rows.findIndex((row, position) => position > 0 && text(row[0]) === id);
-  if (index < 0) throw new Error("That holiday no longer exists. Reload the calendar.");
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A${index + 1}:E${index + 1}`, valueInputOption: "USER_ENTERED", requestBody: { values: [holidayValues({ id, ...holiday })] } });
+  const updated = await currentDb().update(holidaysTable).set(values).where(eq(holidaysTable.holiday_id, id)).returning({ id: holidaysTable.holiday_id });
+  if (!updated.length) throw new Error("That holiday no longer exists. Reload the calendar.");
   return { id, ...holiday };
 }
 
 export async function deleteHoliday(id: string) {
-  if (!id || !(await deleteRowsById(SHEET, [id]))) throw new Error("That holiday no longer exists. Reload the calendar.");
+  const removed = id ? await currentDb().delete(holidaysTable).where(eq(holidaysTable.holiday_id, text(id))).returning({ id: holidaysTable.holiday_id }) : [];
+  if (!removed.length) throw new Error("That holiday no longer exists. Reload the calendar.");
 }
 
 /** Adds the usual Philippine holidays for a year, skipping any date that already has a holiday of the same name. */
 export async function addPhilippineHolidays(year: number) {
   if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error("Choose a valid year.");
-  await ensureSheet();
-  const existing = new Set((await getHolidays(`${year}-01-01`, `${year}-12-31`)).map((holiday) => `${holiday.date}|${holiday.name.toLowerCase()}`));
-  const missing = philippineHolidays(year).filter((holiday) => !existing.has(`${holiday.date}|${holiday.name.toLowerCase()}`));
-  if (missing.length) await appendEncodedRows({ range: RANGE, requestBody: { values: missing.map((holiday) => holidayValues({ id: createReadableId("HOL"), ...holiday })) } });
-  return missing.length;
+  return inTransaction(async (tx) => {
+    // Pressed twice at once, the second waits and then finds them all added.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`holidays:${year}`}))`);
+    const existing = new Set((await tx.select().from(holidaysTable).where(sql`${holidaysTable.holiday_date} between ${`${year}-01-01`}::date and ${`${year}-12-31`}::date`))
+      .map((row) => `${text(row.holiday_date)}|${text(row.name).toLowerCase()}`));
+    const missing = philippineHolidays(year).filter((holiday) => !existing.has(`${holiday.date}|${holiday.name.toLowerCase()}`));
+    if (missing.length) await tx.insert(holidaysTable).values(missing.map((holiday) => ({ holiday_id: createReadableId("HOL") + Math.random().toString(36).slice(2, 5).toUpperCase(), holiday_date: holiday.date, name: holiday.name, holiday_type: holiday.type, notes: holiday.notes || null, ...encodedBy() })));
+    return missing.length;
+  });
 }
 
 function closureBranchIds(record: AttendanceRecord) {
@@ -152,6 +132,8 @@ export async function declareClosure(input: Record<string, unknown>, by: string)
   const requested = Array.isArray(input.branchIds) ? new Set(input.branchIds.map(text)) : new Set<string>();
   const chosen = branches.filter((branch) => requested.has(branch.id));
   if (!allBranches && !chosen.length) throw new Error("Choose the affected branches, or All branches.");
+  // The declaration and every clock-in it cancels are saved together (upgrade #6 phase 4): one transaction.
+  return inTransaction(async () => {
   const existing = await getAttendanceForEmployeeDate("SYSTEM", date);
   const timestamp = new Date().toISOString();
   const record: AttendanceRecord = {
@@ -164,6 +146,7 @@ export async function declareClosure(input: Record<string, unknown>, by: string)
   if (existing.rowNumber) await updateAttendanceRecord(existing.rowNumber, record); else await addAttendanceRecord(record);
   const cancelled = await cancelClockInsForNonWorkingDay(date, reason, by, allBranches ? null : new Set(chosen.map((branch) => branch.name)));
   return { cancelled, scope: allBranches ? ALL_BRANCHES : chosen.map((branch) => branch.name).join(", ") };
+  });
 }
 
 /** Reopens a date. Clock-ins cancelled when it was declared stay cancelled; their original times remain in the notes. */
@@ -171,5 +154,5 @@ export async function removeClosure(date: string) {
   if (!validDate(date)) throw new Error("Choose a valid date.");
   const { record } = await getAttendanceForEmployeeDate("SYSTEM", date);
   if (!record?.id || record.status !== "Non-working Day") throw new Error("That date is not a declared non-working day.");
-  await deleteRowsById("Attendance", [record.id]);
+  await currentDb().delete(schema.attendance).where(and(eq(schema.attendance.attendance_id, record.id), eq(schema.attendance.attendance_status, "Non-working Day")));
 }

@@ -1,25 +1,20 @@
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { currentDb, schema } from "@/lib/db";
 import { isTodayMode, type TodayMode } from "@/lib/today-mode";
 
 export { isTodayMode, TODAY_MODE_LABELS, TODAY_MODES, type TodayMode } from "@/lib/today-mode";
 
-const SHEET = "System Settings";
 const text = (value: unknown) => String(value ?? "").trim();
+const { system_settings: settingsTable } = schema;
 
-// System Settings!A:D: setting_key, value, updated_at, updated_by. One row per key, created on the first save.
-// Company-wide choices an administrator makes in the app; a missing sheet or key means the default applies.
+// system_settings: setting_key, value, updated_at, updated_by. One row per key, created on the first save; a missing key
+// means the default applies. Company-wide choices an administrator makes in the app, and markers kept by the system
+// (attendance days closed, the last nightly run). Read and written directly by key (October 24, 2026; upgrade #6 phase 4).
 
 const TODAY_MODE_KEY = "today_mode";
 
 async function readSettings() {
-  try {
-    const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A:B` })).data.values ?? [];
-    return new Map(rows.slice(1).map((row) => [text(row[0]), text(row[1])]));
-  } catch (error) {
-    // A missing sheet is a 400 "Unable to parse range": nothing has been saved yet.
-    if (typeof error === "object" && error && "code" in error && Number(error.code) === 400) return new Map<string, string>();
-    throw error;
-  }
+  const rows = await currentDb().select({ key: settingsTable.setting_key, value: settingsTable.value }).from(settingsTable);
+  return new Map(rows.map((row) => [text(row.key), text(row.value)]));
 }
 
 /** One company setting, or "" when it has never been saved. */
@@ -27,17 +22,10 @@ export async function getSetting(key: string) {
   return (await readSettings()).get(key) ?? "";
 }
 
+/** Inserts or updates the one row of the key in one statement, so two saves at once never add a second row. */
 export async function saveSetting(key: string, value: string, by: string) {
-  const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties.title" });
-  if (!metadata.data.sheets?.some((sheet) => sheet.properties?.title === SHEET)) {
-    await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [{ addSheet: { properties: { title: SHEET, gridProperties: { frozenRowCount: 1 } } } }] } });
-    await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A1:D1`, valueInputOption: "RAW", requestBody: { values: [["setting_key", "value", "updated_at", "updated_by"]] } });
-  }
-  const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A:A` })).data.values ?? [];
-  const index = rows.findIndex((row, position) => position > 0 && text(row[0]) === key);
-  const values = [[key, value, new Date().toISOString(), by]];
-  if (index < 0) await sheets.spreadsheets.values.append({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A:D`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values } });
-  else await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${SHEET}'!A${index + 1}:D${index + 1}`, valueInputOption: "RAW", requestBody: { values } });
+  const values = { value, updated_at: new Date().toISOString(), updated_by: by };
+  await currentDb().insert(settingsTable).values({ setting_key: key, ...values }).onConflictDoUpdate({ target: settingsTable.setting_key, set: values });
 }
 
 /** The company's "today" mode; Remittance date unless an administrator chose another. */
