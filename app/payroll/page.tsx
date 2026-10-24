@@ -3,7 +3,7 @@
 import { confirmDialog, promptDialog } from "@/components/app-dialog";
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Banknote, CalendarRange, Calculator, Download, FileText, MinusCircle, PlusCircle, Printer, Users, Wallet, X } from "lucide-react";
+import { Banknote, CalendarRange, Calculator, Download, FileText, Link2, MinusCircle, PlusCircle, Printer, Users, Wallet, X } from "lucide-react";
 
 import { InlineRow } from "@/components/inline-panel";
 import { MetricTile } from "@/components/metric-tile";
@@ -19,7 +19,8 @@ import { buildPayslip, PAYSLIP_COMPANY, payslipFileName, payslipPdf, type Paysli
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Run = { id: string; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings; employeeCount: number; grossTotal: number; deductionsTotal: number; netTotal: number; preparedByUserId: string; preparedByName: string; approvedByName: string; approvedAt: string; paidAt: string; cashAccount: string; paymentReference: string; cashTransactionId: string; branch: string; voidReason: string; remarks: string };
-type Overview = { canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; branch: string; roles: string[] }>; employeeBranches: Record<string, string>; cashAccounts: string[]; branches: string[]; adjustmentCategories: Record<Adjustment["kind"], string[]>; programs: Array<{ id: string; code: string; name: string; basePay: number }> };
+type ProgramDeduction = { id: string; runId: string; periodFrom: string; periodTo: string; paidAt: string; employeeId: string; employeeName: string; programId: string; program: string; amount: number; reason: string; collectionId: string; orNumber: string; linkedAt: string; linkedBy: string };
+type Overview = { programDeductions: ProgramDeduction[]; canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; branch: string; roles: string[] }>; employeeBranches: Record<string, string>; cashAccounts: string[]; branches: string[]; adjustmentCategories: Record<Adjustment["kind"], string[]>; programs: Array<{ id: string; code: string; name: string; basePay: number }> };
 type Detail = { canManage: boolean; isAdministrator: boolean; currentUserId: string; run: Run; lines: PayrollLine[]; adjustments: Array<Adjustment & { status: string }>; totals: { gross: number; deductions: number; net: number } };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
@@ -104,12 +105,54 @@ export default function PayrollPage() {
     </div>
 
     {!overview && !error && <p className="text-sm text-muted-foreground">Loading payroll...</p>}
+    {overview && tab === "runs" && !detail && <ProgramDeductions overview={overview} busy={busy} onLink={(adjustmentId, orNumber) => act({ action: "linkDeduction", adjustmentId, orNumber }, orNumber ? `OR ${orNumber} linked; the deduction is settled.` : "Link removed; the deduction is waiting again.")} />}
     {overview && tab === "runs" && !detail && <RunsList overview={overview} busy={busy} onOpen={(id) => void openRun(id).catch((failure) => setError(failure.message))}
       onCreate={(body) => act({ action: "create", ...body }, "Payroll draft created.", async (result) => { await openRun(String(result.id)); })} />}
     {overview && tab === "runs" && detail && <RunDetail overview={overview} detail={detail} busy={busy} error={error} onBack={() => setDetail(null)}
       act={(body, success) => act({ runId: detail.run.id, ...body }, success, async () => { if (body.action === "delete") setDetail(null); else await openRun(detail.run.id); })} />}
     {overview && tab === "rates" && <PayRates overview={overview} busy={busy} onSave={(body) => act({ action: "saveProfile", ...body }, "Pay setup saved.")} />}
   </section>;
+}
+
+/**
+ * Company program deductions on paid payrolls waiting for a Collection (owner, October 24, 2026): the deducted money is
+ * the employee's payment for their own membership; the Entry Clerk encodes it as a Collection the usual way, and Finance
+ * links its OR number here (same program and amount). Linked ones can be shown and unlinked.
+ */
+function ProgramDeductions({ overview, busy, onLink }: { overview: Overview; busy: boolean; onLink: (adjustmentId: string, orNumber: string) => Promise<boolean> }) {
+  const [showLinked, setShowLinked] = useState(false);
+  const [typed, setTyped] = useState<Record<string, string>>({});
+  const waiting = overview.programDeductions.filter((item) => !item.collectionId);
+  const linked = overview.programDeductions.filter((item) => item.collectionId);
+  if (!overview.programDeductions.length) return null;
+  const list = showLinked ? overview.programDeductions : waiting;
+  return <Card>
+    <CardHeader className="pb-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <CardTitle className="flex items-center gap-2 text-base"><Link2 className="size-4 text-primary" />Company program deductions waiting for a Collection ({waiting.length})</CardTitle>
+        {linked.length > 0 && <Button type="button" size="sm" variant="outline" onClick={() => setShowLinked((value) => !value)}>{showLinked ? "Waiting only" : `Show linked too (${linked.length})`}</Button>}
+      </div>
+      <p className="text-xs text-muted-foreground">Money deducted from pay for the employee&apos;s own membership. Have the Entry Clerk encode it as a Collection on the employee&apos;s member account (same program and amount), then link its OR number here. A deduction stays on this list until it is linked.</p>
+    </CardHeader>
+    <CardContent>
+      {!list.length ? <p className="text-sm text-muted-foreground">Every deduction has its Collection.</p> : <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[820px] text-sm">
+        <thead className="bg-muted/50 text-left"><tr>{["Employee", "Program", "Amount", "Payroll", "Collection"].map((header) => <th key={header} className="p-2.5">{header}</th>)}</tr></thead>
+        <tbody>{list.map((item) => <tr key={item.id} className="border-t align-top">
+          <td className="p-2.5"><strong>{item.employeeName}</strong><div className="text-xs text-muted-foreground">{item.employeeId}</div></td>
+          <td className="p-2.5">{item.program || <span className="text-amber-700">Program not recorded</span>}<div className="max-w-72 text-xs text-muted-foreground">{item.reason}</div></td>
+          <td className="p-2.5 tabular-nums">{money(item.amount)}</td>
+          <td className="p-2.5 text-xs">{item.periodFrom} to {item.periodTo}<div className="text-muted-foreground">Paid {item.paidAt.slice(0, 10)}</div></td>
+          <td className="p-2.5">{item.collectionId
+            ? <div className="space-y-1"><span className="font-medium text-emerald-700">OR {item.orNumber}</span><div className="text-xs text-muted-foreground">Linked by {item.linkedBy} {item.linkedAt.slice(0, 10)}</div>{overview.canManage && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void confirmDialog(`Remove the link to OR ${item.orNumber}? The deduction goes back on the waiting list.`).then((ok) => ok && onLink(item.id, ""))}>Unlink</Button>}</div>
+            : overview.canManage ? <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); const or = (typed[item.id] ?? "").trim(); if (or) void onLink(item.id, or).then((ok) => { if (ok) setTyped((current) => ({ ...current, [item.id]: "" })); }); }}>
+                <Input aria-label={`OR number for ${item.employeeName}`} className="h-8 w-32" placeholder="OR number" value={typed[item.id] ?? ""} onChange={(event) => setTyped((current) => ({ ...current, [item.id]: event.target.value }))} />
+                <Button type="submit" size="sm" disabled={busy || !(typed[item.id] ?? "").trim()}>Link</Button>
+              </form>
+            : <span className="text-xs text-amber-700">Waiting</span>}</td>
+        </tr>)}</tbody>
+      </table></div>}
+    </CardContent>
+  </Card>;
 }
 
 function SettingsFields({ settings, onChange, disabled }: { settings: PayrollSettings; onChange: (next: PayrollSettings) => void; disabled?: boolean }) {

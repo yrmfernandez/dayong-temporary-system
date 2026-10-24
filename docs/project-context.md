@@ -8,14 +8,29 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | --- | --- | --- |
 | 1 | Clock-in location check: branch office locations, flag clock-ins away from the branch or with location off for HR | **Built 2026-10-24**; owner migrates production, deploys, then sets each branch's location (Branches → Branch locations for clock-in) |
 | 2 | Nightly scheduled jobs: account-status sync, end-of-day absences, Exceptions, so dashboards are never stale | **Built 2026-10-24**; owner sets CRON_SECRET on Vercel and deploys |
-| 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | **Built 2026-10-24** for vendor, commission and Fidelity payouts; payroll company-program deductions waiting on the owner's decision |
+| 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | **Built 2026-10-24**: vendor, commission and Fidelity payouts record cash; payroll company-program deductions listed until their Collection is linked (owner chose the reminder list) |
 | 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | **Built 2026-10-24**: Member Corrections page with fix coverage, move receipts, insert missing receipt, merge and split |
 | 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | **Built 2026-10-24** (option 1, owner): Base Pay, flexible and registration fee locked once a program has collections |
-| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **In progress**: phase 1 Payroll built 2026-10-24; next clerk report cash, then Expenses/Cash Transactions, then the rest |
+| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **In progress**: phase 1 Payroll and phase 2 clerk report cash built 2026-10-24; next Expenses/Cash Transactions, then the rest |
 | 7 | One time zone (Manila) for every report date | To do |
 | 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Payroll company-program deductions: reminder list (2026-10-24)
+
+- **Owner:** of the three options for upgrade #3's last item (create the Collection automatically, a reminder list, or leave it manual), chose the reminder list.
+- **Done:** migration 0028 adds `program_id`, `collection_id` (one link per collection; set to blank if the collection is deleted), `collection_linked_at` and `collection_linked_by` to `payroll_adjustments`. New Company program deductions save their program. Payroll shows **Company program deductions waiting for a Collection** for Paid payrolls; Finance links the OR of the Collection the Entry Clerk encoded (`linkDeductionCollection` in `lib/payroll.ts`, action `linkDeduction`); it must be posted, same program, same amount, not linked elsewhere; unlink is possible. Test added; all 238 tests and the build pass.
+- **In progress:** none.
+- **To do (owner):** run migration 0028 on production **before** deploying (`npm run prod -- npm run db:migrate`, then `npm run prod -- node scripts/check-database.mjs`: 48 tables, OK); deploy; then link the Collections for deductions already paid.
+
+### Clerk report cash saves in one step (2026-10-24, upgrade #6 phase 2)
+
+- **Owner:** continue upgrade #6 with phase 2.
+- **Done:** `lib/clerk-cash.ts` rewritten on `bank_deposits` and `report_notes`, by ID. Add deposit: one transaction that locks each reference number (6+ digits) in the remarks, checks no other deposit that is not voided has it, then inserts, so two clerks saving the same reference at once cannot both succeed (the October 23 GCash case). Edit deposit: the row is locked and updated once by ID (it used to be two writes by row position). Void: one update by ID. Notes and Cash Beg: one row per clerk, period and branch, found with any capitals and updated, or inserted with the key unique, so two saves at once never make a second row; Cash Beg and notes still change only their own fields. No duplicate check on production was needed: `report_notes.note_key` was already the table's key, and no new rule or migration is added. Reports read the same data. Four tests moved to the database, with new checks for two saves at once (deposit reference and Cash Beg). All 237 tests and the build pass.
+- **In progress:** upgrade #6 phase 3 (Expenses and Cash Transactions).
+- **To do (owner):** deploy.
+- **Also (owner, October 24):** D-420 and DC-420 have incentive tiers only from NOP 13; they are old programs with no new members, so no NOP 1-12 tiers are needed. DPB-420 gives the MAS 30% for NOP 1-6 by its setup; DPB-420 (5Y) gives 50%. `scripts/inspect-program-incentives.mjs <program> <NOP>` (read only) shows any program's tiers and how its receipts at a NOP were priced.
 
 ### Payroll saves in one transaction (2026-10-24, upgrade #6 phase 1)
 

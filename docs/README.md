@@ -1,5 +1,9 @@
 # Dayong System documentation
 
+**October 24, 2026: company program deductions waiting for a Collection.** Payroll lists membership deductions of paid payrolls until Finance links the Collection that put the money on the member account. Needs migration 0028. See [payroll](payroll.md).
+
+**October 24, 2026: clerk report cash saves in one step.** Bank deposits, Notes and Cash Beg are saved directly by ID; the same deposit reference saved twice at once is refused, and Notes or Cash Beg saved twice at once keep one row (upgrade #6, phase 2).
+
 **October 24, 2026: payroll saves in one transaction.** Every payroll action now saves completely or not at all, and Mark paid can no longer record the payroll twice (upgrade #6, phase 1). See [payroll](payroll.md).
 
 **October 24, 2026: program pay locked once paid.** A program's Base Pay, flexible payments and registration fee required can no longer change after it has collections, so old receipts are never read at a new rate; a new price is a new program. See the [system guide](system-guide.md) (implementation limits, item 2).

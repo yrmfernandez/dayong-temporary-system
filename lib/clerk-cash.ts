@@ -1,27 +1,29 @@
+import { and, eq, lte, ne, sql } from "drizzle-orm";
+
+import { currentDb, inTransaction, schema, type Queryable } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { createReadableId } from "@/lib/readable-id";
 
 /**
  * What an Entry Clerk records for their report besides New Sales and Collections:
  *
- * - "Bank Deposits": cash the clerk forwarded to the bank (the report's Cash Flow Transaction section). A deposit is
- *   never deleted; a mistaken one is voided with a reason. Columns: deposit_id, deposit_date, employee_id,
- *   employee_name, branch, bank_account_name, amount, transfer_type, mas, remarks, status, void_reason, created_at.
- * - "Report Notes": per clerk and period, the cash received but not yet encoded and the three remark boxes. Columns:
- *   note_key (employee|kind|start), employee_id, period_kind, period_start, pending_cash, specific_remarks,
- *   pending_transactions, other_comments, updated_at, updated_by, and (October 13, 2026) cash_beg, cash_beg_reason,
- *   cash_beg_updated_at, cash_beg_updated_by: the Cash Beg the clerk typed for the period; blank = zero.
+ * - bank_deposits: cash the clerk forwarded to the bank (the report's Cash Flow Transaction section). A deposit is
+ *   never deleted; a mistaken one is voided with a reason.
+ * - report_notes: per clerk, period and branch (note_key "employee|kind|start|branch"; before October 13, 2026 without
+ *   the branch), the cash received but not yet encoded, the three remark boxes, and (October 13, 2026) the Cash Beg the
+ *   clerk typed for the period with its reason; blank = zero.
  *
- * Both sheets are created on first use. They feed the clerk report only; the finance cash ledger is not changed.
+ * They feed the clerk report only; the finance cash ledger is not changed.
+ *
+ * Saved directly in the database by ID (owner, October 24, 2026; upgrade #6 phase 2, replacing Sheets-style row
+ * writes): each save is one statement or one transaction. A deposit takes a lock on each reference number it carries
+ * before checking for it, so two clerks saving the same GCash reference at once cannot both pass; notes and Cash Beg
+ * are one row per key, inserted or updated in one step, so two saves at once never add a second row.
  */
-const DEPOSITS = "Bank Deposits";
-const NOTES = "Report Notes";
-const DEPOSIT_HEADERS = ["deposit_id", "deposit_date", "employee_id", "employee_name", "branch", "bank_account_name", "amount", "transfer_type", "mas", "remarks", "status", "void_reason", "created_at"];
-const NOTE_HEADERS = ["note_key", "employee_id", "period_kind", "period_start", "pending_cash", "specific_remarks", "pending_transactions", "other_comments", "updated_at", "updated_by", "cash_beg", "cash_beg_reason", "cash_beg_updated_at", "cash_beg_updated_by"];
 /** At least this many characters explain a typed Cash Beg. */
 export const CASH_BEG_REASON_MIN = 5;
 const text = (value: unknown) => String(value ?? "").trim();
+const { bank_deposits: depositsTable, report_notes: notesTable } = schema;
 /**
  * Cash-flow remarks (owner, October 14, 2026): letters and numbers or numbers only (a reference such as 01101026001363),
  * never letters only. Required.
@@ -36,7 +38,8 @@ export const depositRemarksProblem = (value: unknown) => {
  * One reference number, one deposit (owner, October 23, 2026: CABALLERO, JENNY recorded GCash reference 8046291340931
  * twice, dated October 19 and October 20, so ₱880 left Cash on Hand in both reports). A reference is a run of 6 or more
  * digits in the remarks; another deposit that is not voided with the same one refuses the save, naming that deposit so
- * it is edited (its date or amount) or voided instead.
+ * it is edited (its date or amount) or voided instead. `deposits` are rows in the order deposit_id, deposit_date,
+ * employee_id, employee_name, branch, bank_account_name, amount, transfer_type, mas, remarks, status (a header row first).
  */
 const references = (remarks: unknown) => [...new Set(text(remarks).match(/\d{6,}/g) ?? [])];
 export function duplicateReferenceProblem(remarks: unknown, deposits: unknown[][], exceptId = "") {
@@ -51,34 +54,32 @@ export function duplicateReferenceProblem(remarks: unknown, deposits: unknown[][
   return "";
 }
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
-const column = (count: number) => String.fromCharCode(64 + count);
+const asRow = (row: typeof depositsTable.$inferSelect): unknown[] => [row.deposit_id, row.deposit_date, row.employee_id, row.employee_name, row.branch, row.bank_account_name, row.amount, row.transfer_type, row.mas, row.remarks, row.status];
 
-async function titles() {
-  const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties.title" });
-  return new Set((metadata.data.sheets ?? []).map((sheet) => sheet.properties?.title ?? ""));
-}
-
-async function ensure(title: string, headers: string[]) {
-  if ((await titles()).has(title)) return;
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [{ addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } } }] } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${title}'!A1:${column(headers.length)}1`, valueInputOption: "RAW", requestBody: { values: [headers] } });
-}
-
-async function rows(title: string, width: number) {
-  if (!(await titles()).has(title)) return [];
-  return (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${title}'!A:${column(width)}`, valueRenderOption: "UNFORMATTED_VALUE" })).data.values ?? [];
+/**
+ * Refuses a deposit whose reference is already on another deposit. Inside the save's transaction it first locks each
+ * reference it carries, so a second save of the same reference waits and then sees the first.
+ */
+async function assertReferenceFree(tx: Queryable, remarks: unknown, exceptId = "") {
+  const wanted = references(remarks).sort();
+  if (!wanted.length) return;
+  for (const reference of wanted) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`deposit-reference:${reference}`}))`);
+  const candidates = await tx.select().from(depositsTable).where(and(ne(depositsTable.status, "Voided"), sql`${depositsTable.remarks} ~ ${wanted.join("|")}`));
+  const problem = duplicateReferenceProblem(remarks, [[], ...candidates.map(asRow)], exceptId);
+  if (problem) throw new Error(problem);
 }
 
 export type BankDeposit = { id: string; date: string; employeeId: string; branch: string; bankAccount: string; amount: number; transferType: string; mas: string; remarks: string };
 
 /** Posted (not voided) deposits by one clerk on or before `to`. */
 export async function getDeposits(employeeId: string, to: string): Promise<BankDeposit[]> {
-  return (await rows(DEPOSITS, DEPOSIT_HEADERS.length)).slice(1)
-    .filter((row) => text(row[0]) && text(row[2]) === employeeId && text(row[10]) !== "Voided" && text(row[1]) <= to)
-    .map((row) => ({ id: text(row[0]), date: text(row[1]), employeeId: text(row[2]), branch: text(row[4]), bankAccount: text(row[5]), amount: Number(row[6]) || 0, transferType: text(row[7]), mas: text(row[8]), remarks: text(row[9]) }));
+  const rows = await currentDb().select().from(depositsTable)
+    .where(and(eq(depositsTable.employee_id, employeeId), ne(depositsTable.status, "Voided"), lte(depositsTable.deposit_date, to)));
+  return rows.sort((a, b) => text(a.deposit_date).localeCompare(text(b.deposit_date)) || a.row_seq - b.row_seq)
+    .map((row) => ({ id: row.deposit_id, date: text(row.deposit_date), employeeId: text(row.employee_id), branch: text(row.branch), bankAccount: text(row.bank_account_name), amount: Number(row.amount) || 0, transferType: text(row.transfer_type), mas: text(row.mas), remarks: text(row.remarks) }));
 }
 
-export async function addDeposit(input: Record<string, unknown>, clerk: { employeeId: string; name: string; branch: string }) {
+function depositFields(input: Record<string, unknown>) {
   const date = text(input.date), amount = Math.round(Number(input.amount) * 100) / 100;
   if (!validDate(date)) throw new Error("Enter the deposit date.");
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter the amount deposited.");
@@ -87,15 +88,18 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
   if (!transferType) throw new Error("Enter the type of transfer (bank or channel).");
   const remarksProblem = depositRemarksProblem(input.remarks);
   if (remarksProblem) throw new Error(remarksProblem);
+  return { deposit_date: date, bank_account_name: bankAccount, amount, transfer_type: transferType, mas: text(input.mas).slice(0, 100), remarks: text(input.remarks).slice(0, 200) };
+}
+
+export async function addDeposit(input: Record<string, unknown>, clerk: { employeeId: string; name: string; branch: string }) {
+  const fields = depositFields(input);
   getEncoder();
-  await ensure(DEPOSITS, DEPOSIT_HEADERS);
-  const duplicate = duplicateReferenceProblem(input.remarks, await rows(DEPOSITS, DEPOSIT_HEADERS.length));
-  if (duplicate) throw new Error(duplicate);
-  const id = createReadableId("DEP");
-  await sheets.spreadsheets.values.append({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!A:M`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values: [[
-    id, date, clerk.employeeId, clerk.name, clerk.branch, bankAccount, amount, transferType, text(input.mas).slice(0, 100), text(input.remarks).slice(0, 200), "Posted", "", new Date().toISOString(),
-  ]] } });
-  return { id };
+  return inTransaction(async (tx) => {
+    await assertReferenceFree(tx, fields.remarks);
+    const id = createReadableId("DEP");
+    await tx.insert(depositsTable).values({ deposit_id: id, employee_id: clerk.employeeId, employee_name: clerk.name, branch: clerk.branch, status: "Posted", void_reason: null, created_at: new Date().toISOString(), ...fields });
+    return { id };
+  });
 }
 
 /**
@@ -103,50 +107,46 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
  * MAS and remarks. The clerk who recorded it or an administrator; not a voided one. The Audit Log keeps the old values.
  */
 export async function editDeposit(id: string, input: Record<string, unknown>, by: { employeeId: string; isAdmin: boolean }) {
-  const date = text(input.date), amount = Math.round(Number(input.amount) * 100) / 100;
-  if (!validDate(date)) throw new Error("Enter the deposit date.");
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter the amount deposited.");
-  const bankAccount = text(input.bankAccount).slice(0, 100), transferType = text(input.transferType).slice(0, 60);
-  if (!bankAccount) throw new Error("Enter the bank account name.");
-  if (!transferType) throw new Error("Enter the type of transfer (bank or channel).");
-  const remarksProblem = depositRemarksProblem(input.remarks);
-  if (remarksProblem) throw new Error(remarksProblem);
+  const fields = depositFields(input);
   getEncoder();
-  const all = await rows(DEPOSITS, DEPOSIT_HEADERS.length);
-  const index = all.findIndex((row, position) => position > 0 && text(row[0]) === text(id));
-  if (index < 0) throw new Error("Deposit not found.");
-  if (!by.isAdmin && text(all[index][2]) !== by.employeeId) throw new Error("You can edit only deposits you recorded.");
-  if (text(all[index][10]) === "Voided") throw new Error("A voided deposit cannot be edited.");
-  const duplicate = duplicateReferenceProblem(input.remarks, all, text(id));
-  if (duplicate) throw new Error(duplicate);
-  // B date, F bank account, G amount, H type of transfer, I MAS, J remarks; the clerk, branch and status stay.
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!B${index + 1}:B${index + 1}`, valueInputOption: "RAW", requestBody: { values: [[date]] } });
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!F${index + 1}:J${index + 1}`, valueInputOption: "RAW", requestBody: { values: [[bankAccount, amount, transferType, text(input.mas).slice(0, 100), text(input.remarks).slice(0, 200)]] } });
+  await inTransaction(async (tx) => {
+    const [row] = await tx.select().from(depositsTable).where(eq(depositsTable.deposit_id, text(id))).for("update");
+    if (!row) throw new Error("Deposit not found.");
+    if (!by.isAdmin && text(row.employee_id) !== by.employeeId) throw new Error("You can edit only deposits you recorded.");
+    if (text(row.status) === "Voided") throw new Error("A voided deposit cannot be edited.");
+    await assertReferenceFree(tx, fields.remarks, row.deposit_id);
+    // The clerk, branch and status stay.
+    await tx.update(depositsTable).set(fields).where(eq(depositsTable.deposit_id, row.deposit_id));
+  });
 }
 
 /** Voids a deposit recorded by mistake; the clerk who recorded it or an administrator may do so. */
 export async function voidDeposit(id: string, reason: string, by: { employeeId: string; isAdmin: boolean }) {
   if (reason.trim().length < 3) throw new Error("Give the reason for voiding the deposit.");
-  const all = await rows(DEPOSITS, DEPOSIT_HEADERS.length);
-  const index = all.findIndex((row, position) => position > 0 && text(row[0]) === id);
-  if (index < 0) throw new Error("Deposit not found.");
-  if (!by.isAdmin && text(all[index][2]) !== by.employeeId) throw new Error("You can void only deposits you recorded.");
-  if (text(all[index][10]) === "Voided") throw new Error("This deposit is already voided.");
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${DEPOSITS}'!K${index + 1}:L${index + 1}`, valueInputOption: "RAW", requestBody: { values: [["Voided", reason.trim().slice(0, 200)]] } });
+  await inTransaction(async (tx) => {
+    const [row] = await tx.select().from(depositsTable).where(eq(depositsTable.deposit_id, text(id))).for("update");
+    if (!row) throw new Error("Deposit not found.");
+    if (!by.isAdmin && text(row.employee_id) !== by.employeeId) throw new Error("You can void only deposits you recorded.");
+    if (text(row.status) === "Voided") throw new Error("This deposit is already voided.");
+    await tx.update(depositsTable).set({ status: "Voided", void_reason: reason.trim().slice(0, 200) }).where(eq(depositsTable.deposit_id, row.deposit_id));
+  });
 }
 
 export type CashBegEdit = { amount: number; reason: string; updatedAt: string; updatedBy: string };
 export type ReportNotes = { pendingCash: number; specificRemarks: string; pendingTransactions: string; otherComments: string; updatedAt: string; updatedBy: string; cashBeg: CashBegEdit | null };
-/** Columns K-N of a notes row: the typed Cash Beg, or null when it is blank. */
-const cashBegOf = (row: unknown[] | undefined): CashBegEdit | null => text(row?.[10]) === "" || !Number.isFinite(Number(row?.[10])) ? null
-  : { amount: Number(row?.[10]), reason: text(row?.[11]), updatedAt: text(row?.[12]), updatedBy: text(row?.[13]) };
+type NoteRow = typeof notesTable.$inferSelect;
+/** The typed Cash Beg of a notes row, or null when it is blank. */
+const cashBegOf = (row: NoteRow | undefined): CashBegEdit | null => row?.cash_beg === null || row?.cash_beg === undefined || !Number.isFinite(Number(row.cash_beg)) ? null
+  : { amount: Number(row.cash_beg), reason: text(row.cash_beg_reason), updatedAt: text(row.cash_beg_updated_at), updatedBy: text(row.cash_beg_updated_by) };
 /** One notes row per clerk, period and branch (October 13, 2026); rows from before then have no branch part. */
 const noteKey = (employeeId: string, kind: string, start: string, branch = "") => `${employeeId}|${kind}|${start}${text(branch) ? `|${text(branch)}` : ""}`;
 const sameKey = (a: unknown, b: string) => text(a).toLowerCase() === b.toLowerCase();
+/** The clerk's notes rows (keys start with their Employee ID). */
+const notesOf = (employeeId: string, db: Queryable = currentDb()) => db.select().from(notesTable).where(sql`lower(${notesTable.note_key}) like ${`${employeeId.toLowerCase()}|%`}`);
 
 /** A branch's notes; the notes saved before reports were split by branch count for the clerk's primary branch. */
 export async function getReportNotes(employeeId: string, kind: string, start: string, branch = "", primary = false): Promise<ReportNotes> {
-  const all = await rows(NOTES, NOTE_HEADERS.length);
+  const all = await notesOf(employeeId);
   if (!text(branch)) {
     /*
      * All branches (Audits, Report Review): every branch's notes for this clerk and period together (owner, October 13,
@@ -154,30 +154,45 @@ export async function getReportNotes(employeeId: string, kind: string, start: st
      * adds up.
      */
     const base = noteKey(employeeId, kind, start).toLowerCase();
-    const found = all.slice(1).filter((item) => { const key = text(item[0]).toLowerCase(); return key === base || key.startsWith(`${base}|`); });
+    const found = all.filter((item) => { const key = text(item.note_key).toLowerCase(); return key === base || key.startsWith(`${base}|`); }).sort((a, b) => a.row_seq - b.row_seq);
     const several = found.length > 1;
-    const join = (index: number) => found.filter((item) => text(item[index])).map((item) => { const label = text(item[0]).split("|")[3] ?? ""; return several && label ? `${label}: ${text(item[index])}` : text(item[index]); }).join("\n\n");
-    const latest = [...found].sort((a, b) => text(b[8]).localeCompare(text(a[8])))[0];
-    return { pendingCash: Math.round(found.reduce((total, item) => total + (Number(item[4]) || 0), 0) * 100) / 100, specificRemarks: join(5), pendingTransactions: join(6), otherComments: join(7), updatedAt: text(latest?.[8]), updatedBy: text(latest?.[9]), cashBeg: null };
+    const join = (field: "specific_remarks" | "pending_transactions" | "other_comments") => found.filter((item) => text(item[field])).map((item) => { const label = text(item.note_key).split("|")[3] ?? ""; return several && label ? `${label}: ${text(item[field])}` : text(item[field]); }).join("\n\n");
+    const latest = [...found].sort((a, b) => text(b.updated_at).localeCompare(text(a.updated_at)))[0];
+    return { pendingCash: Math.round(found.reduce((total, item) => total + (Number(item.pending_cash) || 0), 0) * 100) / 100, specificRemarks: join("specific_remarks"), pendingTransactions: join("pending_transactions"), otherComments: join("other_comments"), updatedAt: text(latest?.updated_at), updatedBy: text(latest?.updated_by), cashBeg: null };
   }
-  const row = all.find((item) => sameKey(item[0], noteKey(employeeId, kind, start, branch)))
-    ?? (branch && primary ? all.find((item) => sameKey(item[0], noteKey(employeeId, kind, start))) : undefined);
-  return { pendingCash: Number(row?.[4]) || 0, specificRemarks: text(row?.[5]), pendingTransactions: text(row?.[6]), otherComments: text(row?.[7]), updatedAt: text(row?.[8]), updatedBy: text(row?.[9]), cashBeg: cashBegOf(row) };
+  const row = all.find((item) => sameKey(item.note_key, noteKey(employeeId, kind, start, branch)))
+    ?? (branch && primary ? all.find((item) => sameKey(item.note_key, noteKey(employeeId, kind, start))) : undefined);
+  return { pendingCash: Number(row?.pending_cash) || 0, specificRemarks: text(row?.specific_remarks), pendingTransactions: text(row?.pending_transactions), otherComments: text(row?.other_comments), updatedAt: text(row?.updated_at), updatedBy: text(row?.updated_by), cashBeg: cashBegOf(row) };
 }
 
 /** Every Cash Beg the clerk typed, with the report it belongs to (kind, start day and branch; "" before the split), oldest first. */
 export async function getCashBegEdits(employeeId: string): Promise<Array<CashBegEdit & { kind: string; start: string; branch: string }>> {
-  return (await rows(NOTES, NOTE_HEADERS.length)).slice(1)
-    .filter((row) => text(row[1]) === employeeId && cashBegOf(row))
-    .map((row) => { const [, kind = "", start = "", branch = ""] = text(row[0]).split("|"); return { ...cashBegOf(row)!, kind, start, branch }; })
+  return (await notesOf(employeeId))
+    .filter((row) => text(row.employee_id) === employeeId && cashBegOf(row))
+    .map((row) => { const [, kind = "", start = "", branch = ""] = text(row.note_key).split("|"); return { ...cashBegOf(row)!, kind, start, branch }; })
     .filter((edit) => validDate(edit.start))
     .sort((a, b) => a.start.localeCompare(b.start) || a.updatedAt.localeCompare(b.updatedAt));
 }
 
 /**
+ * Inserts or updates the one notes row of a key, in one transaction: an existing row written with other capitals is
+ * found and kept (its key unchanged); otherwise a new row is inserted, and a second save arriving at the same moment
+ * updates that row instead of adding another (the key is unique).
+ */
+async function upsertNotes(employeeId: string, kind: string, start: string, branch: string, changes: Partial<NoteRow>) {
+  const key = noteKey(employeeId, kind, start, branch);
+  await inTransaction(async (tx) => {
+    const [existing] = await tx.select({ key: notesTable.note_key }).from(notesTable).where(sql`lower(${notesTable.note_key}) = ${key.toLowerCase()}`).for("update").limit(1);
+    if (existing) { await tx.update(notesTable).set(changes).where(eq(notesTable.note_key, existing.key)); return; }
+    await tx.insert(notesTable).values({ note_key: key, employee_id: employeeId, period_kind: kind, period_start: start, pending_cash: 0, ...changes })
+      .onConflictDoUpdate({ target: notesTable.note_key, set: changes });
+  });
+}
+
+/**
  * The clerk types the Cash Beg of their own report for one period: the cash actually received at its start (owner,
  * October 13, 2026: case by case), with the reason. It is that report's alone; other reports are not changed. A blank
- * amount clears it (Cash Beg zero). Only columns K-N change, so the notes stay as they are.
+ * amount clears it (Cash Beg zero). Only the Cash Beg fields change, so the notes stay as they are.
  */
 export async function saveCashBeg(employeeId: string, kind: string, start: string, input: Record<string, unknown>, branch = "") {
   const blank = input.cashBeg === null || input.cashBeg === undefined || text(input.cashBeg) === "";
@@ -186,13 +201,9 @@ export async function saveCashBeg(employeeId: string, kind: string, start: strin
   if (amount !== null && (!Number.isFinite(amount) || amount < 0)) throw new Error("Cash Beg must be zero or a positive amount.");
   if (amount !== null && reason.length < CASH_BEG_REASON_MIN) throw new Error("Enter the reason for the Cash Beg (at least 5 characters).");
   const actor = getEncoder();
-  await ensure(NOTES, NOTE_HEADERS);
-  const key = noteKey(employeeId, kind, start, branch);
-  const cash = amount === null ? ["", "", "", ""] : [amount, reason, actor.encodedAt, actor.name];
-  const all = await rows(NOTES, NOTE_HEADERS.length);
-  const index = all.findIndex((row, position) => position > 0 && sameKey(row[0], key));
-  if (index < 0) await sheets.spreadsheets.values.append({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!A:N`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values: [[key, employeeId, kind, start, 0, "", "", "", actor.encodedAt, actor.name, ...cash]] } });
-  else await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!K${index + 1}:N${index + 1}`, valueInputOption: "RAW", requestBody: { values: [cash] } });
+  await upsertNotes(employeeId, kind, start, branch, amount === null
+    ? { cash_beg: null, cash_beg_reason: null, cash_beg_updated_at: null, cash_beg_updated_by: null }
+    : { cash_beg: amount, cash_beg_reason: reason, cash_beg_updated_at: actor.encodedAt, cash_beg_updated_by: actor.name });
 }
 
 /** The clerk saves the notes of their own report for one period. */
@@ -200,10 +211,8 @@ export async function saveReportNotes(employeeId: string, kind: string, start: s
   const pendingCash = Math.round((Number(input.pendingCash) || 0) * 100) / 100;
   if (pendingCash < 0) throw new Error("Pending cash cannot be negative.");
   const actor = getEncoder();
-  await ensure(NOTES, NOTE_HEADERS);
-  const values = [[noteKey(employeeId, kind, start, branch), employeeId, kind, start, pendingCash, text(input.specificRemarks).slice(0, 1000), text(input.pendingTransactions).slice(0, 1000), text(input.otherComments).slice(0, 1000), actor.encodedAt, actor.name]];
-  const all = await rows(NOTES, NOTE_HEADERS.length);
-  const index = all.findIndex((row, position) => position > 0 && sameKey(row[0], String(values[0][0])));
-  if (index < 0) await sheets.spreadsheets.values.append({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!A:J`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values } });
-  else await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${NOTES}'!A${index + 1}:J${index + 1}`, valueInputOption: "RAW", requestBody: { values } });
+  await upsertNotes(employeeId, kind, start, branch, {
+    pending_cash: pendingCash, specific_remarks: text(input.specificRemarks).slice(0, 1000) || null, pending_transactions: text(input.pendingTransactions).slice(0, 1000) || null,
+    other_comments: text(input.otherComments).slice(0, 1000) || null, updated_at: actor.encodedAt, updated_by: actor.name,
+  });
 }

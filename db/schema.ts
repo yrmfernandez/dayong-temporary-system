@@ -853,7 +853,18 @@ export const payroll_adjustments = pgTable("payroll_adjustments", {
   reason: text(),
   status: text(),
   ...encoder(),
-}, (t) => [index("payroll_adjustments_payroll_idx").on(t.payroll_id)]).enableRLS();
+  /**
+   * Company program deductions (owner, October 24, 2026; migration 0028): the program deducted for, and the Collection
+   * that put the deducted money on the employee's member account, linked by Finance once the Entry Clerk encoded it.
+   * Until linked the deduction is listed on Payroll as waiting for a Collection.
+   */
+  program_id: text().references(() => programs.program_id),
+  collection_id: text().references(() => collections.collection_id, { onDelete: "set null" }),
+  collection_linked_at: moment("collection_linked_at"),
+  collection_linked_by: text(),
+}, (t) => [index("payroll_adjustments_payroll_idx").on(t.payroll_id),
+  // One Collection settles one deduction.
+  uniqueIndex("payroll_adjustments_collection_key").on(t.collection_id).where(sql`${t.collection_id} is not null`)]).enableRLS();
 
 // ---------------------------------------------------------------- reports, audits, corrections
 

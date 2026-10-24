@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-44 page routes, 73 API handlers, 132 library files, 59 component files; 604 scanned source/configuration/public-text files in total.
+44 page routes, 73 API handlers, 132 library files, 59 component files; 605 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -161,7 +161,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/cash-count.ts](../lib/cash-count.ts) | `DENOMINATIONS`, `CashCount`, `cashCountTotal`, `formatCashCount`, `parseCashCount`, `cashCountProblem` | — |
 | [lib/clearing-kinds.ts](../lib/clearing-kinds.ts) | `ClearingKind`, `ClearingCovers`, `CLEARING_COVERS`, `coveredKinds`, `DATE_REMITTED_REASON_MIN` | — |
 | [lib/clearing.ts](../lib/clearing.ts) | `ClearingStage`, `CLEARING_COVERS`, `coveredKinds`, `ClearingCovers`, `ClearingKind`, `ClearingDecision`, `Clearing`, `withProgress`, `LIST_CLEARED`, `DayEndLine`, `getDayEndReview`, `settleDayEnd`, `getClearingPage`, `getEncodableClearings`, `AlreadyClearedError`, `addClearing`, `removeClearing`, `editClearing`, `clearedEmployee`, `clearingProblem`, `waitingBatchProblem`, `dateRemittedReasonProblem`, `clearedAt`, `closeClearings`, `countOpenClearings` | `@/lib/db`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/clearing-kinds`, `@/lib/entry-batches`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
-| [lib/clerk-cash.ts](../lib/clerk-cash.ts) | `CASH_BEG_REASON_MIN`, `depositRemarksProblem`, `duplicateReferenceProblem`, `BankDeposit`, `getDeposits`, `addDeposit`, `editDeposit`, `voidDeposit`, `CashBegEdit`, `ReportNotes`, `getReportNotes`, `getCashBegEdits`, `saveCashBeg`, `saveReportNotes` | `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/readable-id` |
+| [lib/clerk-cash.ts](../lib/clerk-cash.ts) | `CASH_BEG_REASON_MIN`, `depositRemarksProblem`, `duplicateReferenceProblem`, `BankDeposit`, `getDeposits`, `addDeposit`, `editDeposit`, `voidDeposit`, `CashBegEdit`, `ReportNotes`, `getReportNotes`, `getCashBegEdits`, `saveCashBeg`, `saveReportNotes` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/readable-id` |
 | [lib/clerk-report.ts](../lib/clerk-report.ts) | `COMPANY`, `weekOfMonth`, `ReportLine`, `ExpenseRow`, `buildClerkReport`, `ClerkReport`, `BranchFigures` | `@/lib/clerk-cash`, `@/lib/db`, `@/lib/daily-audit`, `@/lib/google-sheets`, `@/lib/mas-expected`, `@/lib/receipt-photos`, `@/lib/remittance-deadline`, `@/lib/todays-entries` |
 | [lib/clock-in-checks.ts](../lib/clock-in-checks.ts) | `ClockInCheck`, `readDevicePosition`, `recordClockInCheck`, `getClockInChecks`, `getClockInCheck`, `saveClockInReview` | `@/lib/db`, `@/lib/clock-in-location`, `@/lib/google-sheets-data` |
 | [lib/clock-in-location.ts](../lib/clock-in-location.ts) | `DEFAULT_RADIUS_M`, `MIN_RADIUS_M`, `MAX_RADIUS_M`, `MAX_ACCURACY_ALLOWANCE_M`, `ClockInResult`, `ReviewStatus`, `DevicePosition`, `BranchLocation`, `isValidCoordinate`, `hasLocation`, `distanceMeters`, `radiusOf`, `checkClockIn`, `needsReview`, `formatDistance`, `clockInLabel`, `parseCoordinates` | — |
@@ -224,7 +224,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/page-catalog.ts](../lib/page-catalog.ts) | `pageCatalog`, `pageCatalogRoutes` | — |
 | [lib/passwords.ts](../lib/passwords.ts) | `ONE_TIME_PASSWORD_HOURS`, `generateOneTimePassword`, `hashPassword`, `hashOneTimePassword`, `oneTimePasswordExpiry`, `checkPassword` | — |
 | [lib/payroll-calc.ts](../lib/payroll-calc.ts) | `WORKING_DAYS_PER_YEAR`, `BaseType`, `PayProfile`, `PayrollSettings`, `defaultPayrollSettings`, `AttendanceDay`, `CommissionItem`, `PayrollLine`, `Adjustment`, `COMPANY_PROGRAM_CATEGORY`, `ADJUSTMENT_CATEGORIES`, `dailyRateOf`, `scheduledWorkingDays`, `computePayrollLine`, `lineTotals`, `runTotals` | — |
-| [lib/payroll.ts](../lib/payroll.ts) | `getPayProfiles`, `savePayProfile`, `PayrollRun`, `getPayrollOverview`, `getPayrollRun`, `createPayrollRun`, `recalculatePayrollRun`, `addPayrollAdjustment`, `removePayrollAdjustment`, `approvePayrollRun`, `payPayrollRun`, `voidPayrollRun`, `deletePayrollRun` | `@/lib/attendance-data`, `@/lib/auto-absence`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/finance-data`, `@/lib/finance-operations`, `@/lib/google-sheets-data`, `@/lib/payroll-calc`, `@/lib/readable-id` |
+| [lib/payroll.ts](../lib/payroll.ts) | `getPayProfiles`, `savePayProfile`, `PayrollRun`, `getPayrollOverview`, `getPayrollRun`, `createPayrollRun`, `recalculatePayrollRun`, `addPayrollAdjustment`, `removePayrollAdjustment`, `approvePayrollRun`, `payPayrollRun`, `voidPayrollRun`, `deletePayrollRun`, `ProgramDeduction`, `getProgramDeductions`, `linkDeductionCollection` | `@/lib/attendance-data`, `@/lib/auto-absence`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/finance-data`, `@/lib/finance-operations`, `@/lib/google-sheets-data`, `@/lib/payroll-calc`, `@/lib/readable-id` |
 | [lib/payslip.ts](../lib/payslip.ts) | `PAYSLIP_COMPANY`, `PayslipRow`, `Payslip`, `buildPayslip`, `payslipFileName`, `payslipPdf` | `@/lib/payroll-calc` |
 | [lib/philippine-holidays.ts](../lib/philippine-holidays.ts) | `HOLIDAY_TYPES`, `HolidayType`, `HolidayTemplate`, `philippineHolidays` | — |
 | [lib/photo-storage.ts](../lib/photo-storage.ts) | `PHOTO_BUCKET`, `storePhoto`, `readPhoto` | — |
@@ -537,6 +537,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/inspect-or-member-20261017.mjs](../scripts/inspect-or-member-20261017.mjs) | `@next/env`, `postgres`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-or12617b-20261020.mjs](../scripts/inspect-or12617b-20261020.mjs) | `node:fs`, `@next/env`, `postgres`, `./legacy-sources.mjs` | No flag detected; read source before running |
 | [scripts/inspect-ph97483925-split.mjs](../scripts/inspect-ph97483925-split.mjs) | `@next/env`, `postgres`, `node:crypto`, `node:fs`, `./legacy-sources.mjs` | No flag detected; read source before running |
+| [scripts/inspect-program-incentives.mjs](../scripts/inspect-program-incentives.mjs) | `@next/env`, `postgres`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/inspect-program-tiers.mjs](../scripts/inspect-program-tiers.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-remittance-approval.mjs](../scripts/inspect-remittance-approval.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-rutchelyn-clearing.mjs](../scripts/inspect-rutchelyn-clearing.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |

@@ -116,8 +116,9 @@ function readAdjustment(row: typeof adjustmentsTable.$inferSelect) {
 }
 
 export async function getPayrollOverview() {
-  const [runRows, profiles, employees, accounts, branches, programs] = await Promise.all([currentDb().select().from(runsTable), getPayProfiles(), getEmployees(), getCashAccounts(), getBranches(), getPrograms()]);
+  const [runRows, profiles, employees, accounts, branches, programs, programDeductions] = await Promise.all([currentDb().select().from(runsTable), getPayProfiles(), getEmployees(), getCashAccounts(), getBranches(), getPrograms(), getProgramDeductions()]);
   return {
+    programDeductions,
     runs: runRows.map(readRun).sort((a, b) => b.periodFrom.localeCompare(a.periodFrom) || b.id.localeCompare(a.id)),
     profiles,
     employees: employees.filter((employee) => employee.status.toLowerCase() === "active").map((employee) => ({ id: employee.id, name: employee.name, branch: employee.branch, roles: employee.roles })),
@@ -273,7 +274,7 @@ export async function recalculatePayrollRun(runId: string, input: Record<string,
 
 export async function addPayrollAdjustment(runId: string, input: Record<string, unknown>) {
   const employeeId = text(input.employeeId), kind = text(input.kind), category = text(input.category), amount = centavos(num(input.amount));
-  let reason = text(input.reason);
+  let reason = text(input.reason), programId: string | null = null;
   if (kind !== "Addition" && kind !== "Deduction") throw new Error("Choose an addition or a deduction.");
   if (!(ADJUSTMENT_CATEGORIES[kind] as readonly string[]).includes(category)) throw new Error(`Choose a ${kind.toLowerCase()} category.`);
   if (!(amount > 0)) throw new Error("Enter an amount greater than zero.");
@@ -282,12 +283,13 @@ export async function addPayrollAdjustment(runId: string, input: Record<string, 
     const program = (await getPrograms()).find((item) => item.id === text(input.programId));
     if (!program) throw new Error("Select the company program being deducted.");
     reason = `${program.code} - ${program.name}: ${reason}`;
+    programId = program.id;
   }
   return inTransaction(async (tx) => {
     const { lines } = await lockedDraft(runId, tx);
     if (!lines.some((line) => line.employeeId === employeeId)) throw new Error("Select an employee in this payroll.");
     const id = createReadableId("PAJ");
-    await tx.insert(adjustmentsTable).values({ adjustment_id: id, payroll_id: runId, employee_id: employeeId, kind, category, amount, reason, status: "active", ...encodedBy() });
+    await tx.insert(adjustmentsTable).values({ adjustment_id: id, payroll_id: runId, employee_id: employeeId, kind, category, amount, reason, status: "active", program_id: programId, ...encodedBy() });
     await storeRunTotals(runId, tx);
     return { id };
   });
@@ -372,5 +374,68 @@ export async function deletePayrollRun(runId: string) {
     await tx.delete(linesTable).where(eq(linesTable.payroll_id, run.id));
     await tx.delete(runsTable).where(eq(runsTable.payroll_id, run.id));
     return { id: run.id };
+  });
+}
+
+// ---------- Company program deductions waiting for a Collection ----------
+
+/**
+ * Company program deductions on paid payrolls (owner, October 24, 2026, upgrade #3): the deducted money is the employee's
+ * payment for their own membership, but payroll does not record it on the member account. Each deduction stays on the
+ * list until Finance links the Collection the Entry Clerk encoded for it (same program, same amount, posted). Older
+ * deductions without a saved program are matched by the program code at the start of their reason.
+ */
+export type ProgramDeduction = {
+  id: string; runId: string; periodFrom: string; periodTo: string; paidAt: string; employeeId: string; employeeName: string;
+  programId: string; program: string; amount: number; reason: string; collectionId: string; orNumber: string; linkedAt: string; linkedBy: string;
+};
+
+export async function getProgramDeductions(db: Queryable = currentDb()): Promise<ProgramDeduction[]> {
+  const rows = await db.select({ adjustment: adjustmentsTable, run: runsTable, orNumber: schema.collections.or_number })
+    .from(adjustmentsTable).innerJoin(runsTable, eq(runsTable.payroll_id, adjustmentsTable.payroll_id))
+    .leftJoin(schema.collections, eq(schema.collections.collection_id, adjustmentsTable.collection_id))
+    .where(and(eq(adjustmentsTable.category, COMPANY_PROGRAM_CATEGORY), eq(adjustmentsTable.kind, "Deduction"), eq(adjustmentsTable.status, "active"), eq(runsTable.status, "Paid")));
+  if (!rows.length) return [];
+  const [programs, names] = await Promise.all([getPrograms(), db.select({ id: linesTable.employee_id, name: linesTable.employee_name }).from(linesTable).where(inArray(linesTable.payroll_id, [...new Set(rows.map((row) => row.run.payroll_id))]))]);
+  const nameOf = new Map(names.map((row) => [row.id, text(row.name)]));
+  const programOf = (adjustment: typeof adjustmentsTable.$inferSelect) => programs.find((program) => program.id === adjustment.program_id)
+    ?? programs.find((program) => program.code && text(adjustment.reason).toLowerCase().startsWith(`${program.code} - ${program.name}:`.toLowerCase()));
+  return rows.map(({ adjustment, run, orNumber }) => {
+    const program = programOf(adjustment);
+    return {
+      id: adjustment.adjustment_id, runId: run.payroll_id, periodFrom: text(run.period_from), periodTo: text(run.period_to), paidAt: text(run.paid_at), employeeId: adjustment.employee_id,
+      employeeName: nameOf.get(adjustment.employee_id) || adjustment.employee_id, programId: program?.id ?? "", program: program ? `${program.code} - ${program.name}` : "", amount: num(adjustment.amount), reason: text(adjustment.reason),
+      collectionId: text(adjustment.collection_id), orNumber: text(orNumber), linkedAt: text(adjustment.collection_linked_at), linkedBy: text(adjustment.collection_linked_by),
+    };
+  }).sort((a, b) => Number(Boolean(a.collectionId)) - Number(Boolean(b.collectionId)) || b.paidAt.localeCompare(a.paidAt) || a.employeeName.localeCompare(b.employeeName));
+}
+
+/**
+ * Links (or with a blank OR, unlinks) the Collection that settled a deduction. The receipt must be a posted collection in
+ * the deduction's program for the same amount, not linked to another deduction (the database also allows one link per
+ * collection). One transaction on the locked deduction.
+ */
+export async function linkDeductionCollection(adjustmentId: string, orNumberInput: unknown) {
+  const actor = getEncoder();
+  const orNumber = text(orNumberInput);
+  return inTransaction(async (tx) => {
+    const [adjustment] = await tx.select().from(adjustmentsTable).where(eq(adjustmentsTable.adjustment_id, text(adjustmentId))).for("update");
+    if (!adjustment || adjustment.category !== COMPANY_PROGRAM_CATEGORY || adjustment.status !== "active") throw new Error("Company program deduction not found.");
+    if (!orNumber) {
+      await tx.update(adjustmentsTable).set({ collection_id: null, collection_linked_at: null, collection_linked_by: null }).where(eq(adjustmentsTable.adjustment_id, adjustment.adjustment_id));
+      return { id: adjustment.adjustment_id, collectionId: "" };
+    }
+    const deduction = (await getProgramDeductions(tx)).find((item) => item.id === adjustment.adjustment_id);
+    if (!deduction) throw new Error("Only a deduction on a paid payroll can be linked.");
+    const key = orNumber.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const [collection] = await tx.select().from(schema.collections).where(and(eq(schema.collections.or_key, key), eq(schema.collections.status, "Posted"))).limit(1);
+    if (!collection) throw new Error(`No posted collection has OR ${orNumber}. Have the Entry Clerk encode the member's payment first.`);
+    if (deduction.programId && collection.program_id !== deduction.programId) throw new Error(`OR ${collection.or_number} is for another program; this deduction is for ${deduction.program}.`);
+    if (Math.round(Number(collection.amount_collected) * 100) !== Math.round(deduction.amount * 100)) throw new Error(`OR ${collection.or_number} is ₱${Number(collection.amount_collected).toLocaleString("en-PH")}; the deduction is ₱${deduction.amount.toLocaleString("en-PH")}. They must be the same amount.`);
+    const [taken] = await tx.select({ id: adjustmentsTable.adjustment_id }).from(adjustmentsTable).where(and(eq(adjustmentsTable.collection_id, collection.collection_id), ne(adjustmentsTable.adjustment_id, adjustment.adjustment_id))).limit(1);
+    if (taken) throw new Error(`OR ${collection.or_number} is already linked to deduction ${taken.id}.`);
+    await tx.update(adjustmentsTable).set({ collection_id: collection.collection_id, collection_linked_at: actor.encodedAt, collection_linked_by: actor.name, program_id: adjustment.program_id ?? collection.program_id })
+      .where(eq(adjustmentsTable.adjustment_id, adjustment.adjustment_id));
+    return { id: adjustment.adjustment_id, collectionId: collection.collection_id };
   });
 }

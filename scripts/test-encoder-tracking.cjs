@@ -114,6 +114,13 @@ async function copyMasterData(rows, synced) {
   }
 }
 const query = async (text, params) => (await pglite.query(text, params)).rows;
+// Bank deposits and report notes live in the database (lib/clerk-cash.ts, upgrade #6 phase 2); tests give them in the old
+// column order and these put them there.
+const depositRow = (row) => ({ deposit_id: row[0], deposit_date: row[1] || null, employee_id: row[2] || null, employee_name: row[3] || null, branch: row[4] || null, bank_account_name: row[5] || null, amount: row[6] === '' ? null : row[6], transfer_type: row[7] || null, mas: row[8] || null, remarks: row[9] || null, status: row[10] || null, void_reason: row[11] || null, created_at: row[12] || null });
+const noteRow = (row) => ({ note_key: row[0], employee_id: row[1] || null, period_kind: row[2] || null, period_start: row[3] || null, pending_cash: row[4] === '' || row[4] === undefined ? null : row[4], specific_remarks: row[5] || null, pending_transactions: row[6] || null, other_comments: row[7] || null, updated_at: row[8] || null, updated_by: row[9] || null, cash_beg: row[10] === '' || row[10] === undefined ? null : row[10], cash_beg_reason: row[11] || null, cash_beg_updated_at: row[12] || null, cash_beg_updated_by: row[13] || null });
+const seedDeposits = async (rows) => { await seed('employees', [...new Set(rows.map((row) => row[2]).filter(Boolean))].map((id) => ({ employee_id: id, full_name: id })), { skipExisting: true }); await seed('bank_deposits', rows.map(depositRow)); };
+const seedNotes = (rows) => seed('report_notes', rows.map(noteRow));
+
 /** A member with one program account, the minimum other rows link to. */
 async function seedAccount({ enrollment = 'ENR-1', member = 'MEM-1', memberNumber = 'PH-1', program = 'DP-1', programName = 'Program', basePay = 350, payBalanceTotal = null, doi = null, branch = 'BR-1', mas = 'MAS-2', surname = 'Santos', firstName = 'Ana', accountStatus = null } = {}) {
   await seed('members', [{ member_id: member, member_number: memberNumber, surname, first_name: firstName }]);
@@ -2692,12 +2699,12 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   const collection = Array(41).fill(''); Object.assign(collection, { 0: 'COL-1', 5: 'DP-1', 7: 'Maria', 9: '2026-09-03', 10: 1000, 19: 'Posted', 20: '2026-09-03T02:00:00.000Z', 22: 'DPE-7', 24: '2026-09-03T02:00:00.000Z', 26: 900, 28: 'Outstanding', 31: 'Maria' });
   h.rows.Collections = [[], collection];
   h.rows.Programs = [[], ['DP-1', 'CODE', 'Program']];
-  h.rows['Bank Deposits'] = [[],
+  await h.sync();
+  await seedDeposits([
     ['DEP-1', '2026-09-03', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 700, 'RCBC', 'Maria', '', 'Posted', '', ''],
     ['DEP-2', '2026-09-03', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 50, 'RCBC', '', '', 'Voided', 'Typed twice', ''],
-  ];
-  h.rows['Report Notes'] = [[], ['DPE-7|daily|2026-09-03', 'DPE-7', 'daily', '2026-09-03', 120, 'Penalty paid', '', '220 - COH', '', '']];
-  await h.sync();
+  ]);
+  await seedNotes([['DPE-7|daily|2026-09-03', 'DPE-7', 'daily', '2026-09-03', 120, 'Penalty paid', '', '220 - COH', '', '']]);
   const { buildClerkReport } = h.load('lib/clerk-report.ts');
   const day = await buildClerkReport('daily', '2026-09-03', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.deepEqual(day.deposits.map((item) => [item.id, item.amount, item.transferType]), [['DEP-1', 700, 'RCBC']], 'a voided deposit is left out');
@@ -2713,11 +2720,10 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   await assert.rejects(() => runAsSystem(() => saveCashBeg('DPE-7', 'daily', '2026-09-04', { cashBeg: 1000, reason: '' })), /reason for the Cash Beg/);
   await assert.rejects(() => runAsSystem(() => saveCashBeg('DPE-7', 'daily', '2026-09-04', { cashBeg: -5, reason: 'Counted cash' })), /zero or a positive/);
   await runAsSystem(() => saveCashBeg('DPE-7', 'daily', '2026-09-04', { cashBeg: 1000, reason: 'Counted cash on hand' }));
-  const saved = h.writes.at(-1);
-  assert.match(saved.range, /'Report Notes'!A:N/, 'a new notes row for that day');
-  assert.deepEqual(saved.requestBody.values[0].slice(0, 4), ['DPE-7|daily|2026-09-04', 'DPE-7', 'daily', '2026-09-04']);
-  assert.deepEqual(saved.requestBody.values[0].slice(10, 12), [1000, 'Counted cash on hand']);
-  h.rows['Report Notes'].push(saved.requestBody.values[0]);
+  // Saved twice at once: still one row for that day.
+  await Promise.all([runAsSystem(() => saveCashBeg('DPE-7', 'daily', '2026-09-04', { cashBeg: 1000, reason: 'Counted cash on hand' })), runAsSystem(() => saveCashBeg('DPE-7', 'daily', '2026-09-04', { cashBeg: 1000, reason: 'Counted cash on hand' }))]);
+  const savedRows = await query("select note_key, employee_id, period_kind, period_start::text as start, cash_beg::float8 as cash_beg, cash_beg_reason from report_notes where note_key like 'DPE-7|daily|2026-09-04%'");
+  assert.deepEqual(savedRows.map((row) => Object.values(row)), [['DPE-7|daily|2026-09-04', 'DPE-7', 'daily', '2026-09-04', 1000, 'Counted cash on hand']], 'one notes row for that day');
   const typed = await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.equal(typed.cash.cashBeg, 1000);
   assert.equal(typed.cash.cashBegEdit.reason, 'Counted cash on hand');
@@ -2729,10 +2735,10 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   assert.equal((await buildClerkReport('daily', '2026-09-03', { employeeId: 'DPE-7', name: 'Clerk' })).cash.cashBeg, 0, 'earlier reports are not affected');
   // Blank clears it (zero): only columns K-N of that row are cleared, the notes stay.
   await runAsSystem(() => saveCashBeg('DPE-7', 'daily', '2026-09-04', { cashBeg: '' }));
-  const cleared = h.writes.at(-1);
-  assert.equal(cleared.range, "'Report Notes'!K3:N3");
-  assert.deepEqual(cleared.requestBody.values, [['', '', '', '']]);
-  h.rows['Report Notes'][2].splice(10, 4, '', '', '', '');
+  assert.deepEqual(await query("select cash_beg, cash_beg_reason from report_notes where note_key = 'DPE-7|daily|2026-09-04'"), [{ cash_beg: null, cash_beg_reason: null }]);
+  // Notes typed afterwards keep the same row.
+  await runAsSystem(() => h.load('lib/clerk-cash.ts').saveReportNotes('DPE-7', 'daily', '2026-09-04', { pendingCash: 50, specificRemarks: 'Late receipt' }));
+  assert.deepEqual(await query("select pending_cash::float8 as pending, specific_remarks from report_notes where note_key like 'DPE-7|daily|2026-09-04%'"), [{ pending: 50, specific_remarks: 'Late receipt' }]);
   assert.equal((await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' })).cash.cashBeg, 0);
 });
 
@@ -3361,16 +3367,16 @@ test('an Entry Clerk report is per branch for a clerk who encodes for several', 
   const collection = (id, branch, amount, net) => { const row = Array(41).fill(''); Object.assign(row, { 0: id, 5: 'DP-1', 6: branch, 7: 'Maria', 9: '2026-09-03', 10: amount, 19: 'Posted', 20: '2026-09-03T02:00:00.000Z', 22: 'DPE-7', 24: '2026-09-03T02:00:00.000Z', 26: net, 28: 'Outstanding', 31: 'Maria' }); return row; };
   h.rows.Collections = [[], collection('COL-A', 'AGDAO', 1000, 900), collection('COL-T', 'TORIL', 500, 450)];
   h.rows.Programs = [[], ['DP-1', 'CODE', 'Program']];
-  h.rows['Bank Deposits'] = [[],
+  await h.sync();
+  await seedDeposits([
     ['DEP-A', '2026-09-03', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 700, 'RCBC', '', '', 'Posted', '', ''],
     ['DEP-T', '2026-09-03', 'DPE-7', 'Clerk', 'TORIL', 'DSRDPI', 300, 'RCBC', '', '', 'Posted', '', ''],
-  ];
+  ]);
   // Notes saved before reports were split (no branch in the key) belong to the primary branch (AGDAO).
-  h.rows['Report Notes'] = [[],
+  await seedNotes([
     ['DPE-7|daily|2026-09-03', 'DPE-7', 'daily', '2026-09-03', 120, 'Old notes', '', '', '', ''],
     ['DPE-7|daily|2026-09-03|TORIL', 'DPE-7', 'daily', '2026-09-03', 0, 'Toril notes', '', '', '', '', 50, 'Counted at Toril', '', 'Clerk'],
-  ];
-  await h.sync();
+  ]);
   const { buildClerkReport } = h.load('lib/clerk-report.ts');
   const clerk = { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' };
   const agdao = await buildClerkReport('daily', '2026-09-03', clerk, 'AGDAO');
@@ -3508,17 +3514,16 @@ test('remittance totals and automatic submission keep incentives for on-time cle
 
 test('a clerk can edit their own deposit (not a voided one, not another clerk\'s)', async () => {
   const h = harness();
-  h.rows['Bank Deposits'] = [[],
+  await seedDeposits([
     ['DEP-1', '2026-10-12', 'DPE-7', 'Clerk', 'MINTAL', 'DSRDPI', 992, 'RCBC', 'SUYMAN, NELSON', '', 'Posted', '', ''],
     ['DEP-2', '2026-10-12', 'DPE-7', 'Clerk', 'MINTAL', 'DSRDPI', 50, 'RCBC', '', '', 'Voided', 'Typed twice', ''],
-  ];
+  ]);
   const { editDeposit } = h.load('lib/clerk-cash.ts');
   const { runAsSystem } = h.load('lib/encoder-context.ts');
   const changes = { date: '2026-10-13', bankAccount: 'DSRDPI', amount: 990, transferType: 'RCBC', mas: 'SUYMAN, NELSON', remarks: 'Ref 01101026001363' };
   await runAsSystem(() => editDeposit('DEP-1', changes, { employeeId: 'DPE-7', isAdmin: false }));
-  const [dateWrite, restWrite] = h.writes.slice(-2);
-  assert.deepEqual([dateWrite.range, dateWrite.requestBody.values], ["'Bank Deposits'!B2:B2", [['2026-10-13']]]);
-  assert.deepEqual([restWrite.range, restWrite.requestBody.values], ["'Bank Deposits'!F2:J2", [['DSRDPI', 990, 'RCBC', 'SUYMAN, NELSON', 'Ref 01101026001363']]]);
+  const [edited] = await query("select deposit_date::text as date, bank_account_name, amount::float8 as amount, transfer_type, mas, remarks, employee_id, status from bank_deposits where deposit_id = 'DEP-1'");
+  assert.deepEqual(Object.values(edited), ['2026-10-13', 'DSRDPI', 990, 'RCBC', 'SUYMAN, NELSON', 'Ref 01101026001363', 'DPE-7', 'Posted'], 'one update by ID; the clerk and status stay');
   await assert.rejects(() => runAsSystem(() => editDeposit('DEP-1', changes, { employeeId: 'DPE-8', isAdmin: false })), /only deposits you recorded/);
   await runAsSystem(() => editDeposit('DEP-1', changes, { employeeId: 'DPE-8', isAdmin: true }));
   await assert.rejects(() => runAsSystem(() => editDeposit('DEP-2', changes, { employeeId: 'DPE-7', isAdmin: false })), /voided deposit cannot be edited/);
@@ -3922,10 +3927,11 @@ test('an Administrator keeps or forfeits an incentive on a pending slip; the 3:0
 
 test('a deposit reference number can be recorded only once (October 23, 2026)', async () => {
   const h = harness();
-  h.rows['Bank Deposits'] = [['deposit_id', 'deposit_date', 'employee_id', 'employee_name', 'branch', 'bank_account_name', 'amount', 'transfer_type', 'mas', 'remarks', 'status', 'void_reason', 'created_at'],
+  const depositRows = [['deposit_id', 'deposit_date', 'employee_id', 'employee_name', 'branch', 'bank_account_name', 'amount', 'transfer_type', 'mas', 'remarks', 'status', 'void_reason', 'created_at'],
     ['DEP-1', '2026-10-19', 'DPE-7', 'CABALLERO, JENNY', 'MINTAL', 'JULIET GULTIANO', 880, 'GCASH', 'DTO', '8046291340931', 'Posted', '', '2026-10-20T02:25:15.000Z'],
     ['DEP-2', '2026-10-18', 'DPE-7', 'CABALLERO, JENNY', 'MINTAL', 'RCBC', 500, 'BANK', '', '111222333', 'Voided', 'Typed twice', '2026-10-18T02:00:00.000Z']];
-  await h.sync();
+  await seedDeposits(depositRows.slice(1));
+  await seed('employees', [{ employee_id: 'DPE-8', full_name: 'Other' }]);
   const cash = h.load('lib/clerk-cash.ts');
   const { runAsSystem } = h.load('lib/encoder-context.ts');
   const clerk = { employeeId: 'DPE-7', name: 'CABALLERO, JENNY', branch: 'MINTAL' };
@@ -3934,7 +3940,13 @@ test('a deposit reference number can be recorded only once (October 23, 2026)', 
   // A voided deposit's reference can be used again; a different reference is fine; editing a deposit keeps its own.
   await runAsSystem(() => cash.addDeposit({ ...deposit, remarks: '111222333' }, clerk));
   await runAsSystem(() => cash.editDeposit('DEP-1', { ...deposit, date: '2026-10-20' }, { employeeId: 'DPE-7', isAdmin: false }));
-  assert.equal(cash.duplicateReferenceProblem('ref 10-19 only', h.rows['Bank Deposits']), '', 'short numbers such as dates are not references');
+  assert.equal(cash.duplicateReferenceProblem('ref 10-19 only', depositRows), '', 'short numbers such as dates are not references');
+  // Two clerks saving the same new reference at the same moment: one is saved, the other refused.
+  const same = { ...deposit, remarks: '9999888877776' };
+  const results = await Promise.allSettled([runAsSystem(() => cash.addDeposit(same, clerk)), runAsSystem(() => cash.addDeposit(same, { ...clerk, employeeId: 'DPE-8', name: 'Other' }))]);
+  assert.deepEqual(results.map((result) => result.status).sort(), ['fulfilled', 'rejected']);
+  assert.match(results.find((result) => result.status === 'rejected').reason.message, /Reference 9999888877776 is already recorded/);
+  assert.equal((await query("select count(*)::int as n from bank_deposits where remarks like '%9999888877776%'"))[0].n, 1);
 });
 
 test('a deposit is dated within the report it is entered on (October 23, 2026)', () => {
@@ -4091,4 +4103,43 @@ test('a program with posted collections keeps its monthly rate, flexible and reg
   await assert.rejects(bulk({ flexible: true }), /D-350: flexible payments cannot change/);
   assert.equal((await query("select flexible from programs where program_id = 'DP-NEW'"))[0].flexible, false, 'nothing saved when one program is refused');
   assert.equal((await bulk({ status: 'inactive' })).status, 200, 'other bulk changes still work');
+});
+
+test('company program deductions on paid payrolls wait until the Collection that settles them is linked', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  h.rows.Employees = [[], ['MD-2099-0011', 'Field MAS', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[]];
+  h.rows['Cash Accounts'] = [['account_id'], ['CAC-1', 'Cash on Hand', 'cash', 0, 'active']];
+  await h.sync();
+  await seedAccount({ program: 'DP-1', programName: 'Plan One', basePay: 350, doi: '2099-01-15' });
+  await seed('pay_profiles', [{ employee_id: 'MD-2099-0011', base_type: 'none', base_rate: 0, commission_eligible: true, hours_per_day: 8, overtime_multiplier: 1.25, status: 'active' }]);
+  await seed('commissions', [{ commission_id: 'COM-1', employee_id: 'MD-2099-0011', employee_name: 'Field MAS', period_from: '2099-09-01', period_to: '2099-09-15', gross_incentive: 4500, fidelity_deduction: 0, net_commission: 4500, status: 'Pending' }]);
+  const route = h.load('app/api/payroll/route.ts');
+  const post = async (body) => { const res = await route.POST(new Request('http://localhost/api/payroll', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } })); return { status: res.status, body: await res.json() }; };
+  const overview = async () => (await (await route.GET(new Request('http://localhost/api/payroll'))).json()).programDeductions;
+  const { id } = (await post({ action: 'create', periodFrom: '2099-09-01', periodTo: '2099-09-15' })).body;
+  const deduction = await post({ action: 'addAdjustment', runId: id, employeeId: 'MD-2099-0011', kind: 'Deduction', category: 'Company program', programId: 'DP-1', amount: 350, reason: 'Own membership, September' });
+  assert.equal(deduction.status, 201, JSON.stringify(deduction.body));
+  assert.equal((await query(`select program_id from payroll_adjustments where adjustment_id = '${deduction.body.id}'`))[0].program_id, 'DP-1', 'the program is saved on the deduction');
+  assert.deepEqual(await overview(), [], 'not listed before the payroll is paid');
+  assert.equal((await post({ action: 'approve', runId: id })).status, 200);
+  assert.equal((await post({ action: 'pay', runId: id, payDate: '2099-09-20', cashAccount: 'Cash on Hand', branch: 'BR-1' })).status, 200);
+  const [waiting] = await overview();
+  assert.deepEqual([waiting.employeeName, waiting.programId, waiting.amount, waiting.collectionId], ['Field MAS', 'DP-1', 350, ''], 'waiting for its Collection');
+
+  const link = (orNumber, adjustmentId = deduction.body.id) => post({ action: 'linkDeduction', adjustmentId, orNumber });
+  assert.match((await link('501 A')).body.message, /No posted collection has OR 501 A/);
+  const col = (id, or, amount) => ({ collection_id: id, collection_batch_id: 'CBT', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: or, or_date: '2099-09-21', amount_collected: amount, month_from: '2099-02', month_to: '2099-02', nop_from: 2, nop_to: 2, status: 'Posted' });
+  await seed('collections', [col('C-700', '502 A', 700), col('C-350', '501 A', 350)]);
+  assert.match((await link('502 A')).body.message, /must be the same amount/);
+  const linked = await link('501-a');
+  assert.equal(linked.status, 200, JSON.stringify(linked.body));
+  const [settled] = await overview();
+  assert.deepEqual([settled.collectionId, settled.orNumber, settled.linkedBy], ['C-350', '501 A', 'Admin']);
+
+  // One Collection settles one deduction.
+  await seed('payroll_adjustments', [{ adjustment_id: 'PAJ-2', payroll_id: id, employee_id: 'MD-2099-0011', kind: 'Deduction', category: 'Company program', amount: 350, reason: ' - Plan One: October', status: 'active' }]);
+  assert.match((await link('501 A', 'PAJ-2')).body.message, /already linked to deduction/);
+  assert.equal((await link('', deduction.body.id)).status, 200, 'unlink');
+  assert.deepEqual((await overview()).map((item) => item.collectionId), ['', ''], 'both waiting again');
 });

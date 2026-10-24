@@ -3,7 +3,7 @@ import { canAccessPath } from "@/lib/access-control";
 import { withEncoder } from "@/lib/encoder-context";
 import {
   addPayrollAdjustment, approvePayrollRun, createPayrollRun, getPayrollOverview, getPayrollRun,
-  deletePayrollRun, payPayrollRun, recalculatePayrollRun, removePayrollAdjustment, savePayProfile, voidPayrollRun,
+  deletePayrollRun, linkDeductionCollection, payPayrollRun, recalculatePayrollRun, removePayrollAdjustment, savePayProfile, voidPayrollRun,
 } from "@/lib/payroll";
 
 const normalized = (roles: string[]) => roles.map((role) => role.trim().toLowerCase());
@@ -42,6 +42,7 @@ export const POST = withEncoder(async (request: Request) => {
       case "pay": return Response.json({ success: true, ...await payPayrollRun(runId, body) });
       case "void": return Response.json({ success: true, ...await voidPayrollRun(runId, String(body.reason ?? "")) });
       case "delete": return Response.json({ success: true, ...await deletePayrollRun(runId) });
+      case "linkDeduction": return Response.json({ success: true, ...await linkDeductionCollection(String(body.adjustmentId ?? ""), body.orNumber) });
       default: throw new Error("Unknown payroll action.");
     }
   } catch (error) {
