@@ -161,7 +161,6 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       if (range.startsWith("'Bank Deposits'")) return { data: { values: rows['Bank Deposits'] ?? [[]] } };
       if (range.startsWith("'Report Notes'")) return { data: { values: rows['Report Notes'] ?? [[]] } };
       if (range.startsWith("'System Settings'")) return { data: { values: rows['System Settings'] ?? [[]] } };
-      if (/^'?(Cash Accounts|Vendor Payables|Commissions)'?!A:[A-Z]+$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
       if (range === 'Expenses!V1:W1' || range === 'Sales!AO1:AQ1') return { data: { values: rows[range] ?? [[]] } };
       if (/!A:ZZ$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
@@ -317,19 +316,10 @@ test('expense entries follow the company form: account, attachments, approver, a
   assert.equal(noPhoto.status, 400);
   assert.match((await noPhoto.json()).message, /Attach a photo of the receipt/);
   assert.equal(globalThis.dayongTestStorage.size, 0);
-  const missing = await route.POST(request(entry));
-  assert.equal(missing.status, 400);
-  assert.match((await missing.json()).message, /sheets:expense-fields/, 'saving before the migration explains how to fix it');
-  h.rows['Expenses!V1:W1'] = [['attachments', 'approved_by']];
   const saved = await route.POST(request(entry));
   assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
-  const write = h.writes.find((item) => item.range === "'Expenses'!A:W");
-  assert.ok(write, 'the row spans the business, encoder, and form columns');
-  const row = write.requestBody.values[0];
-  assert.equal(row[2], 'Others: Parking');
-  assert.equal(row[3], 'Client visit parking');
-  assert.equal(row[6], 'Cash on Hand', 'paid from defaults to Cash on Hand');
-  assert.deepEqual(row.slice(-2), ['Voucher, Receipt, Other: Gate pass', 'CEO/President']);
+  const [row] = await query(`select category, description, paid_by, attachments, approved_by, encoded_by_employee_id from expenses where expense_id = '${(await saved.json()).id}'`);
+  assert.deepEqual(Object.values(row), ['Others: Parking', 'Client visit parking', 'Cash on Hand', 'Voucher, Receipt, Other: Gate pass', 'CEO/President', 'DPE-0003'], 'paid from defaults to Cash on Hand; the encoder is kept');
   assert.equal(globalThis.dayongTestStorage.size, 1, 'only the saved expense keeps a photo');
   assert.equal((await route.POST(request({ ...entry, category: 'Snacks' }))).status, 400, 'only listed accounts are accepted');
   assert.equal((await route.POST(request({ ...entry, approvedBy: 'Other', approvedByOther: '' }))).status, 400, 'an Other approver must be named');
@@ -1394,7 +1384,7 @@ test('payroll payment saves all together: paid twice gives one cash outflow, and
   const h = harness({ userId: 'USR-1', employeeId: 'MD-2099-0001', name: 'Finance User', roleNames: ['Finance'], permissions: {} });
   h.rows.Employees = [[], ['MD-2099-0011', 'Field MAS', 'BR-1', 'MAS', 'active']];
   h.rows['Employee Branches'] = [[]];
-  h.rows['Cash Accounts'] = [['account_id'], ['CAC-1', 'Cash on Hand', 'cash', 0, 'active']];
+  await seed('cash_accounts', [{ cash_account_id: 'CAC-1', account_name: 'Cash on Hand', account_type: 'cash', opening_balance: 0, status: 'active' }]);
   await h.sync();
   await seed('pay_profiles', [{ employee_id: 'MD-2099-0011', base_type: 'none', base_rate: 0, commission_eligible: true, hours_per_day: 8, overtime_multiplier: 1.25, status: 'active' }]);
   await seed('commissions', [{ commission_id: 'COM-1', employee_id: 'MD-2099-0011', employee_name: 'Field MAS', period_from: '2099-09-01', period_to: '2099-09-15', gross_incentive: 4500, fidelity_deduction: 0, net_commission: 4500, status: 'Pending' }]);
@@ -1407,7 +1397,7 @@ test('payroll payment saves all together: paid twice gives one cash outflow, and
   h.setUser({ userId: 'USR-2', employeeId: 'MD-2099-0002', name: 'Approver', roleNames: ['Finance'], permissions: {} });
   assert.equal((await post({ action: 'approve', runId: id })).status, 200);
   const pay = { action: 'pay', runId: id, payDate: '2099-09-20', cashAccount: 'Cash on Hand', branch: 'BR-1', paymentReference: 'VCH-1' };
-  const cashWrites = () => h.writes.filter((write) => write.range?.startsWith("'Cash Transactions'!A:")).length;
+  const cashWrites = async () => (await query(`select count(*)::int as n from cash_transactions where reference_id = '${id}'`))[0].n;
 
   // A failure after the cash outflow (here: the run cannot be marked Paid) leaves the commission Pending and the run Approved.
   await query(`create or replace function refuse_paid() returns trigger language plpgsql as $$ begin if new.status = 'Paid' then raise exception 'simulated failure'; end if; return new; end $$`);
@@ -1421,10 +1411,11 @@ test('payroll payment saves all together: paid twice gives one cash outflow, and
 
   const paid = await post(pay);
   assert.equal(paid.status, 200, JSON.stringify(paid.body));
-  const before = cashWrites();
+  const before = await cashWrites();
+  assert.equal(before, 1, 'one payroll outflow; the failed attempt left none');
   const again = await post(pay);
   assert.match(again.body.message, /already paid/);
-  assert.equal(cashWrites(), before, 'paying again adds no second cash outflow');
+  assert.equal(await cashWrites(), before, 'paying again adds no second cash outflow');
   const [row] = await query(`select status, cash_account, payment_reference, branch from payroll_runs where payroll_id = '${id}'`);
   assert.deepEqual(Object.values(row), ['Paid', 'Cash on Hand', 'VCH-1', 'BR-1']);
   const [commission] = await query("select status, reference_number from commissions where commission_id = 'COM-1'");
@@ -3620,11 +3611,9 @@ test('an expense goes on the report of the day it was recorded, whatever expense
 
 test('an expense on the report can be edited and deleted by the clerk who recorded it, not by another clerk', async () => {
   const h = harness({ userId: 'USR-7', employeeId: 'DPE-7', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
-  const expense = Array(23).fill(''); Object.assign(expense, { 0: 'EXP-9', 1: '2026-10-10', 2: 'Transportation', 3: 'Fare', 4: 75, 7: 'MINTAL', 11: 'Posted', 18: 'DPE-7', 20: '2026-10-14T01:30:00.000Z', 22: 'VP Finance' });
-  h.rows.Expenses = [['expense_id'], expense];
-  h.rows['Cash Transactions'] = [['transaction_id']];
-  await h.sync();
+  await seed('expenses', [{ expense_id: 'EXP-9', expense_date: '2026-10-10', category: 'Transportation', description: 'Fare', amount: 75, branch: 'MINTAL', status: 'Posted', encoded_by_employee_id: 'DPE-7', encoded_at: '2026-10-14T01:30:00.000Z', approved_by: 'VP Finance' }]);
   const finance = h.load('lib/finance-data.ts');
+  const stored = async () => (await query("select expense_date::text as date, category, description, amount::float8 as amount, payee, receipt_number, remarks, approved_by, branch, status, void_reason from expenses where expense_id = 'EXP-9'"))[0];
   const { withEncoder } = h.load('lib/encoder-context.ts');
   // Saving needs a verified encoder (the signed-in user), as the clerk-report route provides.
   const as = (work) => withEncoder(async () => { await work(); return Response.json({}); })(request());
@@ -3637,19 +3626,15 @@ test('an expense on the report can be edited and deleted by the clerk who record
   await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'Office Supplies', amount: 80, description: 'Lunch', approvedBy: 'VP Finance' }, own), /receipt number/);
   await assert.rejects(editExpense('EXP-9', { date: '2026-10-11', category: 'CBA (Cash Burial Assistance)', amount: 80, description: 'Burial', receiptNumber: 'R-1', approvedBy: 'VP Finance' }, own), /deceased member/);
   await editExpense('EXP-9', { date: '2026-10-11', category: 'CBA (Cash Burial Assistance)', amount: 80, description: 'Burial', receiptNumber: 'R-1', payee: 'Juan Cruz', approvedBy: 'VP Finance' }, own);
-  assert.deepEqual(h.writes.at(-1).requestBody.data.find((item) => item.range === "'Expenses'!F2").values[0], ['Juan Cruz'], 'the member is saved as the payee');
+  assert.equal((await stored()).payee, 'Juan Cruz', 'the member is saved as the payee');
   await editExpense('EXP-9', { date: '2026-10-11', category: 'Office Supplies', amount: 80, description: 'Lunch', receiptNumber: 'R-1', remarks: 'team', approvedBy: 'Other', approvedByOther: 'Branch head' }, own);
-  // Row 2 of Expenses: B:E date, account, purpose, amount; K receipt; M remarks; W approver.
-  const edit = h.writes.at(-1).requestBody.data;
-  assert.deepEqual(edit.map((item) => [item.range, item.values[0]]), [
-    ["'Expenses'!B2:E2", ['2026-10-11', 'Office Supplies', 'Lunch', 80]], ["'Expenses'!K2", ['R-1']], ["'Expenses'!M2", ['team']], ["'Expenses'!W2", ['Other: Branch head']],
-  ]);
+  // One update by ID: date, account, purpose, amount, receipt, remarks, approver; the payee, branch and status stay.
+  assert.deepEqual(await stored(), { date: '2026-10-11', category: 'Office Supplies', description: 'Lunch', amount: 80, payee: 'Juan Cruz', receipt_number: 'R-1', remarks: 'team', approved_by: 'Other: Branch head', branch: 'MINTAL', status: 'Posted', void_reason: null });
   await assert.rejects(deleteExpense('EXP-9', 'x', own), /reason/);
   await deleteExpense('EXP-9', 'entered twice', own);
-  const removed = h.writes.at(-1).requestBody.data;
-  assert.deepEqual([removed[0].range, removed[0].values[0][0], removed[1].values[0][2]], ["'Expenses'!L2", 'Voided', 'entered twice'], 'deleted: voided with the reason');
+  const removed = await stored();
+  assert.deepEqual([removed.status, removed.void_reason], ['Voided', 'entered twice'], 'deleted: voided with the reason');
   // A voided expense cannot be changed again.
-  expense[11] = 'Voided';
   await assert.rejects(deleteExpense('EXP-9', 'again please', own), /already deleted/);
 });
 
@@ -3960,11 +3945,12 @@ test('a deposit is dated within the report it is entered on (October 23, 2026)',
 
 test('vendor and direct commission payments also record their cash outflow, or nothing is saved', async () => {
   const h = harness({ userId: 'U3', employeeId: 'DPE-0003', name: 'finance', roleNames: ['Finance'], permissions: {} });
-  h.rows['Cash Accounts'] = [['account_id'], ['CAC-1', 'Cash on Hand', 'cash', 0, 'active'], ['CAC-2', 'Old Bank', 'bank', 0, 'inactive']];
-  h.rows['Vendor Payables'] = [['payable_id'], ['PAY-1', '2026-10-01', '2026-10-30', 'Casket Co', 'Casket Purchases', 'Two caskets', 1000, 0, 1000, 'MINTAL', 'Outstanding', 'INV-9', '', '', '']];
-  h.rows.Commissions = [['commission_id'], ['COM-1', 'MD-1', 'Ana Cruz', '2026-10-01', '2026-10-15', 500, 0, 500, 'Pending', '', '', '']];
+  await seed('cash_accounts', [{ cash_account_id: 'CAC-1', account_name: 'Cash on Hand', account_type: 'cash', opening_balance: 0, status: 'active' }, { cash_account_id: 'CAC-2', account_name: 'Old Bank', account_type: 'bank', opening_balance: 0, status: 'inactive' }]);
+  await seed('vendor_payables', [{ payable_id: 'PAY-1', invoice_date: '2026-10-01', due_date: '2026-10-30', vendor: 'Casket Co', category: 'Casket Purchases', description: 'Two caskets', amount: 1000, amount_paid: 0, balance: 1000, branch: 'MINTAL', status: 'Outstanding', reference_number: 'INV-9' }]);
+  await seed('employees', [{ employee_id: 'MD-1', full_name: 'Ana Cruz' }]);
+  await seed('commissions', [{ commission_id: 'COM-1', employee_id: 'MD-1', employee_name: 'Ana Cruz', period_from: '2026-10-01', period_to: '2026-10-15', gross_incentive: 500, fidelity_deduction: 0, net_commission: 500, status: 'Pending' }]);
   const patch = (route, body) => route.PATCH(new Request('http://localhost/api/test', { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
-  const cashRows = () => h.writes.filter((write) => write.range?.startsWith("'Cash Transactions'!A:")).map((write) => write.requestBody.values[0]);
+  const cashRows = async () => (await query("select transaction_id, transaction_date::text as date, direction, category, description, amount::float8 as amount, branch, cash_account, reference_type, reference_id, status, remarks from cash_transactions order by row_seq")).map((row) => Object.values(row));
 
   const vendors = h.load('app/api/vendor-payables/route.ts');
   for (const [body, why] of [[{ id: 'PAY-1', amount: 400 }, /cash account/], [{ id: 'PAY-1', amount: 400, account: 'Old Bank' }, /cash account/], [{ id: 'PAY-1', amount: 400, account: 'Cash on Hand', date: '2999-01-01' }, /payment date/]]) {
@@ -3972,23 +3958,27 @@ test('vendor and direct commission payments also record their cash outflow, or n
     assert.equal(refused.status, 400);
     assert.match((await refused.json()).message, why);
   }
-  assert.equal(h.writes.length, 0, 'a refused payment saves nothing');
+  assert.equal((await query('select count(*)::int as n from cash_transactions'))[0].n, 0, 'a refused payment saves nothing');
+  assert.equal((await query("select amount_paid::float8 as paid from vendor_payables where payable_id = 'PAY-1'"))[0].paid, 0);
   const paid = await patch(vendors, { id: 'PAY-1', amount: 400, account: 'Cash on Hand', date: '2026-10-20' });
   assert.equal(paid.status, 200, JSON.stringify(await paid.clone().json()));
-  const bill = h.writes.find((write) => write.requestBody?.data?.some?.((item) => item.range === "'Vendor Payables'!H2:K2")).requestBody.data[0].values[0];
-  assert.deepEqual(bill, [400, 600, 'MINTAL', 'Partially Paid']);
-  assert.deepEqual(cashRows()[0].slice(1, 12), ['2026-10-20', 'outflow', 'Vendor payment', 'Casket Co: Two caskets (partial)', 400, 'MINTAL', 'Cash on Hand', 'Vendor Payable', 'PAY-1', 'Posted', 'INV-9'], 'charged to the bill branch');
+  const bill = (await query("select amount_paid::float8 as paid, balance::float8 as balance, branch, status, payment_account from vendor_payables where payable_id = 'PAY-1'"))[0];
+  assert.deepEqual(Object.values(bill), [400, 600, 'MINTAL', 'Partially Paid', 'Cash on Hand']);
+  // Two payments of the rest at the same moment: one is saved, the other finds no balance left.
+  const both = await Promise.all([patch(vendors, { id: 'PAY-1', amount: 600, account: 'Cash on Hand', date: '2026-10-21' }), patch(vendors, { id: 'PAY-1', amount: 600, account: 'Cash on Hand', date: '2026-10-21' })]);
+  assert.deepEqual(both.map((response) => response.status).sort(), [200, 400], 'the bill is never overpaid');
+  assert.deepEqual(Object.values((await query("select amount_paid::float8 as paid, balance::float8 as balance, status from vendor_payables where payable_id = 'PAY-1'"))[0]), [1000, 0, 'Paid']);
+  assert.deepEqual((await cashRows())[0].slice(1, 12), ['2026-10-20', 'outflow', 'Vendor payment', 'Casket Co: Two caskets (partial)', 400, 'MINTAL', 'Cash on Hand', 'Vendor Payable', 'PAY-1', 'Posted', 'INV-9'], 'charged to the bill branch');
 
   const commissions = h.load('app/api/commissions/route.ts');
   assert.equal((await patch(commissions, { id: 'COM-1', account: 'Cash on Hand' })).status, 400, 'the branch is required');
-  const before = h.writes.length;
   const direct = await patch(commissions, { id: 'COM-1', account: 'Cash on Hand', branch: 'MINTAL', date: '2026-10-21', referenceNumber: 'GC-1' });
   assert.equal(direct.status, 200, JSON.stringify(await direct.clone().json()));
   assert.ok((await direct.json()).cashTransactionId);
-  assert.deepEqual(cashRows().at(-1).slice(1, 12), ['2026-10-21', 'outflow', 'Commission', 'Commission Ana Cruz (2026-10-01 to 2026-10-15)', 500, 'MINTAL', 'Cash on Hand', 'Commission', 'COM-1', 'Posted', 'GC-1']);
-  const marked = h.writes.slice(before).find((write) => write.range === 'Commissions!I2:K2');
-  assert.equal(marked.requestBody.values[0][0], 'Paid');
-  assert.equal(marked.requestBody.values[0][2], 'GC-1');
+  assert.deepEqual((await cashRows()).at(-1).slice(1, 12), ['2026-10-21', 'outflow', 'Commission', 'Commission Ana Cruz (2026-10-01 to 2026-10-15)', 500, 'MINTAL', 'Cash on Hand', 'Commission', 'COM-1', 'Posted', 'GC-1']);
+  const [marked] = await query("select status, reference_number from commissions where commission_id = 'COM-1'");
+  assert.deepEqual([marked.status, marked.reference_number], ['Paid', 'GC-1']);
+  assert.match((await (await patch(commissions, { id: 'COM-1', account: 'Cash on Hand', branch: 'MINTAL', date: '2026-10-21' })).json()).message, /already paid/, 'paid once');
 });
 
 // ---------------------------------------------------------------- Member Corrections (lib/member-corrections.ts)
@@ -4109,7 +4099,7 @@ test('company program deductions on paid payrolls wait until the Collection that
   const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   h.rows.Employees = [[], ['MD-2099-0011', 'Field MAS', 'BR-1', 'MAS', 'active']];
   h.rows['Employee Branches'] = [[]];
-  h.rows['Cash Accounts'] = [['account_id'], ['CAC-1', 'Cash on Hand', 'cash', 0, 'active']];
+  await seed('cash_accounts', [{ cash_account_id: 'CAC-1', account_name: 'Cash on Hand', account_type: 'cash', opening_balance: 0, status: 'active' }]);
   await h.sync();
   await seedAccount({ program: 'DP-1', programName: 'Plan One', basePay: 350, doi: '2099-01-15' });
   await seed('pay_profiles', [{ employee_id: 'MD-2099-0011', base_type: 'none', base_rate: 0, commission_eligible: true, hours_per_day: 8, overtime_multiplier: 1.25, status: 'active' }]);

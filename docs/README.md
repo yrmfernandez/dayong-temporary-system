@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 24, 2026: finance saves by ID in one step.** Expenses, Cash Transactions, vendor bills, commissions and cash accounts are saved directly; a payment and its cash outflow save together, and a vendor bill can no longer be overpaid by two payments at once (upgrade #6, phase 3). See [finance](finance.md).
+
 **October 24, 2026: company program deductions waiting for a Collection.** Payroll lists membership deductions of paid payrolls until Finance links the Collection that put the money on the member account. Needs migration 0028. See [payroll](payroll.md).
 
 **October 24, 2026: clerk report cash saves in one step.** Bank deposits, Notes and Cash Beg are saved directly by ID; the same deposit reference saved twice at once is refused, and Notes or Cash Beg saved twice at once keep one row (upgrade #6, phase 2).

@@ -1,21 +1,26 @@
-﻿import { createReadableId } from "@/lib/readable-id";
-import { appendEncodedRows } from "@/lib/encoder-sheets";
+﻿import { and, desc, eq } from "drizzle-orm";
+
+import { currentDb, encodedBy, inTransaction, schema } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { headerMatches } from "@/lib/sheet-headers";
-import { expensePhotosFrom, saveExpensePhotos } from "@/lib/receipt-photos";
 import { attachmentList, BURIAL_ACCOUNT, choiceWithOther, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS, expenseNumbers } from "@/lib/expense-options";
+import { createReadableId } from "@/lib/readable-id";
+import { expensePhotosFrom, saveExpensePhotos } from "@/lib/receipt-photos";
 
-// Expenses V attachments and W approved_by follow the encoder columns (R:U); see npm run sheets:expense-fields.
-export const EXPENSE_EXTRA_HEADERS = ["attachments", "approved_by"];
-
+/*
+ * Expenses and Cash Transactions, read and written directly in the database by ID (owner, October 24, 2026; upgrade #6
+ * phase 3, replacing Sheets-style row writes). Creating writes one row; editing, voiding and deleting lock the row and
+ * update it once, so a change is never half saved and never lands on the wrong row. createCashTransaction joins the
+ * caller's transaction (payroll payment, vendor payments, commissions and Fidelity payouts), so the payout and its
+ * cash outflow are saved together.
+ */
 const text = (value: unknown) => String(value ?? "").trim();
 const amount = (value: unknown) => Number(value ?? 0) || 0;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const round = (value: number) => Math.round(value * 100) / 100;
+const { expenses: expensesTable, cash_transactions: cashTable, remittances: remittancesTable } = schema;
 
 export type ExpenseRecord = {
-  id: string; rowNumber: number; date: string; category: string; description: string;
+  id: string; date: string; category: string; description: string;
   amount: number; payee: string; paidBy: string; branch: string; paymentMethod: string;
   referenceNumber: string; receiptNumber: string; status: string; remarks: string;
   createdAt: string; encodedBy: string; voidedAt: string; voidReason: string;
@@ -26,45 +31,34 @@ export type CashLedgerEntry = {
   id: string; date: string; direction: "inflow" | "outflow"; category: string;
   description: string; amount: number; branch: string; account: string;
   referenceType: string; referenceId: string; status: string; remarks: string;
-  source: "remittance" | "expense" | "manual"; rowNumber?: number; encodedBy?: string;
+  source: "remittance" | "expense" | "manual"; encodedBy?: string;
 };
 
-async function loadRows() {
-  const response = await sheets.spreadsheets.values.batchGet({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: ["'Expenses'", "'Cash Transactions'", "'Remittances'"],
-    valueRenderOption: "UNFORMATTED_VALUE",
-    dateTimeRenderOption: "FORMATTED_STRING",
-  });
-  const [expenses = [], cash = [], remittances = []] =
-    response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
-  if (!headerMatches(expenses[0]?.[0], "expense_id") || !headerMatches(cash[0]?.[0], "transaction_id")) {
-    throw new Error("Run the finance sheet migration before using Finance.");
-  }
-  return { expenses, cash, remittances };
-}
+const toExpense = (row: typeof expensesTable.$inferSelect): ExpenseRecord => ({
+  id: row.expense_id, date: text(row.expense_date), category: text(row.category), description: text(row.description), amount: amount(row.amount), payee: text(row.payee),
+  paidBy: text(row.paid_by), branch: text(row.branch), paymentMethod: text(row.payment_method), referenceNumber: text(row.reference_number), receiptNumber: text(row.receipt_number),
+  status: text(row.status) || "Posted", remarks: text(row.remarks), createdAt: text(row.created_at), voidedAt: text(row.voided_at), voidReason: text(row.void_reason),
+  encodedBy: text(row.encoded_by_employee_id), attachments: text(row.attachments), approvedBy: text(row.approved_by),
+});
 
 export async function getFinanceData() {
-  const rows = await loadRows();
-  const expenses: ExpenseRecord[] = rows.expenses.slice(1).map((row, index) => ({
-    id: text(row[0]), rowNumber: index + 2, date: text(row[1]), category: text(row[2]),
-    description: text(row[3]), amount: amount(row[4]), payee: text(row[5]), paidBy: text(row[6]),
-    branch: text(row[7]), paymentMethod: text(row[8]), referenceNumber: text(row[9]),
-    receiptNumber: text(row[10]), status: text(row[11]) || "Posted", remarks: text(row[12]),
-    createdAt: text(row[13]), voidedAt: text(row[14]), voidReason: text(row[16]), encodedBy: text(row[19]),
-    attachments: text(row[21]), approvedBy: text(row[22]),
+  const db = currentDb();
+  const [expenseRows, cashRows, remittanceRows] = await Promise.all([
+    db.select().from(expensesTable),
+    db.select().from(cashTable),
+    db.select({ id: remittancesTable.remittance_id, branch: remittancesTable.branch, mas: remittancesTable.mas, date: remittancesTable.date_remitted, total: remittancesTable.total_remittance, remarks: remittancesTable.remarks })
+      .from(remittancesTable).where(eq(remittancesTable.status, "Approved")),
+  ]);
+  const expenses = expenseRows.map(toExpense).filter((row) => row.id);
+  const manual = cashRows.map<CashLedgerEntry>((row) => ({
+    id: row.transaction_id, date: text(row.transaction_date), direction: text(row.direction) === "outflow" ? "outflow" : "inflow",
+    category: text(row.category), description: text(row.description), amount: amount(row.amount), branch: text(row.branch),
+    account: text(row.cash_account), referenceType: text(row.reference_type), referenceId: text(row.reference_id),
+    status: text(row.status) || "Posted", remarks: text(row.remarks), source: "manual", encodedBy: text(row.encoded_by_employee_id),
   })).filter((row) => row.id);
-  const manual = rows.cash.slice(1).map<CashLedgerEntry>((row, index) => ({
-    id: text(row[0]), rowNumber: index + 2, date: text(row[1]), direction: text(row[2]) === "outflow" ? "outflow" : "inflow",
-    category: text(row[3]), description: text(row[4]), amount: amount(row[5]), branch: text(row[6]),
-    account: text(row[7]), referenceType: text(row[8]), referenceId: text(row[9]),
-    status: text(row[10]) || "Posted", remarks: text(row[11]), source: "manual", encodedBy: text(row[18]),
-  })).filter((row) => row.id);
-  const approvedRemittances: CashLedgerEntry[] = rows.remittances.slice(1)
-    .filter((row) => text(row[0]) && text(row[4]) === "Approved")
-    .map((row) => ({ id: `LED-${text(row[0])}`, date: text(row[3]), direction: "inflow", category: "Approved Remittance",
-      description: `Cash remitted by ${text(row[2]) || "accountable staff"}`, amount: amount(row[11]), branch: text(row[1]),
-      account: "Cash on Hand", referenceType: "Remittance", referenceId: text(row[0]), status: "Posted", remarks: text(row[22]), source: "remittance" }));
+  const approvedRemittances: CashLedgerEntry[] = remittanceRows.map((row) => ({ id: `LED-${row.id}`, date: text(row.date), direction: "inflow", category: "Approved Remittance",
+    description: `Cash remitted by ${text(row.mas) || "accountable staff"}`, amount: amount(row.total), branch: text(row.branch),
+    account: "Cash on Hand", referenceType: "Remittance", referenceId: row.id, status: "Posted", remarks: text(row.remarks), source: "remittance" }));
   const expenseEntries: CashLedgerEntry[] = expenses.filter((row) => row.status === "Posted").map((row) => ({
     id: `LED-${row.id}`, date: row.date, direction: "outflow", category: row.category,
     description: row.description, amount: row.amount, branch: row.branch, account: row.paidBy || "Cash on Hand",
@@ -96,14 +90,14 @@ export async function createExpense(input: Record<string, unknown>) {
   const description = required(input.description, "Purpose"), branch = required(input.branch, "Branch");
   const photos = expensePhotosFrom(input.photos);
   if (!photos.length) throw new Error("Attach a photo of the receipt.");
-  const header = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Expenses!V1:W1" })).data.values?.[0] ?? [];
-  if (EXPENSE_EXTRA_HEADERS.some((name, index) => !headerMatches(header[index], name))) throw new Error("Run npm run sheets:expense-fields -- --apply to add the Attachments and Approved By columns before saving expenses.");
+  getEncoder();
   const id = createReadableId("EXP");
   await saveExpensePhotos(id, photos);
-  await appendEncodedRows({ range: "Expenses!A:Q", requestBody: { values: [[id, text(input.date), account,
-    description, value, member, text(input.paidBy) || "Cash on Hand", branch,
-    text(input.paymentMethod) || "Cash", text(input.referenceNumber), receipt, "Posted", text(input.remarks),
-    new Date().toISOString(), "", "", ""]] } }, [[attachments, approvedBy]]);
+  await currentDb().insert(expensesTable).values({
+    expense_id: id, expense_date: text(input.date), category: account, description, amount: value, payee: member || null, paid_by: text(input.paidBy) || "Cash on Hand", branch,
+    payment_method: text(input.paymentMethod) || "Cash", reference_number: text(input.referenceNumber) || null, receipt_number: receipt || null, status: "Posted", remarks: text(input.remarks) || null,
+    created_at: new Date().toISOString(), attachments: attachments || null, approved_by: approvedBy || null, ...encodedBy(),
+  });
   return { id, photos: photos.length };
 }
 
@@ -111,15 +105,14 @@ export async function createExpense(input: Record<string, unknown>) {
  * An expense recorded on an Entry Clerk's report, edited or deleted from the report (owner, October 16, 2026), as
  * deposits are: by the clerk who recorded it, or an administrator. Delete voids it with the reason (it leaves the
  * report, Expenses and the cash ledger; Finance and the Audit Log still show it). A voided expense is not edited.
+ * Locks the row for the rest of the caller's transaction.
  */
-async function ownExpense(id: string, by: { employeeId: string; isAdmin: boolean }) {
-  const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "'Expenses'!A:W", valueRenderOption: "UNFORMATTED_VALUE" })).data.values ?? [];
-  const index = rows.findIndex((row, position) => position > 0 && text(row[0]) === text(id));
-  if (index < 0) throw new Error("Expense not found.");
-  // S (index 18) is the encoder's Employee ID.
-  if (!by.isAdmin && text(rows[index][18]) !== by.employeeId) throw new Error("You can change only expenses you recorded.");
-  if ((text(rows[index][11]) || "Posted") === "Voided") throw new Error("This expense was already deleted.");
-  return index + 1;
+async function ownExpense(tx: Parameters<Parameters<typeof inTransaction>[0]>[0], id: string, by: { employeeId: string; isAdmin: boolean }) {
+  const [row] = await tx.select().from(expensesTable).where(eq(expensesTable.expense_id, text(id))).for("update");
+  if (!row) throw new Error("Expense not found.");
+  if (!by.isAdmin && text(row.encoded_by_employee_id) !== by.employeeId) throw new Error("You can change only expenses you recorded.");
+  if ((text(row.status) || "Posted") === "Voided") throw new Error("This expense was already deleted.");
+  return row;
 }
 
 export async function editExpense(id: string, input: Record<string, unknown>, by: { employeeId: string; isAdmin: boolean }) {
@@ -131,47 +124,55 @@ export async function editExpense(id: string, input: Record<string, unknown>, by
   const description = required(input.description, "Purpose");
   const { receipt, member } = expenseNumbers(account, input.receiptNumber, input.payee);
   getEncoder();
-  const row = await ownExpense(id, by);
-  // B date, C account, D purpose, E amount; F payee (the member, for Cash Burial Assistance); K receipt; M remarks; W
-  // approved by. Branch and status stay; another account's payee stays unless one is sent.
-  await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: [
-    { range: `'Expenses'!B${row}:E${row}`, values: [[text(input.date), account, description, value]] },
-    ...(account === BURIAL_ACCOUNT || member ? [{ range: `'Expenses'!F${row}`, values: [[member]] }] : []),
-    { range: `'Expenses'!K${row}`, values: [[receipt]] },
-    { range: `'Expenses'!M${row}`, values: [[text(input.remarks)]] },
-    { range: `'Expenses'!W${row}`, values: [[approvedBy]] },
-  ] } });
+  await inTransaction(async (tx) => {
+    const row = await ownExpense(tx, id, by);
+    // Date, account, purpose, amount, receipt, remarks and approver; the payee (the member, for Cash Burial Assistance)
+    // only when given or for that account. Branch and status stay.
+    await tx.update(expensesTable).set({
+      expense_date: text(input.date), category: account, description, amount: value, receipt_number: receipt || null, remarks: text(input.remarks) || null, approved_by: approvedBy || null,
+      ...(account === BURIAL_ACCOUNT || member ? { payee: member || null } : {}),
+    }).where(eq(expensesTable.expense_id, row.expense_id));
+  });
 }
 
 export async function deleteExpense(id: string, reason: string, by: { employeeId: string; isAdmin: boolean }) {
   if (text(reason).length < 3) throw new Error("Give the reason for deleting the expense.");
-  await ownExpense(id, by);
-  await voidFinanceRecord("expense", text(id), text(reason).slice(0, 200));
+  await inTransaction(async (tx) => {
+    await ownExpense(tx, id, by);
+    await voidFinanceRecord("expense", text(id), text(reason).slice(0, 200));
+  });
 }
 
+/** One cash movement; inside a caller's transaction it is saved with the rest of that save. */
 export async function createCashTransaction(input: Record<string, unknown>) {
   const value = round(Number(input.amount)); const direction = text(input.direction);
   if (!datePattern.test(text(input.date))) throw new Error("Enter a valid transaction date.");
-  if (!['inflow', 'outflow'].includes(direction)) throw new Error("Choose cash inflow or outflow.");
+  if (!["inflow", "outflow"].includes(direction)) throw new Error("Choose cash inflow or outflow.");
   if (!Number.isFinite(value) || value <= 0) throw new Error("Transaction amount must be greater than zero.");
   const id = createReadableId("CASH");
-  await appendEncodedRows({ range: "'Cash Transactions'!A:P", requestBody: { values: [[id, text(input.date), direction,
-    required(input.category, "Category"), required(input.description, "Description"), value, required(input.branch, "Branch"),
-    required(input.account, "Cash account"), text(input.referenceType) || "Manual", text(input.referenceId), "Posted", text(input.remarks),
-    new Date().toISOString(), "", "", ""]] } });
+  await currentDb().insert(cashTable).values({
+    transaction_id: id, transaction_date: text(input.date), direction, category: required(input.category, "Category"), description: required(input.description, "Description"), amount: value,
+    branch: required(input.branch, "Branch"), cash_account: required(input.account, "Cash account"), reference_type: text(input.referenceType) || "Manual", reference_id: text(input.referenceId) || null,
+    status: "Posted", remarks: text(input.remarks) || null, created_at: new Date().toISOString(), ...encodedBy(),
+  });
   return { id };
 }
 
+/** Voids an expense or a manual cash transaction with the reason: one locked update by ID. */
 export async function voidFinanceRecord(kind: "expense" | "cash", id: string, reason: string) {
-  const actor = getEncoder(); const data = await getFinanceData();
-  const record = kind === "expense" ? data.expenses.find((row) => row.id === id) : data.manual.find((row) => row.id === id);
-  if (!record?.rowNumber) throw new Error("Financial record not found.");
-  if (record.status === "Voided") throw new Error("Financial record is already voided.");
-  const title = kind === "expense" ? "Expenses" : "Cash Transactions";
-  const statusColumn = kind === "expense" ? "L" : "K";
-  const voidRange = kind === "expense" ? `O${record.rowNumber}:Q${record.rowNumber}` : `N${record.rowNumber}:P${record.rowNumber}`;
-  await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: [
-    { range: `'${title}'!${statusColumn}${record.rowNumber}`, values: [["Voided"]] },
-    { range: `'${title}'!${voidRange}`, values: [[actor.encodedAt, `'${actor.userId}`, required(reason, "Void reason")]] },
-  ] } });
+  const actor = getEncoder();
+  const why = required(reason, "Void reason");
+  await inTransaction(async (tx) => {
+    const table = kind === "expense" ? expensesTable : cashTable;
+    const idColumn = kind === "expense" ? expensesTable.expense_id : cashTable.transaction_id;
+    const [row] = await tx.select({ status: table.status }).from(table).where(eq(idColumn, text(id))).for("update");
+    if (!row) throw new Error("Financial record not found.");
+    if (text(row.status) === "Voided") throw new Error("Financial record is already voided.");
+    await tx.update(table).set({ status: "Voided", voided_at: actor.encodedAt, voided_by_user_id: actor.userId, void_reason: why }).where(and(eq(idColumn, text(id))));
+  });
+}
+
+/** The latest cash transactions for a reference (e.g. a payroll run or vendor bill), newest first. */
+export async function cashTransactionsFor(referenceType: string, referenceId: string) {
+  return currentDb().select().from(cashTable).where(and(eq(cashTable.reference_type, referenceType), eq(cashTable.reference_id, referenceId))).orderBy(desc(cashTable.created_at));
 }

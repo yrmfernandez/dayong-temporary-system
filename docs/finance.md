@@ -35,3 +35,7 @@ Each manual cash record has a stable ID, date, inflow/outflow direction, categor
 Financial records are never deleted through the application. Authorized users void an entry with a reason, preserving its history. The current temporary authorization for voiding is `manage_users`; replace it with a dedicated finance permission when granular permissions are introduced.
 
 Run `npm run sheets:finance -- --apply` to create or verify the migration-ready `Expenses` and `Cash Transactions` tabs. The configured live workbook was migrated on 2026-09-26.
+
+## Saving (October 24, 2026)
+
+Expenses, Cash Transactions, cash accounts, vendor bills and commissions are read and written directly in their database tables by ID (`lib/finance-data.ts`, `lib/finance-operations.ts`), no longer through the Sheets-style layer. Each change is one statement or one transaction: an expense edit is one update, a void or delete locks the row first, and a payment's cash outflow is saved in the same transaction as the payment (payroll, vendor bill, commission, Fidelity), so a failure saves neither. A vendor bill is locked while it is paid, so two payments at the same moment cannot overpay it; a commission is locked while it is paid, so it is paid once. The old "run npm run sheets:expense-fields" check is gone: the Attachments and Approved By columns are part of the table.

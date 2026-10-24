@@ -11,11 +11,18 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | **Built 2026-10-24**: vendor, commission and Fidelity payouts record cash; payroll company-program deductions listed until their Collection is linked (owner chose the reminder list) |
 | 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | **Built 2026-10-24**: Member Corrections page with fix coverage, move receipts, insert missing receipt, merge and split |
 | 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | **Built 2026-10-24** (option 1, owner): Base Pay, flexible and registration fee locked once a program has collections |
-| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **In progress**: phase 1 Payroll and phase 2 clerk report cash built 2026-10-24; next Expenses/Cash Transactions, then the rest |
+| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **In progress**: phases 1 Payroll, 2 clerk report cash and 3 finance built 2026-10-24; phase 4 (audits, attendance calendar, settings, roles, remarks) next |
 | 7 | One time zone (Manila) for every report date | To do |
 | 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Finance saves by ID in one step (2026-10-24, upgrade #6 phase 3)
+
+- **Owner:** continue upgrade #6 with phase 3.
+- **Done:** `lib/finance-data.ts` (Expenses, Cash Transactions, the cash ledger, voiding) and `lib/finance-operations.ts` (cash accounts, vendor bills, commissions) rewritten on their tables, by ID. Expense edit: one update on the locked row (it was five cell writes by row position); delete and void: locked, one update. Cash transactions are inserted in the caller's transaction, so a payroll, vendor, commission or Fidelity payment and its cash outflow save together (the payroll test now proves a failed payment leaves no cash record). **Fixed:** a vendor payment checked the balance before its transaction, so two payments at once could overpay a bill; the bill is now locked first (tested). Commissions are locked while paid; cash account names stay unique under simultaneous saves. Tests moved to the database; all 238 tests and the build pass. No migration.
+- **In progress:** upgrade #6 phase 4.
+- **To do (owner):** deploy.
 
 ### Payroll company-program deductions: reminder list (2026-10-24)
 
