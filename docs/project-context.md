@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
 
+### Status clock: Month of on the OR date's day (2026-10-24)
+
+- **Owner:** the counting of Waiver, 60D and so on goes back to "Month of", with the start/end day taken from the OR date's day; Forfeited too (confirmed).
+- **Done:** `accountState` (`lib/account-rules.ts`): paid through = last covered month on the last OR date's day; Waiver and 60D two missed months, 90D three, 120D four, 150D five or more; Forfeited the day after six missed months (twelve for Pay the Balance). Paid October 10 for July: 60D/Waiver September 10, 150D December 10, Forfeited January 11. Validation of new payments (Waiver on the OR date, Forfeited blocks) follows automatically. Tests updated; all 232 pass. New read-only `scripts/preview-month-of-status-rule.mjs`.
+- **Impact measured on staging (October 24, 14,035 accounts), new rule against the rule it replaces:** 2,229 accounts change, almost all to a more overdue status; Waiver needed today 3,169 → 3,987; about 347 become Forfeited (Forfeited blocks payments, and a stored Forfeited stays on programs that are not Pay the Balance even if the rule changes later).
+- **In progress:** none.
+- **To do (owner):** before deploying, run `npm run prod -- node scripts/preview-month-of-status-rule.mjs` to see the production numbers. After deploying, statuses update on screen at once and are stored by the nightly job (or MAM → sync).
+
 ### Finance links: payouts leave the cash ledger (2026-10-24)
 
 - **Owner:** upgrade #3: some payouts did not create cash records, so the cash ledger and reports could disagree.

@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 72 API handlers, 131 library files, 59 component files; 600 scanned source/configuration/public-text files in total.
+43 page routes, 72 API handlers, 131 library files, 59 component files; 601 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -591,6 +591,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/name-match.mjs](../scripts/name-match.mjs) | See source | No flag detected; read source before running |
 | [scripts/prepare-owner-12665b-private.mjs](../scripts/prepare-owner-12665b-private.mjs) | `node:fs`, `@next/env`, `postgres`, `node:assert/strict`, `node:crypto`, `./source-history-rules.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/prepare-receipt-import-private.mjs](../scripts/prepare-receipt-import-private.mjs) | `node:fs`, `@next/env`, `postgres`, `node:crypto`, `./legacy-sources.mjs`, `./source-history-rules.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
+| [scripts/preview-month-of-status-rule.mjs](../scripts/preview-month-of-status-rule.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/prod.mjs](../scripts/prod.mjs) | `node:child_process`, `node:fs` | No flag detected; read source before running |
 | [scripts/program-history.mjs](../scripts/program-history.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/reassign-ciara-ns-20261014.mjs](../scripts/reassign-ciara-ns-20261014.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |

@@ -266,19 +266,19 @@ Historical coverage starts from the first stored Collection month when one exist
 
 ### Calculated payment status and displayed balance
 
-Only posted Collections with OR date on/before the calculation date count. **60D and the Waiver count from the last OR date (owner, October 21, 2026, the rule before October 14):** the anchor is the last payment's OR date, or the DOI day of an advance's last covered month when that is later (the DOI before any Collection; a day a short month lacks is its last day). Two whole months after the anchor the account becomes **60D and temporarily suspended (Waiver needed) on the same day**; 90D after three, 120D four, 150D five or more. The month the payment covered no longer moves this: paid October 10 for July is 60D and needs a Waiver from December 10, like a payment for October. The **amount due** still counts the months missed after the last covered month ("Month of") on the payment day. Status follows these rules:
+Only posted Collections with OR date on/before the calculation date count. **Everything counts from "Month of" on the OR date's day (owner, October 24, 2026):** the account is **paid through** the last covered month on the day of the last payment's OR date (the DOI month on the DOI day before any Collection; a day a short month lacks is its last day), and each later month is missed on that day. Two missed months make it **60D and temporarily suspended (Waiver needed) on the same day**; three 90D, four 120D, five or more 150D; **Forfeited** the day after six missed months (twelve for Pay the Balance programs). Paid October 10 for July: paid through July 10, so one month missed August 10, 60D and Waiver from September 10, 90D October 10, 120D November 10, 150D December 10, Forfeited January 11. Paid October 10 for October: 60D and Waiver from December 10. An advance counts the same way from its last covered month. (October 21–23 counted Waiver, 60D–150D and Forfeited from the last OR date instead; October 17–20 counted Waiver and 60D from Month of but Forfeited from the OR date.) The **amount due** counts the same missed months. Status follows these rules:
 
 | Status | Meaning | Displayed balance multiplier |
 | --- | --- | --- |
 | NS | No Collection yet; new-account state. | 1 × monthly rate |
-| U | Less than two months since the anchor. | months missed after Month of, at least 1 (the next month) |
+| U | Fewer than two months missed after Month of. | months missed after Month of, at least 1 (the next month) |
 | ADV | The latest covered month is after this month. | 0 |
-| 60D | Two months since the anchor, the day the Waiver starts (paid October 10, for any month: from December 10). | months missed after Month of |
-| 90D | Three months since the anchor (from January 10 in that example). | months missed after Month of |
-| 120D | Four months since the anchor. | months missed after Month of |
-| 150D | Five or more months since the anchor; label caps here. | months missed after Month of, at most 5 |
+| 60D | Two months missed, the day the Waiver starts (paid October 10 for July: from September 10). | months missed after Month of |
+| 90D | Three months missed. | months missed after Month of |
+| 120D | Four months missed. | months missed after Month of |
+| 150D | Five or more months missed; label caps here. | months missed after Month of, at most 5 |
 | Paid | Positive payoff total reached by sum of qualifying Collections. | 0 |
-| Forfeited | Stored forfeiture marker or timing threshold reached, unless Paid takes precedence. | `null`, displayed as unavailable |
+| Forfeited | Stored forfeiture marker, or more than six missed months (twelve for Pay the Balance), unless Paid takes precedence. | `null`, displayed as unavailable |
 
 **Displayed balance is a status-based figure, not an exact arrears ledger.** It counts the months missed, at least one: at PHP 350, paid October 10 for October shows PHP 350 until December 9, 60D from December 10 shows PHP 700; past five missed months 150D still shows five. TMD is also not the sum of Collections. Read SOA history and unpaid-month count when reconciling real payments.
 
@@ -286,21 +286,21 @@ The payoff calculation uses Collections, **excluding the New Sale amount**. Curr
 
 ### Suspension and forfeiture clock
 
-**Since October 17, 2026 (owner):** temporary suspension starts the same day as 60D: two months after the paid-through date (the last covered month on the last payment's day). Paid October 10 for October: paid through October 10, one month missed November 10, 60D and suspended from December 10. **A late payment for an old month counts from that month:** paid October 10 for July means paid through July 10, so the account was suspended from September 10 and that payment needed a Waiver. (October 14–16 counted calendar months instead: suspended on the 1st of the third month after the last covered one.) Forfeiture is unchanged (below).
-
-Forfeiture starts from the anchor: the latest actual Collection OR date, or DOI before any Collection. Advance coverage can move that anchor forward to **DOI's day in the last advance-covered month**. A nonexistent day is clamped to the month end.
+**Since October 24, 2026 (owner):** suspension and forfeiture both follow the paid-through date, the last covered month on the last payment's OR day, so a late payment for an old month counts from that month: paid October 10 for July is suspended from September 10 (that payment itself needed a Waiver) and forfeited from January 11. `anchor` (the last OR date, or the DOI day of an advance's last covered month) is still reported by `accountState` but no longer moves any status. A nonexistent day is clamped to the month end.
 
 ```text
-paid through    = the last covered month, on the day of the last payment's OR date (DOI day before any Collection)
-suspension date = paid through + 2 months, same day (since October 17, 2026)
-forfeiture date = anchor + 6 calendar months + 1 day      (Pay the Balance programs: anchor + 12 calendar months + 1 day)
+paid through    = the last covered month, on the day of the last payment's OR date (DOI month on the DOI day before any Collection)
+suspension date = paid through + 2 months, same day (also 60D)
+forfeiture date = paid through + 6 months + 1 day      (Pay the Balance programs: paid through + 12 months + 1 day)
 ```
 
-**Pay the Balance programs (October 16, 2026, owner):** a program in the **Pay the Balance** category (`CAT-PAY-THE-BALANCE`, Programs → category) is still not forfeited up to and including 12 months after its anchor; every other program up to and including 6 months (`forfeitMonthsFor` in [account-rules.ts](../lib/account-rules.ts)). Suspension is unchanged. The Statement of Account footer names the period. On other programs a stored Forfeited status holds; on Pay the Balance programs it does not (owner, October 16, 2026: wait the full 12 months), so an account forfeited under the old 6-month rule shows its overdue status again on screens that work the status out. `scripts/recheck-forfeited-accounts.mjs` (dry run, then `--apply`) stores that status on those accounts so lists and filters reading the stored status agree; a program counts once it is in that category.
+`scripts/preview-month-of-status-rule.mjs` (read only) lists how many accounts change status under this rule compared with the status stored now.
+
+**Pay the Balance programs (October 16, 2026, owner):** a program in the **Pay the Balance** category (`CAT-PAY-THE-BALANCE`, Programs → category) is still not forfeited up to and including 12 missed months after its paid-through date; every other program up to and including 6 months (`forfeitMonthsFor` in [account-rules.ts](../lib/account-rules.ts)). Suspension is unchanged. The Statement of Account footer names the period. On other programs a stored Forfeited status holds; on Pay the Balance programs it does not (owner, October 16, 2026: wait the full 12 months), so an account forfeited under the old 6-month rule shows its overdue status again on screens that work the status out. `scripts/recheck-forfeited-accounts.mjs` (dry run, then `--apply`) stores that status on those accounts so lists and filters reading the stored status agree; a program counts once it is in that category.
 
 On/after suspension, another payment requires `If Suspended = Waiver`. Other dropdown values do not satisfy this rule. On/after forfeiture, payment is blocked. These rules apply to each enrollment independently; payment to another program does not reset the clock.
 
-**Example:** DOI September 15; a receipt dated September 20 covers through November. Paid through November 20, so December is missed on December 20 and January on January 20: 60D and suspended from January 20. The forfeiture anchor becomes November 15 (DOI day) and forfeiture begins May 16. The receipt remains dated September; no future Collections are invented.
+**Example:** DOI September 15; a receipt dated September 20 covers through November. Paid through November 20, so December is missed on December 20 and January on January 20: 60D and suspended from January 20; forfeited from May 21. The receipt remains dated September; no future Collections are invented.
 
 Status is calculated on reads, updated on Collection saves, and persisted by MAM's **Sync current statuses** action. There is no background status scheduler.
 

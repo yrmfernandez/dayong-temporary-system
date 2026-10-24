@@ -115,14 +115,14 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
     }
   }
   /*
-   * Waiver and 60D count from the last OR date again (owner, October 21, 2026, the rule before October 14), not from
-   * the month the payment covered: the anchor is the last payment's OR date, or the DOI day of an advance's last covered
-   * month when that is later (the DOI before any collection). The account is temporarily suspended (Waiver needed) two
-   * months after the anchor, the same day it becomes 60D; 90D after three months, 120D four, 150D five or more. Paid
-   * October 10 for October, or for July: 60D and suspended on December 10, 90D January 10. Forfeiture counts from the
-   * same anchor: 6 months, or 12 for Pay the Balance programs (forfeitMonthsFor, owner, October 16, 2026).
-   * The amount due still counts the months missed after the last covered month ("Month of") on the payment day, so a
-   * late payment for an old month leaves the months after it due (paidThrough, unpaidMonths).
+   * Everything counts from "Month of" on the OR date's day (owner, October 24, 2026, the October 17 rule extended to
+   * Forfeited): the account is paid through the last covered month on the day of the last payment's OR date, and each
+   * later month is missed on that day. Paid October 10 for July: paid through July 10, so one month missed August 10,
+   * 60D and temporarily suspended (Waiver needed) September 10, 90D October 10, 120D November 10, 150D December 10, and
+   * Forfeited the day after six missed months (January 11), or twelve for Pay the Balance programs (forfeitMonthsFor).
+   * An advance counts the same way from its last covered month. Before any collection the New Sale covers the DOI month
+   * on the DOI day. Days past the end of a short month fall on its last day. `anchor` (the last OR date, or the DOI day
+   * of an advance's last covered month) is still reported but no longer moves any status.
    */
   const lastPaidMonth = lastCoveredMonth || account.doi.slice(0, 7);
   const payDay = Number((latest?.orDate ?? account.doi).slice(8, 10));
@@ -131,10 +131,8 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   const paidThrough = missedOn(0);
   let missedMonths = Math.max(0, monthIndex(today) - monthIndex(lastPaidMonth));
   if (missedMonths > 0 && missedOn(missedMonths) > today) missedMonths--;
-  // Whole months from the anchor to a date, for 60D–150D and the Waiver.
-  const monthsSinceAnchor = (date: string) => { let k = monthIndex(date) - monthIndex(anchor); if (k > 0 && addMonths(anchor, k) > date) k--; return Math.max(0, k); };
-  const suspendedAt = addMonths(anchor, 2);
-  const forfeitedAt = addDay(addMonths(anchor, account.forfeitMonths ?? 6));
+  const suspendedAt = missedOn(2);
+  const forfeitedAt = addDay(missedOn(account.forfeitMonths ?? 6));
   const paid = account.payBalanceTotal > 0 && payments.reduce((sum, payment) => sum + payment.amount, 0) >= account.payBalanceTotal;
   // A stored Forfeited status holds (for example one carried from the old system), except on Pay the Balance programs:
   // they wait the full 12 months before being declared forfeited, whatever was stored under the old 6-month rule
@@ -146,13 +144,12 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   const firstMonth = months[0] ?? account.doi.slice(0, 7);
   if (months.length && monthCount(firstMonth, lastCoveredMonth) !== months.length) throw new Error(`Account ${account.id} has gaps in payment coverage. Review its history.`);
   const unpaidMonths = missedMonths;
-  const overdue = monthsSinceAnchor(today);
   let status: AccountStatus = "NS";
   if (paid) status = "Paid";
   else if (forfeited) status = "Forfeited";
   else if (payments.length) {
     status = lastCoveredMonth > currentMonth ? "ADV"
-      : overdue <= 1 ? "U" : (["60D", "90D", "120D", "150D"] as const)[Math.min(overdue, 5) - 2];
+      : unpaidMonths <= 1 ? "U" : (["60D", "90D", "120D", "150D"] as const)[Math.min(unpaidMonths, 5) - 2];
   }
   // Without a registration fee the New Sale is NOP 1 (the DOI month), so an NS account's first Collection is NOP 2, the
   // month after DOI; with one the New Sale is no NOP and the first Collection is NOP 1 (saleNops).

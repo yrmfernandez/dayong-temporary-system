@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 24, 2026: status clock from Month of.** Waiver, 60D–150D and Forfeited count from the last covered month on the OR date's day (paid October 10 for July: 60D and Waiver from September 10, Forfeited January 11). See the [system guide](system-guide.md) status rules; preview the effect with `scripts/preview-month-of-status-rule.mjs`.
+
 **October 24, 2026: payouts leave the cash ledger.** Vendor bill payments, commissions paid directly and Fidelity withdrawals now record their cash outflow with the payment (cash account, branch, date). See [finance](finance.md) and the [system guide](system-guide.md) (implementation limits, item 5).
 
 **October 24, 2026: nightly jobs.** Every night after midnight Manila the system records absences for finished days, updates account statuses and counts the Exceptions; IT → System Health shows the last run and has Run now. Needs `CRON_SECRET` on Vercel. See the [system guide](system-guide.md) (implementation limits, item 11).
