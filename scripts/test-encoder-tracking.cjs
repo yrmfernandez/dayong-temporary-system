@@ -4028,3 +4028,22 @@ test('Member Corrections: merging two members joins accounts in the same program
   assert.deepEqual(await correctionNumbers("collection_id in ('C1', 'C21')"), [['C1', 'E1', 2, '2026-02'], ['C21', 'E1', 3, '2026-03']], 'joined and numbered on in OR-date order');
   assert.equal((await query("select count(*)::int as n from collections where member_id = 'MEM-1'"))[0].n, 3);
 });
+
+test('a program with posted collections keeps its monthly rate, flexible and registration-fee settings (upgrade #5)', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  await seedAccount({ program: 'DP-1', programName: 'D-350', basePay: 350, doi: '2026-01-15' });
+  await seed('programs', [{ program_id: 'DP-NEW', program_name: 'D-400', base_pay: 400 }]);
+  const crud = h.load('lib/master-data-crud.ts');
+  const { getDb } = h.load('lib/db.ts');
+  const db = getDb();
+  assert.equal(await crud.lockedPayChange(db, 'DP-1', { basePay: 400, flexible: false, registrationFeeRequired: false }), '', 'no collections yet: the rate may change');
+  await seed('collections', [{ collection_id: 'C1', collection_batch_id: 'CBT', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: '1 A', or_date: '2026-02-10', amount_collected: 350, month_from: '2026-02', month_to: '2026-02', nop_from: 2, nop_to: 2, status: 'Posted' }]);
+  assert.match(await crud.lockedPayChange(db, 'DP-1', { basePay: 400, flexible: false, registrationFeeRequired: false }), /monthly rate \(₱350 → ₱400\).*1 posted collection.*new program/);
+  assert.match(await crud.lockedPayChange(db, 'DP-1', { basePay: 350, flexible: true, registrationFeeRequired: true }), /flexible payments, registration fee required/);
+  assert.equal(await crud.lockedPayChange(db, 'DP-1', { basePay: 350, flexible: false, registrationFeeRequired: false }), '', 'other settings stay editable');
+  const { withEncoder } = h.load('lib/encoder-context.ts');
+  const bulk = (changes) => withEncoder(async () => Response.json(await crud.updateProgramsBulk(['DP-1', 'DP-NEW'], changes)))(request());
+  await assert.rejects(bulk({ flexible: true }), /D-350: flexible payments cannot change/);
+  assert.equal((await query("select flexible from programs where program_id = 'DP-NEW'"))[0].flexible, false, 'nothing saved when one program is refused');
+  assert.equal((await bulk({ status: 'inactive' })).status, 200, 'other bulk changes still work');
+});

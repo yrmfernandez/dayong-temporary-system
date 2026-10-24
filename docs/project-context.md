@@ -10,12 +10,19 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 2 | Nightly scheduled jobs: account-status sync, end-of-day absences, Exceptions, so dashboards are never stale | **Built 2026-10-24**; owner sets CRON_SECRET on Vercel and deploys |
 | 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | **Built 2026-10-24** for vendor, commission and Fidelity payouts; payroll company-program deductions waiting on the owner's decision |
 | 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | **Built 2026-10-24**: Member Corrections page with fix coverage, move receipts, insert missing receipt, merge and split |
-| 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | To do (next) |
-| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | To do |
+| 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | **Built 2026-10-24** (option 1, owner): Base Pay, flexible and registration fee locked once a program has collections |
+| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | To do (next) |
 | 7 | One time zone (Manila) for every report date | To do |
 | 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Program pay locked once paid (2026-10-24)
+
+- **Owner:** upgrade #5. Of the two options (block rate changes on programs in use, or store the rate on every receipt), the owner chose 1: block.
+- **Done:** `lockedPayChange` (`lib/master-data-crud.ts`) refuses a change of Base Pay, flexible payments or registration fee required on a program that has any posted collection, on Programs → Edit and on Edit selected (one refused program saves nothing); the message names the program, what changed and how many collections, and says to create a new program for a new price. Programs with no collections yet can still change. The Base Pay hint on the program form says so. Test added; all 236 tests pass. No migration.
+- **In progress:** none.
+- **To do (owner):** deploy. A price change for new members is a new program (e.g. "D-350 2027").
 
 ### Member Corrections page (2026-10-24)
 

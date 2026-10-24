@@ -2006,7 +2006,7 @@ const programForm = (
             <p className="text-xs text-muted-foreground">
               {form.flexible
                 ? "Flexible payments are on: Base Pay is the minimum monthly payment, set under Flexible payments below."
-                : "Used for TMD, Balance, and incentive calculations."}
+                : "Used for TMD, Balance, and incentive calculations. Once the program has collections, Base Pay, flexible payments and registration fee required cannot change; create a new program for a new price."}
             </p>
           </div>
 

@@ -1,6 +1,6 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 
-import { currentDb, inTransaction, schema } from "@/lib/db";
+import { currentDb, inTransaction, schema, type Queryable } from "@/lib/db";
 import { assertProgramCodeFree, getPrograms, programColumns } from "@/lib/google-sheets-data";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } from "@/lib/passwords";
@@ -22,6 +22,27 @@ async function hasEnrollments(condition: ReturnType<typeof sql>) {
   return Boolean(row);
 }
 
+/**
+ * Locked pay (owner, October 24, 2026; upgrade #5, option 1): receipts do not store the rate they were paid at, so the
+ * account rules, MAM and SOA read every receipt at the program's current monthly rate (and its registration-fee and
+ * flexible setting, which decide the NOPs and how amounts count). Once a program has a posted collection these cannot
+ * change; a new price is a new program. Returns why the change is refused, or "" when it is allowed.
+ */
+export async function lockedPayChange(tx: Queryable, id: string, next: { basePay: number; flexible?: boolean; registrationFeeRequired: boolean }) {
+  const [current] = await tx.select({ code: schema.programs.program_code, name: schema.programs.program_name, basePay: schema.programs.base_pay, flexible: schema.programs.flexible, registration: schema.programs.registration_fee_required })
+    .from(schema.programs).where(eq(schema.programs.program_id, id));
+  if (!current) return "";
+  const changed = [
+    Math.round(Number(current.basePay ?? 0) * 100) !== Math.round(Number(next.basePay) * 100) ? `the monthly rate (₱${Number(current.basePay ?? 0)} → ₱${Number(next.basePay)})` : "",
+    Boolean(current.flexible) !== Boolean(next.flexible) ? "flexible payments" : "",
+    Boolean(current.registration) !== Boolean(next.registrationFeeRequired) ? "registration fee required" : "",
+  ].filter(Boolean);
+  if (!changed.length) return "";
+  const [paid] = await tx.select({ count: sql<number>`count(*)::int` }).from(schema.collections).where(and(eq(schema.collections.program_id, id), eq(schema.collections.status, "Posted")));
+  if (!Number(paid?.count)) return "";
+  return `${current.code || current.name}: ${changed.join(", ")} cannot change because ${Number(paid.count).toLocaleString("en-PH")} posted collection(s) were paid under the current setting, and old receipts would be read at the new one. Create a new program for the new price instead.`;
+}
+
 export type ProgramInput = { flexible?: boolean; maxMonthlyPayment?: unknown; code: string; name: string; basePay: number; status: "active" | "inactive"; description: string; categoryId?: string; newSaleAmountEditable?: boolean; collectionAmountEditable?: boolean; registrationFeeRequired: boolean; registrationAmount: number; payBalanceTotal: number; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown; incentiveTiers: StoredTier[] };
 
 export async function updateProgramRecord(id: string, input: ProgramInput) {
@@ -35,6 +56,8 @@ export async function updateProgramRecord(id: string, input: ProgramInput) {
     // A changed code must be free; an unchanged one is left alone, so the existing duplicates can still be edited (and renamed).
     const [current] = await tx.select({ code: schema.programs.program_code }).from(schema.programs).where(eq(schema.programs.program_id, id));
     if (current && String(current.code ?? "").trim().toLowerCase() !== input.code.trim().toLowerCase()) await assertProgramCodeFree(tx, input.code, id);
+    const locked = await lockedPayChange(tx, id, { basePay: Number(columns.base_pay), flexible: Boolean(columns.flexible), registrationFeeRequired: Boolean(columns.registration_fee_required) });
+    if (locked) throw new Error(locked);
     const updated = await tx.update(schema.programs).set(columns).where(eq(schema.programs.program_id, id)).returning({ id: schema.programs.program_id });
     if (!updated.length) throw new Error("Record not found.");
     await writeProgramIncentives(id, input.incentiveTiers);
@@ -90,7 +113,11 @@ export async function updateProgramsBulk(ids: string[], changes: ProgramBulkChan
     }
   });
   await inTransaction(async (tx) => {
-    for (const { id, columns } of updates) await tx.update(schema.programs).set(columns).where(eq(schema.programs.program_id, id));
+    for (const { id, columns } of updates) {
+      const locked = await lockedPayChange(tx, id, { basePay: Number(columns.base_pay), flexible: Boolean(columns.flexible), registrationFeeRequired: Boolean(columns.registration_fee_required) });
+      if (locked) throw new Error(locked);
+      await tx.update(schema.programs).set(columns).where(eq(schema.programs.program_id, id));
+    }
   });
   return { updated: updates.length };
 }
