@@ -8,6 +8,8 @@ Finance uses three operational sources rather than asking users to encode the sa
 
 The consolidated Cash Ledger is generated from those sources. Users must not re-enter an approved remittance or posted expense as a manual transaction.
 
+Payouts made in the app write their own Cash Transaction outflow (October 24, 2026), so they must not be entered by hand either: payroll payment (category Payroll), vendor bill payments (Vendor payment), commissions paid directly from Commissions (Commission) and Fidelity withdrawals and releases (Fidelity release). Each asks for the cash account, the branch charged and the date paid, and is saved together with its payment. A payroll company-program deduction still needs its Collection recorded separately.
+
 ## Expense records
 
 The entry form follows the company expense form: Branch, Date of Expense, Account Name, Amount, Attachments, Invoice/Receipt No., Purpose, Approved by, and Remarks. Choices live in `lib/expense-options.ts`:

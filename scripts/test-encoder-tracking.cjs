@@ -154,6 +154,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       if (range.startsWith("'Bank Deposits'")) return { data: { values: rows['Bank Deposits'] ?? [[]] } };
       if (range.startsWith("'Report Notes'")) return { data: { values: rows['Report Notes'] ?? [[]] } };
       if (range.startsWith("'System Settings'")) return { data: { values: rows['System Settings'] ?? [[]] } };
+      if (/^'?(Cash Accounts|Vendor Payables|Commissions)'?!A:[A-Z]+$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
       if (range === 'Expenses!V1:W1' || range === 'Sales!AO1:AQ1') return { data: { values: rows[range] ?? [[]] } };
       if (/!A:ZZ$/.test(range)) return { data: { values: rows[range.split('!')[0].replace(/^'|'$/g, '')] ?? [[]] } };
       const schema = load('lib/encoder-schema.ts').getEncoderSheet(range);
@@ -3898,4 +3899,37 @@ test('a deposit is dated within the report it is entered on (October 23, 2026)',
   assert.equal(depositDayProblem({ reportKind: 'weekly', reportDate: '2026-10-20', date: '2026-10-25' }), '', 'any day of that week (October 19-25)');
   assert.match(depositDayProblem({ reportKind: 'weekly', reportDate: '2026-10-20', date: '2026-10-18' }), /from 2026-10-19 to 2026-10-25/);
   assert.equal(depositDayProblem({ date: '2026-10-01' }), '', 'no report sent: not checked here');
+});
+
+test('vendor and direct commission payments also record their cash outflow, or nothing is saved', async () => {
+  const h = harness({ userId: 'U3', employeeId: 'DPE-0003', name: 'finance', roleNames: ['Finance'], permissions: {} });
+  h.rows['Cash Accounts'] = [['account_id'], ['CAC-1', 'Cash on Hand', 'cash', 0, 'active'], ['CAC-2', 'Old Bank', 'bank', 0, 'inactive']];
+  h.rows['Vendor Payables'] = [['payable_id'], ['PAY-1', '2026-10-01', '2026-10-30', 'Casket Co', 'Casket Purchases', 'Two caskets', 1000, 0, 1000, 'MINTAL', 'Outstanding', 'INV-9', '', '', '']];
+  h.rows.Commissions = [['commission_id'], ['COM-1', 'MD-1', 'Ana Cruz', '2026-10-01', '2026-10-15', 500, 0, 500, 'Pending', '', '', '']];
+  const patch = (route, body) => route.PATCH(new Request('http://localhost/api/test', { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+  const cashRows = () => h.writes.filter((write) => write.range?.startsWith("'Cash Transactions'!A:")).map((write) => write.requestBody.values[0]);
+
+  const vendors = h.load('app/api/vendor-payables/route.ts');
+  for (const [body, why] of [[{ id: 'PAY-1', amount: 400 }, /cash account/], [{ id: 'PAY-1', amount: 400, account: 'Old Bank' }, /cash account/], [{ id: 'PAY-1', amount: 400, account: 'Cash on Hand', date: '2999-01-01' }, /payment date/]]) {
+    const refused = await patch(vendors, body);
+    assert.equal(refused.status, 400);
+    assert.match((await refused.json()).message, why);
+  }
+  assert.equal(h.writes.length, 0, 'a refused payment saves nothing');
+  const paid = await patch(vendors, { id: 'PAY-1', amount: 400, account: 'Cash on Hand', date: '2026-10-20' });
+  assert.equal(paid.status, 200, JSON.stringify(await paid.clone().json()));
+  const bill = h.writes.find((write) => write.requestBody?.data?.some?.((item) => item.range === "'Vendor Payables'!H2:K2")).requestBody.data[0].values[0];
+  assert.deepEqual(bill, [400, 600, 'MINTAL', 'Partially Paid']);
+  assert.deepEqual(cashRows()[0].slice(1, 12), ['2026-10-20', 'outflow', 'Vendor payment', 'Casket Co: Two caskets (partial)', 400, 'MINTAL', 'Cash on Hand', 'Vendor Payable', 'PAY-1', 'Posted', 'INV-9'], 'charged to the bill branch');
+
+  const commissions = h.load('app/api/commissions/route.ts');
+  assert.equal((await patch(commissions, { id: 'COM-1', account: 'Cash on Hand' })).status, 400, 'the branch is required');
+  const before = h.writes.length;
+  const direct = await patch(commissions, { id: 'COM-1', account: 'Cash on Hand', branch: 'MINTAL', date: '2026-10-21', referenceNumber: 'GC-1' });
+  assert.equal(direct.status, 200, JSON.stringify(await direct.clone().json()));
+  assert.ok((await direct.json()).cashTransactionId);
+  assert.deepEqual(cashRows().at(-1).slice(1, 12), ['2026-10-21', 'outflow', 'Commission', 'Commission Ana Cruz (2026-10-01 to 2026-10-15)', 500, 'MINTAL', 'Cash on Hand', 'Commission', 'COM-1', 'Posted', 'GC-1']);
+  const marked = h.writes.slice(before).find((write) => write.range === 'Commissions!I2:K2');
+  assert.equal(marked.requestBody.values[0][0], 'Paid');
+  assert.equal(marked.requestBody.values[0][2], 'GC-1');
 });

@@ -31,7 +31,7 @@ export const PATCH = withEncoder(async (request: Request) => {
   if (!user || !roles.some((role) => ["administrator", "admin", "finance"].includes(role))) return Response.json({ success: false, message: "Finance or Administrator access is required to record a Fidelity withdrawal." }, { status: 403 });
   try {
     const body = await request.json();
-    const result = await withdrawFidelity(String(body.masEmployeeId ?? ""), String(body.kind ?? ""), Number(body.amount), String(body.notes ?? ""));
+    const result = await withdrawFidelity(String(body.masEmployeeId ?? ""), String(body.kind ?? ""), Number(body.amount), String(body.notes ?? ""), { account: body.account, branch: body.branch, date: body.date });
     return Response.json({ success: true, message: `${result.type} of ${result.amount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} recorded for ${result.masName}.` });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to record the Fidelity withdrawal." }, { status: 400 });

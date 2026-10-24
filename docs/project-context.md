@@ -8,7 +8,7 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | --- | --- | --- |
 | 1 | Clock-in location check: branch office locations, flag clock-ins away from the branch or with location off for HR | **Built 2026-10-24**; owner migrates production, deploys, then sets each branch's location (Branches → Branch locations for clock-in) |
 | 2 | Nightly scheduled jobs: account-status sync, end-of-day absences, Exceptions, so dashboards are never stale | **Built 2026-10-24**; owner sets CRON_SECRET on Vercel and deploys |
-| 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | To do (next) |
+| 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | **Built 2026-10-24** for vendor, commission and Fidelity payouts; payroll company-program deductions waiting on the owner's decision |
 | 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | To do |
 | 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | To do |
 | 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | To do |
@@ -16,6 +16,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Finance links: payouts leave the cash ledger (2026-10-24)
+
+- **Owner:** upgrade #3: some payouts did not create cash records, so the cash ledger and reports could disagree.
+- **Done:** vendor bill payments, commissions paid directly and Fidelity withdrawals/releases now each record a Cash Transaction outflow, saved in one database transaction with the payment (`cashOutDetails`, `payVendorPayable`, `payCommissionDirectly` in `lib/finance-operations.ts`; `withdrawFidelity` in `lib/fidelity.ts`). Their pages ask for the cash account (active only), the branch charged (vendor: the bill's branch; Fidelity: the employee's branch by default) and the date paid (today or earlier); the shared form is `components/cash-out-fields.tsx`. Commissions' "Mark paid" prompt became **Pay now** with that form; Fidelity's prompts became an inline payout form. Commissions paid through payroll are unchanged (the payroll outflow covers them). New test: refused payments save nothing; vendor and commission payments write the bill/commission and the outflow with the right category, branch, account and reference. All 232 tests pass. No migration.
+- **In progress:** none.
+- **To do (owner):** deploy. Decide how a payroll company-program deduction should reach the member account (see the question in the session); until then record that Collection separately. Earlier payouts made before this change have no cash record; enter them in Cash Transactions if the ledger should include them.
 
 ### Nightly jobs (2026-10-24)
 

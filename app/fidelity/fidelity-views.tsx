@@ -1,7 +1,7 @@
 "use client";
 
-import { confirmDialog, promptDialog } from "@/components/app-dialog";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { CashOutFields, cashOutReady, manilaToday, type CashOut } from "@/components/cash-out-fields";
 import { CheckCircle2, Clock3, HandCoins, PiggyBank, Target, Users } from "lucide-react";
 
 import { MetricTile } from "@/components/metric-tile";
@@ -141,6 +141,8 @@ export function FidelityMonitoring() {
   const set = (key: keyof Filters) => (value: string) => setFilters((current) => ({ ...current, [key]: value }));
   const masId = filters.masId;
   const [busy, setBusy] = useState(false);
+  // The payout being recorded: excess withdrawal or separation release, with where the cash came from.
+  const [payout, setPayout] = useState<{ account: Account; kind: "excess" | "separation"; amount: string; notes: string; cash: CashOut } | null>(null);
   const options = useMemo(() => {
     const list = data?.accounts ?? [];
     const sorted = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -178,21 +180,21 @@ export function FidelityMonitoring() {
   const pending = accounts.reduce((sum, item) => sum + item.pending, 0);
 
   // An excess withdrawal takes part or all of the balance above the cap; a separation release pays out everything.
-  async function withdraw(account: Account, kind: "excess" | "separation") {
-    let amount = account.approved;
-    if (kind === "excess") {
-      const entered = await promptDialog(`Amount to withdraw for ${account.masName} (up to ${money(account.withdrawable)}):`, { defaultValue: String(account.withdrawable), required: true });
-      if (entered === null) return;
-      amount = Number(entered);
-      if (!(amount > 0) || amount > account.withdrawable) { setError(`Enter an amount from ₱0.01 to ${money(account.withdrawable)}.`); return; }
-    } else if (!await confirmDialog(`Release the whole ${money(account.approved)} Fidelity balance to ${account.masName}, who has left the company?`)) return;
-    const notes = await promptDialog("Reference or notes (optional):") ?? "";
+  const startPayout = (account: Account, kind: "excess" | "separation") => {
+    setError(""); setMessage("");
+    setPayout((current) => current?.account.masEmployeeId === account.masEmployeeId && current.kind === kind ? null
+      : { account, kind, amount: String(kind === "excess" ? account.withdrawable : account.approved), notes: "", cash: { account: "", branch: account.branch ?? "", date: manilaToday() } });
+  };
+  async function withdraw() {
+    if (!payout) return;
+    const { account, kind } = payout, amount = kind === "excess" ? Number(payout.amount) : account.approved;
+    if (kind === "excess" && (!(amount > 0) || amount > account.withdrawable)) { setError(`Enter an amount from ₱0.01 to ${money(account.withdrawable)}.`); return; }
     setBusy(true); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/fidelity", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ masEmployeeId: account.masEmployeeId, kind, amount, notes }) });
+      const response = await fetch("/api/fidelity", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ masEmployeeId: account.masEmployeeId, kind, amount, notes: payout.notes, ...payout.cash }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || "Unable to record the withdrawal.");
-      setMessage(result.message); await load();
+      setPayout(null); setMessage(`${result.message} The payout is in the cash ledger.`); await load();
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to record the withdrawal."); }
     finally { setBusy(false); }
   }
@@ -246,7 +248,7 @@ export function FidelityMonitoring() {
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead><tr>{["Employee", "Balance", `Locked (first ${money(data.cap)})`, "Withdrawable", "Pending", "Withdrawn", "Status", "Action"].map((item) => <th key={item} className="p-3">{item}</th>)}</tr></thead>
               <tbody>
-                {accounts.map((item) => <tr key={item.masEmployeeId} className="border-t">
+                {accounts.map((item) => <Fragment key={item.masEmployeeId}><tr className="border-t">
                   <td className="p-3 font-medium">{item.masName}<span className="block text-xs font-normal text-muted-foreground">{item.masEmployeeId}</span></td>
                   <td className="p-3 font-semibold tabular-nums">{money(item.approved)}</td>
                   <td className="p-3 tabular-nums">{money(item.locked)}</td>
@@ -255,10 +257,20 @@ export function FidelityMonitoring() {
                   <td className="p-3 tabular-nums">{money(item.claimed)}</td>
                   <td className="p-3"><StatusBadge status={item.separated ? `Left (${item.employmentStatus})` : item.withdrawable > 0 ? "Excess withdrawable" : "Saving"} tone={item.separated ? "warning" : item.withdrawable > 0 ? "success" : "info"} />{item.branch && <span className="mt-1 block text-xs text-muted-foreground">{item.branch}</span>}</td>
                   <td className="p-3">{data.canClaim && (item.withdrawable > 0 || item.readyForRelease) ? <div className="flex flex-wrap gap-2">
-                    {item.withdrawable > 0 && !item.separated && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void withdraw(item, "excess")}>Withdraw excess</Button>}
-                    {item.readyForRelease && <Button type="button" size="sm" disabled={busy} onClick={() => void withdraw(item, "separation")}>Release all (left company)</Button>}
+                    {item.withdrawable > 0 && !item.separated && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startPayout(item, "excess")}>Withdraw excess</Button>}
+                    {item.readyForRelease && <Button type="button" size="sm" disabled={busy} onClick={() => startPayout(item, "separation")}>Release all (left company)</Button>}
                   </div> : "—"}</td>
-                </tr>)}
+                </tr>
+                {payout?.account.masEmployeeId === item.masEmployeeId && <tr><td colSpan={8} className="border-t bg-muted/30 p-3">
+                  <p className="mb-2 text-sm font-semibold">{payout.kind === "excess" ? `Withdraw from ${item.masName}'s Fidelity (up to ${money(item.withdrawable)})` : `Release the whole ${money(item.approved)} to ${item.masName}, who has left the company`}</p>
+                  <CashOutFields value={payout.cash} onChange={(cash) => setPayout({ ...payout, cash })} />
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[10rem_1fr_auto] sm:items-end">
+                    <label className="space-y-1 text-sm">Amount<input type="number" min="0.01" step="0.01" max={item.withdrawable} className={field} disabled={payout.kind === "separation"} value={payout.kind === "separation" ? String(item.approved) : payout.amount} onChange={(event) => setPayout({ ...payout, amount: event.target.value })} /></label>
+                    <label className="space-y-1 text-sm">Reference or notes (optional)<input className={field} value={payout.notes} onChange={(event) => setPayout({ ...payout, notes: event.target.value })} /></label>
+                    <div className="flex gap-2"><Button type="button" disabled={busy || !cashOutReady(payout.cash)} onClick={() => void withdraw()}>Record payout</Button><Button type="button" variant="ghost" onClick={() => setPayout(null)}>Cancel</Button></div>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">Also recorded as a cash outflow from this account in the cash ledger, where the Fidelity came in with the remittances.</p>
+                </td></tr>}</Fragment>)}
                 {!accounts.length && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{filtered ? "No employees match these filters." : "No Fidelity records found."}</td></tr>}
               </tbody>
             </table>

@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 24, 2026: payouts leave the cash ledger.** Vendor bill payments, commissions paid directly and Fidelity withdrawals now record their cash outflow with the payment (cash account, branch, date). See [finance](finance.md) and the [system guide](system-guide.md) (implementation limits, item 5).
+
 **October 24, 2026: nightly jobs.** Every night after midnight Manila the system records absences for finished days, updates account statuses and counts the Exceptions; IT → System Health shows the last run and has Run now. Needs `CRON_SECRET` on Vercel. See the [system guide](system-guide.md) (implementation limits, item 11).
 
 **October 24, 2026: clock-in location check.** Branches can have their office location saved (Branches → Branch locations for clock-in, set one branch at a time); clock-ins away from the branch or with location off are flagged for HR on the Daily board and in Attendance Review. Needs migration 0027 on production before deploying. See the [system guide](system-guide.md#attendance-and-calendar) and the agreed [upgrade list](project-context.md#upgrade-list-agreed-2026-10-24-done-one-at-a-time).

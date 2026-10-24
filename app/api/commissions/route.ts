@@ -1,7 +1,7 @@
 import { userWithPageAccess } from "@/lib/auth-server";
 import { getEarnedCommissions } from "@/lib/earned-commissions";
 import { withEncoder } from "@/lib/encoder-context";
-import { createCommission, getCommissions, payCommission } from "@/lib/finance-operations";
+import { createCommission, getCommissions, payCommissionDirectly } from "@/lib/finance-operations";
 
 const denied = () => Response.json({ success: false, message: "You do not have access to Commissions." }, { status: 403 });
 const allowed = () => userWithPageAccess("/commissions");
@@ -30,6 +30,6 @@ export const POST = withEncoder(async (request: Request) => {
 
 export const PATCH = withEncoder(async (request: Request) => {
   if (!(await allowed())) return denied();
-  try { const body = await request.json(); return Response.json({ success: true, ...await payCommission(String(body.id ?? ""), String(body.referenceNumber ?? "")) }); }
+  try { const body = await request.json(); return Response.json({ success: true, ...await payCommissionDirectly(String(body.id ?? ""), { referenceNumber: body.referenceNumber, account: body.account, branch: body.branch, date: body.date }) }); }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to pay commission." }, { status: 400 }); }
 });

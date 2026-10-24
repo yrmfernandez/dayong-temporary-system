@@ -19,6 +19,6 @@ export const POST = withEncoder(async (request: Request) => {
 
 export const PATCH = withEncoder(async (request: Request) => {
   if (!(await allowed())) return denied();
-  try { const body = await request.json(); return Response.json({ success: true, ...await payVendorPayable(String(body.id ?? ""), body.amount, body.account) }); }
+  try { const body = await request.json(); return Response.json({ success: true, ...await payVendorPayable(String(body.id ?? ""), body.amount, { account: body.account, date: body.date, reference: body.reference }) }); }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to record payment." }, { status: 400 }); }
 });

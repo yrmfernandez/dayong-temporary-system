@@ -1,6 +1,6 @@
 "use client";
-import { promptDialog } from "@/components/app-dialog";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { CashOutFields, cashOutReady, manilaToday, type CashOut } from "@/components/cash-out-fields";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,8 @@ export default function CommissionsPage() {
   const [form, setForm] = useState<Form>(() => blank(`${today().slice(0, 7)}-01`, today())), [show, setShow] = useState(false);
   const [busy, setBusy] = useState(true), [message, setMessage] = useState(""), [error, setError] = useState("");
   const [filters, setFilters] = useState<Filters>(noFilters);
+  // Paying one commission directly (not through payroll): reference and where the cash came from.
+  const [paying, setPaying] = useState<Commission | null>(null), [payReference, setPayReference] = useState(""), [cashOut, setCashOut] = useState<CashOut>({ account: "", branch: "", date: manilaToday() });
   const setFilter = (key: keyof Filters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
   const load = useCallback(async () => {
     setBusy(true); setError("");
@@ -84,11 +86,20 @@ export default function CommissionsPage() {
     if (!response.ok) { setError(result.message); return; }
     setShow(false); setForm(blank(from, to)); setMessage(`Commission ${result.id} recorded for payroll.`); await load();
   }
-  async function pay(record: Commission) {
-    const reference = await promptDialog("Payment reference number:", { defaultValue: record.referenceNumber }) || "";
-    const response = await fetch("/api/commissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: record.id, referenceNumber: reference }) }), result = await response.json();
-    if (!response.ok) { setError(result.message); return; }
-    setMessage("Commission marked paid."); await load();
+  function startPay(record: Commission) {
+    setError(""); setMessage("");
+    if (paying?.id === record.id) { setPaying(null); return; }
+    setPaying(record); setPayReference(record.referenceNumber); setCashOut({ account: "", branch: "", date: manilaToday() });
+  }
+  async function pay() {
+    if (!paying) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/commissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: paying.id, referenceNumber: payReference, ...cashOut }) }), result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to pay the commission.");
+      setPaying(null); setMessage(result.cashTransactionId ? `Commission paid; cash outflow ${result.cashTransactionId} added to the cash ledger.` : "Commission marked paid (nothing to pay out)."); await load();
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to pay the commission."); }
+    finally { setBusy(false); }
   }
 
   return <section className="mx-auto max-w-7xl space-y-6">
@@ -126,7 +137,14 @@ export default function CommissionsPage() {
     </form></CardContent></Card>}
 
     <Card><CardHeader><CardTitle>Commission Register</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead><tr>{["Period", "Employee", "Gross", "Fidelity", "Net", "Status", "Paid at", "Action"].map((x) => <th className="border-b p-3 text-left" key={x}>{x}</th>)}</tr></thead><tbody>
-      {register.map((x) => <tr key={x.id}><td className="border-b p-3">{x.periodFrom} – {x.periodTo}</td><td className="border-b p-3"><b>{x.employeeName}</b><br />{x.employeeId}</td><td className="border-b p-3 tabular-nums">{money(x.grossIncentive)}</td><td className="border-b p-3 tabular-nums">{x.fidelityDeduction > 0 ? `− ${money(x.fidelityDeduction)}` : "—"}</td><td className="border-b p-3 font-bold tabular-nums">{money(x.netCommission)}</td><td className="border-b p-3">{x.status}</td><td className="border-b p-3">{x.paidAt || "—"}</td><td className="border-b p-3">{x.status !== "Paid" && <Button size="sm" onClick={() => void pay(x)}>Mark paid</Button>}</td></tr>)}
+      {register.map((x) => <Fragment key={x.id}><tr><td className="border-b p-3">{x.periodFrom} – {x.periodTo}</td><td className="border-b p-3"><b>{x.employeeName}</b><br />{x.employeeId}</td><td className="border-b p-3 tabular-nums">{money(x.grossIncentive)}</td><td className="border-b p-3 tabular-nums">{x.fidelityDeduction > 0 ? `− ${money(x.fidelityDeduction)}` : "—"}</td><td className="border-b p-3 font-bold tabular-nums">{money(x.netCommission)}</td><td className="border-b p-3">{x.status}</td><td className="border-b p-3">{x.paidAt || "—"}</td><td className="border-b p-3">{x.status !== "Paid" && <Button size="sm" variant={paying?.id === x.id ? "default" : "outline"} aria-expanded={paying?.id === x.id} onClick={() => startPay(x)}>{paying?.id === x.id ? "Close" : "Pay now"}</Button>}</td></tr>
+        {paying?.id === x.id && <tr><td colSpan={8} className="border-b bg-muted/30 p-3">
+          <p className="mb-2 text-sm font-semibold">Pay {money(x.netCommission)} to {x.employeeName} now, outside payroll</p>
+          <CashOutFields value={cashOut} onChange={setCashOut} />
+          <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"><Field label="Payment reference (optional)"><Input value={payReference} onChange={(e) => setPayReference(e.target.value)} placeholder="e.g. GCash ref or voucher number" /></Field>
+            <Button type="button" disabled={busy || !cashOutReady(cashOut)} onClick={() => void pay()}>Confirm payment</Button></div>
+          <p className="mt-2 text-xs text-muted-foreground">Marks the commission Paid and records {money(x.netCommission)} as a cash outflow from the account in the cash ledger. Commissions left Pending are paid with the next payroll instead, which records them in its own outflow.</p>
+        </td></tr>}</Fragment>)}
       {!register.length && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{filtered && rows.length ? "No recorded commissions match these filters." : "No commissions recorded yet."}</td></tr>}
     </tbody></table></div></CardContent></Card>
   </section>;

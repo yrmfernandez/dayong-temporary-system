@@ -3,7 +3,9 @@ import { getEmployees } from "@/lib/employees";
 import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { createReadableId } from "@/lib/readable-id";
 import { sql } from "drizzle-orm";
-import { getDb } from "@/lib/db";
+import { getDb, inTransaction } from "@/lib/db";
+import { createCashTransaction } from "@/lib/finance-data";
+import { cashOutDetails } from "@/lib/finance-operations";
 const text=(value:unknown)=>String(value??"").trim();
 const amount=(value:unknown)=>Math.round((Number(value)||0)*100)/100;
 const peso=(value:number)=>value.toLocaleString("en-PH",{style:"currency",currency:"PHP"});
@@ -71,7 +73,7 @@ export async function getFidelityData(employeeId:string,viewAll:boolean){
  * - "excess": any amount up to the balance above FIDELITY_CAP, at any time.
  * - "separation": the whole balance, only once the employee is no longer active.
  */
-export async function withdrawFidelity(masEmployeeId:string,kind:string,requested:number,notes:string){
+export async function withdrawFidelity(masEmployeeId:string,kind:string,requested:number,notes:string,cashInput:{account?:unknown;branch?:unknown;date?:unknown}={}){
  const data=await getFidelityData("",true),account=data.accounts.find(item=>item.masEmployeeId===text(masEmployeeId));
  if(!account)throw new Error("Fidelity account was not found.");
  let paid:number,type:string;
@@ -85,7 +87,12 @@ export async function withdrawFidelity(masEmployeeId:string,kind:string,requeste
   if(paid>account.withdrawable)throw new Error(account.withdrawable>0?`At most ${peso(account.withdrawable)} can be withdrawn: the balance above ${peso(FIDELITY_CAP)}.`:`Nothing can be withdrawn yet: only the balance above ${peso(FIDELITY_CAP)} is withdrawable while ${account.masName} is employed.`);
   type=WITHDRAWAL_TYPES.excess;
  }else throw new Error("Choose an excess withdrawal or a separation release.");
- const date=new Date().toISOString().slice(0,10);
- await appendEncodedRows({range:"'Fidelity'!A:K",requestBody:{values:[[createReadableId("FCL"),account.masEmployeeId,account.masName,"","",type,0,paid,date,"Released",text(notes)]]}});
+ // The payout also leaves the cash ledger, where the Fidelity came in with its remittance (upgrade #3, October 24, 2026).
+ const cash=await cashOutDetails(cashInput,account.branch);
+ const id=createReadableId("FCL");
+ await inTransaction(async()=>{
+  await appendEncodedRows({range:"'Fidelity'!A:K",requestBody:{values:[[id,account.masEmployeeId,account.masName,"","",type,0,paid,cash.date,"Released",text(notes)]]}});
+  await createCashTransaction({date:cash.date,direction:"outflow",category:"Fidelity release",description:`${type}: ${account.masName}`,amount:paid,branch:cash.branch,account:cash.account,referenceType:"Fidelity",referenceId:id,remarks:text(notes)});
+ });
  return{amount:paid,type,masName:account.masName};
 }
