@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
 
+### Notes on weekly, monthly and yearly reports (2026-10-24)
+
+- **Owner:** check that the weekly, monthly and yearly reports allow notes; fix it if not.
+- **Checked:** Entry Clerk reports (Reports → Weekly, Monthly, Yearly) already have notes on every tab (Notes section: pending cash, specific remarks, pending transactions, other comments; saved per clerk, period and branch, shown in the report's remark boxes). Report Review and Audits already take reviewer remarks for every period, and period audits keep findings.
+- **Done:** Company Reports (this week / month / year / chosen dates) had no notes; it now has **Notes for <dates>** below the breakdown: notes for exactly that period, with who and when, added by anyone with Company Reports access, printed with the report. Stored in the existing Report Remarks (scope `Company` or `Company · <branch>`), so no migration. Type check and lint pass.
+- **In progress:** none.
+- **To do (owner):** deploy with the clock-in change.
+
 ### Clock-in location check (2026-10-24)
 
 - **Owner:** flag employees who clock in away from their branch (for example from home) without locking out MAS field staff. Branch locations are not known yet, so they will be set one branch at a time.

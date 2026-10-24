@@ -24,7 +24,8 @@ export async function GET(request: Request) {
 
 export const POST = withEncoder(async (request: Request) => {
   const user = await getSessionUser();
-  if (!user || (!canAccessPath(user, "/reports") && !canAccessPath(user, "/admin-reports"))) return Response.json({ success: false, message: "You do not have access to reports." }, { status: 403 });
-  try { const body = await request.json(); await addReportRemark({ from: String(body.from ?? ""), to: String(body.to ?? ""), reportType: String(body.reportType ?? ""), scope: String(body.scope ?? "All"), comment: String(body.comment ?? "") }); return Response.json({ success: true, message: "Report remark saved." }, { status: 201 }); }
+  // Reviewers' remarks on a clerk's report (Report Review, Audits) and notes on Company Reports.
+  if (!user || (!canAccessPath(user, "/reports") && !canAccessPath(user, "/admin-reports") && !canAccessPath(user, "/company-reports"))) return Response.json({ success: false, message: "You do not have access to reports." }, { status: 403 });
+  try { const body = await request.json(); await addReportRemark({ from: String(body.from ?? ""), to: String(body.to ?? ""), reportType: String(body.reportType ?? ""), scope: String(body.scope ?? "All"), comment: String(body.comment ?? "").slice(0, 1000) }); return Response.json({ success: true, message: "Report remark saved." }, { status: 201 }); }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save report remark." }, { status: 400 }); }
 });

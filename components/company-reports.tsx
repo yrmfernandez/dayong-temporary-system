@@ -17,7 +17,13 @@ type Report = {
   from: string; to: string; generatedAt: string; summary: ReportSummary;
   options: { branches: string[]; programs: Array<{ id: string; name: string }>; people: string[]; encoders: string[] };
   sales: ReportLine[]; collections: ReportLine[]; byDay: ReportLine[]; byBranch: ReportLine[]; byProgram: ReportLine[]; notes: string[];
+  /** Remarks saved for exactly this From–To (lib/report-remarks.ts); this page shows the Company ones. */
+  remarks?: Remark[];
 };
+type Remark = { id: string; reportType: string; scope: string; comment: string; createdAt: string; encodedBy: string };
+/** Company Reports notes are saved with scope "Company", or "Company · BRANCH" when one branch is shown. */
+const COMPANY_SCOPE = "Company";
+const isCompanyRemark = (remark: Remark) => remark.scope === COMPANY_SCOPE || remark.scope.startsWith(`${COMPANY_SCOPE} · `);
 type Period = "today" | "week" | "month" | "year" | "custom";
 type View = "branch" | "program" | "person" | "day" | "clerk";
 type Row = { label: string; detail?: string; salesCount: number; salesGross: number; collectionCount: number; collectionGross: number; incentives: number; fidelity: number; penalty: number; net: number };
@@ -68,6 +74,9 @@ export function CompanyReports() {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [remark, setRemark] = useState("");
+  const [savingRemark, setSavingRemark] = useState(false);
+  const [remarkMessage, setRemarkMessage] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -86,7 +95,20 @@ export function CompanyReports() {
   }, [load]);
   // Everything the reports show (owner, October 23, 2026: any change that a report reflects must update it).
   useLiveRefresh(["sales", "collections", "remittances", "remittance_collections", "expenses", "cash_transactions", "bank_deposits",
-    "members", "member_programs", "programs", "program_incentives", "employees", "branches", "commissions"], load, 15000);
+    "members", "member_programs", "programs", "program_incentives", "employees", "branches", "commissions", "report_remarks"], load, 15000);
+
+  const remarks = (report?.remarks ?? []).filter(isCompanyRemark);
+  const saveRemark = async () => {
+    if (!report || !remark.trim()) return;
+    setSavingRemark(true); setRemarkMessage("");
+    try {
+      const response = await fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: report.from, to: report.to, reportType: period === "custom" ? "custom" : period, scope: branch ? `${COMPANY_SCOPE} · ${branch}` : COMPANY_SCOPE, comment: remark }) });
+      const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the note.");
+      setRemark(""); await load();
+    } catch (caught) { setRemarkMessage(caught instanceof Error ? caught.message : "Unable to save the note."); }
+    finally { setSavingRemark(false); }
+  };
 
   const choose = (next: Period) => { setPeriod(next); if (next !== "custom") setRange(rangeFor(next, todayInManila())); };
   const rows = useMemo(() => {
@@ -183,6 +205,23 @@ export function CompanyReports() {
           {report?.notes.length ? <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">{report.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
         </CardContent>
       </Card>
+
+      {/* Notes on the report for this period (owner, October 24, 2026), kept per From–To and printed with it. */}
+      {report && <Card className="break-inside-avoid">
+        <CardHeader><CardTitle>Notes for {report.from === report.to ? report.from : `${report.from} to ${report.to}`}</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {remarks.map((item) => <div key={item.id} className="border-b pb-2 text-sm last:border-b-0">
+            <p className="whitespace-pre-wrap">{item.comment}</p>
+            <p className="text-xs text-muted-foreground">{item.createdAt.slice(0, 16).replace("T", " ")} · {item.encodedBy || "Unknown"}{item.scope !== COMPANY_SCOPE ? ` · ${item.scope.slice(COMPANY_SCOPE.length + 3)}` : ""}</p>
+          </div>)}
+          {!remarks.length && <p className="text-sm text-muted-foreground">No notes for this period yet.</p>}
+          <div className="space-y-2 print:hidden">
+            <textarea aria-label="New note" maxLength={1000} rows={3} className="w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder={`Add a note for this ${period === "custom" || period === "today" ? "report" : period}${branch ? ` (${branch})` : ""}`} value={remark} onChange={(event) => setRemark(event.target.value)} />
+            <div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" disabled={savingRemark || !remark.trim()} onClick={() => void saveRemark()}>{savingRemark ? "Saving..." : "Save note"}</Button><span className="text-xs text-muted-foreground">Notes belong to these exact dates; they show again whenever this period is opened.</span></div>
+            {remarkMessage && <p role="alert" className="text-sm text-red-700">{remarkMessage}</p>}
+          </div>
+        </CardContent>
+      </Card>}
     </div>
   );
 }
