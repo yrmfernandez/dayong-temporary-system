@@ -47,10 +47,8 @@ export function manilaNow(now = new Date()) {
   return { date: `${part("year")}-${part("month")}-${part("day")}`, time: `${part("hour")}:${part("minute")}` };
 }
 
-/** The Manila date of a UTC ISO stamp such as a sale's date_created; other text is cut to its first 10 characters. */
-export function manilaDateOf(value: string) {
-  return /T\d{2}:/.test(value) && !Number.isNaN(Date.parse(value)) ? manilaNow(new Date(value)).date : value.slice(0, 10);
-}
+/** The Manila date of a stored time such as a sale's date_created (see lib/manila-date.ts). */
+export { manilaDateOf } from "@/lib/manila-date";
 
 /** "Oct 4, 3:00 PM" for showing a deadline. */
 export function formatDeadline(deadline: string) {

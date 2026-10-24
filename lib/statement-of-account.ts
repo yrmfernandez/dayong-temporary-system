@@ -4,6 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { currentDb, schema } from "@/lib/db";
 import { getSetting, saveSetting } from "@/lib/system-settings";
+import { manilaDateOf } from "@/lib/manila-date";
 
 /** System Settings key for the Collection Department Head named on every printed SOA. */
 const COLLECTION_HEAD_KEY = "soa_collection_head";
@@ -67,7 +68,7 @@ export async function getStatementOfAccount(enrollmentId: string) {
       id: account.id, programName: account.programName, programId: account.programId, programCategory: text(category?.name), doi: account.doi, branch: account.branch, mas: account.mas,
       monthlyDue: account.basePay, payBalanceTotal: account.payBalanceTotal, applicationNumber: text(sale?.application_no),
     },
-    newSale: sale ? { date: sale.or_date || text(sale.date_created).slice(0, 10), amount: salePaid, registration: sale.registration_amount ?? 0, paymentMode: text(sale.payment_method) } : null,
+    newSale: sale ? { date: sale.or_date || manilaDateOf(text(sale.date_created)), amount: salePaid, registration: sale.registration_amount ?? 0, paymentMode: text(sale.payment_method) } : null,
     history,
     summary: {
       status: state.status, temporarilySuspended: state.temporarilySuspended,

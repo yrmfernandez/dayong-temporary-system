@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { readSheetRows } from "@/lib/sheets-on-db";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { PROGRAMS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
+import { manilaDateOf } from "@/lib/manila-date";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
@@ -47,7 +48,7 @@ export async function buildOperationalReport(from: string, to: string, filters: 
   const fidelityByCollection=new Map<string,number>(),assigned=new Set<string>();
   for(const row of remittanceCollections.slice(1)){const remittanceId=text(row[1]);if(!assigned.has(remittanceId)&&approvedFidelity.has(remittanceId)){fidelityByCollection.set(text(row[2]),approvedFidelity.get(remittanceId)??0);assigned.add(remittanceId)}}
   const salesLines: ReportLine[] = sales.slice(1).filter((row) => text(row[0])).map((row) => {
-    const date = text(row[1]).slice(0, 10), branch = text(row[2]), person = text(row[3]), programId = text(row[21]), gross = number(row[26]), penalty = number(row[38]);
+    const date = manilaDateOf(text(row[1])), branch = text(row[2]), person = text(row[3]), programId = text(row[21]), gross = number(row[26]), penalty = number(row[38]);
     // AP is the company's share after the MAS's New Sale incentive; blank on sales saved before incentives existed.
     const remittance = text(row[41]) === "" ? gross : number(row[41]), incentives = Math.max(0, round(gross - remittance));
     const fidelityAmount = fidelityByCollection.get(text(row[0])) ?? 0, net = remittance;

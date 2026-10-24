@@ -12,10 +12,17 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | **Built 2026-10-24**: Member Corrections page with fix coverage, move receipts, insert missing receipt, merge and split |
 | 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | **Built 2026-10-24** (option 1, owner): Base Pay, flexible and registration fee locked once a program has collections |
 | 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **Built 2026-10-24, complete**: every save (payroll, clerk cash, finance, audits, calendar, settings, roles, remarks, remittances, attendance, leave, user accounts, corrections, targets) writes by ID in one step or one transaction; only reads remain on the Sheets layer |
-| 7 | One time zone (Manila) for every report date | To do (next) |
-| 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
+| 7 | One time zone (Manila) for every report date | **Built 2026-10-24**: one helper (`lib/manila-date.ts`) turns stored UTC times into Manila dates everywhere; Company report, SOA, dashboards and lists fixed |
+| 8 | Join reports by ID instead of branch/MAS/encoder names | To do (next) |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Upgrade #7: one time zone, Manila, for every date (2026-10-24)
+
+- **Owner:** start #7.
+- **Done:** new `lib/manila-date.ts` (`manilaDateOf`, `manilaToday`, safe in the browser too) reads both UTC ISO times and database times (`2026-09-30 16:30:00+00`) and gives the Manila date; `manilaDateOf` in `lib/remittance-deadline.ts` and the dashboard's own copy now use it. Fixed places that cut a UTC time to its first 10 characters: the **Company report** New Sales lines (a sale saved before 8:00 AM Manila fell on the day before), the **Statement of Account** New Sale date fallback, the HR dashboard **Filed** date, payroll program deduction **Paid/Linked** dates, the Members **transfer/deactivation** dates, and the **birthdate** limit (server and form). Checked and already Manila: clerk reports (encoded times come in Manila), Today's Entries, Gross Sales, executive analytics, remittance deadlines, day-off and entry search. Plain date columns are unchanged. No migration. Tests: `scripts/test-manila-date.mjs` (added to `npm test`) and a Company report test with a sale at 12:30 AM Manila; all 244 tests and the build pass.
+- **In progress:** none.
+- **To do:** #8 joins by ID instead of names (next), #9 money-rule tests, #10 Supabase 500 MB limit.
 
 ### Upgrade #6 finished: every save by ID (2026-10-24)
 

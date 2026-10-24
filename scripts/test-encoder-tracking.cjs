@@ -1726,6 +1726,18 @@ test('MAM future columns are projections and do not include future receipt data'
   assert.equal(report.rows[0].periods[1].state.nop, 1, 'only the New Sale (NOP 1) counts; the future receipt does not');
 });
 
+test('a sale saved just after midnight in Manila is in the Manila day of the Company report (upgrade #7)', async () => {
+  const h = harness();
+  // 00:30 on October 1 in Manila is 16:30 on September 30 in UTC.
+  const sale = Array(35).fill(''); sale[0] = 'SAL-M'; sale[1] = '2026-09-30T16:30:00.000Z'; sale[2] = 'MATINA'; sale[3] = 'Maria'; sale[21] = 'DP-1'; sale[26] = 350;
+  h.rows.Sales = [[], sale]; h.rows.Programs = [[], ['DP-1', 'P1', 'Program One']];
+  await h.sync();
+  const { buildOperationalReport } = h.load('lib/reports.ts');
+  assert.equal((await buildOperationalReport('2026-09-01', '2026-09-30')).sales.length, 0, 'not in September');
+  const october = await buildOperationalReport('2026-10-01', '2026-10-31');
+  assert.deepEqual(october.sales.map((line) => line.date), ['2026-10-01'], 'on October 1, the Manila date');
+});
+
 test('operational reports reconcile source transactions without duplicating data', async () => {
   const h = harness();
   const sale = Array(35).fill(''); sale[0] = 'SAL-1'; sale[1] = '2026-09-10'; sale[2] = 'MATINA'; sale[3] = 'Maria'; sale[21] = 'DP-1'; sale[26] = 350; sale[33] = 'Clerk Name';

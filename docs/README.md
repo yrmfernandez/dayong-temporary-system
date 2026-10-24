@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 24, 2026: one time zone.** Every report and on-screen date is the Manila date; a sale saved just after midnight in Manila is no longer counted on the day before in the Company report (upgrade #7). See the [system guide](system-guide.md) (implementation limits, item 7).
+
 **October 24, 2026: every save by ID.** Remittances, attendance, leave, user accounts and the last small modules now save directly in the database by ID, in one step or one transaction; two approvers can no longer decide the same slip twice. Only reads still use the older Sheets-style layer (upgrade #6 complete). See the [system guide](system-guide.md) (implementation limits, item 9).
 
 **October 24, 2026: upgrade #6 complete.** Period audits, holidays and non-working days, system settings, roles and report remarks now save directly by ID, in one step or one transaction (phase 4, after payroll, clerk report cash and finance). Attendance records, leave and sign-in accounts still use the older layer; see the [system guide](system-guide.md) (implementation limits, item 9).

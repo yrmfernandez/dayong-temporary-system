@@ -12,12 +12,12 @@ import { getEntriesForDay } from "@/lib/todays-entries";
 import { PROGRAMS_RANGE } from "@/lib/sheet-ranges";
 import { countSheetRows, readSheetRows } from "@/lib/sheets-on-db";
 import { sql } from "drizzle-orm";
+import { manilaDateOf } from "@/lib/manila-date";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const date = (value: unknown) => text(value).slice(0, 10);
-const manilaDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" });
-// Encoded-at stamps are UTC ISO times; entries made after midnight in Manila belong to the Manila date.
-const manilaDate = (stamp: string) => /T\d{2}:/.test(stamp) && !Number.isNaN(Date.parse(stamp)) ? manilaDay.format(new Date(stamp)) : date(stamp);
+// Encoded-at stamps are UTC times; entries made after midnight in Manila belong to the Manila date.
+const manilaDate = manilaDateOf;
 export { dashboardKind, type DashboardKind } from "@/lib/access-control";
 
 const lateStatuses = ["60D", "90D", "120D", "150D"];

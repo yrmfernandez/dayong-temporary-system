@@ -7,6 +7,7 @@ import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } f
 import { loadUsers } from "@/lib/users-sheet";
 import { type StoredTier, validateIncentiveTiers, writeProgramIncentives } from "@/lib/program-incentive-store";
 import { memberContactOrClaimant } from "@/lib/member-records";
+import { manilaToday } from "@/lib/manila-date";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -250,7 +251,7 @@ export async function updateMemberRecord(id: string, input: MemberRecordInput) {
   if (!surname || !firstName) throw new Error("Surname and first name are required.");
   if (!status) throw new Error("Member status is required.");
   const birthdate = t(input.birthdate);
-  if (birthdate && (!/^\d{4}-\d{2}-\d{2}$/.test(birthdate) || Number.isNaN(Date.parse(`${birthdate}T00:00:00Z`)) || birthdate > new Date().toISOString().slice(0, 10))) throw new Error("Enter a valid birthdate (not in the future).");
+  if (birthdate && (!/^\d{4}-\d{2}-\d{2}$/.test(birthdate) || Number.isNaN(Date.parse(`${birthdate}T00:00:00Z`)) || birthdate > manilaToday())) throw new Error("Enter a valid birthdate (not in the future).");
   const ageText = t(input.age), age = ageText ? Number(ageText) : null;
   if (age !== null && (!Number.isInteger(age) || age < 0 || age > 130)) throw new Error("Age must be a whole number from 0 to 130.");
   const [taken] = await currentDb().select({ id: schema.members.member_id }).from(schema.members).where(and(eq(schema.members.member_number, memberNumber), ne(schema.members.member_id, id)));

@@ -17,6 +17,7 @@ import { type FilterPerson, usePeopleFilter } from "@/components/people-filter";
 import { COMPANY_PROGRAM_CATEGORY, dailyRateOf, defaultPayrollSettings, lineTotals, type Adjustment, type PayProfile, type PayrollLine, type PayrollSettings } from "@/lib/payroll-calc";
 import { buildPayslip, PAYSLIP_COMPANY, payslipFileName, payslipPdf, type PayslipRow } from "@/lib/payslip";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { manilaDateOf } from "@/lib/manila-date";
 
 type Run = { id: string; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings; employeeCount: number; grossTotal: number; deductionsTotal: number; netTotal: number; preparedByUserId: string; preparedByName: string; approvedByName: string; approvedAt: string; paidAt: string; cashAccount: string; paymentReference: string; cashTransactionId: string; branch: string; voidReason: string; remarks: string };
 type ProgramDeduction = { id: string; runId: string; periodFrom: string; periodTo: string; paidAt: string; employeeId: string; employeeName: string; programId: string; program: string; amount: number; reason: string; collectionId: string; orNumber: string; linkedAt: string; linkedBy: string };
@@ -141,9 +142,9 @@ function ProgramDeductions({ overview, busy, onLink }: { overview: Overview; bus
           <td className="p-2.5"><strong>{item.employeeName}</strong><div className="text-xs text-muted-foreground">{item.employeeId}</div></td>
           <td className="p-2.5">{item.program || <span className="text-amber-700">Program not recorded</span>}<div className="max-w-72 text-xs text-muted-foreground">{item.reason}</div></td>
           <td className="p-2.5 tabular-nums">{money(item.amount)}</td>
-          <td className="p-2.5 text-xs">{item.periodFrom} to {item.periodTo}<div className="text-muted-foreground">Paid {item.paidAt.slice(0, 10)}</div></td>
+          <td className="p-2.5 text-xs">{item.periodFrom} to {item.periodTo}<div className="text-muted-foreground">Paid {manilaDateOf(item.paidAt)}</div></td>
           <td className="p-2.5">{item.collectionId
-            ? <div className="space-y-1"><span className="font-medium text-emerald-700">OR {item.orNumber}</span><div className="text-xs text-muted-foreground">Linked by {item.linkedBy} {item.linkedAt.slice(0, 10)}</div>{overview.canManage && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void confirmDialog(`Remove the link to OR ${item.orNumber}? The deduction goes back on the waiting list.`).then((ok) => ok && onLink(item.id, ""))}>Unlink</Button>}</div>
+            ? <div className="space-y-1"><span className="font-medium text-emerald-700">OR {item.orNumber}</span><div className="text-xs text-muted-foreground">Linked by {item.linkedBy} {manilaDateOf(item.linkedAt)}</div>{overview.canManage && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void confirmDialog(`Remove the link to OR ${item.orNumber}? The deduction goes back on the waiting list.`).then((ok) => ok && onLink(item.id, ""))}>Unlink</Button>}</div>
             : overview.canManage ? <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); const or = (typed[item.id] ?? "").trim(); if (or) void onLink(item.id, or).then((ok) => { if (ok) setTyped((current) => ({ ...current, [item.id]: "" })); }); }}>
                 <Input aria-label={`OR number for ${item.employeeName}`} className="h-8 w-32" placeholder="OR number" value={typed[item.id] ?? ""} onChange={(event) => setTyped((current) => ({ ...current, [item.id]: event.target.value }))} />
                 <Button type="submit" size="sm" disabled={busy || !(typed[item.id] ?? "").trim()}>Link</Button>

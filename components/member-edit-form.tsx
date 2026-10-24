@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { readApiResponse } from "@/lib/api-response";
 import { MEMBER_STATUSES } from "@/lib/member-directory";
 import type { MemberRecordInput } from "@/lib/master-data-crud";
+import { manilaToday } from "@/lib/manila-date";
 
 const fieldClass = "mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm";
 const GENDERS = ["Female", "Male"];
@@ -59,7 +60,7 @@ export function MemberEditForm({ memberId, onCancel, onSaved }: { memberId: stri
         {text("firstName", "First name *", { required: true })}
         {text("middleName", "Middle name")}
         {text("nameExtension", "Extension (Jr., Sr., III)")}
-        {text("birthdate", "Birthdate", { type: "date", max: new Date().toISOString().slice(0, 10) })}
+        {text("birthdate", "Birthdate", { type: "date", max: manilaToday() })}
         {text("age", "Age", { type: "number", min: 0, max: 130, step: 1 })}
         {text("birthplace", "Birthplace")}
         <label className="text-sm">Sex<select className={fieldClass} value={form.gender} onChange={(event) => set("gender", event.target.value)}><option value="">Not recorded</option>{unique([...GENDERS, form.gender]).map((value) => <option key={value}>{value}</option>)}</select></label>

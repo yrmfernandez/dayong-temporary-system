@@ -19,6 +19,7 @@ import { getCommissions, getVendorPayables } from "@/lib/finance-operations";
 import { getRemittanceDashboard } from "@/lib/remittance-workflow";
 import { getSystemHealth } from "@/lib/system-health";
 import { ACTIVE_ROLE_COOKIE } from "@/lib/ui-preferences";
+import { manilaDateOf } from "@/lib/manila-date";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 // Icon and tone follow what a metric measures, so the same idea looks the same on every dashboard.
@@ -118,7 +119,7 @@ function config(data: DashboardData): View {
       actions: [["Leave Approvals", "/leave-approvals"], ["Attendance Review", "/attendance-reviews"], ["Register Employee", "/employees"]],
       sections: <>
         <Panel title="Late Today" description="Employees who clocked in after their schedule today, most minutes late first."><Table headers={["Employee", "Branch", "Time in", "Minutes late"]} rows={p.lateList.map((row) => [row.name, row.branch, row.timeIn, String(row.lateMinutes)])} empty="Nobody is late today."/></Panel>
-        <Panel title="Leave Requests Awaiting Decision" description="Leave requests filed by employees that still need to be approved or rejected."><Table headers={["Employee", "Type", "From", "To", "Filed"]} rows={p.pendingLeaves.map((row) => [row.name, row.leaveType, row.startDate, row.endDate, row.createdAt.slice(0, 10)])} empty="No pending leave requests."/></Panel>
+        <Panel title="Leave Requests Awaiting Decision" description="Leave requests filed by employees that still need to be approved or rejected."><Table headers={["Employee", "Type", "From", "To", "Filed"]} rows={p.pendingLeaves.map((row) => [row.name, row.leaveType, row.startDate, row.endDate, manilaDateOf(row.createdAt)])} empty="No pending leave requests."/></Panel>
         <BranchStaff data={data}/>
         <Panel title="Workforce" description="Headcount across all branches: everyone registered, those active, and active MAS and Collectors."><Rows rows={[["Registered employees", String(data.counts.employees)], ["Active employees", String(data.counts.activeEmployees)], ["Active MAS", String(data.counts.mas)], ["Active collectors", String(data.counts.collectors)]]}/></Panel>
       </> };
