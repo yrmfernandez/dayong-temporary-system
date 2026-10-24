@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 24, 2026: payroll saves in one transaction.** Every payroll action now saves completely or not at all, and Mark paid can no longer record the payroll twice (upgrade #6, phase 1). See [payroll](payroll.md).
+
 **October 24, 2026: program pay locked once paid.** A program's Base Pay, flexible payments and registration fee required can no longer change after it has collections, so old receipts are never read at a new rate; a new price is a new program. See the [system guide](system-guide.md) (implementation limits, item 2).
 
 **October 24, 2026: Member Corrections.** A new page for IT and Administrators fixes a member's records without a script: fix coverage, move receipts, insert a missing receipt, merge two members, split a member; each previews the exact result and saves with a reason. See the [system guide](system-guide.md) section 12.

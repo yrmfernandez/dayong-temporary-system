@@ -1,54 +1,51 @@
-import { getAttendanceRecordsForRange } from "@/lib/attendance-data";
-import { sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 
-import { getDb } from "@/lib/db";
+import { getAttendanceRecordsForRange } from "@/lib/attendance-data";
 import { closeFinishedAttendanceDaysQuietly } from "@/lib/auto-absence";
+import { currentDb, encodedBy, getDb, inTransaction, schema, type Queryable } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
-import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { getEmployees } from "@/lib/employees";
 import { createCashTransaction } from "@/lib/finance-data";
-import { getCashAccounts, getCommissions, payCommission } from "@/lib/finance-operations";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { getCashAccounts } from "@/lib/finance-operations";
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import {
   ADJUSTMENT_CATEGORIES, COMPANY_PROGRAM_CATEGORY, computePayrollLine, defaultPayrollSettings, runTotals,
   type Adjustment, type BaseType, type PayProfile, type PayrollLine, type PayrollSettings,
 } from "@/lib/payroll-calc";
 import { createReadableId } from "@/lib/readable-id";
-import { deleteRowsById, deleteRowsWhere } from "@/lib/sheet-rows";
 
 /*
- * Sheets (npm run sheets:payroll), business columns then encoder identity:
- *   Pay Profiles        A:I  one row per employee (current rate; each payroll line snapshots the rate it used)
- *   Payroll Runs        A:X  one row per pay period
- *   Payroll Lines       A:X  one row per employee per calculation; recalculation marks old lines "replaced"
- *   Payroll Adjustments A:H  additions/deductions with a required reason; removal keeps the row
+ * Tables, read and written directly (owner, October 24, 2026; upgrade #6 phase 1, replacing the Sheets-style row
+ * writes): pay_profiles (one row per employee; each payroll line snapshots the rate it used), payroll_runs (one per pay
+ * period), payroll_lines (one per employee per calculation; recalculation marks old lines "replaced"),
+ * payroll_adjustments (additions/deductions with a required reason; removal keeps the row).
+ *
+ * Every action that changes a run is one transaction that first locks the run's row, so it all saves or none of it
+ * does, and two people pressing Approve or Mark paid at once cannot both go through: the second waits, then sees the
+ * new status. Creating and recalculating runs also take one payroll-wide lock, so two runs cannot claim the same
+ * commission or overlap the same period. Rows are found by ID, never by row position.
  */
 const text = (value: unknown) => String(value ?? "").trim();
 const num = (value: unknown) => Number(value) || 0;
-const bool = (value: unknown) => ["yes", "true", "1"].includes(text(value).toLowerCase()) || value === true;
 const centavos = (value: number) => Math.round(value * 100) / 100;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const { pay_profiles: profilesTable, payroll_runs: runsTable, payroll_lines: linesTable, payroll_adjustments: adjustmentsTable, commissions: commissionsTable } = schema;
 
-async function rows(range: string) {
-  return (await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" })).data.values ?? [];
-}
-async function write(range: string, values: unknown[][]) {
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range, valueInputOption: "RAW", requestBody: { values } });
-}
+/** One payroll-wide lock for the rest of the transaction: run creation and recalculation wait for each other. */
+const lockPayroll = (tx: Queryable) => tx.execute(sql`select pg_advisory_xact_lock(hashtext('payroll-runs'))`);
 
 // ---------- Pay profiles ----------
 
-export async function getPayProfiles(): Promise<PayProfile[]> {
-  return (await rows("'Pay Profiles'!A:I")).slice(1).filter((row) => text(row[0])).map((row) => ({
-    employeeId: text(row[0]),
-    baseType: (["daily", "monthly", "none"].includes(text(row[1])) ? text(row[1]) : "none") as BaseType,
-    baseRate: num(row[2]),
-    commissionEligible: bool(row[3]),
-    hoursPerDay: num(row[4]) || 8,
-    overtimeMultiplier: num(row[5]) || 1.25,
-    status: text(row[6]).toLowerCase() === "inactive" ? "inactive" : "active",
-    notes: text(row[7]),
+export async function getPayProfiles(db: Queryable = currentDb()): Promise<PayProfile[]> {
+  return (await db.select().from(profilesTable)).filter((row) => text(row.employee_id)).map((row) => ({
+    employeeId: row.employee_id,
+    baseType: (["daily", "monthly", "none"].includes(text(row.base_type)) ? text(row.base_type) : "none") as BaseType,
+    baseRate: num(row.base_rate),
+    commissionEligible: Boolean(row.commission_eligible),
+    hoursPerDay: num(row.hours_per_day) || 8,
+    overtimeMultiplier: num(row.overtime_multiplier) || 1.25,
+    status: text(row.status).toLowerCase() === "inactive" ? "inactive" : "active",
+    notes: text(row.notes),
   }));
 }
 
@@ -63,73 +60,65 @@ export async function savePayProfile(input: Record<string, unknown>) {
   if (baseType !== "none" && !(baseRate > 0)) throw new Error("Enter a base rate greater than zero.");
   if (hoursPerDay < 1 || hoursPerDay > 24) throw new Error("Hours per day must be between 1 and 24.");
   if (overtimeMultiplier < 1 || overtimeMultiplier > 5) throw new Error("Overtime multiplier must be between 1 and 5.");
-  const values = [baseType, baseType === "none" ? 0 : baseRate, Boolean(input.commissionEligible), hoursPerDay, overtimeMultiplier, text(input.status) === "inactive" ? "inactive" : "active", text(input.notes), new Date().toISOString()];
-  const data = await rows("'Pay Profiles'!A:A");
-  const index = data.slice(1).findIndex((row) => text(row[0]) === employeeId);
-  if (index >= 0) await write(`'Pay Profiles'!B${index + 2}:I${index + 2}`, [values]);
-  else await appendEncodedRows({ range: "'Pay Profiles'!A:I", requestBody: { values: [[employeeId, ...values]] } });
+  const values = {
+    base_type: baseType, base_rate: baseType === "none" ? 0 : baseRate, commission_eligible: Boolean(input.commissionEligible), hours_per_day: hoursPerDay, overtime_multiplier: overtimeMultiplier,
+    status: text(input.status) === "inactive" ? "inactive" : "active", notes: text(input.notes) || null, updated_at: new Date().toISOString(),
+  };
+  // One row per employee: a second save at the same moment updates it instead of adding another.
+  await currentDb().insert(profilesTable).values({ employee_id: employeeId, ...values, ...encodedBy() }).onConflictDoUpdate({ target: profilesTable.employee_id, set: values });
   return { employeeId };
 }
 
 // ---------- Runs, lines, adjustments ----------
 
 export type PayrollRun = {
-  id: string; rowNumber: number; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings;
+  id: string; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings;
   employeeCount: number; grossTotal: number; deductionsTotal: number; netTotal: number;
   preparedByUserId: string; preparedByName: string; preparedAt: string; approvedByName: string; approvedAt: string;
   paidAt: string; cashAccount: string; paymentReference: string; cashTransactionId: string; branch: string; voidReason: string; remarks: string;
 };
 
-function readRun(row: unknown[], index: number): PayrollRun {
-  let settings = defaultPayrollSettings;
-  try { settings = { ...defaultPayrollSettings, ...JSON.parse(text(row[5]) || "{}") }; } catch { /* keep defaults */ }
+function readRun(row: typeof runsTable.$inferSelect): PayrollRun {
+  let stored: unknown = row.settings_json;
+  if (typeof stored === "string") { try { stored = JSON.parse(stored); } catch { stored = {}; } }
   return {
-    id: text(row[0]), rowNumber: index + 2, periodFrom: text(row[1]), periodTo: text(row[2]), payDate: text(row[3]), status: text(row[4]), settings,
-    employeeCount: num(row[6]), grossTotal: num(row[7]), deductionsTotal: num(row[8]), netTotal: num(row[9]),
-    preparedByUserId: text(row[10]), preparedByName: text(row[11]), preparedAt: text(row[12]), approvedByName: text(row[14]), approvedAt: text(row[15]),
-    paidAt: text(row[16]), cashAccount: text(row[17]), paymentReference: text(row[18]), cashTransactionId: text(row[19]), branch: text(row[20]), voidReason: text(row[21]), remarks: text(row[22]),
+    id: row.payroll_id, periodFrom: text(row.period_from), periodTo: text(row.period_to), payDate: text(row.pay_date), status: text(row.status),
+    settings: { ...defaultPayrollSettings, ...((stored ?? {}) as Partial<PayrollSettings>) },
+    employeeCount: num(row.employee_count), grossTotal: num(row.gross_total), deductionsTotal: num(row.deductions_total), netTotal: num(row.net_total),
+    preparedByUserId: text(row.prepared_by_user_id), preparedByName: text(row.prepared_by_name), preparedAt: text(row.prepared_at), approvedByName: text(row.approved_by_name), approvedAt: text(row.approved_at),
+    paidAt: text(row.paid_at), cashAccount: text(row.cash_account), paymentReference: text(row.payment_reference), cashTransactionId: text(row.cash_transaction_id), branch: text(row.branch), voidReason: text(row.void_reason), remarks: text(row.remarks),
   };
 }
 
-type StoredLine = PayrollLine & { id: string; runId: string; rowNumber: number; status: string };
+type StoredLine = PayrollLine & { id: string; runId: string; status: string };
 
-function readLine(row: unknown[], index: number): StoredLine {
+function readLine(row: typeof linesTable.$inferSelect): StoredLine {
   return {
-    id: text(row[0]), runId: text(row[1]), rowNumber: index + 2, employeeId: text(row[2]), employeeName: text(row[3]), roles: text(row[4]),
-    baseType: text(row[5]) as BaseType, baseRate: num(row[6]), dailyRate: num(row[7]), hourlyRate: num(row[8]),
-    daysPaid: num(row[9]), leaveDays: num(row[10]), absentDays: num(row[11]), basePay: num(row[12]),
-    overtimeHours: num(row[13]), overtimePay: num(row[14]), lateMinutes: num(row[15]), lateDeduction: num(row[16]),
-    undertimeMinutes: num(row[17]), undertimeDeduction: num(row[18]), absenceDeduction: num(row[19]),
-    commission: num(row[20]), commissionIds: text(row[21]).split(",").map((id) => id.trim()).filter(Boolean), earnedIncentive: num(row[22]), status: text(row[23]) || "active",
+    id: row.payroll_line_id, runId: row.payroll_id, employeeId: row.employee_id, employeeName: text(row.employee_name), roles: text(row.roles),
+    baseType: text(row.base_type) as BaseType, baseRate: num(row.base_rate), dailyRate: num(row.daily_rate), hourlyRate: num(row.hourly_rate),
+    daysPaid: num(row.days_paid), leaveDays: num(row.leave_days), absentDays: num(row.absent_days), basePay: num(row.base_pay),
+    overtimeHours: num(row.overtime_hours), overtimePay: num(row.overtime_pay), lateMinutes: num(row.late_minutes), lateDeduction: num(row.late_deduction),
+    undertimeMinutes: num(row.undertime_minutes), undertimeDeduction: num(row.undertime_deduction), absenceDeduction: num(row.absence_deduction),
+    commission: num(row.commission), commissionIds: text(row.commission_ids).split(",").map((id) => id.trim()).filter(Boolean), earnedIncentive: num(row.earned_incentive_reference), status: text(row.line_status) || "active",
   };
 }
 
-const lineValues = (id: string, runId: string, line: PayrollLine) => [
-  id, runId, line.employeeId, line.employeeName, line.roles, line.baseType, line.baseRate, line.dailyRate, line.hourlyRate,
-  line.daysPaid, line.leaveDays, line.absentDays, line.basePay, line.overtimeHours, line.overtimePay, line.lateMinutes, line.lateDeduction,
-  line.undertimeMinutes, line.undertimeDeduction, line.absenceDeduction, line.commission, line.commissionIds.join(", "), line.earnedIncentive, "active",
-];
+const lineRow = (runId: string, line: PayrollLine) => ({
+  payroll_line_id: createReadableId("PYL") + Math.random().toString(36).slice(2, 5).toUpperCase(), payroll_id: runId, employee_id: line.employeeId, employee_name: line.employeeName, roles: line.roles,
+  base_type: line.baseType, base_rate: line.baseRate, daily_rate: line.dailyRate, hourly_rate: line.hourlyRate, days_paid: line.daysPaid, leave_days: line.leaveDays, absent_days: line.absentDays,
+  base_pay: line.basePay, overtime_hours: line.overtimeHours, overtime_pay: line.overtimePay, late_minutes: line.lateMinutes, late_deduction: line.lateDeduction, undertime_minutes: line.undertimeMinutes,
+  undertime_deduction: line.undertimeDeduction, absence_deduction: line.absenceDeduction, commission: line.commission, commission_ids: line.commissionIds.join(", "),
+  earned_incentive_reference: String(line.earnedIncentive), line_status: "active", ...encodedBy(),
+});
 
-async function loadPayroll() {
-  const response = await sheets.spreadsheets.values.batchGet({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    ranges: ["'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Payroll Adjustments'!A:H"],
-    valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING",
-  });
-  const [runRows, lineRows, adjustmentRows] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [[], [], []];
-  const runs = runRows.slice(1).map(readRun).filter((run) => run.id);
-  const lines = lineRows.slice(1).map(readLine).filter((line) => line.id);
-  const adjustments = adjustmentRows.slice(1).map((row, index) => ({
-    id: text(row[0]), rowNumber: index + 2, runId: text(row[1]), employeeId: text(row[2]), kind: (text(row[3]) === "Deduction" ? "Deduction" : "Addition") as Adjustment["kind"],
-    category: text(row[4]), amount: num(row[5]), reason: text(row[6]), status: text(row[7]) || "active",
-  })).filter((item) => item.id);
-  return { runs, lines, adjustments };
+function readAdjustment(row: typeof adjustmentsTable.$inferSelect) {
+  return { id: row.adjustment_id, runId: row.payroll_id, employeeId: row.employee_id, kind: (text(row.kind) === "Deduction" ? "Deduction" : "Addition") as Adjustment["kind"], category: text(row.category), amount: num(row.amount), reason: text(row.reason), status: text(row.status) || "active" };
 }
 
 export async function getPayrollOverview() {
-  const [{ runs }, profiles, employees, accounts, branches, programs] = await Promise.all([loadPayroll(), getPayProfiles(), getEmployees(), getCashAccounts(), getBranches(), getPrograms()]);
+  const [runRows, profiles, employees, accounts, branches, programs] = await Promise.all([currentDb().select().from(runsTable), getPayProfiles(), getEmployees(), getCashAccounts(), getBranches(), getPrograms()]);
   return {
-    runs: runs.sort((a, b) => b.periodFrom.localeCompare(a.periodFrom) || b.id.localeCompare(a.id)),
+    runs: runRows.map(readRun).sort((a, b) => b.periodFrom.localeCompare(a.periodFrom) || b.id.localeCompare(a.id)),
     profiles,
     employees: employees.filter((employee) => employee.status.toLowerCase() === "active").map((employee) => ({ id: employee.id, name: employee.name, branch: employee.branch, roles: employee.roles })),
     // Every employee's primary branch (inactive ones too, who may still be on an older payroll), for the branch filter.
@@ -141,13 +130,22 @@ export async function getPayrollOverview() {
   };
 }
 
-export async function getPayrollRun(runId: string) {
-  const { runs, lines, adjustments } = await loadPayroll();
-  const run = runs.find((item) => item.id === runId);
-  if (!run) throw new Error("Payroll run not found.");
-  const activeLines = lines.filter((line) => line.runId === runId && line.status === "active").sort((a, b) => a.employeeName.localeCompare(b.employeeName));
-  const activeAdjustments = adjustments.filter((item) => item.runId === runId && item.status === "active");
-  return { run, lines: activeLines, adjustments: activeAdjustments, totals: runTotals(activeLines, activeAdjustments) };
+/** A run with its active lines, adjustments and totals; `lock` holds the run's row until the transaction ends. */
+async function readRunDetail(runId: string, db: Queryable, lock = false) {
+  const query = db.select().from(runsTable).where(eq(runsTable.payroll_id, text(runId)));
+  const [row] = lock ? await query.for("update") : await query;
+  if (!row) throw new Error("Payroll run not found.");
+  const [lineRows, adjustmentRows] = await Promise.all([
+    db.select().from(linesTable).where(and(eq(linesTable.payroll_id, row.payroll_id), eq(linesTable.line_status, "active"))),
+    db.select().from(adjustmentsTable).where(and(eq(adjustmentsTable.payroll_id, row.payroll_id), eq(adjustmentsTable.status, "active"))),
+  ]);
+  const lines = lineRows.map(readLine).sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+  const adjustments = adjustmentRows.map(readAdjustment);
+  return { run: readRun(row), lines, adjustments, totals: runTotals(lines, adjustments) };
+}
+
+export function getPayrollRun(runId: string) {
+  return readRunDetail(runId, currentDb());
 }
 
 /** Earned incentive reference: gross less company remittance on remitted collections, by accountable employee. */
@@ -164,16 +162,24 @@ async function earnedIncentives(from: string, to: string) {
   return new Map(rowsOfResult.map((row) => [text(row.employee_id), centavos(Number(row.earned) || 0)] as const));
 }
 
-async function calculateLines(run: Pick<PayrollRun, "id" | "periodFrom" | "periodTo" | "settings">) {
-  // Finished days with no clock-in become Absent first, so they are deducted like any recorded absence.
-  await closeFinishedAttendanceDaysQuietly();
-  const [employees, profiles, attendance, commissions, incentives, { runs, lines }] = await Promise.all([
-    getEmployees(), getPayProfiles(), getAttendanceRecordsForRange(run.periodFrom, run.periodTo), getCommissions(),
-    earnedIncentives(run.periodFrom, run.periodTo), loadPayroll(),
+/** Pending commissions, read in the caller's transaction so a claim made a moment ago is seen. */
+async function pendingCommissions(db: Queryable) {
+  return (await db.select().from(commissionsTable).where(eq(commissionsTable.status, "Pending"))).map((row) => ({
+    id: row.commission_id, employeeId: text(row.employee_id), employeeName: text(row.employee_name), periodFrom: text(row.period_from), periodTo: text(row.period_to),
+    grossIncentive: num(row.gross_incentive), fidelityDeduction: num(row.fidelity_deduction), netCommission: num(row.net_commission), status: text(row.status), paidAt: text(row.paid_at), referenceNumber: text(row.reference_number), remarks: text(row.remarks),
+  }));
+}
+
+/** Attendance and incentives are read before the transaction; commissions and other runs' claims inside it (`db`). */
+async function calculateLines(run: { id: string; periodFrom: string; periodTo: string; settings: PayrollSettings }, db: Queryable, prepared: Awaited<ReturnType<typeof prepareInputs>>) {
+  const [commissions, claimedRows] = await Promise.all([
+    pendingCommissions(db),
+    // A commission may only be claimed by one live run; voided runs release theirs.
+    db.select({ ids: linesTable.commission_ids }).from(linesTable).innerJoin(runsTable, eq(runsTable.payroll_id, linesTable.payroll_id))
+      .where(and(eq(linesTable.line_status, "active"), ne(runsTable.status, "Void"), ne(runsTable.payroll_id, run.id))),
   ]);
-  // A commission may only be claimed by one live run; voided runs release theirs.
-  const liveRuns = new Set(runs.filter((item) => item.status !== "Void" && item.id !== run.id).map((item) => item.id));
-  const claimed = new Set(lines.filter((line) => line.status === "active" && liveRuns.has(line.runId)).flatMap((line) => line.commissionIds));
+  const claimed = new Set(claimedRows.flatMap((row) => text(row.ids).split(",").map((id) => id.trim()).filter(Boolean)));
+  const { employees, profiles, attendance, incentives } = prepared;
   const active = new Map(profiles.filter((profile) => profile.status === "active").map((profile) => [profile.employeeId, profile]));
   const payable = employees.filter((employee) => employee.status.toLowerCase() === "active" && active.has(employee.id));
   const missingProfiles = employees.filter((employee) => employee.status.toLowerCase() === "active" && !active.has(employee.id)).map((employee) => employee.name);
@@ -181,11 +187,19 @@ async function calculateLines(run: Pick<PayrollRun, "id" | "periodFrom" | "perio
     employeeId: employee.id, employeeName: employee.name, roles: employee.roles.join(", "),
     profile: active.get(employee.id)!,
     attendance: attendance.filter((record) => record.employeeId === employee.id),
-    commissions: commissions.filter((item) => item.employeeId === employee.id && item.status === "Pending" && item.periodTo <= run.periodTo && !claimed.has(item.id)),
+    commissions: commissions.filter((item) => item.employeeId === employee.id && item.periodTo <= run.periodTo && !claimed.has(item.id)),
     earnedIncentive: incentives.get(employee.id) ?? 0,
     settings: run.settings, from: run.periodFrom, to: run.periodTo,
   }));
   return { computed, missingProfiles };
+}
+
+/** What a calculation reads that no payroll action changes; read before the transaction so it stays short. */
+async function prepareInputs(periodFrom: string, periodTo: string) {
+  // Finished days with no clock-in become Absent first, so they are deducted like any recorded absence.
+  await closeFinishedAttendanceDaysQuietly();
+  const [employees, profiles, attendance, incentives] = await Promise.all([getEmployees(), getPayProfiles(), getAttendanceRecordsForRange(periodFrom, periodTo), earnedIncentives(periodFrom, periodTo)]);
+  return { employees, profiles, attendance, incentives };
 }
 
 function readSettings(input: Record<string, unknown>): PayrollSettings {
@@ -198,54 +212,68 @@ function readSettings(input: Record<string, unknown>): PayrollSettings {
   };
 }
 
+const stamp = () => new Date().toISOString();
+
+/** Stores the run's employee count and totals from its active lines and adjustments, in the caller's transaction. */
+async function storeRunTotals(runId: string, tx: Queryable) {
+  const detail = await readRunDetail(runId, tx);
+  await tx.update(runsTable).set({ employee_count: detail.lines.length, gross_total: detail.totals.gross, deductions_total: detail.totals.deductions, net_total: detail.totals.net, updated_at: stamp() })
+    .where(eq(runsTable.payroll_id, runId));
+  return detail;
+}
+
+/** Locks a run that must still be Draft, or throws. */
+async function lockedDraft(runId: string, tx: Queryable) {
+  const detail = await readRunDetail(runId, tx, true);
+  if (detail.run.status !== "Draft") throw new Error("Only Draft payroll runs can be changed.");
+  return detail;
+}
+
 export async function createPayrollRun(input: Record<string, unknown>) {
   const actor = getEncoder();
   const periodFrom = text(input.periodFrom), periodTo = text(input.periodTo), payDate = text(input.payDate);
   if (!datePattern.test(periodFrom) || !datePattern.test(periodTo) || periodFrom > periodTo) throw new Error("Choose a valid pay period.");
   if (payDate && !datePattern.test(payDate)) throw new Error("Enter a valid pay date.");
-  const { runs } = await loadPayroll();
-  const overlap = runs.find((run) => run.status !== "Void" && run.periodFrom <= periodTo && periodFrom <= run.periodTo);
-  if (overlap) throw new Error(`Payroll ${overlap.id} (${overlap.periodFrom} to ${overlap.periodTo}) already covers part of this period. Void it first or choose another period.`);
   const settings = readSettings(input);
-  const id = createReadableId("PAY");
-  const { computed, missingProfiles } = await calculateLines({ id, periodFrom, periodTo, settings });
-  if (!computed.length) throw new Error("No active employee has a pay setup yet. Add pay rates first.");
-  const totals = runTotals(computed, []);
-  await appendEncodedRows({ range: "'Payroll Runs'!A:X", requestBody: { values: [[id, periodFrom, periodTo, payDate, "Draft", JSON.stringify(settings), computed.length, totals.gross, totals.deductions, totals.net, actor.userId, actor.name, actor.encodedAt, "", "", "", "", "", "", "", "", "", text(input.remarks), actor.encodedAt]] } });
-  await appendEncodedRows({ range: "'Payroll Lines'!A:X", requestBody: { values: computed.map((line) => lineValues(createReadableId("PYL"), id, line)) } });
-  return { id, missingProfiles };
-}
-
-async function draftRun(runId: string) {
-  const detail = await getPayrollRun(runId);
-  if (detail.run.status !== "Draft") throw new Error("Only Draft payroll runs can be changed.");
-  return detail;
-}
-
-async function storeRunTotals(runId: string) {
-  const detail = await getPayrollRun(runId);
-  const row = detail.run.rowNumber;
-  await write(`'Payroll Runs'!G${row}:J${row}`, [[detail.lines.length, detail.totals.gross, detail.totals.deductions, detail.totals.net]]);
-  return detail;
+  const prepared = await prepareInputs(periodFrom, periodTo);
+  return inTransaction(async (tx) => {
+    await lockPayroll(tx);
+    const [overlap] = await tx.select().from(runsTable).where(and(ne(runsTable.status, "Void"), sql`${runsTable.period_from} <= ${periodTo}::date and ${periodFrom}::date <= ${runsTable.period_to}`)).limit(1);
+    if (overlap) throw new Error(`Payroll ${overlap.payroll_id} (${text(overlap.period_from)} to ${text(overlap.period_to)}) already covers part of this period. Void it first or choose another period.`);
+    const id = createReadableId("PAY");
+    const { computed, missingProfiles } = await calculateLines({ id, periodFrom, periodTo, settings }, tx, prepared);
+    if (!computed.length) throw new Error("No active employee has a pay setup yet. Add pay rates first.");
+    const totals = runTotals(computed, []);
+    await tx.insert(runsTable).values({
+      payroll_id: id, period_from: periodFrom, period_to: periodTo, pay_date: payDate || null, status: "Draft", settings_json: settings, employee_count: computed.length,
+      gross_total: totals.gross, deductions_total: totals.deductions, net_total: totals.net, prepared_by_user_id: actor.userId, prepared_by_name: actor.name, prepared_at: actor.encodedAt,
+      remarks: text(input.remarks) || null, updated_at: actor.encodedAt, ...encodedBy(),
+    });
+    await tx.insert(linesTable).values(computed.map((line) => lineRow(id, line)));
+    return { id, missingProfiles };
+  });
 }
 
 export async function recalculatePayrollRun(runId: string, input: Record<string, unknown>) {
-  const { run, lines } = await draftRun(runId);
-  const settings = input.settings ? readSettings(input) : run.settings;
-  const { computed, missingProfiles } = await calculateLines({ ...run, settings });
-  // Previous lines stay in the sheet as "replaced" for the audit trail.
-  if (lines.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: lines.map((line) => ({ range: `'Payroll Lines'!X${line.rowNumber}`, values: [["replaced"]] })) } });
-  if (computed.length) await appendEncodedRows({ range: "'Payroll Lines'!A:X", requestBody: { values: computed.map((line) => lineValues(createReadableId("PYL"), runId, line)) } });
-  await write(`'Payroll Runs'!F${run.rowNumber}`, [[JSON.stringify(settings)]]);
-  await storeRunTotals(runId);
-  return { id: runId, missingProfiles };
+  const { run } = await getPayrollRun(runId);
+  const prepared = await prepareInputs(run.periodFrom, run.periodTo);
+  return inTransaction(async (tx) => {
+    await lockPayroll(tx);
+    const { run: current, lines } = await lockedDraft(runId, tx);
+    const settings = input.settings ? readSettings(input) : current.settings;
+    const { computed, missingProfiles } = await calculateLines({ ...current, settings }, tx, prepared);
+    // Previous lines stay as "replaced" for the audit trail.
+    if (lines.length) await tx.update(linesTable).set({ line_status: "replaced" }).where(inArray(linesTable.payroll_line_id, lines.map((line) => line.id)));
+    if (computed.length) await tx.insert(linesTable).values(computed.map((line) => lineRow(runId, line)));
+    await tx.update(runsTable).set({ settings_json: settings }).where(eq(runsTable.payroll_id, runId));
+    await storeRunTotals(runId, tx);
+    return { id: runId, missingProfiles };
+  });
 }
 
 export async function addPayrollAdjustment(runId: string, input: Record<string, unknown>) {
-  const { lines } = await draftRun(runId);
   const employeeId = text(input.employeeId), kind = text(input.kind), category = text(input.category), amount = centavos(num(input.amount));
   let reason = text(input.reason);
-  if (!lines.some((line) => line.employeeId === employeeId)) throw new Error("Select an employee in this payroll.");
   if (kind !== "Addition" && kind !== "Deduction") throw new Error("Choose an addition or a deduction.");
   if (!(ADJUSTMENT_CATEGORIES[kind] as readonly string[]).includes(category)) throw new Error(`Choose a ${kind.toLowerCase()} category.`);
   if (!(amount > 0)) throw new Error("Enter an amount greater than zero.");
@@ -255,76 +283,94 @@ export async function addPayrollAdjustment(runId: string, input: Record<string, 
     if (!program) throw new Error("Select the company program being deducted.");
     reason = `${program.code} - ${program.name}: ${reason}`;
   }
-  const id = createReadableId("PAJ");
-  await appendEncodedRows({ range: "'Payroll Adjustments'!A:H", requestBody: { values: [[id, runId, employeeId, kind, category, amount, reason, "active"]] } });
-  await storeRunTotals(runId);
-  return { id };
+  return inTransaction(async (tx) => {
+    const { lines } = await lockedDraft(runId, tx);
+    if (!lines.some((line) => line.employeeId === employeeId)) throw new Error("Select an employee in this payroll.");
+    const id = createReadableId("PAJ");
+    await tx.insert(adjustmentsTable).values({ adjustment_id: id, payroll_id: runId, employee_id: employeeId, kind, category, amount, reason, status: "active", ...encodedBy() });
+    await storeRunTotals(runId, tx);
+    return { id };
+  });
 }
 
 export async function removePayrollAdjustment(runId: string, adjustmentId: string) {
-  await draftRun(runId);
-  const { adjustments } = await loadPayroll();
-  const adjustment = adjustments.find((item) => item.id === adjustmentId && item.runId === runId && item.status === "active");
-  if (!adjustment) throw new Error("Adjustment not found.");
-  await write(`'Payroll Adjustments'!H${adjustment.rowNumber}`, [["removed"]]);
-  await storeRunTotals(runId);
-  return { id: adjustmentId };
+  return inTransaction(async (tx) => {
+    await lockedDraft(runId, tx);
+    const removed = await tx.update(adjustmentsTable).set({ status: "removed" })
+      .where(and(eq(adjustmentsTable.adjustment_id, text(adjustmentId)), eq(adjustmentsTable.payroll_id, runId), eq(adjustmentsTable.status, "active"))).returning({ id: adjustmentsTable.adjustment_id });
+    if (!removed.length) throw new Error("Adjustment not found.");
+    await storeRunTotals(runId, tx);
+    return { id: adjustmentId };
+  });
 }
 
 export async function approvePayrollRun(runId: string, isAdministrator: boolean) {
   const actor = getEncoder();
-  const detail = await draftRun(runId);
-  if (!detail.lines.length) throw new Error("This payroll has no employees.");
-  // Maker-checker: a second person approves, except an Administrator (same rule as remittances).
-  if (detail.run.preparedByUserId === actor.userId && !isAdministrator) throw new Error("Another Finance user or an Administrator must approve a payroll you prepared.");
-  const stored = await storeRunTotals(runId);
-  const row = stored.run.rowNumber;
-  await write(`'Payroll Runs'!E${row}`, [["Approved"]]);
-  await write(`'Payroll Runs'!N${row}:P${row}`, [[actor.userId, actor.name, actor.encodedAt]]);
-  await write(`'Payroll Runs'!X${row}`, [[actor.encodedAt]]);
-  return { id: runId };
+  return inTransaction(async (tx) => {
+    const detail = await lockedDraft(runId, tx);
+    if (!detail.lines.length) throw new Error("This payroll has no employees.");
+    // Maker-checker: a second person approves, except an Administrator (same rule as remittances).
+    if (detail.run.preparedByUserId === actor.userId && !isAdministrator) throw new Error("Another Finance user or an Administrator must approve a payroll you prepared.");
+    await storeRunTotals(runId, tx);
+    await tx.update(runsTable).set({ status: "Approved", approved_by_user_id: actor.userId, approved_by_name: actor.name, approved_at: actor.encodedAt, updated_at: actor.encodedAt }).where(eq(runsTable.payroll_id, runId));
+    return { id: runId };
+  });
 }
 
+/**
+ * Records the payment: the run's one cash outflow, its commissions marked Paid, and the run marked Paid, all in one
+ * transaction on the locked run. A second Mark paid waits for the first and then finds the run already Paid, so the
+ * cash ledger can never get the payroll twice.
+ */
 export async function payPayrollRun(runId: string, input: Record<string, unknown>) {
   const actor = getEncoder();
-  const { run, lines, totals } = await getPayrollRun(runId);
-  if (run.status !== "Approved") throw new Error("Approve the payroll before recording payment.");
-  const paidOn = text(input.payDate) || run.payDate;
   const account = text(input.cashAccount), branch = text(input.branch), reference = text(input.paymentReference);
-  if (!datePattern.test(paidOn)) throw new Error("Enter the pay date.");
   if (!(await getCashAccounts()).some((item) => item.name === account && item.status === "active")) throw new Error("Choose the cash account the payroll was paid from.");
   if (!branch) throw new Error("Choose the branch the payroll is charged to.");
-  // One outflow in the cash ledger for the whole run; payslips carry the per-employee detail.
-  const cash = totals.net > 0
-    ? await createCashTransaction({ date: paidOn, direction: "outflow", category: "Payroll", description: `Payroll ${run.periodFrom} to ${run.periodTo} (${lines.length} employees)`, amount: totals.net, branch, account, referenceType: "Payroll", referenceId: runId, remarks: reference })
-    : { id: "" };
-  for (const commissionId of lines.flatMap((line) => line.commissionIds)) await payCommission(commissionId, `${runId}${reference ? ` · ${reference}` : ""}`);
-  await write(`'Payroll Runs'!D${run.rowNumber}:E${run.rowNumber}`, [[paidOn, "Paid"]]);
-  await write(`'Payroll Runs'!Q${run.rowNumber}:U${run.rowNumber}`, [[actor.encodedAt, account, reference, cash.id, branch]]);
-  await write(`'Payroll Runs'!X${run.rowNumber}`, [[actor.encodedAt]]);
-  return { id: runId, cashTransactionId: cash.id };
+  return inTransaction(async (tx) => {
+    const { run, lines, totals } = await readRunDetail(runId, tx, true);
+    if (run.status === "Paid") throw new Error("This payroll is already paid.");
+    if (run.status !== "Approved") throw new Error("Approve the payroll before recording payment.");
+    const paidOn = text(input.payDate) || run.payDate;
+    if (!datePattern.test(paidOn)) throw new Error("Enter the pay date.");
+    // One outflow in the cash ledger for the whole run; payslips carry the per-employee detail.
+    const cash = totals.net > 0
+      ? await createCashTransaction({ date: paidOn, direction: "outflow", category: "Payroll", description: `Payroll ${run.periodFrom} to ${run.periodTo} (${lines.length} employees)`, amount: totals.net, branch, account, referenceType: "Payroll", referenceId: runId, remarks: reference })
+      : { id: "" };
+    const commissionIds = [...new Set(lines.flatMap((line) => line.commissionIds))];
+    if (commissionIds.length) {
+      await tx.update(commissionsTable).set({ status: "Paid", paid_at: actor.encodedAt, reference_number: `${runId}${reference ? ` · ${reference}` : ""}` })
+        .where(and(inArray(commissionsTable.commission_id, commissionIds), ne(commissionsTable.status, "Paid")));
+    }
+    await tx.update(runsTable).set({ pay_date: paidOn, status: "Paid", paid_at: actor.encodedAt, cash_account: account, payment_reference: reference || null, cash_transaction_id: cash.id || null, branch, updated_at: actor.encodedAt })
+      .where(eq(runsTable.payroll_id, runId));
+    return { id: runId, cashTransactionId: cash.id };
+  });
 }
 
 export async function voidPayrollRun(runId: string, reason: string) {
   const actor = getEncoder();
-  const { run } = await getPayrollRun(runId);
-  if (!["Draft", "Approved"].includes(run.status)) throw new Error("Paid payroll cannot be voided here; record a correcting cash transaction instead.");
   if (text(reason).length < 3) throw new Error("Enter the reason for voiding this payroll.");
-  await write(`'Payroll Runs'!E${run.rowNumber}`, [["Void"]]);
-  await write(`'Payroll Runs'!V${run.rowNumber}:X${run.rowNumber}`, [[`${text(reason)} (${actor.name})`, run.remarks, actor.encodedAt]]);
-  return { id: runId };
+  return inTransaction(async (tx) => {
+    const { run } = await readRunDetail(runId, tx, true);
+    if (!["Draft", "Approved"].includes(run.status)) throw new Error("Paid payroll cannot be voided here; record a correcting cash transaction instead.");
+    await tx.update(runsTable).set({ status: "Void", void_reason: `${text(reason)} (${actor.name})`, updated_at: actor.encodedAt }).where(eq(runsTable.payroll_id, runId));
+    return { id: runId };
+  });
 }
 
 /**
  * Removes a Draft payroll that was made by mistake: its run, every calculated line, and every adjustment are deleted
- * from the sheets (each deleted row is kept in the Audit Log). Approved payroll is voided instead; Paid payroll is
- * corrected with a cash transaction.
+ * together (each deleted row is kept in the Audit Log). Approved payroll is voided instead; Paid payroll is corrected
+ * with a cash transaction.
  */
 export async function deletePayrollRun(runId: string) {
-  const { run } = await getPayrollRun(runId);
-  if (run.status !== "Draft") throw new Error("Only a Draft payroll can be deleted. Void an Approved payroll instead.");
-  await deleteRowsWhere("Payroll Adjustments", (row) => text(row[1]) === run.id);
-  await deleteRowsWhere("Payroll Lines", (row) => text(row[1]) === run.id);
-  await deleteRowsById("Payroll Runs", [run.id]);
-  return { id: run.id };
+  return inTransaction(async (tx) => {
+    const { run } = await readRunDetail(runId, tx, true);
+    if (run.status !== "Draft") throw new Error("Only a Draft payroll can be deleted. Void an Approved payroll instead.");
+    await tx.delete(adjustmentsTable).where(eq(adjustmentsTable.payroll_id, run.id));
+    await tx.delete(linesTable).where(eq(linesTable.payroll_id, run.id));
+    await tx.delete(runsTable).where(eq(runsTable.payroll_id, run.id));
+    return { id: run.id };
+  });
 }

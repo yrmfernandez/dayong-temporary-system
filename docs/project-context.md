@@ -11,11 +11,18 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | **Built 2026-10-24** for vendor, commission and Fidelity payouts; payroll company-program deductions waiting on the owner's decision |
 | 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | **Built 2026-10-24**: Member Corrections page with fix coverage, move receipts, insert missing receipt, merge and split |
 | 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | **Built 2026-10-24** (option 1, owner): Base Pay, flexible and registration fee locked once a program has collections |
-| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | To do (next) |
+| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **In progress**: phase 1 Payroll built 2026-10-24; next clerk report cash, then Expenses/Cash Transactions, then the rest |
 | 7 | One time zone (Manila) for every report date | To do |
 | 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Payroll saves in one transaction (2026-10-24, upgrade #6 phase 1)
+
+- **Owner:** upgrade #6, explained and approved: start with Payroll. The risks were saves that stop half way (Mark paid wrote the cash outflow, then each commission, then the run, separately), two saves at once, and updates by row number.
+- **Done:** `lib/payroll.ts` rewritten on the database tables (`pay_profiles`, `payroll_runs`, `payroll_lines`, `payroll_adjustments`, `commissions`), by ID. Create, recalculate, add/remove adjustment, approve, pay, void and delete are each one transaction that locks the run first; create and recalculate also take a payroll-wide lock, so overlapping periods and double-claimed commissions are refused even when two people act at once. Mark paid: cash outflow, commissions Paid and run Paid together; a second Mark paid says "already paid" and adds nothing. Pay profiles are saved as one row per employee (upsert). Same screens and results; settings saved by the old code are still read. Tests: the payroll test now checks the database, and a new test proves a failure part way through payment saves nothing (commission stays Pending, run stays Approved) and that paying twice gives one cash outflow. All 237 tests and the build pass. No migration.
+- **In progress:** upgrade #6 phase 2 (clerk report cash) is next.
+- **To do (owner):** deploy.
 
 ### Program pay locked once paid (2026-10-24)
 

@@ -60,3 +60,7 @@ Payroll periods cannot overlap a non-void payroll. Each employee line has a prin
 ## Google Sheets
 
 Created by `npm run sheets:payroll` (additive): `Pay Profiles`, `Payroll Runs`, `Payroll Lines`, `Payroll Adjustments`, each followed by the encoder identity columns. Calculation rules live in `lib/payroll-calc.ts` (tested); sheet access in `lib/payroll.ts`.
+
+## Saving (October 24, 2026)
+
+Payroll is stored in the database tables `pay_profiles`, `payroll_runs`, `payroll_lines` and `payroll_adjustments` and read and written directly by ID (`lib/payroll.ts`), no longer through the Sheets-style layer. Each action (create, recalculate, adjustments, approve, pay, void, delete) is one transaction that locks the run, so it saves completely or not at all, and two people acting on the same run at once are handled one after the other. Mark paid records the run's cash outflow, marks its commissions Paid and marks the run Paid together; pressing it again reports the run already paid.

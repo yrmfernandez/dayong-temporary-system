@@ -1341,33 +1341,35 @@ test('payroll run is calculated from pay setup, attendance, and pending commissi
   const h = harness({ userId: 'USR-1', employeeId: 'MD-2099-0001', name: 'Finance User', roleNames: ['Finance'], permissions: {} });
   h.rows.Employees = [[], ['MD-2099-0010', 'Office Staff', 'BR-1', 'Entry Clerk', 'active'], ['MD-2099-0011', 'Field MAS', 'BR-1', 'MAS', 'active'], ['MD-2099-0012', 'No Setup', 'BR-1', 'HR Officer', 'active']];
   h.rows['Employee Branches'] = [[]];
-  h.rows['Pay Profiles'] = [[], ['MD-2099-0010', 'daily', 800, false, 8, 1.25, 'active', '', ''], ['MD-2099-0011', 'none', 0, true, 8, 1.25, 'active', '', '']];
+  await h.sync();
+  await seed('pay_profiles', [
+    { employee_id: 'MD-2099-0010', base_type: 'daily', base_rate: 800, commission_eligible: false, hours_per_day: 8, overtime_multiplier: 1.25, status: 'active' },
+    { employee_id: 'MD-2099-0011', base_type: 'none', base_rate: 0, commission_eligible: true, hours_per_day: 8, overtime_multiplier: 1.25, status: 'active' },
+  ]);
   const attendance = (date, status, ot = 0) => { const row = Array(18).fill(''); row[0] = `ATT-${date}`; row[1] = 'MD-2099-0010'; row[2] = date; row[9] = ot; row[10] = status; return row; };
   h.rows.Attendance = [[], attendance('2099-09-01', 'Present', 2), attendance('2099-09-02', 'Present'), attendance('2099-09-03', 'Absent')];
-  h.rows.Commissions = [[], ['COM-1', 'MD-2099-0011', 'Field MAS', '2099-09-01', '2099-09-15', 5000, 500, 4500, 'Pending', '', '', ''], ['COM-2', 'MD-2099-0011', 'Field MAS', '2099-08-01', '2099-08-15', 100, 0, 100, 'Paid', '', '', '']];
+  await seed('commissions', [
+    { commission_id: 'COM-1', employee_id: 'MD-2099-0011', employee_name: 'Field MAS', period_from: '2099-09-01', period_to: '2099-09-15', gross_incentive: 5000, fidelity_deduction: 500, net_commission: 4500, status: 'Pending' },
+    { commission_id: 'COM-2', employee_id: 'MD-2099-0011', employee_name: 'Field MAS', period_from: '2099-08-01', period_to: '2099-08-15', gross_incentive: 100, fidelity_deduction: 0, net_commission: 100, status: 'Paid' },
+  ]);
   h.rows.Collections = [[]];
-  h.rows['Payroll Runs'] = [[]]; h.rows['Payroll Lines'] = [[]]; h.rows['Payroll Adjustments'] = [[]];
   const route = h.load('app/api/payroll/route.ts');
   const post = (body) => route.POST(new Request('http://localhost/api/payroll', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
   const response = await post({ action: 'create', periodFrom: '2099-09-01', periodTo: '2099-09-15' });
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
   assert.deepEqual(result.missingProfiles, ['No Setup']);
-  const appended = h.writes.filter((write) => write.range?.startsWith("'Payroll"));
-  const runRow = appended.find((write) => write.range.startsWith("'Payroll Runs'")).requestBody.values[0];
-  assert.equal(runRow[4], 'Draft');
-  assert.equal(runRow[9], 6350); // staff: 2 days × 800 + 2h OT 250 = 1850; MAS: pending commission 4500 (the paid one is excluded)
-  const lines = appended.find((write) => write.range.startsWith("'Payroll Lines'")).requestBody.values;
-  const staff = lines.find((row) => row[2] === 'MD-2099-0010'), mas = lines.find((row) => row[2] === 'MD-2099-0011');
-  assert.equal(staff[12], 1600);
-  assert.equal(staff[14], 250);
-  assert.equal(mas[20], 4500);
-  assert.equal(mas[21], 'COM-1');
+  const [run] = await query(`select status, net_total::float8 as net, employee_count from payroll_runs where payroll_id = '${result.id}'`);
+  assert.equal(run.status, 'Draft');
+  assert.equal(run.net, 6350); // staff: 2 days × 800 + 2h OT 250 = 1850; MAS: pending commission 4500 (the paid one is excluded)
+  const lines = await query(`select employee_id, base_pay::float8 as base, overtime_pay::float8 as ot, commission::float8 as commission, commission_ids from payroll_lines where payroll_id = '${result.id}' and line_status = 'active'`);
+  const staff = lines.find((row) => row.employee_id === 'MD-2099-0010'), mas = lines.find((row) => row.employee_id === 'MD-2099-0011');
+  assert.deepEqual([staff.base, staff.ot, mas.commission, mas.commission_ids], [1600, 250, 4500, 'COM-1']);
   const denied = await (await route.POST(new Request('http://localhost/api/payroll', { method: 'POST', body: JSON.stringify({ action: 'create' }) }))).json();
   assert.match(denied.message, /valid pay period/);
+  assert.match((await (await post({ action: 'create', periodFrom: '2099-09-10', periodTo: '2099-09-20' })).json()).message, /already covers part of this period/);
 
   // Additions and deductions: categories belong to their kind, and a company-program deduction names the program.
-  h.rows['Payroll Runs'] = [[], runRow]; h.rows['Payroll Lines'] = [[], ...lines];
   h.rows.Programs = [[], ['DP-0001', 'P1', 'Plan One', 350, 'active', '']];
   const adjust = async (body) => { const res = await post({ action: 'addAdjustment', runId: result.id, employeeId: 'MD-2099-0010', amount: 350, reason: 'Program contribution, September', ...body }); return { status: res.status, body: await res.json() }; };
   assert.match((await adjust({ kind: 'Addition', category: 'SSS contribution' })).body.message, /addition category/);
@@ -1375,9 +1377,52 @@ test('payroll run is calculated from pay setup, attendance, and pending commissi
   assert.match((await adjust({ kind: 'Deduction', category: 'SSS contribution', reason: '' })).body.message, /reason/);
   const program = await adjust({ kind: 'Deduction', category: 'Company program', programId: 'DP-0001' });
   assert.equal(program.status, 201, JSON.stringify(program.body));
-  const saved = h.writes.filter((write) => write.range?.startsWith("'Payroll Adjustments'")).at(-1).requestBody.values[0];
-  assert.deepEqual(saved.slice(2, 8), ['MD-2099-0010', 'Deduction', 'Company program', 350, 'P1 - Plan One: Program contribution, September', 'active']);
+  const [saved] = await query(`select employee_id, kind, category, amount::float8 as amount, reason, status from payroll_adjustments where adjustment_id = '${program.body.id}'`);
+  assert.deepEqual(Object.values(saved), ['MD-2099-0010', 'Deduction', 'Company program', 350, 'P1 - Plan One: Program contribution, September', 'active']);
   assert.equal((await adjust({ kind: 'Addition', category: '13th month pay', reason: 'Pro-rated 13th month' })).status, 201);
+  assert.equal((await query(`select net_total::float8 as net from payroll_runs where payroll_id = '${result.id}'`))[0].net, 6350, 'totals follow the adjustments (350 off, 350 on)');
+});
+
+test('payroll payment saves all together: paid twice gives one cash outflow, and a failure part way saves nothing', async () => {
+  const h = harness({ userId: 'USR-1', employeeId: 'MD-2099-0001', name: 'Finance User', roleNames: ['Finance'], permissions: {} });
+  h.rows.Employees = [[], ['MD-2099-0011', 'Field MAS', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[]];
+  h.rows['Cash Accounts'] = [['account_id'], ['CAC-1', 'Cash on Hand', 'cash', 0, 'active']];
+  await h.sync();
+  await seed('pay_profiles', [{ employee_id: 'MD-2099-0011', base_type: 'none', base_rate: 0, commission_eligible: true, hours_per_day: 8, overtime_multiplier: 1.25, status: 'active' }]);
+  await seed('commissions', [{ commission_id: 'COM-1', employee_id: 'MD-2099-0011', employee_name: 'Field MAS', period_from: '2099-09-01', period_to: '2099-09-15', gross_incentive: 4500, fidelity_deduction: 0, net_commission: 4500, status: 'Pending' }]);
+  const route = h.load('app/api/payroll/route.ts');
+  const post = async (body) => { const res = await route.POST(new Request('http://localhost/api/payroll', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } })); return { status: res.status, body: await res.json() }; };
+  const created = await post({ action: 'create', periodFrom: '2099-09-01', periodTo: '2099-09-15' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const id = created.body.id;
+  assert.match((await post({ action: 'approve', runId: id })).body.message, /Another Finance user/, 'maker-checker');
+  h.setUser({ userId: 'USR-2', employeeId: 'MD-2099-0002', name: 'Approver', roleNames: ['Finance'], permissions: {} });
+  assert.equal((await post({ action: 'approve', runId: id })).status, 200);
+  const pay = { action: 'pay', runId: id, payDate: '2099-09-20', cashAccount: 'Cash on Hand', branch: 'BR-1', paymentReference: 'VCH-1' };
+  const cashWrites = () => h.writes.filter((write) => write.range?.startsWith("'Cash Transactions'!A:")).length;
+
+  // A failure after the cash outflow (here: the run cannot be marked Paid) leaves the commission Pending and the run Approved.
+  await query(`create or replace function refuse_paid() returns trigger language plpgsql as $$ begin if new.status = 'Paid' then raise exception 'simulated failure'; end if; return new; end $$`);
+  await query('create trigger refuse_paid before update on payroll_runs for each row execute function refuse_paid()');
+  const failed = await post(pay);
+  assert.equal(failed.status, 400);
+  assert.match(failed.body.message, /simulated failure|update "payroll_runs"/);
+  assert.equal((await query(`select status from payroll_runs where payroll_id = '${id}'`))[0].status, 'Approved');
+  assert.equal((await query("select status from commissions where commission_id = 'COM-1'"))[0].status, 'Pending', 'the commission update was rolled back with it');
+  await query('drop trigger refuse_paid on payroll_runs');
+
+  const paid = await post(pay);
+  assert.equal(paid.status, 200, JSON.stringify(paid.body));
+  const before = cashWrites();
+  const again = await post(pay);
+  assert.match(again.body.message, /already paid/);
+  assert.equal(cashWrites(), before, 'paying again adds no second cash outflow');
+  const [row] = await query(`select status, cash_account, payment_reference, branch from payroll_runs where payroll_id = '${id}'`);
+  assert.deepEqual(Object.values(row), ['Paid', 'Cash on Hand', 'VCH-1', 'BR-1']);
+  const [commission] = await query("select status, reference_number from commissions where commission_id = 'COM-1'");
+  assert.deepEqual([commission.status, commission.reference_number], ['Paid', `${id} · VCH-1`]);
+  assert.match((await post({ action: 'void', runId: id, reason: 'mistake' })).body.message, /Paid payroll cannot be voided/);
 });
 
 test('password change verifies the current password and writes only the hash cell', async () => {
