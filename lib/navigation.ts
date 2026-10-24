@@ -1,6 +1,6 @@
 import {
   BadgeCheck, BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
-  ClipboardList, CreditCard, FilePen, FileWarning, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
+  ClipboardList, CreditCard, FilePen, UserRoundCog, FileWarning, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
   LayoutDashboard, Banknote, Camera, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -52,6 +52,8 @@ const page = {
   // Edit / Corrections: IT and Administrators edit New Sales and Collections (remitted too) and move members between
   // MAS and programs (app/entry-corrections/page.tsx).
   entryCorrections: { name: "Edit / Corrections", href: "/entry-corrections", icon: FilePen },
+  // Member Corrections: IT and Administrators fix coverage, move receipts, merge, split and insert missing receipts (app/member-corrections).
+  memberCorrections: { name: "Member Corrections", href: "/member-corrections", icon: UserRoundCog },
   todaysEntries: { name: "Today's Entries", href: "/todays-entries", icon: ReceiptText },
   exceptions: { name: "Exceptions", href: "/exceptions", icon: TriangleAlert },
   myEntries: { name: "My Entries", href: "/my-entries", icon: Camera },
@@ -75,7 +77,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Reports", items: [page.reports, page.companyReports, page.soa, page.dailyAudit, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
     { title: "Master Data", items: [page.members, page.programs, page.branches] },
-    { title: "Administration", items: [page.userAccounts, page.roles, page.auditLog, page.entryCorrections] },
+    { title: "Administration", items: [page.userAccounts, page.roles, page.auditLog, page.entryCorrections, page.memberCorrections] },
     myHr,
   ],
   executive: [
@@ -112,7 +114,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "System", items: [{ ...page.dashboard, name: "System Health" }] },
     { title: "Access Control", items: [page.userAccounts, page.roles, page.employees] },
     { title: "Configuration", items: [page.branches, page.programs, page.masterData] },
-    { title: "Monitoring", items: [page.auditLog, page.entryCorrections] },
+    { title: "Monitoring", items: [page.auditLog, page.entryCorrections, page.memberCorrections] },
     myHr,
   ],
   mas: [

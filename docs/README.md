@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 24, 2026: Member Corrections.** A new page for IT and Administrators fixes a member's records without a script: fix coverage, move receipts, insert a missing receipt, merge two members, split a member; each previews the exact result and saves with a reason. See the [system guide](system-guide.md) section 12.
+
 **October 24, 2026: status clock from Month of.** Waiver, 60D–150D and Forfeited count from the last covered month on the OR date's day (paid October 10 for July: 60D and Waiver from September 10, Forfeited January 11). See the [system guide](system-guide.md) status rules; preview the effect with `scripts/preview-month-of-status-rule.mjs`.
 
 **October 24, 2026: payouts leave the cash ledger.** Vendor bill payments, commissions paid directly and Fidelity withdrawals now record their cash outflow with the payment (cash account, branch, date). See [finance](finance.md) and the [system guide](system-guide.md) (implementation limits, item 5).

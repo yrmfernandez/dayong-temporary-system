@@ -3933,3 +3933,98 @@ test('vendor and direct commission payments also record their cash outflow, or n
   assert.equal(marked.requestBody.values[0][0], 'Paid');
   assert.equal(marked.requestBody.values[0][2], 'GC-1');
 });
+
+// ---------------------------------------------------------------- Member Corrections (lib/member-corrections.ts)
+async function seedCorrectionMember() {
+  await seed('programs', [{ program_id: 'DP-350', program_name: 'D-350', base_pay: 350 }, { program_id: 'DP-350B', program_name: 'D-350 B', base_pay: 350 }, { program_id: 'DP-500', program_name: 'D-500', base_pay: 500 }]);
+  await seed('program_incentives', ['DP-350', 'DP-350B', 'DP-500'].map((program) => ({ incentive_id: `${program}-MAS`, program_id: program, role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'fixed', mark_up: 0, incentive_amount: 50 })));
+  await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'SANTOS', first_name: 'ANA' }]);
+  await seed('member_programs', [{ enrollment_id: 'E1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-350', doi: '2026-01-15', branch: 'BR-1', mas: 'Maria', status: 'Active' }]);
+  const col = (id, or, orDate, nop, month) => ({ collection_id: id, collection_batch_id: 'CBT', enrollment_id: 'E1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-350', or_number: or, or_date: orDate, amount_collected: 350, month_from: month, month_to: month, nop_from: nop, nop_to: nop, status: 'Posted', remittance_status: 'Remitted', remittance_amount: 300 });
+  await seed('collections', [col('C1', '101 A', '2026-02-10', 2, '2026-02'), col('C2', '102 A', '2026-03-10', 3, '2026-03'), col('C3', '103 A', '2026-04-10', 4, '2026-04')]);
+}
+const correctionNumbers = async (where = "member_id in ('MEM-1')") => (await query(`select collection_id, enrollment_id, nop_from, month_from from collections where ${where} order by or_date`)).map((row) => [row.collection_id, row.enrollment_id, row.nop_from, row.month_from]);
+const correctionAdmin = { userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } };
+const correctionPost = (route) => async (body) => { const response = await route.POST(request(body)); return { status: response.status, body: await response.json() }; };
+
+test('Member Corrections: fix coverage and insert a missing receipt, previewed first and saved with a reason', async () => {
+  const h = harness(correctionAdmin);
+  await seedCorrectionMember();
+  const route = h.load('app/api/member-corrections/route.ts');
+  const post = correctionPost(route);
+  const coverage = { tool: 'coverage', input: { enrollmentId: 'E1', startNop: 31, startMonth: '2026-01' } };
+  const preview = await post(coverage);
+  assert.equal(preview.status, 200, JSON.stringify(preview.body));
+  assert.equal(preview.body.result.applied, false);
+  assert.deepEqual(preview.body.result.receipts.map((item) => item.after), ['NOP 31 (2026-01)', 'NOP 32 (2026-02)', 'NOP 33 (2026-03)']);
+  assert.deepEqual(await correctionNumbers(), [['C1', 'E1', 2, '2026-02'], ['C2', 'E1', 3, '2026-03'], ['C3', 'E1', 4, '2026-04']], 'a preview changes nothing');
+  assert.match((await post({ ...coverage, apply: true, reason: 'x' })).body.message, /reason/);
+  assert.match((await post({ tool: 'coverage', input: { enrollmentId: 'E1', startNop: 2, startMonth: '2025-11' } })).body.message, /before the DOI/);
+  const saved = await post({ ...coverage, apply: true, reason: 'Paper record: January is NOP 31' });
+  assert.equal(saved.body.result.applied, true, JSON.stringify(saved.body));
+  assert.deepEqual(await correctionNumbers(), [['C1', 'E1', 31, '2026-01'], ['C2', 'E1', 32, '2026-02'], ['C3', 'E1', 33, '2026-03']]);
+
+  // Insert a missing receipt: placed by OR date, the later one moves up.
+  assert.match((await post({ tool: 'insert', input: { enrollmentId: 'E1', orNumber: '101 A', orDate: '2026-03-20', amount: 350, months: 1 } })).body.message, /already recorded/);
+  const inserted = await post({ tool: 'insert', input: { enrollmentId: 'E1', orNumber: '110 B', orDate: '2026-03-20', amount: 350, months: 1, dateRemitted: '2026-03-21' }, apply: true, reason: 'Found on the old sheet, never encoded' });
+  assert.equal(inserted.status, 200, JSON.stringify(inserted.body));
+  const rows = await query("select or_number, nop_from, month_from, status, remittance_status, linked_remittance_id, remittance_amount::float8 as share, date_remitted::text as remitted from collections where member_id = 'MEM-1' order by or_date");
+  assert.deepEqual(rows.map((row) => [row.or_number, row.nop_from, row.month_from]), [['101 A', 31, '2026-01'], ['102 A', 32, '2026-02'], ['110 B', 33, '2026-03'], ['103 A', 34, '2026-04']]);
+  const added = rows.find((row) => row.or_number === '110 B');
+  assert.deepEqual([added.status, added.remittance_status, added.linked_remittance_id, added.share, added.remitted], ['Posted', 'Remitted', null, 300, '2026-03-21'], 'already remitted, no slip, priced at its NOP');
+  h.setUser({ userId: 'USR-1', employeeId: 'DPE-1', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await route.POST(request(coverage))).status, 403, 'IT and Administrators only');
+});
+
+test('Member Corrections: move receipts between accounts of a member, and split a member into two people', async () => {
+  const h = harness(correctionAdmin);
+  await seedCorrectionMember();
+  await seed('member_programs', [{ enrollment_id: 'E2', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-350B', doi: '2026-01-15', branch: 'BR-1', mas: 'Maria', status: 'Active' }, { enrollment_id: 'E5', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-500', doi: '2026-01-15', branch: 'BR-1', mas: 'Maria', status: 'Active' }]);
+  const post = correctionPost(h.load('app/api/member-corrections/route.ts'));
+  assert.match((await post({ tool: 'move', input: { collectionIds: ['C3'], targetEnrollmentId: 'E5' } })).body.message, /not a whole number of ₱500 months/, 'counted at the new pay');
+  const moved = await post({ tool: 'move', input: { collectionIds: ['C1'], targetEnrollmentId: 'E2' }, apply: true, reason: 'Encoded under the wrong program' });
+  assert.equal(moved.status, 200, JSON.stringify(moved.body));
+  assert.deepEqual(await correctionNumbers(), [['C1', 'E2', 2, '2026-02'], ['C2', 'E1', 3, '2026-03'], ['C3', 'E1', 4, '2026-04']]);
+
+  const split = { tool: 'split', input: { enrollmentId: 'E1', collectionIds: ['C3'], newDoi: '2026-03-01', newMember: { surname: 'Cruz', firstName: 'Juan' } } };
+  assert.match((await post({ ...split, input: { ...split.input, newMember: { surname: '', firstName: '' } } })).body.message, /surname and first name/);
+  const done = await post({ ...split, apply: true, reason: 'Two people joined by the import' });
+  assert.equal(done.status, 200, JSON.stringify(done.body));
+  const [person] = await query("select member_id, member_number from members where surname = 'CRUZ'");
+  assert.ok(person && /^PH-\d{8}$/.test(person.member_number));
+  const [account] = await query(`select enrollment_id, program_id, doi::text as doi, branch, mas from member_programs where member_id = '${person.member_id}'`);
+  assert.deepEqual([account.program_id, account.doi, account.branch, account.mas], ['DP-350', '2026-03-01', 'BR-1', 'Maria'], 'same program, branch and MAS');
+  assert.deepEqual(await correctionNumbers("collection_id = 'C3'"), [['C3', account.enrollment_id, 2, '2026-04']], 'numbered from the first NOP, the month after the DOI');
+  assert.equal((await query("select member_id from collections where collection_id = 'C3'"))[0].member_id, person.member_id);
+  assert.deepEqual(await correctionNumbers("collection_id = 'C2'"), [['C2', 'E1', 3, '2026-03']], 'the kept receipt stays');
+});
+
+test('Member Corrections: merging two members joins accounts in the same program and removes the duplicate', async () => {
+  const h = harness(correctionAdmin);
+  await seedCorrectionMember();
+  await query("delete from collections where collection_id in ('C2', 'C3')");
+  await seed('members', [{ member_id: 'MEM-2', member_number: 'PH-2', surname: 'SANTOS', first_name: 'ANA MARIE', birthdate: '1980-05-01', address: 'Mintal' }]);
+  await seed('member_programs', [
+    { enrollment_id: 'E21', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-350', doi: '2026-01-15', branch: 'BR-1', mas: 'Maria', status: 'Active' },
+    { enrollment_id: 'E25', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-500', doi: '2026-02-01', branch: 'BR-1', mas: 'Maria', status: 'Active' },
+  ]);
+  await seed('collections', [
+    { collection_id: 'C21', collection_batch_id: 'CBT', enrollment_id: 'E21', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-350', or_number: '201 A', or_date: '2026-03-10', amount_collected: 350, month_from: '2026-02', month_to: '2026-02', nop_from: 2, nop_to: 2, status: 'Posted', remittance_status: 'Remitted', remittance_amount: 300 },
+    { collection_id: 'C25', collection_batch_id: 'CBT', enrollment_id: 'E25', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-500', or_number: '205 A', or_date: '2026-03-10', amount_collected: 500, month_from: '2026-03', month_to: '2026-03', nop_from: 2, nop_to: 2, status: 'Posted', remittance_status: 'Remitted', remittance_amount: 450 },
+  ]);
+  const post = correctionPost(h.load('app/api/member-corrections/route.ts'));
+  await query("update members set birthdate = '1980-05-02' where member_id = 'MEM-1'");
+  assert.match((await post({ tool: 'merge', input: { keepMemberId: 'MEM-1', otherMemberId: 'MEM-2' } })).body.message, /birthdates differ/);
+  await query("update members set birthdate = null where member_id = 'MEM-1'");
+  const preview = await post({ tool: 'merge', input: { keepMemberId: 'MEM-1', otherMemberId: 'MEM-2' } });
+  assert.equal(preview.status, 200, JSON.stringify(preview.body));
+  assert.equal((await query("select count(*)::int as n from members where member_id = 'MEM-2'"))[0].n, 1, 'a preview removes nobody');
+  const merged = await post({ tool: 'merge', input: { keepMemberId: 'MEM-1', otherMemberId: 'MEM-2', useOtherName: true }, apply: true, reason: 'Same person registered twice' });
+  assert.equal(merged.status, 200, JSON.stringify(merged.body));
+  assert.equal((await query("select count(*)::int as n from members where member_id = 'MEM-2'"))[0].n, 0);
+  const [kept] = await query("select first_name, birthdate::text as birthdate, address from members where member_id = 'MEM-1'");
+  assert.deepEqual([kept.first_name, kept.birthdate, kept.address], ['ANA MARIE', '1980-05-01', 'Mintal'], 'name taken, blanks filled');
+  assert.deepEqual((await query("select enrollment_id, member_id from member_programs order by enrollment_id")).map((row) => [row.enrollment_id, row.member_id]), [['E1', 'MEM-1'], ['E25', 'MEM-1']], 'the two D-350 accounts became one');
+  assert.deepEqual(await correctionNumbers("collection_id in ('C1', 'C21')"), [['C1', 'E1', 2, '2026-02'], ['C21', 'E1', 3, '2026-03']], 'joined and numbered on in OR-date order');
+  assert.equal((await query("select count(*)::int as n from collections where member_id = 'MEM-1'"))[0].n, 3);
+});

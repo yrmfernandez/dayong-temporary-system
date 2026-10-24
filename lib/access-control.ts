@@ -22,8 +22,8 @@ const roleRoutes: Record<string, string[]> = {
   finance: ["/", "/audit", "/members", "/clearing", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
   "entry clerk": ["/", "/todays-entries", "/clearing", "/my-entries", "/new-sales", "/members", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/settings"],
   // IT builds and runs the system: accounts, roles, configuration, and the audit trail.
-  "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/settings"],
-  it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/settings"],
+  "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/settings"],
+  it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/settings"],
   mas: ["/", "/mas-sales", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
 };
 

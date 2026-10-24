@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 72 API handlers, 131 library files, 59 component files; 601 scanned source/configuration/public-text files in total.
+44 page routes, 73 API handlers, 132 library files, 59 component files; 604 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -36,6 +36,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/mam` | [app/mam/page.tsx](../app/mam/page.tsx) | `@/lib/mam-format`, `@/lib/mam-report`, `@/lib/account-rules`, `@/components/ui/button`, `@/components/ui/badge`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | `/mas-sales` | [app/mas-sales/page.tsx](../app/mas-sales/page.tsx) | `@/components/new-sales-form` |
 | `/master-data` | [app/master-data/page.tsx](../app/master-data/page.tsx) |  |
+| `/member-corrections` | [app/member-corrections/page.tsx](../app/member-corrections/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label` |
 | `/members` | [app/members/page.tsx](../app/members/page.tsx) | `@/components/app-dialog`, `@/components/admin-delete`, `@/components/member-edit-form`, `@/components/inline-panel`, `@/components/ui/search-select`, `@/components/ui/input`, `@/lib/api-response`, `@/components/ui/button`, `@/components/status-badge`, `@/components/member-mam`, `@/lib/member-directory`, `@/lib/use-live-refresh`, `@/components/transfer-branch-choice` |
 | `/my-entries` | [app/my-entries/page.tsx](../app/my-entries/page.tsx) | `@/components/batch-editor`, `@/components/entry-details`, `@/components/metric-tile`, `@/components/receipt-photo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/todays-entries`, `@/lib/use-live-refresh` |
 | `/my-notices` | [app/my-notices/page.tsx](../app/my-notices/page.tsx) | `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/textarea`, `@/lib/api-response`, `@/lib/nte`, `@/lib/use-live-refresh` |
@@ -99,6 +100,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/mam/member` | GET | [app/api/mam/member/route.ts](../app/api/mam/member/route.ts) |
 | `/api/mam` | GET, POST | [app/api/mam/route.ts](../app/api/mam/route.ts) |
 | `/api/mas` | GET | [app/api/mas/route.ts](../app/api/mas/route.ts) |
+| `/api/member-corrections` | GET, POST | [app/api/member-corrections/route.ts](../app/api/member-corrections/route.ts) |
 | `/api/member-programs/check` | GET | [app/api/member-programs/check/route.ts](../app/api/member-programs/check/route.ts) |
 | `/api/members/account-status` | POST | [app/api/members/account-status/route.ts](../app/api/members/account-status/route.ts) |
 | `/api/members/directory` | GET, PATCH, DELETE | [app/api/members/directory/route.ts](../app/api/members/directory/route.ts) |
@@ -206,6 +208,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/mam-report.ts](../lib/mam-report.ts) | `MamAccount`, `monitoringMonths`, `buildMamReport` | `@/lib/account-rules` |
 | [lib/mas-expected.ts](../lib/mas-expected.ts) | `Expected`, `duesIn`, `expectedByMas` | `@/lib/db` |
 | [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `ProgramInput`, `updateProgramRecord`, `ProgramBulkChanges`, `updateProgramsBulk`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `setBranchLocation`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `MemberRecordInput`, `getMemberRecord`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/encoder-sheets`, `@/lib/sheet-rows`, `@/lib/users-sheet`, `@/lib/program-incentive-store`, `@/lib/member-records` |
+| [lib/member-corrections.ts](../lib/member-corrections.ts) | `ReceiptLine`, `StatusLine`, `CorrectionResult`, `searchMembers`, `getMemberForCorrection`, `CoverageInput`, `fixCoverage`, `MoveInput`, `moveReceipts`, `MergeInput`, `mergeMembers`, `SplitInput`, `splitMember`, `sharedPrograms`, `InsertInput`, `insertReceipt` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/entry-edit`, `@/lib/duplicate-entries`, `@/lib/or-number`, `@/lib/record-corrections`, `@/lib/remittance-deadline` |
 | [lib/member-directory-data.ts](../lib/member-directory-data.ts) | `loadMemberDirectory`, `DirectoryQuery`, `queryMemberDirectory` | `@/lib/db`, `@/lib/account-data`, `@/lib/account-deactivation`, `@/lib/member-directory`, `@/lib/member-scope`, `@/lib/employees`, `@/lib/google-sheets-data` |
 | [lib/member-directory.ts](../lib/member-directory.ts) | `DirectoryEnrollment`, `DirectoryMember`, `DECEASED_STATUS`, `MEMBER_STATUSES`, `STANDING_FILTERS`, `Standing`, `matchesStanding`, `DirectoryFilters`, `emptyDirectoryFilters`, `MemberRecord`, `EnrollmentRecord`, `CollectorRecord`, `buildMemberDirectory`, `filterMemberDirectory` | — |
 | [lib/member-records.ts](../lib/member-records.ts) | `MemberSheetData`, `MemberDetails`, `memberContactOrClaimant`, `memberColumns`, `addMember`, `updateMemberDetails`, `addBeneficiaries`, `findMemberByNumber`, `searchMembersByName`, `listMembersForMas`, `searchBranchMembers`, `findSameNameMembers`, `MemberProgramSheetData`, `findMemberProgramEnrollment`, `addMemberProgram`, `SaleSheetData`, `addSale`, `listMembersInBranch` | `@/lib/readable-id`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/program-age` |
@@ -376,6 +379,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/mam/member/route.ts](../app/api/mam/member/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/account-data` |
 | [app/api/mam/route.ts](../app/api/mam/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/encoder-context`, `@/lib/account-data`, `@/lib/mam-report`, `@/lib/account-rules`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/member-records` |
 | [app/api/mas/route.ts](../app/api/mas/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees` |
+| [app/api/member-corrections/route.ts](../app/api/member-corrections/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/day-off`, `@/lib/encoder-context`, `@/lib/member-corrections` |
 | [app/api/member-programs/check/route.ts](../app/api/member-programs/check/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-records` |
 | [app/api/members/account-status/route.ts](../app/api/members/account-status/route.ts) | `POST` | `@/lib/account-deactivation`, `@/lib/encoder-context`, `@/lib/member-transfer` |
 | [app/api/members/directory/route.ts](../app/api/members/directory/route.ts) | `GET`, `PATCH`, `DELETE` | `@/lib/access-control`, `@/lib/admin-delete`, `@/lib/member-scope`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/master-data-crud`, `@/lib/member-directory-data`, `@/lib/member-directory`, `@/lib/member-transfer`, `@/lib/account-deactivation`, `@/lib/program-transfer` |

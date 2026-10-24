@@ -217,11 +217,12 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
  * or this throws and the caller's transaction saves nothing. Transfer records follow; the source account is deleted.
  * The callers move the New Sale and work out the incentives again.
  */
-export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId: string, today = manilaNow().date, sourceMonths?: (payment: AccountPayment) => number) {
+export async function mergeAccountInto(tx: Queryable, sourceId: string, targetId: string, today = manilaNow().date, sourceMonths?: (payment: AccountPayment) => number, { anyMember = false }: { anyMember?: boolean } = {}) {
   const data = await loadAccountData({ enrollmentIds: [sourceId, targetId], includeDeactivated: true }, tx, { lock: true });
   const source = data.accounts.find((account) => account.id === sourceId), target = data.accounts.find((account) => account.id === targetId);
   if (!source || !target) throw new Error("The accounts to merge were not found.");
-  if (source.memberId !== target.memberId) throw new Error("Only two accounts of the same member can be merged.");
+  // anyMember: a member merge (lib/member-corrections.ts) joins the two people's accounts in the same program first.
+  if (source.memberId !== target.memberId && !anyMember) throw new Error("Only two accounts of the same member can be merged.");
   const doi = [source.doi, target.doi].filter(Boolean).sort()[0] ?? "";
   const fromSource = new Set(data.payments.filter((payment) => payment.enrollmentId === source.id).map((payment) => payment.id));
   const payments = data.payments.map((payment) => ({ ...payment, enrollmentId: target.id }));

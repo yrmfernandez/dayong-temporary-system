@@ -9,13 +9,20 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 1 | Clock-in location check: branch office locations, flag clock-ins away from the branch or with location off for HR | **Built 2026-10-24**; owner migrates production, deploys, then sets each branch's location (Branches → Branch locations for clock-in) |
 | 2 | Nightly scheduled jobs: account-status sync, end-of-day absences, Exceptions, so dashboards are never stale | **Built 2026-10-24**; owner sets CRON_SECRET on Vercel and deploys |
 | 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | **Built 2026-10-24** for vendor, commission and Fidelity payouts; payroll company-program deductions waiting on the owner's decision |
-| 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | To do |
-| 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | To do |
+| 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | **Built 2026-10-24**: Member Corrections page with fix coverage, move receipts, insert missing receipt, merge and split |
+| 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | To do (next) |
 | 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | To do |
 | 7 | One time zone (Manila) for every report date | To do |
 | 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Member Corrections page (2026-10-24)
+
+- **Owner:** upgrade #4, with all four tools chosen (fix coverage, move several receipts, merge two members, split a member), plus "also inserting of record" (a missing receipt).
+- **Done:** `/member-corrections` (IT and Administrators; sidebar next to Edit / Corrections; Roles -> Page access "Member Corrections"). Find a member, see every account and receipt, then use Fix coverage, Move receipts, Insert missing receipt, Merge members or Split member. Each tool previews the exact result (the repair runs in a transaction that is rolled back) and saves with a required reason; incentives, slips and statuses follow; Audit Log and Record Corrections keep it (`lib/member-corrections.ts`, `app/api/member-corrections/route.ts`, `app/member-corrections/page.tsx`). `mergeAccountInto` gained an `anyMember` option for joining two people's accounts in the same program during a merge. Inserted receipts are Posted and Remitted with no slip (history repairs, not new cash). Three new tests (preview changes nothing, reason required, coverage start, insert placement and pricing, move with pay recount, split into a new member, merge with joined accounts and filled details, access); all 235 tests and the build pass. No migration.
+- **In progress:** none.
+- **To do (owner):** deploy, then try each tool on a known case (Preview only first). The per-case scripts in `scripts/` stay for bulk work from the old-system sheets.
 
 ### Status clock: Month of on the OR date's day (2026-10-24)
 

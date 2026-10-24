@@ -45,6 +45,7 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
     { href: "/user-accounts", label: "User Accounts" },
     { href: "/roles", label: "Roles" },
     { href: "/entry-corrections", label: "Edit / Corrections (edit entries, move members between MAS and programs)" },
+    { href: "/member-corrections", label: "Member Corrections (fix coverage, move receipts, merge, split, insert missing receipts)" },
   ] },
 ];
 
