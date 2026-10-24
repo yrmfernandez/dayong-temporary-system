@@ -9,6 +9,7 @@ import { boardCategory, canAdjustLateness, canViewAttendanceTracking, isMarkStat
 import { getEmployees } from "@/lib/employees";
 import { getActiveAttendanceEmployees, getBranches } from "@/lib/google-sheets-data";
 import { deleteRowsWhere } from "@/lib/sheet-rows";
+import { getClockInChecks } from "@/lib/clock-in-checks";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const MAX_LATE_MINUTES = 24 * 60;
@@ -30,6 +31,8 @@ export async function GET(request: Request) {
     const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
     const details = new Map(employees.map((employee) => [employee.id, employee]));
     const byEmployee = new Map(records.map((record) => [record.employeeId, record]));
+    // Where each clock-in was made, against the branch's saved location (lib/clock-in-checks.ts).
+    const checks = await getClockInChecks(records.filter((record) => record.timeIn).map((record) => record.id));
     const nonWorkingDay = closures[0] ?? null;
     const sunday = new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
     const rows = active.map((employee) => {
@@ -45,6 +48,7 @@ export async function GET(request: Request) {
         systemAbsent: isSystemAbsence(record),
         earlyMinutes: record?.timeIn && record.scheduledTimeIn ? Math.max(0, minutesBetween(record.timeIn, record.scheduledTimeIn)) : 0,
         record,
+        locationCheck: checks.get(record?.id ?? "") ?? null,
       };
     });
     return Response.json({

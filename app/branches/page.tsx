@@ -29,8 +29,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { BranchLocations, locationIsSet, type LocatedBranch } from "./branch-locations";
 
-type Branch = {
+type BranchFields = {
   id: string;
   name: string;
   territory: string;
@@ -46,7 +47,9 @@ type Branch = {
   status: "active" | "inactive";
 };
 
-type BranchForm = Omit<Branch, "id">;
+type BranchForm = Omit<BranchFields, "id">;
+// The office location (clock-in check) is saved apart from the branch form (app/api/branches/location).
+type Branch = BranchFields & LocatedBranch;
 
 const emptyBranchForm: BranchForm = {
   name: "",
@@ -68,6 +71,7 @@ type BranchResponse = {
   branches?: Branch[];
   message?: string;
   canManage?: boolean;
+  canSetLocation?: boolean;
 };
 
 export default function BranchesPage() {
@@ -81,6 +85,7 @@ export default function BranchesPage() {
   // The branch just saved, so its confirmation shows beside it instead of at the top of the page.
   const [savedId, setSavedId] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
+  const [canSetLocation, setCanSetLocation] = useState(false);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
 
   const loadBranches = async () => {
@@ -98,6 +103,7 @@ export default function BranchesPage() {
 
       setBranches(result.branches ?? []);
       setCanManage(Boolean(result.canManage));
+      setCanSetLocation(Boolean(result.canSetLocation));
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to load branches.",
@@ -162,7 +168,7 @@ export default function BranchesPage() {
 
   // Edit opens under the branch itself; clicking Edit again closes it.
   const closeForm = () => { setEditingId(null); setForm(emptyBranchForm); setShowForm(false); };
-  const editBranch = (branch: Branch) => { if (editingId === branch.id) { closeForm(); return; } const { id: _id, ...values } = branch; void _id; setMessage(""); setSavedId(null); setForm(values); setEditingId(branch.id); setShowForm(false); };
+  const editBranch = (branch: Branch) => { if (editingId === branch.id) { closeForm(); return; } const { id: _id, latitude: _lat, longitude: _lng, locationRadiusM: _radius, locationSetBy: _by, locationSetAt: _at, ...values } = branch; void [_id, _lat, _lng, _radius, _by, _at]; setMessage(""); setSavedId(null); setForm(values); setEditingId(branch.id); setShowForm(false); };
   const deleteBranch = async (branch: Branch) => { if (!await confirmDialog(`Delete ${branch.name} from ${branch.territory}?`)) return; setMessage(""); try { const response = await fetch(`/api/branches?id=${encodeURIComponent(branch.id)}`, { method: "DELETE" }); const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to delete branch."); setMessage("Branch deleted successfully."); await loadBranches(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to delete branch."); } };
 
   const branchForm = (
@@ -260,6 +266,8 @@ export default function BranchesPage() {
         </Card>
       )}
 
+      {!loading && branches.length > 0 && <BranchLocations branches={branches} canSet={canSetLocation} onSaved={loadBranches} />}
+
       <Card>
         <CardHeader>
           <CardTitle>Branch List</CardTitle>
@@ -291,6 +299,7 @@ export default function BranchesPage() {
                         <Badge variant={branch.status === "active" ? "default" : "secondary"}>
                           {branch.status === "active" ? "Active" : "Inactive"}
                         </Badge>
+                        {branch.status === "active" && !locationIsSet(branch) && <Badge variant="outline" className="border-amber-400 text-amber-800">Location not set</Badge>}
                         <Button
                           type="button"
                           variant="outline"

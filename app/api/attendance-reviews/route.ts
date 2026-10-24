@@ -22,6 +22,7 @@ import { closureCovers, employeeAttendanceBranches, getClosures } from "@/lib/at
 import { canManageAttendance } from "@/lib/auth-server";
 import { isMarkStatus } from "@/lib/attendance-board";
 import { getActiveAttendanceEmployees } from "@/lib/google-sheets-data";
+import { getClockInChecks } from "@/lib/clock-in-checks";
 
 function isWorkingDate(date: string) {
   const parsed = new Date(`${date}T00:00:00Z`);
@@ -83,6 +84,8 @@ export async function GET(request: Request) {
     const recordsByEmployee = new Map(
       records.map((record) => [record.employeeId, record]),
     );
+    // Where each clock-in was made, against the branch's saved location (lib/clock-in-checks.ts).
+    const checks = await getClockInChecks(records.filter((record) => record.timeIn).map((record) => record.id));
 
     return NextResponse.json({
       success: true,
@@ -100,6 +103,7 @@ export async function GET(request: Request) {
           systemAbsent: isSystemAbsence(recordsByEmployee.get(employee.employeeId)),
           carriesNotRequired: recordsByEmployee.has(employee.employeeId) ? null : carried.get(employee.employeeId) ?? null,
           record: recordsByEmployee.get(employee.employeeId) ?? null,
+          locationCheck: checks.get(recordsByEmployee.get(employee.employeeId)?.id ?? "") ?? null,
         };
       }),
     });

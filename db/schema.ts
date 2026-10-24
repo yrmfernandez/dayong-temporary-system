@@ -47,6 +47,12 @@ export const branches = pgTable("branches", {
   date_closed: day("date_closed"),
   status: text(),
   ...encoder(),
+  // Where the office is, for the clock-in location check (migration 0027, October 24, 2026). Blank: not checked yet.
+  latitude: doublePrecision(),
+  longitude: doublePrecision(),
+  location_radius_m: integer(),
+  location_set_by: text(),
+  location_set_at: moment("location_set_at"),
 }, (t) => [uniqueIndex("branches_name_code_key").on(t.branch_name_code)]).enableRLS();
 
 export const employees = pgTable("employees", {
@@ -718,6 +724,33 @@ export const attendance = pgTable("attendance", {
   /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
   branch_id: text().references(() => branches.branch_id, employeeRef),
 }, (t) => [index("attendance_branch_id_idx").on(t.branch_id), index("attendance_employee_date_idx").on(t.employee_id, t.attendance_date)]).enableRLS();
+
+/**
+ * Where each clock-in was made, compared with the branch's saved location (lib/clock-in-location.ts, migration 0027).
+ * One row per attendance record (its time-in). result: Inside, Outside, No location (refused or unavailable on the
+ * device) or Not set (the branch has no saved location, so nothing was checked). HR reviews Outside and No location:
+ * Accepted keeps the day Present; Absent changes the attendance record to Absent.
+ */
+export const clock_in_checks = pgTable("clock_in_checks", {
+  ...rowSeq(),
+  attendance_id: text().primaryKey(),
+  employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
+  attendance_date: day("attendance_date").notNull(),
+  branch_id: text().references(() => branches.branch_id, employeeRef),
+  branch: text(),
+  result: text().notNull(),
+  latitude: doublePrecision(),
+  longitude: doublePrecision(),
+  accuracy_m: doublePrecision(),
+  distance_m: doublePrecision(),
+  radius_m: integer(),
+  device_note: text(),
+  checked_at: moment("checked_at").notNull(),
+  review_status: text(),
+  review_note: text(),
+  reviewed_by_name: text(),
+  reviewed_at: moment("reviewed_at"),
+}, (t) => [index("clock_in_checks_date_idx").on(t.attendance_date)]).enableRLS();
 
 export const leave_requests = pgTable("leave_requests", {
   ...rowSeq(),

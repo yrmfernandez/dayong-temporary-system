@@ -47,6 +47,12 @@ export type BranchSheetData = {
   dateOpened: string;
   dateClosed: string;
   status: "active" | "inactive";
+  /** Office location for the clock-in check (lib/clock-in-location.ts); null until someone saves it. */
+  latitude: number | null;
+  longitude: number | null;
+  locationRadiusM: number | null;
+  locationSetBy: string;
+  locationSetAt: string;
 };
 
 const { branches: branchTable, programs: programTable, program_incentives: incentiveTable } = schema;
@@ -68,6 +74,8 @@ const toBranch = (row: typeof branchTable.$inferSelect): BranchSheetData => ({
   cityMunicipality: clean(row.city_municipality), province: clean(row.province), country: clean(row.country), postalCode: clean(row.postal_code),
   contactNumber: clean(row.contact_number), email: clean(row.email), dateOpened: row.date_opened ?? "", dateClosed: row.date_closed ?? "",
   status: clean(row.status).toLowerCase() === "inactive" ? "inactive" : "active",
+  latitude: row.latitude ?? null, longitude: row.longitude ?? null, locationRadiusM: row.location_radius_m ?? null,
+  locationSetBy: clean(row.location_set_by), locationSetAt: row.location_set_at ?? "",
 });
 
 export async function getBranches(): Promise<BranchSheetData[]> {

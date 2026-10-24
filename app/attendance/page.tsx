@@ -76,6 +76,19 @@ function currentPhilippineSeconds(date: Date) {
   return value("hour") * 3600 + value("minute") * 60 + value("second");
 }
 
+/**
+ * The phone's location for the clock-in location check (lib/clock-in-location.ts), or why there is none. Never throws:
+ * a refused or slow location still lets the employee clock in; the clock-in is then flagged for HR.
+ */
+function devicePosition(): Promise<{ latitude: number; longitude: number; accuracy: number } | { error: string }> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve({ error: "This device or browser has no location." });
+  return new Promise((resolve) => navigator.geolocation.getCurrentPosition(
+    (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy }),
+    (error) => resolve({ error: error.code === error.PERMISSION_DENIED ? "Location permission refused." : error.code === error.TIMEOUT ? "Location took too long." : "Location unavailable." }),
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+  ));
+}
+
 function formatDuration(totalSeconds: number) {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
   const hours = Math.floor(safeSeconds / 3600);
@@ -89,6 +102,8 @@ export default function AttendancePage() {
   // The branch on the employee's record; attendance never asks for one.
   const [branch, setBranch] = useState("");
   const [assignedBranches, setAssignedBranches] = useState<string[]>([]);
+  // The branch's office location is saved, so clocking in sends the phone's location.
+  const [locationSet, setLocationSet] = useState(false);
   // The administrator's reason when today is marked as a non-working day; clocking is closed while set.
   const [closedReason, setClosedReason] = useState("");
   const [loading, setLoading] = useState(true);
@@ -113,6 +128,7 @@ export default function AttendancePage() {
       setRecord(result.record ?? null);
       setBranch(result.record?.branch || result.assignedBranch || "");
       setAssignedBranches(result.assignedBranches ?? []);
+      setLocationSet(Boolean(result.branchLocationSet));
       setClosedReason(result.nonWorkingDay ? result.nonWorkingDay.reason || "Non-working day" : "");
     } catch (error) {
       setMessage(
@@ -172,10 +188,12 @@ export default function AttendancePage() {
 
     setSubmitting(true);
     try {
+      if (action === "time-in" && locationSet) setMessage("Getting your location...");
+      const location = action === "time-in" && locationSet ? await devicePosition() : undefined;
       const response = await fetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, location }),
       });
       const result = await response.json();
 
@@ -335,6 +353,10 @@ export default function AttendancePage() {
                   <CheckCircle2 className="size-5" />
                   Your attendance for today is complete.
                 </div>
+              )}
+
+              {!record?.timeIn && locationSet && (
+                <p className="text-xs text-violet-40">Your branch checks your location when you clock in. Allow location when your phone asks; a clock-in away from the branch or without location is sent to HR for review.</p>
               )}
 
               {message && (

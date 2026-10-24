@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { promptDialog } from "@/components/app-dialog";
 import { AttendanceCalendar } from "@/components/attendance-calendar";
+import { ClockInLocationFlag, type LocationCheck } from "@/components/clock-in-location-flag";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,8 @@ type EmployeeAttendance = {
   // No record yet, but the latest earlier day was No attendance needed: the system carries it over at 11:59 PM.
   carriesNotRequired: string | null;
   record: AttendanceRecord | null;
+  // Where the clock-in was made, against the branch's saved location.
+  locationCheck: LocationCheck | null;
 };
 
 const MARKS = [
@@ -321,6 +324,7 @@ export default function AttendanceReviewsPage() {
                         <span className="block text-sm text-muted-foreground">{employee.employeeId}{employee.branch ? ` · ${employee.branch}` : ""}</span>
                       </span>
                     </label>
+                    <ClockInLocationFlag check={employee.locationCheck} employeeId={employee.employeeId} employeeName={employee.fullName || employee.employeeId} attendanceDate={attendanceDate} canReview onChanged={async (text) => { await loadReview(); setMessage(text); }} />
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={employee.record?.status === "Present" ? "default" : "secondary"}>
                         {employee.closed ? "Branch closed" : employee.systemAbsent ? "Absent · by system" : employee.record?.status === "Not Required" ? "No attendance needed" : employee.record?.status || (employee.carriesNotRequired ? "No attendance needed · carried over" : "No record")}

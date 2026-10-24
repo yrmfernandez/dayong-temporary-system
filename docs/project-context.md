@@ -1,5 +1,29 @@
 # Dayong System project context
 
+## Upgrade list (agreed 2026-10-24, done one at a time)
+
+The owner asked what to upgrade next; these were agreed to be worked through one by one, in this order unless the owner changes it.
+
+| # | Upgrade | Status |
+| --- | --- | --- |
+| 1 | Clock-in location check: branch office locations, flag clock-ins away from the branch or with location off for HR | **Built 2026-10-24**; owner migrates production, deploys, then sets each branch's location (Branches → Branch locations for clock-in) |
+| 2 | Nightly scheduled jobs: account-status sync, end-of-day absences, Exceptions, so dashboards are never stale | To do (next) |
+| 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | To do |
+| 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | To do |
+| 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | To do |
+| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | To do |
+| 7 | One time zone (Manila) for every report date | To do |
+| 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
+| 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
+| 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Clock-in location check (2026-10-24)
+
+- **Owner:** flag employees who clock in away from their branch (for example from home) without locking out MAS field staff. Branch locations are not known yet, so they will be set one branch at a time.
+- **Done:** each branch can have its office location and an allowed distance (default 150 m, 50 m–2 km) (`branches.latitude/longitude/location_radius_m`, migration 0027). **Branches → Branch locations for clock-in** lists every active branch, those not set first, with **Use my current location** (stand in the office) or pasted Google Maps coordinates, a map check link and Remove; IT, administrators and HR can set it (`PUT /api/branches/location`). Branch List shows **Location not set**. When the employee's branch has a location, Clock In asks the phone for its location; the clock-in is always saved, and the result is kept in the new table `clock_in_checks` (Inside, Outside with the distance, No location, or Not set). Outside and Location off are flagged on the Daily board (with a count) and in Attendance Review; HR, administrators, the CEO and the President press **Accept** (day stays Present) or **Mark absent** (reason required; the record becomes Absent with its clock times kept, so payroll counts the absence), both noted in the attendance notes (`PATCH /api/attendance-tracking/location`). Branches without a location are not checked, so nothing changes until a location is saved. The app's Permissions-Policy header now allows location for its own pages (`geolocation=(self)` in `next.config.ts`). Seven new tests; build and all tests pass.
+- **In progress:** none.
+- **To do (owner):** run the 0027 migration on production (`npm run prod -- npm run db:migrate`, then `npm run prod -- node scripts/check-database.mjs`, expecting 48 tables and OK) **before** deploying; deploy; then set each branch's location from the checklist.
+
 ### PH-57226493: January–September D-280 history restored (2026-10-20)
 
 - Corrected nine PHP280 payments on `ENR-LEG-E2729791F8` from February–October/NOP24–32 to **January–September2026/NOP23–31**, D-280, HINATUAN. Original SDS-COLL rows239,692,1228,1726,2247,2711,3206,3765,4191 confirm the months; March–September NOP25–31 and DOI March1,2024 establish the sequence. January/February source NOP24/25 repeat the later sequence incorrectly; normalized to23/24, retaining the established DOI. All nine source rows matched by deterministic collection ID using `inspect-member-source-rows.mjs`, so corrected OR letters do not obscure source matches.

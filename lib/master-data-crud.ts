@@ -121,6 +121,15 @@ export async function updateBranchRecord(id: string, input: BranchInput) {
   return { id };
 }
 
+/** Saves (or clears, with null) where the branch office is, for the clock-in location check. */
+export async function setBranchLocation(id: string, location: { latitude: number; longitude: number; radiusM: number } | null, by: string) {
+  const updated = await currentDb().update(schema.branches).set(location
+    ? { latitude: location.latitude, longitude: location.longitude, location_radius_m: location.radiusM, location_set_by: by, location_set_at: new Date().toISOString() }
+    : { latitude: null, longitude: null, location_radius_m: null, location_set_by: by, location_set_at: new Date().toISOString() },
+  ).where(eq(schema.branches.branch_id, id)).returning({ id: schema.branches.branch_id });
+  if (!updated.length) throw new Error("Record not found.");
+}
+
 export async function deleteBranchRecord(id: string) {
   const db = currentDb();
   const [branch] = await db.select().from(schema.branches).where(eq(schema.branches.branch_id, id));

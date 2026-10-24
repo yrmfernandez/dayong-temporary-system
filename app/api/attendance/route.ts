@@ -11,16 +11,20 @@ import {
 import { closureForBranch } from "@/lib/attendance-calendar";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
+import { recordClockInCheck, readDevicePosition } from "@/lib/clock-in-checks";
+import { clockInLabel, hasLocation } from "@/lib/clock-in-location";
 
 // Attendance uses the branch on the employee's record (primary branch, else the first assignment); nobody picks one.
 // All assigned branches are returned too, primary first, so the page can show them.
 async function employeeBranches(employeeId: string) {
   const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
   const employee = employees.find((item) => item.id === employeeId);
-  if (!employee) return { primary: "", all: [] as string[] };
+  if (!employee) return { primary: "", all: [] as string[], locationSet: false };
   const assigned = employee.branchIds.map((id) => branches.find((branch) => branch.id === id)?.name).filter((name): name is string => Boolean(name));
   const primary = employee.branch || assigned[0] || "";
-  return { primary, all: primary ? [primary, ...assigned.filter((name) => name !== primary)] : assigned };
+  // The clock-in page asks the phone for its location only when the branch's location is saved.
+  const primaryBranch = branches.find((branch) => branch.name.trim().toLowerCase() === primary.trim().toLowerCase());
+  return { primary, all: primary ? [primary, ...assigned.filter((name) => name !== primary)] : assigned, locationSet: Boolean(primaryBranch && hasLocation({ latitude: primaryBranch.latitude, longitude: primaryBranch.longitude, radiusM: primaryBranch.locationRadiusM })) };
 }
 
 async function assignedBranch(employeeId: string) {
@@ -68,6 +72,7 @@ export async function GET() {
       record,
       assignedBranch: branches.primary,
       assignedBranches: branches.all,
+      branchLocationSet: branches.locationSet,
       nonWorkingDay,
       // The page's clock and shift progress follow the server's time, not the device's (a slow phone clock kept
       // the progress short of 100% at 5 PM).
@@ -191,11 +196,17 @@ export const POST = withEncoder(async function POST(request: Request) {
       if (replacesMark && rowNumber) await updateAttendanceRecord(rowNumber, newRecord);
       else await addAttendanceRecord(newRecord);
 
+      // Where the clock-in was made, against the branch's saved location. The clock-in stands even if this fails.
+      const check = await recordClockInCheck({ attendanceId: newRecord.id, employeeId: user.employeeId, attendanceDate, branchName: branch, position: readDevicePosition(body.location) })
+        .catch((error) => { console.error("Clock-in location check error:", error); return null; });
+      const flagged = check?.result === "Outside" || check?.result === "No location";
+
       return NextResponse.json(
         {
           success: true,
-          message: "Clocked in successfully.",
+          message: flagged ? `Clocked in. ${clockInLabel(check)}: HR will review this clock-in.` : "Clocked in successfully.",
           record: newRecord,
+          locationCheck: check,
         },
         { status: 201 },
       );

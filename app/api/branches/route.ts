@@ -1,6 +1,7 @@
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
-import { canManageConfiguration } from "@/lib/auth-server";
+import { canManageConfiguration, getSessionUser } from "@/lib/auth-server";
+import { canAdjustLateness } from "@/lib/attendance-board";
 import { deleteBranchRecord, updateBranchRecord, type BranchInput } from "@/lib/master-data-crud";
 
 import {
@@ -10,12 +11,14 @@ import {
 
 export async function GET() {
   try {
-    const branches = await getBranches();
+    const [branches, canManage, user] = await Promise.all([getBranches(), canManageConfiguration(), getSessionUser()]);
 
     return NextResponse.json({
       success: true,
       branches,
-      canManage: await canManageConfiguration(),
+      canManage,
+      // Office location for the clock-in check: IT, administrators and HR (app/api/branches/location).
+      canSetLocation: canManage || Boolean(user && canAdjustLateness(user)),
     });
   } catch (error) {
     console.error("Get branches error:", error);

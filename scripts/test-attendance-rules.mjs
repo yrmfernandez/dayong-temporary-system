@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { carriedNotRequired, clockOutFigures, dayTotals, lateMinutesFor, withDayTotals, workingMinutesBetween } from "../lib/attendance.ts";
+import { checkClockIn, clockInLabel, distanceMeters, needsReview, parseCoordinates, radiusOf } from "../lib/clock-in-location.ts";
 
 test("late starts after the 20-minute grace period and counts from 08:20", () => {
   assert.equal(lateMinutesFor("07:45"), 0);
@@ -80,4 +81,57 @@ test("No attendance needed carries over until another record replaces it", () =>
   ];
   assert.deepEqual([...carriedNotRequired(records, "2026-10-17")].sort(), [["A", "2026-10-16"], ["C", "2026-10-16"], ["E", "2026-10-16"]]);
   assert.deepEqual([...carriedNotRequired(records, "2026-10-19")].sort(), [["A", "2026-10-16"], ["C", "2026-10-16"], ["D", "2026-10-17"], ["E", "2026-10-16"]]);
+});
+
+// ---------------------------------------------------------------- clock-in location check (lib/clock-in-location.ts)
+
+const office = { latitude: 7.4475, longitude: 125.8078, radiusM: 150 };
+
+test("distance between two points is measured in meters", () => {
+  // 0.001 degree of latitude is about 111 m.
+  const meters = distanceMeters({ latitude: 7.4475, longitude: 125.8078 }, { latitude: 7.4485, longitude: 125.8078 });
+  assert.ok(meters > 105 && meters < 117, `got ${meters}`);
+});
+
+test("a branch without a saved location is not checked", () => {
+  const check = checkClockIn({ latitude: null, longitude: null, radiusM: null }, { latitude: 7, longitude: 125, accuracy: 10 });
+  assert.equal(check.result, "Not set");
+  assert.equal(needsReview(check.result), false);
+});
+
+test("a clock-in inside the allowed distance passes, farther away is flagged", () => {
+  assert.equal(checkClockIn(office, { latitude: 7.4476, longitude: 125.8079, accuracy: 15 }).result, "Inside");
+  const far = checkClockIn(office, { latitude: 7.4682, longitude: 125.8078, accuracy: 15 });
+  assert.equal(far.result, "Outside");
+  assert.equal(needsReview(far.result), true);
+  assert.equal(clockInLabel(far), "Outside branch (2.3 km away)");
+});
+
+test("the phone's uncertainty is forgiven up to 100 m", () => {
+  // About 222 m away: outside 150 m, inside 150 m + 80 m accuracy, outside again when accuracy is 500 m (capped at 100).
+  const position = { latitude: 7.4495, longitude: 125.8078 };
+  assert.equal(checkClockIn(office, { ...position, accuracy: 5 }).result, "Outside");
+  assert.equal(checkClockIn(office, { ...position, accuracy: 80 }).result, "Inside");
+  assert.equal(checkClockIn(office, { latitude: 7.4505, longitude: 125.8078, accuracy: 500 }).result, "Outside");
+});
+
+test("no location from the phone is flagged when the branch is set", () => {
+  const check = checkClockIn(office, { error: "Location permission refused." });
+  assert.equal(check.result, "No location");
+  assert.equal(clockInLabel(check), "Location off");
+  assert.equal(checkClockIn(office, null).result, "No location");
+});
+
+test("allowed distance defaults to 150 m and stays between 50 m and 2 km", () => {
+  assert.equal(radiusOf({ radiusM: null }), 150);
+  assert.equal(radiusOf({ radiusM: 10 }), 50);
+  assert.equal(radiusOf({ radiusM: 9000 }), 2000);
+});
+
+test("coordinates pasted from Google Maps are read", () => {
+  assert.deepEqual(parseCoordinates("7.4475, 125.8078"), { latitude: 7.4475, longitude: 125.8078 });
+  assert.deepEqual(parseCoordinates(" 7.4475 125.8078 "), { latitude: 7.4475, longitude: 125.8078 });
+  assert.equal(parseCoordinates("125.8078, 7.4475"), null);
+  assert.equal(parseCoordinates("Mati City"), null);
+  assert.equal(parseCoordinates("0, 0"), null);
 });

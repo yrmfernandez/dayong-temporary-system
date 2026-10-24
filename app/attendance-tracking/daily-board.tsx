@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckSquare, Printer, RefreshCw, Undo2 } from "lucide-react";
 import { promptDialog } from "@/components/app-dialog";
+import { ClockInLocationFlag, type LocationCheck } from "@/components/clock-in-location-flag";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,7 @@ import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Category = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not required" | "Not clocked in" | "Non-working day";
 type BoardRecord = { timeIn: string; timeOut: string; scheduledTimeIn: string; lateMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string; branch: string };
-type Row = { employeeId: string; name: string; roles: string[]; branches: string[]; category: Category; earlyMinutes: number; systemAbsent: boolean; record: BoardRecord | null };
+type Row = { employeeId: string; name: string; roles: string[]; branches: string[]; category: Category; earlyMinutes: number; systemAbsent: boolean; record: BoardRecord | null; locationCheck: LocationCheck | null };
 type Board = { date: string; today: string; canAdjustLate: boolean; canSetClockOut: boolean; canMark: boolean; closedDay: string; rows: Row[] };
 
 // Present covers On time, Late, and Early; the rest are listed in this order on screen and on paper.
@@ -79,7 +80,9 @@ export function DailyBoard() {
   const branchOptions = [...new Set((board?.rows ?? []).flatMap((row) => row.branches))].sort().map((name) => ({ value: name, label: name }));
   const sunday = new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
   const canMark = Boolean(board?.canMark) && !sunday;
-  const isMarkable = (row: Row) => canMark && markableCategories.includes(row.category);
+  // A clock-in marked Absent by the location review keeps its times; it is changed through its location flag instead.
+  const isMarkable = (row: Row) => canMark && markableCategories.includes(row.category) && !row.record?.timeIn;
+  const locationReviews = rows.filter((row) => row.locationCheck?.needsReview).length;
   // A mark management made (not the system's absence, a clock-in or leave) can be reverted.
   const isRevertable = (row: Row) => canMark && Boolean(row.record) && !row.record?.timeIn && !row.systemAbsent && (["Absent", "AWOL", "Day Off", "Not required"] as Category[]).includes(row.category);
   const shown = sections.filter((section) => (!focus || focus === section.category || (focus === "Present" && presentCategories.includes(section.category))) && count(section.category) > 0);
@@ -166,6 +169,7 @@ export function DailyBoard() {
     {board?.closedDay && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{board.closedDay}</p>}
 
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">{tiles.map((tile) => <button key={tile.key} type="button" aria-pressed={focus === tile.key} onClick={() => setFocus(focus === tile.key ? "" : tile.key)} className={`rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary ${focus === tile.key ? "border-primary ring-2 ring-primary/30" : ""}`}><p className="text-xs text-muted-foreground">{tile.label}</p><p className={`text-2xl font-bold tabular-nums ${tile.tone}`}>{tile.value}</p></button>)}</div>
+    {locationReviews > 0 && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 print:hidden">{locationReviews} clock-in{locationReviews === 1 ? " was" : "s were"} made away from the branch or with location off.{board?.canMark ? " Accept each one or mark the day absent on the employee's row." : ""}</p>}
     {board && board.date < board.today && missingClockOuts > 0 && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">{missingClockOuts} employee{missingClockOuts === 1 ? "" : "s"} did not clock out on this day.{board.canSetClockOut ? " Use Set clock-out on their row." : ""}</p>}
     {canMark && board && <Card className="print:hidden"><CardContent className="space-y-3 p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -196,7 +200,7 @@ export function DailyBoard() {
         <tbody>{list.map((row) => { const record = row.record; const isEditing = editing?.employeeId === row.employeeId; return [
           <tr key={row.employeeId} className="border-t align-top">
             {markable.length > 0 && <td className="p-2.5 print:hidden"><input type="checkbox" aria-label={`Select ${row.name}`} checked={selected.has(row.employeeId)} onChange={(event) => toggle([row.employeeId], event.target.checked)} /></td>}
-            <td className="p-2.5"><strong>{row.name}</strong><div className="text-xs text-muted-foreground">{row.employeeId}{row.roles.length ? ` · ${row.roles.join(", ")}` : ""}</div>{row.systemAbsent && <div className="mt-1 inline-block rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-900" title="No clock-in by 11:59 PM and nobody marked Absent or AWOL, so the system recorded Absent. Confirm or change it in Attendance Review.">Marked absent by the system</div>}</td>
+            <td className="p-2.5"><strong>{row.name}</strong><div className="text-xs text-muted-foreground">{row.employeeId}{row.roles.length ? ` · ${row.roles.join(", ")}` : ""}</div>{row.systemAbsent && <div className="mt-1 inline-block rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-900" title="No clock-in by 11:59 PM and nobody marked Absent or AWOL, so the system recorded Absent. Confirm or change it in Attendance Review.">Marked absent by the system</div>}<ClockInLocationFlag check={row.locationCheck} employeeId={row.employeeId} employeeName={row.name} attendanceDate={date} canReview={Boolean(board?.canMark)} onChanged={async (text) => { setMessage(text); await load(); }} /></td>
             <td className="p-2.5">{record?.branch || row.branches.join(", ") || "—"}</td>
             {clocked && <><td className="p-2.5 tabular-nums">{record?.timeIn || "—"}</td><td className="p-2.5 tabular-nums">{record?.timeOut || (record?.timeIn && board && date < board.today ? <span className="font-semibold text-amber-700">Not clocked out</span> : "—")}</td></>}
             {showLate && <td className="p-2.5 font-semibold text-amber-700 tabular-nums">{duration(record?.lateMinutes ?? 0)}</td>}
