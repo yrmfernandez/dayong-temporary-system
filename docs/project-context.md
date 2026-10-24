@@ -7,8 +7,8 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | # | Upgrade | Status |
 | --- | --- | --- |
 | 1 | Clock-in location check: branch office locations, flag clock-ins away from the branch or with location off for HR | **Built 2026-10-24**; owner migrates production, deploys, then sets each branch's location (Branches → Branch locations for clock-in) |
-| 2 | Nightly scheduled jobs: account-status sync, end-of-day absences, Exceptions, so dashboards are never stale | To do (next) |
-| 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | To do |
+| 2 | Nightly scheduled jobs: account-status sync, end-of-day absences, Exceptions, so dashboards are never stale | **Built 2026-10-24**; owner sets CRON_SECRET on Vercel and deploys |
+| 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | To do (next) |
 | 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | To do |
 | 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | To do |
 | 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | To do |
@@ -16,6 +16,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Nightly jobs (2026-10-24)
+
+- **Owner:** upgrade #2: account statuses and end-of-day absences only updated when someone opened a page, so dashboards could be stale.
+- **Done:** Vercel Cron calls `GET /api/cron/nightly` once a night after 12:00 AM Manila (`vercel.json`, 16:05 UTC). It runs as System: (1) records system absences for finished days, (2) stores each account's current status where it changed, (3) counts the Exceptions. Each step runs even if another fails; the result is saved in System Settings (`nightly_last_run`). IT → System Health has a **Nightly Jobs** panel (last run, each step's result and time, a warning when older than a day and a half, **Run now** for IT and administrators via `POST /api/cron/nightly`) and a Deployment Configuration check for `CRON_SECRET`. The GET route is the only API reachable without a session (`proxy.ts`) and refuses unless the request carries `Bearer <CRON_SECRET>`. No database migration. Type check, lint and all 231 tests pass.
+- **In progress:** none.
+- **To do (owner):** in Vercel → Project → Settings → Environment Variables, add `CRON_SECRET` (a long random value, at least 16 characters) for Production, then deploy. Vercel sends it automatically with the scheduled call. After deploying, System Health → Nightly Jobs → Run now confirms it works; the next morning the panel should show a Scheduled run.
 
 ### Notes on weekly, monthly and yearly reports (2026-10-24)
 

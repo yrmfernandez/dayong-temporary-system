@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, CheckCircle2, Database, Gauge, Layers, UserCog
 import { StatusBadge, type Tone } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SystemHealth } from "@/lib/system-health";
+import { NightlyJobsPanel } from "@/components/nightly-jobs-panel";
 
 const count = (value: number) => value.toLocaleString("en-PH");
 const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString("en-PH", { maximumFractionDigits: 1 })} MB`;
@@ -25,6 +26,8 @@ export function SystemHealthDashboard({ data, employeeName }: { data: SystemHeal
       <Tile label="Schema" value={data.schema.missing ? `${count(data.schema.missing)} missing` : "Up to date"} note={`${data.schema.applied} of ${data.schema.migrations} migrations · latest ${data.schema.latest}`} icon={Layers} tone={data.schema.missing ? "danger" : data.schema.applied < data.schema.migrations ? "warning" : "success"} />
       <Tile label="Active accounts" value={`${count(data.accounts.active)} / ${count(data.accounts.total)}`} note={`${count(data.accounts.activeEmployees)} active employees · ${count(data.issues.filter((issue) => issue.href).reduce((sum, issue) => sum + issue.items.length, 0))} access issues`} icon={UserCog} tone="info" href="/user-accounts" />
           </div>
+
+    <NightlyJobsPanel run={data.nightly.run} scheduled={data.nightly.scheduled} checkedAt={data.checkedAt} />
 
     <Panel title="Schema, Access & Data Integrity" subtitle="Database columns checked against the code; accounts, roles and employees checked against each other">
       {data.issues.length ? <ul className="space-y-3">{data.issues.map((issue) => <li key={issue.title} className={`tone-${severityTone[issue.severity]} rounded-xl border p-3`}>

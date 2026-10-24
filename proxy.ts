@@ -17,6 +17,8 @@ import { recheckSession, SESSION_RECHECK_MS } from "@/lib/session-account";
 // API routes reachable without a session. Every other /api route needs a valid sign-in before its handler runs;
 // handlers still check their own page or action permission.
 const publicApi = new Set(["/api/auth/login", "/api/auth/logout", "/api/auth/session"]);
+// Vercel Cron has no session: GET /api/cron/nightly checks its own secret (CRON_SECRET). Its POST still needs a session.
+const cronApi = "/api/cron/nightly";
 // All a session may use while its password must be changed: the Settings page and what it loads.
 const passwordChangeApi = new Set([...publicApi, "/api/settings", "/api/profile"]);
 const passwordChangePage = "/settings";
@@ -79,7 +81,7 @@ export async function proxy(request: NextRequest) {
     if (!safeMethods.has(request.method) && !isSameOrigin(request)) {
       return NextResponse.json({ success: false, message: "Cross-site requests are not allowed." }, { status: 403 });
     }
-    if (!session && !publicApi.has(pathname)) {
+    if (!session && !publicApi.has(pathname) && !(pathname === cronApi && request.method === "GET")) {
       return finish(NextResponse.json({ success: false, message: "Please sign in." }, { status: 401 }));
     }
     if (session?.mustChangePassword && !passwordChangeApi.has(pathname)) {

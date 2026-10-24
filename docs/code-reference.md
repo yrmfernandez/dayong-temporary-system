@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-43 page routes, 71 API handlers, 130 library files, 57 component files; 596 scanned source/configuration/public-text files in total.
+43 page routes, 72 API handlers, 131 library files, 58 component files; 599 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -85,6 +85,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/collections` | GET, POST | [app/api/collections/route.ts](../app/api/collections/route.ts) |
 | `/api/commissions` | GET, POST, PATCH | [app/api/commissions/route.ts](../app/api/commissions/route.ts) |
 | `/api/company-targets` | POST | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) |
+| `/api/cron/nightly` | GET, POST | [app/api/cron/nightly/route.ts](../app/api/cron/nightly/route.ts) |
 | `/api/dashboard/gross-sales` | GET | [app/api/dashboard/gross-sales/route.ts](../app/api/dashboard/gross-sales/route.ts) |
 | `/api/employees` | GET, POST, PATCH, DELETE | [app/api/employees/route.ts](../app/api/employees/route.ts) |
 | `/api/entry-corrections` | GET, PATCH, PUT | [app/api/entry-corrections/route.ts](../app/api/entry-corrections/route.ts) |
@@ -213,6 +214,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/members.ts](../lib/members.ts) | `getMemberPrograms`, `getProgram`, `getMember` | `./types` |
 | [lib/mock-members.ts](../lib/mock-members.ts) | `mockMembers` | `./types` |
 | [lib/navigation.ts](../lib/navigation.ts) | `NavItem`, `NavSection`, `normalizeRole`, `workspaceFor`, `routeMatches`, `visibleNavigation`, `isInWorkspace`, `locatePage`, `activeHref` | `@/lib/access-control` |
+| [lib/nightly-jobs.ts](../lib/nightly-jobs.ts) | `NIGHTLY_KEY`, `NightlyStep`, `NightlyRun`, `runNightlyJobs`, `lastNightlyRun` | `@/lib/account-data`, `@/lib/auto-absence`, `@/lib/encoder-context`, `@/lib/exceptions`, `@/lib/system-settings` |
 | [lib/notifications.ts](../lib/notifications.ts) | `NotificationCounts`, `getNotificationCounts` | `@/lib/access-control`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auto-absence`, `@/lib/db`, `@/lib/clearing`, `@/lib/sale-submissions` |
 | [lib/nte.ts](../lib/nte.ts) | `NTE_DAYS`, `SUSPENSION_THRESHOLD`, `Nte`, `EXPLANATION_MAX`, `listNtes`, `issueNte`, `withdrawNte`, `listMyNtes`, `acknowledgeNte`, `explainNte`, `markNteReviewed` | `@/lib/db`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/or-number.ts](../lib/or-number.ts) | `OR_NUMBER_EXAMPLE`, `isValidOrNumber`, `orNumberProblem`, `normalizeOrNumber`, `nextOrNumber` | — |
@@ -253,7 +255,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/sheets-on-db.ts](../lib/sheets-on-db.ts) | `SHEET_TITLES`, `tableOf`, `isDatabaseSheet`, `countSheetRows`, `columnLetters`, `parseA1`, `sheetsOnDb`, `readSheetRows`, `readSheetRowsNumbered`, `appendSheetRows` | `@/lib/db` |
 | [lib/sheets-read-cache.ts](../lib/sheets-read-cache.ts) | `BUSY`, `SheetsReadCache`, `KeyedLock` | — |
 | [lib/statement-of-account.ts](../lib/statement-of-account.ts) | `listStatementAccounts`, `getStatementOfAccount`, `setCollectionHead`, `StatementOfAccount` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/system-settings` |
-| [lib/system-health.ts](../lib/system-health.ts) | `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/db/migrations/meta/_journal.json`, `@/lib/db`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment` |
+| [lib/system-health.ts](../lib/system-health.ts) | `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/db/migrations/meta/_journal.json`, `@/lib/db`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment`, `@/lib/nightly-jobs` |
 | [lib/system-settings.ts](../lib/system-settings.ts) | `isTodayMode`, `TODAY_MODE_LABELS`, `TODAY_MODES`, `TodayMode`, `getSetting`, `saveSetting`, `getTodayMode`, `setTodayMode` | `@/lib/google-sheets`, `@/lib/today-mode` |
 | [lib/theme.ts](../lib/theme.ts) | `ThemePreference`, `THEME_KEY`, `themeBootScript`, `readTheme`, `resolveTheme`, `applyTheme`, `setTheme`, `watchTheme` | — |
 | [lib/today-mode.ts](../lib/today-mode.ts) | `TODAY_MODES`, `TodayMode`, `TODAY_MODE_LABELS`, `isTodayMode` | — |
@@ -301,6 +303,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/metric-tile.tsx](../components/metric-tile.tsx) | `MetricTile` | `@/components/status-badge` |
 | [components/my-attendance-history.tsx](../components/my-attendance-history.tsx) | `MyAttendanceHistory` | `@/lib/attendance-board` |
 | [components/new-sales-form.tsx](../components/new-sales-form.tsx) | `NewSalesForm` | `@/components/app-dialog`, `@/lib/entry-check-reminder`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/program-amount-lock`, `@/lib/use-work-calendar`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/remittance-deadline`, `@/lib/use-form-draft`, `@/components/remittance-summary`, `@/lib/remittance`, `@/components/ui/select`, `@/components/ui/separator`, `@/components/ui/textarea`, `@/lib/types`, `@/lib/use-live-refresh`, `@/components/clearing-picker`, `@/components/parked-drafts`, `@/components/receipt-photos-picker`, `@/lib/use-parked-drafts`, `@/lib/clearing-kinds`, `@/lib/enter-to-next` |
+| [components/nightly-jobs-panel.tsx](../components/nightly-jobs-panel.tsx) | `NightlyJobsPanel` | `@/components/ui/button`, `@/components/ui/card`, `@/lib/nightly-jobs` |
 | [components/nte-panel.tsx](../components/nte-panel.tsx) | `NtePanel` | `@/components/app-dialog`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/nte` |
 | [components/one-time-password.tsx](../components/one-time-password.tsx) | `IssuedPassword`, `OneTimePasswordNotice` | `@/components/ui/button` |
 | [components/parked-drafts.tsx](../components/parked-drafts.tsx) | `ParkedDrafts` | `@/components/app-dialog`, `@/components/ui/button` |
@@ -316,7 +319,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/report-tabs.tsx](../components/report-tabs.tsx) | `ReportTabs` | `@/components/clerk-report` |
 | [components/sidebar.tsx](../components/sidebar.tsx) | `Sidebar`, `initials` | `@/components/app-shell`, `@/components/brand-logo`, `@/components/profile`, `@/lib/use-form-draft`, `@/components/theme-toggle`, `@/lib/navigation`, `@/lib/ui-preferences` |
 | [components/status-badge.tsx](../components/status-badge.tsx) | `Tone`, `toneForStatus`, `StatusBadge` | — |
-| [components/system-health-dashboard.tsx](../components/system-health-dashboard.tsx) | `SystemHealthDashboard` | `@/components/status-badge`, `@/components/ui/card`, `@/lib/system-health` |
+| [components/system-health-dashboard.tsx](../components/system-health-dashboard.tsx) | `SystemHealthDashboard` | `@/components/status-badge`, `@/components/ui/card`, `@/lib/system-health`, `@/components/nightly-jobs-panel` |
 | [components/theme-toggle.tsx](../components/theme-toggle.tsx) | `useThemePreference`, `ThemeToggle` | `@/lib/theme` |
 | [components/topbar-clock.tsx](../components/topbar-clock.tsx) | `TopbarClock` | — |
 | [components/topbar.tsx](../components/topbar.tsx) | `Topbar` | `@/components/app-shell`, `@/components/profile`, `@/components/theme-toggle`, `@/components/topbar-clock`, `@/lib/navigation` |
@@ -358,6 +361,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/collections/route.ts](../app/api/collections/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/clearing`, `@/lib/or-number`, `@/lib/remittance-workflow`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/entry-controls`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/db`, `@/lib/account-data`, `@/lib/account-rules`, `@/lib/remittance-methods`, `@/lib/remittance`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/duplicate-entries` |
 | [app/api/commissions/route.ts](../app/api/commissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/earned-commissions`, `@/lib/encoder-context`, `@/lib/finance-operations` |
 | [app/api/company-targets/route.ts](../app/api/company-targets/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/company-targets`, `@/lib/encoder-context` |
+| [app/api/cron/nightly/route.ts](../app/api/cron/nightly/route.ts) | `maxDuration`, `GET`, `POST` | `@/lib/auth-server`, `@/lib/access-control`, `@/lib/nightly-jobs` |
 | [app/api/dashboard/gross-sales/route.ts](../app/api/dashboard/gross-sales/route.ts) | `GET` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/gross-sales` |
 | [app/api/employees/route.ts](../app/api/employees/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/auth-server`, `@/lib/member-transfer`, `@/lib/employee-id-change`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/master-data-crud`, `@/lib/employee-accounts`, `@/lib/privilege-guard` |
 | [app/api/entry-corrections/route.ts](../app/api/entry-corrections/route.ts) | `GET`, `PATCH`, `PUT` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/entry-corrections`, `@/lib/entry-edit`, `@/lib/entry-search`, `@/lib/admin-delete`, `@/lib/employees`, `@/lib/google-sheets-data` |

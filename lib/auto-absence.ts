@@ -15,7 +15,8 @@ import { getSetting, saveSetting } from "@/lib/system-settings";
  * system, so payroll and reports count it. The record says so in its notes and is encoded by "System"; management can
  * still change it to AWOL or Absent in Attendance Review, which replaces the note.
  *
- * There is no scheduler, so the days are closed the first time an attendance page or payroll is opened afterwards.
+ * The nightly jobs (lib/nightly-jobs.ts, after midnight Manila) close the days; an attendance page or payroll opened
+ * before that closes them too.
  * Sundays and declared non-working days (for the employee's branch) are skipped. Someone whose last day was marked
  * No attendance needed is not recorded Absent: the mark is carried over to the day instead (lib/attendance.ts
  * carriedNotRequired). Days before this rule started
