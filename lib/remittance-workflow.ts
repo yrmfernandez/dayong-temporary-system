@@ -1,13 +1,10 @@
-import { inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb, inTransaction, schema, type Queryable } from "@/lib/db";
 
-import { readSheetRowsNumbered } from "@/lib/sheets-on-db";
-﻿import { createReadableId } from "@/lib/readable-id";
-import { COLLECTIONS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE, SALES_RANGE } from "@/lib/sheet-ranges";
+import { readSheetRows, readSheetRowsNumbered } from "@/lib/sheets-on-db";
+import { createReadableId } from "@/lib/readable-id";
 import { getEncoder, runAsSystem } from "@/lib/encoder-context";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { headerMatches } from "@/lib/sheet-headers";
 import { INCENTIVE_GRACE_DAYS, incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime } from "@/lib/remittance-deadline";
 import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { cashCountProblem } from "@/lib/cash-count";
@@ -16,9 +13,6 @@ import { clearedAt, closeClearings } from "@/lib/clearing";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import { incentiveDecisions } from "@/lib/incentive-decision";
 
-const titles = ["Collections", "Remittances", "Remittance Collections", "Sales"] as const;
-// The same ranges the dashboards and reports read, so one cached copy of each sheet serves them all.
-const ledgerRanges = { Collections: COLLECTIONS_RANGE, Remittances: REMITTANCES_RANGE, "Remittance Collections": REMITTANCE_LINKS_RANGE, Sales: SALES_RANGE } as const;
 
 /**
  * A MAS turns over Collections and New Sales on separate remittance slips, so every remittance is one kind. Both are
@@ -27,7 +21,6 @@ const ledgerRanges = { Collections: COLLECTIONS_RANGE, Remittances: REMITTANCES_
 export type RemittanceKind = "Collections" | "New Sales";
 /** A slip's type: Collections or New Sales, or a Fidelity slip (Fidelity handed in after the MAS's entries were encoded). */
 export type SlipType = RemittanceKind | "Fidelity";
-const itemSheet = { Collections: { status: 28 }, "New Sales": { status: 35 } } as const;
 // Incentive forfeited because the cash came in after the deadline: Collections AM, Sales AR. Remittances AA holds the
 // time the cash was received, next to its date in D.
 const FORFEIT_COLUMN = { Collections: 38, "New Sales": 43 } as const;
@@ -132,21 +125,17 @@ export type CashRemittance = {
 };
 
 /**
- * The remittance ledger. Collections and Sales skip what plays no part in remittances: items already Remitted with no
- * encoder and no slip, which are the imported old data (about 59,000 of 60,000 collections). The database numbers each
- * row it returns with its position in the whole tab, so saves (which update by position) work from this smaller read.
+ * The remittance ledger, read from the database in the Sheets column order. Collections and Sales skip what plays no part
+ * in remittances: items already Remitted with no encoder and no slip, which are the imported old data (about 59,000 of
+ * 60,000 collections). Saves update by ID inside one transaction (owner, October 24, 2026; upgrade #6), never by row
+ * position.
  */
 async function loadLedger() {
   const active = sql`(coalesce(remittance_status, '') <> 'Remitted' or coalesce(encoded_by_employee_id, '') <> '' or linked_remittance_id is not null)`;
-  const others = titles.filter((title) => title !== "Collections" && title !== "Sales");
   // The receipt-photo index is read alongside, not after: one round trip less on every Remittances and Finance load.
-  const [response, activeCollections, activeSales, photos, cashNames, offDays, decisions] = await Promise.all([
-    sheets.spreadsheets.values.batchGet({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      ranges: others.map((title) => ledgerRanges[title]),
-      valueRenderOption: "UNFORMATTED_VALUE",
-      dateTimeRenderOption: "FORMATTED_STRING",
-    }),
+  const [remittanceRows, linkRows, activeCollections, activeSales, photos, cashNames, offDays, decisions] = await Promise.all([
+    readSheetRows("Remittances", sql`true`),
+    readSheetRows("Remittance Collections", sql`true`),
     readSheetRowsNumbered("Collections", active),
     readSheetRowsNumbered("Sales", active),
     photosByEntry(),
@@ -156,15 +145,7 @@ async function loadLedger() {
   ]);
   // The incentive deadline skips Sundays and the branch's declared non-working days (lib/working-days.ts).
   const deadline = (date: string, branch: string) => incentiveDeadline(date, { days: offDays, branch });
-  const rows: Record<string, unknown[][]> = Object.fromEntries(others.map((title, index) => [title, response.data.valueRanges?.[index]?.values ?? []]));
-  rows.Collections = activeCollections.rows;
-  rows.Sales = activeSales.rows;
-  if (!headerMatches(rows.Collections[0]?.[28], "Remittance Status") || !headerMatches(rows.Remittances[0]?.[12], "Difference") || !headerMatches(rows["Remittance Collections"][0]?.[0], "Remittance Collection ID")) {
-    throw new Error("Run the remittance workflow sheet migration before using Remittances.");
-  }
-  if (!headerMatches(rows.Collections[0]?.[FORFEIT_COLUMN.Collections], "forfeited_incentive") || !headerMatches(rows.Sales[0]?.[FORFEIT_COLUMN["New Sales"]], "forfeited_incentive") || !headerMatches(rows.Remittances[0]?.[REMITTANCE_TIME_COLUMN], "time_remitted") || !headerMatches(rows.Remittances[0]?.[CASH_COUNT_COLUMN], "cash_count")) {
-    throw new Error("Run npm run sheets:remittance-deadline -- --apply before using Remittances.");
-  }
+  const rows: Record<string, unknown[][]> = { Remittances: remittanceRows, "Remittance Collections": linkRows, Collections: activeCollections.rows, Sales: activeSales.rows };
   const mappings = rows["Remittance Collections"].slice(1).filter((row) => text(row[0])).map((row) => ({
     id: text(row[0]), remittanceId: text(row[1]), collectionId: text(row[2]), amount: number(row[3]), linkedAt: text(row[4]),
   }));
@@ -346,43 +327,29 @@ export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
   return { remittanceId: remittance.id, entries, missing: remittance.collectionIds.filter((id) => !byId.has(id)) };
 }
 
-const cell = (value: string | number) => ({ userEnteredValue: typeof value === "number" ? { numberValue: value } : { stringValue: value } });
-
-async function sheetIds() {
-  const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID, fields: "sheets.properties" });
-  const id = (title: string) => {
-    const value = metadata.data.sheets?.find((sheet) => sheet.properties?.title === title)?.properties?.sheetId;
-    if (value === undefined || value === null) throw new Error(`Missing ${title} sheet.`);
-    return value;
-  };
-  return { collections: id("Collections"), sales: id("Sales"), remittances: id("Remittances"), mappings: id("Remittance Collections") };
-}
-
-/** Sets an item's remittance status and linked remittance ID in its own sheet (Collections AC:AD, Sales AJ:AK). */
-function statusUpdate(sheet: Awaited<ReturnType<typeof sheetIds>>, item: CashCollection, status: string, remittanceId: string) {
-  const column = itemSheet[item.kind].status;
-  return { updateCells: { range: { sheetId: item.kind === "New Sales" ? sheet.sales : sheet.collections, startRowIndex: item.rowNumber - 1, endRowIndex: item.rowNumber, startColumnIndex: column, endColumnIndex: column + 2 }, rows: [{ values: [cell(status), cell(remittanceId)] }], fields: "userEnteredValue" } };
-}
-
 /**
- * Moves an item's incentive into the company remittance (forfeited > 0), or gives it back (forfeited = 0, restoring
- * `remittanceAmount`). Collections: AA remittance_amount, AM forfeited_incentive. Sales: AO mas_incentive, AP
- * remittance_amount, AR forfeited_incentive. Reports, commissions and payroll read the incentive as amount less
- * remittance_amount, so they follow automatically.
+ * Sets an item's remittance status and linked remittance ID, by ID, in one update. With `forfeit`, the same update
+ * moves the item's incentive into the company remittance (forfeited > 0) or gives it back (forfeited = 0, restoring
+ * `remittanceAmount`); Sales also keep mas_incentive (amount less remittance). Reports, commissions and payroll read the
+ * incentive as amount less remittance_amount, so they follow automatically.
  */
-function forfeitUpdate(sheet: Awaited<ReturnType<typeof sheetIds>>, item: CashCollection, remittanceAmount: number, forfeited: number) {
-  const sheetId = item.kind === "New Sales" ? sheet.sales : sheet.collections;
-  const range = (start: number, end: number) => ({ sheetId, startRowIndex: item.rowNumber - 1, endRowIndex: item.rowNumber, startColumnIndex: start, endColumnIndex: end });
-  const forfeitCell = forfeited > 0 ? cell(forfeited) : cell("");
-  return item.kind === "New Sales"
-    ? [
-      { updateCells: { range: range(40, 42), rows: [{ values: [cell(Math.round((item.amount - remittanceAmount) * 100) / 100), cell(remittanceAmount)] }], fields: "userEnteredValue" } },
-      { updateCells: { range: range(FORFEIT_COLUMN["New Sales"], FORFEIT_COLUMN["New Sales"] + 1), rows: [{ values: [forfeitCell] }], fields: "userEnteredValue" } },
-    ]
-    : [
-      { updateCells: { range: range(26, 27), rows: [{ values: [cell(remittanceAmount)] }], fields: "userEnteredValue" } },
-      { updateCells: { range: range(FORFEIT_COLUMN.Collections, FORFEIT_COLUMN.Collections + 1), rows: [{ values: [forfeitCell] }], fields: "userEnteredValue" } },
-    ];
+async function setStatus(tx: Queryable, item: Pick<CashCollection, "kind" | "id" | "amount">, status: string, remittanceId: string, forfeit?: { remittanceAmount: number; forfeited: number }) {
+  const linked = remittanceId || null;
+  const forfeited = forfeit ? (forfeit.forfeited > 0 ? forfeit.forfeited : null) : undefined;
+  if (item.kind === "New Sales") {
+    await tx.update(schema.sales).set({ remittance_status: status, linked_remittance_id: linked,
+      ...(forfeit ? { mas_incentive: Math.round((item.amount - forfeit.remittanceAmount) * 100) / 100, remittance_amount: forfeit.remittanceAmount, forfeited_incentive: forfeited } : {}) }).where(eq(schema.sales.sale_id, item.id));
+  } else {
+    await tx.update(schema.collections).set({ remittance_status: status, linked_remittance_id: linked,
+      ...(forfeit ? { remittance_amount: forfeit.remittanceAmount, forfeited_incentive: forfeited } : {}) }).where(eq(schema.collections.collection_id, item.id));
+  }
+}
+
+/** Locks a slip's row and returns its current status (the ledger was read before the transaction). */
+async function lockSlip(tx: Queryable, remittanceId: string) {
+  const [row] = await tx.select({ status: schema.remittances.status, type: schema.remittances.remittance_type }).from(schema.remittances).where(eq(schema.remittances.remittance_id, remittanceId)).for("update");
+  if (!row) throw new Error("Remittance not found.");
+  return { status: text(row.status), type: text(row.type) };
 }
 
 /**
@@ -465,22 +432,20 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const status = approved ? "Approved" : difference === 0 ? "Pending Approval" : "Discrepancy";
   const id = createReadableId("REM");
   const timestamp = actor.encodedAt;
-  const identity = [actor.userId, actor.employeeId, actor.name, timestamp];
-  const decision = approved ? [actor.userId, actor.employeeId, actor.name, timestamp] : ["", "", "", ""];
-  const row = [id, owner.branch, owner.accountableName, input.remittanceDate, status, timestamp, ...identity, expected, actual, difference,
-    owner.accountableEmployeeId, owner.accountableRole, collections.length, actor.employeeId, actor.name, ...decision, remarks, approved ? CASH_IN_FULL_NOTE : "", Math.round(fidelityAmount*100)/100, kind, input.remittanceTime, cashCount];
-  const sheet = await sheetIds();
-  const requests = [
-    { appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } },
-    ...collections.map((collection) => ({ appendCells: { sheetId: sheet.mappings, rows: [{ values: [createReadableId("RCL"), id, collection.id, due.get(collection.id) ?? collection.remittanceAmount, timestamp, ...identity].map(cell) }], fields: "userEnteredValue" } })),
-    ...collections.map((collection) => statusUpdate(sheet, collection, approved ? "Remitted" : "Pending Remittance Approval", id)),
-    ...forfeits.flatMap((collection) => forfeitUpdate(sheet, collection, collection.amount, incentiveOf(collection))),
-  ];
+  const identity = { encoded_by_user_id: actor.userId, encoded_by_employee_id: actor.employeeId, encoded_by_name: actor.name, encoded_at: timestamp };
   await inTransaction(async (tx) => {
     // Both concurrent requests may have read Outstanding above. Only one may
     // commit a slip: the second waits, then sees the first request's entry link.
     await lockOutstandingRemittanceEntries(tx, kind, ids);
-    await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
+    await tx.insert(schema.remittances).values({
+      remittance_id: id, branch: owner.branch, mas: owner.accountableName, date_remitted: input.remittanceDate, status, created_at: timestamp, ...identity,
+      gross_collection: expected, total_remittance: actual, difference, accountable_employee_id: owner.accountableEmployeeId || null, accountable_role: owner.accountableRole, collection_count: collections.length,
+      received_by_employee_id: actor.employeeId, received_by_name: actor.name,
+      ...(approved ? { decision_by_user_id: actor.userId, decision_by_employee_id: actor.employeeId, decision_by_name: actor.name, decision_at: timestamp } : {}),
+      remarks, rejection_reason: approved ? CASH_IN_FULL_NOTE : null, fidelity_amount: Math.round(fidelityAmount * 100) / 100, remittance_type: kind, time_remitted: input.remittanceTime, cash_count: cashCount || null,
+    });
+    await tx.insert(schema.remittance_collections).values(collections.map((collection) => ({ remittance_collection_id: createReadableId("RCL") + Math.random().toString(36).slice(2, 5).toUpperCase(), remittance_id: id, collection_id: collection.id, amount: due.get(collection.id) ?? collection.remittanceAmount, linked_at: timestamp, ...identity })));
+    for (const collection of collections) await setStatus(tx, collection, approved ? "Remitted" : "Pending Remittance Approval", id, forfeits.includes(collection) ? { remittanceAmount: collection.amount, forfeited: incentiveOf(collection) } : undefined);
   });
   // The person's clearing for that day is done once their entries are on a slip (lib/clearing.ts). A DTO slip has no
   // clearing: its accountable person is the clerk who received the cash, whose own clearing (as a MAS) stays open.
@@ -504,20 +469,30 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
     throw new Error(`A linked ${remittance.type === "New Sales" ? "New Sale" : "Collection"} changed before approval. Refresh and investigate it.`);
   }
   if (decision === "approve") requirePhotos(linked as CashCollection[]);
-  const sheet = await sheetIds();
   const timestamp = actor.encodedAt;
   const status = decision === "approve" ? "Approved" : "Rejected";
   // Entries marked No incentive at encoding keep it forfeited when their slip is rejected.
   const noIncentive = decision === "reject" ? await noIncentiveReasons(remittance.collectionIds) : new Map<string, string>();
-  const requests = [
-    { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 4, endColumnIndex: 5 }, rows: [{ values: [cell(status)] }], fields: "userEnteredValue" } },
-    { updateCells: { range: { sheetId: sheet.remittances, startRowIndex: remittance.rowNumber - 1, endRowIndex: remittance.rowNumber, startColumnIndex: 18, endColumnIndex: 24 }, rows: [{ values: [actor.userId, actor.employeeId, actor.name, timestamp, remittance.remarks, text(reason)].map(cell) }], fields: "userEnteredValue" } },
-    // Rejected items are Returned to the clerk with the slip still linked, so My Entries shows the reason.
-    ...linked.map((collection) => statusUpdate(sheet, collection!, decision === "approve" ? "Remitted" : "Returned", remittance.id)),
-    // A rejected slip gives forfeited incentives back (not No incentive ones); the next slip decides again from its own time received.
-    ...(decision === "reject" ? linked.filter((collection) => collection!.forfeitedIncentive > 0 && !noIncentive.has(collection!.id)).flatMap((collection) => forfeitUpdate(sheet, collection!, Math.round((collection!.amount - collection!.forfeitedIncentive) * 100) / 100, 0)) : []),
-  ];
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests } });
+  const items = linked as CashCollection[];
+  await inTransaction(async (tx) => {
+    // Locked and checked again: two approvers deciding the same slip at once cannot both go through.
+    const current = await lockSlip(tx, remittance.id);
+    if (!["Pending Approval", "Discrepancy"].includes(current.status)) throw new Error(`This Remittance was already ${current.status.toLowerCase()} by someone else. Refresh the page.`);
+    if (items.length) {
+      const kindTable = remittance.type === "New Sales" ? schema.sales : schema.collections;
+      const idColumn = remittance.type === "New Sales" ? schema.sales.sale_id : schema.collections.collection_id;
+      const stillLinked = await tx.select({ id: idColumn }).from(kindTable).where(and(inArray(idColumn, items.map((item) => item.id)), eq(kindTable.linked_remittance_id, remittance.id), eq(kindTable.remittance_status, "Pending Remittance Approval"))).for("update");
+      if (stillLinked.length !== items.length) throw new Error(`A linked ${remittance.type === "New Sales" ? "New Sale" : "Collection"} changed before the decision. Refresh and investigate it.`);
+    }
+    await tx.update(schema.remittances).set({ status, decision_by_user_id: actor.userId, decision_by_employee_id: actor.employeeId, decision_by_name: actor.name, decision_at: timestamp, remarks: remittance.remarks || null, rejection_reason: text(reason) || null })
+      .where(eq(schema.remittances.remittance_id, remittance.id));
+    // Rejected items are Returned to the clerk with the slip still linked, so My Entries shows the reason. A rejected slip
+    // gives forfeited incentives back (not No incentive ones); the next slip decides again from its own time received.
+    for (const item of items) {
+      const giveBack = decision === "reject" && item.forfeitedIncentive > 0 && !noIncentive.has(item.id);
+      await setStatus(tx, item, decision === "approve" ? "Remitted" : "Returned", remittance.id, giveBack ? { remittanceAmount: Math.round((item.amount - item.forfeitedIncentive) * 100) / 100, forfeited: 0 } : undefined);
+    }
+  });
   return { id: remittance.id, status };
 }
 
@@ -536,10 +511,12 @@ export async function createFidelitySlip(input: { masEmployeeId: string; masName
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.date > manilaNow().date) throw new Error("Enter the date received (today or earlier).");
   const id = createReadableId("REM");
   const timestamp = actor.encodedAt;
-  const row = [id, text(input.branch), text(input.masName), input.date, "Pending Approval", timestamp, actor.userId, actor.employeeId, actor.name, timestamp, amount, amount, 0,
-    text(input.masEmployeeId), "MAS", 0, actor.employeeId, actor.name, "", "", "", "", text(input.remarks).slice(0, 300) || "Fidelity handed in after encoding", "", amount, "Fidelity", "", ""];
-  const sheet = await sheetIds();
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [{ appendCells: { sheetId: sheet.remittances, rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } }] } });
+  await getDb().insert(schema.remittances).values({
+    remittance_id: id, branch: text(input.branch), mas: text(input.masName), date_remitted: input.date, status: "Pending Approval", created_at: timestamp,
+    encoded_by_user_id: actor.userId, encoded_by_employee_id: actor.employeeId, encoded_by_name: actor.name, encoded_at: timestamp,
+    gross_collection: amount, total_remittance: amount, difference: 0, accountable_employee_id: text(input.masEmployeeId), accountable_role: "MAS", collection_count: 0,
+    received_by_employee_id: actor.employeeId, received_by_name: actor.name, remarks: text(input.remarks).slice(0, 300) || "Fidelity handed in after encoding", fidelity_amount: amount, remittance_type: "Fidelity",
+  });
   return { id };
 }
 
@@ -559,24 +536,23 @@ export async function editFidelitySlip(id: string, input: { masEmployeeId: strin
   if (!text(input.masEmployeeId) || !text(input.masName)) throw new Error("Choose the MAS whose Fidelity this is.");
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter the Fidelity amount.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.date > manilaNow().date) throw new Error("Enter the date received (today or earlier).");
-  const sheet = await sheetIds();
-  const range = (start: number, end: number) => ({ sheetId: sheet.remittances, startRowIndex: slip.rowNumber - 1, endRowIndex: slip.rowNumber, startColumnIndex: start, endColumnIndex: end });
-  const update = (start: number, values: Array<string | number>) => ({ updateCells: { range: range(start, start + values.length), rows: [{ values: values.map(cell) }], fields: "userEnteredValue" } });
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [
-    update(2, [text(input.masName), input.date]), update(10, [amount, amount, 0, text(input.masEmployeeId)]), update(22, [text(input.remarks).slice(0, 300) || slip.remarks]), update(24, [amount]),
-  ] } });
+  await inTransaction(async (tx) => {
+    const current = await lockSlip(tx, slip.id);
+    if (!["Pending Approval", "Discrepancy"].includes(current.status)) throw new Error(`This Fidelity entry is ${current.status} and can no longer be changed.`);
+    await tx.update(schema.remittances).set({ mas: text(input.masName), date_remitted: input.date, gross_collection: amount, total_remittance: amount, difference: 0, accountable_employee_id: text(input.masEmployeeId), remarks: text(input.remarks).slice(0, 300) || slip.remarks, fidelity_amount: amount })
+      .where(eq(schema.remittances.remittance_id, slip.id));
+  });
 }
 
 export async function voidFidelitySlip(id: string, reason: string, by: { employeeId: string; isAdmin: boolean }) {
   getEncoder();
   if (text(reason).length < 3) throw new Error("Give the reason for voiding the Fidelity entry.");
   const slip = await openFidelitySlip(id, by);
-  const sheet = await sheetIds();
-  const range = (start: number, end: number) => ({ sheetId: sheet.remittances, startRowIndex: slip.rowNumber - 1, endRowIndex: slip.rowNumber, startColumnIndex: start, endColumnIndex: end });
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: [
-    { updateCells: { range: range(4, 5), rows: [{ values: [cell("Voided")] }], fields: "userEnteredValue" } },
-    { updateCells: { range: range(23, 24), rows: [{ values: [cell(text(reason).slice(0, 300))] }], fields: "userEnteredValue" } },
-  ] } });
+  await inTransaction(async (tx) => {
+    const current = await lockSlip(tx, slip.id);
+    if (!["Pending Approval", "Discrepancy"].includes(current.status)) throw new Error(`This Fidelity entry is ${current.status} and can no longer be changed.`);
+    await tx.update(schema.remittances).set({ status: "Voided", rejection_reason: text(reason).slice(0, 300) }).where(eq(schema.remittances.remittance_id, slip.id));
+  });
 }
 
 /**
@@ -682,7 +658,14 @@ export async function resubmitReturned(entryIds: string[], by: { employeeId: str
   // A Collection batch goes back together, so the whole returned batch is reopened.
   const batchIds = new Set(items.map((item) => item.batchId).filter(Boolean));
   const reopen = ledger.collections.filter((item) => item.remittanceStatus === "Returned" && (items.includes(item) || (item.batchId && batchIds.has(item.batchId))));
-  const sheet = await sheetIds();
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { requests: reopen.map((item) => statusUpdate(sheet, item, "Outstanding", "")) } });
+  await inTransaction(async (tx) => {
+    for (const item of reopen) {
+      // Only entries still Returned are reopened; one changed meanwhile stops the whole resubmission.
+      const table = item.kind === "New Sales" ? schema.sales : schema.collections;
+      const idColumn = item.kind === "New Sales" ? schema.sales.sale_id : schema.collections.collection_id;
+      const updated = await tx.update(table).set({ remittance_status: "Outstanding", linked_remittance_id: null }).where(and(eq(idColumn, item.id), eq(table.remittance_status, "Returned"))).returning({ id: idColumn });
+      if (!updated.length) throw new Error(`${item.id} changed before it was resubmitted. Refresh and try again.`);
+    }
+  });
   return submitReadyEntries(reopen.map((item) => item.id));
 }

@@ -78,7 +78,7 @@ async function syncMasterData(rows, synced, load) {
   try {
     await copyMasterData(rows, synced);
     // Sales and Collections rows given as sheet rows are loaded through the database-backed Sheets API, positionally.
-    for (const tab of ['Sales', 'Collections', 'Users', 'User Roles']) {
+    for (const tab of ['Roles', 'Sales', 'Collections', 'Users', 'User Roles', 'Remittances', 'Remittance Collections', 'Attendance']) {
       const data = (rows[tab] ?? []).slice(1).filter((row) => row && row.length);
       const signature = JSON.stringify(data);
       // Unchanged since the last copy, or never given (and never copied): nothing to do.
@@ -91,6 +91,11 @@ async function syncMasterData(rows, synced, load) {
       if (data.length) await load('lib/sheets-on-db.ts').appendSheetRows(tab, data, extras);
       synced.set(`tab|${tab}`, signature);
     }
+    // Slips are saved in the database now (upgrade #6): the accountable employees that test rows name exist, as they do in
+    // production (collections and sales already require them there).
+    await pglite.query(`insert into employees (employee_id, full_name)
+      select id, id from (select accountable_employee_id as id from collections union select accountable_employee_id from sales union select accountable_employee_id from remittances) ids
+      where coalesce(id, '') <> '' on conflict do nothing`);
   } finally { await pglite.query("set session_replication_role = origin"); }
 }
 async function copyMasterData(rows, synced) {
@@ -120,6 +125,14 @@ const depositRow = (row) => ({ deposit_id: row[0], deposit_date: row[1] || null,
 const noteRow = (row) => ({ note_key: row[0], employee_id: row[1] || null, period_kind: row[2] || null, period_start: row[3] || null, pending_cash: row[4] === '' || row[4] === undefined ? null : row[4], specific_remarks: row[5] || null, pending_transactions: row[6] || null, other_comments: row[7] || null, updated_at: row[8] || null, updated_by: row[9] || null, cash_beg: row[10] === '' || row[10] === undefined ? null : row[10], cash_beg_reason: row[11] || null, cash_beg_updated_at: row[12] || null, cash_beg_updated_by: row[13] || null });
 const seedDeposits = async (rows) => { await seed('employees', [...new Set(rows.map((row) => row[2]).filter(Boolean))].map((id) => ({ employee_id: id, full_name: id })), { skipExisting: true }); await seed('bank_deposits', rows.map(depositRow)); };
 const seedNotes = (rows) => seed('report_notes', rows.map(noteRow));
+// Remittance slips, their links and the items' status, as saved (lib/remittance-workflow.ts saves by ID since upgrade #6).
+const slipOf = async (id) => (await query(`select remittance_id as id, branch, mas, date_remitted::text as date, status, encoded_by_name, gross_collection::float8 as expected, total_remittance::float8 as actual, difference::float8 as difference,
+    accountable_employee_id, collection_count, decision_by_user_id, decision_by_employee_id, decision_by_name, remarks, rejection_reason, fidelity_amount::float8 as fidelity, remittance_type as type, time_remitted, cash_count
+  from remittances where remittance_id = $1`, [id]))[0];
+const lastSlip = async () => slipOf((await query('select remittance_id from remittances order by row_seq desc limit 1'))[0]?.remittance_id ?? '');
+const linksOf = (id) => query('select collection_id, amount::float8 as amount from remittance_collections where remittance_id = $1 order by row_seq', [id]);
+const collectionState = async (id) => (await query('select remittance_status as status, linked_remittance_id as slip, remittance_amount::float8 as share, forfeited_incentive::float8 as forfeited from collections where collection_id = $1', [id]))[0];
+const saleState = async (id) => (await query('select remittance_status as status, linked_remittance_id as slip, mas_incentive::float8 as incentive, remittance_amount::float8 as share, forfeited_incentive::float8 as forfeited from sales where sale_id = $1', [id]))[0];
 
 /** A member with one program account, the minimum other rows link to. */
 async function seedAccount({ enrollment = 'ENR-1', member = 'MEM-1', memberNumber = 'PH-1', program = 'DP-1', programName = 'Program', basePay = 350, payBalanceTotal = null, doi = null, branch = 'BR-1', mas = 'MAS-2', surname = 'Santos', firstName = 'Ana', accountStatus = null } = {}) {
@@ -243,16 +256,18 @@ test('employee registration is independent of login and records its encoder', as
   assert.equal(employee.primary_branch, 'South', 'a single assigned branch is the primary branch');
   assert.deepEqual([employee.encoded_by_user_id, employee.employment_status, employee.operational_roles], ['U1', 'active', 'Collector, MAS']);
   assert.deepEqual((await query("select branch_id from employee_branches where employee_id = 'MD-2099-0101'")).map((row) => row.branch_id), ['BR-1']);
-  assert.deepEqual(h.writes.map((write) => write.range.split('!')[0]), ["'Users'", "'User Roles'"]);
+  const [account] = await query("select user_id, status, role_id from users where employee_id = 'MD-2099-0101'");
+  assert.equal(account.status, 'active', 'the sign-in account is saved with the employee');
+  assert.deepEqual((await query('select role_id from user_roles where user_id = $1 order by role_id', [account.user_id])).map((row) => row.role_id), ['R1', 'R2']);
   // An administrator or IT registering the employee receives the account's one-time password to hand over.
   assert.equal(registered.account.created, true);
   assert.match(registered.account.oneTimePassword, /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
-  const userRow = h.writes.find((write) => write.range.startsWith("'Users'!")).requestBody.values[0];
-  assert.equal(userRow[1], 'MD-2099-0101');
-  const opened = await h.load('lib/passwords.ts').checkPassword(registered.account.oneTimePassword, userRow[3]);
+  const [userRow] = await query("select user_id, employee_id, password_hash from users where employee_id = 'MD-2099-0101'");
+  assert.equal(userRow.user_id, 'USR-0001');
+  const opened = await h.load('lib/passwords.ts').checkPassword(registered.account.oneTimePassword, userRow.password_hash);
   assert.deepEqual(opened, { matches: true, oneTime: true, expired: false }, 'the account opens with its one-time password');
-  assert.equal(await h.load('lib/passwords.ts').checkPassword('password12345', userRow[3]).then((result) => result.matches), false, 'the shared default password is never issued');
-  assert.deepEqual(h.writes.find((write) => write.range.startsWith("'User Roles'!")).requestBody.values.map((values) => values.slice(0, 2)), [['USR-0001', 'R1'], ['USR-0001', 'R2']], 'each employee role is the same account role');
+  assert.equal(await h.load('lib/passwords.ts').checkPassword('password12345', userRow.password_hash).then((result) => result.matches), false, 'the shared default password is never issued');
+  assert.deepEqual((await query("select user_id, role_id from user_roles where user_id = 'USR-0001' order by role_id")).map((row) => [row.user_id, row.role_id]), [['USR-0001', 'R1'], ['USR-0001', 'R2']], 'each employee role is the same account role');
   // Collector is an ordinary role, so a Collector-only employee gets an account too.
   h.rows.Branches.push(['BR-2', 'North', 'DDO 1', '', '', '', '', '', '', '', '', '', 'active']);
   const collector = await (await route.POST(request({ employeeId: 'MD-2099-0102', name: 'Col Lector', branchIds: ['BR-1', 'BR-2'], primaryBranchId: 'BR-2', roles: ['Collector'] }))).json();
@@ -302,9 +317,8 @@ test('user account edits preserve the primary role and save updated roles', asyn
   assert.deepEqual(loaded.accounts[0].roleIds, ['ROLE-ENTRY-CLERK']);
   const response = await route.PATCH(request({ id: 'USR-2', status: 'active', roleIds: ['ROLE-ENTRY-CLERK', 'ROLE-MAS'], password: '' }));
   assert.equal(response.status, 200, JSON.stringify(await response.json()));
-  assert.ok(h.writes.some((write) => write.requestBody?.data?.some?.((item) => item.range === 'Users!E2')));
-  assert.ok(h.writes.some((write) => write.range === "'User Roles'!A:F"));
-  assert.ok(!h.writes.some((write) => write.requestBody?.data?.some?.((item) => /^'User Roles'!Ad/.test(item.range))), 'old role links are deleted, never blanked');
+  assert.deepEqual(await query("select status, role_id from users where user_id = 'USR-2'"), [{ status: 'active', role_id: 'ROLE-ENTRY-CLERK' }], 'the primary role is kept');
+  assert.deepEqual((await query("select role_id from user_roles where user_id = 'USR-2' order by role_id")).map((row) => row.role_id), ['ROLE-ENTRY-CLERK', 'ROLE-MAS'], 'the roles are replaced as a set');
 });
 
 test('expense entries follow the company form: account, attachments, approver, and page access', async () => {
@@ -963,7 +977,7 @@ for (const existingMember of [false, true]) {
     // An existing member's record takes the details confirmed on the sale; blanks keep what is on record.
     assert.equal(member.address, 'Complete Address');
     assert.deepEqual([member.surname, member.first_name], existingMember ? ['Old', 'Name'] : ['', '']);
-    if (existingMember) assert.deepEqual(await query("select action, table_name, record_id, employee_id from audit_log"), [{ action: 'update', table_name: 'members', record_id: 'MEM-1', employee_id: 'DPE-0001' }], 'the correction is in the Audit Log');
+    if (existingMember) assert.deepEqual(await query("select action, table_name, record_id, employee_id from audit_log where table_name = 'members'"), [{ action: 'update', table_name: 'members', record_id: 'MEM-1', employee_id: 'DPE-0001' }], 'the correction is in the Audit Log');
     else assert.equal(member.status, 'Active');
     // Every row the sale created carries the signed-in encoder and one timestamp, whatever the request body claims.
     const created = [...await query('select * from member_programs'), ...await query('select * from sales'), ...await query('select * from beneficiaries'), ...(existingMember ? [] : [member])];
@@ -975,8 +989,10 @@ for (const existingMember of [false, true]) {
     // A new sale is cash the MAS owes until a New Sales remittance covers it (no penalty, no Fidelity on this batch).
     // No registration fee: the month-1 MAS tier on the ₱350 base pay (₱50 mark-up, 50%) leaves ₱150 incentive, ₱200 owed.
     const [sale] = await query('select * from sales');
-    assert.deepEqual([sale.remittance_status, sale.linked_remittance_id, sale.accountable_employee_id, sale.penalty_amount, sale.penalty_note, Number(sale.mas_incentive), Number(sale.remittance_amount), sale.fidelity_amount],
-      ['Outstanding', null, 'DPE-0002', null, null, 150, 200, null]);
+    // Paid in cash, it is sent for approval on its own slip right after the save (lib/remittance-workflow.ts submitCashAfterSave).
+    assert.deepEqual([sale.remittance_status, sale.accountable_employee_id, sale.penalty_amount, sale.penalty_note, Number(sale.mas_incentive), Number(sale.remittance_amount), sale.fidelity_amount],
+      ['Pending Remittance Approval', 'DPE-0002', null, null, 150, 200, null]);
+    assert.equal((await slipOf(sale.linked_remittance_id)).expected, 200, 'the slip expects the company share');
     assert.deepEqual([sale.address, sale.program_id, sale.application_no], ['Complete Address', 'DP-1', 'APP-1']);
     assert.equal((await query('select account_status from member_programs'))[0].account_status, 'NS', 'a new account starts as a New Sale');
     // The DOI time (owner, October 19, 2026): as typed, otherwise the time the sale was saved, on the sale and the account.
@@ -1199,16 +1215,12 @@ test('physical remittance links exact outstanding collections and records a disc
   assert.equal(result.remittance.status, 'Discrepancy');
   assert.equal(result.remittance.expectedAmount, 200);
   assert.equal(result.remittance.difference, 140);
-  const requests = h.writes[0].requestBody.requests;
-  const remittance = requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.equal(remittance[4], 'Discrepancy');
-  assert.deepEqual(remittance.slice(10, 13), [200, 340, 140]);
-  const mapping = requests[1].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.equal(mapping[1], result.remittance.id);
-  assert.equal(mapping[2], 'COL-1');
-  assert.equal(mapping[3], 200);
-  const status = requests[2].updateCells.rows[0].values.map((value) => value.userEnteredValue.stringValue);
-  assert.deepEqual(status, ['Pending Remittance Approval', result.remittance.id]);
+  const remittance = await slipOf(result.remittance.id);
+  assert.equal(remittance.status, 'Discrepancy');
+  assert.deepEqual([remittance.expected, remittance.actual, remittance.difference], [200, 340, 140]);
+  assert.deepEqual(await linksOf(result.remittance.id), [{ collection_id: 'COL-1', amount: 200 }]);
+  const status = await collectionState('COL-1');
+  assert.deepEqual([status.status, status.slip], ['Pending Remittance Approval', result.remittance.id]);
 });
 
 test('a remittance save skips old remitted rows but still updates the right row', async () => {
@@ -1224,10 +1236,9 @@ test('a remittance save skips old remitted rows but still updates the right row'
   deadlineHeaders(h);
   const response = await h.load('app/api/remittances/route.ts').POST(request({ collectionIds: ['COL-1'], actualAmount: 200, remittanceDate: '2026-09-26', remittanceTime: '09:00', receivedByName: 'Cashier' }));
   assert.equal(response.status, 201, JSON.stringify(await response.clone().json()));
-  const status = h.writes[0].requestBody.requests[2].updateCells;
-  // Sheet row 4 (0-based index 3): the header, the two old rows, then COL-1.
-  assert.equal(status.range.startRowIndex, 3);
-  assert.deepEqual(status.rows[0].values.map((value) => value.userEnteredValue.stringValue)[0], 'Pending Remittance Approval');
+  // Saved by ID: COL-1 is marked, the old remitted rows are untouched.
+  assert.equal((await collectionState('COL-1')).status, 'Pending Remittance Approval');
+  assert.deepEqual([(await collectionState('COL-OLD-1')).status, (await collectionState('COL-OLD-2')).status], ['Remitted', 'Remitted']);
 });
 
 test('pending approval does not clear cash accountability', async () => {
@@ -1287,12 +1298,11 @@ test('only an approver can approve cash received in full, and it does not wait f
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
   assert.equal(result.remittance.status, 'Approved');
-  const requests = h.writes.at(-1).requestBody.requests;
-  const row = requests[0].appendCells.rows[0].values.map((cell) => cell.userEnteredValue.stringValue ?? cell.userEnteredValue.numberValue);
-  assert.equal(row[4], 'Approved');
-  assert.deepEqual(row.slice(18, 21), ['USR-7', 'MD-2099-0102', 'Test Clerk']);
-  assert.match(row[23], /Cash received in full/);
-  assert.equal(requests.at(-1).updateCells.rows[0].values[0].userEnteredValue.stringValue, 'Remitted');
+  const row = await slipOf(result.remittance.id);
+  assert.equal(row.status, 'Approved');
+  assert.deepEqual([row.decision_by_user_id, row.decision_by_employee_id, row.decision_by_name], ['USR-7', 'MD-2099-0102', 'Test Clerk']);
+  assert.match(row.rejection_reason, /Cash received in full/);
+  assert.equal((await collectionState('COL-1')).status, 'Remitted');
 });
 
 test('sign-in looks up the active account by Employee ID and reads configured role pages', async () => {
@@ -1312,6 +1322,7 @@ test('user accounts accept company-format Employee IDs and number new user IDs',
   h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-0004', 'MD-2099-0001', 'Admin', 'x', 'active', '', 'ROLE-ADMINISTRATOR']];
   h.rows.Roles = [[], ['ROLE-FINANCE', 'Finance', '', '', '', '', 'active']];
   h.rows.Employees = [[], ['MD-2099-0103', 'New Staff', 'MATINA', 'Finance', 'active']];
+  await h.sync();
   const { createEmployeeAccount } = h.load('lib/google-sheets-data.ts');
   await assert.rejects(h.load('lib/encoder-context.ts').withEncoder(async () => { await createEmployeeAccount({ employeeId: 'MD-99-1', fullName: 'Bad', passwordHash: 'x', roleIds: ['ROLE-FINANCE'] }); return Response.json({}); })(request()), /company format MD-20##-####/);
   const created = await h.load('lib/encoder-context.ts').withEncoder(async () => Response.json(await createEmployeeAccount({ employeeId: 'md-2099-0103', fullName: 'New Staff', passwordHash: 'x', roleIds: ['ROLE-FINANCE'] })))(request());
@@ -1432,15 +1443,15 @@ test('password change verifies the current password and writes only the hash cel
   assert.equal((await patch({ currentPassword: 'wrong', newPassword: 'a-new-password-2' })).status, 400);
   const response = await patch({ currentPassword: 'current-password-1', newPassword: 'a-new-password-2' });
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
-  const write = h.writes.at(-1);
-  assert.equal(write.range, 'Users!D3');
-  assert.ok(await bcrypt.compare('a-new-password-2', write.requestBody.values[0][0]));
+  const hashes = Object.fromEntries((await query('select user_id, password_hash from users')).map((row) => [row.user_id, row.password_hash]));
+  assert.ok(await bcrypt.compare('a-new-password-2', hashes['USR-3']));
+  assert.equal(hashes['USR-1'], 'x', 'only this account changes');
   // This device gets a session for the new password, without the change-password lock.
   const cookie = response.headers.get('Set-Cookie');
   assert.match(cookie, /^dayong_session=[^;]+; Path=\/; Max-Age=\d+; HttpOnly; SameSite=Lax/);
   const session = await h.load('lib/auth.ts').verifySessionToken(cookie.split(';')[0].split('=')[1]);
   assert.equal(session.mustChangePassword, false);
-  assert.equal(session.passwordStamp, h.load('lib/session-account.ts').passwordStamp(write.requestBody.values[0][0]));
+  assert.equal(session.passwordStamp, h.load('lib/session-account.ts').passwordStamp(hashes['USR-3']));
   assert.equal((await patch({ currentPassword: 'a-new-password-2', newPassword: 'password12345' })).status, 400, 'the default password is never accepted as a new one');
 });
 
@@ -1467,12 +1478,12 @@ test('IT resets a forgotten password to a one-time password that expires and mus
   const response = await reset('USR-3');
   assert.equal(response.status, 200);
   const { account } = await response.json();
-  const stored = h.writes.at(-1);
-  assert.equal(stored.range, 'Users!D2', 'only the password cell changes');
+  const [stored] = await query("select password_hash, status from users where user_id = 'USR-3'");
+  assert.equal(stored.status, 'active', 'only the password changes');
   const passwords = h.load('lib/passwords.ts');
-  assert.deepEqual(await passwords.checkPassword(account.oneTimePassword, stored.requestBody.values[0][0]), { matches: true, oneTime: true, expired: false });
+  assert.deepEqual(await passwords.checkPassword(account.oneTimePassword, stored.password_hash), { matches: true, oneTime: true, expired: false });
   const later = Date.now() + (passwords.ONE_TIME_PASSWORD_HOURS * 60 + 1) * 60 * 1000;
-  assert.equal((await passwords.checkPassword(account.oneTimePassword, stored.requestBody.values[0][0], later)).expired, true);
+  assert.equal((await passwords.checkPassword(account.oneTimePassword, stored.password_hash, later)).expired, true);
   assert.equal((await reset('USR-4')).status, 400, 'an inactive account is reactivated before its password is reset');
   h.setUser({ userId: 'U8', employeeId: 'DPE-0008', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
   assert.equal((await reset('USR-3')).status, 403, 'only IT or an administrator issues one-time passwords');
@@ -1906,8 +1917,7 @@ test('a remittance penalty is noted on the remittance but kept out of the expect
   assert.equal(response.status, 201, JSON.stringify(result));
   assert.equal(result.remittance.expectedAmount, 200, 'the penalty is independent of the remittance');
   assert.equal(result.remittance.difference, 0);
-  const remittance = h.writes[0].requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.match(remittance[22], /Penalty ₱50\.00 \(separate from remittance\): Late turnover: held 5 days/);
+  assert.match((await slipOf(result.remittance.id)).remarks, /Penalty ₱50\.00 \(separate from remittance\): Late turnover: held 5 days/);
   deadlineHeaders(h);
   const dashboard = await h.load('lib/remittance-workflow.ts').getRemittanceDashboard();
   assert.ok(dashboard.remittances.every((item) => item.penaltyAmount === 0 || item.penaltyNotes.length), 'penalties carry their notes');
@@ -1961,10 +1971,11 @@ test('attendance finds a clock-in even after Google Sheets converted its date an
   assert.equal(data.sheetTimeText(0.5729166666666666), '13:45');
   assert.equal(data.sheetTimeText('08:00'), '08:00');
   assert.equal(data.sheetTimeText(''), '');
-  // The live row as Sheets returns it: date serial and day-fraction times.
-  h.rows.Attendance = [[], ['ATT-20260929-MD-2026-0078', 'MD-2026-0078', 46294, 'BUHANGIN', 0.3333333333333333, 0.7083333333333334, 0.5729166666666666]];
+  // In the database (upgrade #6) the date and times are stored as written; the lookup finds the record by employee and day.
+  await seed('employees', [{ employee_id: 'MD-2026-0078', full_name: 'Clerk' }]);
+  await seed('attendance', [{ attendance_id: 'ATT-20260929-MD-2026-0078', employee_id: 'MD-2026-0078', attendance_date: '2026-09-29', branch: 'BUHANGIN', scheduled_time_in: '08:00', scheduled_time_out: '17:00', time_in: '13:45' }]);
   const { record, rowNumber } = await data.getAttendanceForEmployeeDate('MD-2026-0078', '2026-09-29');
-  assert.equal(rowNumber, 2);
+  assert.ok(rowNumber, 'found');
   assert.deepEqual([record.attendanceDate, record.scheduledTimeIn, record.scheduledTimeOut, record.timeIn, record.timeOut], ['2026-09-29', '08:00', '17:00', '13:45', '']);
   assert.equal((await data.getAttendanceRecordsForRange('2026-09-01', '2026-09-30')).length, 1);
 });
@@ -1983,9 +1994,9 @@ test('clock-in uses the branch on the employee record, never one sent by the pag
   assert.deepEqual(status.assignedBranches, ['BALIOK', 'MATINA', 'TORIL'], 'primary first, then the other assignments');
   const response = await route.POST(request({ action: 'time-in', branch: 'SOMEWHERE ELSE' }));
   assert.equal(response.status, 201, JSON.stringify(await response.clone().json()));
-  const row = h.writes.find((write) => write.range?.startsWith("'Attendance'!")).requestBody.values[0];
-  assert.equal(row[3], 'BALIOK', 'the submitted branch is ignored');
-  assert.match(row[2], /^'\d{4}-\d{2}-\d{2}$/, 'the date is saved as text so Sheets cannot turn it into a number');
+  const [row] = await query("select branch, attendance_date::text as date, attendance_status, encoded_by_employee_id from attendance where employee_id = 'MD-2026-0082'");
+  assert.equal(row.branch, 'BALIOK', 'the submitted branch is ignored');
+  assert.deepEqual([row.date, row.attendance_status, row.encoded_by_employee_id], [attendance.getPhilippineDate(), 'Present', 'MD-2026-0082']);
   h.setUser({ userId: 'USR-9', employeeId: 'MD-2026-0099', name: 'No Branch', roleNames: ['MAS'], permissions: {} });
   const refused = await route.POST(request({ action: 'time-in', branch: 'BALIOK' }));
   assert.equal(refused.status, 400);
@@ -2013,12 +2024,10 @@ test('new sales are remitted on their own slip, separate from collections', asyn
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.remittance.type, 'New Sales');
   assert.equal(created.body.remittance.expectedAmount, 500, 'the full amount paid on the sale; the batch penalty is separate');
-  const requests = h.writes.at(-1).requestBody.requests;
-  const remittance = requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.equal(remittance[25], 'New Sales');
-  const saleStatus = requests.at(-1).updateCells;
-  assert.equal(saleStatus.range.startColumnIndex, 35, 'the sale is marked in Sales AJ:AK, not in Collections');
-  assert.deepEqual(saleStatus.rows[0].values.map((value) => value.userEnteredValue.stringValue), ['Pending Remittance Approval', created.body.remittance.id]);
+  assert.equal((await slipOf(created.body.remittance.id)).type, 'New Sales');
+  const saleStatus = await saleState('SAL-1');
+  assert.deepEqual([saleStatus.status, saleStatus.slip], ['Pending Remittance Approval', created.body.remittance.id], 'the sale is marked, not a collection');
+  assert.equal((await collectionState('COL-1')).status, 'Outstanding');
 });
 
 test('New Sales Fidelity is the MAS own money: incentives stay whole and the remittance expects it', async () => {
@@ -2054,8 +2063,7 @@ test('New Sales Fidelity is the MAS own money: incentives stay whole and the rem
   assert.equal(result.remittance.expectedAmount, 250, 'company share 200 + Fidelity 50');
   assert.equal(result.remittance.difference, 0);
   assert.equal(result.remittance.fidelityAmount, 50);
-  const row = h2.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.match(row[22], /Fidelity ₱50\.00 \(employee's own money\), included in the expected amount/);
+  assert.match((await slipOf(result.remittance.id)).remarks, /Fidelity ₱50\.00 \(employee's own money\), included in the expected amount/);
 });
 
 test('fidelity entered with a Collections batch is added to its remittance, not taken from incentives', async () => {
@@ -2077,8 +2085,7 @@ test('fidelity entered with a Collections batch is added to its remittance, not 
   assert.equal(created.body.remittance.expectedAmount, 290);
   assert.equal(created.body.remittance.difference, 0);
   assert.equal(created.body.remittance.fidelityAmount, 20);
-  const remittance = h.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.equal(remittance[24], 20, 'the Fidelity is recorded on the remittance, where the Fidelity page reads it');
+  assert.equal((await slipOf(created.body.remittance.id)).fidelity, 20, 'the Fidelity is recorded on the remittance, where the Fidelity page reads it');
 });
 
 test('daily audit: HR, Finance, and Admin can open it; only Admin approves and approval locks the audit', async () => {
@@ -2277,20 +2284,18 @@ test('incentives are kept until 3:00 PM the day after the OR date, then the full
   assert.equal(kept.status, 201, JSON.stringify(kept.body));
   assert.equal(kept.body.remittance.expectedAmount, 270, '15:00 exactly is still within the deadline');
   assert.equal(kept.body.remittance.forfeitedCount, 0);
-  const keptRow = onTime.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.equal(keptRow[26], '15:00', 'the time received is stored on the slip');
+  assert.equal((await slipOf(kept.body.remittance.id)).time_remitted, '15:00', 'the time received is stored on the slip');
 
   const late = setup();
   const forfeited = await post(late, '15:01', 350);
   assert.equal(forfeited.status, 201, JSON.stringify(forfeited.body));
   assert.equal(forfeited.body.remittance.expectedAmount, 350, 'the whole collection goes to the remittance');
   assert.equal(forfeited.body.remittance.forfeitedAmount, 80);
-  const requests = late.writes.at(-1).requestBody.requests;
-  const remarks = requests[0].appendCells.rows[0].values[22].userEnteredValue.stringValue;
-  assert.match(remarks, /Incentive forfeited on 1 item \(₱80\.00\)/);
-  assert.equal(requests[1].appendCells.rows[0].values[3].userEnteredValue.numberValue, 350, 'the link records the amount actually due');
-  const cells = requests.filter((item) => item.updateCells).map((item) => [item.updateCells.range.startColumnIndex, item.updateCells.rows[0].values[0].userEnteredValue.numberValue]);
-  assert.deepEqual(cells.filter(([column]) => column === 26 || column === 38), [[26, 350], [38, 80]], 'remittance_amount becomes the full amount and the forfeit is recorded');
+  await late.sync();
+  assert.match((await slipOf(forfeited.body.remittance.id)).remarks, /Incentive forfeited on 1 item \(₱80\.00\)/);
+  assert.deepEqual(await linksOf(forfeited.body.remittance.id), [{ collection_id: 'COL-5', amount: 350 }], 'the link records the amount actually due');
+  const late5 = await collectionState('COL-5');
+  assert.deepEqual([late5.share, late5.forfeited], [350, 80], 'remittance_amount becomes the full amount and the forfeit is recorded');
 
   const future = await post(setup(), '23:59', 350);
   assert.equal(future.status, 201, 'a past date with a late time is fine');
@@ -2311,9 +2316,8 @@ test('a late New Sale moves its MAS incentive into the remittance, and a rejecte
   const result = await created.json();
   assert.equal(created.status, 201, JSON.stringify(result));
   assert.equal(result.remittance.expectedAmount, 350);
-  const updates = h.writes.at(-1).requestBody.requests.filter((item) => item.updateCells && item.updateCells.range.startColumnIndex >= 40)
-    .map((item) => [item.updateCells.range.startColumnIndex, ...item.updateCells.rows[0].values.map((value) => value.userEnteredValue.numberValue)]);
-  assert.deepEqual(updates, [[40, 0, 350], [43, 150]], 'mas_incentive 0, remittance_amount 350, forfeited 150');
+  const late = await saleState('SAL-5');
+  assert.deepEqual([late.incentive, late.share, late.forfeited], [0, 350, 150], 'mas_incentive 0, remittance_amount 350, forfeited 150');
 
   // The slip is rejected: the sale is outstanding again with its incentive restored.
   const admin = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
@@ -2324,9 +2328,9 @@ test('a late New Sale moves its MAS incentive into the remittance, and a rejecte
   deadlineHeaders(admin);
   const rejected = await admin.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: 'REM-5', decision: 'reject', reason: 'Recount needed' }));
   assert.equal(rejected.status, 200, JSON.stringify(await rejected.clone().json()));
-  const restored = admin.writes.at(-1).requestBody.requests.filter((item) => item.updateCells && item.updateCells.range.startColumnIndex >= 40)
-    .map((item) => [item.updateCells.range.startColumnIndex, ...item.updateCells.rows[0].values.map((value) => value.userEnteredValue.numberValue ?? value.userEnteredValue.stringValue)]);
-  assert.deepEqual(restored, [[40, 150, 200], [43, '']]);
+  const restored = await saleState('SAL-5');
+  assert.deepEqual([restored.status, restored.incentive, restored.share, restored.forfeited], ['Returned', 150, 200, null]);
+  assert.match((await (await admin.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: 'REM-5', decision: 'reject', reason: 'Again' }))).json()).error, /Only pending or discrepancy|already rejected/, 'a slip is decided once');
 });
 
 test('a program locks the New Sale amount unless it allows editing', async () => {
@@ -2452,8 +2456,8 @@ test('No incentive on one collection of a batch: only that one is remitted whole
   await query("update collections set no_incentive_reason = 'Paid at the office' where collection_id = $1", [id]);
   const rejected = await admin.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: 'REM-7', decision: 'reject', reason: 'Recount needed' }));
   assert.equal(rejected.status, 200, JSON.stringify(await rejected.clone().json()));
-  const amounts = admin.writes.at(-1).requestBody.requests.filter((item) => item.updateCells && [26, 38].includes(item.updateCells.range.startColumnIndex));
-  assert.deepEqual(amounts, [], 'no incentive is given back');
+  const kept = await collectionState(id);
+  assert.deepEqual([kept.status, kept.share, kept.forfeited], ['Returned', 350, 350 - share], 'no incentive is given back');
 });
 
 test('a MAS submits New Sales; only a clerk of that branch reviews them, saves once, or returns them', async () => {
@@ -2534,8 +2538,7 @@ test('a counted cash remittance must add up to the amount received, and the coun
   assert.match((await post('300x1')).body.error, /could not be read/);
   const counted = await post('200x1, 50x1, 20x1');
   assert.equal(counted.status, 201, JSON.stringify(counted.body));
-  const row = h.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.equal(row[27], '200x1, 50x1, 20x1');
+  assert.equal((await slipOf(counted.body.remittance.id)).cash_count, '200x1, 50x1, 20x1');
 });
 
 test('exceptions find bad dates, wrong amounts, duplicates, incomplete members, overdue cash and late entries', async () => {
@@ -2744,9 +2747,8 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
   const collection = (id, or, encoder, accountable) => ({ collection_id: id, collection_batch_id: 'CBT-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: or, amount_collected: 100, status: 'Posted', encoded_by_employee_id: encoder, accountable_employee_id: accountable });
   await seed('collections', [collection('COL-1', 'OR-1', 'MD-2026-0009', 'LEG-2026-0001'), collection('COL-2', 'OR-2', 'LEG-2026-0001', 'LEG-2026-0001'), collection('COL-3', 'OR-3', 'MD-2026-0009', 'MD-2026-0009')]);
   await seed('report_notes', [{ note_key: 'LEG-2026-0001|daily|2026-10-01', employee_id: 'LEG-2026-0001' }, { note_key: 'MD-2026-0009|daily|2026-10-01', employee_id: 'MD-2026-0009' }]);
-  // Still read through the Sheets layer: the sign-in account. Report notes are renamed in the database only.
-  h.rows.Users = [['user_id', 'employee_id'], ['USR-1', 'LEG-2026-0001']];
-  h.rows["'Users'!B:B"] = [['employee_id'], ['LEG-2026-0001']];
+  // The sign-in account follows the employee row in the database (its employee_id is linked to it).
+  await seed('users', [{ user_id: 'USR-1', employee_id: 'LEG-2026-0001', password_hash: 'x', status: 'active' }]);
   const { changeEmployeeId } = h.load('lib/employee-id-change.ts');
   const run = (next) => h.load('lib/encoder-context.ts').runAsSystem(() => changeEmployeeId('LEG-2026-0001', next, 'Real ID assigned'));
   await assert.rejects(() => run('MD-2026-0009'), /already used/);
@@ -2754,7 +2756,8 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
   const result = await run('md-2026-0042');
   assert.equal(result.newId, 'MD-2026-0042');
   // Database: the employee row (linked columns follow it), the encoder column, and the report note key.
-  assert.deepEqual(result.bySheet, { employees: 1, collections: 1, report_notes: 1, Users: 1 });
+  assert.deepEqual(result.bySheet, { employees: 1, collections: 1, report_notes: 1 });
+  assert.deepEqual(await query("select employee_id from users where user_id = 'USR-1'"), [{ employee_id: 'MD-2026-0042' }], 'the account signs in with the new ID');
   assert.deepEqual((await query('select employee_id from employees order by employee_id')).map((row) => row.employee_id), ['MD-2026-0009', 'MD-2026-0042']);
   assert.deepEqual(await query('select collection_id, encoded_by_employee_id, accountable_employee_id from collections order by collection_id'), [
     { collection_id: 'COL-1', encoded_by_employee_id: 'MD-2026-0009', accountable_employee_id: 'MD-2026-0042' },
@@ -2765,9 +2768,7 @@ test('changing an Employee ID rewrites every Employee ID column and refuses an I
     { note_key: 'MD-2026-0009|daily|2026-10-01', employee_id: 'MD-2026-0009' },
     { note_key: 'MD-2026-0042|daily|2026-10-01', employee_id: 'MD-2026-0042' },
   ]);
-  // Sheets: only the tabs that are still there.
-  const ranges = h.writes.filter((write) => write.requestBody?.data).flatMap((write) => write.requestBody.data.map((item) => `${item.range}=${item.values[0][0]}`));
-  assert.deepEqual([...ranges].sort(), ["'Users'!B2=MD-2026-0042"]);
+  assert.equal(h.writes.length, 0, 'nothing is written through the Sheets layer');
 });
 
 test('remittance write guard rejects entries submitted after another request read them as outstanding', async () => {
@@ -2814,40 +2815,36 @@ test('entries go to Pending Approval on their own once every receipt photo is at
   const partial = setup(['COL-A']);
   await partial.sync();
   assert.deepEqual(await partial.load('lib/remittance-workflow.ts').submitReadyEntries(['COL-A']), []);
-  assert.equal(partial.writes.length, 0);
+  assert.equal((await query('select count(*)::int as n from remittances'))[0].n, 0);
   // Cash needs no receipt photo (counted at Clearing): the batch goes at once.
   const cash = setup([], 'Cash');
   await cash.sync();
   assert.equal((await cash.load('lib/remittance-workflow.ts').submitReadyEntries(['COL-A'])).length, 1);
-  const cashRow = cash.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.match(cashRow[22], /as cash counted at Clearing/);
+  assert.match((await lastSlip()).remarks, /as cash counted at Clearing/);
   // With both photos the batch goes as one slip, expecting exactly the company share.
   const ready = setup(['COL-A,COL-B']);
   await ready.sync();
   const slips = await ready.load('lib/remittance-workflow.ts').submitReadyEntries(['COL-A']);
   assert.equal(slips.length, 1);
-  const requests = ready.writes.at(-1).requestBody.requests;
-  const row = requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.deepEqual([row[4], row[10], row[11], row[12], row[8]], ['Pending Approval', 600, 600, 0, 'System']);
-  assert.match(row[22], /Submitted automatically .* encoded by Clerk/);
+  const row = await slipOf(slips[0]);
+  assert.deepEqual([row.status, row.expected, row.actual, row.difference, row.encoded_by_name], ['Pending Approval', 600, 600, 0, 'System']);
+  assert.match(row.remarks, /Submitted automatically .* encoded by Clerk/);
+  assert.deepEqual([(await collectionState('COL-A')).status, (await collectionState('COL-B')).status, (await collectionState('COL-X')).status], ['Pending Remittance Approval', 'Pending Remittance Approval', 'Outstanding']);
   // The clerk's Remittances page shows only what they encoded; an approver sees everyone and can filter.
   const own = await (await ready.load('app/api/remittances/route.ts').GET()).json();
-  assert.deepEqual(own.outstanding.map((item) => item.id).sort(), ['COL-A', 'COL-B']);
+  assert.deepEqual(own.outstanding.map((item) => item.id), [], 'not COL-X, which another clerk encoded');
+  assert.ok(own.remittances.some((item) => item.id === slips[0]), "the clerk sees the slip of what they encoded");
   assert.equal(own.canApprove, false);
   ready.setUser({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Approver', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   const all = await (await ready.load('app/api/remittances/route.ts').GET()).json();
-  assert.deepEqual(all.outstanding.map((item) => item.id).sort(), ['COL-A', 'COL-B', 'COL-X']);
+  assert.deepEqual(all.outstanding.map((item) => item.id), ['COL-X']);
   assert.deepEqual(all.clerks.map((item) => item.employeeId), ['DPE-7', 'DPE-8']);
   // View entries: the approver sees every entry on the slip; another clerk cannot open it.
-  // (The test sheets record writes without applying them, so the slip is put in place here.)
-  const slipRow = Array(28).fill(''); Object.assign(slipRow, { 0: 'REM-T', 1: 'BR-1', 2: 'Maria', 4: 'Pending Approval', 10: 600, 11: 600 });
-  ready.rows.Remittances = [ready.rows.Remittances[0], slipRow];
-  ready.rows['Remittance Collections'] = [ready.rows['Remittance Collections'][0], ['RCL-1', 'REM-T', 'COL-A', 300, ''], ['RCL-2', 'REM-T', 'COL-B', 300, '']];
   const entriesRoute = ready.load('app/api/remittances/entries/route.ts');
-  const shown = await (await entriesRoute.GET(new Request('http://localhost/api/remittances/entries?id=REM-T'))).json();
+  const shown = await (await entriesRoute.GET(new Request(`http://localhost/api/remittances/entries?id=${slips[0]}`))).json();
   assert.deepEqual(shown.entries.map((entry) => [entry.id, entry.remittanceAmount, entry.photoId ? 'photo' : 'none']).sort(), [['COL-A', 300, 'photo'], ['COL-B', 300, 'photo']]);
   ready.setUser({ userId: 'USR-8', employeeId: 'DPE-8', name: 'Other', roleNames: ['Entry Clerk'], permissions: {} });
-  assert.equal((await entriesRoute.GET(new Request('http://localhost/api/remittances/entries?id=REM-T'))).status, 400);
+  assert.equal((await entriesRoute.GET(new Request(`http://localhost/api/remittances/entries?id=${slips[0]}`))).status, 400);
 });
 
 test('a clerk sees, picks and removes only the clearings they made; administrators see all', async () => {
@@ -2937,8 +2934,7 @@ test('an administrator can mark an employee Day Off in Attendance Review', async
   const result = await response.json();
   assert.equal(response.status, 200, JSON.stringify(result));
   assert.equal(result.record.status, 'Day Off');
-  const saved = h.writes.find((write) => String(write.range).startsWith('Attendance!') || String(write.range).startsWith("'Attendance'!"));
-  assert.ok(saved && JSON.stringify(saved.requestBody.values).includes('Day Off'), 'the record is saved as Day Off');
+  assert.deepEqual(await query("select attendance_status from attendance where employee_id = 'MD-5' and attendance_date = '2026-10-05'"), [{ attendance_status: 'Day Off' }], 'the record is saved as Day Off');
   assert.equal((await route.POST(request({ employeeId: 'MD-5', attendanceDate: '2026-10-05', status: 'Holiday' }))).status, 400, 'only Absent, AWOL, Day Off and Not Required');
 });
 
@@ -2953,9 +2949,9 @@ test('the attendance board marks the selected employees together and skips anyon
   assert.equal(response.status, 200, JSON.stringify(result));
   assert.equal(result.marked, 2);
   assert.deepEqual(result.skipped, [{ employeeId: 'MD-6', reason: 'already clocked in' }]);
-  const saved = JSON.stringify(h.writes.filter((write) => String(write.range).includes('Attendance')).map((write) => write.requestBody.values));
-  assert.ok(saved.includes('MD-5') && saved.includes('MD-7') && saved.includes('Not Required'), 'both are saved as Not Required');
-  assert.ok(saved.includes('No attendance needed marked by Admin') && saved.includes('Field work'), 'who marked it and the note are kept');
+  const saved = await query("select employee_id, attendance_status, notes from attendance where attendance_date = '2026-10-05' order by employee_id");
+  assert.deepEqual(saved.map((row) => [row.employee_id, row.attendance_status]), [['MD-5', 'Not Required'], ['MD-6', 'Present'], ['MD-7', 'Not Required']], 'both are saved as Not Required; the clock-in stays');
+  assert.ok(saved.filter((row) => row.attendance_status === 'Not Required').every((row) => row.notes.includes('No attendance needed marked by Admin') && row.notes.includes('Field work')), 'who marked it and the note are kept');
   assert.equal((await route.POST(request({ attendanceDate: '2026-10-05', employeeIds: ['MD-5'], status: 'Present' }))).status, 400, 'only the review statuses');
   assert.equal((await route.POST(request({ attendanceDate: '2026-10-04', employeeIds: ['MD-5'], status: 'Absent' }))).status, 400, 'not on a Sunday');
 });
@@ -2977,15 +2973,15 @@ test('a mark is reverted with a reason: today back to no record, an earlier day 
   assert.equal(past.reverted, 1, JSON.stringify(past));
   assert.deepEqual(past.skipped, [{ employeeId: 'MD-6', reason: 'Absent by system, not a mark' }]);
   // The earlier day is rewritten as Absent by system, with who reverted it and why.
-  const saved = JSON.stringify(h.writes);
-  assert.ok(saved.includes('"ATT-20261005-MD-5","MD-5"') && saved.includes('"Absent"'), saved);
-  assert.ok(saved.includes('Absent by system: no clock-in by 11:59 PM and not marked by management. | AWOL mark reverted by Admin') && saved.includes('Marked by mistake'), saved);
-  assert.ok(!saved.includes('MD-6'), 'the system absence is left alone');
+  const day = async (id, date) => (await query('select attendance_status as status, notes from attendance where employee_id = $1 and attendance_date = $2', [id, date]))[0];
+  const md5 = await day('MD-5', '2026-10-05');
+  assert.equal(md5.status, 'Absent');
+  assert.ok(md5.notes.startsWith('Absent by system: no clock-in by 11:59 PM and not marked by management. | AWOL mark reverted by Admin') && md5.notes.includes('Marked by mistake'), md5.notes);
+  assert.equal((await day('MD-6', '2026-10-05')).notes, 'Absent by system: no clock-in by 11:59 PM and not marked by management.', 'the system absence is left alone');
   const now = await (await patch({ attendanceDate: today, employeeIds: ['MD-7', 'MD-8'], reason: 'Wrong person' })).json();
   assert.equal(now.reverted, 1, JSON.stringify(now));
   assert.deepEqual(now.skipped, [{ employeeId: 'MD-8', reason: 'clocked in' }]);
-  const deletes = h.writes.flatMap((write) => write.requestBody?.requests ?? []).filter((item) => item.deleteDimension).map((item) => item.deleteDimension.range.startIndex);
-  assert.deepEqual(deletes, [3], 'today only the marked row of MD-7 is removed, so they can still clock in; the clock-in stays');
+  assert.deepEqual([await day('MD-7', today), (await day('MD-8', today)).status], [undefined, 'Present'], 'today only the marked row of MD-7 is removed, so they can still clock in; the clock-in stays');
 });
 
 test('a flexible program takes any amount from its minimum, counts months as chosen, and is paid off at its total', () => {
@@ -3498,11 +3494,10 @@ test('remittance totals and automatic submission keep incentives for on-time cle
   assert.equal(dashboard.summary.outstandingAmount, 890, '270 on-time + 270 pending as recorded + 350 genuinely late');
   assert.equal(dashboard.accountability.find((item) => item.employeeId === 'DPE-0002').outstandingAmount, 540, 'waiting for approval never makes cleared cash late');
   assert.equal((await workflow.submitReadyEntries(['ONTIME'])).length, 1);
-  const requests = h.writes.at(-1).requestBody.requests;
-  const slip = requests[0].appendCells.rows[0].values.map((cell) => cell.userEnteredValue.stringValue ?? cell.userEnteredValue.numberValue);
-  assert.equal(slip[10], 270, 'encoding at 4 PM keeps the incentive when cleared by 3 PM');
-  assert.equal(slip[26], '15:00', 'the slip records the clearing time, including the exact cutoff');
-  assert.equal(requests.some((request) => request.updateCells?.range.startColumnIndex === 38), false, 'no forfeiture is written');
+  const slip = await lastSlip();
+  assert.equal(slip.expected, 270, 'encoding at 4 PM keeps the incentive when cleared by 3 PM');
+  assert.equal(slip.time_remitted, '15:00', 'the slip records the clearing time, including the exact cutoff');
+  assert.equal((await collectionState('ONTIME')).forfeited, null, 'no forfeiture is written');
 });
 
 test('a clerk can edit their own deposit (not a voided one, not another clerk\'s)', async () => {
@@ -3532,14 +3527,15 @@ test('Fidelity handed in after encoding: its own slip, in the report at once, ap
   deadlineHeaders(h);
   const { createFidelitySlip, decideCashRemittance } = h.load('lib/remittance-workflow.ts');
   const { runAsSystem } = h.load('lib/encoder-context.ts');
-  await runAsSystem(() => createFidelitySlip({ masEmployeeId: 'DPE-0002', masName: 'MAS-2', branch: 'MINTAL', amount: 30, date: '2026-10-13', remarks: 'For the Oct 12 collections' }));
-  const values = h.writes.at(-1).requestBody.requests[0].appendCells.rows[0].values.map((value) => value.userEnteredValue.stringValue ?? value.userEnteredValue.numberValue);
-  assert.deepEqual([values[1], values[2], values[3], values[4], values[10], values[11], values[13], values[15], values[24], values[25]],
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }, { employee_id: 'DPE-7', full_name: 'Clerk' }]);
+  const { id: fidelityId } = await runAsSystem(() => createFidelitySlip({ masEmployeeId: 'DPE-0002', masName: 'MAS-2', branch: 'MINTAL', amount: 30, date: '2026-10-13', remarks: 'For the Oct 12 collections' }));
+  const values = await slipOf(fidelityId);
+  assert.deepEqual([values.branch, values.mas, values.date, values.status, values.expected, values.actual, values.accountable_employee_id, values.collection_count, values.fidelity, values.type],
     ['MINTAL', 'MAS-2', '2026-10-13', 'Pending Approval', 30, 30, 'DPE-0002', 0, 30, 'Fidelity'], 'a slip with no entries whose amount is the Fidelity');
   await assert.rejects(() => runAsSystem(() => createFidelitySlip({ masEmployeeId: 'DPE-0002', masName: 'MAS-2', branch: 'MINTAL', amount: 0, date: '2026-10-13' })), /Fidelity amount/);
 
   // The clerk's report: Fidelity slips the clerk recorded in the period and branch are cash in (Fidelity Bond).
-  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }, { employee_id: 'DPE-7', full_name: 'Clerk' }]);
+  await query('delete from remittances');
   await seed('remittances', [
     { remittance_id: 'REM-F1', branch: 'MINTAL', mas: 'MAS-2', date_remitted: '2026-10-13', status: 'Pending Approval', remittance_type: 'Fidelity', fidelity_amount: 30, accountable_employee_id: 'DPE-0002', received_by_employee_id: 'DPE-7', encoded_by_employee_id: 'DPE-7', remarks: 'Late Fidelity' },
     { remittance_id: 'REM-F2', branch: 'MINTAL', mas: 'MAS-2', date_remitted: '2026-10-13', status: 'Voided', remittance_type: 'Fidelity', fidelity_amount: 99, accountable_employee_id: 'DPE-0002', received_by_employee_id: 'DPE-7', encoded_by_employee_id: 'DPE-7' },
@@ -3561,6 +3557,7 @@ test('Fidelity handed in after encoding: its own slip, in the report at once, ap
   await h.sync();
   const decided = await runAsSystem(() => decideCashRemittance('REM-F1', 'approve', '', true));
   assert.equal(decided.status, 'Approved');
+  assert.equal((await slipOf('REM-F1')).status, 'Approved');
 });
 
 test('on a grace day every incentive is kept, however late the cash (October 13, 2026)', () => {
@@ -4163,4 +4160,26 @@ test('settings, roles and holidays save by key or ID, and saving twice at once a
   assert.equal((await calendar.getHolidays('2031-12-25', '2031-12-25'))[0].name, 'Christmas');
   await runAsSystem(() => calendar.deleteHoliday(christmas.id));
   await assert.rejects(runAsSystem(() => calendar.deleteHoliday(christmas.id)), /no longer exists/);
+});
+
+test('two approvers deciding the same slip at once: one decision is saved, the other is refused (upgrade #6)', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Approver', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const collectionsHeader = Array(39).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const collection = Array(39).fill(''); Object.assign(collection, { 0: 'COL-D', 6: 'BR-1', 9: '2026-09-25', 10: 350, 19: 'Posted', 26: 270, 28: 'Pending Remittance Approval', 29: 'REM-D', 30: 'DPE-2', 31: 'Maria', 32: 'MAS', 33: 'Cash' });
+  const remittancesHeader = Array(28).fill(''); remittancesHeader[12] = 'Difference';
+  const slip = Array(28).fill(''); Object.assign(slip, { 0: 'REM-D', 1: 'BR-1', 2: 'Maria', 4: 'Pending Approval', 6: 'USR-1', 10: 270, 11: 270, 13: 'DPE-2', 25: 'Collections', 26: '09:00' });
+  h.rows.Collections = [collectionsHeader, collection];
+  h.rows.Remittances = [remittancesHeader, slip];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID'], ['RCL-D', 'REM-D', 'COL-D', 270]];
+  deadlineHeaders(h);
+  await h.sync();
+  const route = h.load('app/api/remittances/route.ts');
+  const decide = (decision) => route.PATCH(request({ remittanceId: 'REM-D', decision, reason: decision === 'reject' ? 'Recount' : '' }));
+  const [first, second] = await Promise.all([decide('approve'), decide('reject')]);
+  assert.deepEqual([first.status, second.status].sort(), [200, 400], 'exactly one decision goes through');
+  const refused = await (first.status === 400 ? first : second).json();
+  assert.match(refused.error, /already (approved|rejected) by someone else|Only pending or discrepancy/);
+  const [state] = await query("select status from remittances where remittance_id = 'REM-D'");
+  const [item] = await query("select remittance_status from collections where collection_id = 'COL-D'");
+  assert.ok((state.status === 'Approved' && item.remittance_status === 'Remitted') || (state.status === 'Rejected' && item.remittance_status === 'Returned'), 'the slip and its entry agree');
 });

@@ -5,7 +5,6 @@ import { isTrue } from "@/lib/program-amount-lock";
 import { writeProgramIncentives } from "@/lib/program-incentive-store";
 import { getEmployees } from "@/lib/employees";
 import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
-import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { parsePageAccess } from "@/lib/roles";
 import { normalizeAgeRestriction, type AgeRestriction } from "@/lib/program-age";
 import { normalizeSaleIncentive } from "@/lib/remittance";
@@ -431,37 +430,21 @@ export async function createEmployeeAccount(
   const roleIds = [...new Set(data.roleIds.map((roleId) => roleId.trim()).filter(Boolean))];
   if (roleIds.some((roleId) => !activeRoleIds.has(roleId))) throw new Error("One or more selected roles are invalid or inactive.");
 
-  const highestUserNumber = users.reduce((highest, user) => {
-    const match = /^USR-(\d+)$/.exec(user.id);
-    return match ? Math.max(highest, Number(match[1])) : highest;
-  }, 0);
-  const userId = `USR-${String(highestUserNumber + 1).padStart(4, "0")}`;
-  const createdAt = new Date().toISOString().split("T")[0];
-
-  const row: string[] = [];
-  row[columns.id] = userId;
-  row[columns.employeeId] = employeeId;
-  row[columns.fullName] = fullName;
-  row[columns.passwordHash] = data.passwordHash;
-  row[columns.status] = "active";
-  row[columns.createdAt] = createdAt;
-  row[columns.roleId] = roleIds[0];
-
-  await appendEncodedRows({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: "Users!A:G",
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: { values: [Array.from(row, (value) => value ?? "")] },
+  // The account and its roles are saved together (upgrade #6); a lock keeps two new accounts from taking the same user
+  // ID, and the database allows one account per Employee ID.
+  const userId = await inTransaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('users'))`);
+    const ids = (await tx.select({ id: schema.users.user_id }).from(schema.users)).map((row) => row.id);
+    const highestUserNumber = ids.reduce((highest, id) => {
+      const match = /^USR-(\d+)$/.exec(id);
+      return match ? Math.max(highest, Number(match[1])) : highest;
+    }, 0);
+    const id = `USR-${String(highestUserNumber + 1).padStart(4, "0")}`;
+    await tx.insert(schema.users).values({ user_id: id, employee_id: employeeId, full_name: fullName, password_hash: data.passwordHash, status: "active", created_at: new Date().toISOString(), role_id: roleIds[0], ...encodedBy() });
+    await tx.insert(schema.user_roles).values(roleIds.map((roleId) => ({ user_id: id, role_id: roleId, ...encodedBy() })));
+    return id;
   });
-
-  await appendEncodedRows({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: "User Roles!A:B",
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: { values: roleIds.map((roleId) => [userId, roleId]) },
-  });
+  void columns;
 
   return { id: userId, employeeId, fullName, roleIds };
 }

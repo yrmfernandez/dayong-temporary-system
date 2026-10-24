@@ -3,12 +3,14 @@ import { getSessionUser } from "@/lib/auth-server";
 import { closeFinishedAttendanceDaysQuietly, isSystemAbsence, SYSTEM_ABSENCE_NOTE } from "@/lib/auto-absence";
 import { withEncoder } from "@/lib/encoder-context";
 import { closureCovers, closureLabel, employeeAttendanceBranches, getClosures } from "@/lib/attendance-calendar";
-import { addAttendanceRecords, getAttendanceForEmployeeDate, getAttendanceRecordsForDate, getAttendanceRowsForDate, sheetDateText, updateAttendanceRecord, type AttendanceRecord } from "@/lib/attendance-data";
+import { addAttendanceRecords, getAttendanceForEmployeeDate, getAttendanceRecordsForDate, getAttendanceRowsForDate, updateAttendanceRecord, type AttendanceRecord } from "@/lib/attendance-data";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { inTransaction, schema } from "@/lib/db";
+import { MARK_STATUSES } from "@/lib/attendance-board";
 import { clockOutFigures, getPhilippineDate, SCHEDULED_TIME_IN, SCHEDULED_TIME_OUT } from "@/lib/attendance";
 import { boardCategory, canAdjustLateness, canViewAttendanceTracking, isMarkStatus, minutesBetween, type MarkStatus } from "@/lib/attendance-board";
 import { getEmployees } from "@/lib/employees";
 import { getActiveAttendanceEmployees, getBranches } from "@/lib/google-sheets-data";
-import { deleteRowsWhere } from "@/lib/sheet-rows";
 import { getClockInChecks } from "@/lib/clock-in-checks";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
@@ -123,6 +125,7 @@ export const POST = withEncoder(async (request: Request) => {
     const notes = `${markLabel(status)} marked by ${user.name} on ${today}${note ? `: ${note}` : ""}`;
     const skipped: Array<{ employeeId: string; reason: string }> = [];
     const additions: AttendanceRecord[] = [];
+    const updates: Array<{ rowNumber: number; record: AttendanceRecord }> = [];
     let changed = 0;
     for (const employeeId of ids) {
       const found = existing.get(employeeId);
@@ -139,10 +142,14 @@ export const POST = withEncoder(async (request: Request) => {
         status, lateMinutes: 0, undertimeMinutes: 0, leaveType: "", leaveApprovalStatus: "", notes: status === "Day Off" ? `${notes}${await dayOffEntriesNote(employeeId, date)}` : notes,
         createdAt: record?.createdAt || timestamp, updatedAt: timestamp,
       };
-      if (found) { await updateAttendanceRecord(found.rowNumber, marked); changed++; }
+      if (found) updates.push({ rowNumber: found.rowNumber, record: marked });
       else additions.push(marked);
     }
-    await addAttendanceRecords(additions);
+    // The whole batch is saved together (upgrade #6): every mark, or none.
+    await inTransaction(async () => {
+      for (const update of updates) { await updateAttendanceRecord(update.rowNumber, update.record); changed++; }
+      await addAttendanceRecords(additions);
+    });
     const marked = changed + additions.length;
     const message = `${marked} employee${marked === 1 ? "" : "s"} marked ${markLabel(status)}.${skipped.length ? ` ${skipped.length} skipped.` : ""}`;
     return Response.json({ success: true, message, marked, skipped });
@@ -171,6 +178,7 @@ async function revertMarks(body: Record<string, unknown>, by: string) {
   const timestamp = new Date().toISOString();
   const skipped: Array<{ employeeId: string; reason: string }> = [];
   const removed: string[] = [];
+  const updates: Array<{ rowNumber: number; record: AttendanceRecord }> = [];
   let changed = 0;
   for (const employeeId of ids) {
     const found = existing.get(employeeId), record = found?.record;
@@ -180,14 +188,18 @@ async function revertMarks(body: Record<string, unknown>, by: string) {
     if (isSystemAbsence(record)) { skipped.push({ employeeId, reason: "Absent by system, not a mark" }); continue; }
     if (date === today) { removed.push(employeeId); continue; }
     const note = `${markLabel(record.status)} mark reverted by ${by} on ${today}: ${reason}`;
-    await updateAttendanceRecord(found.rowNumber, { ...record, status: "Absent", leaveType: "", leaveApprovalStatus: "", notes: `${SYSTEM_ABSENCE_NOTE} | ${note}`, updatedAt: timestamp });
-    changed++;
+    updates.push({ rowNumber: found.rowNumber, record: { ...record, status: "Absent", leaveType: "", leaveApprovalStatus: "", notes: `${SYSTEM_ABSENCE_NOTE} | ${note}`, updatedAt: timestamp } });
   }
-  // Found again by employee and date when deleting, never by an earlier row number; a clock-in made meanwhile is kept.
-  if (removed.length) {
-    const wanted = new Set(removed);
-    changed += await deleteRowsWhere("Attendance", (row) => wanted.has(String(row[1] ?? "").trim()) && sheetDateText(row[2]) === date && !String(row[6] ?? "").trim() && isMarkStatus(String(row[10] ?? "").trim()));
-  }
+  // Every revert of the request is saved together (upgrade #6). Today's marks are deleted by employee and date, and only
+  // while still a mark with no clock-in, so a clock-in made meanwhile is kept.
+  await inTransaction(async (tx) => {
+    for (const update of updates) { await updateAttendanceRecord(update.rowNumber, update.record); changed++; }
+    if (removed.length) {
+      const a = schema.attendance;
+      changed += (await tx.delete(a).where(and(inArray(a.employee_id, removed), eq(a.attendance_date, date), sql`coalesce(trim(${a.time_in}), '') = ''`, inArray(a.attendance_status, [...MARK_STATUSES])))
+        .returning({ id: a.attendance_id })).length;
+    }
+  });
   const outcome = date === today ? "back to Not clocked in yet" : "now Absent by system";
   return { success: true, reverted: changed, skipped, message: `${changed} mark${changed === 1 ? "" : "s"} reverted, ${outcome}.${skipped.length ? ` ${skipped.length} skipped.` : ""}` };
 }

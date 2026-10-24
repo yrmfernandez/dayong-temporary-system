@@ -11,11 +11,19 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 3 | Finish finance links: vendor payments, direct commission payments, Fidelity withdrawals and payroll company-program deductions create cash records | **Built 2026-10-24**: vendor, commission and Fidelity payouts record cash; payroll company-program deductions listed until their Collection is linked (owner chose the reminder list) |
 | 4 | Member data correction tool: move receipts between programs, shift NOP/coverage, merge/split members from an admin page with a reason and audit trail | **Built 2026-10-24**: Member Corrections page with fix coverage, move receipts, insert missing receipt, merge and split |
 | 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | **Built 2026-10-24** (option 1, owner): Base Pay, flexible and registration fee locked once a program has collections |
-| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **Built 2026-10-24** (phases 1-4: payroll, clerk report cash, finance, audits/calendar/settings/roles/remarks). Follow-up still possible: attendance records, leave, users |
+| 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **Built 2026-10-24, complete**: every save (payroll, clerk cash, finance, audits, calendar, settings, roles, remarks, remittances, attendance, leave, user accounts, corrections, targets) writes by ID in one step or one transaction; only reads remain on the Sheets layer |
 | 7 | One time zone (Manila) for every report date | To do (next) |
 | 8 | Join reports by ID instead of branch/MAS/encoder names | To do |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Upgrade #6 finished: every save by ID (2026-10-24)
+
+- **Owner:** finish #6 completely before #7.
+- **Done:** the last writers left the Sheets-style layer. **Remittances** (`lib/remittance-workflow.ts`): creating a slip writes the slip, its links and each entry's status and forfeit (one update per entry) in one transaction; approve/reject lock the slip and re-check it is pending (two approvers at once: one is refused, tested), with the entries' status and any incentive given back in the same transaction; Fidelity slips edited/voided on the locked slip; resubmit reopens only entries still Returned; the ledger reads slips and links from the database. **Attendance** (`lib/attendance-data.ts`) reads and writes the attendance table; updates go by record ID (the "rowNumber" callers see is now only a found marker); bulk marks and reverts are one transaction; reverting today's mark deletes only a mark with no clock-in. **Leave**: review only while Pending, saved with its attendance days. **User accounts**: create (with roles, user ID under a lock), edit roles, reset/change password, delete, all by ID; Employee ID change is database-only (the account follows by its link). **Quick corrections** lock the entry. **Company targets** upserted, **record corrections** and **Fidelity payouts** inserted directly. Tests: the harness now loads roles, slips, links and attendance into the test database; about 30 tests moved from cell-write checks to database checks; new test for two approvers at once. All 240 tests and the build pass. No migration. Stored data keeps its format (JSON fields were already objects; the old layer stripped the leading apostrophe from dates and times).
+- **Behaviour now visible in tests:** a cash New Sale or Collection batch is sent for approval right after it is saved (it always was; the old test mock simply dropped that write).
+- **In progress:** none. Only reads still use the Sheets-style layer.
+- **To do (owner):** deploy; watch Remittances, attendance and user accounts after the deploy.
 
 ### Audits, calendar, settings, roles and remarks save by ID (2026-10-24, upgrade #6 phase 4)
 

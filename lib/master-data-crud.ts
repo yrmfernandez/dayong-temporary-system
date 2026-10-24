@@ -1,12 +1,10 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 
-import { currentDb, inTransaction, schema, type Queryable } from "@/lib/db";
+import { currentDb, encodedBy, inTransaction, schema, type Queryable } from "@/lib/db";
 import { assertProgramCodeFree, getPrograms, programColumns } from "@/lib/google-sheets-data";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } from "@/lib/passwords";
-import { appendEncodedRows } from "@/lib/encoder-sheets";
-import { deleteRowsWhere } from "@/lib/sheet-rows";
-import { loadUsers, userCell } from "@/lib/users-sheet";
+import { loadUsers } from "@/lib/users-sheet";
 import { type StoredTier, validateIncentiveTiers, writeProgramIncentives } from "@/lib/program-incentive-store";
 import { memberContactOrClaimant } from "@/lib/member-records";
 
@@ -186,10 +184,14 @@ export async function updateUserAccount(id: string, input: { status: string; rol
   const roleIds = [...new Set(input.roleIds.map(text).filter(Boolean))];
   if (!roleIds.length || roleIds.some((roleId) => !activeRoleIds.has(roleId))) throw new Error("Select valid active roles.");
   const status = input.status === "inactive" ? "inactive" : "active";
-  const data = [{ range: userCell(columns.status, user.rowNumber), values: [[status]] }, { range: userCell(columns.roleId, user.rowNumber), values: [[roleIds[0]]] }];
-  await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "RAW", data } });
-  await deleteRowsWhere("User Roles", (row) => text(row[0]) === id);
-  await appendEncodedRows({ range: "'User Roles'!A:B", requestBody: { values: roleIds.map((roleId) => [id, roleId]) } });
+  void columns;
+  // The account and its roles change together, by the account's ID (upgrade #6).
+  await inTransaction(async (tx) => {
+    const updated = await tx.update(schema.users).set({ status, role_id: roleIds[0] }).where(eq(schema.users.user_id, id)).returning({ id: schema.users.user_id });
+    if (!updated.length) throw new Error("Record not found.");
+    await tx.delete(schema.user_roles).where(eq(schema.user_roles.user_id, id));
+    await tx.insert(schema.user_roles).values(roleIds.map((roleId) => ({ user_id: id, role_id: roleId, ...encodedBy() })));
+  });
   return { id };
 }
 
@@ -203,16 +205,18 @@ export async function resetUserPassword(id: string) {
   if (!user) throw new Error("Record not found.");
   if (user.status !== "active") throw new Error("Reactivate the account before resetting its password.");
   const oneTimePassword = generateOneTimePassword(), issuedAt = Date.now();
-  await sheets.spreadsheets.values.update({ spreadsheetId: GOOGLE_SHEET_ID, range: userCell(columns.passwordHash, user.rowNumber), valueInputOption: "RAW", requestBody: { values: [[await hashOneTimePassword(oneTimePassword, issuedAt)]] } });
+  void columns;
+  await currentDb().update(schema.users).set({ password_hash: await hashOneTimePassword(oneTimePassword, issuedAt) }).where(eq(schema.users.user_id, user.id));
   return { id, employeeId: user.employeeId, fullName: user.fullName, oneTimePassword, expiresAt: oneTimePasswordExpiry(issuedAt) };
 }
 
 export async function deleteUserAccount(id: string, actorUserId: string) {
   if (id === actorUserId) throw new Error("You cannot delete your own signed-in account.");
-  const { columns, users } = await loadUsers();
-  if (!users.some((row) => row.id === id)) throw new Error("Record not found.");
-  await deleteRowsWhere("User Roles", (row) => text(row[0]) === id);
-  await deleteRowsWhere("Users", (row) => text(row[columns.id]) === id);
+  await inTransaction(async (tx) => {
+    await tx.delete(schema.user_roles).where(eq(schema.user_roles.user_id, id));
+    const removed = await tx.delete(schema.users).where(eq(schema.users.user_id, id)).returning({ id: schema.users.user_id });
+    if (!removed.length) throw new Error("Record not found.");
+  });
 }
 
 /** Every detail of one member, for the Members edit form. */

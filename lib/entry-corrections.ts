@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
+
+import { inTransaction, schema } from "@/lib/db";
 import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/duplicate-entries";
-import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { recordCorrection } from "@/lib/record-corrections";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
@@ -10,62 +12,61 @@ const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Numbe
 /**
  * Administrator correction of a New Sale or Collection, with the reason kept in Record Corrections. OR number and
  * OR date can always be fixed (typos, including imported legacy rows). The amount is money already counted on a
- * remittance slip once the item is linked, so it is corrected only while the item is still outstanding.
- * Sales: AA amount_paid, AB notes, AC application_no, AD or_number, AE or_date. Collections: I or_number, J or_date,
- * K amount_collected. OR fields on a sale are changed only when the request includes them.
+ * remittance slip once the item is linked, so it is corrected only while the item is still outstanding. OR fields on a
+ * sale are changed only when the request includes them.
+ *
+ * The entry is read and updated by ID in one transaction that locks it (upgrade #6), so a slip created at the same moment
+ * cannot slip past the "not on a Remittance" check, and the update never lands on another row.
  */
 export async function correctSaleOrCollection(body: Record<string, unknown>) {
   const id = text(body.id), moduleName = text(body.module), reason = text(body.reason);
   if (!id || !reason) throw new Error("Record and correction reason are required.");
-  const isSale = moduleName === "New Sales", sheet = isSale ? "Sales" : moduleName === "Collections" ? "Collections" : "";
-  if (!sheet) throw new Error("Only New Sales and Collections can be corrected here.");
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `'${sheet}'!A:AL`, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
-  const rows = response.data.values ?? [], index = rows.slice(1).findIndex((row) => text(row[0]) === id);
-  if (index < 0) throw new Error("Record not found.");
-  const rowNumber = index + 2, row = rows[index + 1];
-  // Returned entries are back with the clerk, so their amount can be corrected before they are resubmitted.
-  const onRemittance = !["", "Outstanding", "Returned"].includes(text(row[isSale ? 35 : 28]));
+  const isSale = moduleName === "New Sales";
+  if (!isSale && moduleName !== "Collections") throw new Error("Only New Sales and Collections can be corrected here.");
   const today = manilaNow().date;
-
   const amount = Number(isSale ? body.amountPaid : body.amountCollected);
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid amount greater than zero.");
-  const currentAmount = Number(row[isSale ? 26 : 10] ?? 0) || 0;
-  if (onRemittance && Math.round(amount * 100) !== Math.round(currentAmount * 100)) throw new Error(`This ${isSale ? "New Sale" : "Collection"} is on a Remittance, so its amount is corrected through reconciliation. OR number and OR date can still be fixed.`);
 
-  const changesOr = !isSale || "orNumber" in body || "orDate" in body;
-  const orNumber = changesOr ? (isSale ? text(body.orNumber) : normalizeOrNumber(text(body.orNumber))) : text(row[isSale ? 29 : 8]);
-  const orDate = changesOr ? text(body.orDate) : text(row[isSale ? 30 : 9]);
-  if (changesOr) {
-    if (!isSale && !orNumber) throw new Error("OR number is required.");
-    // A corrected OR number ends with its branch letter too (lib/or-number.ts); an unchanged old one may stay as it is.
-    if (!isSale && entryKey(orNumber) !== entryKey(row[8]) && orNumberProblem(orNumber)) throw new Error(orNumberProblem(orNumber));
-    if ((!isSale || orDate) && (!validDate(orDate) || orDate > today)) throw new Error("Enter a valid OR date, today or earlier.");
-    // Each OR number is one receipt; a correction must not reuse another entry's.
-    if (!isSale && entryKey(orNumber) !== entryKey(row[8])) {
-      const used = (await recordedOrNumbers([orNumber])).get(entryKey(orNumber));
-      if (used && used.collectionId !== id) throw new Error(`OR Number ${orNumber} is already recorded on collection ${used.collectionId}.`);
-    }
-  }
+  const outcome = await inTransaction(async (tx) => {
+    const [row] = isSale
+      ? await tx.select({ status: schema.sales.remittance_status, amount: schema.sales.amount_paid, orNumber: schema.sales.or_number, orDate: schema.sales.or_date, applicationNumber: schema.sales.application_no, notes: schema.sales.notes })
+        .from(schema.sales).where(eq(schema.sales.sale_id, id)).for("update")
+      : await tx.select({ status: schema.collections.remittance_status, amount: schema.collections.amount_collected, orNumber: schema.collections.or_number, orDate: schema.collections.or_date, applicationNumber: schema.collections.or_number, notes: schema.collections.or_number })
+        .from(schema.collections).where(eq(schema.collections.collection_id, id)).for("update");
+    if (!row) throw new Error("Record not found.");
+    // Returned entries are back with the clerk, so their amount can be corrected before they are resubmitted.
+    const onRemittance = !["", "Outstanding", "Returned"].includes(text(row.status));
+    if (onRemittance && Math.round(amount * 100) !== Math.round((Number(row.amount) || 0) * 100)) throw new Error(`This ${isSale ? "New Sale" : "Collection"} is on a Remittance, so its amount is corrected through reconciliation. OR number and OR date can still be fixed.`);
 
-  if (isSale) {
-    const applicationNumber = text(body.applicationNumber), notes = text(body.notes);
-    if (!applicationNumber) throw new Error("Application number is required.");
-    if (entryKey(applicationNumber) !== entryKey(row[28])) {
-      const used = (await recordedApplicationNumbers([applicationNumber])).get(entryKey(applicationNumber));
-      if (used && used.saleId !== id) throw new Error(`Application number ${applicationNumber} is already recorded on sale ${used.saleId}.`);
+    const changesOr = !isSale || "orNumber" in body || "orDate" in body;
+    const orNumber = changesOr ? (isSale ? text(body.orNumber) : normalizeOrNumber(text(body.orNumber))) : text(row.orNumber);
+    const orDate = changesOr ? text(body.orDate) : text(row.orDate);
+    if (changesOr) {
+      if (!isSale && !orNumber) throw new Error("OR number is required.");
+      // A corrected OR number ends with its branch letter too (lib/or-number.ts); an unchanged old one may stay as it is.
+      if (!isSale && entryKey(orNumber) !== entryKey(row.orNumber) && orNumberProblem(orNumber)) throw new Error(orNumberProblem(orNumber));
+      if ((!isSale || orDate) && (!validDate(orDate) || orDate > today)) throw new Error("Enter a valid OR date, today or earlier.");
+      // Each OR number is one receipt; a correction must not reuse another entry's.
+      if (!isSale && entryKey(orNumber) !== entryKey(row.orNumber)) {
+        const used = (await recordedOrNumbers([orNumber], tx)).get(entryKey(orNumber));
+        if (used && used.collectionId !== id) throw new Error(`OR Number ${orNumber} is already recorded on collection ${used.collectionId}.`);
+      }
     }
-    const before = { applicationNumber: row[28], amountPaid: row[26], notes: row[27], orNumber: row[29], orDate: row[30] };
-    const after = { applicationNumber, amountPaid: amount, notes, orNumber, orDate };
-    await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: [
-      { range: `'Sales'!AA${rowNumber}:AC${rowNumber}`, values: [[amount, notes, applicationNumber]] },
-      ...(changesOr ? [{ range: `'Sales'!AD${rowNumber}:AE${rowNumber}`, values: [[orNumber, orDate]] }] : []),
-    ] } });
-    await recordCorrection(moduleName, id, reason, before, after);
-  } else {
-    const before = { orNumber: row[8], orDate: row[9], amountCollected: row[10] };
-    const after = { orNumber, orDate, amountCollected: amount };
-    await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: GOOGLE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: [{ range: `'Collections'!I${rowNumber}:K${rowNumber}`, values: [[orNumber, orDate, amount]] }] } });
-    await recordCorrection(moduleName, id, reason, before, after);
-  }
+
+    if (isSale) {
+      const applicationNumber = text(body.applicationNumber), notes = text(body.notes);
+      if (!applicationNumber) throw new Error("Application number is required.");
+      if (entryKey(applicationNumber) !== entryKey(row.applicationNumber)) {
+        const used = (await recordedApplicationNumbers([applicationNumber], tx)).get(entryKey(applicationNumber));
+        if (used && used.saleId !== id) throw new Error(`Application number ${applicationNumber} is already recorded on sale ${used.saleId}.`);
+      }
+      await tx.update(schema.sales).set({ amount_paid: amount, notes: notes || null, application_no: applicationNumber, ...(changesOr ? { or_number: orNumber || null, or_date: orDate || null } : {}) })
+        .where(eq(schema.sales.sale_id, id));
+      return { before: { applicationNumber: row.applicationNumber, amountPaid: row.amount, notes: row.notes, orNumber: row.orNumber, orDate: row.orDate }, after: { applicationNumber, amountPaid: amount, notes, orNumber, orDate } };
+    }
+    await tx.update(schema.collections).set({ or_number: orNumber, or_date: orDate, amount_collected: amount }).where(eq(schema.collections.collection_id, id));
+    return { before: { orNumber: row.orNumber, orDate: row.orDate, amountCollected: row.amount }, after: { orNumber, orDate, amountCollected: amount } };
+  });
+  await recordCorrection(moduleName, id, reason, outcome.before, outcome.after);
   return { message: `${moduleName} record corrected and audited.` };
 }

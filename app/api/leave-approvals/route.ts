@@ -1,3 +1,4 @@
+import { inTransaction } from "@/lib/db";
 import { withEncoder } from "@/lib/encoder-context";
 import { NextResponse } from "next/server";
 
@@ -144,20 +145,23 @@ export const POST = withEncoder(async function POST(request: Request) {
       updatedAt: timestamp,
     };
 
-    await updateLeaveRequestReview(
-      selected.rowNumber,
-      updatedRequest,
-    );
+    // The review and the leave days it puts on the attendance are saved together (upgrade #6).
+    await inTransaction(async () => {
+      await updateLeaveRequestReview(
+        selected.rowNumber,
+        updatedRequest,
+      );
 
-    if (approvalStatus === "Approved") {
-      await recordApprovedLeaveAttendance({
-        employeeId: updatedRequest.employeeId,
-        leaveType: updatedRequest.leaveType,
-        startDate: updatedRequest.startDate,
-        endDate: updatedRequest.endDate,
-        reason: updatedRequest.reason,
-      });
-    }
+      if (approvalStatus === "Approved") {
+        await recordApprovedLeaveAttendance({
+          employeeId: updatedRequest.employeeId,
+          leaveType: updatedRequest.leaveType,
+          startDate: updatedRequest.startDate,
+          endDate: updatedRequest.endDate,
+          reason: updatedRequest.reason,
+        });
+      }
+    });
 
     return NextResponse.json({
       success: true,

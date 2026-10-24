@@ -1,9 +1,8 @@
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { getEmployees } from "@/lib/employees";
-import { appendEncodedRows } from "@/lib/encoder-sheets";
 import { createReadableId } from "@/lib/readable-id";
 import { sql } from "drizzle-orm";
-import { getDb, inTransaction } from "@/lib/db";
+import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
 import { createCashTransaction } from "@/lib/finance-data";
 import { cashOutDetails } from "@/lib/finance-operations";
 const text=(value:unknown)=>String(value??"").trim();
@@ -91,7 +90,7 @@ export async function withdrawFidelity(masEmployeeId:string,kind:string,requeste
  const cash=await cashOutDetails(cashInput,account.branch);
  const id=createReadableId("FCL");
  await inTransaction(async()=>{
-  await appendEncodedRows({range:"'Fidelity'!A:K",requestBody:{values:[[id,account.masEmployeeId,account.masName,"","",type,0,paid,cash.date,"Released",text(notes)]]}});
+  await currentDb().insert(schema.fidelity).values({fidelity_id:id,mas_employee_id:account.masEmployeeId,mas_name:account.masName,transaction_type:type,incentive_amount:0,fidelity_amount:paid,transaction_date:cash.date,status:"Released",notes:text(notes)||null,...encodedBy()});
   await createCashTransaction({date:cash.date,direction:"outflow",category:"Fidelity release",description:`${type}: ${account.masName}`,amount:paid,branch:cash.branch,account:cash.account,referenceType:"Fidelity",referenceId:id,remarks:text(notes)});
  });
  return{amount:paid,type,masName:account.masName};
