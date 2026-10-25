@@ -13,16 +13,27 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 5 | Keep the program rate on each entry so editing a program does not change old installments in MAM/SOA | **Built 2026-10-24** (option 1, owner): Base Pay, flexible and registration fee locked once a program has collections |
 | 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **Built 2026-10-24, complete**: every save (payroll, clerk cash, finance, audits, calendar, settings, roles, remarks, remittances, attendance, leave, user accounts, corrections, targets) writes by ID in one step or one transaction; only reads remain on the Sheets layer |
 | 7 | One time zone (Manila) for every report date | **Built 2026-10-24**: one helper (`lib/manila-date.ts`) turns stored UTC times into Manila dates everywhere; Company report, SOA, dashboards and lists fixed |
-| 8 | Join reports by ID instead of branch/MAS/encoder names | To do (next) |
-| 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do |
+| 8 | Join reports by ID instead of branch/MAS/encoder names | **Built 2026-10-24**: MAS/Collector dashboards and Report Review clerks picked by Employee ID (`lib/person-scope.ts`), unlinked old names still count by name |
+| 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do (next) |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+
+### Upgrade #8: people picked by Employee ID (2026-10-24)
+
+- **Owner:** #8.
+- **Checked first (read-only `scripts/check-name-links.mjs`, production):** renames already follow everywhere (migration 0012) and every record has its branch link. One shared full name: Racho, Kristine (LEG-2026-0022 active, SDS-2026-0006 inactive; 72 sales, 13 collections, 62 accounts linked between them). MAS names with no link: sales 11, collections 135, remittances 53, accounts 28, deposits 67; mostly not people (DTO, Others, ALL MAS) or short names (Capacite, C.).
+- **Done:** new `lib/person-scope.ts` (`masScope`, `accountableScope`): by Employee ID, and by name (capitals and extra spaces ignored) only for a record with no link. Used by the MAS and Collector dashboards (month report, today's entries, recent activity, and the portfolio, now read by ID instead of all 14,000 accounts), `buildOperationalReport` (`personId`, and `encoderIds` for Report Review's Entry Clerks instead of their names) and Today's Entries. Test: two employees with one name and an old unlinked record (each gets only their own, both keep the old one). All 245 tests and the build pass. No migration.
+- **Still by name:** the Company Reports person/encoder filters picked from its lists, and reviewers' remarks on a clerk's report. Branch matching by name is safe (unique names, all linked).
+- **For the owner:** Racho, Kristine has two employee records; if they are one person, the old LEG-2026-0022 records can be moved to SDS-2026-0006 (ask before doing it).
+- **In progress:** none. **To do:** #9 money-rule tests (next), #10 Supabase 500 MB limit.
 
 ### Entry Clerk report saves show their result (2026-10-24)
 
 - **Owner:** all saving on the Entry Clerk report did nothing and the typed text was gone.
 - **Checked:** the server saves work (notes, Cash Beg, deposit and expense through the route, then the report reloads with them; reproduced in the test database). The page's save sent the request and read the reply as JSON with no error handling, and showed the result only at the top of the page, out of view of the form.
 - **Done:** `components/clerk-report.tsx`: a save that fails for any reason (time-out, photos too large, expired sign-in, no connection, a refusal such as Day Off) shows the reason under the form in red; a save shows in green; Save is disabled while saving. New read-only `scripts/check-clerk-report-saves.mjs`: per employee, the notes, Cash Beg, deposits, expenses and Fidelity slips saved in the last 3 Manila days, and who is marked Day Off today.
-- **In progress:** finding the production cause: the owner runs the check script and reports the message the clerk now sees.
+- **Cause (production check, same day):** the saves were working (nine clerks saved notes, Cash Beg, deposits and expenses through the day). After a successful save the form clears for the next entry and the message showed only at the top of the page, so it looked as if nothing was saved; clerks clicked Save again. The check script also lists possible repeated expenses (same clerk, day, amount, receipt no. and expense date) to void.
+- **Production result:** no repeated expenses; saves kept arriving during the check (a clerk's notes at 4:45 PM).
+- **In progress:** none. **To do:** deploy; then #8 joins by ID.
 - **To do:** #8 joins by ID (after this).
 
 ### Upgrade #7: one time zone, Manila, for every date (2026-10-24)

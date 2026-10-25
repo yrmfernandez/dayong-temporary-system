@@ -9,6 +9,7 @@ import { dateWarnings } from "@/lib/date-checks";
 import { photosByEntry } from "@/lib/receipt-photos";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import type { TodayMode } from "@/lib/today-mode";
+import { accountableScope, masScope, type Person } from "@/lib/person-scope";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
@@ -83,24 +84,24 @@ export type DayEntry = {
  * New Sales and posted Collections for one day, where the day is when they were encoded, their OR date, or the date
  * the office received the cash on a remittance slip (rejected slips are unlinked, so they do not count).
  */
-export async function getEntriesForDay(date: string, mode: TodayMode, person = "") {
+export async function getEntriesForDay(date: string, mode: TodayMode, person: Person | null = null) {
   return getEntriesForRange(date, date, mode, { person });
 }
 
 /**
  * New Sales and posted Collections whose day (by `mode`) falls from `from` to `to`, optionally only one MAS/Collector's
- * (`person`) or only what one employee encoded (`encodedBy`, an Employee ID).
+ * (`person`, picked by Employee ID: lib/person-scope.ts) or only what one employee encoded (`encodedBy`, an Employee ID).
  */
 /**
  * The database narrows Sales and Collections to the rows that can match before anything is converted: the encoder,
  * the person accountable, and the date the mode uses (one day of margin each side for the Manila day). The exact
  * filters below still decide, so this only has to keep every row that could match.
  */
-function prefilter(kind: "sales" | "collections", from: string, to: string, mode: TodayMode, person: string, encodedBy: string) {
+function prefilter(kind: "sales" | "collections", from: string, to: string, mode: TodayMode, person: Person | null, encodedBy: string) {
   const conditions: SQL[] = [];
   const low = sql`(${from}::date - 1)`, high = sql`(${to}::date + 1)`;
   if (encodedBy) conditions.push(sql`encoded_by_employee_id = ${encodedBy}`);
-  if (person) conditions.push(kind === "sales" ? sql`lower(trim(mas)) = ${person.toLowerCase()}` : sql`lower(trim(coalesce(nullif(trim(accountable_name), ''), mas))) = ${person.toLowerCase()}`);
+  if (person) conditions.push(kind === "sales" ? masScope(person) : accountableScope(person));
   const created = kind === "sales" ? sql`coalesce(encoded_at, date_created)` : sql`coalesce(encoded_at, created_at)`;
   // "By date encoded" means encoded in this system. Imported old data has no encoder and carries its import date
   // (about 60,000 rows on October 1, 4 and 8, 2026), so it is left out here: before this, any range covering those days
@@ -114,7 +115,7 @@ function prefilter(kind: "sales" | "collections", from: string, to: string, mode
   return conditions.length ? sql.join(conditions, sql` and `) : sql`true`;
 }
 
-export async function getEntriesForRange(from: string, to: string, mode: TodayMode, { person = "", encodedBy = "" }: { person?: string; encodedBy?: string } = {}) {
+export async function getEntriesForRange(from: string, to: string, mode: TodayMode, { person = null, encodedBy = "" }: { person?: Person | null; encodedBy?: string } = {}) {
   const [sales, collections, response] = await Promise.all([
     readSheetRows("Sales", prefilter("sales", from, to, mode, person, encodedBy)),
     readSheetRows("Collections", prefilter("collections", from, to, mode, person, encodedBy)),
@@ -218,7 +219,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
     }),
   ];
   const dayOf = (item: DayEntry) => (mode === "encoded" ? item.encodedAt : mode === "or" ? item.orDate : item.remittedAt).slice(0, 10);
-  const entries = all.filter((item) => dayOf(item) >= from && dayOf(item) <= to && (!person || item.person.toLowerCase() === person.toLowerCase()) && (!encodedBy || item.encodedByEmployeeId === encodedBy))
+  const entries = all.filter((item) => dayOf(item) >= from && dayOf(item) <= to && (!encodedBy || item.encodedByEmployeeId === encodedBy))
     .sort((first, second) => second.encodedAt.localeCompare(first.encodedAt));
   const total = (kind: DayEntry["kind"]) => {
     const items = entries.filter((item) => item.kind === kind);

@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 24, 2026: people picked by Employee ID.** A MAS's or Collector's own dashboard and Report Review's Entry Clerks pick records by Employee ID, so two employees with the same name no longer share each other's numbers; old records whose name matches no employee still count by name (upgrade #8). See the [system guide](system-guide.md) (implementation limits, item 8).
+
 **October 24, 2026: one time zone.** Every report and on-screen date is the Manila date; a sale saved just after midnight in Manila is no longer counted on the day before in the Company report (upgrade #7). See the [system guide](system-guide.md) (implementation limits, item 7).
 
 **October 24, 2026: every save by ID.** Remittances, attendance, leave, user accounts and the last small modules now save directly in the database by ID, in one step or one transaction; two approvers can no longer decide the same slip twice. Only reads still use the older Sheets-style layer (upgrade #6 complete). See the [system guide](system-guide.md) (implementation limits, item 9).

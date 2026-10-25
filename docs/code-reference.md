@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-44 page routes, 73 API handlers, 133 library files, 59 component files; 608 scanned source/configuration/public-text files in total.
+44 page routes, 73 API handlers, 134 library files, 59 component files; 610 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -167,7 +167,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/clock-in-location.ts](../lib/clock-in-location.ts) | `DEFAULT_RADIUS_M`, `MIN_RADIUS_M`, `MAX_RADIUS_M`, `MAX_ACCURACY_ALLOWANCE_M`, `ClockInResult`, `ReviewStatus`, `DevicePosition`, `BranchLocation`, `isValidCoordinate`, `hasLocation`, `distanceMeters`, `radiusOf`, `checkClockIn`, `needsReview`, `formatDistance`, `clockInLabel`, `parseCoordinates` | — |
 | [lib/company-targets.ts](../lib/company-targets.ts) | `CompanyTarget`, `periodType`, `getCompanyTargets`, `saveCompanyTarget` | `@/lib/db` |
 | [lib/daily-audit.ts](../lib/daily-audit.ts) | `AUDIT_PERIODS`, `AuditPeriod`, `asAuditPeriod`, `AUDIT_RESULTS`, `AuditStatus`, `periodSpan`, `AuditFigures`, `DailyAudit`, `auditedEmployees`, `getDailyAudits`, `saveDailyAudit`, `decideDailyAudit`, `AuditSummaryFilters`, `getAuditSummary` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/clerk-report` |
-| [lib/dashboard-data.ts](../lib/dashboard-data.ts) | `dashboardKind`, `DashboardKind`, `getDashboardData`, `DashboardData` | `@/lib/auth`, `@/lib/account-rules`, `@/lib/access-control`, `@/lib/attendance-data`, `@/lib/google-sheets`, `@/lib/leave-data`, `@/lib/users-sheet`, `@/lib/reports`, `@/lib/remittance-workflow`, `@/lib/system-settings`, `@/lib/todays-entries`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/manila-date` |
+| [lib/dashboard-data.ts](../lib/dashboard-data.ts) | `dashboardKind`, `DashboardKind`, `getDashboardData`, `DashboardData` | `@/lib/auth`, `@/lib/account-rules`, `@/lib/access-control`, `@/lib/attendance-data`, `@/lib/google-sheets`, `@/lib/leave-data`, `@/lib/users-sheet`, `@/lib/reports`, `@/lib/remittance-workflow`, `@/lib/system-settings`, `@/lib/todays-entries`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/manila-date`, `@/lib/person-scope` |
 | [lib/date-checks.ts](../lib/date-checks.ts) | `REMIT_LATE_DAYS`, `ENCODE_LATE_DAYS`, `DateFacts`, `dateWarnings`, `blockingDateProblem` | — |
 | [lib/day-off.ts](../lib/day-off.ts) | `DAY_OFF_MESSAGE`, `isOnDayOff`, `refuseOnDayOff`, `entriesEncodedOn`, `dayOffEntriesNote` | `@/lib/attendance`, `@/lib/auth-server`, `@/lib/db` |
 | [lib/db.ts](../lib/db.ts) | `schema`, `Database`, `Transaction`, `Queryable`, `getDb`, `currentDb`, `inTransaction`, `UNIQUE_VIOLATION`, `isUniqueViolation`, `encodedBy` | `@/db/schema`, `@/lib/encoder-context`, `@/lib/server-environment` |
@@ -227,6 +227,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/payroll-calc.ts](../lib/payroll-calc.ts) | `WORKING_DAYS_PER_YEAR`, `BaseType`, `PayProfile`, `PayrollSettings`, `defaultPayrollSettings`, `AttendanceDay`, `CommissionItem`, `PayrollLine`, `Adjustment`, `COMPANY_PROGRAM_CATEGORY`, `ADJUSTMENT_CATEGORIES`, `dailyRateOf`, `scheduledWorkingDays`, `computePayrollLine`, `lineTotals`, `runTotals` | — |
 | [lib/payroll.ts](../lib/payroll.ts) | `getPayProfiles`, `savePayProfile`, `PayrollRun`, `getPayrollOverview`, `getPayrollRun`, `createPayrollRun`, `recalculatePayrollRun`, `addPayrollAdjustment`, `removePayrollAdjustment`, `approvePayrollRun`, `payPayrollRun`, `voidPayrollRun`, `deletePayrollRun`, `ProgramDeduction`, `getProgramDeductions`, `linkDeductionCollection` | `@/lib/attendance-data`, `@/lib/auto-absence`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/employees`, `@/lib/finance-data`, `@/lib/finance-operations`, `@/lib/google-sheets-data`, `@/lib/payroll-calc`, `@/lib/readable-id` |
 | [lib/payslip.ts](../lib/payslip.ts) | `PAYSLIP_COMPANY`, `PayslipRow`, `Payslip`, `buildPayslip`, `payslipFileName`, `payslipPdf` | `@/lib/payroll-calc` |
+| [lib/person-scope.ts](../lib/person-scope.ts) | `Person`, `masScope`, `accountableScope` | — |
 | [lib/philippine-holidays.ts](../lib/philippine-holidays.ts) | `HOLIDAY_TYPES`, `HolidayType`, `HolidayTemplate`, `philippineHolidays` | — |
 | [lib/photo-storage.ts](../lib/photo-storage.ts) | `PHOTO_BUCKET`, `storePhoto`, `readPhoto` | — |
 | [lib/privilege-guard.ts](../lib/privilege-guard.ts) | `guardAccountChange`, `guardRoleChange` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/master-data-crud`, `@/lib/roles` |
@@ -248,7 +249,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/remittance-workflow.ts](../lib/remittance-workflow.ts) | `RemittanceKind`, `SlipType`, `CashCollection`, `CashRemittance`, `forfeitsIncentive`, `amountDue`, `dateRemittedReasons`, `noIncentiveReasons`, `getRemittanceDashboard`, `RemittanceEntry`, `getRemittanceEntries`, `CASH_IN_FULL_NOTE`, `lockOutstandingRemittanceEntries`, `createCashRemittance`, `decideCashRemittance`, `createFidelitySlip`, `editFidelitySlip`, `voidFidelitySlip`, `receivedAtOf`, `submitReadyEntries`, `submitCashAfterSave`, `resubmitReturned` | `@/lib/db`, `@/lib/sheets-on-db`, `@/lib/readable-id`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/cash-count`, `@/lib/receipt-photos`, `@/lib/clearing`, `@/lib/entry-batches`, `@/lib/incentive-decision` |
 | [lib/remittance.ts](../lib/remittance.ts) | `IncentiveTier`, `tiersForBranch`, `SaleIncentiveSetting`, `SaleProgram`, `normalizeSaleIncentive`, `calculateSaleIncentive`, `REACTIVATION_RATE`, `calculateRemittance`, `NO_INCENTIVE_REASON_MIN`, `noIncentiveReasonOf`, `withoutIncentive` | `./program-payment-limit.mjs` |
 | [lib/report-remarks.ts](../lib/report-remarks.ts) | `getReportRemarks`, `addReportRemark` | `@/lib/db`, `@/lib/readable-id` |
-| [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/sheets-on-db`, `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/manila-date` |
+| [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/sheets-on-db`, `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/manila-date`, `@/lib/person-scope` |
 | [lib/roles.ts](../lib/roles.ts) | `RoleRecord`, `parsePageAccess`, `getRoles`, `createRole`, `updateRole`, `deleteRole` | `@/lib/db`, `@/lib/google-sheets`, `@/lib/encoder-context`, `@/lib/access-control`, `@/lib/page-catalog` |
 | [lib/sale-submissions.ts](../lib/sale-submissions.ts) | `MAX_SUBMISSION_SALES`, `SaleSubmission`, `masProfile`, `listMySubmissions`, `submitSales`, `listForReview`, `reviewableSubmission`, `markSubmissionSaved`, `returnSubmission` | `@/lib/access-control`, `@/lib/auth`, `@/lib/db`, `@/lib/employees`, `@/lib/encoder-context`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/server-environment.ts](../lib/server-environment.ts) | `RequiredServerVariable`, `readServerVariable`, `getMissingServerVariables`, `ServerConfigurationError`, `assertServerConfiguration`, `getAuthSecret` | — |
@@ -263,7 +264,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/system-settings.ts](../lib/system-settings.ts) | `isTodayMode`, `TODAY_MODE_LABELS`, `TODAY_MODES`, `TodayMode`, `getSetting`, `saveSetting`, `getTodayMode`, `setTodayMode` | `@/lib/db`, `@/lib/today-mode` |
 | [lib/theme.ts](../lib/theme.ts) | `ThemePreference`, `THEME_KEY`, `themeBootScript`, `readTheme`, `resolveTheme`, `applyTheme`, `setTheme`, `watchTheme` | — |
 | [lib/today-mode.ts](../lib/today-mode.ts) | `TODAY_MODES`, `TodayMode`, `TODAY_MODE_LABELS`, `isTodayMode` | — |
-| [lib/todays-entries.ts](../lib/todays-entries.ts) | `DayEntry`, `getEntriesForDay`, `getEntriesForRange` | `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/receipt-photos`, `@/lib/entry-batches`, `@/lib/today-mode` |
+| [lib/todays-entries.ts](../lib/todays-entries.ts) | `DayEntry`, `getEntriesForDay`, `getEntriesForRange` | `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/receipt-photos`, `@/lib/entry-batches`, `@/lib/today-mode`, `@/lib/person-scope` |
 | [lib/types.ts](../lib/types.ts) | `Address`, `PersonName`, `Claimant`, `Beneficiary`, `Member`, `Program`, `ProgramEnrollment`, `NewSale`, `Collection` | — |
 | [lib/ui-preferences.ts](../lib/ui-preferences.ts) | `IndicatorStyle`, `TableDensity`, `preferenceKeys`, `ACTIVE_ROLE_COOKIE`, `writeActiveRoleCookie`, `readPreference`, `writePreference`, `removePreference`, `onPreferencesChange`, `readIndicator`, `readDensity` | — |
 | [lib/use-form-draft.ts](../lib/use-form-draft.ts) | `useFormDraft`, `clearFormDrafts` | `@/lib/use-parked-drafts` |
@@ -467,6 +468,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-incentive-periods.mjs](../scripts/check-incentive-periods.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-mas-members.mjs](../scripts/check-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs`, `./name-match.mjs` | No flag detected; read source before running |
 | [scripts/check-member-transfer.mjs](../scripts/check-member-transfer.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/check-name-links.mjs](../scripts/check-name-links.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-owner-receipts-private.mjs](../scripts/check-owner-receipts-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/check-pacios-report-20261016.mjs](../scripts/check-pacios-report-20261016.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | No flag detected; read source before running |
 | [scripts/check-pending-receipts.mjs](../scripts/check-pending-receipts.mjs) | `node:fs`, `@next/env`, `googleapis`, `postgres` | No flag detected; read source before running |

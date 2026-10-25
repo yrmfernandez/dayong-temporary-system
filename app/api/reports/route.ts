@@ -14,9 +14,10 @@ export async function GET(request: Request) {
   try {
     const query = new URL(request.url).searchParams;
     // Report Review shows only what Entry Clerks encoded, and its encoder filter lists only Entry Clerks.
-    const clerks = query.get("scope") === "entry-clerks" ? (await getEmployees()).filter((employee) => employee.roles.some((role) => role.trim().toLowerCase() === "entry clerk")).map((employee) => employee.name).sort() : null;
-    const built = await buildOperationalReport(query.get("from") ?? "", query.get("to") ?? "", { branch: query.get("branch") ?? "", programId: query.get("program") ?? "", person: query.get("person") ?? "", encoder: query.get("encoder") ?? "", ...(clerks ? { encoders: clerks } : {}) });
-    const report = clerks ? { ...built, options: { ...built.options, encoders: clerks } } : built;
+    // Entry Clerks are matched by Employee ID (upgrade #8): a clerk sharing a name with someone else is not mixed in.
+    const clerks = query.get("scope") === "entry-clerks" ? (await getEmployees()).filter((employee) => employee.roles.some((role) => role.trim().toLowerCase() === "entry clerk")) : null;
+    const built = await buildOperationalReport(query.get("from") ?? "", query.get("to") ?? "", { branch: query.get("branch") ?? "", programId: query.get("program") ?? "", person: query.get("person") ?? "", encoder: query.get("encoder") ?? "", ...(clerks ? { encoderIds: clerks.map((clerk) => clerk.id) } : {}) });
+    const report = clerks ? { ...built, options: { ...built.options, encoders: [...new Set(clerks.map((clerk) => clerk.name))].sort() } } : built;
     const remarks = await getReportRemarks(report.from, report.to);
     return Response.json({ success: true, report: { ...report, remarks, generatedBy: user.name } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to generate report." }, { status: 400 }); }

@@ -13,6 +13,7 @@ import { PROGRAMS_RANGE } from "@/lib/sheet-ranges";
 import { countSheetRows, readSheetRows } from "@/lib/sheets-on-db";
 import { sql } from "drizzle-orm";
 import { manilaDateOf } from "@/lib/manila-date";
+import { accountableScope, masScope, type Person } from "@/lib/person-scope";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const date = (value: unknown) => text(value).slice(0, 10);
@@ -28,10 +29,10 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const from = `${today.slice(0, 7)}-01`;
   const needsSales = ["admin", "entry", "mas", "collector"].includes(kind);
   // Large sheets use the shared ranges (lib/sheet-ranges.ts), so the report, remittances and today's counts below reuse
-  // this read instead of fetching Collections again. Member programs is only needed for the MAS portfolio.
+  // this read instead of fetching Collections again. The MAS portfolio is read on its own, by Employee ID.
   // Sales, Collections and Members are not read whole: recent activity takes the newest rows in the user's scope, and
   // the member count and portfolio names come from the database directly (below).
-  const ranges = ["'Employees'!A:M", ...(kind === "admin" ? [USERS_RANGE, "'Branches'!A:Q"] : []), ...(needsSales ? [PROGRAMS_RANGE] : []), ...(kind === "mas" ? ["'Member programs'!A:S"] : [])];
+  const ranges = ["'Employees'!A:M", ...(kind === "admin" ? [USERS_RANGE, "'Branches'!A:Q"] : []), ...(needsSales ? [PROGRAMS_RANGE] : [])];
   const unique = [...new Set(ranges)];
   const read = (list: string[]) => sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: list, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
   // Start everything that does not depend on who the user is at once, instead of one step after another.
@@ -44,24 +45,26 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   // MAS and Collector dashboards are scoped to the person, so their name comes first (a small, cached read).
   const employeeRows = (await read(["'Employees'!A:M"])).data.valueRanges?.[0]?.values ?? [];
   const personName = text(employeeRows.slice(1).find((row) => text(row[0]) === user.employeeId)?.[1]) || user.name;
-  const scope = kind === "mas" || kind === "collector" ? { person: personName } : {};
-  const reportRead = needsSales ? buildOperationalReport(from, today, scope) : Promise.resolve(null);
-  const entriesRead = needsSales ? todayModeRead.then((mode) => getEntriesForDay(today, mode, "person" in scope ? scope.person : "")) : Promise.resolve(null);
-  const [response, todayMode, monthReport, remittance, todayEntries] = await Promise.all([mainRead, todayModeRead, reportRead, remittanceRead, entriesRead]);
+  // A MAS's or Collector's own records are picked by Employee ID, with the name only for records without a link
+  // (upgrade #8, lib/person-scope.ts): someone else with the same name is not counted as them.
+  const person: Person | null = kind === "mas" || kind === "collector" ? { employeeId: user.employeeId, name: personName } : null;
+  const reportRead = needsSales ? buildOperationalReport(from, today, person ? { person: person.name, personId: person.employeeId } : {}) : Promise.resolve(null);
+  const entriesRead = needsSales ? todayModeRead.then((mode) => getEntriesForDay(today, mode, person)) : Promise.resolve(null);
+  const portfolioRead = kind === "mas" && person ? readSheetRows("Member programs", masScope(person)) : Promise.resolve([[]]);
+  portfolioRead.catch(() => undefined);
+  const [response, todayMode, monthReport, remittance, todayEntries, enrollments] = await Promise.all([mainRead, todayModeRead, reportRead, remittanceRead, entriesRead, portfolioRead]);
   const byRange = new Map(unique.map((range, index) => [range, response.data.valueRanges?.[index]?.values ?? []]));
   const sheet = (range: string) => byRange.get(range) ?? [];
-  const employees = sheet("'Employees'!A:M"), programs = sheet(PROGRAMS_RANGE), enrollments = sheet("'Member programs'!A:S");
+  const employees = sheet("'Employees'!A:M"), programs = sheet(PROGRAMS_RANGE);
   // Recent activity: the newest sales and collections in this user's scope.
-  const lowerName = personName.toLowerCase();
-  const salesScope = kind === "entry" ? sql`encoded_by_employee_id = ${user.employeeId}` : kind === "mas" || kind === "collector" ? sql`lower(trim(mas)) = ${lowerName}` : sql`true`;
-  const collectionsScope = kind === "entry" ? sql`encoded_by_employee_id = ${user.employeeId}` : kind === "mas" || kind === "collector" ? sql`lower(trim(coalesce(nullif(trim(accountable_name), ''), mas))) = ${lowerName}` : sql`true`;
+  const salesScope = kind === "entry" ? sql`encoded_by_employee_id = ${user.employeeId}` : person ? masScope(person) : sql`true`;
+  const collectionsScope = kind === "entry" ? sql`encoded_by_employee_id = ${user.employeeId}` : person ? accountableScope(person) : sql`true`;
   const [sales, collections, memberCount] = needsSales
     ? await Promise.all([readSheetRows("Sales", salesScope, { latest: 40 }), readSheetRows("Collections", collectionsScope, { latest: 40 }), kind === "admin" ? countSheetRows("Members") : Promise.resolve(0)])
     : [[[]], [[]], kind === "admin" ? await countSheetRows("Members") : 0];
 
   const employee = employees.slice(1).find((row) => text(row[0]) === user.employeeId);
   const employeeName = text(employee?.[1]) || user.name;
-  const own = (value: unknown) => text(value).toLowerCase() === employeeName.toLowerCase();
   const activeEmployees = employees.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() === "active");
   const hasRole = (row: unknown[], role: string) => text(row[3]).toLowerCase().split(",").map((item) => item.trim()).includes(role);
   const branchStats = [...new Set(activeEmployees.map((row) => text(row[2])).filter(Boolean))].sort().map((branch) => { const staff = activeEmployees.filter((row) => text(row[2]) === branch); return { branch, employees: staff.length, mas: staff.filter((row) => hasRole(row, "mas")).length, collectors: staff.filter((row) => hasRole(row, "collector")).length }; });
@@ -72,7 +75,7 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const todayActivity = { salesAccounts: todayEntries?.sales.count ?? 0, salesGross: todayEntries?.sales.amount ?? 0, collectionAccounts: todayEntries?.collections.count ?? 0, collectionGross: todayEntries?.collections.amount ?? 0, basis: TODAY_MODE_LABELS[todayMode] };
 
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
-  const portfolioRows = kind === "mas" ? enrollments.slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active" && own(row[6])) : [];
+  const portfolioRows = kind === "mas" ? enrollments.slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active") : [];
   // Names only for the members in this MAS's portfolio.
   const portfolioIds = [...new Set(portfolioRows.map((row) => text(row[1])).filter(Boolean))];
   const members = portfolioIds.length ? await readSheetRows("Members", sql`member_id in (${sql.join(portfolioIds.map((id) => sql`${id}`), sql`, `)})`) : [[]];
@@ -86,7 +89,7 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const activity = !needsSales ? [] : [
     ...sales.slice(1).filter((row) => text(row[0])).map((row) => ({ id: text(row[0]), stamp: text(row[34]) || text(row[1]), name: `${text(row[7])} ${text(row[6])}`.trim(), program: programNames.get(text(row[21])) || text(row[21]), type: "New Sale", amount: Number(row[26]) || 0, status: "Saved", encoder: text(row[32]), person: text(row[3]) })),
     ...collections.slice(1).filter((row) => text(row[0])).map((row) => ({ id: text(row[0]), stamp: text(row[24]) || text(row[9]), name: text(row[4]), program: programNames.get(text(row[5])) || text(row[5]), type: "Collection", amount: Number(row[10]) || 0, status: text(row[28]) || text(row[19]), encoder: text(row[22]), person: text(row[31]) || text(row[7]) })),
-  ].filter((row) => kind === "entry" ? row.encoder === user.employeeId : kind === "mas" || kind === "collector" ? own(row.person) : true)
+  ].filter((row) => kind === "entry" ? row.encoder === user.employeeId : true)
     .sort((a, b) => b.stamp.localeCompare(a.stamp));
   const recent = activity.slice(0, 8);
 

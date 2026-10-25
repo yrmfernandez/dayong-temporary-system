@@ -4,6 +4,7 @@ import { readSheetRows } from "@/lib/sheets-on-db";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { PROGRAMS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
 import { manilaDateOf } from "@/lib/manila-date";
+import { accountableScope, masScope, type Person } from "@/lib/person-scope";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
@@ -31,34 +32,39 @@ function aggregate(lines: ReportLine[], key: (line: ReportLine) => string) {
   return [...groups.values()].map((line) => Object.fromEntries(Object.entries(line).map(([key, value]) => [key, typeof value === "number" ? round(value) : value])) as ReportLine);
 }
 
-export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; encoder?: string; encoders?: string[] } = {}) {
+export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; personId?: string; encoder?: string; encoderIds?: string[] } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error("Choose a valid report date range.");
+  const person: Person | null = filters.personId ? { employeeId: filters.personId, name: filters.person ?? "" } : null;
   // Sales lines are dated by date_created and collection lines by OR date, so the database returns only those in the
   // range (a day of margin for the Manila day on date_created); the exact range check below still decides.
   const [sales, collections, response] = await Promise.all([
-    readSheetRows("Sales", sql`(date_created)::date between (${from}::date - 1) and (${to}::date + 1)`),
-    readSheetRows("Collections", sql`or_date between ${from}::date and ${to}::date`),
+    // One person's report (MAS and Collector dashboards) is picked by Employee ID (upgrade #8; lib/person-scope.ts).
+    readSheetRows("Sales", sql`(date_created)::date between (${from}::date - 1) and (${to}::date + 1)${person ? sql` and ${masScope(person)}` : sql``}`),
+    readSheetRows("Collections", sql`or_date between ${from}::date and ${to}::date${person ? sql` and ${accountableScope(person)}` : sql``}`),
     sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [PROGRAMS_RANGE, REMITTANCES_RANGE, "'Expenses'!A:Q", "'Cash Transactions'!A:P", REMITTANCE_LINKS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
   ]);
   const [programs, remittances, expenses, cash, remittanceCollections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const inRange = (date: string) => date >= from && date <= to;
-  const matches = (branch: string, programId: string, person: string, encoder: string) => (!filters.branch || branch === filters.branch) && (!filters.programId || programId === filters.programId) && (!filters.person || person === filters.person) && (!filters.encoder || encoder === filters.encoder) && (!filters.encoders || filters.encoders.includes(encoder));
+  // Report Review's clerks are matched by Employee ID (encoderIds); the encoder filter picked by name stays by name.
+  const matches = (branch: string, programId: string, name: string, encoder: string, encoderId: string) => (!filters.branch || branch === filters.branch) && (!filters.programId || programId === filters.programId) && (person || !filters.person || name === filters.person) && (!filters.encoder || encoder === filters.encoder) && (!filters.encoderIds || filters.encoderIds.includes(encoderId));
   const approvedFidelity=new Map(remittances.slice(1).filter(row=>text(row[4])==="Approved"&&number(row[24])>0).map(row=>[text(row[0]),number(row[24])]));
   const fidelityByCollection=new Map<string,number>(),assigned=new Set<string>();
   for(const row of remittanceCollections.slice(1)){const remittanceId=text(row[1]);if(!assigned.has(remittanceId)&&approvedFidelity.has(remittanceId)){fidelityByCollection.set(text(row[2]),approvedFidelity.get(remittanceId)??0);assigned.add(remittanceId)}}
-  const salesLines: ReportLine[] = sales.slice(1).filter((row) => text(row[0])).map((row) => {
+  const salesRows = sales.slice(1).filter((row) => text(row[0])), salesEncoderIds = salesRows.map((row) => text(row[32]));
+  const salesLines: ReportLine[] = salesRows.map((row) => {
     const date = manilaDateOf(text(row[1])), branch = text(row[2]), person = text(row[3]), programId = text(row[21]), gross = number(row[26]), penalty = number(row[38]);
     // AP is the company's share after the MAS's New Sale incentive; blank on sales saved before incentives existed.
     const remittance = text(row[41]) === "" ? gross : number(row[41]), incentives = Math.max(0, round(gross - remittance));
     const fidelityAmount = fidelityByCollection.get(text(row[0])) ?? 0, net = remittance;
     return { date, branch, programId, programName: programNames.get(programId) || programId, person, role: "MAS", encodedBy: text(row[33]), accounts: 1, gross, masCommission: incentives, collectorCommission: 0, incentives, fidelity: fidelityAmount, penalty, net, expectedRemittance: net };
-  }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
-  const collectionLines: ReportLine[] = collections.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted").map((row) => {
+  }).filter((line, index) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy, salesEncoderIds[index]));
+  const collectionRows = collections.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted"), collectionEncoderIds = collectionRows.map((row) => text(row[22]));
+  const collectionLines: ReportLine[] = collectionRows.map((row) => {
     const date = text(row[9]).slice(0, 10), branch = text(row[6]), programId = text(row[5]), person = text(row[31]) || text(row[7]), role = text(row[25]) || text(row[32]) || "MAS", gross = number(row[10]), expected = number(row[26]) || gross;
     const incentives = Math.max(0, round(gross - expected)), fidelityAmount=fidelityByCollection.get(text(row[0]))??0, penalty=number(row[35]), net=expected;
     return { date, branch, programId, programName: programNames.get(programId) || programId, person, role, encodedBy: text(row[23]), accounts: 1, gross, masCommission: role.toLowerCase() === "collector" ? 0 : incentives, collectorCommission: role.toLowerCase() === "collector" ? incentives : 0, incentives, fidelity: fidelityAmount, penalty, net, expectedRemittance: net };
-  }).filter((line) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy));
+  }).filter((line, index) => inRange(line.date) && matches(line.branch, line.programId, line.person, line.encodedBy, collectionEncoderIds[index]));
   const postedExpenses = expenses.slice(1).filter((row) => text(row[0]) && text(row[11]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[7]) === filters.branch)).reduce((sum, row) => sum + number(row[4]), 0);
   // Fidelity is the employee's own savings: remittances recorded under that rule include it in the cash received, so it is
   // taken back out here to compare like with like (older remittances never included it).

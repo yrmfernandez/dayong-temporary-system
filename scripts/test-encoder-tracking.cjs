@@ -1726,6 +1726,32 @@ test('MAM future columns are projections and do not include future receipt data'
   assert.equal(report.rows[0].periods[1].state.nop, 1, 'only the New Sale (NOP 1) counts; the future receipt does not');
 });
 
+test('one person report is picked by Employee ID: a namesake is left out, an old record with only the name stays (upgrade #8)', async () => {
+  const h = harness();
+  await seedAccount({ programName: 'Program One', basePay: 350, doi: '2026-06-15', branch: 'MATINA', mas: 'Racho, Kristine', accountStatus: 'U' });
+  // One name, two employees (production: an old LEG- ID and a new one).
+  await seed('employees', [{ employee_id: 'MD-1', full_name: 'Racho, Kristine' }, { employee_id: 'LEG-1', full_name: 'Racho, Kristine' }]);
+  await seed('sales', [
+    { sale_id: 'S-MINE', date_created: '2026-09-10T02:00:00Z', branch: 'MATINA', mas: 'Racho, Kristine', mas_employee_id: 'MD-1', program_id: 'DP-1', amount_paid: 350, member_number: 'PH-1' },
+    { sale_id: 'S-NAMESAKE', date_created: '2026-09-10T02:00:00Z', branch: 'MATINA', mas: 'Racho, Kristine', mas_employee_id: 'LEG-1', program_id: 'DP-1', amount_paid: 500, member_number: 'PH-2' },
+    // Old data: the name matched nobody when it was saved, so it has no link; it still counts by its name.
+    { sale_id: 'S-OLD', date_created: '2026-09-10T02:00:00Z', branch: 'MATINA', mas: ' racho,  kristine ', program_id: 'DP-1', amount_paid: 200, member_number: 'PH-3' },
+  ]);
+  await query("update sales set mas_employee_id = null where sale_id = 'S-OLD'");
+  await seed('collections', [
+    { collection_id: 'C-MINE', collection_batch_id: 'B', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'MATINA', mas: 'Racho, Kristine', mas_employee_id: 'MD-1', accountable_employee_id: 'MD-1', accountable_name: 'Racho, Kristine', or_date: '2026-09-10', amount_collected: 350, status: 'Posted' },
+    { collection_id: 'C-NAMESAKE', collection_batch_id: 'B', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'MATINA', mas: 'Racho, Kristine', mas_employee_id: 'LEG-1', accountable_employee_id: 'LEG-1', accountable_name: 'Racho, Kristine', or_date: '2026-09-10', amount_collected: 900, status: 'Posted' },
+  ]);
+  const { buildOperationalReport } = h.load('lib/reports.ts');
+  const mine = await buildOperationalReport('2026-09-01', '2026-09-30', { person: 'Racho, Kristine', personId: 'MD-1' });
+  assert.equal(mine.summary.gross, 350 + 200 + 350, 'own sale, the old unlinked sale and own collection; not the namesake one');
+  const theirs = await buildOperationalReport('2026-09-01', '2026-09-30', { person: 'Racho, Kristine', personId: 'LEG-1' });
+  assert.equal(theirs.summary.gross, 500 + 200 + 900);
+  const { getEntriesForRange } = h.load('lib/todays-entries.ts');
+  const entries = await getEntriesForRange('2026-09-10', '2026-09-10', 'or', { person: { employeeId: 'MD-1', name: 'Racho, Kristine' } });
+  assert.deepEqual(entries.entries.map((entry) => entry.id).sort(), ['C-MINE', 'S-MINE', 'S-OLD']);
+});
+
 test('a sale saved just after midnight in Manila is in the Manila day of the Company report (upgrade #7)', async () => {
   const h = harness();
   // 00:30 on October 1 in Manila is 16:30 on September 30 in UTC.
