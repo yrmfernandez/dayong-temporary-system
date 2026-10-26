@@ -18,6 +18,9 @@
  * re-linked by the "relink" list in the same file, confirmed by the owner: { "relink": { "Amora, N.": "MD-2026-0040" } }
  * gives every unlinked record written "Amora, N." that employee's current name, and the database links it.
  *
+ * Relinks also set the link column itself. Collections whose collector (accountable) name is exactly one employee's
+ * are linked to that employee (nothing fills accountable_employee_id from the name).
+ *
  * Then, for everyone: a record linked to an employee but still showing an older name (renamed in Employees before
  * October 7, 2026; since migration 0012 a rename reaches every record) gets the employee's current name, and MAS names
  * that match no employee are listed. Prints employee names and counts only.
@@ -104,7 +107,8 @@ try {
       if (!employee) { console.log(`  relink ${written} → ${employeeId}: no such employee, skipped`); continue; }
       const changed = [];
       for (const [table, name, link] of LINKED_NAMES) {
-        const rows = await tx`update ${tx(table)} set ${tx(name)} = ${employee.full_name} where ${tx(link)} is null and lower(trim(${tx(name)})) = lower(trim(${written})) returning 1`;
+        // The link is set too (October 26, 2026): collections.accountable_employee_id has no trigger to fill it from the name.
+        const rows = await tx`update ${tx(table)} set ${tx({ [name]: employee.full_name, [link]: employee.employee_id })} where ${tx(link)} is null and lower(trim(${tx(name)})) = lower(trim(${written})) returning 1`;
         if (rows.length) changed.push(`${table}.${name} ${rows.length}`);
       }
       const extra = await tx`update collections set original_mas = ${employee.full_name} where lower(trim(original_mas)) = lower(trim(${written})) returning 1`;
@@ -119,6 +123,15 @@ try {
       if (rows.length) synced.push(`${table}.${name} ${rows.length}`);
     }
     console.log(`Records showing an older employee name, corrected: ${synced.join(", ") || "none"}`);
+    // Collectors on old collections (October 26, 2026): the name was corrected but no trigger fills
+    // accountable_employee_id. Link it where the name is exactly one employee's; shared or unknown names stay as written.
+    const collectors = await tx`update collections c set accountable_employee_id = e.employee_id from employees e
+      where c.accountable_employee_id is null and trim(coalesce(c.accountable_name, '')) <> '' and lower(trim(e.full_name)) = lower(trim(c.accountable_name))
+        and (select count(*) from employees e2 where lower(trim(e2.full_name)) = lower(trim(c.accountable_name))) = 1 returning 1`;
+    console.log(`Collections whose collector name is one employee, now linked to that employee: ${collectors.length}`);
+    const unlinked = await tx`select trim(accountable_name) as name, count(*)::int as n from collections where accountable_employee_id is null
+      and trim(coalesce(accountable_name, '')) <> '' group by 1 order by 2 desc limit 10`;
+    console.log(`Collector names still without a link: ${unlinked.map((o) => `${o.name} (${o.n})`).join("; ") || "none"}`);
     const orphans = await tx`select mas, count(*)::int as n from member_programs where mas_employee_id is null and coalesce(trim(mas), '') <> '' group by mas order by 2 desc`;
     console.log(`Accounts whose MAS name matches no employee: ${orphans.map((o) => `${o.mas} (${o.n})`).join("; ") || "none"}`);
   };

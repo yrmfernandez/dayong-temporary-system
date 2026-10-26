@@ -19,10 +19,14 @@ export function masScope(person: Person) {
 }
 
 /**
- * Collections: the person accountable for the cash (the collector or DTO clerk when recorded, else the MAS), as the
- * reports show it.
+ * Collections: the person accountable for the cash, as the reports show it: the collector or DTO clerk when recorded
+ * (accountable_employee_id, else the accountable name), otherwise the MAS. Old collections can name a collector with
+ * no link (production: 822 written "Degamo, N."); those belong to that collector by name, never to the MAS.
  */
 export function accountableScope(person: Person) {
-  return sql`(coalesce(accountable_employee_id, mas_employee_id) = ${person.employeeId}
-    or (accountable_employee_id is null and mas_employee_id is null and ${nameKey(sql`coalesce(nullif(trim(accountable_name), ''), mas)`)} = ${key(person.name)}))`;
+  const name = key(person.name);
+  return sql`(case
+    when accountable_employee_id is not null then accountable_employee_id = ${person.employeeId}
+    when trim(coalesce(accountable_name, '')) <> '' and ${nameKey(sql`accountable_name`)} <> ${nameKey(sql`coalesce(mas, '')`)} then ${nameKey(sql`accountable_name`)} = ${name}
+    else (mas_employee_id = ${person.employeeId} or (mas_employee_id is null and ${nameKey(sql`coalesce(nullif(trim(accountable_name), ''), mas)`)} = ${name})) end)`;
 }

@@ -42,6 +42,14 @@ try {
     let mas = { n: 0 };
     if (masCol) [mas] = await sql`select count(*)::int as n from ${sql(table)} where trim(coalesce(${sql(masCol)}, '')) <> '' and ${sql(masLink)} is null`;
     if (masCol) line += ` · MAS name without link ${mas.n}`;
+    if (table === "collections") {
+      // Who collected the cash on old collections: a collector name with no link counts by name (lib/person-scope.ts).
+      const [collector] = await sql`select count(*)::int as n from collections where accountable_employee_id is null and trim(coalesce(accountable_name, '')) <> ''
+        and lower(trim(accountable_name)) <> lower(trim(coalesce(mas, '')))`;
+      line += ` · collector name without link ${collector.n}`;
+      if (collector.n) for (const row of await sql`select trim(accountable_name) as name, count(*)::int as n from collections where accountable_employee_id is null
+          and trim(coalesce(accountable_name, '')) <> '' and lower(trim(accountable_name)) <> lower(trim(coalesce(mas, ''))) group by 1 order by 2 desc limit 8`) console.log(`    collector "${row.name}": ${row.n}`);
+    }
     console.log(line);
     if (branch.n) for (const row of await sql`select trim(${sql(branchCol)}) as name, count(*)::int as n from ${sql(table)} where trim(coalesce(${sql(branchCol)}, '')) <> '' and ${sql(branchLink)} is null group by 1 order by 2 desc limit 8`) console.log(`    branch "${row.name}": ${row.n}`);
     if (mas.n) for (const row of await sql`select trim(${sql(masCol)}) as name, count(*)::int as n from ${sql(table)} where trim(coalesce(${sql(masCol)}, '')) <> '' and ${sql(masLink)} is null group by 1 order by 2 desc limit 8`) console.log(`    MAS "${row.name}": ${row.n}`);

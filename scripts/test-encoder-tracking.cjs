@@ -1740,6 +1740,8 @@ test('one person report is picked by Employee ID: a namesake is left out, an old
   await query("update sales set mas_employee_id = null where sale_id = 'S-OLD'");
   await seed('collections', [
     { collection_id: 'C-MINE', collection_batch_id: 'B', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'MATINA', mas: 'Racho, Kristine', mas_employee_id: 'MD-1', accountable_employee_id: 'MD-1', accountable_name: 'Racho, Kristine', or_date: '2026-09-10', amount_collected: 350, status: 'Posted' },
+    // An old collection naming a collector with no link (production: Degamo, N.): the collector's by name, not the MAS's.
+    { collection_id: 'C-COLLECTOR', collection_batch_id: 'B', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'MATINA', mas: 'Racho, Kristine', mas_employee_id: 'MD-1', accountable_name: 'Degamo, N.', or_date: '2026-09-10', amount_collected: 70, status: 'Posted' },
     { collection_id: 'C-NAMESAKE', collection_batch_id: 'B', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'MATINA', mas: 'Racho, Kristine', mas_employee_id: 'LEG-1', accountable_employee_id: 'LEG-1', accountable_name: 'Racho, Kristine', or_date: '2026-09-10', amount_collected: 900, status: 'Posted' },
   ]);
   const { buildOperationalReport } = h.load('lib/reports.ts');
@@ -1750,6 +1752,8 @@ test('one person report is picked by Employee ID: a namesake is left out, an old
   const { getEntriesForRange } = h.load('lib/todays-entries.ts');
   const entries = await getEntriesForRange('2026-09-10', '2026-09-10', 'or', { person: { employeeId: 'MD-1', name: 'Racho, Kristine' } });
   assert.deepEqual(entries.entries.map((entry) => entry.id).sort(), ['C-MINE', 'S-MINE', 'S-OLD']);
+  const collector = await buildOperationalReport('2026-09-01', '2026-09-30', { person: 'Degamo, N.', personId: 'MD-9' });
+  assert.equal(collector.summary.gross, 70, 'the unlinked collector keeps their collection');
 });
 
 test('a sale saved just after midnight in Manila is in the Manila day of the Company report (upgrade #7)', async () => {
