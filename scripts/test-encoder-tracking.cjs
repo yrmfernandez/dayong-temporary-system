@@ -4225,3 +4225,25 @@ test('two approvers deciding the same slip at once: one decision is saved, the o
   const [item] = await query("select remittance_status from collections where collection_id = 'COL-D'");
   assert.ok((state.status === 'Approved' && item.remittance_status === 'Remitted') || (state.status === 'Rejected' && item.remittance_status === 'Returned'), 'the slip and its entry agree');
 });
+
+test('IT turns the maintenance notice on for everyone and off again; others cannot change it', async () => {
+  const h = harness({ userId: 'U2', employeeId: 'DPE-0002', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  const route = h.load('app/api/maintenance-notice/route.ts');
+  const { getMaintenanceNotice, DEFAULT_MAINTENANCE_MESSAGE } = h.load('lib/maintenance-notice.ts');
+  assert.equal((await route.POST(request({ on: true }))).status, 403, 'an Entry Clerk cannot turn it on');
+  assert.equal((await getMaintenanceNotice()).on, false);
+  h.setUser({ userId: 'U9', employeeId: 'DPE-0009', name: 'IT Person', roleNames: ['IT'], permissions: {} });
+  const on = await route.POST(request({ on: true, message: '' }));
+  assert.equal(on.status, 200);
+  const notice = await getMaintenanceNotice();
+  assert.equal(notice.on, true);
+  assert.equal(notice.message, DEFAULT_MAINTENANCE_MESSAGE, 'a blank message uses the default');
+  assert.equal(notice.by, 'IT Person');
+  assert.equal((await route.POST(request({ on: true, message: 'x'.repeat(301) }))).status, 400, 'too long');
+  h.setUser({ userId: 'U2', employeeId: 'DPE-0002', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  const seen = await (await route.GET()).json();
+  assert.equal(seen.notice.on, true, 'every signed-in user receives it');
+  h.setUser({ userId: 'U9', employeeId: 'DPE-0009', name: 'IT Person', roleNames: ['IT'], permissions: {} });
+  await route.POST(request({ on: false }));
+  assert.equal((await getMaintenanceNotice()).on, false);
+});

@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, CheckCircle2, Database, Gauge, Layers, UserCog
 import { StatusBadge, type Tone } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SystemHealth } from "@/lib/system-health";
+import { MaintenanceNoticePanel } from "@/components/maintenance-notice-panel";
 import { NightlyJobsPanel } from "@/components/nightly-jobs-panel";
 
 const count = (value: number) => value.toLocaleString("en-PH");
@@ -27,6 +28,7 @@ export function SystemHealthDashboard({ data, employeeName }: { data: SystemHeal
       <Tile label="Active accounts" value={`${count(data.accounts.active)} / ${count(data.accounts.total)}`} note={`${count(data.accounts.activeEmployees)} active employees · ${count(data.issues.filter((issue) => issue.href).reduce((sum, issue) => sum + issue.items.length, 0))} access issues`} icon={UserCog} tone="info" href="/user-accounts" />
           </div>
 
+    <MaintenanceNoticePanel notice={data.maintenance} />
     <NightlyJobsPanel run={data.nightly.run} scheduled={data.nightly.scheduled} checkedAt={data.checkedAt} />
 
     <Panel title="Schema, Access & Data Integrity" subtitle="Database columns checked against the code; accounts, roles and employees checked against each other">

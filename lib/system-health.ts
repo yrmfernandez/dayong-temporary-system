@@ -6,6 +6,7 @@ import { getDb, schema } from "@/lib/db";
 import { GOOGLE_SHEET_ID, sheets, sheetsStats } from "@/lib/google-sheets";
 import { readUserRows, USERS_RANGE } from "@/lib/users-sheet";
 import { readServerVariable } from "@/lib/server-environment";
+import { getMaintenanceNotice } from "@/lib/maintenance-notice";
 import { lastNightlyRun } from "@/lib/nightly-jobs";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -29,7 +30,7 @@ export async function getSystemHealth() {
   // Round trip of one tiny query, so the figure reflects the database now.
   const probe = async () => { const started = Date.now(); await db.execute(sql`select 1`); return Date.now() - started; };
   const latencyMs = await probe();
-  const [sizeRows, tableRows, columnRows, migrationRows, unlinkedRows, connectionRows, auditRows, response, nightly] = await Promise.all([
+  const [sizeRows, tableRows, columnRows, migrationRows, unlinkedRows, connectionRows, auditRows, response, nightly, maintenance] = await Promise.all([
     db.execute(sql`select pg_database_size(current_database())::bigint as bytes`),
     db.execute(sql`select c.relname as name, pg_total_relation_size(c.oid)::bigint as bytes, greatest(coalesce(s.n_live_tup, 0), c.reltuples::bigint, 0)::bigint as rows
       from pg_class c join pg_namespace n on n.oid = c.relnamespace left join pg_stat_user_tables s on s.relid = c.oid
@@ -55,6 +56,7 @@ export async function getSystemHealth() {
     sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [USERS_RANGE, "Roles!A:L", "'User Roles'!A:B", "Employees!A:E"], valueRenderOption: "UNFORMATTED_VALUE" }),
     // The last nightly run (lib/nightly-jobs.ts).
     lastNightlyRun(),
+    getMaintenanceNotice(),
   ]);
   const [userRows, roleRows, linkRows, employeeRows] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
 
@@ -133,6 +135,7 @@ export async function getSystemHealth() {
     audit: auditRows.map((row) => ({ at: text(row.at), action: text(row.action), table: text(row.table), recordId: text(row.recordId), by: text(row.userName) || text(row.userId) })),
     config, runtime: { ...sheetsStats(), uptimeMinutes: Math.round(process.uptime() / 60) },
     nightly: { run: nightly, scheduled: Boolean(process.env.CRON_SECRET?.trim()) },
+    maintenance,
   };
 }
 export type SystemHealth = Awaited<ReturnType<typeof getSystemHealth>>;

@@ -17,6 +17,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do (next) |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
 
+### Maintenance notice for everyone (2026-10-26)
+
+- **Owner:** a button for IT that shows every user a notice like the Notice to Explain one, "Your cute IT is doing...", so slowness, bugs or errors during an update or database adjustment are expected.
+- **Done:** System Health → **Maintenance Notice** panel (IT and administrators): message (default "Your cute IT is updating the system right now..."), Turn on for everyone, Update notice, Turn off; shows who turned it on and when. Stored as one System Setting (`maintenance_notice`, `lib/maintenance-notice.ts`); route `/api/maintenance-notice` (GET any signed-in user, POST IT/admin). Delivered with the sidebar numbers (`/api/notifications`), so it reaches every open page within seconds via live updates on `system_settings`, and on each page change or 2-minute refresh otherwise; shown in a blue box at the top of every page (`components/app-shell.tsx`). Test: an Entry Clerk cannot change it; IT turns it on (blank message uses the default), every user receives it, IT turns it off. All 246 tests and the build pass. No migration.
+- **In progress:** none. **To do:** owner applies the relinks (merge-employees.mjs dry run, then --apply); #9 money-rule tests next.
+
 ### Upgrade #8: people picked by Employee ID (2026-10-24)
 
 - **Owner:** #8.

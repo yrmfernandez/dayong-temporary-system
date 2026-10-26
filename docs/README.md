@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 26, 2026: maintenance notice.** IT can turn on a notice from System Health that every signed-in user sees at the top of every page while the system is being updated, and turn it off when done. See the [system guide](system-guide.md) (IT System Health).
+
 **October 24, 2026: people picked by Employee ID.** A MAS's or Collector's own dashboard and Report Review's Entry Clerks pick records by Employee ID, so two employees with the same name no longer share each other's numbers; old records whose name matches no employee still count by name (upgrade #8). See the [system guide](system-guide.md) (implementation limits, item 8).
 
 **October 24, 2026: one time zone.** Every report and on-screen date is the Manila date; a sale saved just after midnight in Manila is no longer counted on the day before in the Company report (upgrade #7). See the [system guide](system-guide.md) (implementation limits, item 7).

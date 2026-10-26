@@ -1,6 +1,6 @@
 "use client";
 
-import { FileWarning } from "lucide-react";
+import { FileWarning, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -11,6 +11,7 @@ import { Topbar } from "@/components/topbar";
 import { executiveRoles, type AccessContext } from "@/lib/access-control";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { installFriendlyApiErrors } from "@/lib/friendly-api-errors";
+import type { MaintenanceNotice } from "@/lib/maintenance-notice-text";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 // Plain-text server failures read as a clear message on every page, not "Unexpected token" (lib/friendly-api-errors.ts).
@@ -32,19 +33,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   // Sidebar numbers: page → how many things wait for this user there (lib/notifications.ts).
   const [counts, setCounts] = useState<Record<string, number>>({});
+  // The maintenance notice IT turned on (lib/maintenance-notice.ts), delivered with the numbers.
+  const [maintenance, setMaintenance] = useState<MaintenanceNotice | null>(null);
   const loadCounts = useCallback(async () => {
     if (isLoginPath()) return;
     try {
       const response = await fetch("/api/notifications", { cache: "no-store" });
       const result = await response.json();
-      if (response.ok && result.success) setCounts(result.counts ?? {});
+      if (response.ok && result.success) { setCounts(result.counts ?? {}); setMaintenance(result.maintenance?.on ? result.maintenance : null); }
     } catch { /* the numbers are a convenience; the pages themselves are unaffected */ }
   }, []);
   // On sign-in and every page change, when the tables behind the numbers change, and every 2 minutes as a fallback.
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the numbers for the page just opened
   useEffect(() => { void loadCounts(); }, [loadCounts, pathname]);
   useEffect(() => { const timer = window.setInterval(() => { if (!document.hidden) void loadCounts(); }, 120000); return () => window.clearInterval(timer); }, [loadCounts]);
-  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "attendance", "receipt_photos", "clearings", "notices_to_explain"], loadCounts, 3000);
+  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "attendance", "receipt_photos", "clearings", "notices_to_explain", "system_settings"], loadCounts, 3000);
   // A page that just cleared something (e.g. My Notices) asks for the numbers at once.
   useEffect(() => { const refresh = () => void loadCounts(); window.addEventListener("notifications:refresh", refresh); return () => window.removeEventListener("notifications:refresh", refresh); }, [loadCounts]);
   // True while the dashboard of a newly chosen workspace is loading, so the old one is not mistaken for it.
@@ -125,6 +128,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {switching && <div role="status" aria-live="polite" className="sticky top-0 z-30 h-1 w-full overflow-hidden bg-primary/15"><div className="h-full w-1/3 animate-[workspace-loading_1.1s_ease-in-out_infinite] bg-primary" /><span className="sr-only">Opening the {activeRole} dashboard</span></div>}
         <div className={`app-content mx-auto w-full max-w-[1920px] px-3 pb-8 pt-4 transition-opacity sm:px-4 md:px-6 md:pt-5 ${switching ? "pointer-events-none opacity-50" : ""}`} aria-busy={switching}>
           {switching && <p className="mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary">Opening the {activeRole} dashboard...</p>}
+          {maintenance && <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100"><Wrench className="mt-0.5 size-4 shrink-0" /><span>{maintenance.message}</span></div>}
           {(counts["/my-notices"] ?? 0) > 0 && pathname !== "/my-notices" && <Link href="/my-notices" role="alert" className="mb-4 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"><FileWarning className="size-4 shrink-0" />You have {counts["/my-notices"] === 1 ? "a Notice to Explain" : `${counts["/my-notices"]} Notices to Explain`} waiting for you. Open My Notices to read and answer.</Link>}
           {children}
         </div>

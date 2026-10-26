@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-44 page routes, 73 API handlers, 134 library files, 59 component files; 610 scanned source/configuration/public-text files in total.
+44 page routes, 74 API handlers, 136 library files, 60 component files; 614 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -97,6 +97,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/history` | GET, PATCH | [app/api/history/route.ts](../app/api/history/route.ts) |
 | `/api/leave-approvals` | GET, POST | [app/api/leave-approvals/route.ts](../app/api/leave-approvals/route.ts) |
 | `/api/leave-requests` | GET, POST | [app/api/leave-requests/route.ts](../app/api/leave-requests/route.ts) |
+| `/api/maintenance-notice` | GET, POST | [app/api/maintenance-notice/route.ts](../app/api/maintenance-notice/route.ts) |
 | `/api/mam/member` | GET | [app/api/mam/member/route.ts](../app/api/mam/member/route.ts) |
 | `/api/mam` | GET, POST | [app/api/mam/route.ts](../app/api/mam/route.ts) |
 | `/api/mas` | GET | [app/api/mas/route.ts](../app/api/mas/route.ts) |
@@ -204,6 +205,8 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/gross-sales.ts](../lib/gross-sales.ts) | `GrossSalesEntry`, `getGrossSalesEntries`, `GrossSalesBreakdown`, `filterGrossSales` | `@/lib/db` |
 | [lib/incentive-decision.ts](../lib/incentive-decision.ts) | `IncentiveDecision`, `INCENTIVE_DECISIONS`, `incentiveDecisions`, `decideIncentive` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/entry-edit`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/work-calendar` |
 | [lib/leave-data.ts](../lib/leave-data.ts) | `LeaveApprovalStatus`, `LeaveRequest`, `getLeaveRequestsForEmployee`, `addLeaveRequest`, `getAllLeaveRequests`, `updateLeaveRequestReview` | `@/lib/db` |
+| [lib/maintenance-notice-text.ts](../lib/maintenance-notice-text.ts) | `MaintenanceNotice`, `MAINTENANCE_MESSAGE_MAX`, `DEFAULT_MAINTENANCE_MESSAGE` | — |
+| [lib/maintenance-notice.ts](../lib/maintenance-notice.ts) | `DEFAULT_MAINTENANCE_MESSAGE`, `MAINTENANCE_MESSAGE_MAX`, `MaintenanceNotice`, `getMaintenanceNotice`, `setMaintenanceNotice` | `@/lib/maintenance-notice-text`, `@/lib/system-settings` |
 | [lib/mam-format.ts](../lib/mam-format.ts) | `paidInMonth` | — |
 | [lib/mam-report.ts](../lib/mam-report.ts) | `MamAccount`, `monitoringMonths`, `buildMamReport` | `@/lib/account-rules` |
 | [lib/manila-date.ts](../lib/manila-date.ts) | `manilaToday`, `manilaDateOf` | — |
@@ -260,7 +263,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/sheets-on-db.ts](../lib/sheets-on-db.ts) | `SHEET_TITLES`, `tableOf`, `isDatabaseSheet`, `countSheetRows`, `columnLetters`, `parseA1`, `sheetsOnDb`, `readSheetRows`, `readSheetRowsNumbered`, `appendSheetRows` | `@/lib/db` |
 | [lib/sheets-read-cache.ts](../lib/sheets-read-cache.ts) | `BUSY`, `SheetsReadCache`, `KeyedLock` | — |
 | [lib/statement-of-account.ts](../lib/statement-of-account.ts) | `listStatementAccounts`, `getStatementOfAccount`, `setCollectionHead`, `StatementOfAccount` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/system-settings`, `@/lib/manila-date` |
-| [lib/system-health.ts](../lib/system-health.ts) | `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/db/migrations/meta/_journal.json`, `@/lib/db`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment`, `@/lib/nightly-jobs` |
+| [lib/system-health.ts](../lib/system-health.ts) | `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/db/migrations/meta/_journal.json`, `@/lib/db`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment`, `@/lib/maintenance-notice`, `@/lib/nightly-jobs` |
 | [lib/system-settings.ts](../lib/system-settings.ts) | `isTodayMode`, `TODAY_MODE_LABELS`, `TODAY_MODES`, `TodayMode`, `getSetting`, `saveSetting`, `getTodayMode`, `setTodayMode` | `@/lib/db`, `@/lib/today-mode` |
 | [lib/theme.ts](../lib/theme.ts) | `ThemePreference`, `THEME_KEY`, `themeBootScript`, `readTheme`, `resolveTheme`, `applyTheme`, `setTheme`, `watchTheme` | — |
 | [lib/today-mode.ts](../lib/today-mode.ts) | `TODAY_MODES`, `TodayMode`, `TODAY_MODE_LABELS`, `isTodayMode` | — |
@@ -282,7 +285,7 @@ All routes pass through the authentication proxy except the three public auth en
 | --- | --- | --- |
 | [components/admin-delete.tsx](../components/admin-delete.tsx) | `AdminDeletePanel` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/admin-delete` |
 | [components/app-dialog.tsx](../components/app-dialog.tsx) | `confirmDialog`, `promptDialog`, `alertDialog`, `AppDialogHost` | `@/components/ui/button`, `@/components/ui/input` |
-| [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/clearing-day-end`, `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/friendly-api-errors`, `@/lib/use-live-refresh`, `@/lib/ui-preferences` |
+| [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/clearing-day-end`, `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/friendly-api-errors`, `@/lib/maintenance-notice-text`, `@/lib/use-live-refresh`, `@/lib/ui-preferences` |
 | [components/attendance-calendar.tsx](../components/attendance-calendar.tsx) | `AttendanceCalendar` | `@/components/app-dialog`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/philippine-holidays` |
 | [components/batch-editor.tsx](../components/batch-editor.tsx) | `BatchEditor` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/batch-edit`, `@/lib/entry-controls` |
 | [components/brand-logo.tsx](../components/brand-logo.tsx) | `BrandLogo` | — |
@@ -304,6 +307,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/gross-sales-drilldown.tsx](../components/gross-sales-drilldown.tsx) | `GrossSalesDrilldown` | `@/components/executive-charts`, `@/components/ui/input`, `@/lib/gross-sales` |
 | [components/inline-panel.tsx](../components/inline-panel.tsx) | `InlinePanel`, `InlineRow` | `@/lib/utils` |
 | [components/live-router-refresh.tsx](../components/live-router-refresh.tsx) | `LiveRouterRefresh` | `@/lib/use-live-refresh` |
+| [components/maintenance-notice-panel.tsx](../components/maintenance-notice-panel.tsx) | `MaintenanceNoticePanel` | `@/components/ui/button`, `@/components/ui/card`, `@/lib/maintenance-notice-text` |
 | [components/member-edit-form.tsx](../components/member-edit-form.tsx) | `MemberEditForm` | `@/components/ui/button`, `@/lib/api-response`, `@/lib/member-directory`, `@/lib/master-data-crud`, `@/lib/manila-date` |
 | [components/member-mam.tsx](../components/member-mam.tsx) | `MemberMam` | `@/components/status-badge`, `@/lib/mam-format` |
 | [components/metric-tile.tsx](../components/metric-tile.tsx) | `MetricTile` | `@/components/status-badge` |
@@ -325,7 +329,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/report-tabs.tsx](../components/report-tabs.tsx) | `ReportTabs` | `@/components/clerk-report` |
 | [components/sidebar.tsx](../components/sidebar.tsx) | `Sidebar`, `initials` | `@/components/app-shell`, `@/components/brand-logo`, `@/components/profile`, `@/lib/use-form-draft`, `@/components/theme-toggle`, `@/lib/navigation`, `@/lib/ui-preferences` |
 | [components/status-badge.tsx](../components/status-badge.tsx) | `Tone`, `toneForStatus`, `StatusBadge` | — |
-| [components/system-health-dashboard.tsx](../components/system-health-dashboard.tsx) | `SystemHealthDashboard` | `@/components/status-badge`, `@/components/ui/card`, `@/lib/system-health`, `@/components/nightly-jobs-panel` |
+| [components/system-health-dashboard.tsx](../components/system-health-dashboard.tsx) | `SystemHealthDashboard` | `@/components/status-badge`, `@/components/ui/card`, `@/lib/system-health`, `@/components/maintenance-notice-panel`, `@/components/nightly-jobs-panel` |
 | [components/theme-toggle.tsx](../components/theme-toggle.tsx) | `useThemePreference`, `ThemeToggle` | `@/lib/theme` |
 | [components/topbar-clock.tsx](../components/topbar-clock.tsx) | `TopbarClock` | — |
 | [components/topbar.tsx](../components/topbar.tsx) | `Topbar` | `@/components/app-shell`, `@/components/profile`, `@/components/theme-toggle`, `@/components/topbar-clock`, `@/lib/navigation` |
@@ -378,6 +382,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/history/route.ts](../app/api/history/route.ts) | `GET`, `PATCH` | `@/lib/day-off`, `@/lib/sheets-on-db`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/entry-corrections`, `@/lib/encoder-schema`, `@/lib/audit-log` |
 | [app/api/leave-approvals/route.ts](../app/api/leave-approvals/route.ts) | `GET`, `POST` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data`, `@/lib/attendance-data`, `@/lib/employees` |
 | [app/api/leave-requests/route.ts](../app/api/leave-requests/route.ts) | `GET`, `POST` | `@/lib/readable-id`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data` |
+| [app/api/maintenance-notice/route.ts](../app/api/maintenance-notice/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/maintenance-notice` |
 | [app/api/mam/member/route.ts](../app/api/mam/member/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/account-data` |
 | [app/api/mam/route.ts](../app/api/mam/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/encoder-context`, `@/lib/account-data`, `@/lib/mam-report`, `@/lib/account-rules`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/member-records` |
 | [app/api/mas/route.ts](../app/api/mas/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/employees` |
@@ -390,7 +395,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/members/transfer/route.ts](../app/api/members/transfer/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/member-transfer` |
 | [app/api/my-entries/batch/route.ts](../app/api/my-entries/batch/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/batch-edit`, `@/lib/db`, `@/lib/encoder-context` |
 | [app/api/my-entries/route.ts](../app/api/my-entries/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/db`, `@/lib/auth-server`, `@/lib/daily-audit`, `@/lib/remittance-deadline`, `@/lib/todays-entries`, `@/lib/encoder-context`, `@/lib/remittance-workflow` |
-| [app/api/notifications/route.ts](../app/api/notifications/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/notifications` |
+| [app/api/notifications/route.ts](../app/api/notifications/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/maintenance-notice`, `@/lib/notifications` |
 | [app/api/nte/mine/route.ts](../app/api/nte/mine/route.ts) | `GET`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/nte` |
 | [app/api/nte/route.ts](../app/api/nte/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/nte` |
 | [app/api/payroll/route.ts](../app/api/payroll/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/access-control`, `@/lib/encoder-context`, `@/lib/payroll` |
