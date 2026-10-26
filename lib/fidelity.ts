@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
 import { createCashTransaction } from "@/lib/finance-data";
 import { cashOutDetails } from "@/lib/finance-operations";
+import { FIDELITY_CAP, fidelityStanding } from "@/lib/fidelity-cap";
 const text=(value:unknown)=>String(value??"").trim();
 const amount=(value:unknown)=>Math.round((Number(value)||0)*100)/100;
 const peso=(value:number)=>value.toLocaleString("en-PH",{style:"currency",currency:"PHP"});
@@ -13,7 +14,7 @@ const peso=(value:number)=>value.toLocaleString("en-PH",{style:"currency",curren
  * Contributions have no limit. The first FIDELITY_CAP of the balance is locked until the employee leaves the company;
  * anything above it may be withdrawn at any time.
  */
-export const FIDELITY_CAP=10000;
+export { FIDELITY_CAP } from "@/lib/fidelity-cap";
 export const WITHDRAWAL_TYPES={excess:"Excess Withdrawal",separation:"Separation Release"} as const;
 /**
  * Balances brought from the old system's Fidelity Bond sheet (owner, October 23, 2026; scripts/import-fidelity-opening-20261023.mts):
@@ -60,10 +61,10 @@ export async function getFidelityData(employeeId:string,viewAll:boolean){
   const pending=amount(own.filter(item=>item.type==="Contribution"&&["Pending Approval","Discrepancy"].includes(item.status)).reduce((sum,item)=>sum+item.amount,0));
   // An employee who is no longer active (resigned, inactive) has left the company and may take the whole balance.
   const separated=Boolean(employee)&&employee!.status.toLowerCase()!=="active";
-  const withdrawable=amount(Math.max(0,approved-FIDELITY_CAP));
+  const standing=fidelityStanding(approved,separated);
   // Branch and roles for the Fidelity Monitoring filters (owner, October 16, 2026).
   return{masEmployeeId:id,masName:own[0]?.masName||employee?.name||id,employmentStatus:employee?.status||"",branch:employee?.branch||"",roles:employee?.roles??[],approved,pending,claimed,total:approved,
-   locked:amount(Math.min(approved,FIDELITY_CAP)),withdrawable,remaining:Math.max(0,amount(FIDELITY_CAP-approved)),separated,readyForRelease:separated&&approved>0};
+   locked:standing.locked,withdrawable:standing.withdrawable,remaining:standing.remaining,separated,readyForRelease:standing.readyForRelease};
  }).sort((a,b)=>a.masName.localeCompare(b.masName));
  return{cap:FIDELITY_CAP,accounts,transactions};
 }

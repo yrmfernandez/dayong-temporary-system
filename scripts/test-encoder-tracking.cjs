@@ -4262,3 +4262,21 @@ test('IT turns the maintenance notice on for everyone and off again; others cann
   await route.POST(request({ on: false }));
   assert.equal((await getMaintenanceNotice()).on, false);
 });
+
+test('incentive deadline to the minute: 3:00 PM keeps, 3:01 PM forfeits; Sundays and company-wide holidays in a row are skipped (upgrade #9)', () => {
+  const h = harness();
+  const { incentiveDeadline, keepsIncentive } = h.load('lib/remittance-deadline.ts');
+  // Thursday 2026-10-08: due Friday 3:00 PM.
+  assert.equal(keepsIncentive('2026-10-08', '2026-10-09 15:00'), true, 'exactly 3:00 PM is still on time');
+  assert.equal(keepsIncentive('2026-10-08', '2026-10-09 15:01'), false, 'one minute later is late');
+  assert.equal(keepsIncentive('2026-10-08', '2026-10-08 23:59'), true, 'the same day is on time');
+  assert.equal(incentiveDeadline('2026-10-11'), '2026-10-12 15:00', 'a Sunday OR is due Monday');
+  // Monday and Tuesday closed for every branch: a Saturday OR is due Wednesday.
+  const closed = { days: [{ date: '2026-10-12', allBranches: true, branchNames: [] }, { date: '2026-10-13', allBranches: true, branchNames: [] }] };
+  assert.equal(incentiveDeadline('2026-10-10', { ...closed, branch: 'BR-7' }), '2026-10-14 15:00');
+  assert.equal(keepsIncentive('2026-10-10', '2026-10-14 15:00', closed), true);
+  // Across the new year: Thursday 2026-12-31 with January 1 closed: due Saturday January 2 (Saturday is a working day).
+  assert.equal(incentiveDeadline('2026-12-31', { days: [{ date: '2027-01-01', allBranches: true, branchNames: [] }] }), '2027-01-02 15:00');
+  assert.equal(incentiveDeadline('not a date'), '', 'no valid OR date: the rule is not applied');
+  assert.equal(keepsIncentive('not a date', '2026-10-30 18:00'), true);
+});

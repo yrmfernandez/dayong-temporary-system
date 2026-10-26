@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-44 page routes, 74 API handlers, 136 library files, 60 component files; 615 scanned source/configuration/public-text files in total.
+44 page routes, 74 API handlers, 137 library files, 60 component files; 617 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -195,7 +195,8 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/lib/db`, `@/lib/sheets-on-db`, `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/date-checks` |
 | [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/db`, `@/lib/company-targets`, `@/lib/remittance-deadline`, `@/lib/google-sheets` |
 | [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `BURIAL_ACCOUNT`, `isOtherChoice`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList`, `expenseNumbers` | — |
-| [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `OPENING_TYPE`, `OLD_WITHDRAWAL_TYPE`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/db`, `@/lib/finance-data`, `@/lib/finance-operations` |
+| [lib/fidelity-cap.ts](../lib/fidelity-cap.ts) | `FIDELITY_CAP`, `fidelityStanding` | — |
+| [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `OPENING_TYPE`, `OLD_WITHDRAWAL_TYPE`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/db`, `@/lib/finance-data`, `@/lib/finance-operations`, `@/lib/fidelity-cap` |
 | [lib/finance-access.ts](../lib/finance-access.ts) | `canUseFinance` | `@/lib/auth-server` |
 | [lib/finance-data.ts](../lib/finance-data.ts) | `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `editExpense`, `deleteExpense`, `createCashTransaction`, `voidFinanceRecord`, `cashTransactionsFor` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/expense-options`, `@/lib/readable-id`, `@/lib/receipt-photos` |
 | [lib/finance-operations.ts](../lib/finance-operations.ts) | `cashOutDetails`, `getCashAccounts`, `saveCashAccount`, `getVendorPayables`, `createVendorPayable`, `payVendorPayable`, `getCommissions`, `createCommission`, `payCommissionDirectly`, `payCommission` | `@/lib/db`, `@/lib/finance-data`, `@/lib/readable-id` |
@@ -649,6 +650,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/test-encoder-tracking.cjs](../scripts/test-encoder-tracking.cjs) | See source | No flag detected; read source before running |
 | [scripts/test-entry-finance.mjs](../scripts/test-entry-finance.mjs) | `node:assert/strict`, `node:test`, `@electric-sql/pglite`, `../lib/entry-finance.mjs` | No flag detected; read source before running |
 | [scripts/test-manila-date.mjs](../scripts/test-manila-date.mjs) | `node:assert/strict`, `node:test`, `../lib/manila-date.ts` | No flag detected; read source before running |
+| [scripts/test-money-rules.mjs](../scripts/test-money-rules.mjs) | `node:assert/strict`, `node:test`, `../lib/remittance.ts`, `../lib/account-rules.ts`, `../lib/fidelity-cap.ts` | No flag detected; read source before running |
 | [scripts/test-program-payment-limit.mjs](../scripts/test-program-payment-limit.mjs) | `node:assert/strict`, `node:test`, `../lib/program-payment-limit.mjs`, `../lib/account-rules.ts`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/test-remittance.mjs](../scripts/test-remittance.mjs) | `node:assert/strict`, `node:test`, `../lib/remittance.ts` | No flag detected; read source before running |
 | [scripts/test-sheets-cache.mjs](../scripts/test-sheets-cache.mjs) | `node:test`, `node:assert/strict`, `../lib/sheets-read-cache.ts` | No flag detected; read source before running |

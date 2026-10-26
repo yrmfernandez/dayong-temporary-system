@@ -14,8 +14,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 6 | Move the main multi-step saves off the Sheets-style layer (`lib/sheets-on-db.ts`) into database transactions | **Built 2026-10-24, complete**: every save (payroll, clerk cash, finance, audits, calendar, settings, roles, remarks, remittances, attendance, leave, user accounts, corrections, targets) writes by ID in one step or one transaction; only reads remain on the Sheets layer |
 | 7 | One time zone (Manila) for every report date | **Built 2026-10-24**: one helper (`lib/manila-date.ts`) turns stored UTC times into Manila dates everywhere; Company report, SOA, dashboards and lists fixed |
 | 8 | Join reports by ID instead of branch/MAS/encoder names | **Built 2026-10-24**: MAS/Collector dashboards and Report Review clerks picked by Employee ID (`lib/person-scope.ts`), unlinked old names still count by name |
-| 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do (next) |
-| 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
+| 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
+| 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do (next) |
+
+### Upgrade #9: money-rule tests (2026-10-26)
+
+- **Owner:** start #9.
+- **Done:** new `scripts/test-money-rules.mjs` (in `npm test`): every centavo accounted for (company share + incentives = amount collected) across 1,000+ combinations of rate, mark-up, percentage/fixed tier, role (MAS, Collector, DTO), NOP range and excess, with the mark-up always remitted and no negative or oversized incentive; percentage rounding; ORC half rounded down (odd centavo to the company); reactivation 10% after mark-up; flexible payments split to the centavo across months (calculation and account history agree); whole-month crediting and overlaps; New Sale incentive (fixed capped at the amount paid, below one month earns nothing); No incentive / forfeited amounts; short months (paid on the 31st: missed February 28, 60D March 31, Forfeited August 1); the ₱10,000 Fidelity lock. The Fidelity split moved into pure `lib/fidelity-cap.ts` (`fidelityStanding`; `lib/fidelity.ts` uses it, same results). In the main harness: the incentive deadline to the minute (3:00 PM keeps, 3:01 forfeits), a Sunday OR, company-wide holidays in a row, the new year, an unreadable OR date. Already covered before and left as is: basic tiers, branch tiers, ORC/DTO, the grace day, slips following edited entries. Every new test passed against the current code, so no money rule was found wrong. 259 tests and the build pass. No migration.
+- **In progress:** none. **To do:** #10 Supabase 500 MB limit (next).
 
 ### Old-sheet receipts move to a program without tiers (2026-10-26)
 
