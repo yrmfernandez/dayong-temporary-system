@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { paidInMonth } from "@/lib/mam-format";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Receipt = { id: string; orNumber: string; orDate: string; amount: number; monthFrom: string; monthTo: string; nopFrom: number; nopTo: number };
 type Period = { month: string; projected: boolean; error: string; collected: number; coveredAmount: number; receipts: Receipt[]; state: { status: string; temporarilySuspended: boolean; nop: number; lastCoveredMonth: string; balance: number | null } | null };
@@ -53,7 +54,7 @@ export function MemberMam({ memberId }: { memberId: string }) {
             <strong>{row.programName}</strong>
             {latest && <StatusBadge status={latest.status} tone={statusTone(latest.status)} />}
             {latest?.temporarilySuspended && <span className="text-xs text-amber-700">Temporarily suspended</span>}
-            <span className="text-xs text-muted-foreground">DOI {row.doi || "—"} · Monthly {money(row.basePay)} · Paid up to NOP {latest?.nop ?? "—"} ({monthOf(latest ?? null, row.doi)}) · Balance today {latest ? latest.balance === null ? "—" : money(latest.balance) : "—"} · MAS {row.mas || "—"}</span>
+            <span className="text-xs text-muted-foreground">DOI {showDate(row.doi) || "—"} · Monthly {money(row.basePay)} · Paid up to NOP {latest?.nop ?? "—"} ({monthOf(latest ?? null, row.doi)}) · Balance today {latest ? latest.balance === null ? "—" : money(latest.balance) : "—"} · MAS {row.mas || "—"}</span>
           </div>
           <div className="max-h-80 overflow-auto rounded-md border"><table className="w-full min-w-[820px] text-xs">
             <thead className="sticky top-0 bg-muted text-left"><tr>{["Month", "Status", "OR No.", "OR Date", "NOP paid", "Month of", "Collected", "Covered", "Receipts"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead>
@@ -62,7 +63,7 @@ export function MemberMam({ memberId }: { memberId: string }) {
               <td className="p-2">{period.error ? <span className="text-destructive">Needs review</span> : period.state ? <StatusBadge status={period.state.status} tone={statusTone(period.state.status)} /> : <span className="text-muted-foreground">Not enrolled</span>}</td>
               {/* OR number and date in their own columns, one line per receipt, for comparing with the old records (owner, October 13, 2026). */}
               <td className="p-2 font-mono whitespace-nowrap">{period.receipts.length ? period.receipts.map((receipt) => <span key={receipt.id} className="block">{receipt.orNumber || "—"}</span>) : <span className="text-muted-foreground">—</span>}</td>
-              <td className="p-2 whitespace-nowrap tabular-nums">{period.receipts.length ? period.receipts.map((receipt) => <span key={receipt.id} className="block">{receipt.orDate || "—"}</span>) : <span className="text-muted-foreground">—</span>}</td>
+              <td className="p-2 whitespace-nowrap tabular-nums">{period.receipts.length ? period.receipts.map((receipt) => <span key={receipt.id} className="block">{showDate(receipt.orDate) || "—"}</span>) : <span className="text-muted-foreground">—</span>}</td>
               <td className="p-2 tabular-nums">{paid.nop || <span className="text-muted-foreground">—</span>}</td>
               <td className="p-2">{paid.monthOf || <span className="text-muted-foreground">—</span>}</td>
               <td className="p-2 tabular-nums">{money(period.collected)}</td>

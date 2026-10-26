@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type AttendanceRecord = {
   status: "Present" | "Leave" | "Absent" | "AWOL" | "Non-working Day" | "Day Off" | "Not Required";
@@ -256,7 +257,7 @@ export default function AttendanceReviewsPage() {
               <span className="font-medium">Absent by system, not marked yet:</span>
               {waiting.map((day) => (
                 <Button key={day.date} type="button" size="sm" variant={day.date === attendanceDate ? "default" : "outline"} onClick={() => openDay(day.date)}>
-                  {new Intl.DateTimeFormat("en-PH", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${day.date}T00:00:00Z`))} ({day.count})
+                  {showDate(day.date)} ({day.count})
                 </Button>
               ))}
               <span className="text-xs">Mark them (Absent confirms the system&apos;s record) to clear the number in the sidebar. Only the last 7 days are counted.</span>

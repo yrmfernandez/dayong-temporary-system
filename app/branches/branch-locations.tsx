@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DEFAULT_RADIUS_M, formatDistance, MAX_RADIUS_M, MIN_RADIUS_M, parseCoordinates } from "@/lib/clock-in-location";
+import { formatDate as showDate } from "@/lib/date-format";
 
 export type LocatedBranch = {
   id: string; name: string; territory: string; status: "active" | "inactive";
@@ -19,7 +20,7 @@ export type LocatedBranch = {
 
 export const locationIsSet = (branch: LocatedBranch) => branch.latitude != null && branch.longitude != null;
 const mapLink = (latitude: number, longitude: number) => `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-const savedOn = (iso: string) => iso ? new Date(iso).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric" }) : "";
+const savedOn = (iso: string) => iso ? showDate(iso) : "";
 
 /**
  * Branch locations for the clock-in check (owner, October 24, 2026): every active branch, those without a location

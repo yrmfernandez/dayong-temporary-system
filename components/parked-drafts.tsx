@@ -4,8 +4,9 @@ import { confirmDialog } from "@/components/app-dialog";
 import { PauseCircle, PlayCircle, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatDateTime as showDateTime } from "@/lib/date-format";
 
-const when = (stamp: string) => new Date(stamp).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const when = (stamp: string) => showDateTime(stamp);
 
 /**
  * Set aside the open batch and pick up set-aside ones (lib/use-parked-drafts.ts): the clerk can leave a batch for a

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { EditableEntry, EditKind } from "@/lib/entry-edit";
+import { formatDate as showDate } from "@/lib/date-format";
 
 const field = "w-full rounded-md border bg-background p-2 text-sm";
 const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
@@ -74,7 +75,7 @@ export function EntryEditor({ kind, id, onCancel, onSaved }: { kind: EditKind; i
       {kind === "Collection"
         ? <div className="space-y-1 sm:col-span-2"><Label>Account (program) it pays</Label>
             <select className={field} value={form.enrollmentId} onChange={set("enrollmentId")}>
-              {entry.accounts.map((account) => <option key={account.enrollmentId} value={account.enrollmentId}>{account.program} · {account.branch} · {account.mas} · DOI {account.doi || "—"} · ₱{account.rate}{account.flexible ? " min" : ""}/month{account.status ? ` · ${account.status}` : ""}</option>)}
+              {entry.accounts.map((account) => <option key={account.enrollmentId} value={account.enrollmentId}>{account.program} · {account.branch} · {account.mas} · DOI {showDate(account.doi) || "—"} · ₱{account.rate}{account.flexible ? " min" : ""}/month{account.status ? ` · ${account.status}` : ""}</option>)}
             </select></div>
         : <div className="space-y-1 sm:col-span-2"><Label>Program</Label>
             <select className={field} value={form.programId} onChange={set("programId")}>

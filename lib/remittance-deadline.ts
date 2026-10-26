@@ -6,6 +6,7 @@
  *   3:00 PM lock on saving New Sales and Collections was removed.
  * Times are Manila wall-clock times written "YYYY-MM-DD HH:MM", so they compare as text.
  */
+import { formatDateTime } from "@/lib/date-format";
 import { nextWorkingDay, type WorkCalendar } from "@/lib/working-days";
 
 export const REMITTANCE_CUTOFF = "15:00";
@@ -52,9 +53,6 @@ export { manilaDateOf } from "@/lib/manila-date";
 
 /** "Oct 4, 3:00 PM" for showing a deadline. */
 export function formatDeadline(deadline: string) {
-  if (!deadline) return "";
-  const [day, time] = deadline.split(" ");
-  const label = new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
-  const [hours, minutes] = time.split(":").map(Number);
-  return `${label}, ${((hours + 11) % 12) + 1}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
+  // The one shown format (lib/date-format.ts): "Oct 4, 2026 3:00 PM".
+  return deadline ? formatDateTime(deadline) : "";
 }

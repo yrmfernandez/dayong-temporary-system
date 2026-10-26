@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SystemHealth } from "@/lib/system-health";
 import { MaintenanceNoticePanel } from "@/components/maintenance-notice-panel";
 import { NightlyJobsPanel } from "@/components/nightly-jobs-panel";
+import { formatDateTime as showDateTime } from "@/lib/date-format";
 
 const count = (value: number) => value.toLocaleString("en-PH");
 const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString("en-PH", { maximumFractionDigits: 1 })} MB`;
@@ -13,7 +14,7 @@ type Growth = { perMonth: number | null; since: string; monthsLeft: number | nul
 /** "+12.3 MB a month (since Oct 1) · about 40 months to 8 GB", or why it is not known yet. */
 const growthLine = (item: Growth, limit: number) => item.perMonth === null ? "Growth: measured nightly; shown after a week of measurements."
   : `${item.perMonth >= 0 ? "+" : "−"}${size(Math.abs(item.perMonth))} a month (since ${item.since})${item.monthsLeft === null ? "" : item.monthsLeft > 120 ? ` · more than 10 years to ${size(limit)}` : ` · about ${item.monthsLeft} month${item.monthsLeft === 1 ? "" : "s"} to ${size(limit)}`}`;
-const stamp = (value: string) => value ? new Date(value).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+const stamp = (value: string) => value ? showDateTime(value) : "—";
 const severityTone: Record<string, Tone> = { critical: "danger", warning: "warning", info: "info" };
 
 export function SystemHealthDashboard({ data, employeeName }: { data: SystemHealth; employeeName: string }) {

@@ -1,4 +1,5 @@
 import { asAuditPeriod, periodSpan } from "@/lib/daily-audit";
+import { formatDate as showDate } from "@/lib/date-format";
 
 /**
  * A deposit belongs to the report it is entered on (owner, October 23, 2026: "if they want to really go to that date,
@@ -12,6 +13,6 @@ export function depositDayProblem(body: Record<string, unknown>) {
   const { start, end } = periodSpan(kind, reportDate), date = String(body.date ?? "");
   if (date >= start && date <= end) return "";
   return start === end
-    ? `A deposit belongs to the report it is entered on: this report is for ${start}. To record it on ${date || "another day"}, open the report for that day. Put the real transfer date in the remarks if it differs.`
-    : `A deposit belongs to the report it is entered on: choose a date from ${start} to ${end}, or open the report for ${date || "that day"}.`;
+    ? `A deposit belongs to the report it is entered on: this report is for ${showDate(start)}. To record it on ${date ? showDate(date) : "another day"}, open the report for that day. Put the real transfer date in the remarks if it differs.`
+    : `A deposit belongs to the report it is entered on: choose a date from ${showDate(start)} to ${showDate(end)}, or open the report for ${date ? showDate(date) : "that day"}.`;
 }

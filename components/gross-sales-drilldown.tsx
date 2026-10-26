@@ -6,12 +6,13 @@ import { useEffect, useState } from "react";
 import { Change } from "@/components/executive-charts";
 import { Input } from "@/components/ui/input";
 import type { GrossSalesBreakdown, GrossSalesEntry } from "@/lib/gross-sales";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Page = { totals: GrossSalesBreakdown["totals"]; branches: GrossSalesBreakdown["branches"]; filtered: { count: number; total: number }; entries: GrossSalesEntry[] };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
-const longDate = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateString("en-PH", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
-const shortDate = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateString("en-PH", { timeZone: "UTC", month: "short", day: "numeric" });
+const longDate = (value: string) => showDate(value);
+const shortDate = (value: string) => showDate(value);
 
 /**
  * The Gross Sales tile of the executive and finance dashboards. Clicking it opens, below the tiles, every New Sale and

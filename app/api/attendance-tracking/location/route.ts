@@ -5,6 +5,7 @@ import { getAttendanceForEmployeeDate, updateAttendanceRecord } from "@/lib/atte
 import { getClockInCheck, saveClockInReview } from "@/lib/clock-in-checks";
 import { clockInLabel, needsReview } from "@/lib/clock-in-location";
 import { withEncoder } from "@/lib/encoder-context";
+import { formatDate as showDate } from "@/lib/date-format";
 
 /**
  * HR's decision on a clock-in flagged by the location check: { employeeId, attendanceDate, decision, note }.
@@ -34,8 +35,8 @@ export const PATCH = withEncoder(async (request: Request) => {
 
     const today = getPhilippineDate();
     const line = decision === "Absent"
-      ? `${clockInLabel(check)}: marked Absent by ${user.name} on ${today}: ${note}`
-      : `${clockInLabel(check)}: clock-in accepted by ${user.name} on ${today}${note ? `: ${note}` : ""}`;
+      ? `${clockInLabel(check)}: marked Absent by ${user.name} on ${showDate(today)}: ${note}`
+      : `${clockInLabel(check)}: clock-in accepted by ${user.name} on ${showDate(today)}${note ? `: ${note}` : ""}`;
     const status = decision === "Absent" ? "Absent" : "Present";
     if (status !== record.status || decision !== check.reviewStatus) {
       await updateAttendanceRecord(rowNumber, { ...record, status, notes: [record.notes, line].filter(Boolean).join(" | "), updatedAt: new Date().toISOString() });

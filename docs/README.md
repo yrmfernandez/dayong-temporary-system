@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 27, 2026: one date format.** Every screen shows dates as Oct 27, 2026 (times Oct 27, 2026 3:05 PM, months Oct 2026); downloads keep 2026-10-27 for Excel. See the [system guide](system-guide.md) (implementation limits, item 7).
+
 **October 27, 2026: Fully Paid.** Accounts that complete their program are **Fully Paid** (no dues, no more payments, never forfeited), recorded automatically or by hand on the new Fully Paid page with certificate numbers that continue the old pattern per area (DAVAO2026-039), and certificate release tracking; the old Fully Paid form can be imported. See the [system guide](system-guide.md) (section 5, Fully Paid).
 
 **October 26, 2026: space on Supabase Pro, Fix buttons.** System Health measures the database against the Pro plan's 8 GB and receipt photos against 100 GB of Storage, and shows the monthly growth from nightly measurements (upgrade #10, the last of the upgrade list). Every finding in Schema, Access & Data Integrity has a Fix button that opens the page at that person or record. See the [system guide](system-guide.md) (IT System Health).

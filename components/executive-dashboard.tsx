@@ -7,10 +7,11 @@ import type { Tone } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { executivePeriods, type ExecutiveAnalytics, type Ranked } from "@/lib/executive-analytics";
 import { GrossSalesDrilldown } from "@/components/gross-sales-drilldown";
+import { formatDate as showDate } from "@/lib/date-format";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(value);
 const growth = (row: Ranked) => row.previous ? ((row.amount - row.previous) / row.previous) * 100 : null;
-const longDate = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+const longDate = (value: string) => showDate(value);
 const healthColors = ["var(--brand-moss)", "var(--brand-gold)", "var(--brand-orange)", "var(--brand-red)", "var(--muted-foreground)"];
 
 export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnalytics; employeeName: string }) {

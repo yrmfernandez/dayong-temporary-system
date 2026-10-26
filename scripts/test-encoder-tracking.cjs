@@ -2700,7 +2700,7 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   assert.equal(report.reportName, 'WEEKLY REPORT');
   assert.equal(report.dateLine, 'WEEK 3 JUNE 15-21, 2026');
   assert.equal(report.summaryLabel, '3RD WEEKLY REPORT');
-  assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity, row.penalty]), [['6/15/2026', 1, 350, 50, 300, 20, 0], ['6/16/2026', 1, 700, 100, 600, 0, 50]], 'by date; the other clerk\'s COL-3 is not counted');
+  assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity, row.penalty]), [['Jun 15, 2026', 1, 350, 50, 300, 20, 0], ['Jun 16, 2026', 1, 700, 100, 600, 0, 50]], 'by date; the other clerk\'s COL-3 is not counted');
   assert.deepEqual([report.newSales.total.accounts, report.newSales.total.gross, report.newSales.total.incentives], [1, 500, 50]);
   assert.deepEqual(report.cash, { cashBeg: 0, cashBegEdit: null, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, pendingCash: 0, totalCashIn: 1420, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
   assert.deepEqual(report.masSummary.rows.map((row) => [row.name, row.sales.accounts, row.collections.accounts, row.collections.gross]), [['Maria', 1, 2, 1050]]);
@@ -3996,9 +3996,9 @@ test('a deposit reference number can be recorded only once (October 23, 2026)', 
 test('a deposit is dated within the report it is entered on (October 23, 2026)', () => {
   const { depositDayProblem } = harness().load('lib/deposit-day.ts');
   assert.equal(depositDayProblem({ reportKind: 'daily', reportDate: '2026-10-20', date: '2026-10-20' }), '');
-  assert.match(depositDayProblem({ reportKind: 'daily', reportDate: '2026-10-20', date: '2026-10-19' }), /this report is for 2026-10-20\. To record it on 2026-10-19, open the report for that day/);
+  assert.match(depositDayProblem({ reportKind: 'daily', reportDate: '2026-10-20', date: '2026-10-19' }), /this report is for Oct 20, 2026\. To record it on Oct 19, 2026, open the report for that day/);
   assert.equal(depositDayProblem({ reportKind: 'weekly', reportDate: '2026-10-20', date: '2026-10-25' }), '', 'any day of that week (October 19-25)');
-  assert.match(depositDayProblem({ reportKind: 'weekly', reportDate: '2026-10-20', date: '2026-10-18' }), /from 2026-10-19 to 2026-10-25/);
+  assert.match(depositDayProblem({ reportKind: 'weekly', reportDate: '2026-10-20', date: '2026-10-18' }), /from Oct 19, 2026 to Oct 25, 2026/);
   assert.equal(depositDayProblem({ date: '2026-10-01' }), '', 'no report sent: not checked here');
 });
 

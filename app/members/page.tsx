@@ -15,7 +15,7 @@ import { MemberMam } from "@/components/member-mam";
 import { emptyDirectoryFilters, STANDING_FILTERS, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { branchChoiceReady, branchesOutside, noBranchChoice, TransferBranchChoice, type BranchChoice } from "@/components/transfer-branch-choice";
-import { manilaDateOf } from "@/lib/manila-date";
+import { formatDate as showDate } from "@/lib/date-format";
 
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort();
@@ -124,7 +124,7 @@ export default function MembersPage() {
           <tbody>{visible.map((member) => <Fragment key={member.id}><tr className="border-t">
             <td className="px-2 py-2 align-top"><span className="block font-medium">{member.name || "Unnamed member"}</span><span className="block text-xs text-muted-foreground">{member.number || "-"}{member.contact ? ` · ${member.contact}` : ""}</span></td>
             {/* Each program account has its own DOI; with several programs, each is labeled with its program. */}
-            <td className="px-2 py-2 align-top">{member.enrollments.length ? (member.enrollments.length === 1 ? <span className="whitespace-nowrap">{member.enrollments[0].doi || "-"}{member.enrollments[0].doiTime ? ` ${member.enrollments[0].doiTime}` : ""}</span> : <span className="flex flex-col gap-0.5">{member.enrollments.map((e) => <span key={e.id}><span className="whitespace-nowrap">{e.doi || "-"}{e.doiTime ? ` ${e.doiTime}` : ""}</span><span className="block text-xs text-muted-foreground">{e.programName}</span></span>)}</span>) : "-"}</td>
+            <td className="px-2 py-2 align-top">{member.enrollments.length ? (member.enrollments.length === 1 ? <span className="whitespace-nowrap">{member.enrollments[0].doi || "-"}{member.enrollments[0].doiTime ? ` ${member.enrollments[0].doiTime}` : ""}</span> : <span className="flex flex-col gap-0.5">{member.enrollments.map((e) => <span key={e.id}><span className="whitespace-nowrap">{showDate(e.doi) || "-"}{e.doiTime ? ` ${e.doiTime}` : ""}</span><span className="block text-xs text-muted-foreground">{e.programName}</span></span>)}</span>) : "-"}</td>
             <td className="px-2 py-2 align-top break-words">{member.address || "-"}<span className="block text-xs text-muted-foreground">{unique(member.enrollments.map((enrollment) => enrollment.branch)).join(", ")}</span></td>
             <td className="px-2 py-2 align-top">{unique(member.enrollments.map((enrollment) => enrollment.mas)).join(", ") || "-"}{unique(member.enrollments.map((enrollment) => enrollment.collector)).length > 0 && <span className="block text-xs text-muted-foreground">Collector: {unique(member.enrollments.map((enrollment) => enrollment.collector)).join(", ")}</span>}</td>
             <td className="px-2 py-2 align-top"><span className="flex flex-col items-start gap-1"><StatusBadge status={member.deceased ? "Deceased" : member.status || "Not recorded"} tone={member.deceased ? "danger" : undefined} />{!member.deceased && <span className="text-xs text-muted-foreground">Alive</span>}</span></td>
@@ -284,10 +284,10 @@ function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, 
         const last = transfers.find((item) => item.enrollmentId === e.id);
         return <Fragment key={e.id}>
           <tr className="border-t">
-            <td className="p-2">{e.programName || "-"}</td><td className="p-2">{e.doi || "-"}{e.doiTime ? <span className="block text-xs text-muted-foreground">{e.doiTime}</span> : null}</td><td className="p-2">{e.branch || "-"}</td>
-            <td className="p-2">{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">Transferred from {last.fromMas}{last.at ? ` on ${manilaDateOf(last.at)}` : ""} · {last.reason}</span>}</td>
+            <td className="p-2">{e.programName || "-"}</td><td className="p-2">{showDate(e.doi) || "-"}{e.doiTime ? <span className="block text-xs text-muted-foreground">{e.doiTime}</span> : null}</td><td className="p-2">{e.branch || "-"}</td>
+            <td className="p-2">{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">Transferred from {last.fromMas}{last.at ? ` on ${showDate(last.at)}` : ""} · {last.reason}</span>}</td>
             <td className="p-2">{e.collector || "-"}</td><td className="p-2">{e.paymentMethod || "-"}</td>
-            <td className="p-2">{deactivated(e.status) ? <><StatusBadge status="Deactivated" tone="danger" />{deactivations[e.id] && <span className="block text-xs text-muted-foreground">{deactivations[e.id].reason}{deactivations[e.id].by ? ` · ${deactivations[e.id].by}` : ""}{deactivations[e.id].at ? ` · ${manilaDateOf(deactivations[e.id].at)}` : ""}</span>}</> : e.status || "-"}</td>
+            <td className="p-2">{deactivated(e.status) ? <><StatusBadge status="Deactivated" tone="danger" />{deactivations[e.id] && <span className="block text-xs text-muted-foreground">{deactivations[e.id].reason}{deactivations[e.id].by ? ` · ${deactivations[e.id].by}` : ""}{deactivations[e.id].at ? ` · ${showDate(deactivations[e.id].at)}` : ""}</span>}</> : e.status || "-"}</td>
             <td className="p-2">{deactivated(e.status) ? "—" : e.accountError || <span className="flex flex-wrap items-center gap-1">{e.accountStatus || "Needs review"}<StandingBadge enrollment={e} /></span>}</td>
             {canAct && <td className="p-2 text-right">{modesFor(e).length > 0 && <Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{deactivated(e.status) ? "Reactivate" : open === e.id ? "Changing" : "Transfer / deactivate"}</Button>}</td>}
           </tr>

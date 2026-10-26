@@ -8,6 +8,7 @@ import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { recordCorrection } from "@/lib/record-corrections";
 import { manilaNow } from "@/lib/remittance-deadline";
+import { formatDate as showDate } from "@/lib/date-format";
 
 /**
  * Member Corrections (owner, October 24, 2026; upgrade #4): the four repairs that used to need a script for each case,
@@ -169,7 +170,7 @@ export function fixCoverage(input: CoverageInput, reason: string, apply: boolean
     const lines = await saveNumbers(tx, plan, old, account);
     const priced = await repriceCollections(tx, lines.map((line) => line.id));
     const notes = [
-      doi !== account.doi ? `DOI ${account.doi} → ${doi}.` : "",
+      doi !== account.doi ? `DOI ${showDate(account.doi)} → ${showDate(doi)}.` : "",
       priced.repriced ? `${priced.repriced} receipt(s) get new incentive figures${priced.slips.length ? `; remittance slips ${priced.slips.join(", ")} follow` : ""}.` : "",
     ].filter(Boolean);
     return {
@@ -288,7 +289,7 @@ export function mergeMembers(input: MergeInput, reason: string, apply: boolean) 
     const [other] = await tx.select().from(members).where(eq(members.member_id, text(input.otherMemberId))).for("update");
     if (!keep || !other) throw new Error("Member not found. Reload the page.");
     const choice = (field: MergeField) => input.fields?.[field] ?? (input.useOtherName && NAME_FIELDS.includes(field) ? "other" : undefined);
-    if (!choice("birthdate") && day(keep.birthdate) && day(other.birthdate) && day(keep.birthdate) !== day(other.birthdate)) throw new Error(`Their birthdates differ (${day(keep.birthdate)} and ${day(other.birthdate)}), so they are not merged. Correct the wrong birthdate first if they are the same person.`);
+    if (!choice("birthdate") && day(keep.birthdate) && day(other.birthdate) && day(keep.birthdate) !== day(other.birthdate)) throw new Error(`Their birthdates differ (${showDate(day(keep.birthdate))} and ${showDate(day(other.birthdate))}), so they are not merged. Correct the wrong birthdate first if they are the same person.`);
     const notes: string[] = [];
     const statuses: StatusLine[] = [];
     let receipts: ReceiptLine[] = [];

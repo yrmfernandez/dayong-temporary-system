@@ -7,8 +7,9 @@ import { CheckCircle2, Moon, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { NightlyRun } from "@/lib/nightly-jobs";
+import { formatDateTime as showDateTime } from "@/lib/date-format";
 
-const stamp = (value: string) => value ? new Date(value).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+const stamp = (value: string) => value ? showDateTime(value) : "—";
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
 /** The last nightly run (lib/nightly-jobs.ts) on System Health, with Run now for IT. */

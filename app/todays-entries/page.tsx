@@ -18,6 +18,7 @@ import { EntryDetails } from "@/components/entry-details";
 import { AdminDeletePanel } from "@/components/admin-delete";
 import { ReceiptPhotoUpload, ReceiptPhotoView } from "@/components/receipt-photo";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Totals = { count: number; amount: number; incentives: number; forfeited: number };
 type Result = { success: boolean; message?: string; date: string; today: string; mode: TodayMode; defaultMode: TodayMode; canEdit: boolean; canDelete?: boolean; employeeId: string; entries: DayEntry[]; sales: Totals; collections: Totals };
@@ -167,7 +168,7 @@ function EntryTable({ title, entries, canEdit, canDelete, me, editing, setEditin
                     <td className="p-3"><span className="block">{entry.memberName || "—"}</span><span className="block text-xs text-muted-foreground">{entry.memberNumber}</span></td>
                     <td className="p-3"><span className="block">{entry.program}</span><span className="block text-xs text-muted-foreground">{entry.branch}</span></td>
                     <td className="p-3">{entry.person}</td>
-                    <td className="p-3"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{entry.orDate}</span>{entry.dateRemitted && <span className="block text-xs text-muted-foreground">Remitted {entry.dateRemitted}</span>}</td>
+                    <td className="p-3"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{showDate(entry.orDate)}</span>{entry.dateRemitted && <span className="block text-xs text-muted-foreground">Remitted {showDate(entry.dateRemitted)}</span>}</td>
                     <td className="p-3 text-right font-medium">{money(entry.amount)}</td>
                     <td className="p-3">
                       {entry.noIncentiveReason

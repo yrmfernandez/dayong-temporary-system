@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { SearchSelect } from "@/components/ui/search-select";
 import { readApiResponse } from "@/lib/api-response";
 import type { Nte } from "@/lib/nte";
+import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 type Standing = { employeeId: string; employeeName: string; active: number; subjectToSuspension: boolean; nextExpiry: string };
 type Data = { notices: Nte[]; standing: Standing[]; today: string; days: number; threshold: number };
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
-const when = (value: string) => value ? new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "";
+const when = (value: string) => value ? showDateTime(value) : "";
 
 /**
  * Notices to Explain, for administrators (the panel hides itself for anyone else). A notice is in force for 90 days;
@@ -87,7 +88,7 @@ export function NtePanel({ employees }: { employees: Array<{ id: string; name: s
             const count = data?.standing.find((item) => item.employeeId === nte.employeeId)?.active ?? 0;
             return <tr key={nte.id} className="border-t align-top">
               <td className="p-2">{nte.employeeName}<span className="block text-xs text-muted-foreground">{nte.employeeId} · {count} in force</span></td>
-              <td className="p-2">{nte.issuedOn}</td>
+              <td className="p-2">{showDate(nte.issuedOn)}</td>
               <td className="p-2">{nte.expiresOn}</td>
               <td className="p-2">{nte.reason}{nte.details && <span className="block text-xs text-muted-foreground">{nte.details}</span>}{nte.withdrawnReason && <span className="block text-xs text-muted-foreground">Withdrawn: {nte.withdrawnReason}</span>}</td>
               <td className="p-2"><StatusBadge status={nte.status} tone={nte.status === "Active" ? "warning" : undefined} /></td>

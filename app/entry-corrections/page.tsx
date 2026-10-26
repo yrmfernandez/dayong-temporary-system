@@ -14,6 +14,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { ProgramTransfer } from "@/app/programs/program-transfer";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { FoundEntry, SearchKind } from "@/lib/entry-search";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Result = { success: boolean; message?: string; entries: FoundEntry[]; limit: number; canDelete: boolean };
 type Options = { employees: Array<{ id: string; name: string; branch: string; roles: string[]; status: string }>; programs: Array<{ id: string; name: string; code: string; rate: number; status: string }> };
@@ -109,7 +110,7 @@ function EntriesTab() {
                 <td className="p-2">{entry.program}<span className="block text-xs text-muted-foreground">{entry.branch}</span></td>
                 <td className="p-2">{entry.person || "—"}</td>
                 <td className="p-2 font-medium">{entry.orNumber || "—"}</td>
-                <td className="whitespace-nowrap p-2">{entry.orDate || "—"}</td>
+                <td className="whitespace-nowrap p-2">{showDate(entry.orDate) || "—"}</td>
                 <td className="p-2">{entry.kind === "New Sale" ? entry.applicationNumber || "—" : ""}</td>
                 <td className="p-2 text-right tabular-nums">{money(entry.amount)}</td>
                 <td className="p-2"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${entry.onRemittance ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300"}`}>{entry.remittanceStatus || "Outstanding"}</span>{entry.remittanceId && <span className="block font-mono text-xs text-muted-foreground">{entry.remittanceId}</span>}</td>

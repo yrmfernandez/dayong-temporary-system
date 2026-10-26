@@ -1,4 +1,5 @@
 import { lineTotals, type Adjustment, type PayrollLine } from "@/lib/payroll-calc";
+import { formatDate as showDate } from "@/lib/date-format";
 
 export const PAYSLIP_COMPANY = "D' San Roque Dayong Providers, Inc.";
 
@@ -88,7 +89,7 @@ export function payslipPdf(slip: Payslip): Uint8Array {
   text(PAGE.left, 9, PAYSLIP_COMPANY.toUpperCase(), "F2", 0.4); y -= 24;
   text(PAGE.left, 20, "PAYSLIP", "F2"); y -= 18;
   text(PAGE.left, 10, `Pay period: ${slip.periodFrom} to ${slip.periodTo}`); y -= 14;
-  text(PAGE.left, 10, `Pay date: ${slip.payDate || "Not yet paid"}    Payroll: ${slip.runId}    Status: ${slip.status}`); y -= 22;
+  text(PAGE.left, 10, `Pay date: ${slip.payDate ? showDate(slip.payDate) : "Not yet paid"}    Payroll: ${slip.runId}    Status: ${slip.status}`); y -= 22;
   rule(1, 0); y -= 22;
   text(PAGE.left, 13, slip.employee.name, "F2"); y -= 15;
   text(PAGE.left, 10, `Employee ID: ${slip.employee.id}${slip.employee.roles ? `    Role: ${slip.employee.roles}` : ""}`, "F1", 0.3); y -= 26;

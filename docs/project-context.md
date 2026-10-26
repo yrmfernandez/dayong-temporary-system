@@ -17,6 +17,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### One date format everywhere (2026-10-27)
+
+- **Owner:** arrange all dates in the system to be uniform to avoid confusion. Chosen: **Oct 27, 2026** (time: Oct 27, 2026 3:05 PM; month: Oct 2026); CSV/Excel downloads keep 2026-10-27.
+- **Found:** raw stored dates (2026-10-27) in most tables, "Oct 4, 3:00 PM" without a year, "October 27, 2026", "10/27/2026" on the clerk report, "Tuesday, October 27, 2026", each screen with its own formatter.
+- **Done:** `lib/date-format.ts` (no imports; plain dates, stored UTC times shown on their Manila day and time, Manila "YYYY-MM-DD HH:MM", months, ranges; anything else passes through, so "—" and labels stay). About 45 screens and components now use it: their own helpers (longDate, when, stamp…) call it, and dates printed raw (DOI, OR date, birthdate, leave dates, pay dates, expense/cash/Fidelity dates, remitted dates, notices) are wrapped; date inputs, keys and CSV values were left as stored. Server text too: deadlines (`formatDeadline`), entry date warnings, deposit-day messages, Exceptions, Member Corrections notes, payslip, delete titles, attendance notes, the clerk report's day labels. Tests: `scripts/test-date-format.mjs` (in `npm test`), three expectations updated. 268 tests and the build pass. No migration.
+
 ### Member Corrections: move receipts anywhere, choose what a merge keeps (2026-10-27)
 
 - **Owner:** Move receipts did not work when the member has one program; Merge members only offered "use the duplicate's name", nothing else to choose.

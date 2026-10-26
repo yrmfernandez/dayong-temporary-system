@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { usePeopleFilter } from "@/components/people-filter";
 import type { GridCell, GridTone, SheetDay, SheetEmployee, SheetSummary } from "@/lib/attendance-sheet";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type AllRow = { employee: SheetEmployee; summary: SheetSummary; cells: GridCell[]; rate: string };
 type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: AllRow[]; showRates: boolean; totals: SheetSummary };
@@ -35,7 +36,7 @@ function presets() {
 const minutes = (value: number) => value >= 60 ? `${Math.floor(value / 60)}h ${String(value % 60).padStart(2, "0")}m` : `${value} min`;
 const hours = (value: number) => value.toFixed(2);
 const rate = (value: number | null) => value === null ? "—" : `${value}%`;
-const longDate = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString("en-PH", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
+const longDate = (date: string) => showDate(date);
 
 const statusTone: Record<string, string> = {
   Present: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",

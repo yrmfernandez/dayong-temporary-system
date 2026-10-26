@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { AttendanceHistory, HistoryPeriod, HistoryTotals } from "@/lib/attendance-board";
+import { formatDate as showDate } from "@/lib/date-format";
 
 const PERIODS: { id: HistoryPeriod; label: string }[] = [{ id: "week", label: "Week" }, { id: "month", label: "Month" }, { id: "year", label: "Year" }];
 /** Category → tone (globals.css .tone-*) and the share it takes in a breakdown bar. Colour always comes with a label. */
@@ -17,7 +18,7 @@ const SEGMENTS: { key: keyof HistoryTotals; label: string; tone: string }[] = [
   { key: "absent", label: "Absent", tone: "tone-danger" }, { key: "leave", label: "Leave", tone: "tone-info" },
 ];
 const minutes = (value: number) => (value >= 60 ? `${Math.floor(value / 60)}h ${value % 60}m` : `${value}m`);
-const weekday = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString("en-PH", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
+const weekday = (date: string) => `${new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`))}, ${showDate(date)}`;
 
 /** The signed-in employee's own attendance by week, month or year, with totals, a breakdown and every day. */
 export function MyAttendanceHistory() {

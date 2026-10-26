@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { SearchSelect } from "@/components/ui/search-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Account = { masEmployeeId: string; masName: string; employmentStatus: string; branch?: string; roles?: string[]; approved: number; pending: number; claimed: number; locked: number; withdrawable: number; remaining: number; separated: boolean; readyForRelease: boolean };
 type Transaction = { id: string; masEmployeeId: string; masName: string; date: string; status: string; amount: number; type: string; direction: "in" | "out"; encodedBy: string; branch?: string; remarks?: string };
@@ -97,7 +98,7 @@ export function MyFidelity() {
               <thead><tr>{["Date", "Reference", "Type", "Amount", "Status", "Encoded by"].map((item) => <th key={item} className="p-3">{item}</th>)}</tr></thead>
               <tbody>
                 {history.map((item) => <tr key={item.id} className="border-t">
-                  <td className="p-3">{item.date}</td>
+                  <td className="p-3">{showDate(item.date)}</td>
                   <td className="p-3 font-mono text-xs">{item.id}</td>
                   <td className="p-3">{item.type}</td>
                   <td className="p-3 font-semibold tabular-nums">{item.direction === "in" ? "+" : "−"}{money(item.amount)}</td>
@@ -285,7 +286,7 @@ export function FidelityMonitoring() {
               <thead><tr>{["Date", "Reference", "Employee", "Branch", "Type", "Amount", "Status", "Encoded by"].map((item) => <th key={item} className="p-3">{item}</th>)}</tr></thead>
               <tbody>
                 {transactions.map((item) => <tr key={item.id} className="border-t">
-                  <td className="p-3">{item.date}</td>
+                  <td className="p-3">{showDate(item.date)}</td>
                   <td className="p-3 font-mono text-xs">{item.id}</td>
                   <td className="p-3">{item.masName}</td>
                   <td className="p-3">{item.branch || branchOf.get(item.masEmployeeId) || "—"}</td>

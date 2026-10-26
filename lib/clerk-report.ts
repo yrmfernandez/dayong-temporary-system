@@ -8,6 +8,7 @@ import { expectedByMas, type Expected } from "@/lib/mas-expected";
 import { expensePhotoIds } from "@/lib/receipt-photos";
 import { manilaDateOf } from "@/lib/remittance-deadline";
 import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
+import { formatDate as showDate } from "@/lib/date-format";
 
 /**
  * An Entry Clerk's own report for a day, week (Monday to Sunday), month or year, in the company's report layout:
@@ -36,7 +37,8 @@ const round = (value: number) => Math.round(value * 100) / 100;
 const parts = (date: string) => ({ year: Number(date.slice(0, 4)), month: Number(date.slice(5, 7)), day: Number(date.slice(8, 10)) });
 const longDate = (date: string) => `${MONTHS[parts(date).month - 1]} ${parts(date).day}, ${parts(date).year}`;
 const weekday = (date: string) => WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()];
-const shortDate = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}/${date.slice(0, 4)}`;
+// Shown dates follow the one format of the system (lib/date-format.ts, October 27, 2026).
+const shortDate = (date: string) => showDate(date);
 
 /**
  * Week of the month as the company's sheets count it (owner, October 12, 2026): weeks start Monday and week N is the

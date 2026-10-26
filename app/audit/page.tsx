@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { SearchSelect } from "@/components/ui/search-select";
 import { todayInManila } from "@/lib/account-rules";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 type Figures = {
   accounts: number; gross: number; incentives: number; fidelity: number; penalty: number; expectedRemittance: number;
@@ -26,7 +27,7 @@ type Audit = { id: string; status: string; findings: string; result: string; app
 type Row = { employeeId: string; employeeName: string; branch: string; status: "Not started" | "Draft" | "Approved"; audit: Audit | null; figures: Figures };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
-const when = (value: string) => (value ? value.replace("T", " ").slice(0, 16) : "");
+const when = (value: string) => (value ? showDateTime(value) : "");
 
 /** HR, Finance, and Administrators audit each Entry Clerk's report by day, week, month, or year; only an Administrator approves. */
 export default function DailyAuditPage() {
@@ -268,7 +269,7 @@ function AuditSummary() {
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead className="bg-muted"><tr>{["Date", "Entry Clerk", "Branch", "Result", "Collected", "Expected remittance", "Findings", "Approved by"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
           <tbody>
-            {summary.audits.map((audit) => <tr key={`${audit.date}-${audit.employeeId}`} className="border-t align-top"><td className="p-3 whitespace-nowrap">{audit.date}</td><td className="p-3">{audit.employeeName}</td><td className="p-3">{audit.branch || "—"}</td><td className="p-3"><StatusBadge status={audit.result} tone={audit.result === "Balanced" ? "success" : "danger"} /></td><td className="p-3 tabular-nums">{money(audit.figures?.gross ?? 0)}</td><td className="p-3 tabular-nums">{money(audit.figures?.expectedRemittance ?? 0)}</td><td className="p-3 whitespace-pre-wrap">{audit.findings || "—"}</td><td className="p-3">{audit.approvedByName}<span className="block text-xs text-muted-foreground">{when(audit.approvedAt)}</span></td></tr>)}
+            {summary.audits.map((audit) => <tr key={`${audit.date}-${audit.employeeId}`} className="border-t align-top"><td className="p-3 whitespace-nowrap">{showDate(audit.date)}</td><td className="p-3">{audit.employeeName}</td><td className="p-3">{audit.branch || "—"}</td><td className="p-3"><StatusBadge status={audit.result} tone={audit.result === "Balanced" ? "success" : "danger"} /></td><td className="p-3 tabular-nums">{money(audit.figures?.gross ?? 0)}</td><td className="p-3 tabular-nums">{money(audit.figures?.expectedRemittance ?? 0)}</td><td className="p-3 whitespace-pre-wrap">{audit.findings || "—"}</td><td className="p-3">{audit.approvedByName}<span className="block text-xs text-muted-foreground">{when(audit.approvedAt)}</span></td></tr>)}
             {!summary.audits.length && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{busy ? "Loading..." : "No approved audits in this period."}</td></tr>}
           </tbody>
         </table>

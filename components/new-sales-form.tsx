@@ -62,6 +62,7 @@ import { ReceiptPhotosPicker, uploadBatchPhotos, type PickedPhoto } from "@/comp
 import { useParkedDrafts } from "@/lib/use-parked-drafts";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { enterToNextField } from "@/lib/enter-to-next";
+import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 type ProgramApiResponse = {
   success: boolean;
@@ -752,7 +753,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         const details = [
           `Name: ${[member.name.surname, [member.name.firstName, member.name.middleName, member.name.nameExtension].filter(Boolean).join(" ")].join(", ")}`,
           member.phMemberNumber && `PH/Member: ${member.phMemberNumber}`,
-          member.birthdate && `Birthdate: ${member.birthdate}`,
+          member.birthdate && `Birthdate: ${showDate(member.birthdate)}`,
           member.gender && `Gender: ${member.gender}`,
           member.contactNumber && `Contact: ${member.contactNumber}`,
           member.address.houseBlockLot && `Address: ${member.address.houseBlockLot}`,
@@ -1854,7 +1855,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                       {sale.member.id && (
                         <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
                           <p>
-                            <span className="font-semibold">Existing member {sale.member.phMemberNumber}{sale.member.birthdate ? `, born ${sale.member.birthdate}` : ""}.</span>{" "}
+                            <span className="font-semibold">Existing member {sale.member.phMemberNumber}{sale.member.birthdate ? `, born ${showDate(sale.member.birthdate)}` : ""}.</span>{" "}
                             Details below come from their record. Any change you make here updates the member&apos;s record when this batch is saved.
                           </p>
                           <Button type="button" size="sm" variant="outline" onClick={() => unlinkExistingMember(sale.id)}>
@@ -2884,7 +2885,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         </CardContent>
       </Card>}
 
-      {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {sale.orDate || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p></div>}
+      {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p></div>}
 
       {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
       {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" optional={allCash} />}
@@ -2924,7 +2925,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   );
 }
 
-const submittedAt = (value: string) => value ? new Date(value).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }) : "";
+const submittedAt = (value: string) => value ? showDateTime(value) : "";
 const memberNames = (submission: SubmissionSummary) => submission.sales.map((sale) => [sale.member?.name?.firstName, sale.member?.name?.surname].filter(Boolean).join(" ") || "Unnamed member").join(", ");
 
 /** Clerk: MAS submissions waiting in their branches. */
@@ -2982,7 +2983,7 @@ function MySubmissions({ submissions, activeId, onOpen }: { submissions: Submiss
 }
 
 const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
-const longDate = (value: string) => value ? new Date(`${value}T00:00:00`).toLocaleDateString("en-PH", { dateStyle: "medium" }) : "";
+const longDate = (value: string) => value ? showDate(value) : "";
 
 /** Warns when an existing member already has suspended or forfeited programs. It does not block the sale. */
 function MemberStandingWarning({ standing }: { standing?: { programs: ProgramStanding[]; error: string } }) {

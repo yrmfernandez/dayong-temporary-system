@@ -7,6 +7,7 @@ import { ReceiptPhotoView } from "@/components/receipt-photo";
 import { StatusBadge } from "@/components/status-badge";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { RemittanceEntry } from "@/lib/remittance-workflow";
+import { formatDate as showDate } from "@/lib/date-format";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 
@@ -70,7 +71,7 @@ export function RemittanceEntries({ remittanceId, canDecideIncentive = false, on
             <td className="p-2"><span className="block text-xs font-medium">{entry.kind === "New Sales" ? "New Sale" : "Collection"}</span><span className="block font-mono text-xs">{entry.id}</span></td>
             <td className="p-2">{entry.memberName || "—"}<span className="block text-xs text-muted-foreground">{entry.memberNumber}</span></td>
             <td className="p-2">{entry.program || "—"}</td>
-            <td className="p-2">{entry.orNumber || "—"}<span className="block text-xs text-muted-foreground">{entry.orDate}</span>{entry.dateRemittedReason && <span className="block text-xs text-amber-800">Remitted {entry.dateRemitted}: {entry.dateRemittedReason}</span>}</td>
+            <td className="p-2">{entry.orNumber || "—"}<span className="block text-xs text-muted-foreground">{showDate(entry.orDate)}</span>{entry.dateRemittedReason && <span className="block text-xs text-amber-800">Remitted {showDate(entry.dateRemitted)}: {entry.dateRemittedReason}</span>}</td>
             <td className="p-2 text-xs">{entry.paymentMethod}{entry.paymentReference && <span className="block text-muted-foreground">ref {entry.paymentReference}</span>}</td>
             <td className="p-2 text-right tabular-nums">{money(entry.amount)}</td>
             <td className="p-2 text-right tabular-nums">{money(entry.remittanceAmount)}{entry.noIncentiveReason ? <span className="block text-xs text-red-700">No incentive: {entry.noIncentiveReason}</span> : entry.forfeitedIncentive > 0 && <span className="block text-xs text-red-700">incentive forfeited {money(entry.forfeitedIncentive)}</span>}

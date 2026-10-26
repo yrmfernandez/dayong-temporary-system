@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type LeaveRequest = {
   id: string;
@@ -198,7 +199,7 @@ export default function LeaveApprovalsPage() {
                       </p>
 
                       <p className="text-sm text-muted-foreground">
-                        {request.startDate} to {request.endDate}
+                        {showDate(request.startDate)} to {showDate(request.endDate)}
                       </p>
                     </div>
 

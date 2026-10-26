@@ -19,7 +19,7 @@ import { getCommissions, getVendorPayables } from "@/lib/finance-operations";
 import { getRemittanceDashboard } from "@/lib/remittance-workflow";
 import { getSystemHealth } from "@/lib/system-health";
 import { ACTIVE_ROLE_COOKIE } from "@/lib/ui-preferences";
-import { manilaDateOf } from "@/lib/manila-date";
+import { formatDate as showDate } from "@/lib/date-format";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 // Icon and tone follow what a metric measures, so the same idea looks the same on every dashboard.
@@ -119,7 +119,7 @@ function config(data: DashboardData): View {
       actions: [["Leave Approvals", "/leave-approvals"], ["Attendance Review", "/attendance-reviews"], ["Register Employee", "/employees"]],
       sections: <>
         <Panel title="Late Today" description="Employees who clocked in after their schedule today, most minutes late first."><Table headers={["Employee", "Branch", "Time in", "Minutes late"]} rows={p.lateList.map((row) => [row.name, row.branch, row.timeIn, String(row.lateMinutes)])} empty="Nobody is late today."/></Panel>
-        <Panel title="Leave Requests Awaiting Decision" description="Leave requests filed by employees that still need to be approved or rejected."><Table headers={["Employee", "Type", "From", "To", "Filed"]} rows={p.pendingLeaves.map((row) => [row.name, row.leaveType, row.startDate, row.endDate, manilaDateOf(row.createdAt)])} empty="No pending leave requests."/></Panel>
+        <Panel title="Leave Requests Awaiting Decision" description="Leave requests filed by employees that still need to be approved or rejected."><Table headers={["Employee", "Type", "From", "To", "Filed"]} rows={p.pendingLeaves.map((row) => [row.name, row.leaveType, showDate(row.startDate), showDate(row.endDate), showDate(row.createdAt)])} empty="No pending leave requests."/></Panel>
         <BranchStaff data={data}/>
         <Panel title="Workforce" description="Headcount across all branches: everyone registered, those active, and active MAS and Collectors."><Rows rows={[["Registered employees", String(data.counts.employees)], ["Active employees", String(data.counts.activeEmployees)], ["Active MAS", String(data.counts.mas)], ["Active collectors", String(data.counts.collectors)]]}/></Panel>
       </> };
@@ -146,7 +146,7 @@ function config(data: DashboardData): View {
 
 function Recent({ data, title, description }: { data: DashboardData; title: string; description: string }) { return <Panel title={title} description={description}><Table headers={["Date / Time", "Member", "Program", "Type", "Amount", "Status"]} rows={data.recent.map((row) => [row.stamp.replace("T", " ").slice(0, 16), row.name, row.program, row.type, money(row.amount), <StatusBadge key="status" status={row.status}/>])}/></Panel>; }
 function BranchStaff({ data }: { data: DashboardData }) { return <Panel title="Staff by Branch" description="Active employees in each branch, with how many are MAS and Collectors."><Table headers={["Branch", "Employees", "MAS", "Collectors"]} rows={data.branchStats.map((row) => [row.branch, String(row.employees), String(row.mas), String(row.collectors)])}/></Panel>; }
-function Portfolio({ data }: { data: DashboardData }) { return <Panel title="My Members" description="The first 8 of your active member accounts. Open Members to see them all."><Table headers={["Member", "Program", "Branch", "Status", "DOI"]} rows={data.portfolio.map((row) => [row.member, row.program, row.branch, row.status, row.doi])}/></Panel>; }
+function Portfolio({ data }: { data: DashboardData }) { return <Panel title="My Members" description="The first 8 of your active member accounts. Open Members to see them all."><Table headers={["Member", "Program", "Branch", "Status", "DOI"]} rows={data.portfolio.map((row) => [row.member, row.program, row.branch, row.status, showDate(row.doi)])}/></Panel>; }
 function Rows({ rows }: { rows: string[][] }) { return <dl className="space-y-2 text-sm">{rows.map(([label, value]) => <div key={label} className="flex justify-between gap-4"><dt className="text-muted-foreground">{label}</dt><dd className="font-semibold tabular-nums">{value}</dd></div>)}</dl>; }
 function Action({ href, children }: { href: string; children: React.ReactNode }) { return <Link href={href} className="rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary">{children}</Link>; }
 function Attention({ label, value, href, moneyValue = false }: { label: string; value: number; href: string; moneyValue?: boolean }) { return <Link href={href} className={`mb-3 flex items-center justify-between rounded-lg border p-3 text-sm transition-colors hover:bg-muted ${value ? "tone-warning" : "tone-success"}`}><span className="flex items-center gap-2"><span className="tone-bar size-2 rounded-full" aria-hidden/>{label}</span><strong className="tabular-nums">{moneyValue ? money(value) : value}</strong></Link>; }

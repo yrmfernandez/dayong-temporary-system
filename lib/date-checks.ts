@@ -1,3 +1,4 @@
+import { formatDate as showDate } from "@/lib/date-format";
 /**
  * Date rules for New Sales and Collections. Each date on an entry tells part of one story: the receipt is issued (OR or
  * application date), the cash reaches the office (date remitted, and the remittance slip), and the entry is recorded.
@@ -27,8 +28,8 @@ export function dateWarnings({ receiptDate, receiptLabel = "OR date", dateRemitt
   const warnings: string[] = [];
   const receipt = receiptDate.slice(0, 10);
   if (!valid(receipt)) return receiptDate ? [`The ${receiptLabel} "${receiptDate}" is not a valid date.`] : [];
-  if (valid(today) && receipt > today) warnings.push(`The ${receiptLabel} ${receipt} is in the future.`);
-  if (valid(recordedOn) && receipt > recordedOn) warnings.push(`The ${receiptLabel} ${receipt} is ${plural(days(recordedOn, receipt))} after the entry was recorded (${recordedOn}). A receipt cannot be dated after it was encoded.`);
+  if (valid(today) && receipt > today) warnings.push(`The ${receiptLabel} ${showDate(receipt)} is in the future.`);
+  if (valid(recordedOn) && receipt > recordedOn) warnings.push(`The ${receiptLabel} ${showDate(receipt)} is ${plural(days(recordedOn, receipt))} after the entry was recorded (${recordedOn}). A receipt cannot be dated after it was encoded.`);
   if (valid(recordedOn) && days(receipt, recordedOn) > ENCODE_LATE_DAYS) warnings.push(`Encoded ${plural(days(receipt, recordedOn))} after the ${receiptLabel} (${receipt}).`);
   if (valid(dateRemitted)) {
     if (dateRemitted < receipt) warnings.push(`Remitted on ${dateRemitted}, ${plural(days(dateRemitted, receipt))} before the ${receiptLabel} (${receipt}). Cash cannot be remitted before the receipt is issued.`);
@@ -37,7 +38,7 @@ export function dateWarnings({ receiptDate, receiptLabel = "OR date", dateRemitt
     if (valid(today) && dateRemitted > today) warnings.push(`The date remitted ${dateRemitted} is in the future.`);
   }
   if (valid(slipDate)) {
-    if (slipDate < receipt) warnings.push(`The remittance slip is dated ${slipDate}, before the ${receiptLabel} (${receipt}).`);
+    if (slipDate < receipt) warnings.push(`The remittance slip is dated ${showDate(slipDate)}, before the ${receiptLabel} (${showDate(receipt)}).`);
     if (valid(dateRemitted) && Math.abs(days(dateRemitted, slipDate)) > 1) warnings.push(`The entry says remitted on ${dateRemitted}, but its remittance slip is dated ${slipDate}.`);
   }
   return warnings;

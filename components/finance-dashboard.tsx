@@ -7,6 +7,7 @@ import type { ExecutiveAnalytics } from "@/lib/executive-analytics";
 import type { getRemittanceDashboard } from "@/lib/remittance-workflow";
 import type { getCommissions, getVendorPayables } from "@/lib/finance-operations";
 import { GrossSalesDrilldown } from "@/components/gross-sales-drilldown";
+import { formatDate as showDate } from "@/lib/date-format";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 type Props = { employeeName: string; today: string; analytics: ExecutiveAnalytics; remittance: Awaited<ReturnType<typeof getRemittanceDashboard>>; payables: Awaited<ReturnType<typeof getVendorPayables>>; commissions: Awaited<ReturnType<typeof getCommissions>> };
@@ -46,7 +47,7 @@ export function FinanceDashboard({ employeeName, today, analytics, remittance, p
         <Table headers={["Person", "Role", "Branch", "Collections", "Amount due"]} rows={[...remittance.accountability].sort((a, b) => b.outstandingAmount - a.outstandingAmount).slice(0, 8).map((row) => [row.name, row.role, row.branch, String(row.collectionCount), money(row.outstandingAmount)])} empty="All collected cash has been remitted." />
       </Panel>
       <Panel title="Vendor Bills Due" description="Unpaid supplier bills, earliest due date first." action={<Link href="/vendor-payables" className="text-sm font-medium text-primary hover:underline">Open Payables</Link>}>
-        <Table headers={["Vendor", "Due", "Balance", "Status"]} rows={[...open].sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0, 8).map((bill) => [bill.vendor, bill.dueDate || "—", money(bill.balance), <StatusBadge key="s" status={bill.dueDate && bill.dueDate < today ? "Overdue" : bill.status} />])} empty="No unpaid bills." />
+        <Table headers={["Vendor", "Due", "Balance", "Status"]} rows={[...open].sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0, 8).map((bill) => [bill.vendor, showDate(bill.dueDate) || "—", money(bill.balance), <StatusBadge key="s" status={bill.dueDate && bill.dueDate < today ? "Overdue" : bill.status} />])} empty="No unpaid bills." />
       </Panel>
     </div>
   </section>;

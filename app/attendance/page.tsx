@@ -19,6 +19,7 @@ import { BREAK_END, BREAK_START, dayTotals, SCHEDULED_TIME_IN, SCHEDULED_TIME_OU
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type AttendanceRecord = {
   attendanceDate: string;
@@ -47,13 +48,8 @@ function formatClock(date: Date) {
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-PH", {
-    timeZone: PHILIPPINE_TIME_ZONE,
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: PHILIPPINE_TIME_ZONE, weekday: "long" }).format(date);
+  return `${weekday}, ${showDate(date)}`;
 }
 
 function timeToSeconds(time: string) {

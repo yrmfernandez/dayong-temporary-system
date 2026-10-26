@@ -12,6 +12,7 @@ import { photosByEntry } from "@/lib/receipt-photos";
 import { clearedAt, closeClearings } from "@/lib/clearing";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import { incentiveDecisions } from "@/lib/incentive-decision";
+import { formatDate as showDate } from "@/lib/date-format";
 
 
 /**
@@ -243,7 +244,7 @@ export async function noIncentiveReasons(ids: string[]) {
 }
 /** The distinct "date: reason" lines of these entries. */
 const reasonLines = (ids: string[], reasons: Map<string, { date: string; reason: string }>) =>
-  [...new Set(ids.map((id) => reasons.get(id)).filter((item): item is { date: string; reason: string } => Boolean(item)).map((item) => `${item.date ? `${item.date}: ` : ""}${item.reason}`))];
+  [...new Set(ids.map((id) => reasons.get(id)).filter((item): item is { date: string; reason: string } => Boolean(item)).map((item) => `${item.date ? `${showDate(item.date)}: ` : ""}${item.reason}`))];
 
 export async function getRemittanceDashboard(clerkId = "") {
   // Read-only: the active part of the ledger is enough for the summary, the queues and the clerk list.

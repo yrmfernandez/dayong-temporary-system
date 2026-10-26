@@ -12,6 +12,7 @@ import { fixedNewSaleAmount, isTrue } from "@/lib/program-amount-lock";
 import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-deadline";
 import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { dateWarnings } from "@/lib/date-checks";
+import { formatDate as showDate } from "@/lib/date-format";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
@@ -76,7 +77,7 @@ async function sharedNumbers(): Promise<ExceptionItem[]> {
       where s.legacy_duplicate and coalesce(s.application_no, '') not ilike '%(duplicated%'`),
   ]);
   const onRemittance = (status: string | null) => !["", "Outstanding"].includes(text(status));
-  const other = (row: Shared, kind: string) => row.other ? ` It is also on ${kind} ${row.other} (member ${row.other_member || "?"}, ${row.other_date || "no date"}).` : "";
+  const other = (row: Shared, kind: string) => row.other ? ` It is also on ${kind} ${row.other} (member ${row.other_member || "?"}, ${row.other_date ? showDate(row.other_date) : "no date"}).` : "";
   return [
     ...rowsOf<Shared>(collections).map((row): ExceptionItem => ({
       category: "shared", key: `shared-${row.id}`, recordId: row.id, title: `Collection ${row.id} · member ${row.member || "?"} · ${row.program || "?"}`,

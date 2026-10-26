@@ -45,6 +45,7 @@ import type { Member } from "@/lib/types";
 import { calculateRemittance, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive, type IncentiveTier } from "@/lib/remittance";
 import { forfeitedPaymentsAllowed } from "@/lib/account-rules";
 import { isValidOrNumber, nextOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type CollectionChannel = "MAS" | "Collector" | "DTO";
 type PaymentMethodOption = { id: string; name: string; isCash: boolean; requiresReference: boolean };
@@ -187,19 +188,7 @@ function formatMonth(value: string) {
 }
 
 function formatDate(value: string) {
-  if (!value) return "—";
-
-  const date = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  }).format(date);
+  return value ? showDate(value) : "—";
 }
 
 function getMemberFullName(member: Member) {
@@ -1400,11 +1389,11 @@ export default function CollectionsPage() {
                               <p><strong>{getMemberDisplayName(entryMember)}</strong> <span className="text-muted-foreground">· {entryMember.phMemberNumber}{entryMember.contactNumber ? ` · ${entryMember.contactNumber}` : ""}</span></p>
                               {/* Details to check against the receipt so the payment goes to the right person. */}
                               <p className="text-xs text-muted-foreground">
-                                Born {entryMember.birthdate || "not recorded"}{entryMember.age !== null && entryMember.age !== undefined ? ` (age ${entryMember.age})` : ""}
+                                Born {showDate(entryMember.birthdate) || "not recorded"}{entryMember.age !== null && entryMember.age !== undefined ? ` (age ${entryMember.age})` : ""}
                                 {entryMember.address?.houseBlockLot ? ` · ${entryMember.address.houseBlockLot}` : ""}
                                 {(() => {
                                   const last = (histories[entry.id] ?? [])[0];
-                                  return last ? ` · Last paid OR ${last.orNumber || "—"} on ${last.orDate}, ${formatCurrency(Number(last.amountCollected) || 0)}, NOP ${last.nop}` : entry.programId && !entry.accountLoading ? " · No payment yet for this program" : "";
+                                  return last ? ` · Last paid OR ${last.orNumber || "—"} on ${showDate(last.orDate)}, ${formatCurrency(Number(last.amountCollected) || 0)}, NOP ${last.nop}` : entry.programId && !entry.accountLoading ? " · No payment yet for this program" : "";
                                 })()}
                               </p>
                               {(() => {
@@ -1413,7 +1402,7 @@ export default function CollectionsPage() {
                                 const twins = members.filter((member) => member.id !== entryMember.id && nameKey(member) === nameKey(entryMember));
                                 return twins.length ? (
                                   <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
-                                    {twins.length + 1} members are named {getMemberFullName(entryMember)}. Check the member number and birthdate against the receipt: the other {twins.length === 1 ? "is" : "are"} {twins.map((member) => `${member.phMemberNumber || "no number"} (born ${member.birthdate || "?"})`).join(", ")}.
+                                    {twins.length + 1} members are named {getMemberFullName(entryMember)}. Check the member number and birthdate against the receipt: the other {twins.length === 1 ? "is" : "are"} {twins.map((member) => `${member.phMemberNumber || "no number"} (born ${showDate(member.birthdate) || "?"})`).join(", ")}.
                                   </p>
                                 ) : null;
                               })()}
@@ -1984,7 +1973,7 @@ export default function CollectionsPage() {
                           <div><p className="text-xs text-muted-foreground">Months</p><p className="font-medium">{formatMonth(activeCollection.monthFrom)}{activeCollection.monthTo && activeCollection.monthTo !== activeCollection.monthFrom ? ` – ${formatMonth(activeCollection.monthTo)}` : ""}{activeCollection.monthTo ? ` (${getMonthDifference(activeCollection.monthFrom, activeCollection.monthTo)})` : ""}</p></div>
                           <div><p className="text-xs text-muted-foreground">NOP</p><p className="font-medium">{activeCollection.nopFrom ?? "—"}{activeCollection.nopTo !== null && activeCollection.nopTo !== activeCollection.nopFrom ? `–${activeCollection.nopTo}` : ""}</p></div>
                           <div><p className="text-xs text-muted-foreground">Amount</p><p className="font-medium">{activeCollection.amountCollected ? formatCurrency(Number(activeCollection.amountCollected)) : "—"}</p></div>
-                          <div><p className="text-xs text-muted-foreground">OR</p><p className="truncate font-medium">{activeCollection.orNumber || "—"}{activeCollection.orDate ? ` · ${activeCollection.orDate}` : ""}</p></div>
+                          <div><p className="text-xs text-muted-foreground">OR</p><p className="truncate font-medium">{activeCollection.orNumber || "—"}{activeCollection.orDate ? ` · ${showDate(activeCollection.orDate)}` : ""}</p></div>
                         </div>
                       </div>
                     )}

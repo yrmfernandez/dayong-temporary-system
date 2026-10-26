@@ -6,8 +6,9 @@ import { Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DEFAULT_MAINTENANCE_MESSAGE, MAINTENANCE_MESSAGE_MAX, type MaintenanceNotice } from "@/lib/maintenance-notice-text";
+import { formatDateTime as showDateTime } from "@/lib/date-format";
 
-const stamp = (value: string) => value ? new Date(value).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+const stamp = (value: string) => value ? showDateTime(value) : "";
 
 /** System Health: IT turns the maintenance notice on for everyone while updating, and off when done. */
 export function MaintenanceNoticePanel({ notice: initial }: { notice: MaintenanceNotice }) {

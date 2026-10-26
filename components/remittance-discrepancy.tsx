@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { parseJsonResponse } from "@/lib/api-response";
 import type { DiscrepancyBreakdown } from "@/lib/remittance-discrepancy";
+import { formatDateTime as showDateTime } from "@/lib/date-format";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 
@@ -37,14 +38,14 @@ export function RemittanceDiscrepancy({ remittanceId }: { remittanceId: string }
       <span>Expected <strong className="tabular-nums">{money(data.expected)}</strong>{data.fidelity > 0 && <span className="text-xs text-muted-foreground"> (incl. Fidelity {money(data.fidelity)})</span>}</span>
       <span>Recorded <strong className="tabular-nums">{money(data.actual)}</strong></span>
       <span className={tone}>Difference <strong className="tabular-nums">{money(data.difference)}</strong> {data.difference < 0 ? "short" : data.difference > 0 ? "over" : ""}</span>
-      <span className="text-xs text-muted-foreground">Slip made {data.createdAt || "—"} · received {data.receivedAt || "—"}{data.cashCount ? ` · cash count ${data.cashCount}` : ""}</span>
+      <span className="text-xs text-muted-foreground">Slip made {showDateTime(data.createdAt) || "—"} · received {showDateTime(data.receivedAt) || "—"}{data.cashCount ? ` · cash count ${data.cashCount}` : ""}</span>
     </div>
     <div><p className="font-semibold">Why</p><ul className="mt-1 list-disc space-y-1 pl-5">{data.causes.map((cause) => <li key={cause}>{cause}</li>)}</ul></div>
     {data.changes.length > 0 && <div className="overflow-x-auto rounded-md border bg-background">
       <table className="w-full min-w-[640px] text-left text-xs">
         <thead className="bg-muted/50 uppercase text-muted-foreground"><tr>{["When", "What changed", "From", "To", "Entry", "Reason", "By"].map((label) => <th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead>
         <tbody>{data.changes.map((change, index) => <tr key={index} className="border-t align-top">
-          <td className="whitespace-nowrap p-2">{change.at}</td><td className="p-2">{change.what === "Entry share" ? "Entry's share on the slip" : `Slip ${change.what.toLowerCase()}`}</td>
+          <td className="whitespace-nowrap p-2">{showDateTime(change.at)}</td><td className="p-2">{change.what === "Entry share" ? "Entry's share on the slip" : `Slip ${change.what.toLowerCase()}`}</td>
           <td className="p-2 tabular-nums">{money(change.from)}</td><td className="p-2 tabular-nums">{money(change.to)}</td>
           <td className="p-2">{change.entryId ? <><span className="font-mono">{change.entryId}</span>{change.orNumber && <span className="block text-muted-foreground">OR {change.orNumber}</span>}</> : "—"}</td>
           <td className="p-2">{change.reason || "—"}</td><td className="p-2">{change.by}</td>

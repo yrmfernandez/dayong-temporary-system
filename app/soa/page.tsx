@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { SearchSelect } from "@/components/ui/search-select";
 import type { StatementOfAccount } from "@/lib/statement-of-account";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type AccountOption = { id: string; memberName: string; memberNumber: string; programName: string; branch: string; mas: string; doi: string; status: string; temporarilySuspended: boolean };
 type Filters = { search: string; branch: string; mas: string; program: string; status: string };
@@ -19,7 +20,7 @@ const matchesStatus = (item: AccountOption, status: string) => !status || (statu
 const statusLabel = (item: AccountOption) => `${item.status}${item.temporarilySuspended && item.status !== "Forfeited" ? " · suspended" : ""}`;
 const statusTone = (status: string) => ["U", "ADV", "Fully Paid"].includes(status) ? "success" as const : status === "NS" ? "info" as const : status === "Needs review" ? "warning" as const : "danger" as const;
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
-const longDate = (value: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—";
+const longDate = (value: string) => value ? showDate(value) : "—";
 const monthLabel = (value: string) => value ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", year: "numeric", timeZone: "UTC" }) : "—";
 const statusText: Record<string, string> = { NS: "New sale, no collection yet", U: "Updated", ADV: "Paid in advance", "60D": "60 days behind", "90D": "90 days behind", "120D": "120 days behind", "150D": "150 days behind", Paid: "Fully paid", Forfeited: "Forfeited" };
 

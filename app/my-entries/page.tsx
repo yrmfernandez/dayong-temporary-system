@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { DayEntry } from "@/lib/todays-entries";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Totals = { count: number; amount: number };
 type Result = { success: boolean; message?: string; from: string; to: string; today: string; employeeId: string; isAdmin: boolean; clerks: Array<{ employeeId: string; name: string }>; entries: DayEntry[]; sales: Totals; collections: Totals; withPhoto: number;
@@ -193,7 +194,7 @@ export default function MyEntriesPage() {
                           <tr className="border-t align-top">
                             <td className="p-2 pl-3"><span className="block font-mono text-xs">{entry.id}</span>{entry.warnings.length > 0 && <span className="mt-1 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-900"><AlertTriangle className="size-3" />Check dates ({entry.warnings.length})</span>}</td>
                             <td className="p-2"><span className="block">{entry.memberName || "—"}</span><span className="block text-xs text-muted-foreground">{entry.memberNumber}</span></td>
-                            <td className="p-2"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{entry.orDate}</span></td>
+                            <td className="p-2"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{showDate(entry.orDate)}</span></td>
                             <td className="p-2 text-xs">{entry.paymentMethod}</td>
                             <td className="p-2 text-right font-medium">{money(entry.amount)}</td>
                             <td className="p-2 text-right"><Button type="button" size="sm" variant="ghost" onClick={() => setOpen(open === entry.id ? "" : entry.id)}><Eye className="size-3.5" />View</Button></td>

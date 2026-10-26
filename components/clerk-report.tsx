@@ -15,6 +15,7 @@ import { readApiResponse } from "@/lib/api-response";
 import type { ClerkReport as Report, ReportLine } from "@/lib/clerk-report";
 import { BURIAL_ACCOUNT, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
 type Remark = { id: string; comment: string; createdAt: string; encodedBy: string };
@@ -260,7 +261,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                   </div>
                   <div className="min-w-0">
                     <span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span>
-                    <span className="block text-xs text-muted-foreground">OR / app date {entry.orDate || "—"} · remitted {entry.dateRemitted || "—"}</span>
+                    <span className="block text-xs text-muted-foreground">OR / app date {showDate(entry.orDate) || "—"} · remitted {showDate(entry.dateRemitted) || "—"}</span>
                   </div>
                   <div className="min-w-0">
                     <span className="block break-words">{entry.memberName || "—"}</span>
@@ -288,7 +289,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       {data && review && (
         <div className="space-y-2 rounded-lg border p-3 print:hidden">
           <p className="font-semibold">Reviewer remarks on this report</p>
-          {data.remarks.map((item) => <p key={item.id} className="text-sm"><span className="text-muted-foreground">{item.createdAt.slice(0, 16).replace("T", " ")} · {item.encodedBy}:</span> {item.comment}</p>)}
+          {data.remarks.map((item) => <p key={item.id} className="text-sm"><span className="text-muted-foreground">{showDateTime(item.createdAt)} · {item.encodedBy}:</span> {item.comment}</p>)}
           {!data.remarks.length && <p className="text-sm text-muted-foreground">No remarks yet.</p>}
           <div className="flex gap-2"><Input value={remark} onChange={(event) => setRemark(event.target.value)} placeholder="Add a remark for this clerk's report" /><Button type="button" disabled={!remark.trim()} onClick={() => void saveRemark()}>Save</Button></div>
         </div>

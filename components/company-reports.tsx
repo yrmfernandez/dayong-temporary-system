@@ -12,6 +12,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { ReportLine, ReportSummary } from "@/lib/reports";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDateTime as showDateTime } from "@/lib/date-format";
 
 type Report = {
   from: string; to: string; generatedAt: string; summary: ReportSummary;
@@ -217,7 +218,7 @@ export function CompanyReports() {
         <CardContent className="space-y-3">
           {remarks.map((item) => <div key={item.id} className="border-b pb-2 text-sm last:border-b-0">
             <p className="whitespace-pre-wrap">{item.comment}</p>
-            <p className="text-xs text-muted-foreground">{item.createdAt.slice(0, 16).replace("T", " ")} · {item.encodedBy || "Unknown"}{item.scope !== COMPANY_SCOPE ? ` · ${item.scope.slice(COMPANY_SCOPE.length + 3)}` : ""}</p>
+            <p className="text-xs text-muted-foreground">{showDateTime(item.createdAt)} · {item.encodedBy || "Unknown"}{item.scope !== COMPANY_SCOPE ? ` · ${item.scope.slice(COMPANY_SCOPE.length + 3)}` : ""}</p>
           </div>)}
           {!remarks.length && <p className="text-sm text-muted-foreground">No notes for this period yet.</p>}
           <div className="space-y-2 print:hidden">

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Commission = { id: string; employeeId: string; employeeName: string; periodFrom: string; periodTo: string; grossIncentive: number; fidelityDeduction: number; netCommission: number; status: string; paidAt: string; referenceNumber: string; remarks: string };
 type Earned = { employeeId: string; name: string; role: string; saleIncentives: number; collectionIncentives: number; sales: number; collections: number; grossIncentive: number; fidelity: number; netCommission: number; recorded: number };
@@ -137,7 +138,7 @@ export default function CommissionsPage() {
     </form></CardContent></Card>}
 
     <Card><CardHeader><CardTitle>Commission Register</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead><tr>{["Period", "Employee", "Gross", "Fidelity", "Net", "Status", "Paid at", "Action"].map((x) => <th className="border-b p-3 text-left" key={x}>{x}</th>)}</tr></thead><tbody>
-      {register.map((x) => <Fragment key={x.id}><tr><td className="border-b p-3">{x.periodFrom} – {x.periodTo}</td><td className="border-b p-3"><b>{x.employeeName}</b><br />{x.employeeId}</td><td className="border-b p-3 tabular-nums">{money(x.grossIncentive)}</td><td className="border-b p-3 tabular-nums">{x.fidelityDeduction > 0 ? `− ${money(x.fidelityDeduction)}` : "—"}</td><td className="border-b p-3 font-bold tabular-nums">{money(x.netCommission)}</td><td className="border-b p-3">{x.status}</td><td className="border-b p-3">{x.paidAt || "—"}</td><td className="border-b p-3">{x.status !== "Paid" && <Button size="sm" variant={paying?.id === x.id ? "default" : "outline"} aria-expanded={paying?.id === x.id} onClick={() => startPay(x)}>{paying?.id === x.id ? "Close" : "Pay now"}</Button>}</td></tr>
+      {register.map((x) => <Fragment key={x.id}><tr><td className="border-b p-3">{showDate(x.periodFrom)} – {showDate(x.periodTo)}</td><td className="border-b p-3"><b>{x.employeeName}</b><br />{x.employeeId}</td><td className="border-b p-3 tabular-nums">{money(x.grossIncentive)}</td><td className="border-b p-3 tabular-nums">{x.fidelityDeduction > 0 ? `− ${money(x.fidelityDeduction)}` : "—"}</td><td className="border-b p-3 font-bold tabular-nums">{money(x.netCommission)}</td><td className="border-b p-3">{x.status}</td><td className="border-b p-3">{showDate(x.paidAt) || "—"}</td><td className="border-b p-3">{x.status !== "Paid" && <Button size="sm" variant={paying?.id === x.id ? "default" : "outline"} aria-expanded={paying?.id === x.id} onClick={() => startPay(x)}>{paying?.id === x.id ? "Close" : "Pay now"}</Button>}</td></tr>
         {paying?.id === x.id && <tr><td colSpan={8} className="border-b bg-muted/30 p-3">
           <p className="mb-2 text-sm font-semibold">Pay {money(x.netCommission)} to {x.employeeName} now, outside payroll</p>
           <CashOutFields value={cashOut} onChange={setCashOut} />

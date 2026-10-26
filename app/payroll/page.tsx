@@ -17,7 +17,7 @@ import { type FilterPerson, usePeopleFilter } from "@/components/people-filter";
 import { COMPANY_PROGRAM_CATEGORY, dailyRateOf, defaultPayrollSettings, lineTotals, type Adjustment, type PayProfile, type PayrollLine, type PayrollSettings } from "@/lib/payroll-calc";
 import { buildPayslip, PAYSLIP_COMPANY, payslipFileName, payslipPdf, type PayslipRow } from "@/lib/payslip";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
-import { manilaDateOf } from "@/lib/manila-date";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Run = { id: string; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings; employeeCount: number; grossTotal: number; deductionsTotal: number; netTotal: number; preparedByUserId: string; preparedByName: string; approvedByName: string; approvedAt: string; paidAt: string; cashAccount: string; paymentReference: string; cashTransactionId: string; branch: string; voidReason: string; remarks: string };
 type ProgramDeduction = { id: string; runId: string; periodFrom: string; periodTo: string; paidAt: string; employeeId: string; employeeName: string; programId: string; program: string; amount: number; reason: string; collectionId: string; orNumber: string; linkedAt: string; linkedBy: string };
@@ -142,9 +142,9 @@ function ProgramDeductions({ overview, busy, onLink }: { overview: Overview; bus
           <td className="p-2.5"><strong>{item.employeeName}</strong><div className="text-xs text-muted-foreground">{item.employeeId}</div></td>
           <td className="p-2.5">{item.program || <span className="text-amber-700">Program not recorded</span>}<div className="max-w-72 text-xs text-muted-foreground">{item.reason}</div></td>
           <td className="p-2.5 tabular-nums">{money(item.amount)}</td>
-          <td className="p-2.5 text-xs">{item.periodFrom} to {item.periodTo}<div className="text-muted-foreground">Paid {manilaDateOf(item.paidAt)}</div></td>
+          <td className="p-2.5 text-xs">{showDate(item.periodFrom)} to {showDate(item.periodTo)}<div className="text-muted-foreground">Paid {showDate(item.paidAt)}</div></td>
           <td className="p-2.5">{item.collectionId
-            ? <div className="space-y-1"><span className="font-medium text-emerald-700">OR {item.orNumber}</span><div className="text-xs text-muted-foreground">Linked by {item.linkedBy} {manilaDateOf(item.linkedAt)}</div>{overview.canManage && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void confirmDialog(`Remove the link to OR ${item.orNumber}? The deduction goes back on the waiting list.`).then((ok) => ok && onLink(item.id, ""))}>Unlink</Button>}</div>
+            ? <div className="space-y-1"><span className="font-medium text-emerald-700">OR {item.orNumber}</span><div className="text-xs text-muted-foreground">Linked by {item.linkedBy} {showDate(item.linkedAt)}</div>{overview.canManage && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void confirmDialog(`Remove the link to OR ${item.orNumber}? The deduction goes back on the waiting list.`).then((ok) => ok && onLink(item.id, ""))}>Unlink</Button>}</div>
             : overview.canManage ? <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); const or = (typed[item.id] ?? "").trim(); if (or) void onLink(item.id, or).then((ok) => { if (ok) setTyped((current) => ({ ...current, [item.id]: "" })); }); }}>
                 <Input aria-label={`OR number for ${item.employeeName}`} className="h-8 w-32" placeholder="OR number" value={typed[item.id] ?? ""} onChange={(event) => setTyped((current) => ({ ...current, [item.id]: event.target.value }))} />
                 <Button type="submit" size="sm" disabled={busy || !(typed[item.id] ?? "").trim()}>Link</Button>
@@ -222,8 +222,8 @@ function RunsList({ overview, busy, onOpen, onCreate }: { overview: Overview; bu
             <tbody>
               {overview.runs.map((run) => <tr key={run.id} className="border-t">
                 <td className="p-3 font-mono text-xs">{run.id}</td>
-                <td className="p-3">{run.periodFrom} to {run.periodTo}</td>
-                <td className="p-3">{run.payDate || "—"}</td>
+                <td className="p-3">{showDate(run.periodFrom)} to {showDate(run.periodTo)}</td>
+                <td className="p-3">{showDate(run.payDate) || "—"}</td>
                 <td className="p-3">{run.employeeCount}</td>
                 <td className="p-3 font-semibold tabular-nums">{money(run.netTotal)}</td>
                 <td className="p-3"><StatusBadge status={run.status} /></td>
@@ -247,7 +247,7 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
   const [adjustNote, setAdjustNote] = useState("");
   const emptyAdjustment = (kind: Adjustment["kind"]) => ({ kind, category: overview.adjustmentCategories[kind][0] ?? "", programId: "", amount: "", reason: "" });
   const [adjustment, setAdjustment] = useState(emptyAdjustment("Addition"));
-  const period = `${run.periodFrom} to ${run.periodTo}`;
+  const period = `${showDate(run.periodFrom)} to ${showDate(run.periodTo)}`;
   const suggestedReasons: Record<string, string> = {
     "SSS contribution": `SSS employee share, ${period}`,
     "PhilHealth contribution": `PhilHealth employee share, ${period}`,
@@ -281,7 +281,7 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
       <MetricTile tone="brand" icon={CalendarRange} label="Pay period" value={`${run.periodFrom.slice(5)} – ${run.periodTo.slice(5)}`} detail={`${run.periodFrom.slice(0, 4)} · ${lines.length} employees`} />
       <MetricTile tone="teal" icon={PlusCircle} label="Gross earnings" value={money(totals.gross)} detail="Base, overtime, commission, additions" />
       <MetricTile tone="danger" icon={MinusCircle} label="Deductions" value={money(totals.deductions)} detail="Late, undertime, absences, deductions" />
-      <MetricTile tone="success" icon={Banknote} label="Net pay" value={money(totals.net)} detail={run.status === "Paid" ? `Paid ${run.payDate} from ${run.cashAccount}` : "To be released"} />
+      <MetricTile tone="success" icon={Banknote} label="Net pay" value={money(totals.net)} detail={run.status === "Paid" ? `Paid ${showDate(run.payDate)} from ${run.cashAccount}` : "To be released"} />
     </div>
 
     <Card>
@@ -389,14 +389,14 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
         </form>}
         <div className="flex flex-wrap items-center gap-3 border-t pt-4">
           <Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={async () => { const reason = await promptDialog("Reason for voiding this payroll (required):", { required: true }); if (reason?.trim()) void act({ action: "void", reason }, "Payroll voided. Its commissions are available to a new payroll."); }}>Void payroll</Button>
-          {run.status === "Draft" && <Button type="button" variant="destructive" disabled={busy} onClick={async () => { if (await confirmDialog(`Delete this Draft payroll (${run.periodFrom} to ${run.periodTo})? Its lines and adjustments are removed from the database. This cannot be undone.`)) void act({ action: "delete" }, "Draft payroll deleted."); }}>Delete draft</Button>}
+          {run.status === "Draft" && <Button type="button" variant="destructive" disabled={busy} onClick={async () => { if (await confirmDialog(`Delete this Draft payroll (${showDate(run.periodFrom)} to ${showDate(run.periodTo)})? Its lines and adjustments are removed from the database. This cannot be undone.`)) void act({ action: "delete" }, "Draft payroll deleted."); }}>Delete draft</Button>}
           <p className="w-full text-xs text-muted-foreground">Void keeps the payroll on record with a reason. {run.status === "Draft" ? "Delete removes a Draft made by mistake from the database entirely." : "Only a Draft can be deleted."}</p>
         </div>
       </CardContent>
     </Card>}
 
     {run.status === "Void" && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">Voided: {run.voidReason}</p>}
-    {run.status === "Paid" && <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">Paid on {run.payDate} from {run.cashAccount}{run.paymentReference ? ` (ref ${run.paymentReference})` : ""}. Cash ledger entry {run.cashTransactionId || "—"}.</p>}
+    {run.status === "Paid" && <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">Paid on {showDate(run.payDate)} from {run.cashAccount}{run.paymentReference ? ` (ref ${run.paymentReference})` : ""}. Cash ledger entry {run.cashTransactionId || "—"}.</p>}
 
     {payslip && <Payslip run={run} line={payslip} adjustments={adjustments} onClose={() => setPayslip(null)} />}
   </div>;
@@ -435,8 +435,8 @@ function Payslip({ run, line, adjustments, onClose }: { run: Run; line: PayrollL
           <div>
             <p className="text-xs font-semibold uppercase tracking-[.2em] text-muted-foreground">{PAYSLIP_COMPANY}</p>
             <h2 className="text-2xl font-black tracking-tight">PAYSLIP</h2>
-            <p className="text-sm text-muted-foreground">Pay period: {slip.periodFrom} to {slip.periodTo}</p>
-            <p className="text-sm text-muted-foreground">Pay date: {slip.payDate || "Not yet paid"} · Payroll {slip.runId} · {slip.status}</p>
+            <p className="text-sm text-muted-foreground">Pay period: {showDate(slip.periodFrom)} to {showDate(slip.periodTo)}</p>
+            <p className="text-sm text-muted-foreground">Pay date: {showDate(slip.payDate) || "Not yet paid"} · Payroll {slip.runId} · {slip.status}</p>
           </div>
           <div className="sm:text-right">
             <p className="text-lg font-bold">{slip.employee.name}</p>

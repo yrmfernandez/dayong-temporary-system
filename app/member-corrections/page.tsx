@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Found = { id: string; number: string; name: string; birthdate: string };
 /** Details a merge can take from either member (lib/member-corrections.ts MERGE_FIELDS). */
@@ -92,7 +93,7 @@ function MemberSummary({ member }: { member: Member }) {
   const m = member.member;
   return <Card><CardHeader className="pb-2"><CardTitle className="text-base">{m.surname}, {[m.firstName, m.middleName, m.nameExtension].filter(Boolean).join(" ")} · {m.number}{m.birthdate ? ` · born ${m.birthdate}` : ""}</CardTitle></CardHeader>
     <CardContent className="space-y-4">{member.accounts.length ? member.accounts.map((account) => <div key={account.id} className="space-y-1">
-      <p className="text-sm font-semibold">{account.program} · {account.id} <span className="font-normal text-muted-foreground">· {peso(account.rate)}{account.flexible ? " minimum" : ""}/month · DOI {account.doi} · {account.branch} · {account.mas} · {account.status || "—"}</span></p>
+      <p className="text-sm font-semibold">{account.program} · {account.id} <span className="font-normal text-muted-foreground">· {peso(account.rate)}{account.flexible ? " minimum" : ""}/month · DOI {showDate(account.doi)} · {account.branch} · {account.mas} · {account.status || "—"}</span></p>
       <ReceiptTable receipts={account.receipts} />
     </div>) : <p className="text-sm text-muted-foreground">No accounts.</p>}</CardContent></Card>;
 }
@@ -101,7 +102,7 @@ function ReceiptTable({ receipts, tick }: { receipts: Receipt[]; tick?: { chosen
   if (!receipts.length) return <p className="text-xs text-muted-foreground">No posted receipts.</p>;
   return <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[620px] text-sm"><thead className="bg-muted/50 text-left"><tr>{tick && <th className="w-8 p-2" />}<th className="p-2">OR</th><th className="p-2">OR date</th><th className="p-2 text-right">Amount</th><th className="p-2">Coverage</th><th className="p-2">Remittance</th></tr></thead>
     <tbody>{receipts.map((receipt) => <tr key={receipt.id} className="border-t">{tick && <td className="p-2"><input type="checkbox" aria-label={`Select OR ${receipt.orNumber}`} checked={tick.chosen.has(receipt.id)} onChange={() => tick.toggle(receipt.id)} /></td>}
-      <td className="p-2 font-medium">{receipt.orNumber || receipt.id}</td><td className="p-2 tabular-nums">{receipt.orDate}</td><td className="p-2 text-right tabular-nums">{peso(receipt.amount)}</td><td className="p-2">{nop(receipt)}</td><td className="p-2 text-xs text-muted-foreground">{receipt.remittance}</td></tr>)}</tbody></table></div>;
+      <td className="p-2 font-medium">{receipt.orNumber || receipt.id}</td><td className="p-2 tabular-nums">{showDate(receipt.orDate)}</td><td className="p-2 text-right tabular-nums">{peso(receipt.amount)}</td><td className="p-2">{nop(receipt)}</td><td className="p-2 text-xs text-muted-foreground">{receipt.remittance}</td></tr>)}</tbody></table></div>;
 }
 
 /** One tool's form, its preview and the save with a reason. The preview is cleared whenever the form changes. */
@@ -191,7 +192,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <p className="text-xs text-muted-foreground">Blank keeps the current start: NOP {account.start.nop} in {account.start.month}. The first receipt by OR date gets the first NOP; each next receipt continues after the one before. Months below: blank keeps the receipt&apos;s months.</p>
       <div className="space-y-1 sm:w-60"><Label htmlFor="cov-doi">DOI</Label><Input id="cov-doi" type="date" max={today()} placeholder={account.doi} value={form.doi ?? account.doi} onChange={(event) => set("doi", event.target.value)} /></div>
       <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[620px] text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-2">OR</th><th className="p-2">OR date</th><th className="p-2 text-right">Amount</th><th className="p-2">Now</th><th className="w-32 p-2">Months</th></tr></thead>
-        <tbody>{account.receipts.map((receipt) => <tr key={receipt.id} className="border-t"><td className="p-2 font-medium">{receipt.orNumber}</td><td className="p-2">{receipt.orDate}</td><td className="p-2 text-right">{peso(receipt.amount)}</td><td className="p-2">{nop(receipt)}</td>
+        <tbody>{account.receipts.map((receipt) => <tr key={receipt.id} className="border-t"><td className="p-2 font-medium">{receipt.orNumber}</td><td className="p-2">{showDate(receipt.orDate)}</td><td className="p-2 text-right">{peso(receipt.amount)}</td><td className="p-2">{nop(receipt)}</td>
           <td className="p-2"><Input type="number" min={1} max={120} aria-label={`Months for OR ${receipt.orNumber}`} placeholder={String(receipt.months)} value={months[receipt.id] ?? ""} onChange={(event) => { setMonths((current) => ({ ...current, [receipt.id]: event.target.value })); setPreview(null); }} /></td></tr>)}</tbody></table></div>
     </>}
 
@@ -280,7 +281,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <p className="text-sm">{preview.summary}</p>
       {preview.statuses.length > 0 && <ul className="text-sm">{preview.statuses.map((item) => <li key={item.account}>{item.program} {item.account}: status {item.before} → <strong>{item.after}</strong></li>)}</ul>}
       {preview.receipts.length > 0 && <div className="overflow-x-auto rounded-md border bg-background"><table className="w-full min-w-[620px] text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-2">OR</th><th className="p-2">OR date</th><th className="p-2 text-right">Amount</th><th className="p-2">Before</th><th className="p-2">After</th></tr></thead>
-        <tbody>{preview.receipts.map((item) => <tr key={item.id} className="border-t"><td className="p-2 font-medium">{item.orNumber}</td><td className="p-2">{item.orDate}</td><td className="p-2 text-right">{peso(item.amount)}</td><td className="p-2 text-muted-foreground">{item.before}</td><td className="p-2 font-medium">{item.after}</td></tr>)}</tbody></table></div>}
+        <tbody>{preview.receipts.map((item) => <tr key={item.id} className="border-t"><td className="p-2 font-medium">{item.orNumber}</td><td className="p-2">{showDate(item.orDate)}</td><td className="p-2 text-right">{peso(item.amount)}</td><td className="p-2 text-muted-foreground">{item.before}</td><td className="p-2 font-medium">{item.after}</td></tr>)}</tbody></table></div>}
       {preview.notes.map((note) => <p key={note} className="text-xs text-muted-foreground">{note}</p>)}
       <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
         <div className="space-y-1"><Label htmlFor="fix-reason">Reason (required)</Label><Input id="fix-reason" maxLength={300} placeholder="e.g. Owner confirmed from the paper record: January is NOP 31" value={reason} onChange={(event) => setReason(event.target.value)} /></div>

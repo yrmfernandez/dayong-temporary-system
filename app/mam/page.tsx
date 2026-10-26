@@ -25,6 +25,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Report = ReturnType<typeof buildMamReport>;
 type Row = Report["rows"][number];
@@ -556,7 +557,7 @@ export default function MamPage() {
                     <td className="sticky left-0 z-10 max-w-72 bg-background p-4 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]">
                       {/* Printed: one line per member, to save paper (owner, October 23, 2026). */}
                       <p className="mam-print-line hidden print:block">
-                        <strong>{row.memberName}</strong> · {row.memberNumber} · {row.programName} · APP {row.applicationNumber || "—"} · DOI {row.doi} · {money(row.basePay)}/mo
+                        <strong>{row.memberName}</strong> · {row.memberNumber} · {row.programName} · APP {row.applicationNumber || "—"} · DOI {showDate(row.doi)} · {money(row.basePay)}/mo
                       </p>
                       <button
                         className="text-left font-semibold text-primary underline-offset-4 hover:underline text-sm print:hidden"
@@ -570,7 +571,7 @@ export default function MamPage() {
                         <div>
                           APP: <span className="font-mono text-foreground">{row.applicationNumber || "—"}</span>
                         </div>
-                        <div>DOI: {row.doi}</div>
+                        <div>DOI: {showDate(row.doi)}</div>
                         <div>Monthly: {money(row.basePay)}</div>
                         <div>Reg Fee: {money(row.registrationFee)}</div>
                       </div>
@@ -619,7 +620,7 @@ export default function MamPage() {
                                       <span>{money(p.amount)}</span>
                                     </div>
                                     <div className="text-muted-foreground mt-0.5">
-                                      OR Date: {p.orDate}
+                                      OR Date: {showDate(p.orDate)}
                                     </div>
                                     <div className="text-muted-foreground">
                                       Covers: {p.monthFrom} – {p.monthTo} (NOP {p.nopFrom}-{p.nopTo})
@@ -735,14 +736,14 @@ export default function MamPage() {
                       <div key={p.id} className="rounded-lg border p-3 text-xs space-y-1 bg-card">
                         <div className="flex justify-between font-bold text-sm">
                           <span>{money(p.amount)}</span>
-                          <span className="text-muted-foreground font-normal text-xs">{p.orDate}</span>
+                          <span className="text-muted-foreground font-normal text-xs">{showDate(p.orDate)}</span>
                         </div>
                         <p className="font-mono text-muted-foreground">OR #{p.orNumber}</p>
                         <div className="border-t pt-1.5 mt-1 text-muted-foreground">
                           Covers: {p.monthFrom} – {p.monthTo} (NOP {p.nopFrom} – {p.nopTo})
                         </div>
                         <div className="text-muted-foreground">
-                          Remitted: {p.dateRemitted || "Unremitted"}
+                          Remitted: {showDate(p.dateRemitted) || "Unremitted"}
                         </div>
                       </div>
                     ))}

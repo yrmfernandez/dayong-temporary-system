@@ -12,6 +12,7 @@ import { boardCategory, canAdjustLateness, canViewAttendanceTracking, isMarkStat
 import { getEmployees } from "@/lib/employees";
 import { getActiveAttendanceEmployees, getBranches } from "@/lib/google-sheets-data";
 import { getClockInChecks } from "@/lib/clock-in-checks";
+import { formatDate as showDate } from "@/lib/date-format";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const MAX_LATE_MINUTES = 24 * 60;
@@ -88,7 +89,7 @@ export const PATCH = withEncoder(async (request: Request) => {
     if (!record || !rowNumber || !record.timeIn || record.status !== "Present") throw new Error("Only a clocked-in attendance record can have its late time adjusted.");
     if (record.lateMinutes === lateMinutes) throw new Error("The late time is already that amount.");
     const timestamp = new Date().toISOString();
-    const note = `Late adjusted from ${record.lateMinutes} to ${lateMinutes} min by ${user.name} on ${getPhilippineDate()}: ${reason}`;
+    const note = `Late adjusted from ${record.lateMinutes} to ${lateMinutes} min by ${user.name} on ${showDate(getPhilippineDate())}: ${reason}`;
     const updated = { ...record, lateMinutes, notes: [record.notes, note].filter(Boolean).join(" | "), updatedAt: timestamp };
     await updateAttendanceRecord(rowNumber, updated);
     return Response.json({ success: true, message: `Late time for ${employeeId} set to ${lateMinutes} minutes.`, record: updated });
@@ -122,7 +123,7 @@ export const POST = withEncoder(async (request: Request) => {
     const existing = new Map(rows.map((row) => [row.record.employeeId, row]));
     const closure = closures[0] ?? null;
     const timestamp = new Date().toISOString();
-    const notes = `${markLabel(status)} marked by ${user.name} on ${today}${note ? `: ${note}` : ""}`;
+    const notes = `${markLabel(status)} marked by ${user.name} on ${showDate(today)}${note ? `: ${note}` : ""}`;
     const skipped: Array<{ employeeId: string; reason: string }> = [];
     const additions: AttendanceRecord[] = [];
     const updates: Array<{ rowNumber: number; record: AttendanceRecord }> = [];
@@ -187,7 +188,7 @@ async function revertMarks(body: Record<string, unknown>, by: string) {
     if (!isMarkStatus(record.status)) { skipped.push({ employeeId, reason: record.status === "Leave" ? "on approved leave" : `not a mark (${record.status})` }); continue; }
     if (isSystemAbsence(record)) { skipped.push({ employeeId, reason: "Absent by system, not a mark" }); continue; }
     if (date === today) { removed.push(employeeId); continue; }
-    const note = `${markLabel(record.status)} mark reverted by ${by} on ${today}: ${reason}`;
+    const note = `${markLabel(record.status)} mark reverted by ${by} on ${showDate(today)}: ${reason}`;
     updates.push({ rowNumber: found.rowNumber, record: { ...record, status: "Absent", leaveType: "", leaveApprovalStatus: "", notes: `${SYSTEM_ABSENCE_NOTE} | ${note}`, updatedAt: timestamp } });
   }
   // Every revert of the request is saved together (upgrade #6). Today's marks are deleted by employee and date, and only
@@ -216,7 +217,7 @@ async function resumeClock(body: Record<string, unknown>, by: string) {
   const { record, rowNumber } = await getAttendanceForEmployeeDate(employeeId, date);
   if (!record || !rowNumber || !record.timeIn || record.status !== "Present") throw new Error("Only a clocked-in attendance record can be resumed.");
   if (!record.timeOut) throw new Error("This employee has not clocked out; the clock is still running.");
-  const note = `Clock-out at ${record.timeOut} voided by ${by} on ${today}, clock resumed: ${reason}`;
+  const note = `Clock-out at ${record.timeOut} voided by ${by} on ${showDate(today)}, clock resumed: ${reason}`;
   const updated = {
     ...record, timeOut: "", workedHours: 0, overtimeHours: 0, undertimeMinutes: 0,
     notes: [record.notes, note].filter(Boolean).join(" | "), updatedAt: new Date().toISOString(),
@@ -242,7 +243,7 @@ async function setClockOut(body: Record<string, unknown>, by: string) {
   const timeIn = toMinutes(record.timeIn), out = toMinutes(timeOut);
   if (out <= timeIn) throw new Error(`The clock-out must be after the time in (${record.timeIn}).`);
   if (record.timeOut === timeOut) throw new Error("The clock-out is already that time.");
-  const note = `Clock-out ${record.timeOut ? `changed from ${record.timeOut}` : "set"} to ${timeOut} by ${by} on ${today}: ${reason}`;
+  const note = `Clock-out ${record.timeOut ? `changed from ${record.timeOut}` : "set"} to ${timeOut} by ${by} on ${showDate(today)}: ${reason}`;
   const updated = {
     ...record, timeOut, ...clockOutFigures(record.timeIn, timeOut, record.scheduledTimeOut || SCHEDULED_TIME_OUT),
     notes: [record.notes, note].filter(Boolean).join(" | "), updatedAt: new Date().toISOString(),

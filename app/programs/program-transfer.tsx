@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SearchSelect } from "@/components/ui/search-select";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { TransferAccount } from "@/lib/program-transfer";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Options = { program: { id: string; name: string; code: string; rate: number; flexible: boolean }; accounts: TransferAccount[]; targets: Array<{ id: string; name: string; code: string; rate: number; flexible: boolean; status: string; accounts: number }> };
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
@@ -90,7 +91,7 @@ export function ProgramTransfer({ programId, onClose, onDone }: { programId: str
               <td className="p-2"><input type="checkbox" aria-label={`Select ${account.memberName || account.enrollmentId}`} checked={selected.includes(account.enrollmentId)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, account.enrollmentId] : current.filter((id) => id !== account.enrollmentId))} /></td>
               <td className="p-2">{account.memberName || "—"}<span className="block text-xs text-muted-foreground">{account.memberNumber} · {account.enrollmentId}</span></td>
               <td className="p-2">{account.branch || "—"}<span className="block text-xs text-muted-foreground">{account.mas || "—"}</span></td>
-              <td className="p-2">{account.doi || "—"}</td>
+              <td className="p-2">{showDate(account.doi) || "—"}</td>
               <td className="p-2">{account.status || "—"}</td>
               <td className="p-2">{account.payments}</td>
             </tr>)}

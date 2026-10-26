@@ -9,9 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { readApiResponse } from "@/lib/api-response";
 import type { Nte } from "@/lib/nte";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 type Data = { notices: Nte[]; active: number; today: string; days: number; threshold: number; explanationMax: number };
-const when = (value: string) => value ? new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "";
+const when = (value: string) => value ? showDateTime(value) : "";
 
 /**
  * My Notices: the signed-in employee's own Notices to Explain (lib/nte.ts). A new notice shows here, in the sidebar
@@ -64,7 +65,7 @@ export default function MyNoticesPage() {
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <h2 className="font-semibold">{nte.reason}</h2>
-            <p className="text-xs text-muted-foreground">{nte.id} · issued {nte.issuedOn}{nte.issuedBy ? ` by ${nte.issuedBy}` : ""} · {open ? `in force until ${nte.expiresOn}` : nte.status === "Expired" ? `expired ${nte.expiresOn}` : "withdrawn"}</p>
+            <p className="text-xs text-muted-foreground">{nte.id} · issued {showDate(nte.issuedOn)}{nte.issuedBy ? ` by ${nte.issuedBy}` : ""} · {open ? `in force until ${nte.expiresOn}` : nte.status === "Expired" ? `expired ${nte.expiresOn}` : "withdrawn"}</p>
           </div>
           <StatusBadge status={nte.status} tone={open ? "warning" : undefined} />
         </div>

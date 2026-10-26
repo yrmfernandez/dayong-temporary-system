@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { HOLIDAY_TYPES, type HolidayType } from "@/lib/philippine-holidays";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Holiday = { id: string; date: string; name: string; type: HolidayType; notes: string };
 type Closure = { date: string; reason: string; allBranches: boolean; branchIds: string[]; branchNames: string[]; appliesToMe: boolean };
@@ -31,7 +32,8 @@ const shiftMonth = (month: string, by: number) => {
   return date.toISOString().slice(0, 7);
 };
 const monthLabel = (month: string) => new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
-const dayLabel = (date: string) => new Intl.DateTimeFormat("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+const weekdayOf = (date: string) => new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(new Date(`${date.slice(0, 10)}T00:00:00Z`));
+const dayLabel = (date: string) => `${weekdayOf(date)}, ${showDate(date)}`;
 const isSunday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
 const closureScope = (closure: Closure) => closure.allBranches ? "All branches" : closure.branchNames.join(", ");
 

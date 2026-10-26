@@ -4,6 +4,7 @@ import type { SessionUser } from "@/lib/auth";
 import { isAdministratorRole } from "@/lib/access-control";
 import { currentDb, encodedBy, inTransaction, schema, type Queryable } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
+import { formatDate as showDate } from "@/lib/date-format";
 
 /**
  * Permanent deletion by an Administrator (October 8, 2026): for test data and records entered by mistake. Everything
@@ -82,7 +83,7 @@ export async function planDeletion(kind: DeleteKind, idRaw: string, db: Queryabl
   } else {
     const [row] = await query<{ status: string; mas: string; date_remitted: string }>(db, sql`select status, mas, date_remitted::text as date_remitted from remittances where remittance_id = ${id}`);
     if (!row) throw new Error("Remittance not found.");
-    remittances.add(id); title = `Remittance ${id} (${text(row.mas)}, ${text(row.date_remitted)}, ${text(row.status)})`;
+    remittances.add(id); title = `Remittance ${id} (${text(row.mas)}, ${showDate(text(row.date_remitted))}, ${text(row.status)})`;
     if (withEntries) {
       for (const sale of await query<{ sale_id: string }>(db, sql`select sale_id from sales where linked_remittance_id = ${id}`)) await addSale(sale.sale_id);
       for (const collection of await query<{ collection_id: string }>(db, sql`select collection_id from collections where linked_remittance_id = ${id}

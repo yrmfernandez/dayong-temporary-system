@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { todayInManila } from "@/lib/account-rules";
 import { readApiResponse } from "@/lib/api-response";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatDate as showDate } from "@/lib/date-format";
 
 type Item = { enrollmentId: string; memberNumber: string | null; memberName: string; program: string; branch: string | null; paidOn: string | null; total: number; source: string | null; recordedBy: string | null;
   certificate: string | null; certificateStatus: string | null; releasedOn: string | null; releasedBy: string | null };
@@ -110,9 +111,9 @@ export default function FullyPaidPage() {
               <tbody>{items.map((item) => <tr key={item.enrollmentId} className="border-b align-top">
                 <td className="p-2"><strong>{item.memberName || "—"}</strong><div className="text-xs text-muted-foreground">{item.memberNumber} · {item.enrollmentId}</div></td>
                 <td className="p-2">{item.program}<div className="text-xs text-muted-foreground">{item.branch}</div></td>
-                <td className="p-2">{item.paidOn} · {peso(item.total)}<div className="text-xs text-muted-foreground">{item.source}{item.recordedBy ? ` · ${item.recordedBy}` : ""}</div></td>
+                <td className="p-2">{showDate(item.paidOn)} · {peso(item.total)}<div className="text-xs text-muted-foreground">{item.source}{item.recordedBy ? ` · ${item.recordedBy}` : ""}</div></td>
                 <td className="p-2"><span className="font-mono">{item.certificate}</span> <StatusBadge status={item.certificateStatus === "Released" ? "Released" : "To release"} tone={item.certificateStatus === "Released" ? "success" : "warning"} />
-                  {item.certificateStatus === "Released" && <div className="text-xs text-muted-foreground">{item.releasedOn}{item.releasedBy ? ` · to ${item.releasedBy}` : ""}</div>}</td>
+                  {item.certificateStatus === "Released" && <div className="text-xs text-muted-foreground">{showDate(item.releasedOn)}{item.releasedBy ? ` · to ${item.releasedBy}` : ""}</div>}</td>
                 <td className="p-2 text-right"><div className="flex flex-wrap justify-end gap-2">
                   {item.certificateStatus === "Released"
                     ? <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void post({ action: "pending", enrollmentId: item.enrollmentId })}>Mark pending</Button>
@@ -132,7 +133,7 @@ export default function FullyPaidPage() {
           </div>
           {recordAccounts.length > 0 && <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void post({ action: "record", enrollmentId: record.enrollmentId, paidOn: record.paidOn, total: Number(record.total), certificateNumber: record.certificateNumber }).then((ok) => { if (ok) { setRecordAccounts([]); setRecord({ member: "", enrollmentId: "", paidOn: todayInManila(), total: "", certificateNumber: "" }); } }); }}>
             <div className="space-y-1 lg:col-span-2"><Label htmlFor="fp-account">Account</Label><select id="fp-account" className={field} value={record.enrollmentId} onChange={(event) => setRecord({ ...record, enrollmentId: event.target.value, total: String(recordAccounts.find((item) => item.enrollmentId === event.target.value)?.total ?? "") })}>
-              {recordAccounts.map((item) => <option key={item.enrollmentId} value={item.enrollmentId}>{item.program} · {item.branch} · DOI {item.doi} · {item.status || "—"}</option>)}</select></div>
+              {recordAccounts.map((item) => <option key={item.enrollmentId} value={item.enrollmentId}>{item.program} · {item.branch} · DOI {showDate(item.doi)} · {item.status || "—"}</option>)}</select></div>
             <div className="space-y-1"><Label htmlFor="fp-date">Date of full payment</Label><Input id="fp-date" type="date" max={todayInManila()} value={record.paidOn} onChange={(event) => setRecord({ ...record, paidOn: event.target.value })} /></div>
             <div className="space-y-1"><Label htmlFor="fp-total">Total paid</Label><Input id="fp-total" type="number" min="0" step="0.01" value={record.total} onChange={(event) => setRecord({ ...record, total: event.target.value })} /></div>
             <div className="space-y-1"><Label htmlFor="fp-cert">Certificate number (blank: automatic)</Label><Input id="fp-cert" placeholder="e.g. DAVAO2026-039" value={record.certificateNumber} onChange={(event) => setRecord({ ...record, certificateNumber: event.target.value })} /></div>

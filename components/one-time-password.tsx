@@ -4,10 +4,11 @@ import { useState } from "react";
 import { Copy, KeyRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatDateTime as showDateTime } from "@/lib/date-format";
 
 export type IssuedPassword = { employeeId: string; fullName: string; oneTimePassword: string; expiresAt: string };
 
-const expiryText = (value: string) => new Date(value).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" });
+const expiryText = (value: string) => showDateTime(value);
 
 /** A one-time password as IT sees it once: to hand over in person or by text, then dismiss. */
 export function OneTimePasswordNotice({ issued, onDone }: { issued: IssuedPassword; onDone: () => void }) {

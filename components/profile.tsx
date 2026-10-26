@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import { preferenceKeys, removePreference } from "@/lib/ui-preferences";
 import { clearFormDrafts } from "@/lib/use-form-draft";
+import { formatDate as showDate } from "@/lib/date-format";
 
 export type Profile = {
   name: string;
@@ -68,11 +69,7 @@ export function useProfile(enabled = true) {
   return { profile, error, loading: enabled && !profile && !error, reload };
 }
 
-const dateText = (value: string) => {
-  if (!value) return "";
-  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-PH", { month: "long", day: "numeric", year: "numeric" }).format(date);
-};
+const dateText = (value: string) => (value ? showDate(value) : "");
 
 function Detail({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return <div className="flex items-start gap-3">
