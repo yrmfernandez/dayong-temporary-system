@@ -4304,3 +4304,20 @@ test('space against the Supabase Pro plan: sizes recorded once a day, growth per
   assert.deepEqual(growth(history.slice(2), 4000, '2026-10-31', 10000), { perMonth: null, since: '', monthsLeft: null }, 'under a week of history: not known yet');
   assert.equal(growth(history, 900, '2026-10-31', 10000).monthsLeft, null, 'shrinking: no date to reach the limit');
 });
+
+test('Company Reports: Encoded in the system only leaves out old-sheet imports, so branches match the clerk reports (October 27, 2026)', async () => {
+  const h = harness();
+  const collection = (id, encoderId) => { const row = Array(36).fill(''); Object.assign(row, { 0: id, 5: 'DP-1', 6: 'MATINA', 7: 'Maria', 9: '2026-10-05', 10: 350, 19: 'Posted', 22: encoderId, 25: 'MAS', 26: 280 }); return row; };
+  h.rows.Collections = [[], collection('COL-ENCODED', 'DPE-0001'), collection('COL-LEG-IMPORTED', '')];
+  h.rows.Programs = [[], ['DP-1', 'P1', 'Program One']];
+  await seed('employees', [{ employee_id: 'DPE-0001', full_name: 'Clerk' }]);
+  await h.sync();
+  const { buildOperationalReport } = h.load('lib/reports.ts');
+  assert.equal((await buildOperationalReport('2026-10-01', '2026-10-31')).summary.gross, 700, 'all entries: the import counts');
+  const encoded = await buildOperationalReport('2026-10-01', '2026-10-31', { encodedOnly: true });
+  assert.deepEqual([encoded.summary.gross, encoded.summary.accounts], [350, 1], 'only what was encoded in the system');
+  const route = h.load('app/api/reports/route.ts');
+  h.setUser({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const viaRoute = await (await route.GET(new Request('http://localhost/api/reports?from=2026-10-01&to=2026-10-31&source=encoded'))).json();
+  assert.equal(viaRoute.report.summary.gross, 350, 'the screen asks with source=encoded');
+});

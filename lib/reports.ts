@@ -33,7 +33,7 @@ function aggregate(lines: ReportLine[], key: (line: ReportLine) => string) {
   return [...groups.values()].map((line) => Object.fromEntries(Object.entries(line).map(([key, value]) => [key, typeof value === "number" ? round(value) : value])) as ReportLine);
 }
 
-export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; personId?: string; encoder?: string; encoderIds?: string[] } = {}) {
+export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; personId?: string; encoder?: string; encoderIds?: string[]; encodedOnly?: boolean } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error("Choose a valid report date range.");
   const person: Person | null = filters.personId ? { employeeId: filters.personId, name: filters.person ?? "" } : null;
   // Sales lines are dated by date_created and collection lines by OR date, so the database returns only those in the
@@ -52,7 +52,9 @@ export async function buildOperationalReport(from: string, to: string, filters: 
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const inRange = (date: string) => date >= from && date <= to;
   // Report Review's clerks are matched by Employee ID (encoderIds); the encoder filter picked by name stays by name.
-  const matches = (branch: string, programId: string, name: string, encoder: string, encoderId: string) => (!filters.branch || branch === filters.branch) && (!filters.programId || programId === filters.programId) && (person || !filters.person || name === filters.person) && (!filters.encoder || encoder === filters.encoder) && (!filters.encoderIds || filters.encoderIds.includes(encoderId));
+  // encodedOnly (owner, October 27, 2026): only entries encoded in this system, leaving out the old-sheet imports (no
+  // encoder), so each branch's collections match the Entry Clerks' reports.
+  const matches = (branch: string, programId: string, name: string, encoder: string, encoderId: string) => (!filters.encodedOnly || Boolean(encoderId)) && (!filters.branch || branch === filters.branch) && (!filters.programId || programId === filters.programId) && (person || !filters.person || name === filters.person) && (!filters.encoder || encoder === filters.encoder) && (!filters.encoderIds || filters.encoderIds.includes(encoderId));
   const approvedFidelity=new Map(remittances.slice(1).filter(row=>text(row[4])==="Approved"&&number(row[24])>0).map(row=>[text(row[0]),number(row[24])]));
   const fidelityByCollection=new Map<string,number>(),assigned=new Set<string>();
   for(const row of remittanceCollections.slice(1)){const remittanceId=text(row[1]);if(!assigned.has(remittanceId)&&approvedFidelity.has(remittanceId)){fidelityByCollection.set(text(row[2]),approvedFidelity.get(remittanceId)??0);assigned.add(remittanceId)}}

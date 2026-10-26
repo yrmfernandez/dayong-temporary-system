@@ -70,6 +70,8 @@ export function CompanyReports() {
   const [branch, setBranch] = useState("");
   const [program, setProgram] = useState("");
   const [person, setPerson] = useState("");
+  // "encoded": only entries encoded in the system, without the old-sheet imports, so branches match the clerk reports.
+  const [source, setSource] = useState<"all" | "encoded">("all");
   const [view, setView] = useState<View>("branch");
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,14 +83,14 @@ export function CompanyReports() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const params = new URLSearchParams({ from, to, ...(branch ? { branch } : {}), ...(program ? { program } : {}), ...(person ? { person } : {}) });
+      const params = new URLSearchParams({ from, to, ...(branch ? { branch } : {}), ...(program ? { program } : {}), ...(person ? { person } : {}), ...(source === "encoded" ? { source } : {}) });
       const response = await fetch(`/api/reports?${params}`, { cache: "no-store" });
       const result = await parseJsonResponse<{ success: boolean; message?: string; report: Report }>(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load the report.");
       setReport(result.report);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load the report."); }
     finally { setLoading(false); }
-  }, [from, to, branch, program, person]);
+  }, [from, to, branch, program, person, source]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the chosen period and filters
     void load();
@@ -149,7 +151,10 @@ export function CompanyReports() {
               <div className="space-y-1"><Label htmlFor="report-to">To</Label><Input id="report-to" type="date" value={to} min={from} onChange={(event) => event.target.value && setRange([from, event.target.value])} /></div>
             </>}
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1"><Label htmlFor="report-source">Show</Label><select id="report-source" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={source} onChange={(event) => setSource(event.target.value === "encoded" ? "encoded" : "all")}>
+              <option value="all">All entries</option><option value="encoded">Encoded in the system only</option></select>
+              <p className="text-xs text-muted-foreground">{source === "encoded" ? "Old-sheet imports left out: branch collections match the Entry Clerks' reports." : "Includes entries imported from the old sheets."}</p></div>
             <div className="space-y-1"><Label>Branch</Label><SearchSelect aria-label="Branch" className="h-9" clearable placeholder="All branches" value={branch} onValueChange={setBranch} options={(report?.options.branches ?? []).map((item) => ({ value: item, label: item }))} /></div>
             <div className="space-y-1"><Label>Program</Label><SearchSelect aria-label="Program" className="h-9" clearable placeholder="All programs" value={program} onValueChange={setProgram} options={(report?.options.programs ?? []).map((item) => ({ value: item.id, label: item.name, description: item.id }))} /></div>
             <div className="space-y-1"><Label>MAS / Collector</Label><SearchSelect aria-label="MAS or Collector" className="h-9" clearable placeholder="Everyone" value={person} onValueChange={setPerson} options={(report?.options.people ?? []).map((item) => ({ value: item, label: item }))} /></div>
