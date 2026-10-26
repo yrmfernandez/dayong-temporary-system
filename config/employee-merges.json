@@ -71,7 +71,13 @@
     "ALICIA B. BINANITAN": "MD-2026-0016",
     "Anib, N.": "LEG-2026-0008",
     "ALLAN C. QUIÑONES": "MD-2026-0062",
-    "Agua, J.": "LEG-2026-0001"
+    "Agua, J.": "LEG-2026-0001",
+    "Capacite, C.": "MD-2026-0035",
+    "Racho, K.": "SDS-2026-0006",
+    "Ambasing, C.": "MD-2026-0002",
+    "BALAIS, MARICEL PANARES": "LEG-2026-0013",
+    "Malazarte": "LEG-2026-0058",
+    "Degamo, N.": "MD-2026-0018"
   },
   "applied": [
     {
@@ -80,5 +86,6 @@
       "note": "Owner confirmed duplicate employee; keep original login and permissions, consolidate identical attendance and branch assignments. Applied with scripts/merge-employee-pair.mjs.",
       "appliedOn": "2026-10-13 (production)"
     }
-  ]
+  ],
+  "note_2026_10_26": "Owner confirmed 2026-10-26: unlinked records written Capacite, C. are MD-2026-0035 (the earlier merge of LEG-2026-0025 left these names without a link). Kristine Racho LEG-2026-0022 and SDS-2026-0006 are one person (merge with scripts/merge-employee-pair.mjs). Owner: unlinked records written Racho, K. are Kristine Racho, SDS-2026-0006 (relink after the merge, when only one employee has that name). Owner (2026-10-26): Ambasing, C. = MD-2026-0002; BALAIS, MARICEL PANARES = LEG-2026-0013; Malazarte = LEG-2026-0058; Degamo, N. = MD-2026-0018; Baclayon, J. left as written (no employee given)."
 }
