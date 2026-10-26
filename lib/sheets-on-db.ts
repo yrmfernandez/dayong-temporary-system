@@ -25,7 +25,7 @@ export const SHEET_TITLES = [
 const HIDDEN = new Set(["row_seq", "or_key", "application_key", "legacy_duplicate", "storage_path"]);
 /** Database-only columns of one table: link IDs the database fills itself (phase 2 of linked tables). */
 const HIDDEN_IN: Record<string, Set<string>> = {
-  collections: new Set(["branch_id", "mas_employee_id"]), sales: new Set(["branch_id", "mas_employee_id"]), member_programs: new Set(["branch_id", "mas_employee_id"]),
+  collections: new Set(["branch_id", "mas_employee_id"]), sales: new Set(["branch_id", "mas_employee_id"]), member_programs: new Set(["branch_id", "mas_employee_id", "forfeit_held"]),
   remittances: new Set(["branch_id", "mas_employee_id"]), bank_deposits: new Set(["branch_id", "mas_employee_id"]), member_transfers: new Set(["branch_id", "from_employee_id"]),
   attendance: new Set(["branch_id"]), cash_transactions: new Set(["branch_id"]), expenses: new Set(["branch_id"]), payroll_runs: new Set(["branch_id"]), vendor_payables: new Set(["branch_id"]),
 };

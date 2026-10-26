@@ -4,6 +4,8 @@ export type AccountStatus = "NS" | "U" | "ADV" | "60D" | "90D" | "120D" | "150D"
 export type Account = {
   id: string; memberId: string; memberNumber: string; programId: string;
   doi: string; branch: string; mas: string; basePay: number; payBalanceTotal: number; storedStatus: string;
+  /** Forfeited as carried from the old system (member_programs.forfeit_held): holds whatever the receipts say. */
+  forfeitHeld?: boolean;
   /**
    * Flexible program: basePay is the minimum monthly payment; a payment may be any amount of at least the minimum per
    * month it covers, and the account is paid off when its collections reach payBalanceTotal.
@@ -134,11 +136,12 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   const suspendedAt = missedOn(2);
   const forfeitedAt = addDay(missedOn(account.forfeitMonths ?? 6));
   const paid = account.payBalanceTotal > 0 && payments.reduce((sum, payment) => sum + payment.amount, 0) >= account.payBalanceTotal;
-  // A stored Forfeited status holds (for example one carried from the old system), except on Pay the Balance programs:
-  // they wait the full 12 months before being declared forfeited, whatever was stored under the old 6-month rule
-  // (owner, October 16, 2026).
+  // A Forfeited carried from the old system holds (forfeitHeld), except on Pay the Balance programs: they wait the full
+  // 12 months before being declared forfeited, whatever was stored under the old 6-month rule (owner, October 16, 2026).
+  // The stored status itself never holds (October 26, 2026): it is what the app last worked out (the nightly job stores
+  // it), so holding it kept an account Forfeited after its receipts were corrected (PH-73684484).
   const keepsStoredForfeit = (account.forfeitMonths ?? 6) <= 6;
-  const forfeited = !paid && ((keepsStoredForfeit && account.storedStatus === "Forfeited") || today >= forfeitedAt);
+  const forfeited = !paid && ((keepsStoredForfeit && account.forfeitHeld === true) || today >= forfeitedAt);
   const temporarilySuspended = !forfeited && today >= suspendedAt;
   const currentMonth = today.slice(0, 7);
   const firstMonth = months[0] ?? account.doi.slice(0, 7);

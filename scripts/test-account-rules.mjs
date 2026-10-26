@@ -64,7 +64,7 @@ test("non-NS NOP cannot be spoofed; duplicate receipt and overlapping history fa
 test("waiver required for suspension; forfeiture cannot be bypassed by waiver or backdated OR", () => {
   assert.throws(() => validatePayment(account, [], input({ orDate: "2026-04-01" }), "2026-04-01"), /Waiver/);
   assert.throws(() => validatePayment(account, [], input({ orDate: "2026-02-01", waiver: "Waiver" }), "2026-07-16"), /forfeited/);
-  assert.throws(() => validatePayment({ ...account, storedStatus: "Forfeited" }, [], input({ waiver: "Waiver" }), "2026-01-20"), /forfeited/);
+  assert.throws(() => validatePayment({ ...account, storedStatus: "Forfeited", forfeitHeld: true }, [], input({ waiver: "Waiver" }), "2026-01-20"), /forfeited/);
 });
 test("collector batches need no separate original MAS: the batch MAS is used", () => {
   validatePayment(account, [], input({ collectedByRole: "Collector" }), "2026-01-20");
@@ -128,6 +128,13 @@ test("paid October 10 for July: counted from Month of on the OR day, so paid thr
   validatePayment(a, [history[0]], input({ monthFrom: "2026-07", monthTo: "2026-07", nopFrom: 7, nopTo: 7, orDate: "2026-10-10", orNumber: "OR-JUL", waiver: "Waiver" }), "2026-10-10");
 });
 
+test("only a Forfeited carried from the old system holds; one the app worked out follows corrected receipts (PH-73684484)", () => {
+  // The nightly job stored Forfeited while the receipts covered old months; the months were then corrected to recent ones.
+  const corrected = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((month) => payment({ id: `C${month}`, orDate: `2026-${String(month).padStart(2, "0")}-26`, monthFrom: `2026-${String(month).padStart(2, "0")}`, monthTo: `2026-${String(month).padStart(2, "0")}`, nopFrom: month + 1, nopTo: month + 1, amount: 350 }));
+  assert.equal(accountState({ ...account, doi: "2025-12-26", storedStatus: "Forfeited" }, corrected, "2026-10-26").status, "U", "the stored status alone never holds");
+  assert.equal(accountState({ ...account, doi: "2025-12-26", storedStatus: "Forfeited", forfeitHeld: true }, corrected, "2026-10-26").status, "Forfeited", "an old-system forfeit holds");
+});
+
 test("forfeiture: Pay the Balance programs after more than 12 months, other programs after more than 6 (owner, October 16, 2026)", () => {
   assert.equal(forfeitMonthsFor("CAT-PAY-THE-BALANCE"), 12);
   assert.equal(forfeitMonthsFor("CAT-OTHER", "Pay the Balance"), 12, "by the category name too");
@@ -143,9 +150,9 @@ test("forfeiture: Pay the Balance programs after more than 12 months, other prog
   assert.notEqual(balance("2027-02-15"), "Forfeited", "12 months: still not forfeited");
   assert.equal(balance("2027-02-16"), "Forfeited", "after 12 months");
   assert.equal(accountState({ ...account, forfeitMonths: 12 }, paid, "2026-12-01").forfeitedAt, "2027-02-16");
-  // Stored Forfeited (from the old 6-month rule) does not hold on Pay the Balance programs; it still holds on others.
-  assert.equal(accountState({ ...account, forfeitMonths: 12, storedStatus: "Forfeited" }, paid, "2026-09-01").status, "150D", "within 12 months: overdue, not forfeited");
-  assert.equal(accountState({ ...account, storedStatus: "Forfeited" }, paid, "2026-03-01").status, "Forfeited", "other programs keep a stored Forfeited");
+  // An old-system Forfeited does not hold on Pay the Balance programs; it still holds on others.
+  assert.equal(accountState({ ...account, forfeitMonths: 12, storedStatus: "Forfeited", forfeitHeld: true }, paid, "2026-09-01").status, "150D", "within 12 months: overdue, not forfeited");
+  assert.equal(accountState({ ...account, storedStatus: "Forfeited", forfeitHeld: true }, paid, "2026-03-01").status, "Forfeited", "other programs keep an old-system Forfeited");
 });
 
 test("a program with a registration fee: the New Sale is no NOP, so the first collection is NOP 1 for the month after DOI (owner, October 21, 2026)", async () => {

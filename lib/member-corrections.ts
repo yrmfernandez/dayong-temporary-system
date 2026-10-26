@@ -92,9 +92,11 @@ async function saveNumbers(tx: Transaction, plan: AccountPayment[], old: Map<str
 /** The status the account's new history gives, stored on the account; throws naming the account when it does not fit. */
 async function storeStatus(tx: Transaction, account: LoadedAccount, plan: AccountPayment[], today: string, doi = account.doi) {
   let status: string;
-  try { status = accountState({ ...account, doi }, plan, today).status; }
+  // A deliberate history fix decides from the receipts: a Forfeited carried from the old system no longer holds
+  // (October 26, 2026); the preview shows the status before and after.
+  try { status = accountState({ ...account, doi, forfeitHeld: false }, plan, today).status; }
   catch (error) { throw new Error(`${account.programName} account ${account.id}: ${error instanceof Error ? error.message : "the receipts do not fit"} Nothing was saved.`); }
-  await tx.update(memberPrograms).set({ account_status: status, ...(doi !== account.doi ? { doi } : {}) }).where(eq(memberPrograms.enrollment_id, account.id));
+  await tx.update(memberPrograms).set({ account_status: status, forfeit_held: false, ...(doi !== account.doi ? { doi } : {}) }).where(eq(memberPrograms.enrollment_id, account.id));
   return { account: account.id, program: account.programName, before: account.storedStatus || "—", after: status };
 }
 

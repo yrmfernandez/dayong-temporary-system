@@ -244,6 +244,11 @@ export const member_programs = pgTable("member_programs", {
   /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
   branch_id: text().references(() => branches.branch_id, employeeRef),
   mas_employee_id: text().references(() => employees.employee_id, employeeRef),
+  /**
+   * Forfeited as carried from the old system: holds whatever the receipts say (migration 0029, October 26, 2026). A
+   * Forfeited the app worked out is only account_status, so a corrected history can reopen the account.
+   */
+  forfeit_held: boolean().notNull().default(false),
 }, (t) => [index("member_programs_branch_id_idx").on(t.branch_id), index("member_programs_mas_employee_id_idx").on(t.mas_employee_id), 
   // A member enrolls in each program once (app/api/sales/route.ts checks first; this stops two racing saves).
   uniqueIndex("member_programs_member_program_key").on(t.member_id, t.program_id),

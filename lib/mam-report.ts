@@ -22,9 +22,9 @@ export function buildMamReport(data: { accounts: MamAccount[]; payments: Account
       const collected = receipts.reduce((sum, p) => sum + Math.round(p.amount * 100), 0) / 100;
       if (account.doi > end) return { month, projected, state: null, error: "", receipts: [], collected: 0, coveredAmount: 0 };
       try {
-        // Historical states must not inherit today's persisted Forfeited marker.
+        // Historical states must not inherit today's Forfeited carried from the old system.
         // A future column is a projection from receipts already received, never future transactions.
-        const state = accountState({ ...account, storedStatus: month < today.slice(0, 7) ? "" : account.storedStatus }, history.filter((p) => p.orDate <= today), end);
+        const state = accountState({ ...account, forfeitHeld: month < today.slice(0, 7) ? false : account.forfeitHeld }, history.filter((p) => p.orDate <= today), end);
         return { month, projected, state, error: "", receipts, collected,
           coveredAmount: state.allocations.find((a) => a.month === month)?.amount ?? 0 };
       } catch (error) { return { month, projected, state: null, error: error instanceof Error ? error.message : "Review account data.", receipts, collected, coveredAmount: 0 }; }

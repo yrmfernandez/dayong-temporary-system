@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-44 page routes, 74 API handlers, 136 library files, 60 component files; 614 scanned source/configuration/public-text files in total.
+44 page routes, 74 API handlers, 136 library files, 60 component files; 615 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -534,6 +534,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/import-lugon-2025.mjs](../scripts/import-lugon-2025.mjs) | `@next/env`, `postgres`, `node:crypto`, `node:fs`, `./legacy-sources.mjs`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/import-paper-attendance-20261015.mjs](../scripts/import-paper-attendance-20261015.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/import-receipt-private.mjs](../scripts/import-receipt-private.mjs) | `node:fs`, `node:assert/strict`, `node:crypto`, `@next/env`, `postgres`, `./source-history-rules.mjs`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
+| [scripts/inspect-account-status.mjs](../scripts/inspect-account-status.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/inspect-clerk-report.cjs](../scripts/inspect-clerk-report.cjs) | See source | No flag detected; read source before running |
 | [scripts/inspect-discrepancy-920-20261019.mjs](../scripts/inspect-discrepancy-920-20261019.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-entry-clearings.mjs](../scripts/inspect-entry-clearings.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
