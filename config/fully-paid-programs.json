@@ -1,0 +1,9 @@
+{
+  "_note": "Program labels in the old Fully Paid form that config/legacy-programs.json does not name, mapped to a program ID (owner, October 27, 2026; scripts/import-fully-paid.mjs reads it).",
+  "D-460 (Old)": "DP-0023",
+  "D-210": "DP-0005",
+  "D-250": "DP-0016",
+  "D-270": "DP-0015",
+  "D-420 (4Y)": "DP-0018",
+  "D-260": "DP-0028"
+}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accountState, validatePayment, allocations, addMonths, forfeitMonthsFor } from "../lib/account-rules.ts";
+import { accountState, validatePayment, allocations, addMonths, forfeitMonthsFor, monthIndex, monthName } from "../lib/account-rules.ts";
 
 const account = { id: "E1", memberId: "M1", memberNumber: "PH1", programId: "P1", doi: "2026-01-15", branch: "B1", mas: "MAS1", basePay: 350, storedStatus: "" };
 const payment = (overrides = {}) => ({ id: "C1", enrollmentId: "E1", orDate: "2026-01-15", orNumber: "OR1", monthFrom: "2026-01", monthTo: "2026-01", nopFrom: 1, nopTo: 1, amount: 350, dateRemitted: "2026-02-01", mas: "MAS1", ...overrides });
@@ -52,7 +52,7 @@ test("whole installments only, allow paying one month of arrears, forbid skipped
 test("an edited amount may exceed monthly dues only when it exactly pays the configured balance", () => {
   const payoffAccount = { ...account, payBalanceTotal: 1000 };
   validatePayment(payoffAccount, [], input({ amount: 1000 }), "2026-01-20");
-  assert.equal(accountState(payoffAccount, [payment({ amount: 1000 })], "2026-01-20").status, "Paid");
+  assert.equal(accountState(payoffAccount, [payment({ amount: 1000 })], "2026-01-20").status, "Fully Paid");
   assert.throws(() => validatePayment(payoffAccount, [], input({ amount: 900 }), "2026-01-20"), /exactly pay/);
   assert.throws(() => validatePayment({ ...account, payBalanceTotal: 0 }, [], input({ amount: 700 }), "2026-01-20"), /exactly pay/);
 });
@@ -163,4 +163,22 @@ test("a program with a registration fee: the New Sale is no NOP, so the first co
   assert.throws(() => validatePayment(withFee, [], input(), "2026-01-20"), /NOP must start at 1/);
   const afterFirst = accountState(withFee, [payment({ monthFrom: "2026-02", monthTo: "2026-02", nopFrom: 1, nopTo: 1, orDate: "2026-01-20" })], "2026-01-20");
   assert.deepEqual([afterFirst.nop, afterFirst.nextNop, afterFirst.nextMonth, afterFirst.tmd], [1, 2, "2026-03", 350]);
+});
+
+test("Fully Paid: a term program completes at its last month, a recorded full payment holds, and no more payments are taken (October 27, 2026)", () => {
+  // D-420: ₱420 a month for 60 months (Pay Balance Total 25,200); the New Sale is NOP 1, collections NOP 2–60.
+  const d420 = { ...account, doi: "2021-01-10", basePay: 420, payBalanceTotal: 25200 };
+  const upTo = (lastNop) => [payment({ id: "C", orDate: "2026-01-10", monthFrom: "2021-02", monthTo: monthName(monthIndex("2021-02") + lastNop - 2), nopFrom: 2, nopTo: lastNop, amount: 420 * (lastNop - 1) })];
+  assert.notEqual(accountState(d420, upTo(59), "2026-01-15").status, "Fully Paid", "NOP 59 of 60: not yet");
+  const done = accountState(d420, upTo(60), "2026-01-15");
+  assert.deepEqual([done.status, done.balance], ["Fully Paid", 0], "NOP 60: Fully Paid, nothing due");
+  assert.equal(accountState(d420, upTo(60), "2027-12-31").status, "Fully Paid", "never falls behind or forfeits afterwards");
+  assert.throws(() => validatePayment(d420, upTo(60), input({ monthFrom: "2026-01", monthTo: "2026-01", nopFrom: 61, nopTo: 61, amount: 420, orDate: "2026-01-15", orNumber: "X" }), "2026-01-15"), /fully paid/);
+  // Recorded from a certificate (old receipts not in the system): Fully Paid from that day, even with few receipts.
+  const recorded = { ...d420, fullyPaidOn: "2025-12-20" };
+  assert.equal(accountState(recorded, [], "2025-12-19").status, "Forfeited", "before the recorded date the receipts decide");
+  assert.equal(accountState(recorded, [], "2026-03-01").status, "Fully Paid");
+  // Flexible: the New Sale counts toward the total.
+  const flexible = { ...account, basePay: 150, payBalanceTotal: 600, flexible: true, saleCredit: 300 };
+  assert.equal(accountState(flexible, [payment({ monthFrom: "2026-02", monthTo: "2026-02", nopFrom: 2, nopTo: 2, amount: 300 })], "2026-02-20").status, "Fully Paid", "300 New Sale + 300 collected = 600");
 });

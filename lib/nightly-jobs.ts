@@ -50,7 +50,7 @@ export function runNightlyJobs(trigger: string) {
     steps.push(await step("Account statuses", async () => {
       const report = await syncAccountStatuses();
       const changed = report.rows.filter((row) => "status" in row && row.status !== row.storedStatus).length;
-      return `${changed.toLocaleString("en-PH")} of ${report.rows.length.toLocaleString("en-PH")} accounts changed status.`;
+      return `${changed.toLocaleString("en-PH")} of ${report.rows.length.toLocaleString("en-PH")} accounts changed status.${report.fullyPaidRecorded ? ` ${report.fullyPaidRecorded} newly Fully Paid, with certificate numbers to release.` : ""}`;
     }));
     steps.push(await step("Exceptions", async () => {
       const { categories } = await findExceptions();

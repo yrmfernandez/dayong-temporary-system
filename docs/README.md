@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 27, 2026: Fully Paid.** Accounts that complete their program are **Fully Paid** (no dues, no more payments, never forfeited), recorded automatically or by hand on the new Fully Paid page with certificate numbers that continue the old pattern per area (DAVAO2026-039), and certificate release tracking; the old Fully Paid form can be imported. See the [system guide](system-guide.md) (section 5, Fully Paid).
+
 **October 26, 2026: space on Supabase Pro, Fix buttons.** System Health measures the database against the Pro plan's 8 GB and receipt photos against 100 GB of Storage, and shows the monthly growth from nightly measurements (upgrade #10, the last of the upgrade list). Every finding in Schema, Access & Data Integrity has a Fix button that opens the page at that person or record. See the [system guide](system-guide.md) (IT System Health).
 
 **October 26, 2026: money-rule tests.** The rules that decide pesos (incentives, company shares, rounding, deadlines, status dates, the Fidelity lock) are checked by `npm test` before every deploy, including that the company share plus incentives always equal the amount collected (upgrade #9). See the [system guide](system-guide.md) (implementation limits, item 13).

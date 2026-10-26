@@ -1,11 +1,17 @@
 import { validateMonthlyMaximum } from "./program-payment-limit.mjs";
 
-export type AccountStatus = "NS" | "U" | "ADV" | "60D" | "90D" | "120D" | "150D" | "Paid" | "Forfeited";
+export type AccountStatus = "NS" | "U" | "ADV" | "60D" | "90D" | "120D" | "150D" | "Fully Paid" | "Forfeited";
+/** Every account status, in the order lists and filters show them (Fully Paid was "Paid" until October 27, 2026). */
+export const ACCOUNT_STATUSES: readonly AccountStatus[] = ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Fully Paid", "Forfeited"];
 export type Account = {
   id: string; memberId: string; memberNumber: string; programId: string;
   doi: string; branch: string; mas: string; basePay: number; payBalanceTotal: number; storedStatus: string;
   /** Forfeited as carried from the old system (member_programs.forfeit_held): holds whatever the receipts say. */
   forfeitHeld?: boolean;
+  /** The recorded full payment's date (member_programs.fully_paid_on): from that day the account is Fully Paid. */
+  fullyPaidOn?: string;
+  /** What the New Sale paid toward the program's months (none on a registration-fee program), for flexible payoffs. */
+  saleCredit?: number;
   /**
    * Flexible program: basePay is the minimum monthly payment; a payment may be any amount of at least the minimum per
    * month it covers, and the account is paid off when its collections reach payBalanceTotal.
@@ -135,7 +141,16 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   if (missedMonths > 0 && missedOn(missedMonths) > today) missedMonths--;
   const suspendedAt = missedOn(2);
   const forfeitedAt = addDay(missedOn(account.forfeitMonths ?? 6));
-  const paid = account.payBalanceTotal > 0 && payments.reduce((sum, payment) => sum + payment.amount, 0) >= account.payBalanceTotal;
+  // Fully Paid (owner, October 27, 2026): a recorded full payment (certificate, old Fully Paid list, or entered by hand),
+  // or the program completed: its months reach the term (fixed programs: Pay Balance Total ÷ rate, e.g. 25,200 ÷ 420 =
+  // 60; the New Sale is NOP 1 without a registration fee) or what was received (New Sale included) reaches the total. Before, only collections were added up, so a term program was never shown paid.
+  const coveredNop = Math.max(saleNops(account), ...[...coverage.values()].map((value) => value.nop));
+  const termMonths = !account.flexible && account.payBalanceTotal > 0 && account.basePay > 0 ? Math.round(account.payBalanceTotal / account.basePay) : 0;
+  const received = payments.reduce((sum, payment) => sum + payment.amount, 0) + (account.saleCredit ?? 0);
+  // Either way completes it: the months reach the term, or what was received reaches the total (a lump payment that
+  // exactly pays the balance, or a flexible program).
+  const completed = account.payBalanceTotal > 0 && ((termMonths > 0 && coveredNop >= termMonths) || Math.round(received * 100) >= Math.round(account.payBalanceTotal * 100));
+  const paid = Boolean(account.fullyPaidOn && validDate(account.fullyPaidOn) && account.fullyPaidOn <= today) || completed;
   // A Forfeited carried from the old system holds (forfeitHeld), except on Pay the Balance programs: they wait the full
   // 12 months before being declared forfeited, whatever was stored under the old 6-month rule (owner, October 16, 2026).
   // The stored status itself never holds (October 26, 2026): it is what the app last worked out (the nightly job stores
@@ -148,7 +163,7 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   if (months.length && monthCount(firstMonth, lastCoveredMonth) !== months.length) throw new Error(`Account ${account.id} has gaps in payment coverage. Review its history.`);
   const unpaidMonths = missedMonths;
   let status: AccountStatus = "NS";
-  if (paid) status = "Paid";
+  if (paid) status = "Fully Paid";
   else if (forfeited) status = "Forfeited";
   else if (payments.length) {
     status = lastCoveredMonth > currentMonth ? "ADV"
@@ -156,10 +171,10 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   }
   // Without a registration fee the New Sale is NOP 1 (the DOI month), so an NS account's first Collection is NOP 2, the
   // month after DOI; with one the New Sale is no NOP and the first Collection is NOP 1 (saleNops).
-  const nop = Math.max(saleNops(account), ...[...coverage.values()].map((value) => value.nop));
+  const nop = coveredNop;
   // Amount due: the missed months (U one, 60D two, 90D three, 120D four, 150D five, as before October 12), or the next
   // month when none is missed yet.
-  const dueNow = status === "NS" ? 1 : status === "ADV" || status === "Paid" ? 0 : Math.max(1, Math.min(unpaidMonths, 5));
+  const dueNow = status === "NS" ? 1 : status === "ADV" || status === "Fully Paid" ? 0 : Math.max(1, Math.min(unpaidMonths, 5));
   return {
     status, temporarilySuspended, anchor, paidThrough, suspendedAt, forfeitedAt, nop, nextNop: nop + 1,
     lastCoveredMonth, nextMonth: monthName(monthIndex(lastCoveredMonth || account.doi.slice(0, 7)) + 1),
@@ -187,6 +202,7 @@ export type PaymentInput = { monthFrom: string; monthTo: string; nopFrom: number
 export function validatePayment(account: Account, history: AccountPayment[], input: PaymentInput, today = todayInManila()) {
   const state = accountState(account, history, today);
   const forfeitedAllowed = forfeitedPaymentsAllowed(today);
+  if (state.status === "Fully Paid") throw new Error("This program account is fully paid. No more payments are taken.");
   if (state.status === "Forfeited" && !forfeitedAllowed) throw new Error("This program account is forfeited. Payments are blocked.");
   if (!validDate(input.orDate) || input.orDate > today || input.orDate < account.doi) throw new Error("OR Date must be a valid date between DOI and today.");
   if (state.latestOrDate && input.orDate < state.latestOrDate) throw new Error("OR Date cannot precede the last recorded payment. Review backdated entries separately.");

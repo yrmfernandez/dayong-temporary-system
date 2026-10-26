@@ -1,5 +1,5 @@
 import {
-  BadgeCheck, BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
+  Award, BadgeCheck, BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
   ClipboardList, CreditCard, FilePen, UserRoundCog, FileWarning, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
   LayoutDashboard, Banknote, Camera, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
@@ -54,6 +54,8 @@ const page = {
   entryCorrections: { name: "Edit / Corrections", href: "/entry-corrections", icon: FilePen },
   // Member Corrections: IT and Administrators fix coverage, move receipts, merge, split and insert missing receipts (app/member-corrections).
   memberCorrections: { name: "Member Corrections", href: "/member-corrections", icon: UserRoundCog },
+  // Fully Paid accounts and their certificates (owner, October 27, 2026; app/fully-paid).
+  fullyPaid: { name: "Fully Paid", href: "/fully-paid", icon: Award },
   todaysEntries: { name: "Today's Entries", href: "/todays-entries", icon: ReceiptText },
   exceptions: { name: "Exceptions", href: "/exceptions", icon: TriangleAlert },
   myEntries: { name: "My Entries", href: "/my-entries", icon: Camera },
@@ -76,7 +78,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.payroll, page.fidelity] },
     { title: "Reports", items: [page.reports, page.companyReports, page.soa, page.dailyAudit, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
-    { title: "Master Data", items: [page.members, page.programs, page.branches] },
+    { title: "Master Data", items: [page.members, page.fullyPaid, page.programs, page.branches] },
     { title: "Administration", items: [page.userAccounts, page.roles, page.auditLog, page.entryCorrections, page.memberCorrections] },
     myHr,
   ],
@@ -92,7 +94,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Cash", items: [page.clearing, page.remittances, page.cash] },
     { title: "Payables", items: [page.payroll, page.commissions, page.expenses, page.payables] },
     { title: "Monitoring", items: [page.mam, page.fidelity, page.dailyAudit, page.attendanceTracking, page.auditLog] },
-    { title: "Directory", items: [page.members, page.programs] },
+    { title: "Directory", items: [page.members, page.fullyPaid, page.programs] },
     myHr,
   ],
   "entry clerk": [
@@ -114,7 +116,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "System", items: [{ ...page.dashboard, name: "System Health" }] },
     { title: "Access Control", items: [page.userAccounts, page.roles, page.employees] },
     { title: "Configuration", items: [page.branches, page.programs, page.masterData] },
-    { title: "Monitoring", items: [page.auditLog, page.entryCorrections, page.memberCorrections] },
+    { title: "Monitoring", items: [page.auditLog, page.entryCorrections, page.memberCorrections, page.fullyPaid] },
     myHr,
   ],
   mas: [

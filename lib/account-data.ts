@@ -5,6 +5,7 @@ import { currentDb, inTransaction, schema, type Queryable, type Transaction } fr
 import { getEncoder } from "@/lib/encoder-context";
 import type { IncentiveTier } from "@/lib/remittance";
 import { buildMamReport } from "@/lib/mam-report";
+import { recordCompletedAccounts } from "@/lib/full-payments";
 
 const { collections, member_programs: memberPrograms, members, program_incentives: programIncentives, programs, sales } = schema;
 
@@ -55,7 +56,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
   const scoped = Boolean(scopeCondition({ ...scope, includeDeactivated: true }));
   let accountQuery = db.select({
     id: memberPrograms.enrollment_id, memberId: memberPrograms.member_id, memberNumber: memberPrograms.member_number, programId: memberPrograms.program_id,
-    doi: memberPrograms.doi, branch: memberPrograms.branch, mas: memberPrograms.mas, storedStatus: memberPrograms.account_status, forfeitHeld: memberPrograms.forfeit_held,
+    doi: memberPrograms.doi, branch: memberPrograms.branch, mas: memberPrograms.mas, storedStatus: memberPrograms.account_status, forfeitHeld: memberPrograms.forfeit_held, fullyPaidOn: memberPrograms.fully_paid_on,
     basePay: programs.base_pay, payBalanceTotal: programs.pay_balance_total, programName: programs.program_name, flexible: programs.flexible, maxMonthlyPayment: programs.max_monthly_payment, registrationFee: programs.registration_fee_required,
     categoryId: programs.category_id, surname: members.surname, firstName: members.first_name, middleName: members.middle_name,
   }).from(memberPrograms)
@@ -66,7 +67,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
   const accountRows = await accountQuery;
   const accounts: LoadedAccount[] = accountRows.map((row) => ({
     id: row.id, memberId: row.memberId, memberNumber: text(row.memberNumber), programId: row.programId, doi: row.doi ?? "",
-    branch: text(row.branch), mas: text(row.mas), basePay: row.basePay ?? 0, payBalanceTotal: row.payBalanceTotal ?? 0, storedStatus: text(row.storedStatus), forfeitHeld: Boolean(row.forfeitHeld), flexible: row.flexible, maxMonthlyPayment: row.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(row.categoryId), registrationFee: Boolean(row.registrationFee),
+    branch: text(row.branch), mas: text(row.mas), basePay: row.basePay ?? 0, payBalanceTotal: row.payBalanceTotal ?? 0, storedStatus: text(row.storedStatus), forfeitHeld: Boolean(row.forfeitHeld), fullyPaidOn: row.fullyPaidOn ?? "", flexible: row.flexible, maxMonthlyPayment: row.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(row.categoryId), registrationFee: Boolean(row.registrationFee),
     memberName: memberName(row.surname, row.firstName, row.middleName) || text(row.memberNumber), programName: row.programName,
   }));
 
@@ -79,7 +80,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
       monthFrom: collections.month_from, monthTo: collections.month_to, nopFrom: collections.nop_from, nopTo: collections.nop_to,
       amount: collections.amount_collected, dateRemitted: collections.date_remitted, mas: collections.mas,
     }).from(collections).where(and(eq(collections.status, "Posted"), scoped ? inArray(collections.enrollment_id, ids) : undefined)),
-    scoped && !memberNumbers.length ? [] : db.select({ memberNumber: sales.member_number, programId: sales.program_id, applicationNumber: sales.application_no, registrationFee: sales.registration_amount })
+    scoped && !memberNumbers.length ? [] : db.select({ memberNumber: sales.member_number, programId: sales.program_id, applicationNumber: sales.application_no, registrationFee: sales.registration_amount, amountPaid: sales.amount_paid })
       .from(sales).where(scoped ? inArray(sales.member_number, memberNumbers) : undefined),
     scoped && !programIds.length ? [] : db.select().from(programIncentives).where(scoped ? inArray(programIncentives.program_id, programIds) : undefined),
   ]);
@@ -89,6 +90,11 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
     amount: row.amount, dateRemitted: row.dateRemitted ?? row.orDate ?? "", mas: text(row.mas),
   }));
   const saleList = saleRows.map((row) => ({ memberNumber: text(row.memberNumber), programId: row.programId, applicationNumber: text(row.applicationNumber), registrationFee: row.registrationFee ?? 0 }));
+  // What each account's New Sale paid toward its months (a registration-fee program's New Sale pays no month), so a
+  // flexible program's payoff counts it (lib/account-rules.ts, Fully Paid).
+  const salePaid = new Map<string, number>();
+  for (const row of saleRows) { const key = `${text(row.memberNumber)}|${row.programId}`; salePaid.set(key, (salePaid.get(key) ?? 0) + (Number(row.amountPaid) || 0)); }
+  for (const account of accounts) if (!account.registrationFee) account.saleCredit = salePaid.get(`${account.memberNumber}|${account.programId}`) ?? 0;
   const incentives = tierRows.map((row) => ({
     id: row.incentive_id, programId: row.program_id, role: text(row.role) as IncentiveTier["role"], fromMonth: row.from_month ?? 0, toMonth: row.to_month ?? 0,
     incentiveType: text(row.incentive_type) as IncentiveTier["incentiveType"], markUp: row.mark_up ?? 0, incentiveAmount: row.incentive_amount ?? 0, branchId: text(row.branch_id),
@@ -159,7 +165,16 @@ export async function syncAccountStatuses() {
   if (changed.size) await inTransaction(async (tx) => {
     for (const [status, ids] of changed) await tx.update(memberPrograms).set({ account_status: status }).where(inArray(memberPrograms.enrollment_id, ids));
   });
-  return report;
+  // Accounts whose receipts completed the program: record the full payment and give the certificate its number.
+  const completedIds = report.rows.filter((row) => "status" in row && row.status === "Fully Paid").map((row) => row.id);
+  let fullyPaidRecorded = 0;
+  if (completedIds.length) {
+    const data = await loadAccountData({ enrollmentIds: completedIds, includeDeactivated: true });
+    const byEnrollment = paymentsByEnrollment(data.payments);
+    const toRecord = data.accounts.filter((account) => !account.fullyPaidOn).map((account) => ({ id: account.id, payments: byEnrollment.get(account.id) ?? [], saleCredit: account.saleCredit }));
+    if (toRecord.length) fullyPaidRecorded = await inTransaction((tx) => recordCompletedAccounts(tx, toRecord));
+  }
+  return Object.assign(report, { fullyPaidRecorded });
 }
 
 export type NewCollection = typeof collections.$inferInsert;
@@ -172,5 +187,7 @@ export async function commitCollections(tx: Transaction, rows: NewCollection[], 
   for (const account of accounts) {
     const status = accountState(account, byEnrollment.get(account.id) ?? []).status;
     if (status !== account.storedStatus) await tx.update(memberPrograms).set({ account_status: status }).where(eq(memberPrograms.enrollment_id, account.id));
+    // The payment that completes the program: the full payment is recorded with its certificate number.
+    if (status === "Fully Paid" && !account.fullyPaidOn) await recordCompletedAccounts(tx, [{ id: account.id, payments: byEnrollment.get(account.id) ?? [], saleCredit: account.saleCredit }]);
   }
 }

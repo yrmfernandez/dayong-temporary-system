@@ -32,7 +32,7 @@ type Row = Report["rows"][number];
 const money = (value: number) =>
   new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 
-const statuses = ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Forfeited"];
+const statuses = ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Fully Paid", "Forfeited"];
 
 /** Sort choices; status and balance are the range's last month. */
 const SORTS = {

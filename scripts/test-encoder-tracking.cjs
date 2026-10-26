@@ -3060,8 +3060,8 @@ test('a flexible program takes any amount from its minimum, counts months as cho
   assert.throws(() => validatePayment(account, history, input(250, 2), '2026-05-06'), /2 month\(s\) requires at least 300/);
   validatePayment(account, history, input(500), '2026-05-06');  // more than the minimum for one month is fine
   assert.throws(() => validatePayment(account, history, input(30000), '2026-05-06'), /more than the remaining program balance of 24690/);
-  // Paid off once collections reach the total.
-  assert.equal(accountState({ ...account, payBalanceTotal: 510 }, history, '2026-04-20').status, 'Paid');
+  // Fully Paid once what was received reaches the total.
+  assert.equal(accountState({ ...account, payBalanceTotal: 510 }, history, '2026-04-20').status, 'Fully Paid');
   // Incentives follow the amount paid: 50% of (amount - ₱50 mark-up).
   const tiers = [{ role: 'MAS', fromMonth: 1, toMonth: 999, incentiveType: 'percentage', markUp: 50, incentiveAmount: 50 }];
   assert.deepEqual(calculateRemittance(150, tiers, 'MAS', 5, 5, 210, true).breakdown.map((item) => [item.basePay, item.incentive, item.remittance]), [[210, 80, 130]]);
@@ -4320,4 +4320,66 @@ test('Company Reports: Encoded in the system only leaves out old-sheet imports, 
   h.setUser({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   const viaRoute = await (await route.GET(new Request('http://localhost/api/reports?from=2026-10-01&to=2026-10-31&source=encoded'))).json();
   assert.equal(viaRoute.report.summary.gross, 350, 'the screen asks with source=encoded');
+});
+
+test('Fully Paid: certificate numbers continue per area and year, recorded by hand or by the receipts, released or removed (October 27, 2026)', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const { parseCertificate, formatCertificate } = h.load('lib/full-payments.ts');
+  assert.deepEqual(parseCertificate('DAVAO2026-038'), { prefix: 'DAVAO', year: 2026, sequence: 38 });
+  assert.deepEqual(parseCertificate('SDS-2026-002'), { prefix: 'SDS', year: 2026, sequence: 2 }, 'old spelling with a dash');
+  assert.deepEqual(parseCertificate('DAVAO2024-01B'), { prefix: 'DAVAO', year: 2024, sequence: 1 });
+  assert.equal(formatCertificate('ddo', 2026, 9), 'DDO2026-009');
+  const year = Number(h.load('lib/account-rules.ts').todayInManila().slice(0, 4));
+  await seed('branches', [{ branch_id: 'BR-M', branch_name_code: 'MINTAL', status: 'active', certificate_prefix: 'DAVAO' }, { branch_id: 'BR-X', branch_name_code: 'RTR', status: 'active' }]);
+  await seed('programs', [{ program_id: 'DP-420', program_name: 'D-420', base_pay: 420, pay_balance_total: 25200 }]);
+  await seed('members', [1, 2, 3, 4].map((n) => ({ member_id: `MEM-${n}`, member_number: `PH-${n}`, surname: `S${n}`, first_name: 'A' })));
+  await seed('member_programs', [
+    { enrollment_id: 'E-OLD', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-420', doi: '2020-01-10', branch: 'MINTAL', status: 'Active', fully_paid_on: '2026-09-01', fully_paid_total: 25200, certificate_number: `DAVAO${year}-038`, certificate_status: 'Released' },
+    { enrollment_id: 'E-HAND', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-420', doi: '2021-01-10', branch: 'MINTAL', status: 'Active' },
+    { enrollment_id: 'E-RCPT', member_id: 'MEM-3', member_number: 'PH-3', program_id: 'DP-420', doi: '2021-01-10', branch: 'MINTAL', status: 'Active' },
+    { enrollment_id: 'E-RTR', member_id: 'MEM-4', member_number: 'PH-4', program_id: 'DP-420', doi: '2021-01-10', branch: 'RTR', status: 'Active' },
+  ]);
+  const route = h.load('app/api/fully-paid/route.ts');
+  const post = async (body) => route.POST(request(body)).then((response) => response.json());
+  const recorded = await post({ action: 'record', enrollmentId: 'E-HAND', paidOn: '2026-10-01', total: 25200 });
+  assert.equal(recorded.success, true, JSON.stringify(recorded));
+  assert.match(recorded.message, new RegExp(`DAVAO${year}-039`), 'continues after the last number of the area and year');
+  assert.match((await post({ action: 'record', enrollmentId: 'E-HAND', paidOn: '2026-10-01', total: 25200 })).message, /already Fully Paid/);
+  assert.match((await post({ action: 'record', enrollmentId: 'E-RTR', paidOn: '2026-10-01', total: 25200, certificateNumber: `davao${year}-039` })).message, /already used/, 'a number is never given twice');
+  assert.match((await post({ action: 'record', enrollmentId: 'E-RTR', paidOn: '2026-10-01', total: 25200 })).message, /certificate prefix/, 'a branch without a prefix must get one first');
+  const [hand] = await query("select account_status, fully_paid_source, certificate_status from member_programs where enrollment_id = 'E-HAND'");
+  assert.deepEqual(hand, { account_status: 'Fully Paid', fully_paid_source: 'Manual', certificate_status: 'Pending' });
+  // Release and back; remove only while not released.
+  assert.equal((await post({ action: 'release', enrollmentId: 'E-HAND', releasedOn: '2026-10-02', receivedBy: 'Claimant' })).success, true);
+  assert.match((await post({ action: 'remove', enrollmentId: 'E-HAND', reason: 'Recorded by mistake' })).message, /already released/);
+  await post({ action: 'pending', enrollmentId: 'E-HAND' });
+  assert.equal((await post({ action: 'remove', enrollmentId: 'E-HAND', reason: 'Recorded by mistake' })).success, true);
+  const [removed] = await query("select fully_paid_on, certificate_number, account_status from member_programs where enrollment_id = 'E-HAND'");
+  assert.equal(removed.fully_paid_on, null);
+  assert.equal(removed.certificate_number, null);
+  assert.notEqual(removed.account_status, 'Fully Paid', 'worked out from its receipts again');
+  // The receipts complete the program (NOP 2–60): the nightly status step records it with the next number.
+  await seed('collections', [{ collection_id: 'C-ALL', collection_batch_id: 'B', enrollment_id: 'E-RCPT', member_id: 'MEM-3', member_number: 'PH-3', program_id: 'DP-420', branch: 'MINTAL', or_number: 'OR-1', or_date: '2026-01-10', amount_collected: 420 * 59, month_from: '2021-02', month_to: '2025-12', nop_from: 2, nop_to: 60, status: 'Posted' }]);
+  const { syncAccountStatuses } = h.load('lib/account-data.ts');
+  const { runAsSystem } = h.load('lib/encoder-context.ts');
+  const report = await runAsSystem(() => syncAccountStatuses());
+  assert.equal(report.fullyPaidRecorded, 1);
+  const [auto] = await query("select account_status, fully_paid_on::text as on, fully_paid_source, certificate_number, certificate_status from member_programs where enrollment_id = 'E-RCPT'");
+  assert.deepEqual(auto, { account_status: 'Fully Paid', on: '2026-01-10', fully_paid_source: 'Receipts', certificate_number: `DAVAO${year}-039`, certificate_status: 'Pending' }, 'number 039 was freed by the removal');
+  const list = await (await route.GET(new Request('http://localhost/api/fully-paid?status=Pending'))).json();
+  assert.deepEqual(list.items.map((item) => item.enrollmentId), ['E-RCPT'], 'to release');
+});
+
+test('a certificate number printed on paper but not yet in the system is never given again (October 27, 2026)', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const year = Number(h.load('lib/account-rules.ts').todayInManila().slice(0, 4));
+  await seed('branches', [{ branch_id: 'BR-M', branch_name_code: 'MINTAL', status: 'active', certificate_prefix: 'DAVAO' }]);
+  await seed('programs', [{ program_id: 'DP-420', program_name: 'D-420', base_pay: 420, pay_balance_total: 25200 }]);
+  await seed('members', [1, 2].map((n) => ({ member_id: `MEM-${n}`, member_number: `PH-${n}`, surname: `S${n}`, first_name: 'A' })));
+  await seed('member_programs', [1, 2].map((n) => ({ enrollment_id: `E-${n}`, member_id: `MEM-${n}`, member_number: `PH-${n}`, program_id: 'DP-420', doi: '2021-01-10', branch: 'MINTAL', status: 'Active' })));
+  await seed('system_settings', [{ setting_key: 'certificate_reserved', value: JSON.stringify([`DAVAO${year}-038`, `DDO${year}-050`]) }]);
+  const route = h.load('app/api/fully-paid/route.ts');
+  const post = async (body) => route.POST(request(body)).then((response) => response.json());
+  assert.match((await post({ action: 'record', enrollmentId: 'E-1', paidOn: '2026-10-01', total: 25200 })).message, new RegExp(`DAVAO${year}-039`), 'after the reserved 038; other areas do not count');
+  assert.match((await post({ action: 'record', enrollmentId: 'E-2', paidOn: '2026-10-01', total: 25200, certificateNumber: `DAVAO${year}-038` })).message, new RegExp(`DAVAO${year}-038`), 'its own member may still be recorded with it');
 });

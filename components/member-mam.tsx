@@ -15,7 +15,7 @@ const monthOf = (state: { lastCoveredMonth: string } | null, doi: string) => {
   const month = state ? state.lastCoveredMonth || doi.slice(0, 7) : "";
   return /^\d{4}-\d{2}$/.test(month) ? new Intl.DateTimeFormat("en-PH", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`)) : "—";
 };
-const statusTone = (status: string) => status === "U" || status === "ADV" || status === "Paid" ? "success" : status === "Forfeited" ? "danger" : status === "NS" ? "neutral" : "warning";
+const statusTone = (status: string) => status === "U" || status === "ADV" || status === "Fully Paid" ? "success" : status === "Forfeited" ? "danger" : status === "NS" ? "neutral" : "warning";
 
 /** A member's MAM, collapsed until opened; it loads that member's accounts only when first expanded. */
 export function MemberMam({ memberId }: { memberId: string }) {

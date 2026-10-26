@@ -40,7 +40,7 @@ export async function expectedByMas(from: string, to: string, branches: string[]
     select lower(trim(coalesce(mp.mas, ''))) as mas, mp.doi::text as doi, coalesce(p.base_pay, 0)::float8 as rate
     from member_programs mp join programs p on p.program_id = mp.program_id
     where lower(trim(coalesce(mp.branch, ''))) in (${sql.join(names.map((name) => sql`${name}`), sql`, `)})
-      and coalesce(mp.account_status, '') not in ('Forfeited', 'Paid') and mp.doi is not null and mp.doi <= ${to}::date`));
+      and coalesce(mp.account_status, '') not in ('Forfeited', 'Paid', 'Fully Paid') and mp.doi is not null and mp.doi <= ${to}::date`));
   for (const account of accounts) {
     const dues = duesIn(account.doi, from, to);
     if (!dues.length || !account.mas) continue;

@@ -46,6 +46,7 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
     { href: "/roles", label: "Roles" },
     { href: "/entry-corrections", label: "Edit / Corrections (edit entries, move members between MAS and programs)" },
     { href: "/member-corrections", label: "Member Corrections (fix coverage, move receipts, merge, split, insert missing receipts)" },
+    { href: "/fully-paid", label: "Fully Paid (fully paid accounts, certificates and their release)" },
   ] },
 ];
 

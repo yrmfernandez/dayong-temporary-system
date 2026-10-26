@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-44 page routes, 74 API handlers, 138 library files, 60 component files; 619 scanned source/configuration/public-text files in total.
+45 page routes, 75 API handlers, 139 library files, 60 component files; 625 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -29,6 +29,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/expenses` | [app/expenses/page.tsx](../app/expenses/page.tsx) | `@/components/app-dialog`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/receipt-photo`, `@/components/receipt-photos-picker`, `@/lib/expense-options`, `@/lib/use-live-refresh` |
 | `/fidelity/me` | [app/fidelity/me/page.tsx](../app/fidelity/me/page.tsx) |  |
 | `/fidelity` | [app/fidelity/page.tsx](../app/fidelity/page.tsx) | `@/lib/auth-server` |
+| `/fully-paid` | [app/fully-paid/page.tsx](../app/fully-paid/page.tsx) | `@/components/app-dialog`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/account-rules`, `@/lib/api-response`, `@/lib/use-live-refresh` |
 | `/history` | [app/history/page.tsx](../app/history/page.tsx) | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/input`, `@/lib/use-live-refresh` |
 | `/leave-approvals` | [app/leave-approvals/page.tsx](../app/leave-approvals/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/use-live-refresh` |
 | `/leave-requests` | [app/leave-requests/page.tsx](../app/leave-requests/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/use-live-refresh` |
@@ -94,6 +95,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/expenses` | GET, POST, PATCH | [app/api/expenses/route.ts](../app/api/expenses/route.ts) |
 | `/api/fidelity` | GET, PATCH | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) |
 | `/api/finance-options` | GET, POST | [app/api/finance-options/route.ts](../app/api/finance-options/route.ts) |
+| `/api/fully-paid` | GET, POST | [app/api/fully-paid/route.ts](../app/api/fully-paid/route.ts) |
 | `/api/history` | GET, PATCH | [app/api/history/route.ts](../app/api/history/route.ts) |
 | `/api/leave-approvals` | GET, POST | [app/api/leave-approvals/route.ts](../app/api/leave-approvals/route.ts) |
 | `/api/leave-requests` | GET, POST | [app/api/leave-requests/route.ts](../app/api/leave-requests/route.ts) |
@@ -143,9 +145,9 @@ All routes pass through the authentication proxy except the three public auth en
 | File | Exported symbols | Local imports / re-exports |
 | --- | --- | --- |
 | [lib/access-control.ts](../lib/access-control.ts) | `AccessContext`, `executiveRoles`, `normalizeRoleName`, `isAdministratorRole`, `itRoles`, `hrRoles`, `isFinanceFamilyRole`, `canManageAccountsFor`, `canManageEmployeesFor`, `canManageConfigurationFor`, `canCorrectEntriesFor`, `defaultRoutesForRole`, `pageTicked`, `routesForRole`, `accessibleRoutes`, `canAccessPath`, `DashboardKind`, `dashboardKind` | — |
-| [lib/account-data.ts](../lib/account-data.ts) | `AccountScope`, `LoadedAccount`, `AccountData`, `loadAccountData`, `accountReport`, `ProgramStanding`, `memberStanding`, `mamReport`, `memberMam`, `syncAccountStatuses`, `NewCollection`, `commitCollections` | `@/lib/account-rules`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance`, `@/lib/mam-report` |
+| [lib/account-data.ts](../lib/account-data.ts) | `AccountScope`, `LoadedAccount`, `AccountData`, `loadAccountData`, `accountReport`, `ProgramStanding`, `memberStanding`, `mamReport`, `memberMam`, `syncAccountStatuses`, `NewCollection`, `commitCollections` | `@/lib/account-rules`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance`, `@/lib/mam-report`, `@/lib/full-payments` |
 | [lib/account-deactivation.ts](../lib/account-deactivation.ts) | `DEACTIVATED`, `isDeactivated`, `setAccountActive`, `deactivationNotes` | `@/lib/db`, `@/lib/record-corrections` |
-| [lib/account-rules.ts](../lib/account-rules.ts) | `AccountStatus`, `Account`, `saleNops`, `firstCollectionNop`, `PAY_THE_BALANCE_CATEGORY_ID`, `forfeitMonthsFor`, `AccountPayment`, `todayInManila`, `validDate`, `validMonth`, `monthIndex`, `monthName`, `monthCount`, `dateInMonth`, `addMonths`, `addDay`, `allocations`, `paymentsByEnrollment`, `accountState`, `COLLECTION_CHANNELS`, `CollectionChannel`, `incentiveRoleFor`, `FORFEITED_PAYMENT_DAYS`, `forfeitedPaymentsAllowed`, `PaymentInput`, `validatePayment` | `./program-payment-limit.mjs` |
+| [lib/account-rules.ts](../lib/account-rules.ts) | `AccountStatus`, `ACCOUNT_STATUSES`, `Account`, `saleNops`, `firstCollectionNop`, `PAY_THE_BALANCE_CATEGORY_ID`, `forfeitMonthsFor`, `AccountPayment`, `todayInManila`, `validDate`, `validMonth`, `monthIndex`, `monthName`, `monthCount`, `dateInMonth`, `addMonths`, `addDay`, `allocations`, `paymentsByEnrollment`, `accountState`, `COLLECTION_CHANNELS`, `CollectionChannel`, `incentiveRoleFor`, `FORFEITED_PAYMENT_DAYS`, `forfeitedPaymentsAllowed`, `PaymentInput`, `validatePayment` | `./program-payment-limit.mjs` |
 | [lib/admin-delete.ts](../lib/admin-delete.ts) | `DELETE_KINDS`, `DeleteKind`, `isDeleteKind`, `canDeleteRecords`, `DeletionPlan`, `planDeletion`, `deleteRecord` | `@/lib/auth`, `@/lib/access-control`, `@/lib/db`, `@/lib/readable-id` |
 | [lib/api-response.ts](../lib/api-response.ts) | `readApiResponse`, `parseJsonResponse` | `@/lib/friendly-api-errors` |
 | [lib/attendance-board.ts](../lib/attendance-board.ts) | `BoardCategory`, `canViewAttendanceTracking`, `canAdjustLateness`, `MARK_STATUSES`, `MarkStatus`, `isMarkStatus`, `boardCategory`, `minutesBetween`, `HistoryPeriod`, `HISTORY_PERIODS`, `isHistoryPeriod`, `periodRange`, `HistoryTotals`, `summarizeHistory`, `AttendanceHistory` | `@/lib/auth`, `@/lib/attendance-data` |
@@ -202,6 +204,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/finance-data.ts](../lib/finance-data.ts) | `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `editExpense`, `deleteExpense`, `createCashTransaction`, `voidFinanceRecord`, `cashTransactionsFor` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/expense-options`, `@/lib/readable-id`, `@/lib/receipt-photos` |
 | [lib/finance-operations.ts](../lib/finance-operations.ts) | `cashOutDetails`, `getCashAccounts`, `saveCashAccount`, `getVendorPayables`, `createVendorPayable`, `payVendorPayable`, `getCommissions`, `createCommission`, `payCommissionDirectly`, `payCommission` | `@/lib/db`, `@/lib/finance-data`, `@/lib/readable-id` |
 | [lib/friendly-api-errors.ts](../lib/friendly-api-errors.ts) | `explainServerFailure`, `installFriendlyApiErrors` | — |
+| [lib/full-payments.ts](../lib/full-payments.ts) | `CERTIFICATE_STATUSES`, `CertificateStatus`, `FullPaymentSource`, `parseCertificate`, `formatCertificate`, `RESERVED_KEY`, `nextCertificateNumber`, `FullPaymentInput`, `recordFullPayment`, `recordCompletedAccounts`, `setCertificateRelease`, `removeFullPayment`, `listFullPayments`, `certificatePrefixes`, `setCertificatePrefix`, `accountsToRecord` | `@/lib/account-rules`, `@/lib/db`, `@/lib/encoder-context` |
 | [lib/google-sheets-data.ts](../lib/google-sheets-data.ts) | `ProgramSheetData`, `BranchSheetData`, `getBranches`, `createBranch`, `ProgramIncentiveSheetData`, `CreateProgramData`, `getProgramIncentives`, `addProgramIncentive`, `getPrograms`, `programColumns`, `assertProgramCodeFree`, `createProgram`, `LoginRole`, `LoginUserData`, `AttendanceEmployee`, `getLoginUserByEmployeeId`, `AccountRole`, `CreateEmployeeAccountData`, `getActiveAccountRoles`, `createEmployeeAccount`, `getActiveAttendanceEmployees` | `@/lib/db`, `@/lib/program-amount-lock`, `@/lib/program-incentive-store`, `@/lib/employees`, `@/lib/employee-id`, `@/lib/roles`, `@/lib/program-age`, `@/lib/remittance`, `@/lib/program-payment-limit.mjs`, `@/lib/users-sheet`, `@/lib/google-sheets` |
 | [lib/google-sheets.ts](../lib/google-sheets.ts) | `GOOGLE_SHEET_ID`, `sheetsStats`, `withWriteLock`, `sheetOfRange`, `readingFresh`, `sheets` | `@/lib/sheets-read-cache`, `@/lib/encoder-context`, `@/lib/sheets-on-db` |
 | [lib/gross-sales.ts](../lib/gross-sales.ts) | `GrossSalesEntry`, `getGrossSalesEntries`, `GrossSalesBreakdown`, `filterGrossSales` | `@/lib/db` |
@@ -381,6 +384,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/expenses/route.ts](../app/api/expenses/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/finance-data`, `@/lib/receipt-photos` |
 | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) | `GET`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/fidelity`, `@/lib/encoder-context` |
 | [app/api/finance-options/route.ts](../app/api/finance-options/route.ts) | `GET`, `POST` | `@/lib/encoder-context`, `@/lib/finance-access`, `@/lib/finance-operations`, `@/lib/google-sheets-data` |
+| [app/api/fully-paid/route.ts](../app/api/fully-paid/route.ts) | `GET`, `POST` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/full-payments`, `@/lib/db` |
 | [app/api/history/route.ts](../app/api/history/route.ts) | `GET`, `PATCH` | `@/lib/day-off`, `@/lib/sheets-on-db`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/entry-corrections`, `@/lib/encoder-schema`, `@/lib/audit-log` |
 | [app/api/leave-approvals/route.ts](../app/api/leave-approvals/route.ts) | `GET`, `POST` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data`, `@/lib/attendance-data`, `@/lib/employees` |
 | [app/api/leave-requests/route.ts](../app/api/leave-requests/route.ts) | `GET`, `POST` | `@/lib/readable-id`, `@/lib/encoder-context`, `@/lib/auth-server`, `@/lib/leave-data` |
@@ -473,6 +477,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-collections.mjs](../scripts/check-collections.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/check-company-report.mjs](../scripts/check-company-report.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
+| [scripts/check-fully-paid.mjs](../scripts/check-fully-paid.mjs) | `node:fs`, `exceljs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-incentive-periods.mjs](../scripts/check-incentive-periods.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-mas-members.mjs](../scripts/check-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs`, `./name-match.mjs` | No flag detected; read source before running |
 | [scripts/check-member-transfer.mjs](../scripts/check-member-transfer.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
@@ -534,6 +539,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/generate-code-reference.mjs](../scripts/generate-code-reference.mjs) | `node:fs`, `node:path`, `typescript` | Yes; read source for semantics |
 | [scripts/hash-password.mjs](../scripts/hash-password.mjs) | `bcryptjs` | No flag detected; read source before running |
 | [scripts/import-fidelity-opening-20261023.mts](../scripts/import-fidelity-opening-20261023.mts) | `node:fs`, `@next/env`, `exceljs`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/fidelity`, `@/lib/readable-id` | Yes; read source for semantics |
+| [scripts/import-fully-paid.mjs](../scripts/import-fully-paid.mjs) | `node:fs`, `exceljs`, `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/import-lugon-2025.mjs](../scripts/import-lugon-2025.mjs) | `@next/env`, `postgres`, `node:crypto`, `node:fs`, `./legacy-sources.mjs`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/import-paper-attendance-20261015.mjs](../scripts/import-paper-attendance-20261015.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/import-receipt-private.mjs](../scripts/import-receipt-private.mjs) | `node:fs`, `node:assert/strict`, `node:crypto`, `@next/env`, `postgres`, `./source-history-rules.mjs`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
@@ -686,6 +692,7 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/five-receipt-program-moves-20261016.json](../config/five-receipt-program-moves-20261016.json)
 - [config/four-d210-split-fixes-20261019.json](../config/four-d210-split-fixes-20261019.json)
 - [config/four-source-span-fixes-20261019.json](../config/four-source-span-fixes-20261019.json)
+- [config/fully-paid-programs.json](../config/fully-paid-programs.json)
 - [config/legacy-migration-map.json](../config/legacy-migration-map.json)
 - [config/legacy-programs.json](../config/legacy-programs.json)
 - [config/legacy-receipt-fixes.json](../config/legacy-receipt-fixes.json)

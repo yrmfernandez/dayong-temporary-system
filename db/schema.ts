@@ -53,6 +53,8 @@ export const branches = pgTable("branches", {
   location_radius_m: integer(),
   location_set_by: text(),
   location_set_at: moment("location_set_at"),
+  /** Area at the start of its Fully Paid certificate numbers, e.g. DAVAO, DAVNOR, DDO, SDS (migration 0030). */
+  certificate_prefix: text(),
 }, (t) => [uniqueIndex("branches_name_code_key").on(t.branch_name_code)]).enableRLS();
 
 export const employees = pgTable("employees", {
@@ -249,7 +251,21 @@ export const member_programs = pgTable("member_programs", {
    * Forfeited the app worked out is only account_status, so a corrected history can reopen the account.
    */
   forfeit_held: boolean().notNull().default(false),
-}, (t) => [index("member_programs_branch_id_idx").on(t.branch_id), index("member_programs_mas_employee_id_idx").on(t.mas_employee_id), 
+  /**
+   * Fully Paid (migration 0030, October 27, 2026): the account's full payment and its certificate. Set when the receipts
+   * reach the program's total (source "Receipts"), when recorded by hand ("Manual"), or from the old Fully Paid form
+   * ("Old list"). While fully_paid_on is set the account is Fully Paid: no dues, no status clock, no more payments.
+   * Certificate numbers are AREA + YEAR + "-" + sequence (e.g. DAVAO2026-038), the area from the branch's prefix.
+   */
+  fully_paid_on: day("fully_paid_on"),
+  fully_paid_total: money("fully_paid_total"),
+  fully_paid_source: text(),
+  fully_paid_recorded_by: text(),
+  certificate_number: text(),
+  certificate_status: text(),
+  certificate_released_on: day("certificate_released_on"),
+  certificate_released_by: text(),
+}, (t) => [uniqueIndex("member_programs_certificate_key").on(t.certificate_number).where(sql`${t.certificate_number} is not null`), index("member_programs_branch_id_idx").on(t.branch_id), index("member_programs_mas_employee_id_idx").on(t.mas_employee_id), 
   // A member enrolls in each program once (app/api/sales/route.ts checks first; this stops two racing saves).
   uniqueIndex("member_programs_member_program_key").on(t.member_id, t.program_id),
   index("member_programs_member_idx").on(t.member_id),

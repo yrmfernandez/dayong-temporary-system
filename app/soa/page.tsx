@@ -14,10 +14,10 @@ type Filters = { search: string; branch: string; mas: string; program: string; s
 const noFilters: Filters = { search: "", branch: "", mas: "", program: "", status: "" };
 const fieldClass = "mt-1 block h-9 w-full rounded-md border bg-background px-2 text-sm";
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
-const statusFilters: Array<[string, string]> = [["U", "U - Updated"], ["ADV", "ADV - Advance"], ["NS", "NS - New sale"], ["60D", "60D"], ["90D", "90D"], ["120D", "120D"], ["150D", "150D"], ["Suspended", "Temporarily suspended"], ["Forfeited", "Forfeited"], ["Paid", "Fully paid"], ["Needs review", "Needs review"]];
+const statusFilters: Array<[string, string]> = [["U", "U - Updated"], ["ADV", "ADV - Advance"], ["NS", "NS - New sale"], ["60D", "60D"], ["90D", "90D"], ["120D", "120D"], ["150D", "150D"], ["Suspended", "Temporarily suspended"], ["Forfeited", "Forfeited"], ["Fully Paid", "Fully Paid"], ["Needs review", "Needs review"]];
 const matchesStatus = (item: AccountOption, status: string) => !status || (status === "Suspended" ? item.temporarilySuspended && item.status !== "Forfeited" : item.status === status);
 const statusLabel = (item: AccountOption) => `${item.status}${item.temporarilySuspended && item.status !== "Forfeited" ? " · suspended" : ""}`;
-const statusTone = (status: string) => ["U", "ADV", "Paid"].includes(status) ? "success" as const : status === "NS" ? "info" as const : status === "Needs review" ? "warning" as const : "danger" as const;
+const statusTone = (status: string) => ["U", "ADV", "Fully Paid"].includes(status) ? "success" as const : status === "NS" ? "info" as const : status === "Needs review" ? "warning" as const : "danger" as const;
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const longDate = (value: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—";
 const monthLabel = (value: string) => value ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", year: "numeric", timeZone: "UTC" }) : "—";
@@ -138,7 +138,7 @@ function StatementContent() {
       <div className="rounded-xl border p-4">
         <h2 className="mb-3 font-semibold">Summary</h2>
         <div className="grid gap-3 sm:grid-cols-4">
-          <Figure label="Account status" value={<span className="flex flex-wrap items-center gap-2"><StatusBadge status={s.status} tone={["U", "ADV", "Paid"].includes(s.status) ? "success" : s.status === "NS" ? "info" : s.status === "Forfeited" ? "neutral" : "danger"} /><span className="text-xs font-normal text-muted-foreground">{statusText[s.status] ?? s.status}</span></span>} />
+          <Figure label="Account status" value={<span className="flex flex-wrap items-center gap-2"><StatusBadge status={s.status} tone={["U", "ADV", "Fully Paid"].includes(s.status) ? "success" : s.status === "NS" ? "info" : s.status === "Forfeited" ? "neutral" : "danger"} /><span className="text-xs font-normal text-muted-foreground">{statusText[s.status] ?? s.status}</span></span>} />
           <Figure label="Total paid" value={<span>{money(s.totalPaid)}<span className="block text-xs font-normal text-muted-foreground">{s.totalPaidBasis.startsWith("NOP") ? `${s.monthsPaid} month${s.monthsPaid === 1 ? "" : "s"} × ${money(statement.account.monthlyDue)}` : "Flexible: every amount paid"}</span></span>} />
           <Figure label="Program balance" value={s.remainingBalance === null ? "No fixed total" : money(s.remainingBalance)} />
           <Figure label="Amount due now" value={s.amountDue === null ? "Forfeited" : money(s.amountDue)} strong />

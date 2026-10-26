@@ -89,7 +89,7 @@ export default function MembersPage() {
     setFilters((previous) => ({ ...previous, [key]: value, ...(key === "branch" ? { mas: "" } : {}) })); setPage(1); setSelected(null);
   }
   const options: { key: Exclude<keyof DirectoryFilters, "search" | "standing">; label: string; values: [string, string][] }[] = [
-    { key: "accountStatus", label: "Payment status (today)", values: ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Forfeited", "Suspended", "Needs review", "Not started"].map((v) => [v, v === "U" ? "U - Updated" : v === "ADV" ? "ADV - Advance" : v]) },
+    { key: "accountStatus", label: "Payment status (today)", values: ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Fully Paid", "Forfeited", "Suspended", "Needs review", "Not started"].map((v) => [v, v === "U" ? "U - Updated" : v === "ADV" ? "ADV - Advance" : v]) },
     { key: "branch", label: "Branch", values: choices.branches.map((v) => [v, v]) },
     // Branch first: only the employees assigned to the chosen branch.
     { key: "mas", label: "MAS / Collector", values: filters.branch ? choices.staff.filter((item) => item.branches.includes(filters.branch)).map((item): [string, string] => [item.name, item.name]).sort((a, b) => a[0].localeCompare(b[0])) : [] },
