@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-44 page routes, 74 API handlers, 138 library files, 60 component files; 618 scanned source/configuration/public-text files in total.
+44 page routes, 74 API handlers, 138 library files, 60 component files; 619 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -254,7 +254,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/remittance-workflow.ts](../lib/remittance-workflow.ts) | `RemittanceKind`, `SlipType`, `CashCollection`, `CashRemittance`, `forfeitsIncentive`, `amountDue`, `dateRemittedReasons`, `noIncentiveReasons`, `getRemittanceDashboard`, `RemittanceEntry`, `getRemittanceEntries`, `CASH_IN_FULL_NOTE`, `lockOutstandingRemittanceEntries`, `createCashRemittance`, `decideCashRemittance`, `createFidelitySlip`, `editFidelitySlip`, `voidFidelitySlip`, `receivedAtOf`, `submitReadyEntries`, `submitCashAfterSave`, `resubmitReturned` | `@/lib/db`, `@/lib/sheets-on-db`, `@/lib/readable-id`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/cash-count`, `@/lib/receipt-photos`, `@/lib/clearing`, `@/lib/entry-batches`, `@/lib/incentive-decision` |
 | [lib/remittance.ts](../lib/remittance.ts) | `IncentiveTier`, `tiersForBranch`, `SaleIncentiveSetting`, `SaleProgram`, `normalizeSaleIncentive`, `calculateSaleIncentive`, `REACTIVATION_RATE`, `calculateRemittance`, `NO_INCENTIVE_REASON_MIN`, `noIncentiveReasonOf`, `withoutIncentive` | `./program-payment-limit.mjs` |
 | [lib/report-remarks.ts](../lib/report-remarks.ts) | `getReportRemarks`, `addReportRemark` | `@/lib/db`, `@/lib/readable-id` |
-| [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/sheets-on-db`, `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/manila-date`, `@/lib/person-scope` |
+| [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/db`, `@/lib/sheets-on-db`, `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/manila-date`, `@/lib/person-scope` |
 | [lib/roles.ts](../lib/roles.ts) | `RoleRecord`, `parsePageAccess`, `getRoles`, `createRole`, `updateRole`, `deleteRole` | `@/lib/db`, `@/lib/google-sheets`, `@/lib/encoder-context`, `@/lib/access-control`, `@/lib/page-catalog` |
 | [lib/sale-submissions.ts](../lib/sale-submissions.ts) | `MAX_SUBMISSION_SALES`, `SaleSubmission`, `masProfile`, `listMySubmissions`, `submitSales`, `listForReview`, `reviewableSubmission`, `markSubmissionSaved`, `returnSubmission` | `@/lib/access-control`, `@/lib/auth`, `@/lib/db`, `@/lib/employees`, `@/lib/encoder-context`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/server-environment.ts](../lib/server-environment.ts) | `RequiredServerVariable`, `readServerVariable`, `getMissingServerVariables`, `ServerConfigurationError`, `assertServerConfiguration`, `getAuthSecret` | — |
@@ -471,6 +471,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-12665b-link-private.mjs](../scripts/check-12665b-link-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/check-clerk-report-saves.mjs](../scripts/check-clerk-report-saves.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-collections.mjs](../scripts/check-collections.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
+| [scripts/check-company-report.mjs](../scripts/check-company-report.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
 | [scripts/check-incentive-periods.mjs](../scripts/check-incentive-periods.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-mas-members.mjs](../scripts/check-mas-members.mjs) | `@next/env`, `postgres`, `node:fs`, `./legacy-sources.mjs`, `./name-match.mjs` | No flag detected; read source before running |

@@ -1792,6 +1792,9 @@ test('operational reports reconcile source transactions without duplicating data
   const deposit = Array(16).fill(''); deposit[0] = 'CSH-1'; deposit[1] = '2026-09-10'; deposit[2] = 'inflow'; deposit[3] = 'Bank Deposit'; deposit[5] = 100; deposit[6] = 'MATINA'; deposit[10] = 'Posted';
   h.rows.Sales = [[], sale]; h.rows.Collections = [[], collection]; h.rows.Programs = [[], ['DP-1', 'P1', 'Program One']]; h.rows.Remittances = [[], remittance]; h.rows.Expenses = [[], expense]; h.rows['Cash Transactions'] = [[], deposit];
   await h.sync();
+  // A clerk's bank deposit counts too; a voided one does not (October 27, 2026: the report showed ₱0 deposits).
+  await seed('employees', [{ employee_id: 'DPE-7', full_name: 'Clerk' }]);
+  await seed('bank_deposits', [{ deposit_id: 'DEP-1', deposit_date: '2026-09-10', employee_id: 'DPE-7', branch: 'MATINA', amount: 40, status: 'Posted' }, { deposit_id: 'DEP-2', deposit_date: '2026-09-10', employee_id: 'DPE-7', branch: 'MATINA', amount: 999, status: 'Voided' }]);
   const report = await h.load('lib/reports.ts').buildOperationalReport('2026-09-01', '2026-09-30');
   assert.equal(report.summary.accounts, 2);
   assert.equal(report.summary.gross, 700);
@@ -1800,7 +1803,7 @@ test('operational reports reconcile source transactions without duplicating data
   assert.equal(report.summary.expenses, 50);
   assert.equal(report.summary.expectedRemittance, 500);
   assert.equal(report.summary.actualRemittance, 200);
-  assert.equal(report.summary.deposits, 100);
+  assert.equal(report.summary.deposits, 140, 'Finance deposit 100 + the clerk deposit 40');
   assert.equal(report.summary.difference, 300);
   assert.equal(report.collections[0].masCommission, 150);
   assert.equal(report.sales.length, 1);

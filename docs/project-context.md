@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Company Reports check: branch collections vs clerk reports; bank deposits (2026-10-27)
+
+- **Owner:** Company Reports does not seem to read correctly; branch collections do not match the clerks' reports; check it and the other readings.
+- **Checked:** every column the report reads is the right one (positions verified against the database). New read-only `scripts/check-company-report.mjs <from> <to> [branch]` rebuilds the report from the database with the same rules, lists what can make it look wrong, and compares each branch's collections with the clerk reports. October production: gross ₱1,832,625 (New Sales ₱221,280, Collections ₱1,611,345), 1,287 collections and 134 New Sales never priced (old-sheet data, incentive counted 0), 28 possible old-sheet duplicates, Bank deposits ₱0.
+- **Why branches differ from clerk reports:** Company Reports put a collection on its OR date and include old-sheet imports (no encoder); clerk reports put it on the day it was encoded and only what a clerk encoded. The check splits each branch's difference into those parts.
+- **Fixed:** Bank deposits read only Cash Transactions, where clerk deposits never go, so the report showed ₱0; it now adds the clerks' Bank deposits (not voided) by deposit date and branch. Test updated. 260 tests and the build pass. No migration.
+- **In progress:** owner runs the check for October and decides whether Company Reports should also offer counting by date encoded (to match clerk reports).
+
 ### Upgrade #10: space on Supabase Pro; Fix on every System Health finding (2026-10-26)
 
 - **Owner:** #10, "but we have pro subscription in the supabase"; then, while it was being built: a Fix button on each item of Schema, Access & Data Integrity that goes directly to where it is fixed.

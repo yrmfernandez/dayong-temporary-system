@@ -1,5 +1,6 @@
-import { sql } from "drizzle-orm";
+import { and, between, sql } from "drizzle-orm";
 
+import { currentDb, schema } from "@/lib/db";
 import { readSheetRows } from "@/lib/sheets-on-db";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { PROGRAMS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
@@ -44,6 +45,10 @@ export async function buildOperationalReport(from: string, to: string, filters: 
     sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [PROGRAMS_RANGE, REMITTANCES_RANGE, "'Expenses'!A:Q", "'Cash Transactions'!A:P", REMITTANCE_LINKS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
   ]);
   const [programs, remittances, expenses, cash, remittanceCollections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  const bank = schema.bank_deposits;
+  const [{ total: clerkDepositTotal } = { total: 0 }] = await currentDb().select({ total: sql<number>`coalesce(sum(${bank.amount}), 0)::float8` }).from(bank)
+    .where(and(sql`coalesce(${bank.status}, 'Posted') <> 'Voided'`, between(bank.deposit_date, from, to), filters.branch ? sql`trim(${bank.branch}) = ${filters.branch}` : undefined));
+  const clerkDeposits = Number(clerkDepositTotal) || 0;
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const inRange = (date: string) => date >= from && date <= to;
   // Report Review's clerks are matched by Employee ID (encoderIds); the encoder filter picked by name stays by name.
@@ -69,7 +74,10 @@ export async function buildOperationalReport(from: string, to: string, filters: 
   // Fidelity is the employee's own savings: remittances recorded under that rule include it in the cash received, so it is
   // taken back out here to compare like with like (older remittances never included it).
   const approvedRemittances = remittances.slice(1).filter((row) => text(row[0]) && text(row[4]) === "Approved" && inRange(text(row[3]).slice(0, 10)) && (!filters.branch || text(row[1]) === filters.branch)).reduce((sum, row) => sum + number(row[11]) - (text(row[22]).includes("(employee's own money)") ? number(row[24]) : 0), 0);
-  const deposits = cash.slice(1).filter((row) => text(row[0]) && text(row[2]) === "inflow" && text(row[3]).toLowerCase().includes("deposit") && text(row[10]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[6]) === filters.branch)).reduce((sum, row) => sum + number(row[5]), 0);
+  // Bank deposits: what the Entry Clerks deposit (Bank deposits on their reports; owner, October 27, 2026: the report
+  // read only Cash Transactions, where clerk deposits never go, so it showed ₱0), plus any deposit recorded in Finance.
+  const financeDeposits = cash.slice(1).filter((row) => text(row[0]) && text(row[2]) === "inflow" && text(row[3]).toLowerCase().includes("deposit") && text(row[10]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[6]) === filters.branch)).reduce((sum, row) => sum + number(row[5]), 0);
+  const deposits = financeDeposits + clerkDeposits;
   const allLines = [...salesLines, ...collectionLines];
   return {
     from, to, generatedAt: new Date().toISOString(), filters,
