@@ -2,7 +2,7 @@ import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { refuseOnDayOff } from "@/lib/day-off";
 import { withEncoder } from "@/lib/encoder-context";
-import { fixCoverage, getMemberForCorrection, insertReceipt, mergeMembers, moveReceipts, searchMembers, sharedPrograms, splitMember } from "@/lib/member-corrections";
+import { fixCoverage, getMemberForCorrection, programChoices, insertReceipt, mergeMembers, moveReceipts, searchMembers, sharedPrograms, splitMember } from "@/lib/member-corrections";
 
 /** IT and Administrators with the Member Corrections page (Roles → Page access may take it away). */
 async function allowedUser() {
@@ -17,6 +17,8 @@ export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
     if (params.get("member")) return Response.json({ success: true, ...(await getMemberForCorrection(params.get("member") ?? "")) }, { headers: { "Cache-Control": "private, no-store" } });
+    // Programs for Move receipts → a new account in another program.
+    if (params.get("programs")) return Response.json({ success: true, programs: await programChoices() });
     if (params.get("keep") && params.get("other")) return Response.json({ success: true, shared: await sharedPrograms(params.get("keep") ?? "", params.get("other") ?? "") });
     return Response.json({ success: true, members: await searchMembers(params.get("q") ?? "") }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

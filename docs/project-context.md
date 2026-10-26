@@ -17,6 +17,11 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Member Corrections: move receipts anywhere, choose what a merge keeps (2026-10-27)
+
+- **Owner:** Move receipts did not work when the member has one program; Merge members only offered "use the duplicate's name", nothing else to choose.
+- **Done:** `moveReceipts` (`lib/member-corrections.ts`) takes a new account in another program (`newProgramId`, `newDoi`; created like the source account, numbered from its own start) or another member's account (the receipts' member is changed); the "same member only" refusal is gone. `mergeMembers` takes `fields` (per detail "keep" or "other"; `MERGE_FIELDS`: name parts, birthdate, birthplace, sex, civil status, contact, address, claimant); a chosen birthdate allows merging different birthdates; `getMemberForCorrection` returns `details`; GET `?programs=1` lists active programs. Page: Move has three destinations (this member's account, new account in another program, another member's account); Merge has "Member number that stays" and a side-by-side table to pick each value. Test added; 265 tests and the build pass. No migration.
+
 ### Fully Paid status and certificates (2026-10-27)
 
 - **Owner:** the old "DSRDPI - FULLY PAID MEMBERS (Responses)" form lists fully paid members and their certificates; add it, and members get a new status "Fully Paid". Decisions: per account; "Paid" was not visible anywhere; Fully Paid takes no more collections; certificates Pending/Released with release date and who received it; certificate numbers automatic per branch area following the old pattern.

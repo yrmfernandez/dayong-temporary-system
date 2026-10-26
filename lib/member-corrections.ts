@@ -125,6 +125,8 @@ export async function getMemberForCorrection(memberId: string) {
   const remitted = new Map(statusRows.map((row) => [row.id, text(row.status) || "Outstanding"]));
   return {
     member: { id: member.member_id, number: member.member_number, surname: member.surname, firstName: member.first_name, middleName: text(member.middle_name), nameExtension: text(member.name_extension), birthdate: day(member.birthdate) },
+    // Every detail a merge can take from either member (Merge members: the owner picks which value stays).
+    details: Object.fromEntries(MERGE_FIELDS.map(([column]) => [column, column === "birthdate" ? day(member.birthdate) : text(member[column])])) as Record<MergeField, string>,
     accounts: data.accounts.map((account) => {
       const start = numberingStart(data.payments.filter((payment) => payment.enrollmentId === account.id).map((payment) => ({ nop: payment.nopFrom, month: payment.monthFrom })), account);
       return {
@@ -180,9 +182,14 @@ export function fixCoverage(input: CoverageInput, reason: string, apply: boolean
 
 // ---------------------------------------------------------------- 2. move receipts
 
-export type MoveInput = { collectionIds: string[]; targetEnrollmentId: string };
+/**
+ * Where the receipts go (owner, October 27, 2026: a member with one program could not move receipts): another account
+ * of this member (targetEnrollmentId), a new account of this member in another program (newProgramId and newDoi), or
+ * an existing account of another member (targetEnrollmentId of that member; the receipts become that member's).
+ */
+export type MoveInput = { collectionIds: string[]; targetEnrollmentId?: string; newProgramId?: string; newDoi?: string };
 
-/** Moves several receipts of one member to another of the member's accounts; both sides are numbered again. */
+/** Moves several receipts to another account (this member's, a new one in another program, or another member's); both sides are numbered again. */
 export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
   return run("Move receipts", reason, apply, async (tx) => {
     const today = manilaNow().date;
@@ -194,13 +201,31 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
     if (rows.some((row) => text(row.status) !== "Posted")) throw new Error("Only posted receipts can be moved.");
     const memberIds = new Set(rows.map((row) => row.memberId));
     if (memberIds.size !== 1) throw new Error("The receipts must belong to one member.");
-    const targetId = text(input.targetEnrollmentId);
+    let targetId = text(input.targetEnrollmentId);
     const sourceIds = [...new Set(rows.map((row) => row.enrollmentId))];
+    let created = "";
+    if (text(input.newProgramId)) {
+      // A new account of this member in another program, like the account the receipts come from (branch, MAS).
+      const memberId = [...memberIds][0];
+      const [program] = await tx.select().from(programs).where(eq(programs.program_id, text(input.newProgramId)));
+      if (!program) throw new Error("Choose the program of the new account.");
+      const [existing] = await tx.select({ id: memberPrograms.enrollment_id }).from(memberPrograms).where(and(eq(memberPrograms.member_id, memberId), eq(memberPrograms.program_id, program.program_id)));
+      if (existing) throw new Error(`This member already has a ${program.program_name} account (${existing.id}): choose it as the account to move to.`);
+      const doi = text(input.newDoi);
+      if (!validDate(doi) || doi > today) throw new Error("Enter the new account's DOI (today or earlier).");
+      const [source] = await tx.select().from(memberPrograms).where(eq(memberPrograms.enrollment_id, sourceIds[0]));
+      const stamp = Date.now().toString(36).toUpperCase();
+      created = `ENR-${Date.now()}-MOVE${stamp.slice(-3)}`;
+      await tx.insert(memberPrograms).values({ enrollment_id: created, member_id: memberId, member_number: source.member_number, program_id: program.program_id, doi, branch: source.branch, mas: source.mas,
+        remittance_method: source.remittance_method, registration_fee: program.registration_fee_required, status: source.status, branch_id: source.branch_id, mas_employee_id: source.mas_employee_id, date_created: new Date().toISOString() });
+      targetId = created;
+    }
     if (sourceIds.includes(targetId)) throw new Error("Some receipts are already on the chosen account. Untick them.");
     const data = await loadAccountData({ enrollmentIds: [...sourceIds, targetId], includeDeactivated: true }, tx, { lock: true });
     const target = data.accounts.find((account) => account.id === targetId);
     if (!target) throw new Error("Choose the account to move them to.");
-    if (!memberIds.has(target.memberId)) throw new Error("Receipts can only move to another account of the same member. To move them to another person, use Split a member.");
+    // Another member's account: the receipts become that member's (they were encoded under the wrong person).
+    const otherMember = !memberIds.has(target.memberId);
 
     const movedIds = new Set(ids);
     const accountOf = (id: string) => data.accounts.find((account) => account.id === id)!;
@@ -209,7 +234,8 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
     const recount = new Map(sourceIds.map((id) => { const source = accountOf(id); return [id, receiptMonthsAt({ name: source.programName, rate: source.basePay, flexible: Boolean(source.flexible), max: source.maxMonthlyPayment ?? null }, { name: target.programName, rate: target.basePay, flexible: Boolean(target.flexible), max: target.maxMonthlyPayment ?? null })]; }));
     const targetPayments = data.payments.filter((payment) => payment.enrollmentId === target.id || movedIds.has(payment.id));
     const shift = (payment: AccountPayment) => movedIds.has(payment.id) ? saleNops(target) - saleNops(sourceOf.get(payment.id)!) : 0;
-    const targetPlan = renumber(numberingStart(targetPayments.map((payment) => ({ nop: payment.nopFrom + shift(payment), month: payment.monthFrom })), target), targetPayments,
+    // A new account numbers from its own start (the first collection's NOP, the month after its DOI).
+    const targetPlan = renumber(numberingStart(created ? [] : targetPayments.map((payment) => ({ nop: payment.nopFrom + shift(payment), month: payment.monthFrom })), target), targetPayments,
       (payment) => movedIds.has(payment.id) ? recount.get(sourceOf.get(payment.id)!.id)?.(payment) ?? span(payment) : span(payment));
     const old = new Map(data.payments.map((payment) => [payment.id, payment]));
     const statuses = [await storeStatus(tx, target, targetPlan, today)];
@@ -223,10 +249,15 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
       lines.push(...await saveNumbers(tx, plan, old, source));
       if (!left.length) notes.push(`${source.programName} account ${source.id} has no receipts left. Delete it from Members if it should not exist.`);
     }
+    if (otherMember) {
+      await tx.update(collections).set({ member_id: target.memberId, member_number: target.memberNumber }).where(inArray(collections.collection_id, ids));
+      notes.push(`The receipts now belong to member ${target.memberNumber}.`);
+    }
+    if (created) notes.push(`New ${target.programName} account ${created} (DOI ${target.doi}, same branch and MAS). It has no New Sale.`);
     const priced = await repriceCollections(tx, lines.map((line) => line.id));
     if (priced.repriced) notes.push(`${priced.repriced} receipt(s) get new incentive figures${priced.slips.length ? `; remittance slips ${priced.slips.join(", ")} follow` : ""}.`);
     return {
-      summary: `${ids.length} receipt(s) moved to ${target.programName} account ${target.id}; ${lines.length - ids.length} other receipt(s) renumbered.`,
+      summary: `${ids.length} receipt(s) moved to ${created ? "the new " : ""}${target.programName} account ${target.id}${otherMember ? ` of ${target.memberNumber}` : ""}; ${lines.length - ids.length} other receipt(s) renumbered.`,
       receipts: lines, statuses, notes, recordId: target.id,
       before: { receipts: ids.map((id) => ({ id, account: old.get(id)?.enrollmentId, coverage: coverage(old.get(id)!) })) },
       after: { target: target.id, receipts: lines.map(({ id, account, before, after }) => ({ id, account, before, after })), statuses, repriced: priced.repriced, slips: priced.slips },
@@ -236,8 +267,16 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
 
 // ---------------------------------------------------------------- 3. merge members
 
-export type MergeInput = { keepMemberId: string; otherMemberId: string; useOtherName?: boolean };
-const FILL = ["birthdate", "birthplace", "gender", "civil_status", "member_contact", "address", "claimant_name", "claimant_contact", "claimant_address"] as const;
+/**
+ * keepMemberId stays (its member number and accounts); `fields` says, per detail, whose value stays ("keep" or "other";
+ * owner, October 27, 2026: choose what to keep). A detail not chosen keeps the kept member's value, or takes the
+ * other's when the kept one is blank. useOtherName = every name field from the other (older pages).
+ */
+export const MERGE_FIELDS = [["surname", "Surname"], ["first_name", "First name"], ["middle_name", "Middle name"], ["name_extension", "Extension"], ["birthdate", "Birthdate"], ["birthplace", "Birthplace"],
+  ["gender", "Sex"], ["civil_status", "Civil status"], ["member_contact", "Contact"], ["address", "Address"], ["claimant_name", "Claimant"], ["claimant_contact", "Claimant contact"], ["claimant_address", "Claimant address"]] as const;
+export type MergeField = (typeof MERGE_FIELDS)[number][0];
+export type MergeInput = { keepMemberId: string; otherMemberId: string; useOtherName?: boolean; fields?: Partial<Record<MergeField, "keep" | "other">> };
+const NAME_FIELDS: MergeField[] = ["surname", "first_name", "middle_name", "name_extension"];
 const fullName = (member: { first_name: string; middle_name: string | null; surname: string; name_extension: string | null }) => [member.first_name, member.middle_name, member.surname, member.name_extension].map(text).filter(Boolean).join(" ");
 
 /** Merges two members who are the same person into the kept one. */
@@ -248,7 +287,8 @@ export function mergeMembers(input: MergeInput, reason: string, apply: boolean) 
     const [keep] = await tx.select().from(members).where(eq(members.member_id, text(input.keepMemberId))).for("update");
     const [other] = await tx.select().from(members).where(eq(members.member_id, text(input.otherMemberId))).for("update");
     if (!keep || !other) throw new Error("Member not found. Reload the page.");
-    if (day(keep.birthdate) && day(other.birthdate) && day(keep.birthdate) !== day(other.birthdate)) throw new Error(`Their birthdates differ (${day(keep.birthdate)} and ${day(other.birthdate)}), so they are not merged. Correct the wrong birthdate first if they are the same person.`);
+    const choice = (field: MergeField) => input.fields?.[field] ?? (input.useOtherName && NAME_FIELDS.includes(field) ? "other" : undefined);
+    if (!choice("birthdate") && day(keep.birthdate) && day(other.birthdate) && day(keep.birthdate) !== day(other.birthdate)) throw new Error(`Their birthdates differ (${day(keep.birthdate)} and ${day(other.birthdate)}), so they are not merged. Correct the wrong birthdate first if they are the same person.`);
     const notes: string[] = [];
     const statuses: StatusLine[] = [];
     let receipts: ReceiptLine[] = [];
@@ -273,23 +313,26 @@ export function mergeMembers(input: MergeInput, reason: string, apply: boolean) 
       beneficiaries: (await tx.update(schema.beneficiaries).set({ member_id: keep.member_id }).where(eq(schema.beneficiaries.member_id, other.member_id)).returning({ id: schema.beneficiaries.member_id })).length,
       sales: (await tx.update(schema.sales).set({ member_number: keep.member_number }).where(eq(schema.sales.member_number, other.member_number)).returning({ id: schema.sales.sale_id })).length,
     };
-    const filled = FILL.filter((column) => !text(keep[column]) && text(other[column]));
-    const renamed = Boolean(input.useOtherName);
-    await tx.update(members).set({
-      ...Object.fromEntries(filled.map((column) => [column, other[column]])),
-      ...(renamed ? { surname: other.surname, first_name: other.first_name, middle_name: other.middle_name, name_extension: other.name_extension } : {}),
-    }).where(eq(members.member_id, keep.member_id));
+    // Each detail: the chosen member's value; unchosen, the kept value, or the other's when the kept one is blank.
+    const valueOf = (row: typeof keep, field: MergeField) => field === "birthdate" ? day(row.birthdate) : text(row[field]);
+    const taken = MERGE_FIELDS.map(([field]) => field).filter((field) => {
+      const pick = choice(field);
+      return pick === "other" ? valueOf(other, field) !== valueOf(keep, field) : !pick && !valueOf(keep, field) && Boolean(valueOf(other, field));
+    });
+    const filled = taken.filter((field) => !NAME_FIELDS.includes(field));
+    const renamed = taken.some((field) => NAME_FIELDS.includes(field));
+    if (taken.length) await tx.update(members).set(Object.fromEntries(taken.map((field) => [field, other[field] ?? null]))).where(eq(members.member_id, keep.member_id));
     await tx.delete(members).where(eq(members.member_id, other.member_id));
     const priced = await repriceCollections(tx, repriceIds);
     if (priced.repriced) notes.push(`${priced.repriced} receipt(s) get new incentive figures${priced.slips.length ? `; remittance slips ${priced.slips.join(", ")} follow` : ""}.`);
-    if (filled.length) notes.push(`Filled from ${other.member_number}: ${filled.join(", ").replace(/_/g, " ")}.`);
+    if (taken.length) notes.push(`Taken from ${other.member_number}: ${taken.map((field) => MERGE_FIELDS.find(([column]) => column === field)?.[1] ?? field).join(", ")}.`);
     const after = await tx.select().from(collections).where(inArray(collections.collection_id, [...before.keys()].length ? [...before.keys()] : ["-"]));
     receipts = after.filter((row) => { const was = before.get(row.collection_id); return was && (was.nop_from !== row.nop_from || was.enrollment_id !== row.enrollment_id); })
       .map((row) => { const was = before.get(row.collection_id)!; return { id: row.collection_id, orNumber: text(row.or_number), orDate: day(row.or_date), amount: Number(row.amount_collected), account: row.enrollment_id, program: "",
         before: `${was.enrollment_id} ${coverage({ nopFrom: was.nop_from ?? 0, nopTo: was.nop_to ?? 0, monthFrom: text(was.month_from).slice(0, 7), monthTo: text(was.month_to).slice(0, 7) })}`,
         after: `${row.enrollment_id} ${coverage({ nopFrom: row.nop_from ?? 0, nopTo: row.nop_to ?? 0, monthFrom: text(row.month_from).slice(0, 7), monthTo: text(row.month_to).slice(0, 7) })}` }; });
     return {
-      summary: `${other.member_number} ${fullName(other)} merged into ${keep.member_number} ${renamed ? fullName(other) : fullName(keep)}: ${moved.accounts} account(s), ${moved.collections} receipt(s), ${moved.sales} New Sale(s), ${moved.transfers} transfer(s), ${moved.beneficiaries} beneficiar(ies) moved; ${other.member_number} removed.`,
+      summary: `${other.member_number} ${fullName(other)} merged into ${keep.member_number} ${renamed ? fullName({ ...keep, ...Object.fromEntries(taken.filter((field) => NAME_FIELDS.includes(field)).map((field) => [field, other[field]])) }) : fullName(keep)}: ${moved.accounts} account(s), ${moved.collections} receipt(s), ${moved.sales} New Sale(s), ${moved.transfers} transfer(s), ${moved.beneficiaries} beneficiar(ies) moved; ${other.member_number} removed.`,
       receipts, statuses, notes, recordId: other.member_id,
       before: { kept: { id: keep.member_id, number: keep.member_number, name: fullName(keep) }, removed: { id: other.member_id, number: other.member_number, name: fullName(other) } },
       after: { kept: keep.member_id, renamed, filled, ...moved, statuses, repriced: priced.repriced },
@@ -372,6 +415,12 @@ export function splitMember(input: SplitInput, reason: string, apply: boolean) {
       after: { newMember: newMemberId, newNumber, newAccount: newEnrollment, doi, receipts: lines.map(({ id, account: at, before: was, after: now }) => ({ id, account: at, before: was, after: now })), statuses, repriced: priced.repriced },
     };
   });
+}
+
+/** Active programs, for moving receipts to a new account in another program. */
+export async function programChoices() {
+  const rows = await currentDb().select({ id: programs.program_id, name: programs.program_name, rate: programs.base_pay, status: programs.status }).from(programs).orderBy(programs.program_name);
+  return rows.filter((row) => text(row.status).toLowerCase() !== "inactive").map((row) => ({ id: row.id, name: row.name, rate: Number(row.rate ?? 0) }));
 }
 
 /** Which accounts of the member are in which program, to show where merges join accounts. */

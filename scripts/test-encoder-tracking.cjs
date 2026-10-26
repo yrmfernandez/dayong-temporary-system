@@ -4383,3 +4383,32 @@ test('a certificate number printed on paper but not yet in the system is never g
   assert.match((await post({ action: 'record', enrollmentId: 'E-1', paidOn: '2026-10-01', total: 25200 })).message, new RegExp(`DAVAO${year}-039`), 'after the reserved 038; other areas do not count');
   assert.match((await post({ action: 'record', enrollmentId: 'E-2', paidOn: '2026-10-01', total: 25200, certificateNumber: `DAVAO${year}-038` })).message, new RegExp(`DAVAO${year}-038`), 'its own member may still be recorded with it');
 });
+
+test('Member Corrections: one account can move receipts to a new account in another program or to another member; a merge keeps the chosen number and details (October 27, 2026)', async () => {
+  const h = harness(correctionAdmin);
+  await seedCorrectionMember();
+  const post = correctionPost(h.load('app/api/member-corrections/route.ts'));
+  // A member with one account: C3 belongs in D-350 B.
+  assert.match((await post({ tool: 'move', input: { collectionIds: ['C3'], newProgramId: 'DP-350', newDoi: '2026-03-01' } })).body.message, /already has a D-350 account/);
+  const toNew = await post({ tool: 'move', input: { collectionIds: ['C3'], newProgramId: 'DP-350B', newDoi: '2026-03-01' }, apply: true, reason: 'Encoded under the wrong program' });
+  assert.equal(toNew.status, 200, JSON.stringify(toNew.body));
+  const [created] = await query("select enrollment_id, program_id, doi::text as doi, branch, mas from member_programs where member_id = 'MEM-1' and program_id = 'DP-350B'");
+  assert.deepEqual([created.doi, created.branch, created.mas], ['2026-03-01', 'BR-1', 'Maria'], 'same branch and MAS as the account the receipt came from');
+  assert.deepEqual(await correctionNumbers("collection_id = 'C3'"), [['C3', created.enrollment_id, 2, '2026-04']], 'numbered from the month after the new DOI');
+  // Another member's account: C2 was encoded under the wrong person.
+  await seed('members', [{ member_id: 'MEM-2', member_number: 'PH-2', surname: 'SANTOS', first_name: 'ANNA', address: 'Mintal', member_contact: '0917' }]);
+  await seed('member_programs', [{ enrollment_id: 'E21', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-350', doi: '2026-01-15', branch: 'BR-1', mas: 'Maria', status: 'Active' }]);
+  const toOther = await post({ tool: 'move', input: { collectionIds: ['C2'], targetEnrollmentId: 'E21' }, apply: true, reason: 'Wrong member' });
+  assert.equal(toOther.status, 200, JSON.stringify(toOther.body));
+  assert.deepEqual(await query("select enrollment_id, member_id, member_number from collections where collection_id = 'C2'"), [{ enrollment_id: 'E21', member_id: 'MEM-2', member_number: 'PH-2' }]);
+  // Merge keeping the other member's number (PH-2), with this member's first name and the other's address.
+  await query("update members set address = 'Toril', member_contact = null where member_id = 'MEM-1'");
+  const merged = await post({ tool: 'merge', input: { keepMemberId: 'MEM-2', otherMemberId: 'MEM-1', fields: { first_name: 'other', address: 'keep' } }, apply: true, reason: 'Same person registered twice' });
+  assert.equal(merged.status, 200, JSON.stringify(merged.body));
+  assert.equal((await query("select count(*)::int as n from members where member_id = 'MEM-1'"))[0].n, 0, 'PH-1 is removed');
+  assert.deepEqual(await query("select member_number, first_name, address, member_contact from members where member_id = 'MEM-2'"), [{ member_number: 'PH-2', first_name: 'ANA', address: 'Mintal', member_contact: '0917' }], 'first name taken, address kept, contact kept');
+  assert.deepEqual((await query("select distinct member_number from collections")).map((row) => row.member_number), ['PH-2'], 'every receipt now under PH-2');
+  // Loading a member returns the details the merge table compares.
+  const loaded = await (await h.load('app/api/member-corrections/route.ts').GET(new Request('http://localhost/api/member-corrections?member=MEM-2'))).json();
+  assert.equal(loaded.details.address, 'Mintal');
+});

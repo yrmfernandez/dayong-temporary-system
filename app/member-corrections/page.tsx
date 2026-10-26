@@ -9,9 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type Found = { id: string; number: string; name: string; birthdate: string };
+/** Details a merge can take from either member (lib/member-corrections.ts MERGE_FIELDS). */
+const MERGE_FIELDS: Array<[string, string]> = [["surname", "Surname"], ["first_name", "First name"], ["middle_name", "Middle name"], ["name_extension", "Extension"], ["birthdate", "Birthdate"], ["birthplace", "Birthplace"],
+  ["gender", "Sex"], ["civil_status", "Civil status"], ["member_contact", "Contact"], ["address", "Address"], ["claimant_name", "Claimant"], ["claimant_contact", "Claimant contact"], ["claimant_address", "Claimant address"]];
+type MoveTo = "mine" | "new" | "other";
 type Receipt = { id: string; orNumber: string; orDate: string; amount: number; months: number; nopFrom: number; nopTo: number; monthFrom: string; monthTo: string; remittance: string };
 type Account = { id: string; programId: string; program: string; branch: string; mas: string; doi: string; rate: number; flexible: boolean; status: string; firstNop: number; start: { nop: number; month: string }; receipts: Receipt[] };
-type Member = { member: { id: string; number: string; surname: string; firstName: string; middleName: string; nameExtension: string; birthdate: string }; accounts: Account[] };
+type Member = { member: { id: string; number: string; surname: string; firstName: string; middleName: string; nameExtension: string; birthdate: string }; details?: Record<string, string>; accounts: Account[] };
 type Result = { applied: boolean; summary: string; receipts: Array<{ id: string; orNumber: string; orDate: string; amount: number; account: string; program: string; before: string; after: string }>; statuses: Array<{ account: string; program: string; before: string; after: string }>; notes: string[] };
 type Tool = "coverage" | "move" | "insert" | "merge" | "split";
 
@@ -110,7 +114,14 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [other, setOther] = useState<Found | null>(null);
   const [shared, setShared] = useState<string[]>([]);
-  const [useOtherName, setUseOtherName] = useState(false);
+  // Move receipts (owner, October 27, 2026): to this member's other account, a new account in another program, or another member's account.
+  const [moveTo, setMoveTo] = useState<MoveTo>(accounts.length > 1 ? "mine" : "new");
+  const [programChoices, setProgramChoices] = useState<Array<{ id: string; name: string; rate: number }>>([]);
+  const [moveMember, setMoveMember] = useState<Member | null>(null);
+  // Merge (owner, October 27, 2026): which member number stays, and whose value of each detail.
+  const [keepOther, setKeepOther] = useState(false);
+  const [otherFull, setOtherFull] = useState<Member | null>(null);
+  const [picks, setPicks] = useState<Record<string, "this" | "duplicate">>({});
   const [preview, setPreview] = useState<Result | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -120,6 +131,15 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
   const number = (value: string | undefined) => (value === undefined || value === "" ? undefined : Number(value));
 
   useEffect(() => {
+    if (tool !== "move" || programChoices.length) return;
+    fetch("/api/member-corrections?programs=1", { cache: "no-store" }).then((response) => response.json()).then((result) => setProgramChoices(result.programs ?? [])).catch(() => setProgramChoices([]));
+  }, [tool, programChoices.length]);
+  const loadMember = (id: string) => fetch(`/api/member-corrections?member=${encodeURIComponent(id)}`, { cache: "no-store" }).then((response) => response.json()).then((result) => (result.success ? result as Member : null)).catch(() => null);
+  useEffect(() => {
+    if (!other) return;
+    void loadMember(other.id).then(setOtherFull);
+  }, [other]);
+  useEffect(() => {
     if (!other) return;
     fetch(`/api/member-corrections?keep=${encodeURIComponent(member.member.id)}&other=${encodeURIComponent(other.id)}`, { cache: "no-store" })
       .then((response) => response.json()).then((result) => setShared(result.shared ?? [])).catch(() => setShared([]));
@@ -128,13 +148,19 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
   const input = useMemo(() => {
     if (tool === "coverage") return { enrollmentId: accountId, startNop: number(form.startNop), startMonth: form.startMonth || undefined, doi: form.doi || undefined,
       months: Object.fromEntries(Object.entries(months).filter(([, value]) => value !== "").map(([id, value]) => [id, Number(value)])) };
-    if (tool === "move") return { collectionIds: [...chosen], targetEnrollmentId: form.target ?? "" };
+    if (tool === "move") return moveTo === "new" ? { collectionIds: [...chosen], newProgramId: form.newProgram ?? "", newDoi: form.newDoi ?? "" }
+      : { collectionIds: [...chosen], targetEnrollmentId: (moveTo === "other" ? form.otherTarget : form.target) ?? "" };
     if (tool === "insert") return { enrollmentId: accountId, orNumber: form.orNumber ?? "", orDate: form.orDate ?? "", amount: number(form.amount), months: number(form.months ?? "1"), collectedByRole: form.role || "MAS",
       mas: form.mas || account?.mas, dateRemitted: form.dateRemitted || undefined, startNop: number(form.startNop), startMonth: form.startMonth || undefined };
-    if (tool === "merge") return { keepMemberId: member.member.id, otherMemberId: other?.id ?? "", useOtherName };
+    if (tool === "merge") {
+      // Picks are per member ("this" page's member or the duplicate); the API wants them relative to the kept one.
+      const kept = keepOther ? "duplicate" : "this";
+      const fields = Object.fromEntries(Object.entries(picks).map(([field, pick]) => [field, pick === kept ? "keep" : "other"]));
+      return keepOther ? { keepMemberId: other?.id ?? "", otherMemberId: member.member.id, fields } : { keepMemberId: member.member.id, otherMemberId: other?.id ?? "", fields };
+    }
     return { enrollmentId: accountId, collectionIds: [...chosen].filter((id) => account?.receipts.some((receipt) => receipt.id === id)), newDoi: form.newDoi ?? "", newStartNop: number(form.startNop), newStartMonth: form.startMonth || undefined,
       keepFirstName: form.keepFirstName || undefined, newMember: { surname: form.surname ?? "", firstName: form.firstName ?? "", middleName: form.middleName, nameExtension: form.nameExtension, birthdate: form.birthdate } };
-  }, [tool, accountId, account, form, months, chosen, other, useOtherName, member.member.id]);
+  }, [tool, accountId, account, form, months, chosen, other, moveTo, keepOther, picks, member.member.id]);
 
   async function send(apply: boolean) {
     setBusy(true); setMessage("");
@@ -142,7 +168,8 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       const response = await fetch("/api/member-corrections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tool, input, reason, apply }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to work out the correction.");
-      if (apply) { setPreview(null); setReason(""); setMessage(`Saved. ${result.result.summary}`); onSaved(); }
+      // After a merge that keeps the other member, this member no longer exists: open the kept one.
+      if (apply) { setPreview(null); setReason(""); setMessage(`Saved. ${result.result.summary}`); onSaved(tool === "merge" && keepOther ? other?.id : undefined); }
       else setPreview(result.result);
     } catch (failure) { setPreview(null); setMessage(failure instanceof Error ? failure.message : "Unable to work out the correction."); }
     finally { setBusy(false); }
@@ -169,12 +196,27 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
     </>}
 
     {tool === "move" && <>
-      {accounts.length < 2 ? <p className="text-sm text-muted-foreground">This member has one account. To give receipts to another person, use Split member.</p> : <>
-        {accounts.map((item) => <div key={item.id} className="space-y-1"><p className="text-sm font-semibold">{item.program} · {item.id}</p><ReceiptTable receipts={item.receipts} tick={{ chosen, toggle }} /></div>)}
-        <div className="space-y-1 sm:w-96"><Label htmlFor="move-target">Move the {chosen.size} ticked receipt(s) to</Label>
-          <select id="move-target" className={field} value={form.target ?? ""} onChange={(event) => set("target", event.target.value)}><option value="">Choose the account</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.program} · {item.id}</option>)}</select></div>
-        <p className="text-xs text-muted-foreground">A receipt moving to a program of another monthly pay is counted at the new pay (it must be a whole number of months there).</p>
-      </>}
+      {accounts.map((item) => <div key={item.id} className="space-y-1"><p className="text-sm font-semibold">{item.program} · {item.id}</p><ReceiptTable receipts={item.receipts} tick={{ chosen, toggle }} /></div>)}
+      <fieldset className="space-y-2"><legend className="text-sm font-medium">Move the {chosen.size} ticked receipt(s) to</legend>
+        {([["mine", "Another account of this member", accounts.length > 1], ["new", "A new account of this member in another program", true], ["other", "An account of another member (encoded under the wrong person)", true]] as Array<[MoveTo, string, boolean]>)
+          .filter(([, , shown]) => shown).map(([value, label]) => <label key={value} className="flex items-center gap-2 text-sm"><input type="radio" name="move-to" checked={moveTo === value} onChange={() => { setMoveTo(value); setPreview(null); }} />{label}</label>)}
+      </fieldset>
+      {moveTo === "mine" && <div className="space-y-1 sm:w-96"><Label htmlFor="move-target">Account</Label>
+        <select id="move-target" className={field} value={form.target ?? ""} onChange={(event) => set("target", event.target.value)}><option value="">Choose the account</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.program} · {item.id}</option>)}</select></div>}
+      {moveTo === "new" && <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1"><Label htmlFor="move-program">Program of the new account</Label>
+          <select id="move-program" className={field} value={form.newProgram ?? ""} onChange={(event) => set("newProgram", event.target.value)}><option value="">Choose the program</option>
+            {programChoices.filter((item) => !accounts.some((account) => account.programId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.name} · {peso(item.rate)}</option>)}</select></div>
+        <div className="space-y-1"><Label htmlFor="move-doi">DOI of the new account</Label><Input id="move-doi" type="date" max={today()} value={form.newDoi ?? ""} onChange={(event) => set("newDoi", event.target.value)} /></div>
+        <p className="text-xs text-muted-foreground sm:col-span-2">The new account has the same branch and MAS as the account the receipts come from, and no New Sale; the moved receipts are numbered from the month after its DOI.</p>
+      </div>}
+      {moveTo === "other" && <div className="space-y-2">
+        <MemberPicker label="The member the receipts belong to" exclude={member.member.id} onPick={(found) => { setPreview(null); set("otherTarget", ""); void loadMember(found.id).then(setMoveMember); }} />
+        {moveMember && (moveMember.accounts.length ? <div className="space-y-1 sm:w-96"><Label htmlFor="move-other">{moveMember.member.number} {moveMember.member.surname}, {moveMember.member.firstName}: account</Label>
+          <select id="move-other" className={field} value={form.otherTarget ?? ""} onChange={(event) => set("otherTarget", event.target.value)}><option value="">Choose the account</option>{moveMember.accounts.map((item) => <option key={item.id} value={item.id}>{item.program} · {item.id}</option>)}</select></div>
+          : <p className="text-sm text-muted-foreground">{moveMember.member.number} has no account. Add one in Members first, or use Split member to create the person.</p>)}
+      </div>}
+      <p className="text-xs text-muted-foreground">A receipt moving to a program of another monthly pay is counted at the new pay (it must be a whole number of months there).</p>
     </>}
 
     {tool === "insert" && account && <>
@@ -198,7 +240,21 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <MemberPicker label="The duplicate to merge into it (removed afterwards)" exclude={member.member.id} onPick={(found) => { setOther(found); setPreview(null); }} />
       {other && <p className="text-sm">Duplicate: <strong>{other.number}</strong> {other.name}{other.birthdate ? ` (born ${other.birthdate})` : ""}</p>}
       {other && shared.length > 0 && <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">Both have {shared.join(", ")}: those two accounts become one, with the receipts numbered again in OR-date order.</p>}
-      {other && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={useOtherName} onChange={(event) => { setUseOtherName(event.target.checked); setPreview(null); }} />Use the duplicate&apos;s name ({other.name}) on the kept member</label>}
+      {other && <fieldset className="space-y-1"><legend className="text-sm font-medium">Member number that stays (with its accounts; the other member is removed)</legend>
+        <label className="flex items-center gap-2 text-sm"><input type="radio" name="keep-number" checked={!keepOther} onChange={() => { setKeepOther(false); setPreview(null); }} />{member.member.number} (this member)</label>
+        <label className="flex items-center gap-2 text-sm"><input type="radio" name="keep-number" checked={keepOther} onChange={() => { setKeepOther(true); setPreview(null); }} />{other.number} (the duplicate)</label>
+      </fieldset>}
+      {other && otherFull && <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[620px] text-sm">
+        <thead className="bg-muted/50 text-left"><tr><th className="p-2">Detail</th><th className="p-2">{member.member.number} (this member)</th><th className="p-2">{other.number} (the duplicate)</th></tr></thead>
+        <tbody>{MERGE_FIELDS.map(([fieldName, label]) => {
+          const mine = member.details?.[fieldName] ?? "", theirs = otherFull.details?.[fieldName] ?? "";
+          const pick = picks[fieldName] ?? (mine || !theirs ? "this" : "duplicate");
+          const choose = (value: "this" | "duplicate") => { setPicks((current) => ({ ...current, [fieldName]: value })); setPreview(null); };
+          return <tr key={fieldName} className="border-t"><td className="p-2 font-medium">{label}</td>
+            {(["this", "duplicate"] as const).map((side) => <td key={side} className="p-2"><label className="flex items-center gap-2"><input type="radio" name={`pick-${fieldName}`} checked={pick === side} disabled={mine === theirs} onChange={() => choose(side)} />
+              <span className={side === "this" ? "" : "text-muted-foreground"}>{(side === "this" ? mine : theirs) || "—"}</span></label></td>)}</tr>;
+        })}</tbody></table>
+        <p className="p-2 text-xs text-muted-foreground">Pick whose value stays for each detail. A blank on one side takes the other side&apos;s value unless you pick the blank.</p></div>}
     </>}
 
     {tool === "split" && account && <>
