@@ -21,6 +21,9 @@
  * Relinks also set the link column itself. Collections whose collector (accountable) name is exactly one employee's
  * are linked to that employee (nothing fills accountable_employee_id from the name).
  *
+ * --collectors also links old collector names written in the short form ("Arot, F.") to the MAS on all of their
+ * collections when the surname matches; the dry run lists every pair and every name left for review.
+ *
  * Then, for everyone: a record linked to an employee but still showing an older name (renamed in Employees before
  * October 7, 2026; since migration 0012 a rename reaches every record) gets the employee's current name, and MAS names
  * that match no employee are listed. Prints employee names and counts only.
@@ -30,7 +33,7 @@ import nextEnv from "@next/env";
 import postgres from "postgres";
 
 nextEnv.loadEnvConfig(process.cwd());
-const apply = process.argv.includes("--apply"), suggest = process.argv.includes("--suggest");
+const apply = process.argv.includes("--apply"), suggest = process.argv.includes("--suggest"), collectorsToo = process.argv.includes("--collectors");
 const url = process.env.DIRECT_DATABASE_URL;
 if (!url) throw new Error("Missing DIRECT_DATABASE_URL.");
 const project = /postgres\.([a-z0-9]+)[:@]/.exec(url)?.[1] ?? "unknown";
@@ -129,6 +132,34 @@ try {
       where c.accountable_employee_id is null and trim(coalesce(c.accountable_name, '')) <> '' and lower(trim(e.full_name)) = lower(trim(c.accountable_name))
         and (select count(*) from employees e2 where lower(trim(e2.full_name)) = lower(trim(c.accountable_name))) = 1 returning 1`;
     console.log(`Collections whose collector name is one employee, now linked to that employee: ${collectors.length}`);
+    // --collectors (owner, October 26, 2026): an old collector name written in the short form ("Arot, F.") on
+    // collections that all have one linked MAS with the same surname is that MAS collecting their own accounts. Such a
+    // name gets the MAS's current name and link. Any other name (several MAS, a different surname, no linked MAS) is only
+    // listed. The dry run prints every pair for the owner to approve before --apply.
+    if (collectorsToo) {
+      const fold = (value) => String(value ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z, ]/g, "").trim();
+      const surname = (value) => { const text = fold(value); return text.includes(",") ? text.split(",")[0].trim() : text.split(/\s+/).at(-1) ?? ""; };
+      const names = await tx`select trim(accountable_name) as name, count(*)::int as total, count(distinct mas_employee_id)::int as mas_count,
+          count(*) filter (where mas_employee_id is null)::int as no_mas, min(mas_employee_id) as mas_employee_id
+        from collections where accountable_employee_id is null and trim(coalesce(accountable_name, '')) <> ''
+          and lower(trim(accountable_name)) <> lower(trim(coalesce(mas, ''))) group by 1 order by 2 desc`;
+      const people = new Map((await tx`select employee_id, full_name from employees`).map((e) => [e.employee_id, e.full_name]));
+      let linked = 0;
+      const skipped = [];
+      for (const row of names) {
+        const full = people.get(row.mas_employee_id);
+        if (row.mas_count !== 1 || row.no_mas || !full || surname(row.name) !== surname(full)) {
+          skipped.push(`${row.name} (${row.total}): ${row.mas_count !== 1 || row.no_mas ? "not one linked MAS" : `surname differs from ${full} [${row.mas_employee_id}]`}`);
+          continue;
+        }
+        const rows = await tx`update collections set accountable_name = ${full}, accountable_employee_id = ${row.mas_employee_id}
+          where accountable_employee_id is null and trim(accountable_name) = ${row.name} and mas_employee_id = ${row.mas_employee_id} returning 1`;
+        linked += rows.length;
+        console.log(`  collector ${row.name} → ${full} [${row.mas_employee_id}]: ${rows.length} collections`);
+      }
+      console.log(`Old collector names linked to their own MAS: ${linked} collections`);
+      if (skipped.length) console.log(`Collector names left for review:\n  ${skipped.join("\n  ")}`);
+    }
     const unlinked = await tx`select trim(accountable_name) as name, count(*)::int as n from collections where accountable_employee_id is null
       and trim(coalesce(accountable_name, '')) <> '' group by 1 order by 2 desc limit 10`;
     console.log(`Collector names still without a link: ${unlinked.map((o) => `${o.name} (${o.n})`).join("; ") || "none"}`);

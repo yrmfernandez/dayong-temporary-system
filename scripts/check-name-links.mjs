@@ -47,10 +47,23 @@ try {
       const [collector] = await sql`select count(*)::int as n from collections where accountable_employee_id is null and trim(coalesce(accountable_name, '')) <> ''
         and lower(trim(accountable_name)) <> lower(trim(coalesce(mas, '')))`;
       line += ` · collector name without link ${collector.n}`;
-      if (collector.n) for (const row of await sql`select trim(accountable_name) as name, count(*)::int as n from collections where accountable_employee_id is null
-          and trim(coalesce(accountable_name, '')) <> '' and lower(trim(accountable_name)) <> lower(trim(coalesce(mas, ''))) group by 1 order by 2 desc limit 8`) console.log(`    collector "${row.name}": ${row.n}`);
     }
     console.log(line);
+    if (table === "collections") {
+      // For the owner to confirm (relink in config/employee-merges.json): an old collector name is usually an older
+      // spelling of the MAS on the same collections. Per name: the linked MAS found most on its collections, and how often.
+      const suggestions = await sql`with named as (
+          select trim(accountable_name) as name, mas_employee_id from collections where accountable_employee_id is null
+            and trim(coalesce(accountable_name, '')) <> '' and lower(trim(accountable_name)) <> lower(trim(coalesce(mas, '')))),
+        totals as (select name, count(*)::int as total from named group by name),
+        ranked as (select n.name, n.mas_employee_id, count(*)::int as n, row_number() over (partition by n.name order by count(*) desc) as rank
+          from named n where n.mas_employee_id is not null group by n.name, n.mas_employee_id)
+        select t.name, t.total, r.mas_employee_id, e.full_name, coalesce(r.n, 0) as n from totals t
+          left join ranked r on r.name = t.name and r.rank = 1 left join employees e on e.employee_id = r.mas_employee_id
+          order by t.total desc limit 40`;
+      if (suggestions.length) console.log("    Old collector names and the MAS most often on the same collections (confirm before relinking):");
+      for (const row of suggestions) console.log(`      "${row.name}" (${row.total}): ${row.mas_employee_id ? `${row.full_name} [${row.mas_employee_id}] on ${row.n} (${Math.round((row.n / row.total) * 100)}%)` : "no linked MAS"}`);
+    }
     if (branch.n) for (const row of await sql`select trim(${sql(branchCol)}) as name, count(*)::int as n from ${sql(table)} where trim(coalesce(${sql(branchCol)}, '')) <> '' and ${sql(branchLink)} is null group by 1 order by 2 desc limit 8`) console.log(`    branch "${row.name}": ${row.n}`);
     if (mas.n) for (const row of await sql`select trim(${sql(masCol)}) as name, count(*)::int as n from ${sql(table)} where trim(coalesce(${sql(masCol)}, '')) <> '' and ${sql(masLink)} is null group by 1 order by 2 desc limit 8`) console.log(`    MAS "${row.name}": ${row.n}`);
   }
