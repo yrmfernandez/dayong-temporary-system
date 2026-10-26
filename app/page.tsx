@@ -19,7 +19,7 @@ import { getCommissions, getVendorPayables } from "@/lib/finance-operations";
 import { getRemittanceDashboard } from "@/lib/remittance-workflow";
 import { getSystemHealth } from "@/lib/system-health";
 import { ACTIVE_ROLE_COOKIE } from "@/lib/ui-preferences";
-import { formatDate as showDate } from "@/lib/date-format";
+import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 // Icon and tone follow what a metric measures, so the same idea looks the same on every dashboard.
@@ -144,7 +144,7 @@ function config(data: DashboardData): View {
     sections: <><Recent data={data} title="Recent Entries" description="The latest New Sales and Collections encoded by anyone, newest first."/><Panel title="Items Requiring Attention" description="Remittance problems waiting for someone: slips to approve, cash shortages, and cash not yet turned in."><Attention label="Pending Remittances" value={r?.pendingCount ?? 0} href="/remittances"/><Attention label="Remittance Discrepancies" value={r?.discrepancyAmount ?? 0} href="/remittances" moneyValue/><Attention label="Cash Still With Staff" value={r?.outstandingAmount ?? 0} href="/remittances" moneyValue/><div className="mt-4 grid gap-2 sm:grid-cols-2"><Action href="/history">Audit Log</Action><Action href="/roles">Manage Roles</Action></div></Panel></> };
 }
 
-function Recent({ data, title, description }: { data: DashboardData; title: string; description: string }) { return <Panel title={title} description={description}><Table headers={["Date / Time", "Member", "Program", "Type", "Amount", "Status"]} rows={data.recent.map((row) => [row.stamp.replace("T", " ").slice(0, 16), row.name, row.program, row.type, money(row.amount), <StatusBadge key="status" status={row.status}/>])}/></Panel>; }
+function Recent({ data, title, description }: { data: DashboardData; title: string; description: string }) { return <Panel title={title} description={description}><Table headers={["Date / Time", "Member", "Program", "Type", "Amount", "Status"]} rows={data.recent.map((row) => [showDateTime(row.stamp), row.name, row.program, row.type, money(row.amount), <StatusBadge key="status" status={row.status}/>])}/></Panel>; }
 function BranchStaff({ data }: { data: DashboardData }) { return <Panel title="Staff by Branch" description="Active employees in each branch, with how many are MAS and Collectors."><Table headers={["Branch", "Employees", "MAS", "Collectors"]} rows={data.branchStats.map((row) => [row.branch, String(row.employees), String(row.mas), String(row.collectors)])}/></Panel>; }
 function Portfolio({ data }: { data: DashboardData }) { return <Panel title="My Members" description="The first 8 of your active member accounts. Open Members to see them all."><Table headers={["Member", "Program", "Branch", "Status", "DOI"]} rows={data.portfolio.map((row) => [row.member, row.program, row.branch, row.status, showDate(row.doi)])}/></Panel>; }
 function Rows({ rows }: { rows: string[][] }) { return <dl className="space-y-2 text-sm">{rows.map(([label, value]) => <div key={label} className="flex justify-between gap-4"><dt className="text-muted-foreground">{label}</dt><dd className="font-semibold tabular-nums">{value}</dd></div>)}</dl>; }

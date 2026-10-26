@@ -84,14 +84,14 @@ function MemberPicker({ label, onPick, exclude }: { label: string; onPick: (foun
     <Label htmlFor={`pick-${label}`}>{label}</Label>
     <Input id={`pick-${label}`} placeholder="PH number or name (at least 2 letters)" value={query} onChange={(event) => { setQuery(event.target.value); if (event.target.value.trim().length < 2) setFound([]); }} />
     {query.trim().length >= 2 && found.length > 0 && <ul className="max-h-64 divide-y overflow-y-auto rounded-md border">{found.map((item) => <li key={item.id}>
-      <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { onPick(item); setQuery(""); setFound([]); }}><strong>{item.name}</strong> <span className="text-muted-foreground">{item.number}{item.birthdate ? ` · born ${item.birthdate}` : ""}</span></button>
+      <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { onPick(item); setQuery(""); setFound([]); }}><strong>{item.name}</strong> <span className="text-muted-foreground">{item.number}{item.birthdate ? ` · born ${showDate(item.birthdate)}` : ""}</span></button>
     </li>)}</ul>}
   </div>;
 }
 
 function MemberSummary({ member }: { member: Member }) {
   const m = member.member;
-  return <Card><CardHeader className="pb-2"><CardTitle className="text-base">{m.surname}, {[m.firstName, m.middleName, m.nameExtension].filter(Boolean).join(" ")} · {m.number}{m.birthdate ? ` · born ${m.birthdate}` : ""}</CardTitle></CardHeader>
+  return <Card><CardHeader className="pb-2"><CardTitle className="text-base">{m.surname}, {[m.firstName, m.middleName, m.nameExtension].filter(Boolean).join(" ")} · {m.number}{m.birthdate ? ` · born ${showDate(m.birthdate)}` : ""}</CardTitle></CardHeader>
     <CardContent className="space-y-4">{member.accounts.length ? member.accounts.map((account) => <div key={account.id} className="space-y-1">
       <p className="text-sm font-semibold">{account.program} · {account.id} <span className="font-normal text-muted-foreground">· {peso(account.rate)}{account.flexible ? " minimum" : ""}/month · DOI {showDate(account.doi)} · {account.branch} · {account.mas} · {account.status || "—"}</span></p>
       <ReceiptTable receipts={account.receipts} />
@@ -237,9 +237,9 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
     </>}
 
     {tool === "merge" && <>
-      <p className="text-sm">Kept: <strong>{member.member.number}</strong> {member.member.surname}, {member.member.firstName}{member.member.birthdate ? ` (born ${member.member.birthdate})` : ""}</p>
+      <p className="text-sm">Kept: <strong>{member.member.number}</strong> {member.member.surname}, {member.member.firstName}{member.member.birthdate ? ` (born ${showDate(member.member.birthdate)})` : ""}</p>
       <MemberPicker label="The duplicate to merge into it (removed afterwards)" exclude={member.member.id} onPick={(found) => { setOther(found); setPreview(null); }} />
-      {other && <p className="text-sm">Duplicate: <strong>{other.number}</strong> {other.name}{other.birthdate ? ` (born ${other.birthdate})` : ""}</p>}
+      {other && <p className="text-sm">Duplicate: <strong>{other.number}</strong> {other.name}{other.birthdate ? ` (born ${showDate(other.birthdate)})` : ""}</p>}
       {other && shared.length > 0 && <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">Both have {shared.join(", ")}: those two accounts become one, with the receipts numbered again in OR-date order.</p>}
       {other && <fieldset className="space-y-1"><legend className="text-sm font-medium">Member number that stays (with its accounts; the other member is removed)</legend>
         <label className="flex items-center gap-2 text-sm"><input type="radio" name="keep-number" checked={!keepOther} onChange={() => { setKeepOther(false); setPreview(null); }} />{member.member.number} (this member)</label>
@@ -253,7 +253,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
           const choose = (value: "this" | "duplicate") => { setPicks((current) => ({ ...current, [fieldName]: value })); setPreview(null); };
           return <tr key={fieldName} className="border-t"><td className="p-2 font-medium">{label}</td>
             {(["this", "duplicate"] as const).map((side) => <td key={side} className="p-2"><label className="flex items-center gap-2"><input type="radio" name={`pick-${fieldName}`} checked={pick === side} disabled={mine === theirs} onChange={() => choose(side)} />
-              <span className={side === "this" ? "" : "text-muted-foreground"}>{(side === "this" ? mine : theirs) || "—"}</span></label></td>)}</tr>;
+              <span className={side === "this" ? "" : "text-muted-foreground"}>{(fieldName === "birthdate" ? showDate(side === "this" ? mine : theirs) : side === "this" ? mine : theirs) || "—"}</span></label></td>)}</tr>;
         })}</tbody></table>
         <p className="p-2 text-xs text-muted-foreground">Pick whose value stays for each detail. A blank on one side takes the other side&apos;s value unless you pick the blank.</p></div>}
     </>}

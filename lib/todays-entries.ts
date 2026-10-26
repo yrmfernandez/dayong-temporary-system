@@ -10,6 +10,7 @@ import { photosByEntry } from "@/lib/receipt-photos";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import type { TodayMode } from "@/lib/today-mode";
 import { accountableScope, masScope, type Person } from "@/lib/person-scope";
+import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
@@ -171,8 +172,8 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
         details: [
           ["Sale ID", text(row[0])], ["Member", [memberName, text(row[5])].filter(Boolean).join(" · ")],
           ["Program", programNames.get(text(row[21])) || text(row[21])], ["Branch", text(row[2])], ["MAS", text(row[3])],
-          ["Application no.", text(row[28])], ["Application date", orDate], ["DOI", text(row[22]).slice(0, 10)],
-          ["Date remitted", dateRemitted], ["Payment method", text(row[23])],
+          ["Application no.", text(row[28])], ["Application date", showDate(orDate)], ["DOI", showDate(text(row[22]).slice(0, 10))],
+          ["Date remitted", showDate(dateRemitted)], ["Payment method", text(row[23])],
           ["Registration fee", /^yes$/i.test(text(row[24])) ? money(row[25]) : ""], ["Amount paid", peso(amount)],
           ["MAS incentive", peso(Math.max(0, round(amount - remittance)))], ["Company share (to remit)", peso(remittance)],
           ["Forfeited incentive", number(row[43]) ? peso(number(row[43])) : ""], ["No incentive", reasonAt(row, saleNoIncentive)],
@@ -180,7 +181,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
           ["Fidelity", number(row[42]) ? peso(number(row[42])) : ""],
           ["Remittance status", text(row[35])], ["Remittance slip", text(row[36]) ? `${text(row[36])} · received ${slipStamp(text(row[36]))}` : ""],
           ["Notes", text(row[27])], ["Late-entry reason", text(row[44])],
-          ["Recorded on", recordedOn], ["Encoded by", `${text(row[33]) || "Not recorded"} · ${manilaTime(text(row[34]) || text(row[1]))}`],
+          ["Recorded on", showDate(recordedOn)], ["Encoded by", `${text(row[33]) || "Not recorded"} · ${showDateTime(manilaTime(text(row[34]) || text(row[1])))}`],
         ],
       });
     }),
@@ -203,7 +204,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
           ["Collection ID", text(row[0])], ["Batch", text(row[1])], ["Member", [memberName, text(row[4])].filter(Boolean).join(" · ")],
           ["Program", programNames.get(text(row[5])) || text(row[5])], ["Branch", text(row[6])], ["MAS", text(row[7])],
           ["Accountable for the cash", [text(row[31]), text(row[32])].filter(Boolean).join(" · ")], ["Collected by", text(row[25])],
-          ["OR number", text(row[8])], ["OR date", orDate], ["Date remitted", dateRemitted || "Not recorded"],
+          ["OR number", text(row[8])], ["OR date", showDate(orDate)], ["Date remitted", dateRemitted ? showDate(dateRemitted) : "Not recorded"],
           ["Months covered", months], ["NOP", nop], ["Amount collected", peso(amount)],
           ["Company share (to remit)", peso(remittance)], ["Incentive", peso(Math.max(0, round(amount - remittance)))],
           ["Forfeited incentive", number(row[38]) ? peso(number(row[38])) : ""], ["No incentive", reasonAt(row, collectionNoIncentive)],
@@ -213,7 +214,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
           ["Remittance status", text(row[28])], ["Remittance slip", text(row[29]) ? `${text(row[29])} · received ${slipStamp(text(row[29]))}` : ""],
           ["Reactivation", text(row[15]) === "Yes" ? "Yes" : ""], ["Transferred", text(row[16]) === "Yes" ? "Yes" : ""],
           ["If suspended", text(row[17])], ["Original MAS", text(row[18])], ["Late-entry reason", text(row[39])],
-          ["Recorded on", recordedOn], ["Encoded by", `${text(row[23]) || "Not recorded"} · ${manilaTime(text(row[24]) || text(row[20]))}`],
+          ["Recorded on", showDate(recordedOn)], ["Encoded by", `${text(row[23]) || "Not recorded"} · ${showDateTime(manilaTime(text(row[24]) || text(row[20])))}`],
         ],
       });
     }),
