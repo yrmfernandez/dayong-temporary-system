@@ -50,6 +50,12 @@ export default function EmployeesPage() {
   const [issued, setIssued] = useState<IssuedPassword | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
+  // Links such as System Health's Fix open the register already searched (?search=Capacite).
+  useEffect(() => {
+    const searched = new URLSearchParams(window.location.search).get("search");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the URL after mount
+    if (searched) setSearch(searched);
+  }, []);
   const [branch, setBranch] = useState("");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");

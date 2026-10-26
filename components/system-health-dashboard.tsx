@@ -8,6 +8,11 @@ import { NightlyJobsPanel } from "@/components/nightly-jobs-panel";
 
 const count = (value: number) => value.toLocaleString("en-PH");
 const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString("en-PH", { maximumFractionDigits: 1 })} MB`;
+const size = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toLocaleString("en-PH", { maximumFractionDigits: 2 })} GB` : megabytes(bytes);
+type Growth = { perMonth: number | null; since: string; monthsLeft: number | null };
+/** "+12.3 MB a month (since Oct 1) · about 40 months to 8 GB", or why it is not known yet. */
+const growthLine = (item: Growth, limit: number) => item.perMonth === null ? "Growth: measured nightly; shown after a week of measurements."
+  : `${item.perMonth >= 0 ? "+" : "−"}${size(Math.abs(item.perMonth))} a month (since ${item.since})${item.monthsLeft === null ? "" : item.monthsLeft > 120 ? ` · more than 10 years to ${size(limit)}` : ` · about ${item.monthsLeft} month${item.monthsLeft === 1 ? "" : "s"} to ${size(limit)}`}`;
 const stamp = (value: string) => value ? new Date(value).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
 const severityTone: Record<string, Tone> = { critical: "danger", warning: "warning", info: "info" };
 
@@ -23,7 +28,7 @@ export function SystemHealthDashboard({ data, employeeName }: { data: SystemHeal
 
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <Tile label="Database response" value={`${count(data.latencyMs)} ms`} note={`${data.latencyMs < 300 ? "Healthy" : data.latencyMs < 1000 ? "Slow; the database is busy or waking up" : "Very slow; check Supabase status"} · ${count(data.connections.used)} of ${count(data.connections.max)} connections`} icon={Activity} tone={data.latencyMs < 300 ? "success" : data.latencyMs < 1000 ? "warning" : "danger"} />
-      <Tile label="Database size" value={`${data.capacity.percent}%`} note={`${megabytes(data.capacity.bytes)} of ${megabytes(data.capacity.limit)} (Supabase Free) · ${data.capacity.tableCount} tables`} icon={Database} tone={data.capacity.percent < 60 ? "success" : data.capacity.percent < 85 ? "warning" : "danger"} />
+      <Tile label="Database size" value={`${data.capacity.percent}%`} note={`${size(data.capacity.bytes)} of ${size(data.capacity.limit)} included (${data.capacity.plan}) · ${data.capacity.tableCount} tables`} icon={Database} tone={data.capacity.percent < 60 ? "success" : data.capacity.percent < 85 ? "warning" : "danger"} />
       <Tile label="Schema" value={data.schema.missing ? `${count(data.schema.missing)} missing` : "Up to date"} note={`${data.schema.applied} of ${data.schema.migrations} migrations · latest ${data.schema.latest}`} icon={Layers} tone={data.schema.missing ? "danger" : data.schema.applied < data.schema.migrations ? "warning" : "success"} />
       <Tile label="Active accounts" value={`${count(data.accounts.active)} / ${count(data.accounts.total)}`} note={`${count(data.accounts.activeEmployees)} active employees · ${count(data.issues.filter((issue) => issue.href).reduce((sum, issue) => sum + issue.items.length, 0))} access issues`} icon={UserCog} tone="info" href="/user-accounts" />
           </div>
@@ -36,10 +41,11 @@ export function SystemHealthDashboard({ data, employeeName }: { data: SystemHeal
         <details>
           <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
             <span className="flex items-center gap-2"><StatusBadge status={issue.severity === "critical" ? "Critical" : issue.severity === "warning" ? "Review" : "Info"} tone={severityTone[issue.severity]} /><strong className="text-sm">{issue.title}</strong><span className="text-sm text-muted-foreground">({issue.items.length})</span></span>
-            {issue.href && <Link href={issue.href} className="text-sm font-medium text-primary hover:underline">Fix</Link>}
+            {issue.href && <Link href={issue.href} className="text-sm font-medium text-primary hover:underline">Open page</Link>}
           </summary>
           <p className="mt-2 text-sm text-muted-foreground">{issue.detail}</p>
-          <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto text-sm">{issue.items.map((item) => <li key={item} className="rounded-md bg-muted/60 px-2 py-1">{item}</li>)}</ul>
+          {/* Fix on each item opens the page at that person or record; command fixes have none (the command is in the detail). */}
+          <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto text-sm">{issue.items.map((item) => <li key={item.text} className="flex items-center justify-between gap-3 rounded-md bg-muted/60 px-2 py-1"><span className="min-w-0 break-words">{item.text}</span>{item.href && <Link href={item.href} className="shrink-0 rounded-md border bg-background px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/10">Fix</Link>}</li>)}</ul>
         </details>
       </li>)}</ul> : <p className="flex items-center gap-2 text-sm text-muted-foreground"><CheckCircle2 className="size-4 text-emerald-600" />The database has every column the code uses, and every account has a role, matches an active employee, and agrees with the Employees register.</p>}
     </Panel>
@@ -63,6 +69,14 @@ export function SystemHealthDashboard({ data, employeeName }: { data: SystemHeal
     </div>
 
     <div className="grid gap-6 xl:grid-cols-2">
+      <Panel title="Space & Growth" subtitle={`${data.capacity.plan}: ${size(data.capacity.limit)} of database and ${size(data.capacity.storage?.limit ?? 100 * 1024 ** 3)} of photo Storage included; above that Supabase charges per extra GB, the app keeps working`}>
+        <ul className="space-y-3 text-sm">
+          <li><strong>Database</strong> {size(data.capacity.bytes)} of {size(data.capacity.limit)} ({data.capacity.percent}%)<div className="text-xs text-muted-foreground">{growthLine(data.capacity.growth, data.capacity.limit)}</div></li>
+          <li><strong>Receipt photos in Storage</strong> {data.capacity.storage ? <>{size(data.capacity.storage.bytes)} · {count(data.capacity.storage.files)} files ({data.capacity.storage.percent}%)<div className="text-xs text-muted-foreground">{growthLine(data.capacity.storage.growth, data.capacity.storage.limit)}</div></> : <span className="text-muted-foreground">not available on this database</span>}</li>
+          <li><strong>Receipt photos still inside the database</strong> {data.capacity.photosInDatabase.photos ? <>{count(data.capacity.photosInDatabase.photos)} ({size(data.capacity.photosInDatabase.bytes)})<div className="text-xs text-muted-foreground">Older photos saved before Storage. Moving them frees that much database space: <code>npm run prod -- node scripts/move-photos-to-storage.mjs</code> (dry run), then add <code>--apply</code>.</div></> : <span className="text-muted-foreground">none: every photo is in Storage</span>}</li>
+        </ul>
+        <p className="mt-3 text-xs text-muted-foreground">Measured every night by the Nightly Jobs ({count(data.capacity.measuredDays)} day{data.capacity.measuredDays === 1 ? "" : "s"} so far).</p>
+      </Panel>
       <Panel title="Largest Tables" subtitle="Space used including indexes; row counts are PostgreSQL estimates">
         <ul className="space-y-2">{data.capacity.tables.map((table) => <li key={table.name} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 text-sm"><span className="truncate font-medium">{table.name}</span><span className="tabular-nums text-muted-foreground">{count(table.rows)} rows · {megabytes(table.bytes)}</span><span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.max(1, (table.bytes / (data.capacity.tables[0]?.bytes || 1)) * 100)}%` }} /></span></li>)}</ul>
       </Panel>

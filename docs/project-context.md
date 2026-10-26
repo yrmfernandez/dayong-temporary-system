@@ -15,7 +15,16 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 7 | One time zone (Manila) for every report date | **Built 2026-10-24**: one helper (`lib/manila-date.ts`) turns stored UTC times into Manila dates everywhere; Company report, SOA, dashboards and lists fixed |
 | 8 | Join reports by ID instead of branch/MAS/encoder names | **Built 2026-10-24**: MAS/Collector dashboards and Report Review clerks picked by Employee ID (`lib/person-scope.ts`), unlinked old names still count by name |
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
-| 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do (next) |
+| 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
+
+### Upgrade #10: space on Supabase Pro; Fix on every System Health finding (2026-10-26)
+
+- **Owner:** #10, "but we have pro subscription in the supabase"; then, while it was being built: a Fix button on each item of Schema, Access & Data Integrity that goes directly to where it is fixed.
+- **Done (#10):** new `lib/capacity.ts`: Pro allowances (8 GB database, 100 GB Storage; `SUPABASE_DATABASE_GB` / `SUPABASE_STORAGE_GB` override), `measureCapacity` (database size, receipt-photo Storage size and file count from `storage.objects`, photos still inside the database), `recordCapacity` (one point a day in System Setting `capacity_history`, about 13 months), `growth` (per 30 days from the oldest point 7–30 days back, months left). Nightly Jobs got step 4 **Database size**. System Health: the size tile reads against Pro (was "of 500 MB (Supabase Free)"); new **Space & Growth** panel (database, Storage, photos still in the database with the move-photos command, growth and months left once a week is measured). Test: one point per day, photos in the database counted, growth and months left, under a week unknown, shrinking gives no date.
+- **Done (Fix):** each integrity item carries its own link (`IntegrityItem { text, href }`): account findings open `/user-accounts?employee=<ID>` (User Accounts now opens that person's account editor, or the create panel when there is none); an unlinked MAS name opens `/employees?search=<surname>` (Employees now reads `?search=`); a branch name opens Branches; command fixes (missing tables/columns, migrations) have no button. The group link is now **Open page**.
+- All 260 tests and the build pass. No migration.
+- **To do (owner):** deploy (after migrating 0029); in System Health → Nightly Jobs press **Run now** once so the first size is recorded; optionally move old photos to Storage if Space & Growth shows many in the database.
+- **Upgrade list complete:** #1–#10 built.
 
 ### Upgrade #9: money-rule tests (2026-10-26)
 

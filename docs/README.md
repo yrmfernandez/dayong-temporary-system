@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 26, 2026: space on Supabase Pro, Fix buttons.** System Health measures the database against the Pro plan's 8 GB and receipt photos against 100 GB of Storage, and shows the monthly growth from nightly measurements (upgrade #10, the last of the upgrade list). Every finding in Schema, Access & Data Integrity has a Fix button that opens the page at that person or record. See the [system guide](system-guide.md) (IT System Health).
+
 **October 26, 2026: money-rule tests.** The rules that decide pesos (incentives, company shares, rounding, deadlines, status dates, the Fidelity lock) are checked by `npm test` before every deploy, including that the company share plus incentives always equal the amount collected (upgrade #9). See the [system guide](system-guide.md) (implementation limits, item 13).
 
 **October 26, 2026: maintenance notice.** IT can turn on a notice from System Health that every signed-in user sees at the top of every page while the system is being updated, and turn it off when done. See the [system guide](system-guide.md) (IT System Health).

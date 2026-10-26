@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-44 page routes, 74 API handlers, 137 library files, 60 component files; 617 scanned source/configuration/public-text files in total.
+44 page routes, 74 API handlers, 138 library files, 60 component files; 618 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -159,6 +159,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/auto-absence.ts](../lib/auto-absence.ts) | `SYSTEM_ABSENCE_NOTE`, `isSystemAbsence`, `systemAbsences`, `closeFinishedAttendanceDays`, `closeFinishedAttendanceDaysQuietly`, `SYSTEM_ABSENCE_REVIEW_DAYS`, `systemAbsencesWaiting` | `@/lib/attendance-calendar`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/system-settings` |
 | [lib/batch-edit.ts](../lib/batch-edit.ts) | `BatchKind`, `EditableBatch`, `SaleBeneficiary`, `SaleDetails`, `getReturnedBatch`, `BatchEditInput`, `saveReturnedBatch` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/admin-delete`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/date-checks`, `@/lib/db`, `@/lib/duplicate-entries`, `@/lib/employees`, `@/lib/entry-batches`, `@/lib/entry-controls`, `@/lib/google-sheets-data`, `@/lib/member-records`, `@/lib/program-age`, `@/lib/or-number`, `@/lib/program-amount-lock`, `@/lib/record-corrections`, `@/lib/work-calendar`, `@/lib/working-days`, `@/lib/remittance`, `@/lib/remittance-methods`, `@/lib/remittance-deadline` |
 | [lib/calculations.ts](../lib/calculations.ts) | `CollectionStatus`, `calculateTMD`, `calculateBalance`, `getNextNOP`, `getProgramBasePay`, `calculateCollectionTMD` | `./types` |
+| [lib/capacity.ts](../lib/capacity.ts) | `PLAN_LABEL`, `databaseAllowance`, `storageAllowance`, `CapacityPoint`, `measureCapacity`, `capacityHistory`, `recordCapacity`, `growth` | `@/lib/db`, `@/lib/system-settings` |
 | [lib/cash-count.ts](../lib/cash-count.ts) | `DENOMINATIONS`, `CashCount`, `cashCountTotal`, `formatCashCount`, `parseCashCount`, `cashCountProblem` | — |
 | [lib/clearing-kinds.ts](../lib/clearing-kinds.ts) | `ClearingKind`, `ClearingCovers`, `CLEARING_COVERS`, `coveredKinds`, `DATE_REMITTED_REASON_MIN` | — |
 | [lib/clearing.ts](../lib/clearing.ts) | `ClearingStage`, `CLEARING_COVERS`, `coveredKinds`, `ClearingCovers`, `ClearingKind`, `ClearingDecision`, `Clearing`, `withProgress`, `LIST_CLEARED`, `DayEndLine`, `getDayEndReview`, `settleDayEnd`, `getClearingPage`, `getEncodableClearings`, `AlreadyClearedError`, `addClearing`, `removeClearing`, `editClearing`, `clearedEmployee`, `clearingProblem`, `waitingBatchProblem`, `dateRemittedReasonProblem`, `clearedAt`, `closeClearings`, `countOpenClearings` | `@/lib/db`, `@/lib/employees`, `@/lib/google-sheets-data`, `@/lib/clearing-kinds`, `@/lib/entry-batches`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
@@ -222,7 +223,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/members.ts](../lib/members.ts) | `getMemberPrograms`, `getProgram`, `getMember` | `./types` |
 | [lib/mock-members.ts](../lib/mock-members.ts) | `mockMembers` | `./types` |
 | [lib/navigation.ts](../lib/navigation.ts) | `NavItem`, `NavSection`, `normalizeRole`, `workspaceFor`, `routeMatches`, `visibleNavigation`, `isInWorkspace`, `locatePage`, `activeHref` | `@/lib/access-control` |
-| [lib/nightly-jobs.ts](../lib/nightly-jobs.ts) | `NIGHTLY_KEY`, `NightlyStep`, `NightlyRun`, `runNightlyJobs`, `lastNightlyRun` | `@/lib/account-data`, `@/lib/auto-absence`, `@/lib/encoder-context`, `@/lib/exceptions`, `@/lib/system-settings` |
+| [lib/nightly-jobs.ts](../lib/nightly-jobs.ts) | `NIGHTLY_KEY`, `NightlyStep`, `NightlyRun`, `runNightlyJobs`, `lastNightlyRun` | `@/lib/account-data`, `@/lib/auto-absence`, `@/lib/capacity`, `@/lib/encoder-context`, `@/lib/exceptions`, `@/lib/manila-date`, `@/lib/system-settings` |
 | [lib/notifications.ts](../lib/notifications.ts) | `NotificationCounts`, `getNotificationCounts` | `@/lib/access-control`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auto-absence`, `@/lib/db`, `@/lib/clearing`, `@/lib/sale-submissions` |
 | [lib/nte.ts](../lib/nte.ts) | `NTE_DAYS`, `SUSPENSION_THRESHOLD`, `Nte`, `EXPLANATION_MAX`, `listNtes`, `issueNte`, `withdrawNte`, `listMyNtes`, `acknowledgeNte`, `explainNte`, `markNteReviewed` | `@/lib/db`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/or-number.ts](../lib/or-number.ts) | `OR_NUMBER_EXAMPLE`, `isValidOrNumber`, `orNumberProblem`, `normalizeOrNumber`, `nextOrNumber` | — |
@@ -264,7 +265,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/sheets-on-db.ts](../lib/sheets-on-db.ts) | `SHEET_TITLES`, `tableOf`, `isDatabaseSheet`, `countSheetRows`, `columnLetters`, `parseA1`, `sheetsOnDb`, `readSheetRows`, `readSheetRowsNumbered`, `appendSheetRows` | `@/lib/db` |
 | [lib/sheets-read-cache.ts](../lib/sheets-read-cache.ts) | `BUSY`, `SheetsReadCache`, `KeyedLock` | — |
 | [lib/statement-of-account.ts](../lib/statement-of-account.ts) | `listStatementAccounts`, `getStatementOfAccount`, `setCollectionHead`, `StatementOfAccount` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/system-settings`, `@/lib/manila-date` |
-| [lib/system-health.ts](../lib/system-health.ts) | `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/db/migrations/meta/_journal.json`, `@/lib/db`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment`, `@/lib/maintenance-notice`, `@/lib/nightly-jobs` |
+| [lib/system-health.ts](../lib/system-health.ts) | `IntegrityItem`, `IntegrityIssue`, `getSystemHealth`, `SystemHealth` | `@/db/migrations/meta/_journal.json`, `@/lib/db`, `@/lib/google-sheets`, `@/lib/users-sheet`, `@/lib/server-environment`, `@/lib/capacity`, `@/lib/maintenance-notice`, `@/lib/manila-date`, `@/lib/nightly-jobs` |
 | [lib/system-settings.ts](../lib/system-settings.ts) | `isTodayMode`, `TODAY_MODE_LABELS`, `TODAY_MODES`, `TodayMode`, `getSetting`, `saveSetting`, `getTodayMode`, `setTodayMode` | `@/lib/db`, `@/lib/today-mode` |
 | [lib/theme.ts](../lib/theme.ts) | `ThemePreference`, `THEME_KEY`, `themeBootScript`, `readTheme`, `resolveTheme`, `applyTheme`, `setTheme`, `watchTheme` | — |
 | [lib/today-mode.ts](../lib/today-mode.ts) | `TODAY_MODES`, `TodayMode`, `TODAY_MODE_LABELS`, `isTodayMode` | — |

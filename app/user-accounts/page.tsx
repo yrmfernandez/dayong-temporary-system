@@ -1,7 +1,7 @@
 "use client";
 
 import { confirmDialog } from "@/components/app-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { InlinePanel } from "@/components/inline-panel";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,22 @@ export default function UserAccountsPage() {
 
   const withoutAccount = employees.filter((employee) => !accounts.some((account) => account.employeeId === employee.id));
   const foundEmployee = found.startsWith("emp:") ? withoutAccount.find((employee) => employee.id === found.slice(4)) : undefined;
+
+  // System Health's Fix opens a person directly (?employee=MD-…): their account's editor, or the create panel when they
+  // have none (owner, October 26, 2026). Read once, after the accounts are loaded.
+  const linked = useRef(false);
+  useEffect(() => {
+    if (loading || linked.current) return;
+    linked.current = true;
+    const employeeId = new URLSearchParams(window.location.search).get("employee")?.trim();
+    if (!employeeId) return;
+    const account = accounts.find((item) => item.employeeId === employeeId);
+    const target = account ? `acct:${account.id}` : employees.some((employee) => employee.id === employeeId) ? `emp:${employeeId}` : "";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- opens the person named in the address once
+    if (target) findPerson(target); else setMessage(`${employeeId} has no account and is not an active employee: check Employees.`);
+    // Once loading ends the accounts and employees are in (set together); findPerson is the page's own handler.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   function findPerson(value: string) {
     setFound(value); setMessage(""); setSavedId("");

@@ -6,17 +6,27 @@ import { getDb, schema } from "@/lib/db";
 import { GOOGLE_SHEET_ID, sheets, sheetsStats } from "@/lib/google-sheets";
 import { readUserRows, USERS_RANGE } from "@/lib/users-sheet";
 import { readServerVariable } from "@/lib/server-environment";
+import { capacityHistory, databaseAllowance, growth, measureCapacity, PLAN_LABEL, storageAllowance } from "@/lib/capacity";
 import { getMaintenanceNotice } from "@/lib/maintenance-notice";
+import { manilaToday } from "@/lib/manila-date";
 import { lastNightlyRun } from "@/lib/nightly-jobs";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const PRODUCTION_REF = "qnugejonwpfvsenxvhxz", STAGING_REF = "nziflfmwqnaqcisssapy";
-const SIZE_LIMIT = 500 * 1024 * 1024; // Supabase Free plan: 500 MB of database space per project.
 const splitRoles = (value: unknown) => text(value).split(",").map((role) => role.trim()).filter(Boolean);
 /** Rows of a raw query: postgres.js returns them as the result itself, PGlite (tests) under .rows. */
 const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
 
-export type IntegrityIssue = { severity: "critical" | "warning" | "info"; title: string; detail: string; items: string[]; href: string }; // href "" when the fix is a command, not a page.
+/**
+ * One finding. `href` opens the page for the whole group ("" when the fix is a command, not a page); each item has its
+ * own `href` that opens the page at that person or record (owner, October 26, 2026: a Fix button on every item).
+ */
+export type IntegrityItem = { text: string; href: string };
+export type IntegrityIssue = { severity: "critical" | "warning" | "info"; title: string; detail: string; items: IntegrityItem[]; href: string };
+/** Items fixed by a command (missing columns, migrations): no page to open. */
+const plain = (texts: string[]): IntegrityItem[] => texts.map((text) => ({ text, href: "" }));
+/** The person's account on User Accounts, or its create panel when they have none (app/user-accounts/page.tsx reads it). */
+const accountOf = (employeeId: string) => employeeId ? `/user-accounts?employee=${encodeURIComponent(employeeId)}` : "/user-accounts";
 
 /** Every table and column db/schema.ts expects, which the deployed code will query. */
 function expectedColumns() {
@@ -30,8 +40,10 @@ export async function getSystemHealth() {
   // Round trip of one tiny query, so the figure reflects the database now.
   const probe = async () => { const started = Date.now(); await db.execute(sql`select 1`); return Date.now() - started; };
   const latencyMs = await probe();
-  const [sizeRows, tableRows, columnRows, migrationRows, unlinkedRows, connectionRows, auditRows, response, nightly, maintenance] = await Promise.all([
-    db.execute(sql`select pg_database_size(current_database())::bigint as bytes`),
+  const [space, history, tableRows, columnRows, migrationRows, unlinkedRows, connectionRows, auditRows, response, nightly, maintenance] = await Promise.all([
+    // Database and receipt-photo space against the plan, and the nightly measurements (lib/capacity.ts, upgrade #10).
+    measureCapacity(),
+    capacityHistory(),
     db.execute(sql`select c.relname as name, pg_total_relation_size(c.oid)::bigint as bytes, greatest(coalesce(s.n_live_tup, 0), c.reltuples::bigint, 0)::bigint as rows
       from pg_class c join pg_namespace n on n.oid = c.relnamespace left join pg_stat_user_tables s on s.relid = c.oid
       where n.nspname = 'public' and c.relkind = 'r' order by bytes desc`),
@@ -60,7 +72,7 @@ export async function getSystemHealth() {
   ]);
   const [userRows, roleRows, linkRows, employeeRows] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
 
-  const bytes = Number(rowsOf<{ bytes: number }>(sizeRows)[0]?.bytes ?? 0);
+  const bytes = space.database, limit = databaseAllowance(), storageLimit = storageAllowance(), today = manilaToday();
   const tables = rowsOf<{ name: string; bytes: number; rows: number }>(tableRows).map((table) => ({ name: table.name, bytes: Number(table.bytes), rows: Number(table.rows) }));
   const connection = rowsOf<{ used: number; max: number }>(connectionRows)[0] ?? { used: 0, max: 0 };
 
@@ -86,29 +98,32 @@ export async function getSystemHealth() {
   const issues: IntegrityIssue[] = [];
   const add = (issue: IntegrityIssue) => { if (issue.items.length) issues.push(issue); };
   add({ severity: "critical", title: "Database is missing tables the code uses", detail: "Pages that read these tables fail. Run npm run db:migrate on this database (production: npm run prod -- npm run db:migrate).", href: "",
-    items: missingTables });
+    items: plain(missingTables) });
   add({ severity: "critical", title: "Database is missing columns the code uses", detail: "Every query on these tables fails with \"Failed query\". Run npm run db:migrate on this database (production: npm run prod -- npm run db:migrate), before pushing next time.", href: "",
-    items: missingColumns });
+    items: plain(missingColumns) });
   add({ severity: "info", title: "Records whose branch or MAS name matches no record", detail: "Their link to the branch or employee stays empty until a record with that name exists. Registering the employee (or branch) under exactly that name links these records at once. DTO and Others are not people and can stay unlinked.", href: "/employees",
-    items: unlinkedRows ? rowsOf<{ kind: string; name: string; rows: number; tables: string }>(unlinkedRows).map((row) => `${row.kind} "${row.name}" · ${Number(row.rows).toLocaleString("en-PH")} record${Number(row.rows) === 1 ? "" : "s"} (${row.tables})`) : [] });
+    items: unlinkedRows ? rowsOf<{ kind: string; name: string; rows: number; tables: string }>(unlinkedRows).map((row) => ({ text: `${row.kind} "${row.name}" · ${Number(row.rows).toLocaleString("en-PH")} record${Number(row.rows) === 1 ? "" : "s"} (${row.tables})`,
+      // An unlinked MAS: look for the employee in Employees under a similar name; an unlinked branch: Branches.
+      href: row.kind === "Branch" ? "/branches" : `/employees?search=${encodeURIComponent(String(row.name).split(",")[0].trim())}` })) : [] });
   add({ severity: "warning", title: "Migrations not recorded as applied", detail: migrationRows ? "These db/migrations files are not in drizzle.__drizzle_migrations. Run npm run db:migrate." : "The migrations table could not be read.", href: "",
-    items: migrationRows ? pendingMigrations : ["drizzle.__drizzle_migrations"] });
+    items: plain(migrationRows ? pendingMigrations : ["drizzle.__drizzle_migrations"]) });
   add({ severity: "critical", title: "Active accounts for inactive or missing employees", detail: "These people can still sign in. Deactivate the account or correct the employee record.", href: "/user-accounts",
-    items: activeUsers.filter((user) => { const employee = employeeById.get(user.employeeId); return !employee || employee.status !== "active"; }).map((user) => `${who(user)} · employee ${employeeById.get(user.employeeId)?.status ?? "not found"}`) });
+    items: activeUsers.filter((user) => { const employee = employeeById.get(user.employeeId); return !employee || employee.status !== "active"; }).map((user) => ({ text: `${who(user)} · employee ${employeeById.get(user.employeeId)?.status ?? "not found"}`, href: accountOf(user.employeeId) })) });
   add({ severity: "critical", title: "Active accounts without a role", detail: "They can sign in but see only the safe fallback. Assign a role.", href: "/user-accounts",
-    items: activeUsers.filter((user) => !links.some((link) => link.userId === user.id && roleById.get(link.roleId)?.active)).map(who) });
+    items: activeUsers.filter((user) => !links.some((link) => link.userId === user.id && roleById.get(link.roleId)?.active)).map((user) => ({ text: who(user), href: accountOf(user.employeeId) })) });
   add({ severity: "warning", title: "Role links to missing or inactive roles", detail: "These links are ignored at sign-in.", href: "/roles",
-    items: links.filter((link) => !roleById.get(link.roleId)?.active).map((link) => `${link.userId} → ${link.roleId}${roleById.has(link.roleId) ? " (inactive)" : " (missing)"}`) });
+    items: links.filter((link) => !roleById.get(link.roleId)?.active).map((link) => ({ text: `${link.userId} → ${link.roleId}${roleById.has(link.roleId) ? " (inactive)" : " (missing)"}`,
+      href: accountOf(users.find((user) => user.id === link.userId)?.employeeId ?? "") })) });
   add({ severity: "warning", title: "Employee roles differ from sign-in roles", detail: "The Employees register and the account's roles disagree; the account's roles decide what they can open.", href: "/user-accounts",
     items: activeUsers.flatMap((user) => {
       const employee = employeeById.get(user.employeeId); if (!employee) return [];
       const account = roleNamesOf(user.id).map((role) => role.toLowerCase()).sort(), register = employee.roles.map((role) => role.toLowerCase()).sort();
-      return account.join("|") === register.join("|") ? [] : [`${employee.name}: register "${employee.roles.join(", ") || "none"}" · account "${roleNamesOf(user.id).join(", ") || "none"}"`];
+      return account.join("|") === register.join("|") ? [] : [{ text: `${employee.name}: register "${employee.roles.join(", ") || "none"}" · account "${roleNamesOf(user.id).join(", ") || "none"}"`, href: accountOf(employee.id) }];
     }) });
   add({ severity: "info", title: "Active employees without a sign-in account", detail: "Create an account if they need to use the system.", href: "/user-accounts",
-    items: employees.filter((employee) => employee.status === "active" && !users.some((user) => user.employeeId === employee.id)).map((employee) => `${employee.name} (${employee.id})`) });
+    items: employees.filter((employee) => employee.status === "active" && !users.some((user) => user.employeeId === employee.id)).map((employee) => ({ text: `${employee.name} (${employee.id})`, href: accountOf(employee.id) })) });
   const duplicateEmployeeIds = [...new Set(users.map((user) => user.employeeId).filter((id, index, all) => id && all.indexOf(id) !== index))];
-  add({ severity: "critical", title: "Several accounts for one employee", detail: "Sign-in uses the first active match; remove the extra account.", href: "/user-accounts", items: duplicateEmployeeIds.map((id) => `${employeeById.get(id)?.name ?? id} (${id})`) });
+  add({ severity: "critical", title: "Several accounts for one employee", detail: "Sign-in uses the first active match; remove the extra account.", href: "/user-accounts", items: duplicateEmployeeIds.map((id) => ({ text: `${employeeById.get(id)?.name ?? id} (${id})`, href: accountOf(id) })) });
 
   const databaseUrl = readServerVariable("DATABASE_URL");
   const project = /postgres\.([a-z0-9]+)[:@]/.exec(databaseUrl)?.[1] ?? "";
@@ -126,7 +141,13 @@ export async function getSystemHealth() {
 
   return {
     project, latencyMs, checkedAt: new Date().toISOString(),
-    capacity: { bytes, limit: SIZE_LIMIT, percent: Math.round((bytes / SIZE_LIMIT) * 1000) / 10, tables: tables.slice(0, 8), tableCount: tables.length },
+    capacity: {
+      bytes, limit, plan: PLAN_LABEL, percent: Math.round((bytes / limit) * 1000) / 10, tables: tables.slice(0, 8), tableCount: tables.length,
+      growth: growth(history, bytes, today, limit),
+      storage: space.storage === null ? null : { bytes: space.storage, files: space.storageFiles ?? 0, limit: storageLimit, percent: Math.round((space.storage / storageLimit) * 1000) / 10,
+        growth: growth(history, space.storage, today, storageLimit, (point) => point.storage) },
+      photosInDatabase: space.photosInDatabase, measuredDays: history.length,
+    },
     schema: { tables: expected.length, migrations: journal.entries.length, applied: journal.entries.length - pendingMigrations.length, latest: journal.entries.at(-1)?.tag ?? "", missing: missingTables.length + missingColumns.length },
     connections: { used: Number(connection.used), max: Number(connection.max) },
     accounts: { total: users.length, active: activeUsers.length, inactive: users.length - activeUsers.length, employees: employees.length, activeEmployees: employees.filter((employee) => employee.status === "active").length },

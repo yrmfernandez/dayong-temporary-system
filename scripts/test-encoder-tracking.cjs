@@ -4280,3 +4280,24 @@ test('incentive deadline to the minute: 3:00 PM keeps, 3:01 PM forfeits; Sundays
   assert.equal(incentiveDeadline('not a date'), '', 'no valid OR date: the rule is not applied');
   assert.equal(keepsIncentive('not a date', '2026-10-30 18:00'), true);
 });
+
+test('space against the Supabase Pro plan: sizes recorded once a day, growth per month and months left (upgrade #10)', async () => {
+  const h = harness();
+  const { recordCapacity, capacityHistory, growth, databaseAllowance, measureCapacity } = h.load('lib/capacity.ts');
+  assert.equal(databaseAllowance(), 8 * 1024 ** 3, 'Pro includes 8 GB of database');
+  await seed('receipt_photos', [{ photo_id: 'PH-OLD', entry_ids: 'COL-1', chunk_count: 1, photo_data_1: 'abcd' }, { photo_id: 'PH-NEW', entry_ids: 'COL-2', storage_path: 'receipts/x.jpg', chunk_count: 0 }]);
+  const now = await measureCapacity();
+  assert.deepEqual(now.photosInDatabase, { photos: 1, bytes: 4 }, 'only the photo not yet moved to Storage');
+  assert.equal(now.storage, null, 'no Storage schema in the test database');
+  assert.ok(now.database > 0);
+  await recordCapacity('2026-10-01');
+  await recordCapacity('2026-10-01');
+  assert.equal((await capacityHistory()).length, 1, 'one measurement per day');
+  await recordCapacity('2026-10-02');
+  assert.deepEqual((await capacityHistory()).map((point) => point.date), ['2026-10-01', '2026-10-02']);
+  // Growth from the oldest measurement 7 to 30 days back.
+  const history = [{ date: '2026-09-20', database: 500, storage: null }, { date: '2026-10-01', database: 1000, storage: null }, { date: '2026-10-28', database: 3500, storage: null }];
+  assert.deepEqual(growth(history, 4000, '2026-10-31', 10000), { perMonth: 3000, since: '2026-10-01', monthsLeft: 2 }, '+3,000 in 30 days; 6,000 left');
+  assert.deepEqual(growth(history.slice(2), 4000, '2026-10-31', 10000), { perMonth: null, since: '', monthsLeft: null }, 'under a week of history: not known yet');
+  assert.equal(growth(history, 900, '2026-10-31', 10000).monthsLeft, null, 'shrinking: no date to reach the limit');
+});

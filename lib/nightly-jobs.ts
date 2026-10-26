@@ -1,7 +1,9 @@
 import { syncAccountStatuses } from "@/lib/account-data";
 import { closeFinishedAttendanceDays } from "@/lib/auto-absence";
+import { databaseAllowance, PLAN_LABEL, recordCapacity } from "@/lib/capacity";
 import { runAsSystem } from "@/lib/encoder-context";
 import { findExceptions } from "@/lib/exceptions";
+import { manilaToday } from "@/lib/manila-date";
 import { getSetting, saveSetting } from "@/lib/system-settings";
 
 /**
@@ -13,6 +15,7 @@ import { getSetting, saveSetting } from "@/lib/system-settings";
  * 1. Attendance: records the system absences (and carried-over No attendance needed) for finished days.
  * 2. Account statuses: stores each account's current status (Active, 60D, Suspended, Forfeited, ...) where it changed.
  * 3. Exceptions: counts the data problems, so IT sees the number without opening the page (nothing is changed).
+ * 4. Database size: records the database and receipt-photo Storage sizes for the growth figures (upgrade #10).
  */
 export const NIGHTLY_KEY = "nightly_last_run";
 
@@ -53,6 +56,11 @@ export function runNightlyJobs(trigger: string) {
       const { categories } = await findExceptions();
       const total = categories.reduce((sum, category) => sum + category.total, 0);
       return total ? `${total.toLocaleString("en-PH")} to review (${categories.filter((category) => category.total).map((category) => `${category.label} ${category.total}`).join(", ")}).` : "None.";
+    }));
+    steps.push(await step("Database size", async () => {
+      const now = await recordCapacity(manilaToday());
+      const mb = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString("en-PH", { maximumFractionDigits: 1 })} MB`;
+      return `Database ${mb(now.database)} of ${mb(databaseAllowance())} (${PLAN_LABEL})${now.storage === null ? "" : ` · receipt photos in Storage ${mb(now.storage)}`}.`;
     }));
     const run: NightlyRun = { startedAt, finishedAt: new Date().toISOString(), trigger, ok: steps.every((item) => item.ok), steps };
     await saveSetting(NIGHTLY_KEY, JSON.stringify(run), "System").catch((error) => console.error("Nightly jobs: could not save the result.", error));
