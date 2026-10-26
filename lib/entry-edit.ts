@@ -150,7 +150,8 @@ export async function followSlip(tx: Queryable, entryId: string, slipId: string,
  * 2026: reports, commissions and payroll read the incentive as amount less company share, so they must follow the
  * program). A forfeited incentive stays forfeited (the whole amount is the company's), as does one marked No incentive
  * (no_incentive_reason, owner, October 20, 2026). On a remittance slip, the slip's
- * expected amount follows. Missing or conflicting tiers stop the correction so stale figures cannot be saved.
+ * expected amount follows. Missing or conflicting tiers stop the correction so stale figures cannot be saved, except on a
+ * receipt that was never priced (old-sheet data): it stays unpriced and is returned in `unpriced`.
  * Returns how many changed and the slips touched.
  */
 export async function repriceCollections(tx: Queryable, ids: string[]) {
@@ -169,7 +170,12 @@ export async function repriceCollections(tx: Queryable, ids: string[]) {
     const amount = Number(row.amount_collected);
     let quote: ReturnType<typeof calculateRemittance>;
     try { quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), row.branch_id || branchIds.get(text(row.branch).toLowerCase()) || ""), incentiveRoleFor(channel), row.nop_from, row.nop_to, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation: row.reactivation === true }); }
-    catch (error) { throw new Error(`Cannot recalculate incentives for ${row.collection_id}: ${error instanceof Error ? error.message : "invalid incentive configuration"} Nothing was saved.`); }
+    catch (error) {
+      // Never priced (old-sheet data with no company share or breakdown saved): nothing can go stale, so the move goes
+      // ahead and the receipt stays unpriced, listed for review (owner, October 26, 2026: PH-10212782, 210 → D-250 FG).
+      if (row.remittance_amount === null && !row.remittance_breakdown) { unpriced.push(row.collection_id); continue; }
+      throw new Error(`Cannot recalculate incentives for ${row.collection_id}: ${error instanceof Error ? error.message : "invalid incentive configuration"} Nothing was saved.`);
+    }
     const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
     const share = forfeited ? amount : quote.remittance;
     const forfeit = forfeited ? round(amount - quote.remittance) : row.forfeited_incentive;
@@ -196,7 +202,11 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
     const branchId = row.branch_id || branches.find((branch) => branch.name.trim().toLowerCase() === text(row.branch).toLowerCase())?.id || "";
     let quote: ReturnType<typeof calculateSaleIncentive>;
     try { quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, branchId) }, amount); }
-    catch (error) { throw new Error(`Cannot recalculate incentives for ${row.sale_id}: ${error instanceof Error ? error.message : "invalid incentive configuration"} Nothing was saved.`); }
+    catch (error) {
+      // A sale saved before incentives existed (no company share): stays as it is, listed for review.
+      if (row.remittance_amount === null) { unpriced.push(row.sale_id); continue; }
+      throw new Error(`Cannot recalculate incentives for ${row.sale_id}: ${error instanceof Error ? error.message : "invalid incentive configuration"} Nothing was saved.`);
+    }
     const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
     const share = forfeited ? amount : quote.remittance;
     if (cents(share) === cents(Number(row.remittance_amount ?? 0)) && cents(amount - share) === cents(Number(row.mas_incentive ?? 0)) && (!forfeited || cents(quote.incentive) === cents(Number(row.forfeited_incentive ?? 0)))) continue;

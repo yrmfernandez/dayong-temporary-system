@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | To do (next) |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | To do |
 
+### Old-sheet receipts move to a program without tiers (2026-10-26)
+
+- **Owner:** PH-10212782 must move from 210 to D-250 FG (a mistake in the old sheets), but the move said "Cannot recalculate incentives for COL-LEG-12D9FD27F5: Configure exactly one MAS incentive tier for NOP 12."
+- **Found:** D-250 FG (DP-0016) has tiers only for NOP 13–120 (MAS 15%, Collector 10%, NABUNTURAN Collector 12%); nothing covers NOP 1–12, so a moved receipt at NOP 12 cannot be priced, and every move stopped. 15 old D-250 FG receipts at NOP 11–15 were never priced for the same reason.
+- **Done:** `repriceCollections` / `repriceSales` (`lib/entry-edit.ts`): a receipt that was never priced (old-sheet data: no company share and no breakdown saved; a sale with no company share) no longer stops a move when the new program has no tier for its NOP; it moves and stays unpriced, and the move's message lists it (the message existed, the list was never filled). A receipt that was priced still stops the move, so no stale incentive is kept. Tests: the never-priced case; the transfer test's receipts now carry a saved share so the block is still tested. All 248 tests and the build pass. No migration.
+- **To do (owner):** deploy, move PH-10212782 again; decide what D-250 FG pays for NOP 1–12 and add the tiers (all branches) if it should pay anything.
+
 ### Corrected account stayed Forfeited (2026-10-26)
 
 - **Owner:** PH-73684484 was corrected but still shows Forfeited; find the bug and fix it.

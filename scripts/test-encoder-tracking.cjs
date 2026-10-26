@@ -752,6 +752,21 @@ test('a member without a contact number gets the claimant contact, when it is a 
   assert.equal(memberContactOrClaimant(' ', '0'), '');
 });
 
+test('an old-sheet receipt that was never priced moves to a program without tiers for its NOP and stays unpriced (PH-10212782)', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  await seed('programs', [{ program_id: 'DP-210', program_name: 'D-210', base_pay: 250 }, { program_id: 'DP-250', program_name: 'D-250 FG', base_pay: 250 }]);
+  await seed('program_incentives', [{ incentive_id: 'FG-MAS', program_id: 'DP-250', role: 'MAS', from_month: 13, to_month: 120, incentive_type: 'percentage', mark_up: 0, incentive_amount: 15 }]);
+  await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'S', first_name: 'A' }]);
+  await seed('member_programs', [{ enrollment_id: 'E1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-210', doi: '2025-10-15', branch: 'BR-1', mas: 'M', status: 'Active' }]);
+  await seed('collections', [{ collection_id: 'COL-LEG-1', collection_batch_id: 'CBT', enrollment_id: 'E1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-210', or_number: 'OR-1', or_date: '2026-09-05', amount_collected: 250, month_from: '2026-09', month_to: '2026-09', nop_from: 12, nop_to: 12, status: 'Posted' }]);
+  const route = h.load('app/api/programs/transfer/route.ts');
+  const response = await route.POST(request({ from: 'DP-210', to: 'DP-250', enrollmentIds: ['E1'], reason: 'Old sheet said 210' }));
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(result.unpriced, 1, 'listed as not priced');
+  assert.deepEqual(await query("select program_id, remittance_amount from collections where collection_id = 'COL-LEG-1'"), [{ program_id: 'DP-250', remittance_amount: null }], 'moved, still unpriced');
+});
+
 test('Programs → Transfer members moves, merges or leaves each account', async () => {
   const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
   await seed('programs', [{ program_id: 'DP-OLD', program_name: 'D-300 (NEW)', base_pay: 300 }, { program_id: 'DP-NEW', program_name: 'D-300 (Bracketing)', base_pay: 300 }, { program_id: 'DP-400', program_name: 'D-400', base_pay: 400 }]);
@@ -763,7 +778,7 @@ test('Programs → Transfer members moves, merges or leaves each account', async
     { enrollment_id: 'E3-OLD', member_id: 'MEM-3', member_number: 'PH-3', program_id: 'DP-OLD', doi: '2026-06-15', branch: 'BR-1', mas: 'M', status: 'Active' },
     { enrollment_id: 'E3-NEW', member_id: 'MEM-3', member_number: 'PH-3', program_id: 'DP-NEW', doi: '2026-06-15', branch: 'BR-1', mas: 'M', status: 'Active' },
   ]);
-  const col = (id, enrollment, member, program, month, nop) => ({ collection_id: id, collection_batch_id: 'CBT', enrollment_id: enrollment, member_id: member, member_number: member.replace('MEM', 'PH'), program_id: program, or_number: id, or_date: `${month}-05`, amount_collected: 300, month_from: month, month_to: month, nop_from: nop, nop_to: nop, status: 'Posted' });
+  const col = (id, enrollment, member, program, month, nop) => ({ collection_id: id, collection_batch_id: 'CBT', enrollment_id: enrollment, member_id: member, member_number: member.replace('MEM', 'PH'), program_id: program, or_number: id, or_date: `${month}-05`, amount_collected: 300, month_from: month, month_to: month, nop_from: nop, nop_to: nop, status: 'Posted', remittance_amount: 300 });
   await seed('collections', [
     col('C1', 'E1', 'MEM-1', 'DP-OLD', '2026-07', 2),
     col('C2a', 'E2-NEW', 'MEM-2', 'DP-NEW', '2026-07', 2), col('C2b', 'E2-NEW', 'MEM-2', 'DP-NEW', '2026-08', 3), col('C2c', 'E2-OLD', 'MEM-2', 'DP-OLD', '2026-09', 2),
