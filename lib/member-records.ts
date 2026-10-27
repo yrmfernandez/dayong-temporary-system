@@ -161,16 +161,37 @@ async function findMembers(search: string, branch: string, mas: string, limit: n
  * Members with this exact surname and first name (owner, October 23, 2026): New Sales asks whether a new member typed
  * there is one of them, so the same person is not registered twice. Case, extra spaces and ñ do not matter.
  */
+/**
+ * First names that may be the same person's (owner, October 27, 2026: PH-91674008 was registered again because the old
+ * record's first name was written differently, so the exact-name check found nothing): the same first word, "Ma." and
+ * "Maria" alike, one name the start or the initial of the other ("Kris", "K." and "Kristine"), or a word in common
+ * ("Maria Luz" and "Luz"). The clerk still decides in the pop-up.
+ */
+export function similarFirstNames(typed: string, stored: string) {
+  const words = (value: string) => text(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z ]/g, " ").split(/\s+/).filter(Boolean)
+    .map((word) => (word === "ma" || word === "maria" ? "maria" : word));
+  const a = words(typed), b = words(stored);
+  if (!a.length || !b.length) return false;
+  if (a.join(" ") === b.join(" ") || a[0] === b[0]) return true;
+  // "Kris" in "Kristine", but not "Juan" in "Juana": one more letter often makes another name (Juan/Juana, Mario/Maria).
+  const startsAlike = (x: string, y: string) => (y.length === 1 ? x.startsWith(y) : y.length >= 3 && x.length - y.length >= 2 && x.startsWith(y));
+  if (startsAlike(a[0], b[0]) || startsAlike(b[0], a[0])) return true;
+  const shared = new Set(a.filter((word) => word !== "maria" && word.length > 1));
+  return b.some((word) => shared.has(word));
+}
+
 export async function findSameNameMembers(surname: string, firstName: string) {
   const fold = (value: string) => text(value).toLowerCase().replace(/ñ/g, "n").replace(/\s+/g, " ");
   const last = fold(surname), first = fold(firstName);
   if (last.length < 2 || first.length < 2) return [];
   const folded = (column: typeof members.surname | typeof members.first_name) => sql`translate(lower(regexp_replace(trim(${column}), '\\s+', ' ', 'g')), 'ñ', 'n')`;
   const programIds = sql<string[]>`coalesce((select array_agg(mp.program_id order by mp.program_id) from member_programs mp where mp.member_id = "members"."member_id"), '{}')`;
+  // Same surname, then a similar first name (similarFirstNames); exact first names come first.
   const rows = await currentDb().select({ member: members, programIds }).from(members)
-    .where(and(sql`${folded(members.surname)} = ${last}`, sql`${folded(members.first_name)} = ${first}`))
-    .orderBy(asc(members.member_number)).limit(10);
-  return rows.map(({ member: row, programIds: ids }) => memberChoice(row, ids));
+    .where(sql`${folded(members.surname)} = ${last}`).orderBy(asc(members.member_number)).limit(200);
+  return rows.filter(({ member: row }) => similarFirstNames(firstName, row.first_name))
+    .sort((x, y) => Number(fold(y.member.first_name) === first) - Number(fold(x.member.first_name) === first))
+    .slice(0, 10).map(({ member: row, programIds: ids }) => memberChoice(row, ids));
 }
 
 function memberChoice(row: typeof members.$inferSelect, ids: string[]) {

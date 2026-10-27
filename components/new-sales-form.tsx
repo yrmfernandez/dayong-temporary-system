@@ -729,8 +729,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
   /*
    * Same person check (owner, October 23, 2026): members were registered twice because the clerk typed a member who
-   * already exists instead of picking them. Once a new member's surname and first name are typed, members with exactly
-   * that name are looked up; unless the typed middle initial or birthdate says otherwise, a pop-up shows the member's
+   * already exists instead of picking them. Once a new member's surname and first name are typed, members with the same
+   * surname and a similar first name are looked up (lib/member-records.ts similarFirstNames); unless the typed middle initial or birthdate says otherwise, a pop-up shows the member's
    * details and the clerk answers Yes (the sale uses the existing member) or No (a different person, not asked again).
    */
   const declinedMatches = useRef<Record<string, Set<string>>>({});
@@ -759,7 +759,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
           member.address.houseBlockLot && `Address: ${member.address.houseBlockLot}`,
           programNames.length ? `Programs: ${programNames.join(", ")}` : "",
         ].filter(Boolean).join("\n");
-        const same = await confirmDialog(`A member with this name is already registered. Is this the same person?\n\n${details}`, {
+        const same = await confirmDialog(`A member with the same surname and a similar first name is already registered. Is this the same person?\n\n${details}`, {
           title: "This member may already exist", confirmLabel: "Yes, same person", cancelLabel: "No, a different person", requireChoice: true,
         });
         if (same) { selectExistingMember(saleId, member); return; }

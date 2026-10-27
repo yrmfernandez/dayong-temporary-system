@@ -13,13 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { readApiResponse } from "@/lib/api-response";
 import type { ClerkReport as Report, ReportLine } from "@/lib/clerk-report";
+import type { ClerkAuditView } from "@/lib/daily-audit";
 import { BURIAL_ACCOUNT, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
 type Remark = { id: string; comment: string; createdAt: string; encodedBy: string };
-type Result = { success: boolean; message?: string; report: Report; remarks: Remark[]; canChoose: boolean; isOwn: boolean; branch: string; branchChoices: string[]; masChoices: Array<{ id: string; name: string }>; clerks: Array<{ employeeId: string; name: string; branch: string }> };
+type Result = { success: boolean; message?: string; report: Report; remarks: Remark[]; canChoose: boolean; isOwn: boolean; audit: ClerkAuditView; branch: string; branchChoices: string[]; masChoices: Array<{ id: string; name: string }>; clerks: Array<{ employeeId: string; name: string; branch: string }> };
 
 const money = (value: number) => (value ? new Intl.NumberFormat("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) : "-");
 const todayInManila = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
@@ -85,7 +86,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   }, [load]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
   // Everything the report shows (owner, October 23, 2026: any change that the report reflects must update it).
-  useLiveRefresh(["sales", "collections", "remittances", "remittance_collections", "expenses", "cash_transactions", "bank_deposits", "daily_audits", "report_remarks", "report_notes",
+  useLiveRefresh(["sales", "collections", "remittances", "remittance_collections", "expenses", "cash_transactions", "bank_deposits", "daily_audits", "weekly_audits", "monthly_audits", "yearly_audits", "report_remarks", "report_notes",
     "members", "member_programs", "programs", "program_incentives", "receipt_photos", "employees", "branches", "remittance_methods"], load, 10000);
 
   /** Sends one of the clerk's own report actions, then reloads the report. */
@@ -121,6 +122,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
   const report = data?.report;
   const own = Boolean(data?.isOwn && !review);
+  // An approved report is locked for the clerk until an Administrator allows editing it (lib/daily-audit.ts).
+  const editable = own && !data?.audit.lock;
   const entries = report ? filterEntries(report.entries, entryFilter) : [];
   const filtering = JSON.stringify(entryFilter) !== JSON.stringify(NO_FILTER);
   return (
@@ -151,6 +154,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       </div>
 
       {message && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">{message}</p>}
+      {data && own && <AuditNotice audit={data.audit} />}
 
       {report && (
         <div className="clerk-report-sheet rounded-xl border bg-card p-3 text-[13px] text-card-foreground print:border-0 print:p-0">
@@ -172,7 +176,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                   {/* Receipt photos (owner, October 21, 2026: required for every expense on the report). */}
                   {report.expenses[index].photoIds.map((photoId, photo) => <ReceiptPhotoView key={photoId} photoId={photoId} label={report.expenses[index].photoIds.length > 1 ? `Receipt ${photo + 1}` : "Receipt"} />)}
                   {!report.expenses[index].photoIds.length && <span className="text-xs text-amber-700 dark:text-amber-400">No receipt photo</span>}
-                  {own && <><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this expense being deleted?", { required: true }); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></>}
+                  {editable && <><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this expense being deleted?", { required: true }); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></>}
                 </span>} />
               <Grid title="Cash Flow Transaction and Other Cash Ins" color={tone.cashFlow}
                 headers={["Bank Account Name", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
@@ -181,7 +185,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                   ? report.cashFlowTotals.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, `${item.count} deposit${item.count === 1 ? "" : "s"}`])
                   : report.deposits.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, item.remarks])}
                 total={report.depositTotal}
-                action={own && !report.cashFlowTotals ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this deposit being voided?", { required: true }); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
+                action={editable && !report.cashFlowTotals ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this deposit being voided?", { required: true }); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
             </div>
 
             {(report.fidelityReceived.length > 0 || own) && (
@@ -190,7 +194,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 headers={["MAS", report.whenLabel, "Amount", "Status", "Rmks", "Ref"]}
                 rows={report.fidelityReceived.map((item) => [item.masName, item.when, money(item.amount), item.status, item.remarks, item.id])}
                 total={report.cash.fidelity}
-                action={own ? (index) => { const item = report.fidelitySlips.find((slip) => slip.id === report.fidelityReceived[index].id); return item && ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this Fidelity entry being voided?", { required: true }); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
+                action={editable ? (index) => { const item = report.fidelitySlips.find((slip) => slip.id === report.fidelityReceived[index].id); return item && ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this Fidelity entry being voided?", { required: true }); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
             )}
 
             <div className="grid gap-3 lg:grid-cols-[1.1fr_0.8fr_1.6fr] print:grid-cols-[1.1fr_0.8fr_1.6fr]">
@@ -223,10 +227,10 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
       {report && kind !== "daily" && <MasSummary report={report} />}
 
-      {report && own && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}-${editingExpense?.id ?? ""}`} report={report} act={act} saved={saved} saving={saving} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
+      {report && editable && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}-${editingExpense?.id ?? ""}`} report={report} act={act} saved={saved} saving={saving} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
         editingExpense={editingExpense} onExpenseDone={() => setEditingExpense(null)}
         masChoices={data?.masChoices ?? []} editingFidelity={editingFidelity} onFidelityDone={() => setEditingFidelity(null)} />}
-      {report && own && data?.branch === "all" && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">Choose one branch to record expenses, deposits, Cash Beg and notes for it.</p>}
+      {report && editable && data?.branch === "all" && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">Choose one branch to record expenses, deposits, Cash Beg and notes for it.</p>}
 
       {report && (
         <div className="grid gap-2 rounded-lg border p-3 text-sm sm:grid-cols-3 print:hidden">
@@ -294,6 +298,31 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
           <div className="flex gap-2"><Input value={remark} onChange={(event) => setRemark(event.target.value)} placeholder="Add a remark for this clerk's report" /><Button type="button" disabled={!remark.trim()} onClick={() => void saveRemark()}>Save</Button></div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The audit of the clerk's own report (owner, October 27, 2026: clerks could not tell whether it was approved or had
+ * findings): its status, the result and findings once approved, and whether the report is locked.
+ */
+function AuditNotice({ audit }: { audit: ClerkAuditView }) {
+  const approved = audit.status === "Approved";
+  const findings = approved && audit.result === "With findings";
+  const box = findings ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+    : approved ? "border-emerald-300 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100" : "bg-muted/40";
+  return (
+    <div className={`space-y-1 rounded-lg border px-4 py-3 text-sm print:hidden ${box}`}>
+      <p className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">Audit:</span>
+        <StatusBadge status={approved ? `Approved · ${audit.result}` : audit.status === "Draft" ? "Being audited" : "Not audited yet"} tone={findings ? "warning" : approved ? "success" : audit.status === "Draft" ? "info" : "neutral"} />
+        {approved && <span className="text-xs">by {audit.approvedByName} on {showDateTime(audit.approvedAt)}</span>}
+      </p>
+      {findings && <div><p className="text-xs font-semibold">Findings</p><p className="whitespace-pre-wrap">{audit.findings}</p></div>}
+      {approved && !findings && audit.findings && <p className="whitespace-pre-wrap text-xs">{audit.findings}</p>}
+      {audit.lock ? <p className="text-xs font-medium">{audit.lock}</p>
+        : audit.editAllowed ? <p className="text-xs font-medium">{audit.editAllowed.byName} allowed you to edit this report ({showDateTime(audit.editAllowed.at)}): {audit.editAllowed.reason}</p>
+        : null}
     </div>
   );
 }

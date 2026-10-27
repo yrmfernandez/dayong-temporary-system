@@ -2180,6 +2180,32 @@ test('daily audit: HR, Finance, and Admin can open it; only Admin approves and a
   assert.equal(approved.status, 200, JSON.stringify(await approved.clone().json()));
   assert.deepEqual((await audits()).map((row) => [row.status, row.approved_by_name]), [['Approved', 'Admin']]);
   assert.match((await (await route.POST(request({ date: '2026-09-28', employeeId: 'MD-3', findings: 'x', result: 'Balanced' }))).json()).message, /approved and locked/);
+
+  // The clerk sees the approved audit on their own report, which is locked for them until an Administrator allows editing it.
+  const asAdmin = () => h.setUser({ userId: 'USR-1', employeeId: 'MD-0', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const asClerk = () => h.setUser({ userId: 'USR-3', employeeId: 'MD-3', name: 'Clerk One', roleNames: ['Entry Clerk'], permissions: {} });
+  const clerkReport = h.load('app/api/clerk-report/route.ts');
+  const saveNotes = async () => (await clerkReport.POST(request({ action: 'save-notes', kind: 'daily', date: '2026-09-28', specificRemarks: 'Late receipt' }))).json();
+  const seen = async () => (await (await clerkReport.GET(new Request('http://localhost/api/clerk-report?kind=daily&date=2026-09-28'))).json()).audit;
+  asClerk();
+  const view = await seen();
+  assert.deepEqual([view.status, view.result, view.findings, view.approvedByName, view.editAllowed], ['Approved', 'Balanced', 'Receipts match, rechecked', 'Admin', null]);
+  assert.match(view.lock, /approved in the audit and locked/);
+  assert.match((await saveNotes()).message, /approved in the audit and locked/);
+  assert.match((await (await clerkReport.POST(request({ action: 'add-deposit', date: '2026-09-28', amount: 100, bankAccount: 'DSRDPI', transferType: 'GCash', remarks: 'Ref 123456' }))).json()).message, /locked/, 'a deposit on the approved day too');
+  assert.equal((await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'allow-edit', reason: 'Missing deposit' }))).status, 403, 'only an Administrator unlocks');
+  asAdmin();
+  assert.match((await (await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'allow-edit', reason: '' }))).json()).message, /reason/);
+  assert.equal((await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'allow-edit', reason: 'Missing deposit' }))).status, 200);
+  asClerk();
+  assert.deepEqual([(await seen()).lock, (await seen()).editAllowed.reason], ['', 'Missing deposit']);
+  assert.equal((await saveNotes()).success, true, 'allowed: the clerk saves again');
+  asAdmin();
+  assert.equal((await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'lock' }))).status, 200);
+  assert.deepEqual((await audits()).map((row) => row.status), ['Approved'], 'the audit stays approved');
+  asClerk();
+  assert.match((await saveNotes()).message, /locked/, 'locked again');
+  asAdmin();
   assert.match((await (await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'reopen', reason: '' }))).json()).message, /reason/);
   assert.equal((await route.PATCH(request({ date: '2026-09-28', employeeId: 'MD-3', decision: 'reopen', reason: 'Recount needed' }))).status, 200);
   assert.deepEqual((await audits()).map((row) => [row.status, row.approved_by_name, row.reopen_reason]), [['Draft', null, 'Recount needed']]);
@@ -4411,4 +4437,19 @@ test('Member Corrections: one account can move receipts to a new account in anot
   // Loading a member returns the details the merge table compares.
   const loaded = await (await h.load('app/api/member-corrections/route.ts').GET(new Request('http://localhost/api/member-corrections?member=MEM-2'))).json();
   assert.equal(loaded.details.address, 'Mintal');
+});
+
+test('New Sales same-person check finds the same surname with a similar first name, not only the exact name (PH-91674008, October 27, 2026)', async () => {
+  const h = harness({ userId: 'USR-1', employeeId: 'DPE-0001', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  const { similarFirstNames } = h.load('lib/member-records.ts');
+  for (const [typed, stored] of [['Ana Marie', 'ANA'], ['Maria Luz', 'MA. LUZ'], ['Kristine', 'K.'], ['Kristine', 'Kris'], ['Luz', 'Maria Luz'], ['Jose', 'JOSE']]) assert.equal(similarFirstNames(typed, stored), true, `${typed} / ${stored}`);
+  for (const [typed, stored] of [['Ana', 'Rosa'], ['Kristine', 'Karla Mae'], ['Maria', 'Rosa'], ['Jo', 'Jose'], ['Juana', 'Juan'], ['Mario', 'Maria']]) assert.equal(similarFirstNames(typed, stored), false, `${typed} / ${stored}`);
+  await seed('members', [
+    { member_id: 'M-OLD', member_number: 'PH-1', surname: 'DELA CRUZ', first_name: 'MA. LUZ' },
+    { member_id: 'M-OTHER', member_number: 'PH-2', surname: 'DELA CRUZ', first_name: 'ROSA' },
+    { member_id: 'M-ELSE', member_number: 'PH-3', surname: 'SANTOS', first_name: 'MARIA LUZ' },
+  ]);
+  const route = h.load('app/api/members/route.ts');
+  const found = await (await route.GET(new Request('http://localhost/api/members?sameName=1&surname=Dela%20Cruz&firstName=Maria%20Luz'))).json();
+  assert.deepEqual(found.members.map((member) => member.phMemberNumber), ['PH-1'], 'the old record with "Ma. Luz" is offered; other first names and surnames are not');
 });

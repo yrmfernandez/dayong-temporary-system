@@ -1,9 +1,10 @@
 import { canAccessPath } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
-import { AUDIT_RESULTS, asAuditPeriod, decideDailyAudit, getDailyAudits, periodSpan, saveDailyAudit } from "@/lib/daily-audit";
+import { AUDIT_DECISIONS, AUDIT_RESULTS, asAuditPeriod, type AuditDecision, decideDailyAudit, getDailyAudits, periodSpan, saveDailyAudit } from "@/lib/daily-audit";
 import { withEncoder } from "@/lib/encoder-context";
 
-// HR Officers, Finance, and Administrators prepare and edit audits (daily, weekly, monthly, yearly); only Administrators approve or reopen them.
+// HR Officers, Finance, and Administrators prepare and edit audits (daily, weekly, monthly, yearly); only Administrators approve or
+// reopen them, and allow a clerk to edit an approved report again (or lock it again).
 async function access() {
   const user = await getSessionUser();
   if (!user) return { user: null, canView: false, canApprove: false };
@@ -33,11 +34,11 @@ export const POST = withEncoder(async (request: Request) => {
 
 export const PATCH = withEncoder(async (request: Request) => {
   const { canApprove } = await access();
-  if (!canApprove) return Response.json({ success: false, message: "Only an Administrator can approve or reopen an audit." }, { status: 403 });
+  if (!canApprove) return Response.json({ success: false, message: "Only an Administrator can approve, reopen or unlock an audit." }, { status: 403 });
   try {
     const body = await request.json();
-    const decision = body.decision === "reopen" ? "reopen" : body.decision === "approve" ? "approve" : null;
-    if (!decision) throw new Error("Choose approve or reopen.");
+    const decision = (AUDIT_DECISIONS as readonly string[]).includes(String(body.decision)) ? body.decision as AuditDecision : null;
+    if (!decision) throw new Error("Choose approve, reopen, allow editing or lock.");
     return Response.json({ success: true, audit: await decideDailyAudit({ date: String(body.date ?? ""), employeeId: String(body.employeeId ?? ""), decision, reason: String(body.reason ?? ""), period: asAuditPeriod(body.period) }) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to update the audit." }, { status: 400 }); }
 });

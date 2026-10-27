@@ -218,6 +218,13 @@
       "when": 1792991303594,
       "tag": "0030_fully_paid",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793064585823,
+      "tag": "0031_clerk_edit_allowed",
+      "breakpoints": true
     }
   ]
 }

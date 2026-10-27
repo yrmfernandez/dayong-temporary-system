@@ -949,6 +949,10 @@ const periodAudit = (name: string) => pgTable(name, {
   approved_by_name: text(),
   approved_at: moment("approved_at"),
   reopen_reason: text(),
+  /** An Administrator let the clerk change their approved report again (lib/daily-audit.ts allowClerkEdit). */
+  clerk_edit_allowed_by_name: text(),
+  clerk_edit_allowed_at: moment("clerk_edit_allowed_at"),
+  clerk_edit_reason: text(),
   updated_at: moment("updated_at"),
   ...encoder(),
 }, (t) => [index(`${name}_employee_date_idx`).on(t.employee_id, t.report_date)]).enableRLS();

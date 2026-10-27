@@ -23,7 +23,7 @@ type Figures = {
 };
 type Period = "daily" | "weekly" | "monthly" | "yearly";
 const PERIODS: Array<[Period, string, string]> = [["daily", "Daily", "day"], ["weekly", "Weekly", "week"], ["monthly", "Monthly", "month"], ["yearly", "Yearly", "year"]];
-type Audit = { id: string; status: string; findings: string; result: string; approvedByName: string; approvedAt: string; reopenReason: string; updatedAt: string; preparedBy: string };
+type Audit = { id: string; status: string; findings: string; result: string; approvedByName: string; approvedAt: string; reopenReason: string; updatedAt: string; preparedBy: string; editAllowedByName: string; editAllowedAt: string; editReason: string };
 type Row = { employeeId: string; employeeName: string; branch: string; status: "Not started" | "Draft" | "Approved"; audit: Audit | null; figures: Figures };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
@@ -43,7 +43,7 @@ export default function DailyAuditPage() {
   const [open, setOpen] = useState("");
   // The branch of the report opened inside an audit: all branches first (like the audit's totals), switchable.
   const [reportBranch, setReportBranch] = useState("all");
-  const [draft, setDraft] = useState({ findings: "", result: "Balanced", reason: "" });
+  const [draft, setDraft] = useState({ findings: "", result: "Balanced", reason: "", editReason: "" });
   const [message, setMessage] = useState("");
 
   const load = useCallback(async (day: string, which: Period) => {
@@ -70,7 +70,7 @@ export default function DailyAuditPage() {
     if (open === row.employeeId) { setOpen(""); return; }
     setOpen(row.employeeId);
     setReportBranch("all");
-    setDraft({ findings: row.audit?.findings ?? "", result: row.audit?.result || "Balanced", reason: "" });
+    setDraft({ findings: row.audit?.findings ?? "", result: row.audit?.result || "Balanced", reason: "", editReason: "" });
   }
 
   async function send(method: "POST" | "PATCH", body: Record<string, unknown>, done: string) {
@@ -128,7 +128,7 @@ export default function DailyAuditPage() {
             {[["Accounts", String(row.figures.accounts)], ["Collected", money(row.figures.gross)], ["Expected remittance", money(row.figures.expectedRemittance)]].map(([label, value]) =>
               <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-semibold tabular-nums">{value}</dd></div>)}
           </dl>
-          <div className="min-w-28"><StatusBadge status={row.status} tone={row.status === "Approved" ? "success" : row.status === "Draft" ? "info" : "warning"} />{row.audit?.result && <span className="mt-1 block text-xs text-muted-foreground">{row.audit.result}</span>}</div>
+          <div className="min-w-28"><StatusBadge status={row.status} tone={row.status === "Approved" ? "success" : row.status === "Draft" ? "info" : "warning"} />{row.audit?.result && <span className="mt-1 block text-xs text-muted-foreground">{row.audit.result}</span>}{row.status === "Approved" && row.audit?.editAllowedAt && <span className="mt-1 block text-xs text-amber-700 dark:text-amber-400">Clerk may edit</span>}</div>
           <Button type="button" size="sm" variant={open === row.employeeId ? "default" : "outline"} aria-expanded={open === row.employeeId} onClick={() => toggle(row)}>{open === row.employeeId ? "Close" : row.status === "Approved" ? "View" : "Audit"}</Button>
         </div>
         {open === row.employeeId && <div className="space-y-5 border-t bg-muted/20 p-4">
@@ -185,6 +185,13 @@ export default function DailyAuditPage() {
                 {row.status === "Approved" ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
                   <p><strong>{row.audit?.result}</strong> · approved by {row.audit?.approvedByName} on {when(row.audit?.approvedAt ?? "")}. Figures are locked as approved.</p>
                   {row.audit?.findings && <p className="mt-1 whitespace-pre-wrap">{row.audit.findings}</p>}
+                  {/* The clerk's report is locked while approved; an Administrator may let them edit it (owner, October 27, 2026). */}
+                  {row.audit?.editAllowedAt
+                    ? <p className="mt-2 text-xs font-medium">The clerk may edit this report: allowed by {row.audit.editAllowedByName} on {when(row.audit.editAllowedAt)} ({row.audit.editReason}). The audit keeps the figures it was approved on.</p>
+                    : <p className="mt-2 text-xs">The clerk&apos;s report is locked: they cannot change its expenses, deposits, Fidelity, Cash Beg or notes.</p>}
+                  {canApprove && (row.audit?.editAllowedAt
+                    ? <div className="mt-3"><Button type="button" variant="outline" disabled={busy} onClick={() => void send("PATCH", { employeeId: row.employeeId, decision: "lock" }, "The clerk's report is locked again.")}>Lock the report again</Button></div>
+                    : <div className="mt-3 flex flex-wrap items-end gap-2"><label className="text-xs">Reason to let the clerk edit<Input className="mt-1 h-9 min-w-72 bg-background" value={draft.editReason} onChange={(event) => setDraft({ ...draft, editReason: event.target.value })} /></label><Button type="button" variant="outline" disabled={busy || draft.editReason.trim().length < 3} onClick={() => void send("PATCH", { employeeId: row.employeeId, decision: "allow-edit", reason: draft.editReason }, "The clerk can edit this report until you lock it again.")}>Allow the clerk to edit</Button></div>)}
                   {canApprove && <div className="mt-3 flex flex-wrap items-end gap-2"><label className="text-xs">Reason to reopen<Input className="mt-1 h-9 min-w-72 bg-background" value={draft.reason} onChange={(event) => setDraft({ ...draft, reason: event.target.value })} /></label><Button type="button" variant="outline" disabled={busy || draft.reason.trim().length < 3} onClick={() => void send("PATCH", { employeeId: row.employeeId, decision: "reopen", reason: draft.reason }, "Audit reopened.")}>Reopen</Button></div>}
                 </div> : <div className="space-y-3">
                   <div role="radiogroup" aria-label="Audit result" className="flex flex-wrap gap-2">{(["Balanced", "With findings"] as const).map((result) => <label key={result} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${draft.result === result ? "border-primary bg-primary/5 font-semibold" : ""}`}><input type="radio" name={`result-${row.employeeId}`} checked={draft.result === result} onChange={() => setDraft({ ...draft, result })} />{result}</label>)}</div>

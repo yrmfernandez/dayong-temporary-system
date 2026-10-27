@@ -2,7 +2,7 @@ import { refuseOnDayOff } from "@/lib/day-off";
 import { canAccessPath } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { buildClerkReport } from "@/lib/clerk-report";
-import { asAuditPeriod, auditedEmployees, periodSpan } from "@/lib/daily-audit";
+import { asAuditPeriod, auditedEmployees, clerkAuditView, clerkItemDay, periodSpan, reportLockProblem, type AuditPeriod } from "@/lib/daily-audit";
 import { getEmployees } from "@/lib/employees";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { getReportRemarks } from "@/lib/report-remarks";
@@ -64,10 +64,37 @@ export async function GET(request: Request) {
     const remarks = (await getReportRemarks(report.from, report.to)).filter((remark) => remark.scope === report.encoder.name);
     // Only the clerk records expenses, deposits and notes, on their own report.
     const isOwn = report.encoder.employeeId === user.employeeId;
-    return Response.json({ success: true, report, remarks, canChoose, isOwn, branch: branch || "all", branchChoices, masChoices: isOwn ? await masChoices(branch) : [], clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
+    // The audit of this report, so the clerk knows it is approved and its findings (owner, October 27, 2026).
+    const audit = await clerkAuditView(report.encoder.employeeId, kind, report.from);
+    return Response.json({ success: true, report, remarks, canChoose, isOwn, audit, branch: branch || "all", branchChoices, masChoices: isOwn ? await masChoices(branch) : [], clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to build the report." }, { status: 400 });
   }
+}
+
+/**
+ * The days a report action changes, for the audit lock: an expense falls on the day it is recorded (today, or the day an
+ * existing one was recorded), a deposit or Fidelity slip on its date (both the old and the new date when edited), notes
+ * and Cash Beg on their own period. "" when nothing locks the action.
+ */
+async function lockedBy(body: Record<string, unknown>, employeeId: string) {
+  const days: Array<[string, AuditPeriod]> = [];
+  const id = text(body.id), action = text(body.action);
+  if (action === "add-expense") days.push([manilaNow().date, "daily"]);
+  if (action === "edit-expense" || action === "delete-expense") days.push([await clerkItemDay("expense", id), "daily"]);
+  if (action === "add-deposit" || action === "add-fidelity") days.push([text(body.date), "daily"]);
+  if (action === "edit-deposit" || action === "edit-fidelity") days.push([text(body.date), "daily"]);
+  if (["edit-deposit", "void-deposit"].includes(action)) days.push([await clerkItemDay("deposit", id), "daily"]);
+  if (["edit-fidelity", "void-fidelity"].includes(action)) days.push([await clerkItemDay("fidelity", id), "daily"]);
+  if (action === "save-notes" || action === "save-cash-beg") {
+    const kind = asAuditPeriod(body.kind);
+    days.push([periodSpan(kind, text(body.date)).start, kind]);
+  }
+  for (const [day, from] of days) {
+    const problem = await reportLockProblem(employeeId, day, from);
+    if (problem) return problem;
+  }
+  return "";
 }
 
 /**
@@ -88,6 +115,9 @@ export const POST = withEncoder(async (request: Request) => {
     const { active } = await clerkBranches(user.employeeId);
     const chosen = active.find((name) => same(name, body.branch)) ?? "";
     const clerk = { employeeId: user.employeeId, name: me?.name || user.name, branch: chosen || me?.branch || "" };
+    // An approved report is locked for the clerk until an Administrator allows editing it (lib/daily-audit.ts).
+    const locked = await lockedBy(body, user.employeeId);
+    if (locked) throw new Error(locked);
     switch (body.action) {
       case "add-expense": {
         if (!clerk.branch) throw new Error("Choose the branch of the report, or ask an administrator to set your primary branch in Employees.");
