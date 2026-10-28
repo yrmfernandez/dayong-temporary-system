@@ -11,7 +11,8 @@ import {
   type SessionUser,
   verifySessionToken,
 } from "@/lib/auth";
-import { canAccessPath } from "@/lib/access-control";
+import { canAccessPath, isAdministratorRole } from "@/lib/access-control";
+import { allowedDuringLunch, isLunchBreak, LUNCH_BREAK_MESSAGE } from "@/lib/lunch-break";
 import { recheckSession, SESSION_RECHECK_MS } from "@/lib/session-account";
 
 // API routes reachable without a session. Every other /api route needs a valid sign-in before its handler runs;
@@ -86,6 +87,11 @@ export async function proxy(request: NextRequest) {
     }
     if (session?.mustChangePassword && !passwordChangeApi.has(pathname)) {
       return finish(NextResponse.json({ success: false, passwordChangeRequired: true, message: "Change your password in Settings → Security before continuing." }, { status: 403 }));
+    }
+    // Lunch break, 12:00–12:59 PM Manila (lib/lunch-break.ts): no saves except clocking in or out, and an Administrator's
+    // urgent fix (their screen comes back every 3 minutes).
+    if (!safeMethods.has(request.method) && !allowedDuringLunch(pathname) && !session?.roleNames.some(isAdministratorRole) && isLunchBreak()) {
+      return finish(NextResponse.json({ success: false, lunchBreak: true, message: LUNCH_BREAK_MESSAGE }, { status: 423 }));
     }
     // API data is per user and confidential: never store it in browser, proxy or CDN caches.
     const response = next();

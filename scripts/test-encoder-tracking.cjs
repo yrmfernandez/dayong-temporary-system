@@ -4543,3 +4543,39 @@ test('New Sales same-person check finds the same surname with a similar first na
   const found = await (await route.GET(new Request('http://localhost/api/members?sameName=1&surname=Dela%20Cruz&firstName=Maria%20Luz'))).json();
   assert.deepEqual(found.members.map((member) => member.phMemberNumber), ['PH-1'], 'the old record with "Ma. Luz" is offered; other first names and surnames are not');
 });
+
+test('lunch break: 12:00–12:59 PM Manila nobody saves except clocking in or out and an Administrator\'s urgent fix (October 28, 2026)', async () => {
+  const h = harness();
+  const { isLunchBreak, lunchSecondsLeft, allowedDuringLunch, pageOpenDuringLunch } = h.load('lib/lunch-break.ts');
+  // Manila is UTC+8: 04:00 UTC is 12:00 PM.
+  assert.equal(isLunchBreak(new Date('2026-10-28T03:59:59Z')), false, '11:59:59 AM');
+  assert.equal(isLunchBreak(new Date('2026-10-28T04:00:00Z')), true, '12:00 PM');
+  assert.equal(isLunchBreak(new Date('2026-10-28T04:59:59Z')), true, '12:59:59 PM');
+  assert.equal(isLunchBreak(new Date('2026-10-28T05:00:00Z')), false, '1:00 PM: it goes away');
+  assert.equal(lunchSecondsLeft(new Date('2026-10-28T04:45:30Z')), 14 * 60 + 30);
+  assert.deepEqual([allowedDuringLunch('/api/attendance'), allowedDuringLunch('/api/collections'), allowedDuringLunch('/api/attendance-reviews')], [true, false, false]);
+  assert.deepEqual([pageOpenDuringLunch('/attendance'), pageOpenDuringLunch('/collections')], [true, false]);
+
+  // The server, at 12:30 PM: an Entry Clerk's save is refused, their clock-in and reads go through; an Administrator saves.
+  const { proxy } = h.load('proxy.ts');
+  const { createSessionToken } = h.load('lib/auth.ts');
+  const { NextRequest } = require('next/server');
+  const call = async (roleNames, path, method = 'POST') => {
+    const token = await createSessionToken({ userId: 'USR-1', employeeId: 'DPE-1', name: 'user', roleNames, permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false }, checkedAt: Date.now() });
+    return proxy(new NextRequest(`http://localhost${path}`, { method, headers: { cookie: `dayong_session=${token}`, origin: 'http://localhost', host: 'localhost' } }));
+  };
+  // The harness stands in Response for NextResponse; next() lets the request through.
+  Response.next = () => new Response(null, { status: 200 });
+  const realNow = Date.now;
+  Date.now = () => new Date('2026-10-28T04:30:00Z').getTime();
+  try {
+    const refused = await call(['Entry Clerk'], '/api/collections');
+    assert.equal(refused.status, 423);
+    assert.equal((await refused.json()).lunchBreak, true);
+    assert.notEqual((await call(['Entry Clerk'], '/api/attendance')).status, 423, 'clocking in or out still works');
+    assert.notEqual((await call(['Entry Clerk'], '/api/collections', 'GET')).status, 423, 'reading is not a save');
+    assert.notEqual((await call(['Administrator'], '/api/collections')).status, 423, 'an Administrator\'s urgent fix');
+  } finally { Date.now = realNow; }
+  assert.notEqual((await call(['Entry Clerk'], '/api/collections')).status, 423, 'outside the break');
+  delete Response.next;
+});

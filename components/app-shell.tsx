@@ -6,9 +6,10 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { usePathname, useRouter } from "next/navigation";
 
 import { ClearingDayEndPrompt } from "@/components/clearing-day-end";
+import { LunchBreakScreen } from "@/components/lunch-break-screen";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
-import { executiveRoles, type AccessContext } from "@/lib/access-control";
+import { executiveRoles, isAdministratorRole, type AccessContext } from "@/lib/access-control";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { installFriendlyApiErrors } from "@/lib/friendly-api-errors";
 import type { MaintenanceNotice } from "@/lib/maintenance-notice-text";
@@ -135,6 +136,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       {/* Day-end Clearing review for the Entry Clerk (components/clearing-day-end.tsx). */}
       {user && <ClearingDayEndPrompt />}
+      {/* 12:00–12:59 PM: nobody can use the system except Attendance (components/lunch-break-screen.tsx). */}
+      <LunchBreakScreen pathname={pathname} administrator={access.roleNames.some(isAdministratorRole)} />
     </div>
   );
 }

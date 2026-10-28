@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Lunch break lock, 12:00–12:59 PM (2026-10-28)
+
+- **Owner:** from 12 noon to 1 PM nobody can do anything in the system: a big Lunch Break screen that cannot be closed and disappears by itself after 12:59. Decided: everyone, Administrators too; the server refuses saves as well; clocking in or out still works. Then: Administrators get an urgent-fix button that lets them use the system, and the screen pops up again every 3 minutes.
+- **Done:** `lib/lunch-break.ts` (12:00–13:00 Manila, the attendance lunch break `BREAK_START`/`BREAK_END`). `components/lunch-break-screen.tsx`, mounted in the app shell: full-screen LUNCH BREAK with a countdown to 1:00 PM, no close button, the page under it `inert` (no clicks, typing or focus; what was typed stays), not shown on `/attendance` (button **Go to Attendance (clock in / out)**), goes away at 1:00 PM by itself; uses the server clock (`GET /api/server-time`), not the computer's. Administrators: **Urgent fix (Administrator)** hides it for 3 minutes, then it comes back. `proxy.ts`: during the break every save (POST/PATCH/PUT/DELETE) returns 423 "Lunch break…", except `/api/attendance`, sign-in/out, and Administrators. Reading pages is not blocked. Test covers the hours, the allowed APIs and the server refusing an Entry Clerk's save but not a clock-in, a read or an Administrator's save. All 274 tests and build pass. No migration.
+- **In progress:** none.
+- **To do (owner):** deploy, then check it at 12:00 PM.
+
 ### Members: delete a deactivated account entered by mistake; Deactivated filter (2026-10-28)
 
 - **Owner:** PH-24581942's D-190 account is empty and was a mistake, but could not be removed (only deactivated); only a deactivated account may be deleted, with a reason; add it to the filters.
