@@ -4131,6 +4131,19 @@ test('Member Corrections: move receipts between accounts of a member, and split 
   assert.deepEqual(await correctionNumbers("collection_id = 'C2'"), [['C2', 'E1', 3, '2026-03']], 'the kept receipt stays');
 });
 
+test('Member Corrections: a receipt moved into the middle of an account fills its month; the account keeps its own numbering (October 28, 2026)', async () => {
+  // PH-10130825: the D-210 HG February receipt was on the member's 190 account, numbered there; moving it back failed
+  // with "gaps in payment coverage" (the moved receipt was left out of the check, and its NOP set the start).
+  const h = harness(correctionAdmin);
+  await seedCorrectionMember();
+  await seed('member_programs', [{ enrollment_id: 'E2', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-350B', doi: '2025-11-15', branch: 'BR-1', mas: 'Maria', status: 'Active' }]);
+  await query("update collections set enrollment_id = 'E2', program_id = 'DP-350B', nop_from = 1, nop_to = 1, month_from = '2025-12', month_to = '2025-12' where collection_id = 'C2'");
+  const post = correctionPost(h.load('app/api/member-corrections/route.ts'));
+  const moved = await post({ tool: 'move', input: { collectionIds: ['C2'], targetEnrollmentId: 'E1' }, apply: true, reason: 'March receipt filed under the other account' });
+  assert.equal(moved.status, 200, JSON.stringify(moved.body));
+  assert.deepEqual(await correctionNumbers(), [['C1', 'E1', 2, '2026-02'], ['C2', 'E1', 3, '2026-03'], ['C3', 'E1', 4, '2026-04']]);
+});
+
 test('Member Corrections: merging two members joins accounts in the same program and removes the duplicate', async () => {
   const h = harness(correctionAdmin);
   await seedCorrectionMember();

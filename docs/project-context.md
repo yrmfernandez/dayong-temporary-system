@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Member Corrections: moving a receipt into the middle of an account (2026-10-28)
+
+- **Owner:** PH-10130825: OR 17286N cannot be moved to its D-210 HG account: "D-210 HG account ENR-LEG-F2223AC7D4: Account ENR-LEG-F2223AC7D4 has gaps in payment coverage. Review its history. Nothing was saved."
+- **Found (production, read only):** 17286N (Feb 12, ₱210) is on the member's 190 account as NOP 29 (2026-03), the only ₱210 receipt there; the D-210 HG account has January (NOP 26) and then March onward, no February.
+- **Cause:** `moveReceipts` (`lib/member-corrections.ts`) checked the target's new history with the moved receipts still carrying their old account, and the check (`accountState`) counts only the account's own receipts, so the moved receipt was left out and its month showed as a gap. Any move into the middle of a history failed this way; a move to the end or to an empty account worked. Also, the target's numbering started from the lowest NOP of all its receipts, the moved ones included, whose NOP and month are the other account's numbering.
+- **Done:** the moved receipts are the target's in the check; an account with receipts keeps its own first NOP and month (a moved receipt sets the start only for an account with none). Production preview of this move: 17286N → D-210 HG NOP 27 (2026-02), the next 8 D-210 HG receipts one month on (October 15's to NOP 35, 2026-10), the 190 account's later 7 receipts one month back to close its gap; both stay U. Test added (fails before the fix); 270 tests and the build pass. No migration.
+- **To do (owner):** deploy, then move 17286N again in Member Corrections.
+
 ### Old sheet rows still missing, added through Member Corrections (2026-10-28)
 
 - **Owner:** some data in `legacy-data/old-data/2026 DATABASE (NS + COLL).xlsx` is still not in the database; import it using the member corrections.

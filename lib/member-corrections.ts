@@ -233,10 +233,15 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
     const sourceOf = new Map(data.payments.filter((payment) => movedIds.has(payment.id)).map((payment) => [payment.id, accountOf(payment.enrollmentId)]));
     // Counted again at the target's monthly pay when it differs; NOPs move onto the target's numbering (registration fee).
     const recount = new Map(sourceIds.map((id) => { const source = accountOf(id); return [id, receiptMonthsAt({ name: source.programName, rate: source.basePay, flexible: Boolean(source.flexible), max: source.maxMonthlyPayment ?? null }, { name: target.programName, rate: target.basePay, flexible: Boolean(target.flexible), max: target.maxMonthlyPayment ?? null })]; }));
-    const targetPayments = data.payments.filter((payment) => payment.enrollmentId === target.id || movedIds.has(payment.id));
+    // The moved receipts are the target's from now on: the history check counts only the account's own receipts, so a
+    // receipt still carrying its old account was left out and a move into the middle of a history showed a gap.
+    const targetPayments = data.payments.filter((payment) => payment.enrollmentId === target.id || movedIds.has(payment.id)).map((payment) => ({ ...payment, enrollmentId: target.id }));
     const shift = (payment: AccountPayment) => movedIds.has(payment.id) ? saleNops(target) - saleNops(sourceOf.get(payment.id)!) : 0;
-    // A new account numbers from its own start (the first collection's NOP, the month after its DOI).
-    const targetPlan = renumber(numberingStart(created ? [] : targetPayments.map((payment) => ({ nop: payment.nopFrom + shift(payment), month: payment.monthFrom })), target), targetPayments,
+    // A new account numbers from its own start (the first collection's NOP, the month after its DOI). An account with
+    // receipts keeps its own start: a moved receipt's NOP and month are the other account's numbering (owner, October
+    // 28, 2026: PH-10130825's 190 receipt into its D-210 HG account started that account at the 190 numbering, a gap).
+    const own = targetPayments.filter((payment) => !movedIds.has(payment.id));
+    const targetPlan = renumber(numberingStart(created ? [] : (own.length ? own : targetPayments).map((payment) => ({ nop: payment.nopFrom + shift(payment), month: payment.monthFrom })), target), targetPayments,
       (payment) => movedIds.has(payment.id) ? recount.get(sourceOf.get(payment.id)!.id)?.(payment) ?? span(payment) : span(payment));
     const old = new Map(data.payments.map((payment) => [payment.id, payment]));
     const statuses = [await storeStatus(tx, target, targetPlan, today)];
