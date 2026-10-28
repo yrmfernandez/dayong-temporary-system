@@ -3,6 +3,7 @@ import { pageTicked } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { correctSaleOrCollection } from "@/lib/entry-corrections";
+import { orNoLetterConfirmed } from "@/lib/or-no-letter";
 import { findExceptions } from "@/lib/exceptions";
 
 /** Data problems for administrators, and to read for any role with Exceptions ticked in Roles; ?legacy=1 includes imported records. */
@@ -25,7 +26,9 @@ export const PATCH = withEncoder(async (request: Request) => {
   if (dayOff) return dayOff;
   if (!(await canManageUsers())) return Response.json({ success: false, message: "Administrator access is required." }, { status: 403 });
   try {
-    return Response.json({ success: true, ...(await correctSaleOrCollection(await request.json())) });
+    // "This OR number really has no letter" counts only when an Administrator ticked it (lib/or-no-letter.ts).
+    const body = await request.json() as Record<string, unknown>;
+    return Response.json({ success: true, ...(await correctSaleOrCollection({ ...body, orNoLetter: await orNoLetterConfirmed(body.orNoLetter) })) });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to correct the entry." }, { status: 400 });
   }

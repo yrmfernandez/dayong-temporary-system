@@ -8,6 +8,7 @@ import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/d
 import { DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
+import { NO_LETTER_NOTE } from "@/lib/or-no-letter";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { recordCorrection } from "@/lib/record-corrections";
 import { calculateRemittance, calculateSaleIncentive, tiersForBranch } from "@/lib/remittance";
@@ -116,6 +117,8 @@ export type EntryEditInput = {
   applicationNumber?: string; notes?: string; paymentMethod?: string;
   /** New Sale: HH:MM; blank keeps no time. */
   doiTime?: string;
+  /** Collections: an Administrator confirmed the OR number really has no letter (checked by the route). */
+  orNoLetter?: boolean;
 };
 
 /** Saves an edited entry; returns a message saying what changed. */
@@ -331,8 +334,9 @@ async function editCollection(tx: Transaction, input: EntryEditInput): Promise<O
   const oldMonths = Math.max(1, (row.nop_to ?? 0) - (row.nop_from ?? 0) + 1);
   const months = Number(input.months ?? oldMonths);
   if (!orNumber) throw new Error("OR number is required.");
+  const confirmedNoLetter = input.orNoLetter === true && entryKey(orNumber) !== entryKey(row.or_number) && /^\d+$/.test(orNumber);
   if (entryKey(orNumber) !== entryKey(row.or_number)) {
-    const problem = orNumberProblem(orNumber);
+    const problem = orNumberProblem(orNumber, { noLetter: input.orNoLetter === true });
     if (problem) throw new Error(problem);
     const used = (await recordedOrNumbers([orNumber], tx)).get(entryKey(orNumber));
     if (used && used.collectionId !== row.collection_id) throw new Error(`OR Number ${orNumber} is already recorded on collection ${used.collectionId}.`);
@@ -411,7 +415,7 @@ async function editCollection(tx: Transaction, input: EntryEditInput): Promise<O
   const parts = [moved ? `moved from ${from.programName} to ${to.programName}` : "", changedKeys.filter((key) => !["enrollment_id", "program_id", "month_from", "month_to", "nop_from", "nop_to", "remittance_amount", "forfeited_incentive"].includes(key)).map((key) => key.replace(/_/g, " ")).join(", "),
     reorder ? `NOP ${mine.nopFrom}${mine.nopTo > mine.nopFrom ? `-${mine.nopTo}` : ""} (${mine.monthFrom}${mine.monthTo !== mine.monthFrom ? ` to ${mine.monthTo}` : ""})` : "",
     renumbered.length ? `${renumbered.length} other payment(s) renumbered${followed.repriced ? `, ${followed.repriced} with new incentives` : ""}${followed.unpriced.length ? ` (${followed.unpriced.length} kept their figures: no incentive tiers)` : ""}` : "", slip ? `slip ${slip.slipId} expected ${slip.expectedChange > 0 ? "+" : ""}${slip.expectedChange.toFixed(2)} (difference ${slip.difference.toFixed(2)})` : ""].filter(Boolean);
-  return { changed: true, summary: parts.join("; "), before, after: { ...after, renumbered, repricedOthers: followed, statuses: Object.fromEntries(statuses), slip } };
+  return { changed: true, summary: parts.join("; "), before, after: { ...after, ...(confirmedNoLetter ? { orNumberNote: NO_LETTER_NOTE } : {}), renumbered, repricedOthers: followed, statuses: Object.fromEntries(statuses), slip } };
 }
 
 async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome> {

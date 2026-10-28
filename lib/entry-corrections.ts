@@ -4,7 +4,8 @@ import { inTransaction, schema } from "@/lib/db";
 import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/duplicate-entries";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { recordCorrection } from "@/lib/record-corrections";
-import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
+import { isDigitsOnlyOrNumber, normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
+import { NO_LETTER_NOTE } from "@/lib/or-no-letter";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
@@ -44,7 +45,9 @@ export async function correctSaleOrCollection(body: Record<string, unknown>) {
     if (changesOr) {
       if (!isSale && !orNumber) throw new Error("OR number is required.");
       // A corrected OR number ends with its branch letter too (lib/or-number.ts); an unchanged old one may stay as it is.
-      if (!isSale && entryKey(orNumber) !== entryKey(row.orNumber) && orNumberProblem(orNumber)) throw new Error(orNumberProblem(orNumber));
+      // `orNoLetter`: an Administrator confirmed the receipt has no letter (the route checks who ticked it).
+      const problem = orNumberProblem(orNumber, { noLetter: body.orNoLetter === true });
+      if (!isSale && entryKey(orNumber) !== entryKey(row.orNumber) && problem) throw new Error(problem);
       if ((!isSale || orDate) && (!validDate(orDate) || orDate > today)) throw new Error("Enter a valid OR date, today or earlier.");
       // Each OR number is one receipt; a correction must not reuse another entry's.
       if (!isSale && entryKey(orNumber) !== entryKey(row.orNumber)) {
@@ -65,7 +68,8 @@ export async function correctSaleOrCollection(body: Record<string, unknown>) {
       return { before: { applicationNumber: row.applicationNumber, amountPaid: row.amount, notes: row.notes, orNumber: row.orNumber, orDate: row.orDate }, after: { applicationNumber, amountPaid: amount, notes, orNumber, orDate } };
     }
     await tx.update(schema.collections).set({ or_number: orNumber, or_date: orDate, amount_collected: amount }).where(eq(schema.collections.collection_id, id));
-    return { before: { orNumber: row.orNumber, orDate: row.orDate, amountCollected: row.amount }, after: { orNumber, orDate, amountCollected: amount } };
+    const confirmed = body.orNoLetter === true && isDigitsOnlyOrNumber(orNumber) && entryKey(orNumber) !== entryKey(row.orNumber);
+    return { before: { orNumber: row.orNumber, orDate: row.orDate, amountCollected: row.amount }, after: { orNumber, orDate, amountCollected: amount, ...(confirmed ? { orNumberNote: NO_LETTER_NOTE } : {}) } };
   });
   await recordCorrection(moduleName, id, reason, outcome.before, outcome.after);
   return { message: `${moduleName} record corrected and audited.` };

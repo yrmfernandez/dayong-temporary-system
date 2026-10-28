@@ -17,6 +17,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Corrections: an Administrator confirms an OR number without a letter (2026-10-28)
+
+- **Owner:** in corrections, the admin can tick a box that the OR number really has no letter.
+- **Done:** `orNumberProblem(value, { noLetter })` (`lib/or-number.ts`) accepts digits only when confirmed. The tick (`orNoLetter`) is taken by Member Corrections → Insert missing receipt (`insertReceipt`), Edit / Corrections (`saveEntryEdit`, collections) and the quick correction (`correctSaleOrCollection`: Edit / Corrections, Today's Entries, Exceptions, Entry History). Every route passes it through `orNoLetterConfirmed` (`lib/or-no-letter.ts`): true only for an Administrator (`canConfirmOrWithoutLetterFor`: manage-users or the Administrator role), refused for anyone else (IT included). The correction's Record Corrections entry says "OR number confirmed by an Administrator to have no letter". Forms: `components/or-no-letter-check.tsx`, shown only to Administrators while the OR typed is digits only (Entry History's form, which cannot tell, shows it for collections). New Collections entry is unchanged: the letter is still required there. Test added (Admin accepted, IT refused, quick correction); 271 tests and the build pass. No migration.
+- **To do (owner):** deploy; then DAVNOR-COLL row 9280 (MEM-LEG-2B6625A761, PH-09857141, OR 0048) can be added in Member Corrections → Insert missing receipt with the box ticked.
+
 ### Member Corrections: moving a receipt into the middle of an account (2026-10-28)
 
 - **Owner:** PH-10130825: OR 17286N cannot be moved to its D-210 HG account: "D-210 HG account ENR-LEG-F2223AC7D4: Account ENR-LEG-F2223AC7D4 has gaps in payment coverage. Review its history. Nothing was saved."

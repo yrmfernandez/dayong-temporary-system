@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { OrNoLetterCheck } from "@/components/or-no-letter-check";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,7 @@ export function EntryCorrectionForm({ entry, endpoint, onCancel, onSaved }: { en
   const [applicationNumber, setApplicationNumber] = useState(entry.applicationNumber);
   const [notes, setNotes] = useState(entry.notes);
   const [reason, setReason] = useState("");
+  const [noLetter, setNoLetter] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -30,7 +32,7 @@ export function EntryCorrectionForm({ entry, endpoint, onCancel, onSaved }: { en
     try {
       const body = isSale
         ? { id: entry.id, module: "New Sales", reason, applicationNumber, amountPaid: Number(amount), notes, orNumber, orDate }
-        : { id: entry.id, module: "Collections", reason, orNumber, orDate, amountCollected: Number(amount) };
+        : { id: entry.id, module: "Collections", reason, orNumber, orDate, amountCollected: Number(amount), orNoLetter: noLetter };
       const response = await fetch(endpoint, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to correct the entry.");
@@ -46,7 +48,8 @@ export function EntryCorrectionForm({ entry, endpoint, onCancel, onSaved }: { en
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {isSale && <div className="space-y-1"><Label htmlFor={`app-${entry.id}`}>Application no.</Label><Input id={`app-${entry.id}`} value={applicationNumber} onChange={(event) => setApplicationNumber(event.target.value)} /></div>}
-        <div className="space-y-1"><Label htmlFor={`or-${entry.id}`}>OR number</Label><Input id={`or-${entry.id}`} value={orNumber} onChange={(event) => setOrNumber(event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor={`or-${entry.id}`}>OR number</Label><Input id={`or-${entry.id}`} value={orNumber} onChange={(event) => setOrNumber(event.target.value)} />
+          {!isSale && <OrNoLetterCheck orNumber={orNumber} checked={noLetter} onChange={setNoLetter} />}</div>
         <div className="space-y-1"><Label htmlFor={`ordate-${entry.id}`}>OR date</Label><Input id={`ordate-${entry.id}`} type="date" value={orDate} onChange={(event) => setOrDate(event.target.value)} /></div>
         <div className="space-y-1">
           <Label htmlFor={`amount-${entry.id}`}>Amount</Label>

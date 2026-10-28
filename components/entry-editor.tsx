@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { OrNoLetterCheck } from "@/components/or-no-letter-check";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +47,7 @@ export function EntryEditor({ kind, id, onCancel, onSaved }: { kind: EditKind; i
   async function save() {
     setSaving(true); setError("");
     try {
-      const response = await fetch("/api/entry-corrections", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, id, reason, ...form }) });
+      const response = await fetch("/api/entry-corrections", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, id, reason, ...form, orNoLetter: kind === "Collection" && form.orNoLetter === "yes" }) });
       const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the entry.");
       onSaved(result.message ?? "Saved.");
@@ -82,7 +83,8 @@ export function EntryEditor({ kind, id, onCancel, onSaved }: { kind: EditKind; i
               {entry.programs.filter((program) => program.active || program.id === v.programId).map((program) => <option key={program.id} value={program.id}>{program.name} · ₱{program.rate}{own.has(program.id) && program.id !== v.programId ? " · member already has this account" : ""}</option>)}
             </select></div>}
       {kind === "New Sale" && <div className="space-y-1"><Label>Application no.</Label><Input value={form.applicationNumber} onChange={set("applicationNumber")} /></div>}
-      <div className="space-y-1"><Label>OR number</Label><Input value={form.orNumber} onChange={set("orNumber")} /></div>
+      <div className="space-y-1"><Label>OR number</Label><Input value={form.orNumber} onChange={set("orNumber")} />
+        {kind === "Collection" && <OrNoLetterCheck orNumber={form.orNumber} checked={form.orNoLetter === "yes"} onChange={(checked) => setForm((current) => ({ ...current, orNoLetter: checked ? "yes" : "" }))} />}</div>
       <div className="space-y-1"><Label>{kind === "New Sale" ? "Application date" : "OR date"}</Label><Input type="date" value={form.orDate} onChange={set("orDate")} /></div>
       {kind === "New Sale" && <div className="space-y-1"><Label>DOI time</Label><Input type="time" value={form.doiTime ?? ""} onChange={set("doiTime")} /></div>}
       <div className="space-y-1"><Label>Amount</Label><Input type="number" min="0" step="0.01" value={form.amount} onWheel={(event) => event.currentTarget.blur()} onChange={set("amount")} /></div>

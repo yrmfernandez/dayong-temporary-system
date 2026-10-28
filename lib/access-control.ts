@@ -59,6 +59,8 @@ export const canManageConfigurationFor = (context: AccessContext) => context.per
 // Entry Corrections (owner, October 15, 2026): fixing what an Entry Clerk typed wrong on a New Sale or Collection,
 // remitted ones included, is IT's and the Administrators' job.
 export const canCorrectEntriesFor = (context: AccessContext) => context.permissions.manageUsers || hasRole(context, itRoles);
+/** In a correction, only an Administrator confirms that an OR number really has no letter (owner, October 28, 2026). */
+export const canConfirmOrWithoutLetterFor = (context: Pick<AccessContext, "roleNames" | "permissions">) => context.permissions.manageUsers || context.roleNames.some(isAdministratorRole);
 
 /** Pages a role receives when its page access has not been configured. Used to pre-fill the Roles editor. */
 export function defaultRoutesForRole(role: string) {

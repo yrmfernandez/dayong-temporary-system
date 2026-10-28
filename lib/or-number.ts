@@ -5,11 +5,16 @@
  */
 export const OR_NUMBER_EXAMPLE = "12345 C";
 export const isValidOrNumber = (value: string) => /^\d+\s?[A-Za-z]$/.test(String(value ?? "").trim());
-/** Why the OR number is not accepted, or "" when it is. */
-export function orNumberProblem(value: string) {
+/** Digits only: the OR number has no letter (accepted in corrections when an Administrator confirms it, `noLetter`). */
+export const isDigitsOnlyOrNumber = (value: string) => /^\d+$/.test(String(value ?? "").trim());
+/**
+ * Why the OR number is not accepted, or "" when it is. `noLetter`: an Administrator confirmed, in a correction, that
+ * the receipt really has no letter (owner, October 28, 2026), so digits only are accepted.
+ */
+export function orNumberProblem(value: string, { noLetter = false }: { noLetter?: boolean } = {}) {
   const text = String(value ?? "").trim();
   if (!text) return "OR Number is required.";
-  if (isValidOrNumber(text)) return "";
+  if (isValidOrNumber(text) || (noLetter && isDigitsOnlyOrNumber(text))) return "";
   if (/^\d+$/.test(text)) return `OR Number ${text} needs the branch letter at the end (e.g. ${text} C).`;
   return `OR Number ${text} must be digits followed by one letter, e.g. ${OR_NUMBER_EXAMPLE}.`;
 }

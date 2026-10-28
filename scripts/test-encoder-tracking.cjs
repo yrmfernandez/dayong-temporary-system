@@ -4144,6 +4144,28 @@ test('Member Corrections: a receipt moved into the middle of an account fills it
   assert.deepEqual(await correctionNumbers(), [['C1', 'E1', 2, '2026-02'], ['C2', 'E1', 3, '2026-03'], ['C3', 'E1', 4, '2026-04']]);
 });
 
+test('corrections: an Administrator confirms an OR number really has no letter; IT cannot (October 28, 2026)', async () => {
+  const h = harness(correctionAdmin);
+  await seedCorrectionMember();
+  await query("delete from collections where collection_id = 'C3'");
+  const post = correctionPost(h.load('app/api/member-corrections/route.ts'));
+  const insert = (extra = {}) => post({ tool: 'insert', input: { enrollmentId: 'E1', orNumber: '0048', orDate: '2026-04-10', amount: 350, months: 1, ...extra }, apply: true, reason: 'Old sheet receipt without a letter' });
+  assert.match((await insert()).body.message, /needs the branch letter/);
+  h.setUser({ userId: 'USR-8', employeeId: 'DPE-8', name: 'it', roleNames: ['IT Clerk'], permissions: {} });
+  assert.match((await insert({ orNoLetter: true })).body.message, /Only an Administrator/);
+  h.setUser(correctionAdmin);
+  const saved = await insert({ orNoLetter: true });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.deepEqual((await query("select or_number from collections where enrollment_id = 'E1' order by or_date")).map((row) => row.or_number), ['101 A', '102 A', '0048']);
+  assert.match(saved.body.result.notes.join(' '), /confirmed by an Administrator to have no letter/);
+
+  // The quick correction (Today's Entries, Exceptions, Edit / Corrections) too.
+  const quick = async (extra = {}) => { const response = await h.load('app/api/entry-corrections/route.ts').PATCH(request({ id: 'C2', module: 'Collections', reason: 'Receipt has no letter', orNumber: '0102', orDate: '2026-03-10', amountCollected: 350, ...extra })); return response.json(); };
+  assert.match((await quick()).message, /needs the branch letter/);
+  assert.equal((await quick({ orNoLetter: true })).success, true);
+  assert.equal((await query("select or_number from collections where collection_id = 'C2'"))[0].or_number, '0102');
+});
+
 test('Member Corrections: merging two members joins accounts in the same program and removes the duplicate', async () => {
   const h = harness(correctionAdmin);
   await seedCorrectionMember();

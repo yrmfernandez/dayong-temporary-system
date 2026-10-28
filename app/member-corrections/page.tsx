@@ -1,5 +1,6 @@
 "use client";
 
+import { OrNoLetterCheck } from "@/components/or-no-letter-check";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { UserRoundCog } from "lucide-react";
 
@@ -152,7 +153,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
     if (tool === "move") return moveTo === "new" ? { collectionIds: [...chosen], newProgramId: form.newProgram ?? "", newDoi: form.newDoi ?? "" }
       : { collectionIds: [...chosen], targetEnrollmentId: (moveTo === "other" ? form.otherTarget : form.target) ?? "" };
     if (tool === "insert") return { enrollmentId: accountId, orNumber: form.orNumber ?? "", orDate: form.orDate ?? "", amount: number(form.amount), months: number(form.months ?? "1"), collectedByRole: form.role || "MAS",
-      mas: form.mas || account?.mas, dateRemitted: form.dateRemitted || undefined, startNop: number(form.startNop), startMonth: form.startMonth || undefined };
+      mas: form.mas || account?.mas, dateRemitted: form.dateRemitted || undefined, startNop: number(form.startNop), startMonth: form.startMonth || undefined, orNoLetter: form.orNoLetter === "yes" };
     if (tool === "merge") {
       // Picks are per member ("this" page's member or the duplicate); the API wants them relative to the kept one.
       const kept = keepOther ? "duplicate" : "this";
@@ -223,7 +224,8 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
     {tool === "insert" && account && <>
       {accountSelect}
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="space-y-1"><Label htmlFor="ins-or">OR number</Label><Input id="ins-or" placeholder="e.g. 12665 B" value={form.orNumber ?? ""} onChange={(event) => set("orNumber", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="ins-or">OR number</Label><Input id="ins-or" placeholder="e.g. 12665 B" value={form.orNumber ?? ""} onChange={(event) => set("orNumber", event.target.value)} />
+          <OrNoLetterCheck orNumber={form.orNumber ?? ""} checked={form.orNoLetter === "yes"} onChange={(checked) => set("orNoLetter", checked ? "yes" : "")} /></div>
         <div className="space-y-1"><Label htmlFor="ins-date">OR date</Label><Input id="ins-date" type="date" max={today()} value={form.orDate ?? ""} onChange={(event) => set("orDate", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="ins-amount">Amount</Label><Input id="ins-amount" type="number" min="0.01" step="0.01" placeholder={String(account.rate)} value={form.amount ?? ""} onChange={(event) => set("amount", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="ins-months">Months covered</Label><Input id="ins-months" type="number" min={1} max={120} value={form.months ?? "1"} onChange={(event) => set("months", event.target.value)} /></div>

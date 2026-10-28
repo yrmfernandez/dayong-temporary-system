@@ -6,6 +6,7 @@ import { currentDb, inTransaction, schema, type Transaction } from "@/lib/db";
 import { mergeAccountInto, numberingStart, receiptMonthsAt, renumber, repriceCollections, type NumberingStart } from "@/lib/entry-edit";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
+import { NO_LETTER_NOTE } from "@/lib/or-no-letter";
 import { recordCorrection } from "@/lib/record-corrections";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { formatDate as showDate } from "@/lib/date-format";
@@ -442,6 +443,8 @@ export type InsertInput = {
   enrollmentId: string; orNumber: string; orDate: string; amount: number; months: number;
   collectedByRole?: string; mas?: string; dateRemitted?: string; reactivation?: boolean;
   startNop?: number; startMonth?: string;
+  /** An Administrator confirmed the OR number really has no letter (checked by the route). */
+  orNoLetter?: boolean;
 };
 
 /**
@@ -456,8 +459,9 @@ export function insertReceipt(input: InsertInput, reason: string, apply: boolean
     const account = data.accounts[0];
     if (!account) throw new Error("Account not found.");
     const orNumber = normalizeOrNumber(text(input.orNumber));
-    const problem = orNumberProblem(orNumber);
+    const problem = orNumberProblem(orNumber, { noLetter: input.orNoLetter === true });
     if (!orNumber || problem) throw new Error(problem || "Enter the OR number.");
+    const confirmedNoLetter = input.orNoLetter === true && /^\d+$/.test(orNumber);
     const used = (await recordedOrNumbers([orNumber], tx)).get(entryKey(orNumber));
     if (used) throw new Error(`OR Number ${orNumber} is already recorded on collection ${used.collectionId}.`);
     const orDate = text(input.orDate), dateRemitted = text(input.dateRemitted) || orDate;
@@ -494,10 +498,10 @@ export function insertReceipt(input: InsertInput, reason: string, apply: boolean
     return {
       summary: `OR ${orNumber} (${orDate}, ₱${amount.toLocaleString("en-PH")}) inserted on ${account.programName} account ${account.id} as ${coverage(mine)}; ${lines.length - 1} other receipt(s) renumbered; status ${status.before} → ${status.after}.`,
       receipts: lines, statuses: [status],
-      notes: [`Saved as already remitted (no slip), so it does not enter Clearing or Remittances.${priced.repriced ? " Its incentive and company share are worked out at its NOPs." : ""}`],
+      notes: [`Saved as already remitted (no slip), so it does not enter Clearing or Remittances.${priced.repriced ? " Its incentive and company share are worked out at its NOPs." : ""}`, ...(confirmedNoLetter ? [`${NO_LETTER_NOTE}.`] : [])],
       recordId: id,
       before: { account: account.id, status: account.storedStatus },
-      after: { collection: id, orNumber, orDate, amount, months, channel, mas, dateRemitted, coverage: coverage(mine), renumbered: lines.slice(1).map(({ id: receipt, before, after }) => ({ id: receipt, before, after })), status: status.after },
+      after: { collection: id, orNumber, ...(confirmedNoLetter ? { orNumberNote: NO_LETTER_NOTE } : {}), orDate, amount, months, channel, mas, dateRemitted, coverage: coverage(mine), renumbered: lines.slice(1).map(({ id: receipt, before, after }) => ({ id: receipt, before, after })), status: status.after },
     };
   });
 }

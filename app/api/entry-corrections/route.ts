@@ -3,6 +3,7 @@ import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { correctSaleOrCollection } from "@/lib/entry-corrections";
+import { orNoLetterConfirmed } from "@/lib/or-no-letter";
 import { getEditableEntry, saveEntryEdit, type EditKind } from "@/lib/entry-edit";
 import { isSearchKind, SEARCH_LIMIT, searchEntries } from "@/lib/entry-search";
 import { canDeleteRecords } from "@/lib/admin-delete";
@@ -48,7 +49,9 @@ export const PATCH = withEncoder(async (request: Request) => {
   if (dayOff) return dayOff;
   if (!(await allowedUser())) return Response.json({ success: false, message: "IT or Administrator access is required." }, { status: 403 });
   try {
-    return Response.json({ success: true, ...(await correctSaleOrCollection(await request.json())) });
+    // "This OR number really has no letter" counts only when an Administrator ticked it (lib/or-no-letter.ts).
+    const body = await request.json() as Record<string, unknown>;
+    return Response.json({ success: true, ...(await correctSaleOrCollection({ ...body, orNoLetter: await orNoLetterConfirmed(body.orNoLetter) })) });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to correct the entry." }, { status: 400 });
   }
@@ -67,6 +70,7 @@ export const PUT = withEncoder(async (request: Request) => {
       kind: editKind(body.kind), id: String(body.id ?? ""), reason: String(body.reason ?? ""),
       enrollmentId: string("enrollmentId"), programId: string("programId"), orNumber: string("orNumber"), orDate: string("orDate"), amount: number("amount"), months: number("months"),
       dateRemitted: string("dateRemitted"), applicationNumber: string("applicationNumber"), notes: string("notes"), paymentMethod: string("paymentMethod"), doiTime: string("doiTime"),
+      orNoLetter: await orNoLetterConfirmed(body.orNoLetter),
     });
     return Response.json({ success: true, message });
   } catch (error) {

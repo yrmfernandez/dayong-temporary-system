@@ -2,6 +2,7 @@ import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { refuseOnDayOff } from "@/lib/day-off";
 import { withEncoder } from "@/lib/encoder-context";
+import { orNoLetterConfirmed } from "@/lib/or-no-letter";
 import { fixCoverage, getMemberForCorrection, programChoices, insertReceipt, mergeMembers, moveReceipts, searchMembers, sharedPrograms, splitMember } from "@/lib/member-corrections";
 
 /** IT and Administrators with the Member Corrections page (Roles → Page access may take it away). */
@@ -36,6 +37,8 @@ export const POST = withEncoder(async (request: Request) => {
   if (!(await allowedUser())) return denied();
   try {
     const body = await request.json() as { tool?: string; input?: Record<string, unknown>; reason?: string; apply?: boolean };
+    // Insert: "This OR number really has no letter" counts only when an Administrator ticked it (lib/or-no-letter.ts).
+    if (body.tool === "insert" && body.input) body.input.orNoLetter = await orNoLetterConfirmed(body.input.orNoLetter);
     const input = (body.input ?? {}) as never, reason = String(body.reason ?? ""), apply = body.apply === true;
     const tools = { coverage: fixCoverage, move: moveReceipts, merge: mergeMembers, split: splitMember, insert: insertReceipt } as const;
     const tool = tools[body.tool as keyof typeof tools];
