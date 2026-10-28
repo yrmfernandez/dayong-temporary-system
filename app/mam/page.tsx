@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { paidInMonth } from "@/lib/mam-format";
@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate } from "@/lib/date-format";
+import { MamPrint } from "@/components/mam-print";
 
 type Report = ReturnType<typeof buildMamReport>;
 type Row = Report["rows"][number];
@@ -97,6 +98,11 @@ export default function MamPage() {
   const [choices, setChoices] = useState<{ branches: Array<{ id: string; name: string }>; staff: Array<{ employeeId: string; fullName: string; branchIds: string[] }>; ownMembersOnly: boolean } | null>(null);
   const [memberOptions, setMemberOptions] = useState<Array<{ id: string; number: string; name: string }>>([]);
   const [selected, setSelected] = useState<Row | null>(null);
+  // Printed on the MAM sheet ("Printed … by").
+  const [printedBy, setPrintedBy] = useState("");
+  useEffect(() => {
+    void fetch("/api/auth/session", { cache: "no-store" }).then((response) => response.json()).then((result) => { if (result?.success) setPrintedBy(result.user?.name ?? ""); }).catch(() => {});
+  }, []);
   const pending = useRef<AbortController | null>(null);
 
   async function load(sync = false) {
@@ -264,7 +270,9 @@ export default function MamPage() {
   }
 
   return (
-    <section className="mam-report mx-auto max-w-[1600px] space-y-6 text-foreground">
+    <>
+    {report && <MamPrint report={report} groups={[...groups.values()]} printedBy={printedBy} />}
+    <section className="mam-report mx-auto max-w-[1600px] space-y-6 text-foreground print:hidden">
       {/* Header Bar */}
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-violet-90 pb-5">
         <div>
@@ -555,10 +563,6 @@ export default function MamPage() {
                 {group.map((row) => (
                   <tr key={row.id} className="align-top hover:bg-muted/10 transition-colors">
                     <td className="sticky left-0 z-10 max-w-72 bg-background p-4 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]">
-                      {/* Printed: one line per member, to save paper (owner, October 23, 2026). */}
-                      <p className="mam-print-line hidden print:block">
-                        <strong>{row.memberName}</strong> · {row.memberNumber} · {row.programName} · APP {row.applicationNumber || "—"} · DOI {showDate(row.doi)} · {money(row.basePay)}/mo
-                      </p>
                       <button
                         className="text-left font-semibold text-primary underline-offset-4 hover:underline text-sm print:hidden"
                         onClick={() => setSelected(row)}
@@ -579,17 +583,7 @@ export default function MamPage() {
 
                     {row.periods.map((period) => (
                       <td key={period.month} className="min-w-[20rem] max-w-96 border-l p-4">
-                        <p className="mam-print-line hidden print:block">
-                          {period.error ? "Needs review"
-                            : !period.state ? "—"
-                            : <>
-                                <strong>{period.state.status}</strong> {money(period.collected)}
-                                {period.receipts.length ? ` · OR ${period.receipts.map((p) => p.orNumber).join(", ")}` : ""}
-                                {` · NOP ${period.state.nop} · Bal ${period.state.balance === null ? "—" : money(period.state.balance)}`}
-                                {period.state.temporarilySuspended ? " · Suspended" : ""}
-                              </>}
-                        </p>
-                        <div className="print:hidden">
+                        <div>
                         {period.error ? (
                           <div className="rounded border border-destructive/20 bg-destructive/10 p-2 text-destructive">
                             <span className="font-semibold">Needs review:</span> {period.error}
@@ -757,5 +751,6 @@ export default function MamPage() {
         </div>
       )}
     </section>
+    </>
   );
 }

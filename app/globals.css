@@ -718,14 +718,32 @@ main [data-slot="card"].receipt-entry-card {
   /* CEO/President dashboard: keep each card and chart whole on a page; editing controls are not printed. */
   .executive-dashboard [data-slot="card"], .executive-dashboard section > div > * { break-inside: avoid; }
   .executive-dashboard button { display: none !important; }
-  .mam-report table { font-size: 9px; }
-  .mam-report th, .mam-report td { position: static !important; min-width: 0 !important; padding: 4px !important; }
-  .mam-report table { width: 100% !important; table-layout: fixed; }
-  .mam-report tr { break-inside: avoid; }
-  /* MAM: each member prints as one compact row (owner, October 23, 2026); the member column is wider so its line rarely wraps. */
-  .mam-report tbody td { padding: 1px 3px !important; vertical-align: middle; }
-  .mam-report .mam-scroll th:first-child { width: 28%; }
-  .mam-print-line { margin: 0; line-height: 1.25; }
+  /* MAM on paper (owner, October 28, 2026): components/mam-print.tsx, A4 landscape, black on white, one MAS per page. */
+  .mam-print { page: mam; color: #000; background: #fff; font-size: 7.5pt; line-height: 1.25; }
+  .mam-print-section + .mam-print-section { break-before: page; }
+  .mam-print-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1.5px solid #000; padding-bottom: 2mm; }
+  .mam-print-brand { display: flex; align-items: center; gap: 3mm; }
+  .mam-print-logo { width: 13mm; height: 13mm; object-fit: contain; }
+  .mam-print-company { font-size: 11pt; font-weight: 700; }
+  .mam-print-title { text-align: right; }
+  .mam-print-name { font-size: 12pt; font-weight: 900; letter-spacing: 0.04em; }
+  .mam-print-mas { display: flex; justify-content: space-between; gap: 4mm; padding: 1.5mm 0; border-bottom: 1px solid #000; margin-bottom: 2mm; }
+  .mam-print-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 3mm; }
+  .mam-print-table thead { display: table-header-group; }
+  .mam-print-table tfoot { display: table-row-group; }
+  .mam-print-table tr { break-inside: avoid; }
+  .mam-print-table th, .mam-print-table td { border: 0.5px solid #777; padding: 0.8mm 1.2mm; vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+  .mam-print-table th { background: #e5e5e5 !important; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .mam-print-table .is-projected { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .mam-print-table tfoot td { border-top: 1.5px solid #000; font-weight: 700; }
+  .mam-col-no { width: 6mm; } .mam-col-member { width: 52mm; } .mam-col-date { width: 20mm; } .mam-col-rate { width: 13mm; }
+  .mam-print-no, .mam-print-total-label { text-align: right !important; }
+  .mam-print-cell-head { display: flex; justify-content: space-between; gap: 1mm; }
+  .mam-print-key { margin-top: 1mm; }
+  .mam-print-signatures { display: flex; justify-content: space-between; gap: 12mm; margin-top: 10mm; break-inside: avoid; }
+  .mam-print-signatures > div { flex: 1; text-align: center; }
+  .mam-print-line { display: block; border-bottom: 1px solid #000; height: 6mm; }
+  @page mam { size: A4 landscape; margin: 10mm 10mm 12mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; } }
   /* Clerk report sheets stay readable on paper when printed from dark mode. */
   .clerk-report-sheet {
     --card: #fff; --card-foreground: #000; --muted-foreground: #555; --border: #bbb;

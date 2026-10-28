@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### MAM printout redesigned (2026-10-28)
+
+- **Owner:** redesign the MAM printing (design approved; add the last date of payment; A4 landscape).
+- **Done:** new print-only `components/mam-print.tsx` (styles `.mam-print*` and `@page mam` in `app/globals.css`); the screen view is hidden when printing and unchanged otherwise; the old one-line print rules were removed. Layout as described in `docs/mam-implementation.md`: one MAS per page, header, summary, # / Member / DOI / Rate / Last payment / months (3 lines each, * = Waiver), totals, key, signature lines, page numbers. Checked with a sample render printed to PDF (A4 landscape pages). Type check, lint, all 271 tests and build pass.
+- **In progress:** none.
+- **To do (owner):** deploy, then print one branch from MAM and say what to adjust (the signature titles and one MAS per page were kept as proposed).
+
 ### Old-site member 305 added without receipts (2026-10-28)
 
 - **Owner:** find Joydeline Liray (old site); put her in the system, receipts to be added later in Member Corrections.
