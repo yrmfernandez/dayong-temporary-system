@@ -479,6 +479,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/audit-source-month-coverage.mjs](../scripts/audit-source-month-coverage.mjs) | `node:fs`, `node:crypto`, `@next/env`, `postgres`, `./legacy-sources.mjs`, `../lib/account-rules.ts`, `./source-cross-year-months.mjs` | No flag detected; read source before running |
 | [scripts/check-12665b-link-private.mjs](../scripts/check-12665b-link-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/check-clerk-report-saves.mjs](../scripts/check-clerk-report-saves.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
+| [scripts/inspect-clerk-pending-cash.mjs](../scripts/inspect-clerk-pending-cash.mjs) | `@next/env`, `postgres` | Read only; give part of the clerk's name |
 | [scripts/check-collections.mjs](../scripts/check-collections.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/check-company-report.mjs](../scripts/check-company-report.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |

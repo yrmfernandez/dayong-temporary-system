@@ -17,6 +17,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Traced: Charnny Ambasing's pending cash (2026-10-28)
+
+- **Owner:** trace Ambasing Charny's report: why does it have Pending cash, to be encoded?
+- **Done:** traced read-only on production. "Pending cash, to be encoded" is never counted from entries; it is the amount typed in the report's Notes (`report_notes.pending_cash`). MD-2026-0002 typed ₱18,842 herself on her CALINAN daily report of Oct 28, 2026 at 5:15 PM; it is the only notes row of hers with pending cash. Without it her Remaining Cash on Hand would be ₱18,812 (Cash Beg 9,450 + Sales Net 5,900 + Collection Net 22,113.70 + Fidelity 22.10 − Expenses 9,450 − Bank 9,223.80), so she most likely typed her cash on hand there, which counts it twice (Remaining shows ₱37,654). New read-only `scripts/inspect-clerk-pending-cash.mjs <name>`. No app change.
+- **To do (owner/clerk):** ask her what the ₱18,842 is; if it is her cash on hand, she clears Pending cash in Notes and saves.
+
 ### Entry Clerk report: one deposit reference on several deposits, today only (2026-10-28)
 
 - **Owner:** in the Entry Clerk's report allow multiple reference numbers / remarks for TODAY only.
