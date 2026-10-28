@@ -139,7 +139,7 @@ export default function MembersPage() {
         ["Claimant", selected.claimant], ["Claimant contact", selected.claimantContact], ["Claimant address", selected.claimantAddress],
       ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1">{value || "Not recorded"}</dd></div>)}</dl>
       <h3 className="font-semibold">All program enrollments</h3>
-      <EnrollmentTable enrollments={selected.enrollments} canTransfer={canTransfer} canMoveProgram={canMoveProgram} transfers={transfers} deactivations={deactivations}
+      <EnrollmentTable enrollments={selected.enrollments} canDelete={canDelete} onDeleted={(enrollmentId, text) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.filter((item) => item.id !== enrollmentId) }); setMessage(text); setRevision((value) => value + 1); }} canTransfer={canTransfer} canMoveProgram={canMoveProgram} transfers={transfers} deactivations={deactivations}
         onStatusChanged={(enrollmentId, status) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, status, accountStatus: status === "Deactivated" ? "Deactivated" : item.accountStatus } : item) }); setRevision((value) => value + 1); }}
         onTransferred={(enrollmentId, toMas) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, mas: toMas } : item) }); setRevision((value) => value + 1); }}
         onBranchChanged={(enrollmentId, branch) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, branch } : item) }); setRevision((value) => value + 1); }}
@@ -166,7 +166,7 @@ type Enrollment = DirectoryMember["enrollments"][number];
  * To another branch (October 17, 2026): the same MAS keeps the account in a new branch (lib/member-transfer.ts
  * changeEnrollmentBranch), for those who may transfer.
  */
-function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, deactivations, onStatusChanged, onTransferred, onBranchChanged, onProgramMoved }: { enrollments: Enrollment[]; canTransfer: boolean; canMoveProgram: boolean; transfers: Transfer[];
+function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMoveProgram, transfers, deactivations, onStatusChanged, onTransferred, onBranchChanged, onProgramMoved }: { enrollments: Enrollment[]; canDelete: boolean; onDeleted: (enrollmentId: string, message: string) => void; canTransfer: boolean; canMoveProgram: boolean; transfers: Transfer[];
   deactivations: Record<string, Deactivation>; onStatusChanged: (enrollmentId: string, status: string) => void; onTransferred: (enrollmentId: string, toMas: string) => void;
   onBranchChanged: (enrollmentId: string, branch: string) => void; onProgramMoved: (enrollmentId: string, programId: string, programName: string, merged: boolean) => void }) {
   const [open, setOpen] = useState("");
@@ -270,7 +270,7 @@ function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, 
     } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to change the program."); }
     finally { setBusy(false); }
   }
-  const canAct = canTransfer || canMoveProgram;
+  const canAct = canTransfer || canMoveProgram || canDelete;
   const modesFor = (e: Enrollment) => (deactivated(e.status)
     ? ([["status", "Reactivate", canTransfer]] as const)
     : ([["mas", "To another MAS", canTransfer], ["branch", "To another branch (same MAS)", canTransfer], ["program", "To another program", canMoveProgram], ["status", "Deactivate this program", canTransfer]] as const)
@@ -289,8 +289,11 @@ function EnrollmentTable({ enrollments, canTransfer, canMoveProgram, transfers, 
             <td className="p-2">{e.collector || "-"}</td><td className="p-2">{e.paymentMethod || "-"}</td>
             <td className="p-2">{deactivated(e.status) ? <><StatusBadge status="Deactivated" tone="danger" />{deactivations[e.id] && <span className="block text-xs text-muted-foreground">{deactivations[e.id].reason}{deactivations[e.id].by ? ` · ${deactivations[e.id].by}` : ""}{deactivations[e.id].at ? ` · ${showDate(deactivations[e.id].at)}` : ""}</span>}</> : e.status || "-"}</td>
             <td className="p-2">{deactivated(e.status) ? "—" : e.accountError || <span className="flex flex-wrap items-center gap-1">{e.accountStatus || "Needs review"}<StandingBadge enrollment={e} /></span>}</td>
-            {canAct && <td className="p-2 text-right">{modesFor(e).length > 0 && <Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{deactivated(e.status) ? "Reactivate" : open === e.id ? "Changing" : "Transfer / deactivate"}</Button>}</td>}
+            {canAct && <td className="p-2 text-right"><span className="inline-flex flex-wrap justify-end gap-1">{modesFor(e).length > 0 && <Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{deactivated(e.status) ? "Reactivate" : open === e.id ? "Changing" : "Transfer / deactivate"}</Button>}
+              {/* An account entered by mistake (owner, October 28, 2026): once deactivated, Administrators delete it with a reason; the member stays. */}
+              {canDelete && deactivated(e.status) && <Button type="button" size="sm" variant={open === `delete:${e.id}` ? "default" : "outline"} className={open === `delete:${e.id}` ? "" : "text-destructive"} aria-expanded={open === `delete:${e.id}`} onClick={() => setOpen((current) => current === `delete:${e.id}` ? "" : `delete:${e.id}`)}>Delete account</Button>}</span></td>}
           </tr>
+          {open === `delete:${e.id}` && <InlineRow colSpan={headers.length}><div className="rounded-lg border border-red-200 p-3 dark:border-red-900"><AdminDeletePanel kind="account" id={e.id} onCancel={() => setOpen("")} onDeleted={(text) => { setOpen(""); onDeleted(e.id, text); }} /></div></InlineRow>}
           {open === e.id && <InlineRow colSpan={headers.length}>
             {modesFor(e).length > 1 && <div className="mb-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Transfer to">
               {modesFor(e).map(([value, label]) => <Button key={value} type="button" size="sm" role="radio" aria-checked={mode === value} variant={mode === value ? "default" : "outline"} onClick={() => { if (mode !== value) { setMode(value); setReason(""); void load(e, value); } }}>{label}</Button>)}

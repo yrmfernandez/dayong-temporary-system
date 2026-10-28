@@ -83,7 +83,7 @@ export async function queryMemberDirectory(query: DirectoryQuery) {
     statuses: unique(members.map((member) => member.status)),
     staff,
   };
-  const counts = Object.fromEntries([["", members.length], ...(["active", "inactive", "dead", "alive"] as const).map((standing) => [standing, members.filter((member) => matchesStanding(member, standing)).length])]);
+  const counts = Object.fromEntries([["", members.length], ...(["active", "inactive", "deactivated", "dead", "alive"] as const).map((standing) => [standing, members.filter((member) => matchesStanding(member, standing)).length])]);
 
   const needsStatus = Boolean(query.filters.accountStatus) || query.filters.standing === "forfeited";
   let statusWarning = "";

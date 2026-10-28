@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Members: delete a deactivated account entered by mistake; Deactivated filter (2026-10-28)
+
+- **Owner:** PH-24581942's D-190 account is empty and was a mistake, but could not be removed (only deactivated); only a deactivated account may be deleted, with a reason; add it to the filters.
+- **Done:** permanent delete has a new kind `account` (`lib/admin-delete.ts`): the account, its collections, transfer records and its New Sale in that program if any; the member stays; refused unless the account is Deactivated; reason and DELETE required; Audit Log and Record Corrections keep it. Members: **Delete account** button (Administrators) on a deactivated account's row; new **Deactivated** standing filter with its count (`lib/member-directory.ts`, `lib/member-directory-data.ts`). Tests added; all 273 pass; build passes. Production plan for ENR-LEG-3D23AA5F06 (read only): 1 account, 1 transfer record, the member stays, no blockers.
+- **In progress:** none.
+- **To do (owner):** deploy; Members → Deactivated → PH-24581942 → D-190 → Delete account, with the reason.
+
 ### Member Corrections: moving a receipt with a corrected amount (2026-10-28)
 
 - **Owner:** PH-24581942's OR 1654 S could not move to its D-180 account because of the amount paid; moving should also allow adjusting the amount.

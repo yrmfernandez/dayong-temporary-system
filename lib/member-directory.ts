@@ -21,7 +21,8 @@ export const DECEASED_STATUS = "Deceased";
 export const MEMBER_STATUSES = ["Active", "Inactive", DECEASED_STATUS] as const;
 
 /** Quick filters on the Members page. Forfeited means at least one program account is forfeited today. */
-export const STANDING_FILTERS = [["active", "Active"], ["inactive", "Inactive"], ["forfeited", "Forfeited"], ["dead", "Dead"], ["alive", "Alive"]] as const;
+// Deactivated (owner, October 28, 2026): members with a deactivated account, to find accounts entered by mistake and delete them.
+export const STANDING_FILTERS = [["active", "Active"], ["inactive", "Inactive"], ["forfeited", "Forfeited"], ["deactivated", "Deactivated"], ["dead", "Dead"], ["alive", "Alive"]] as const;
 export type Standing = (typeof STANDING_FILTERS)[number][0];
 
 export function matchesStanding(member: DirectoryMember, standing: string) {
@@ -31,6 +32,7 @@ export function matchesStanding(member: DirectoryMember, standing: string) {
   if (standing === "active") return !member.deceased && status === "active";
   if (standing === "inactive") return !member.deceased && status === "inactive";
   if (standing === "forfeited") return member.enrollments.some((enrollment) => enrollment.accountStatus === "Forfeited");
+  if (standing === "deactivated") return member.enrollments.some((enrollment) => enrollment.status.trim().toLowerCase() === "deactivated");
   return true;
 }
 export type DirectoryFilters = {

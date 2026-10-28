@@ -13,6 +13,9 @@ import { formatDate as showDate } from "@/lib/date-format";
  *   New Sale    → the sale, its beneficiaries, the account it opened (that account's collections and transfers), and the
  *                 member when they have no other account or sale;
  *   member      → the member with every account, New Sale, collection, beneficiary and transfer;
+ *   account     → one program account entered by mistake (owner, October 28, 2026: PH-24581942's empty D-190, which
+ *                 had no New Sale to delete it by), with its collections, transfers and its New Sale in that program if
+ *                 any; the member stays. Only a deactivated account (deactivate it first, with its reason);
  *   remittance  → the turnover only: its New Sales and collections become Outstanding again, to be turned over anew
  *                 (for adjustments); or, with `withEntries` (owner, October 21, 2026: duplicate entries stayed in the
  *                 report and the OR check after their remittance was deleted), the turnover and its entries, each going
@@ -22,7 +25,7 @@ import { formatDate as showDate } from "@/lib/date-format";
  * would no longer match the cash). Every deleted row is kept in full in the Audit Log (database trigger), and a summary
  * with the reason goes to Record Corrections.
  */
-export const DELETE_KINDS = ["collection", "sale", "member", "remittance"] as const;
+export const DELETE_KINDS = ["collection", "sale", "member", "account", "remittance"] as const;
 export type DeleteKind = (typeof DELETE_KINDS)[number];
 export const isDeleteKind = (value: unknown): value is DeleteKind => DELETE_KINDS.includes(value as DeleteKind);
 export const canDeleteRecords = (user: Pick<SessionUser, "roleNames">) => user.roleNames.some(isAdministratorRole);
@@ -54,6 +57,7 @@ export async function planDeletion(kind: DeleteKind, idRaw: string, db: Queryabl
   // Members of deleted New Sales, deleted only when nothing else of theirs is left (checked once all sales are known).
   const saleMembers = new Set<string>();
   let title = "";
+  let accountActive = false;
   /** A New Sale goes with the account it opened (the member's enrollment in its program). */
   const addSale = async (saleId: string) => {
     const [row] = await query<{ member_number: string; program_id: string; application_no: string }>(db, sql`select member_number, program_id, application_no from sales where sale_id = ${saleId}`);
@@ -80,6 +84,13 @@ export async function planDeletion(kind: DeleteKind, idRaw: string, db: Queryabl
     members.add(id); title = `Member ${text(row.member_number)}`;
     for (const account of await query<{ enrollment_id: string }>(db, sql`select enrollment_id from member_programs where member_id = ${id}`)) enrollments.add(account.enrollment_id);
     for (const sale of await query<{ sale_id: string }>(db, sql`select sale_id from sales where member_number = ${row.member_number}`)) sales.add(sale.sale_id);
+  } else if (kind === "account") {
+    const [row] = await query<{ member_number: string; program_id: string; program_name: string; status: string }>(db, sql`select mp.member_number, mp.program_id, p.program_name, mp.status
+      from member_programs mp left join programs p on p.program_id = mp.program_id where mp.enrollment_id = ${id}`);
+    if (!row) throw new Error("Account not found.");
+    accountActive = text(row.status).toLowerCase() !== "deactivated";
+    enrollments.add(id); title = `Account ${id} (${text(row.program_name) || text(row.program_id)}, member ${text(row.member_number)})`;
+    for (const sale of await query<{ sale_id: string }>(db, sql`select sale_id from sales where member_number = ${row.member_number} and program_id = ${row.program_id}`)) sales.add(sale.sale_id);
   } else {
     const [row] = await query<{ status: string; mas: string; date_remitted: string }>(db, sql`select status, mas, date_remitted::text as date_remitted from remittances where remittance_id = ${id}`);
     if (!row) throw new Error("Remittance not found.");
@@ -103,6 +114,7 @@ export async function planDeletion(kind: DeleteKind, idRaw: string, db: Queryabl
   }
 
   const blockers: string[] = [];
+  if (accountActive) blockers.push("Only a deactivated account can be deleted. Deactivate it first (Transfer / deactivate → Deactivate this program, with the reason).");
   const effects: string[] = [];
   if (kind === "remittance" && !withEntries) {
     const [linked] = await query<{ sales: number; collections: number; fidelity: number }>(db, sql`select
@@ -134,6 +146,7 @@ export async function planDeletion(kind: DeleteKind, idRaw: string, db: Queryabl
     if (extra.transfers) effects.push(plural(extra.transfers, "transfer record"));
     if (extra.fidelity) effects.push(plural(extra.fidelity, "Fidelity row"));
     if (kind === "sale" && !members.size) effects.push("the member stays (they have another account or sale)");
+    if (kind === "account") effects.push("the member stays");
     if (withEntries && !sales.size && !collections.size) effects.push("no entries are on it");
   }
   return { kind, id, title, withEntries, effects, blockers, ids: { members: [...members], enrollments: [...enrollments], sales: [...sales], collections: [...collections], remittances: [...remittances] } };

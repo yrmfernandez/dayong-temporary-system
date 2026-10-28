@@ -915,6 +915,32 @@ test('deleting a remittance keeps its entries for adjustments, or deletes them w
   assert.deepEqual([correction.module, correction.reason], ['Delete remittance with its entries', 'Duplicate entries']);
 });
 
+test('an Administrator deletes one account entered by mistake; the member and their other account stay (October 28, 2026)', async () => {
+  // PH-24581942: an empty D-190 account with no New Sale could not be deleted (only by its New Sale or the whole member).
+  const h = harness();
+  const { planDeletion, deleteRecord } = h.load('lib/admin-delete.ts');
+  const run = (work) => h.load('lib/encoder-context.ts').runAsSystem(work);
+  await seedAccount();
+  await seed('programs', [{ program_id: 'DP-2', program_name: 'D-190', base_pay: 190 }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-2', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-2', doi: '2026-01-15', branch: 'BR-1', mas: 'MAS-2', status: 'Deactivated' }]);
+  await seed('member_transfers', [{ transfer_id: 'MTR-2', enrollment_id: 'ENR-2', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-2', from_mas: 'A', to_mas: 'B', reason: 'reassigned' }]);
+  await seed('collections', [{ collection_id: 'KEEP', collection_batch_id: 'CBT-K', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: '1 A', amount_collected: 350, status: 'Posted', remittance_status: 'Outstanding' }]);
+  // Only a deactivated account: an active one is refused.
+  await query("update member_programs set status = 'Active' where enrollment_id = 'ENR-2'");
+  assert.match((await planDeletion('account', 'ENR-2')).blockers.join(' '), /Only a deactivated account/);
+  await assert.rejects(run(() => deleteRecord('account', 'ENR-2', 'Program entered by mistake')), /Only a deactivated account/);
+  await query("update member_programs set status = 'Deactivated' where enrollment_id = 'ENR-2'");
+  await assert.rejects(run(() => deleteRecord('account', 'ENR-2', '')), /reason/, 'a reason is required');
+  const plan = await planDeletion('account', 'ENR-2');
+  assert.deepEqual([plan.blockers, plan.ids.enrollments, plan.ids.members, plan.ids.collections], [[], ['ENR-2'], [], []]);
+  assert.ok(plan.effects.includes('1 transfer record') && plan.effects.includes('the member stays'), plan.effects.join(', '));
+  await run(() => deleteRecord('account', 'ENR-2', 'Program entered by mistake'));
+  assert.deepEqual((await query("select enrollment_id from member_programs where member_id = 'MEM-1' order by 1")).map((row) => row.enrollment_id), ['ENR-1']);
+  assert.equal((await query("select count(*)::int as n from members where member_id = 'MEM-1'"))[0].n, 1);
+  assert.equal((await query("select count(*)::int as n from collections where collection_id = 'KEEP'"))[0].n, 1);
+  assert.equal((await query("select module from record_corrections where record_id = 'ENR-2'"))[0].module, 'Delete account');
+});
+
 test('renumbering starts from the first payment of the account, never from the DOI', () => {
   const h = harness();
   const { renumber, numberingStart } = h.load('lib/entry-edit.ts');
@@ -2348,6 +2374,10 @@ test('member directory: Collector per program, deceased members, and the standin
   assert.equal(ids('dead'), 'M2');
   assert.equal(ids('alive'), 'M1,M3');
   assert.equal(ids('forfeited'), 'M3');
+  assert.equal(ids('deactivated'), '', 'no deactivated account yet');
+  one('M1').enrollments[0].status = 'Deactivated';
+  assert.equal(ids('deactivated'), 'M1', 'members with a deactivated account');
+  one('M1').enrollments[0].status = 'Active';
   assert.equal(filterMemberDirectory(members, { ...emptyDirectoryFilters, mas: 'Jun Collector' }).map((item) => item.id).join(','), 'M1', 'the MAS / Collector filter finds Collectors');
   assert.equal(filterMemberDirectory(members, { ...emptyDirectoryFilters, search: 'matina' }).length, 3, 'search covers the address');
 });
