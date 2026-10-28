@@ -218,6 +218,9 @@ const mode = (values) => { const counts = new Map(); for (const v of values) cou
 /* ---------- issue log (row references only) ---------- */
 const issues = new Map();
 const issue = (category, where) => { if (!issues.has(category)) issues.set(category, []); issues.get(category).push(where); };
+// Rows that cannot be imported, by ID (owner, October 28, 2026: "give me the member id and col id"): the member, and
+// the collection or New Sale ID the row would have. Written to backups/legacy-left-out-<stamp>.json and printed.
+const notImported = [];
 // --repair: every change made to a row, written to the "Legacy Repairs" tab for the imported accounts.
 const repairs = [];
 /** A date before 2000 or after today is a typo (3/7/0226 for 3/7/2026), as unusable as a blank one. */
@@ -350,7 +353,7 @@ for (const sale of saleRows) {
   if (isD290500(sale.program) && sale.doi) sale.program$ = findProgram(sale.doi >= "2026-08-01" ? "DSP-290" : "D-290");
   if (!sale.program$) unknownLabels.add(sale.program);
   if (!sale.program$) { issue(`DAYONG PROGRAM "${sale.program}" not in config/legacy-programs.json or Programs`, sale.where); continue; }
-  if (!sale.branch$) { issue("BRANCH not found in Branches", sale.where); continue; }
+  if (!sale.branch$) { issue("BRANCH not found in Branches", sale.where); notImported.push({ where: sale.where, reason: "BRANCH not found in Branches", memberId: sale.legacyMemberId, saleId: hashId("SALE", sale.ref) }); continue; }
   if (!sale.doi) { issue("OR DATE (used as DOI) missing or unreadable", sale.where); continue; }
   if (!sale.agent$) issue("MARKETING AGENT not in Employees (old name kept; no accountable employee)", sale.where);
   const parsed = parseName(sale.member);
@@ -418,7 +421,7 @@ for (const row of collectionRows) {
     const account = owner ? [...owner.enrollments.values()].find((e) => d290.includes(e.program.id)) : undefined;
     const firstPaid = row.legacyMemberId ? firstD290500.get(row.legacyMemberId) : undefined;
     row.program$ = account?.program ?? (firstPaid ? findProgram(firstPaid >= "2026-08-01" ? "DSP-290" : "D-290") : undefined);
-    if (!row.program$) { issue(`DAYONG PROGRAM "${row.program}": no D-290 or DSP-290 New Sale or dated payment of this member to tell which (by DOI)`, row.where); continue; }
+    if (!row.program$) { issue(`DAYONG PROGRAM "${row.program}": no D-290 or DSP-290 New Sale or dated payment of this member to tell which (by DOI)`, row.where); notImported.push({ where: row.where, reason: "D-290 (500): no D-290 or DSP-290 New Sale or dated payment to tell which", memberId: row.legacyMemberId, collectionId: hashId("COL", row.ref) }); continue; }
   }
   if (!row.program$) unknownLabels.add(row.program);
   if (!row.program$) { issue(`DAYONG PROGRAM "${row.program}" not in config/legacy-programs.json or Programs`, row.where); continue; }
@@ -713,6 +716,9 @@ for (const r of db.Collections.slice(1)) {
   list.push({ id: str(r[0]), enrollmentId: str(r[2]), orDate: parseDate(r[9]).date, orNumber: str(r[8]), monthFrom: str(r[11]), monthTo: str(r[12]), nopFrom: Number(r[13]), nopTo: Number(r[14]), amount: Number(r[10]), dateRemitted: "", mas: "" });
 }
 const heldNew = [];
+// The held receipts as data (account, OR, dates, amount, months; no names), for scripts/insert-held-legacy-receipts.mts,
+// which adds them through Member Corrections' Insert missing receipt (owner, October 28, 2026).
+const heldReceipts = [];
 // An account the database no longer has, with no New Sale and every payment already in the database under another
 // account, was merged into that account (scripts/merge-name-variants.mjs): it is not created again.
 const mergedAway = valid.filter((e) => !existingIds.has(e.id) && !e.sale && e.payments.length && e.payments.every((pay) => existingIds.has(pay.id)));
@@ -787,7 +793,16 @@ for (const e of valid) {
   catch (error) {
     e.payments = e.payments.filter((pay) => existingIds.has(pay.id));
     heldNew.push(...fresh.map((pay) => `${pay.row.where}: ${error.message.replace(/^(Payment|Account) \S+ /, "")}`));
+    heldReceipts.push(...fresh.map((pay) => ({ where: pay.row.where, problem: error.message.replace(/^(Payment|Account) \S+ /, ""), collectionId: pay.id, memberId: storedAccount.get(e.id)?.memberId ?? e.member.id, memberNumber: storedAccount.get(e.id)?.number ?? "", enrollmentId: e.id, orNumber: pay.orNumber, orDate: pay.orDate,
+      amount: pay.amount, months: Math.max(1, pay.nopTo - pay.nopFrom + 1), dateRemitted: pay.dateRemitted, mas: pay.mas, channel: pay.channel, reactivation: yesNo(pay.row.reactivation) === "Yes" })));
   }
+}
+// An account already in the database belongs to the member it has now (October 28, 2026): its old member may have
+// been merged away since, and must not be created again as an empty copy, nor its new payments point there.
+for (const e of valid) {
+  if (!existingIds.has(e.id) || e.redirect) continue;
+  const stored = storedAccount.get(e.id);
+  if (stored) e.redirect = stored;
 }
 const writtenMembers0 = new Set();
 const newCounts = { members: 0, accounts: 0, sales: 0, payments: 0, paymentsOnExistingAccounts: 0 };
@@ -814,6 +829,24 @@ if (heldNew.length) {
   console.log(`New collections held back because they do not fit the account's history in the database (${heldNew.length}):`);
   for (const line of heldNew.slice(0, 40)) console.log(`  ${line}`);
   writeFileSync(`backups/legacy-held-new-${stamp}.txt`, heldNew.join("\n"));
+  writeFileSync(`backups/legacy-held-new-${stamp}.json`, JSON.stringify(heldReceipts, null, 1));
+  console.log(`To add them through Member Corrections (Insert missing receipt): scripts/insert-held-legacy-receipts.mts backups/legacy-held-new-${stamp}.json`);
+}
+// Failing accounts: every payment row (and New Sale) of each; then the list, by ID, with the PH number of a member the
+// database has.
+for (const e of invalid) {
+  if (e.alreadyImported) continue;
+  const base = { reason: e.invalid, memberId: e.member.id, enrollmentId: e.id };
+  if (e.sale && !existingIds.has(hashId("SALE", e.sale.ref))) notImported.push({ ...base, where: e.sale.where, saleId: hashId("SALE", e.sale.ref) });
+  for (const row of e.rows) if (!existingIds.has(hashId("COL", row.ref))) notImported.push({ ...base, where: row.where, collectionId: hashId("COL", row.ref) });
+}
+const leftOutRows = notImported.filter((item) => !existingIds.has(item.collectionId ?? item.saleId));
+if (leftOutRows.length) {
+  const numberOf = new Map(db.Members.slice(1).map((r) => [str(r[0]), str(r[1])]));
+  for (const item of leftOutRows) item.memberNumber = numberOf.get(item.memberId) ?? "";
+  writeFileSync(`backups/legacy-left-out-${stamp}.json`, JSON.stringify(leftOutRows, null, 1));
+  console.log(`\nRows that cannot be imported (${leftOutRows.length}), by ID: member ID (PH number when the member is in the database) · collection or New Sale ID · reason · sheet row`);
+  for (const item of leftOutRows) console.log(`  ${item.memberId}${item.memberNumber ? ` (${item.memberNumber})` : " (not in the database)"} · ${item.collectionId ?? item.saleId} · ${item.reason} · ${item.where}`);
 }
 if (!apply) {
   const orRepeats = valid.reduce((count, e) => count + e.payments.filter((pay) => !existingIds.has(pay.id) && usedOr.has(entryKey(pay.orNumber))).length, 0);
