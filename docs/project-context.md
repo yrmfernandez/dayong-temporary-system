@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Old-site member 305 added without receipts (2026-10-28)
+
+- **Owner:** find Joydeline Liray (old site); put her in the system, receipts to be added later in Member Corrections.
+- **Done on production:** the October 8 import had left out old-site New Sale 305 (one of its OR numbers, 19671 C, is already on another member's account: COL-LEG-673CB31A39, PH-11543714, a ₱320 receipt of the same day). `migrate-legacy-site.mjs` was run on a copy of the export holding only member 305 and its New Sale, no collections: MEM-WEB-305 (PH-79493029), account ENR-WEB-305, DS-430 (DP-0055), DOI May 26, 2026, CALINAN, MAS Puya, Jiramay; status NS.
+- **In progress:** none.
+- **To do (owner):** add her receipts in Member Corrections → Insert missing receipt: old-site collections 385 (OR 18502, Jun 22, ₱430, recorded Jun–Jul but one month: June), 599 (19671 C, Jul 27, decide whether it is hers), 864 (21742 C, Aug 28), 1271 (24058 C, Sep 29). Without them the account counts from the DOI and needs a Waiver; it would be Forfeited from Nov 27.
+
 ### Status clock: a month is missed the day after its due day (2026-10-28)
 
 - **Owner:** before it becomes 60D it should be the next day: last payment on the 10th, 60D on the 11th.
