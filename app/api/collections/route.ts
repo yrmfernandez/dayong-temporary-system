@@ -4,7 +4,7 @@ import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
-import { checkBackdate, controlTotalProblem } from "@/lib/entry-controls";
+import { checkBackdate, controlTotalProblem, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { currentEncoder, withEncoder } from "@/lib/encoder-context";
@@ -152,8 +152,10 @@ async function saveCollections(request: Request) {
         // The OR number ends with the branch letter (lib/or-number.ts).
         const orProblem = orNumberProblem(input.orNumber);
         if (orProblem) throw new Error(`Collection for ${account.memberNumber}: ${orProblem}`);
-        const backdateReason = String(entry.backdateReason ?? "").trim().slice(0, 300);
-        checkBackdate(input.orDate, backdateReason, `Collection for ${account.memberNumber}`, manilaNow().date, calendar);
+        // Judged from the Date Remitted when it was changed with a reason, which already explains the late encoding.
+        const ownReason = String(entry.backdateReason ?? "").trim().slice(0, 300);
+        checkBackdate(input.orDate, ownReason, `Collection for ${account.memberNumber}`, lateCheckDay(dateRemitted, dateRemittedReason), calendar);
+        const backdateReason = lateEntryReason(input.orDate, ownReason, dateRemittedReason, manilaNow().date, calendar);
         const dateProblem = blockingDateProblem({ receiptDate: input.orDate, dateRemitted, today: manilaNow().date });
         if (dateProblem) throw new Error(`Collection for ${account.memberNumber}: ${dateProblem}`);
         const receipt = entryKey(input.orNumber);

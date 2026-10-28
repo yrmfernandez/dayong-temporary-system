@@ -17,6 +17,20 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Entry Clerk report: one deposit reference on several deposits, today only (2026-10-28)
+
+- **Owner:** in the Entry Clerk's report allow multiple reference numbers / remarks for TODAY only.
+- **Done:** `duplicateReferenceProblem` / `assertReferenceFree` (`lib/clerk-cash.ts`) take the deposit date: when the deposit and the other deposit with that reference are both dated today (Manila), the reference may repeat (adding or editing). A reference on a deposit of another day, or a today's reference used on another day, is still refused (the October 23 double-count rule). Test extended; all 275 tests and the build pass.
+- **In progress:** none.
+- **To do (owner):** deploy.
+
+### Late-entry reason no longer asked again after a changed Date Remitted (2026-10-28)
+
+- **Owner:** when the Entry Clerk changes the Date Remitted it asks for a reason, then every entry asks again for a late-entry reason.
+- **Done:** `lateCheckDay` / `lateEntryReason` (`lib/entry-controls.ts`): with a Date Remitted earlier than today changed with a reason, each receipt is judged from the Date Remitted, not today; it needs its own reason only when its date is more than one working day before the Date Remitted (held long by the MAS). Covered entries store "Date Remitted changed: <reason>" as their late-entry reason, so Exceptions still shows why. Used in the Collections and New Sales forms and their saves (`app/api/collections`, `app/api/sales`). Tests added; all 275 tests and the build pass.
+- **In progress:** none.
+- **To do (owner):** deploy.
+
 ### Lunch break lock, 12:00–12:59 PM (2026-10-28)
 
 - **Owner:** from 12 noon to 1 PM nobody can do anything in the system: a big Lunch Break screen that cannot be closed and disappears by itself after 12:59. Decided: everyone, Administrators too; the server refuses saves as well; clocking in or out still works. Then: Administrators get an urgent-fix button that lets them use the system, and the screen pops up again every 3 minutes.

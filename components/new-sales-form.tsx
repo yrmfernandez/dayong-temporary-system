@@ -31,7 +31,7 @@ import { todayInManila } from "@/lib/account-rules";
 import type { ProgramStanding } from "@/lib/account-data";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
-import { BACKDATE_REASON_MIN, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
+import { BACKDATE_REASON_MIN, controlTotalProblem, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { useFormDraft } from "@/lib/use-form-draft";
@@ -256,7 +256,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const [branch, setBranch] = useState("");
   // Late dates skip Sundays and the branch's declared non-working days, as the server does (lib/working-days.ts).
   const offDays = useDeclaredNonWorkingDays();
-  const isLateDate = (date: string) => needsBackdateReason(date, undefined, { days: offDays, branch });
+  // Judged from the Date Remitted when it was changed with a reason (that reason covers the late encoding; lib/entry-controls.ts).
+  const isLateDate = (date: string) => needsBackdateReason(date, lateCheckDay(dateRemitted, dateRemittedChanged || submissionId ? dateRemittedReason : ""), { days: offDays, branch });
   const [mas, setMas] = useState("");
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
   const [dateRemitted, setDateRemitted] = useState("");

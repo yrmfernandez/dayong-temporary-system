@@ -3,6 +3,7 @@ import { and, eq, lte, ne, sql } from "drizzle-orm";
 import { currentDb, inTransaction, schema, type Queryable } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
 import { createReadableId } from "@/lib/readable-id";
+import { manilaNow } from "@/lib/remittance-deadline";
 
 /**
  * What an Entry Clerk records for their report besides New Sales and Collections:
@@ -40,14 +41,17 @@ export const depositRemarksProblem = (value: unknown) => {
  * digits in the remarks; another deposit that is not voided with the same one refuses the save, naming that deposit so
  * it is edited (its date or amount) or voided instead. `deposits` are rows in the order deposit_id, deposit_date,
  * employee_id, employee_name, branch, bank_account_name, amount, transfer_type, mas, remarks, status (a header row first).
+ * Today only (owner, October 28, 2026): deposits dated today may share a reference (one transfer recorded in several
+ * lines); a reference already on a deposit of another day, or a deposit dated another day, is still refused.
  */
 const references = (remarks: unknown) => [...new Set(text(remarks).match(/\d{6,}/g) ?? [])];
-export function duplicateReferenceProblem(remarks: unknown, deposits: unknown[][], exceptId = "") {
+export function duplicateReferenceProblem(remarks: unknown, deposits: unknown[][], exceptId = "", { date = "", today = manilaNow().date }: { date?: string; today?: string } = {}) {
   const wanted = references(remarks);
   if (!wanted.length) return "";
   const peso = (value: unknown) => (Number(value) || 0).toLocaleString("en-PH", { style: "currency", currency: "PHP" });
   for (const row of deposits.slice(1)) {
     if (!text(row[0]) || text(row[0]) === exceptId || text(row[10]) === "Voided") continue;
+    if (date && date === today && text(row[1]).slice(0, 10) === today) continue;
     const shared = wanted.find((reference) => references(row[9]).includes(reference));
     if (shared) return `Reference ${shared} is already recorded on deposit ${text(row[0])} (${peso(row[6])}, deposit date ${text(row[1])}, recorded by ${text(row[3]) || "another clerk"}, ${text(row[4])}). Edit that deposit (its date or amount) or void it; do not record the same transfer again.`;
   }
@@ -60,12 +64,12 @@ const asRow = (row: typeof depositsTable.$inferSelect): unknown[] => [row.deposi
  * Refuses a deposit whose reference is already on another deposit. Inside the save's transaction it first locks each
  * reference it carries, so a second save of the same reference waits and then sees the first.
  */
-async function assertReferenceFree(tx: Queryable, remarks: unknown, exceptId = "") {
+async function assertReferenceFree(tx: Queryable, remarks: unknown, exceptId = "", date = "") {
   const wanted = references(remarks).sort();
   if (!wanted.length) return;
   for (const reference of wanted) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`deposit-reference:${reference}`}))`);
   const candidates = await tx.select().from(depositsTable).where(and(ne(depositsTable.status, "Voided"), sql`${depositsTable.remarks} ~ ${wanted.join("|")}`));
-  const problem = duplicateReferenceProblem(remarks, [[], ...candidates.map(asRow)], exceptId);
+  const problem = duplicateReferenceProblem(remarks, [[], ...candidates.map(asRow)], exceptId, { date });
   if (problem) throw new Error(problem);
 }
 
@@ -95,7 +99,7 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
   const fields = depositFields(input);
   getEncoder();
   return inTransaction(async (tx) => {
-    await assertReferenceFree(tx, fields.remarks);
+    await assertReferenceFree(tx, fields.remarks, "", fields.deposit_date);
     const id = createReadableId("DEP");
     await tx.insert(depositsTable).values({ deposit_id: id, employee_id: clerk.employeeId, employee_name: clerk.name, branch: clerk.branch, status: "Posted", void_reason: null, created_at: new Date().toISOString(), ...fields });
     return { id };
@@ -114,7 +118,7 @@ export async function editDeposit(id: string, input: Record<string, unknown>, by
     if (!row) throw new Error("Deposit not found.");
     if (!by.isAdmin && text(row.employee_id) !== by.employeeId) throw new Error("You can edit only deposits you recorded.");
     if (text(row.status) === "Voided") throw new Error("A voided deposit cannot be edited.");
-    await assertReferenceFree(tx, fields.remarks, row.deposit_id);
+    await assertReferenceFree(tx, fields.remarks, row.deposit_id, fields.deposit_date);
     // The clerk, branch and status stay.
     await tx.update(depositsTable).set(fields).where(eq(depositsTable.deposit_id, row.deposit_id));
   });

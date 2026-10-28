@@ -3,7 +3,7 @@ import { clearedEmployee, clearingProblem, dateRemittedReasonProblem, waitingBat
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
-import { checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber } from "@/lib/entry-controls";
+import { checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -575,7 +575,8 @@ async function saveSales(request: Request, user: SessionUser) {
     for (const [index, prepared] of preparedSales.entries()) {
       const dateProblem = blockingDateProblem({ receiptDate: String(prepared.sale.orDate ?? "").trim(), receiptLabel: "application date", dateRemitted: String(body.dateRemitted ?? "").trim(), today: manilaNow().date });
       if (dateProblem) return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${dateProblem}` }, { status: 400 });
-      try { checkBackdate(String(prepared.sale.orDate ?? "").trim(), String(prepared.sale.backdateReason ?? ""), `Sale #${index + 1}`, manilaNow().date, calendar); }
+      // Judged from the Date Remitted when it was changed with a reason, which already explains the late encoding.
+      try { checkBackdate(String(prepared.sale.orDate ?? "").trim(), String(prepared.sale.backdateReason ?? ""), `Sale #${index + 1}`, lateCheckDay(String(body.dateRemitted ?? "").trim(), dateRemittedReason), calendar); }
       catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Enter the reason for the late date." }, { status: 400 }); }
     }
     const quotes: Array<{ incentive: number; remittance: number; forfeited: number; noIncentiveReason: string }> = [];
@@ -812,7 +813,7 @@ async function saveSales(request: Request, user: SessionUser) {
           orNumber: "",
           orDate:
             sale.orDate,
-          backdateReason: String(sale.backdateReason ?? "").trim().slice(0, 300),
+          backdateReason: lateEntryReason(String(sale.orDate ?? "").trim(), String(sale.backdateReason ?? "").trim().slice(0, 300), dateRemittedReason, manilaNow().date, calendar),
           dateRemittedReason,
         };
 

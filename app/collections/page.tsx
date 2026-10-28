@@ -29,7 +29,7 @@ import { useParkedDrafts } from "@/lib/use-parked-drafts";
 import { ParkedDrafts } from "@/components/parked-drafts";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
-import { BACKDATE_REASON_MIN, controlTotalProblem, needsBackdateReason } from "@/lib/entry-controls";
+import { BACKDATE_REASON_MIN, controlTotalProblem, lateCheckDay, needsBackdateReason } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { ReceiptPhotosPicker, uploadBatchPhotos, type PickedPhoto } from "@/components/receipt-photos-picker";
 import { RemittanceSummary } from "@/components/remittance-summary";
@@ -282,7 +282,8 @@ export default function CollectionsPage() {
   const [branch, setBranch] = useState("");
   // Late dates skip Sundays and the branch's declared non-working days, as the server does (lib/working-days.ts).
   const offDays = useDeclaredNonWorkingDays();
-  const isLateDate = (date: string) => needsBackdateReason(date, undefined, { days: offDays, branch });
+  // Judged from the Date Remitted when it was changed with a reason (that reason covers the late encoding; lib/entry-controls.ts).
+  const isLateDate = (date: string) => needsBackdateReason(date, lateCheckDay(dateRemitted, dateRemittedChanged ? dateRemittedReason : ""), { days: offDays, branch });
   const [mas, setMas] = useState("");
   const [dateRemitted, setDateRemitted] = useState("");
 

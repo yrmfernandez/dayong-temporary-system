@@ -20,6 +20,19 @@ export const BACKDATE_REASON_MIN = 5;
  */
 export const needsBackdateReason = (date: string, today = manilaNow().date, calendar?: WorkCalendar) => /^\d{4}-\d{2}-\d{2}$/.test(date) && date < previousWorkingDay(today, calendar);
 
+/**
+ * The day a receipt's lateness is judged from (owner, October 28, 2026: the clerk gave the reason once for the changed
+ * Date Remitted, then every entry asked again): the batch's Date Remitted when it is earlier than today and was changed
+ * with a reason (that reason explains why the batch is encoded after it), otherwise today. A receipt then needs its own
+ * reason only when its date is more than one working day before the Date Remitted.
+ */
+export const lateCheckDay = (dateRemitted: string, dateRemittedReason: string, today = manilaNow().date) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(dateRemitted) && dateRemitted < today && dateRemittedReason.trim().length >= BACKDATE_REASON_MIN ? dateRemitted : today;
+
+/** The late-entry reason kept with a receipt: its own, or the batch's Date Remitted reason when that covers it. */
+export const lateEntryReason = (date: string, ownReason: string, dateRemittedReason: string, today = manilaNow().date, calendar?: WorkCalendar) =>
+  ownReason.trim() || (needsBackdateReason(date, today, calendar) && dateRemittedReason.trim() ? `Date Remitted changed: ${dateRemittedReason.trim()}`.slice(0, 300) : "");
+
 export function checkBackdate(date: string, reason: string, label: string, today = manilaNow().date, calendar?: WorkCalendar) {
   if (needsBackdateReason(date, today, calendar) && reason.trim().length < BACKDATE_REASON_MIN) {
     throw new Error(`${label}: the date ${date} is more than one working day old. Enter the reason it is being encoded late.`);

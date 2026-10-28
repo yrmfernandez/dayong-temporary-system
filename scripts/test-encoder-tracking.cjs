@@ -2488,7 +2488,7 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
   await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
   const post = async (body) => {
     const sale = { existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', beneficiaries: [], ...body.sale };
-    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: body.controlTotal, sales: [sale] }));
+    const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: body.dateRemitted ?? '2026-09-25', dateRemittedReason: body.dateRemittedReason, controlTotal: body.controlTotal, sales: [sale] }));
     return { status: response.status, body: await response.json() };
   };
   assert.match((await post({ controlTotal: 3500 })).body.message, /total remittance is ₱200\.00 but the turnover sheet says ₱3,500\.00 \(short by ₱3,300\.00\)/);
@@ -2503,6 +2503,25 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
   const explained = await post({ controlTotal: 200, sale: { orDate: '2026-01-05', backdateReason: 'MAS turned in the form late' } });
   assert.equal(explained.status, 200, JSON.stringify(explained.body));
   assert.equal((await query('select backdate_reason from sales'))[0].backdate_reason, 'MAS turned in the form late', 'the reason is kept with the sale');
+
+  // A Date Remitted changed with a reason covers the late encoding (October 28, 2026): the day before it needs no
+  // second reason, and the sale keeps the batch's; a date older than that still needs its own.
+  const covered = await post({ controlTotal: 200, dateRemittedReason: 'Remitted on the 25th, encoded today', sale: { applicationNo: 'APP-2', orDate: '2026-09-24' } });
+  assert.equal(covered.status, 200, JSON.stringify(covered.body));
+  assert.equal((await query("select backdate_reason from sales where application_no = 'APP-2'"))[0].backdate_reason, 'Date Remitted changed: Remitted on the 25th, encoded today');
+  assert.match((await post({ controlTotal: 200, dateRemittedReason: 'Remitted on the 25th, encoded today', sale: { applicationNo: 'APP-3', orDate: '2026-09-20' } })).body.message, /more than one working day old/);
+});
+
+test('late entries are judged from a Date Remitted changed with a reason, otherwise from today (October 28, 2026)', () => {
+  const { lateCheckDay, lateEntryReason, needsBackdateReason } = harness().load('lib/entry-controls.ts');
+  assert.equal(lateCheckDay('2026-10-24', 'Remitted Friday, encoded Wednesday', '2026-10-28'), '2026-10-24');
+  assert.equal(lateCheckDay('2026-10-24', '', '2026-10-28'), '2026-10-28', 'no reason: judged from today');
+  assert.equal(lateCheckDay('2026-10-28', 'same day', '2026-10-28'), '2026-10-28');
+  assert.equal(needsBackdateReason('2026-10-23', lateCheckDay('2026-10-24', 'Remitted Friday', '2026-10-28')), false, 'one working day before the Date Remitted');
+  assert.equal(needsBackdateReason('2026-10-21', lateCheckDay('2026-10-24', 'Remitted Friday', '2026-10-28')), true, 'held longer: its own reason');
+  assert.equal(lateEntryReason('2026-10-23', '', 'Remitted Friday', '2026-10-28'), 'Date Remitted changed: Remitted Friday');
+  assert.equal(lateEntryReason('2026-10-23', 'Own reason', 'Remitted Friday', '2026-10-28'), 'Own reason');
+  assert.equal(lateEntryReason('2026-10-27', '', 'Remitted Friday', '2026-10-28'), '', 'not late: nothing stored');
 });
 
 test('No incentive on one New Sale: the MAS earns nothing on it, it is remitted whole, and a reason is required (October 20, 2026)', async () => {
@@ -4047,6 +4066,15 @@ test('a deposit reference number can be recorded only once (October 23, 2026)', 
   assert.deepEqual(results.map((result) => result.status).sort(), ['fulfilled', 'rejected']);
   assert.match(results.find((result) => result.status === 'rejected').reason.message, /Reference 9999888877776 is already recorded/);
   assert.equal((await query("select count(*)::int as n from bank_deposits where remarks like '%9999888877776%'"))[0].n, 1);
+
+  // Today only (October 28, 2026): deposits dated today may share a reference; another day's still refuses.
+  const today = h.load('lib/remittance-deadline.ts').manilaNow().date;
+  const split = { ...deposit, date: today, remarks: '5555444433332 part 1' };
+  await runAsSystem(() => cash.addDeposit(split, clerk));
+  await runAsSystem(() => cash.addDeposit({ ...split, amount: 200, remarks: '5555444433332 part 2' }, clerk));
+  assert.equal((await query("select count(*)::int as n from bank_deposits where remarks like '5555444433332%'"))[0].n, 2);
+  await assert.rejects(() => runAsSystem(() => cash.addDeposit({ ...deposit, remarks: '8046291340931 again' , date: today }, clerk)), /already recorded on deposit DEP-1/, 'a reference from another day stays refused today');
+  await assert.rejects(() => runAsSystem(() => cash.addDeposit({ ...split, date: '2026-10-20' }, clerk)), /Reference 5555444433332 is already recorded/, "and today's reference on another day");
 });
 
 test('a deposit is dated within the report it is entered on (October 23, 2026)', () => {
