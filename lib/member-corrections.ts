@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { accountState, COLLECTION_CHANNELS, firstCollectionNop, monthIndex, saleNops, type AccountPayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
 import { currentDb, inTransaction, schema, type Transaction } from "@/lib/db";
-import { mergeAccountInto, numberingStart, receiptMonthsAt, renumber, repriceCollections, type NumberingStart } from "@/lib/entry-edit";
+import { mergeAccountInto, numberingStart, receiptMonthsAt, receiptMonthsIn, renumber, repriceCollections, type NumberingStart } from "@/lib/entry-edit";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { NO_LETTER_NOTE } from "@/lib/or-no-letter";
@@ -37,6 +37,7 @@ import { formatDate as showDate } from "@/lib/date-format";
  */
 
 const text = (value: unknown) => String(value ?? "").trim();
+const peso = (value: number) => `₱${value.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
 const day = (value: unknown) => text(value).slice(0, 10);
 const validMonth = (value: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
@@ -189,7 +190,11 @@ export function fixCoverage(input: CoverageInput, reason: string, apply: boolean
  * of this member (targetEnrollmentId), a new account of this member in another program (newProgramId and newDoi), or
  * an existing account of another member (targetEnrollmentId of that member; the receipts become that member's).
  */
-export type MoveInput = { collectionIds: string[]; targetEnrollmentId?: string; newProgramId?: string; newDoi?: string };
+/**
+ * `amounts`: a moved receipt's corrected amount, by collection ID (owner, October 28, 2026: PH-24581942's ₱190 OR 1654 S
+ * belongs to its ₱180 D-180 account). The receipt is then counted from that amount at the target's pay.
+ */
+export type MoveInput = { collectionIds: string[]; targetEnrollmentId?: string; newProgramId?: string; newDoi?: string; amounts?: Record<string, number> };
 
 /** Moves several receipts to another account (this member's, a new one in another program, or another member's); both sides are numbered again. */
 export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
@@ -197,9 +202,20 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
     const today = manilaNow().date;
     const ids = [...new Set((input.collectionIds ?? []).map(text).filter(Boolean))];
     if (!ids.length) throw new Error("Tick the receipts to move.");
-    const rows = await tx.select({ id: collections.collection_id, memberId: collections.member_id, enrollmentId: collections.enrollment_id, status: collections.status })
+    const rows = await tx.select({ id: collections.collection_id, memberId: collections.member_id, enrollmentId: collections.enrollment_id, status: collections.status, orNumber: collections.or_number,
+      slip: collections.linked_remittance_id, slipStatus: collections.remittance_status })
       .from(collections).where(inArray(collections.collection_id, ids)).for("update");
     if (rows.length !== ids.length) throw new Error("Some receipts were not found. Reload the member.");
+    // Corrected amounts: only for receipts being moved, and not for one on a remittance slip in progress (its cash is counted there).
+    const newAmounts = new Map<string, number>();
+    for (const [id, value] of Object.entries(input.amounts ?? {})) {
+      const row = rows.find((item) => item.id === id);
+      if (!row) throw new Error("A corrected amount is for a receipt that is not ticked.");
+      const amount = Math.round(Number(value) * 100) / 100;
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error(`Enter a valid amount for OR ${text(row.orNumber) || id}.`);
+      if (text(row.slip) && !["", "Outstanding", "Returned"].includes(text(row.slipStatus))) throw new Error(`OR ${text(row.orNumber) || id} is on remittance slip ${text(row.slip)}, so its amount cannot be changed here.`);
+      newAmounts.set(id, amount);
+    }
     if (rows.some((row) => text(row.status) !== "Posted")) throw new Error("Only posted receipts can be moved.");
     const memberIds = new Set(rows.map((row) => row.memberId));
     if (memberIds.size !== 1) throw new Error("The receipts must belong to one member.");
@@ -230,6 +246,9 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
     const otherMember = !memberIds.has(target.memberId);
 
     const movedIds = new Set(ids);
+    const oldAmounts = new Map(data.payments.filter((payment) => newAmounts.has(payment.id)).map((payment) => [payment.id, payment.amount]));
+    for (const payment of data.payments) if (newAmounts.has(payment.id)) payment.amount = newAmounts.get(payment.id)!;
+    const changedAmounts = [...newAmounts].filter(([id, amount]) => Math.round(amount * 100) !== Math.round((oldAmounts.get(id) ?? 0) * 100));
     const accountOf = (id: string) => data.accounts.find((account) => account.id === id)!;
     const sourceOf = new Map(data.payments.filter((payment) => movedIds.has(payment.id)).map((payment) => [payment.id, accountOf(payment.enrollmentId)]));
     // Counted again at the target's monthly pay when it differs; NOPs move onto the target's numbering (registration fee).
@@ -242,12 +261,18 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
     // receipts keeps its own start: a moved receipt's NOP and month are the other account's numbering (owner, October
     // 28, 2026: PH-10130825's 190 receipt into its D-210 HG account started that account at the 190 numbering, a gap).
     const own = targetPayments.filter((payment) => !movedIds.has(payment.id));
+    // A receipt with a corrected amount is counted from that amount at the target's pay, even when the pay is the same.
+    const countAtTarget = receiptMonthsIn({ name: target.programName, rate: target.basePay, flexible: Boolean(target.flexible), max: target.maxMonthlyPayment ?? null });
     const targetPlan = renumber(numberingStart(created ? [] : (own.length ? own : targetPayments).map((payment) => ({ nop: payment.nopFrom + shift(payment), month: payment.monthFrom })), target), targetPayments,
-      (payment) => movedIds.has(payment.id) ? recount.get(sourceOf.get(payment.id)!.id)?.(payment) ?? span(payment) : span(payment));
+      (payment) => newAmounts.has(payment.id) ? countAtTarget(payment) : movedIds.has(payment.id) ? recount.get(sourceOf.get(payment.id)!.id)?.(payment) ?? span(payment) : span(payment));
     const old = new Map(data.payments.map((payment) => [payment.id, payment]));
     const statuses = [await storeStatus(tx, target, targetPlan, today)];
     const lines = await saveNumbers(tx, targetPlan, old, target, movedIds);
     const notes: string[] = [];
+    for (const [id, amount] of changedAmounts) {
+      await tx.update(collections).set({ amount_collected: amount }).where(eq(collections.collection_id, id));
+      notes.push(`OR ${old.get(id)?.orNumber || id}: amount ${peso(oldAmounts.get(id) ?? 0)} → ${peso(amount)}.`);
+    }
     for (const id of sourceIds) {
       const source = accountOf(id);
       const left = data.payments.filter((payment) => payment.enrollmentId === id && !movedIds.has(payment.id));
@@ -266,8 +291,9 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
     return {
       summary: `${ids.length} receipt(s) moved to ${created ? "the new " : ""}${target.programName} account ${target.id}${otherMember ? ` of ${target.memberNumber}` : ""}; ${lines.length - ids.length} other receipt(s) renumbered.`,
       receipts: lines, statuses, notes, recordId: target.id,
-      before: { receipts: ids.map((id) => ({ id, account: old.get(id)?.enrollmentId, coverage: coverage(old.get(id)!) })) },
-      after: { target: target.id, receipts: lines.map(({ id, account, before, after }) => ({ id, account, before, after })), statuses, repriced: priced.repriced, slips: priced.slips },
+      before: { receipts: ids.map((id) => ({ id, account: old.get(id)?.enrollmentId, coverage: coverage(old.get(id)!), ...(oldAmounts.has(id) ? { amount: oldAmounts.get(id) } : {}) })) },
+      after: { target: target.id, receipts: lines.map(({ id, account, before, after }) => ({ id, account, before, after })), statuses, repriced: priced.repriced, slips: priced.slips,
+        ...(changedAmounts.length ? { amounts: Object.fromEntries(changedAmounts) } : {}) },
     };
   });
 }

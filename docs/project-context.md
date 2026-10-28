@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Member Corrections: moving a receipt with a corrected amount (2026-10-28)
+
+- **Owner:** PH-24581942's OR 1654 S could not move to its D-180 account because of the amount paid; moving should also allow adjusting the amount.
+- **Done:** Move receipts takes an optional corrected amount per ticked receipt (`MoveInput.amounts`, `lib/member-corrections.ts`; form column **Corrected amount** in `/member-corrections`). The receipt is counted from the new amount at the target's pay (`receiptMonthsIn`, `lib/entry-edit.ts`), `amount_collected` is saved, incentives are recalculated (`repriceCollections`), and the note and Record Corrections keep old → new. Refused for a receipt not ticked, an invalid amount, or a receipt on a remittance slip in progress. New test; all 272 tests and the build pass.
+- **Production preview (rolled back):** 1654 S (May 25, 2026) ₱190 → ₱180 joins D-180 ENR-LEG-69F09BA2DC as NOP 72 (2025-12); 2536 S, 2751 S, 4006 S move one month on (to NOP 76, 2026-04); D-180 Forfeited → 150D; D-190 ENR-LEG-3D23AA5F06 is left with no receipts (Forfeited).
+- **In progress:** none.
+- **To do (owner):** deploy; in Member Corrections move 1654 S to D-180 with corrected amount 180; then delete the empty D-190 account from Members if it should not exist.
+
 ### MAM printout redesigned (2026-10-28)
 
 - **Owner:** redesign the MAM printing (design approved; add the last date of payment; A4 landscape).

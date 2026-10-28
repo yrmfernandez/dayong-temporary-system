@@ -120,6 +120,8 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
   const [moveTo, setMoveTo] = useState<MoveTo>(accounts.length > 1 ? "mine" : "new");
   const [programChoices, setProgramChoices] = useState<Array<{ id: string; name: string; rate: number }>>([]);
   const [moveMember, setMoveMember] = useState<Member | null>(null);
+  // A moved receipt's corrected amount (owner, October 28, 2026: a ₱190 receipt that belongs to a ₱180 account).
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
   // Merge (owner, October 27, 2026): which member number stays, and whose value of each detail.
   const [keepOther, setKeepOther] = useState(false);
   const [otherFull, setOtherFull] = useState<Member | null>(null);
@@ -150,8 +152,11 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
   const input = useMemo(() => {
     if (tool === "coverage") return { enrollmentId: accountId, startNop: number(form.startNop), startMonth: form.startMonth || undefined, doi: form.doi || undefined,
       months: Object.fromEntries(Object.entries(months).filter(([, value]) => value !== "").map(([id, value]) => [id, Number(value)])) };
-    if (tool === "move") return moveTo === "new" ? { collectionIds: [...chosen], newProgramId: form.newProgram ?? "", newDoi: form.newDoi ?? "" }
-      : { collectionIds: [...chosen], targetEnrollmentId: (moveTo === "other" ? form.otherTarget : form.target) ?? "" };
+    if (tool === "move") {
+      const corrected = Object.fromEntries(Object.entries(amounts).filter(([id, value]) => chosen.has(id) && value !== "").map(([id, value]) => [id, Number(value)]));
+      return moveTo === "new" ? { collectionIds: [...chosen], newProgramId: form.newProgram ?? "", newDoi: form.newDoi ?? "", amounts: corrected }
+        : { collectionIds: [...chosen], targetEnrollmentId: (moveTo === "other" ? form.otherTarget : form.target) ?? "", amounts: corrected };
+    }
     if (tool === "insert") return { enrollmentId: accountId, orNumber: form.orNumber ?? "", orDate: form.orDate ?? "", amount: number(form.amount), months: number(form.months ?? "1"), collectedByRole: form.role || "MAS",
       mas: form.mas || account?.mas, dateRemitted: form.dateRemitted || undefined, startNop: number(form.startNop), startMonth: form.startMonth || undefined, orNoLetter: form.orNoLetter === "yes" };
     if (tool === "merge") {
@@ -162,7 +167,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
     }
     return { enrollmentId: accountId, collectionIds: [...chosen].filter((id) => account?.receipts.some((receipt) => receipt.id === id)), newDoi: form.newDoi ?? "", newStartNop: number(form.startNop), newStartMonth: form.startMonth || undefined,
       keepFirstName: form.keepFirstName || undefined, newMember: { surname: form.surname ?? "", firstName: form.firstName ?? "", middleName: form.middleName, nameExtension: form.nameExtension, birthdate: form.birthdate } };
-  }, [tool, accountId, account, form, months, chosen, other, moveTo, keepOther, picks, member.member.id]);
+  }, [tool, accountId, account, form, months, chosen, amounts, other, moveTo, keepOther, picks, member.member.id]);
 
   async function send(apply: boolean) {
     setBusy(true); setMessage("");
@@ -218,7 +223,13 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
           <select id="move-other" className={field} value={form.otherTarget ?? ""} onChange={(event) => set("otherTarget", event.target.value)}><option value="">Choose the account</option>{moveMember.accounts.map((item) => <option key={item.id} value={item.id}>{item.program} · {item.id}</option>)}</select></div>
           : <p className="text-sm text-muted-foreground">{moveMember.member.number} has no account. Add one in Members first, or use Split member to create the person.</p>)}
       </div>}
-      <p className="text-xs text-muted-foreground">A receipt moving to a program of another monthly pay is counted at the new pay (it must be a whole number of months there).</p>
+      {chosen.size > 0 && <div className="space-y-1">
+        <p className="text-sm font-medium">Amount on the new account</p>
+        <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[480px] text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-2">OR</th><th className="p-2 text-right">Amount now</th><th className="w-44 p-2">Corrected amount</th></tr></thead>
+          <tbody>{accounts.flatMap((item) => item.receipts).filter((receipt) => chosen.has(receipt.id)).map((receipt) => <tr key={receipt.id} className="border-t"><td className="p-2 font-medium">{receipt.orNumber || receipt.id}</td><td className="p-2 text-right tabular-nums">{peso(receipt.amount)}</td>
+            <td className="p-2"><Input type="number" min="0.01" step="0.01" aria-label={`Corrected amount for OR ${receipt.orNumber}`} placeholder="unchanged" value={amounts[receipt.id] ?? ""} onChange={(event) => { setAmounts((current) => ({ ...current, [receipt.id]: event.target.value })); setPreview(null); }} /></td></tr>)}</tbody></table></div>
+      </div>}
+      <p className="text-xs text-muted-foreground">A receipt moving to a program of another monthly pay is counted at the new pay (it must be a whole number of months there). When the amount was encoded wrong (e.g. ₱190 on a ₱180 program), enter the corrected amount: the receipt is counted from it, its incentives are worked out again, and Record Corrections keeps the old amount. A receipt on a remittance slip in progress keeps its amount.</p>
     </>}
 
     {tool === "insert" && account && <>

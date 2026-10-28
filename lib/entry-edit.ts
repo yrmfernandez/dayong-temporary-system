@@ -303,6 +303,11 @@ const peso = (value: number) => `₱${value.toLocaleString("en-PH", { maximumFra
  */
 export function receiptMonthsAt(from: PayRule, to: PayRule) {
   if (Math.round(from.rate * 100) === Math.round(to.rate * 100) && from.flexible === to.flexible) return null;
+  return receiptMonthsIn(to);
+}
+
+/** The months each receipt covers in this program, from its amount (receiptMonthsAt without the same-pay shortcut). */
+export function receiptMonthsIn(to: PayRule) {
   const rate = Math.round(to.rate * 100);
   if (rate <= 0) throw new Error(`${to.name} has no monthly pay.`);
   return (payment: AccountPayment) => {

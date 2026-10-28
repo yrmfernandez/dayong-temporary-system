@@ -4144,6 +4144,31 @@ test('Member Corrections: a receipt moved into the middle of an account fills it
   assert.deepEqual(await correctionNumbers(), [['C1', 'E1', 2, '2026-02'], ['C2', 'E1', 3, '2026-03'], ['C3', 'E1', 4, '2026-04']]);
 });
 
+test('Member Corrections: a moved receipt takes a corrected amount, counted at the new pay; not on a slip in progress (October 28, 2026)', async () => {
+  // PH-24581942: a ₱190 receipt on the D-190 account belongs to the ₱180 D-180 account; ₱190 is no whole D-180 month.
+  const h = harness(correctionAdmin);
+  await seedCorrectionMember();
+  await seed('member_programs', [{ enrollment_id: 'E5', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-500', doi: '2026-01-15', branch: 'BR-1', mas: 'Maria', status: 'Active' }]);
+  const post = correctionPost(h.load('app/api/member-corrections/route.ts'));
+  const move = (amounts, apply = true) => post({ tool: 'move', input: { collectionIds: ['C3'], targetEnrollmentId: 'E5', ...(amounts ? { amounts } : {}) }, apply, reason: 'Belongs to the D-500 account; amount encoded wrong' });
+  assert.match((await move()).body.message, /not a whole number of ₱500 months/);
+  assert.match((await move({ C1: 500 })).body.message, /not ticked/);
+  assert.match((await move({ C3: 0 })).body.message, /valid amount/);
+  await seed('remittances', [{ remittance_id: 'REM-1', status: 'Pending Approval', mas: 'Maria', date_remitted: '2026-04-10' }]);
+  await query("update collections set linked_remittance_id = 'REM-1', remittance_status = 'Submitted' where collection_id = 'C3'");
+  assert.match((await move({ C3: 500 })).body.message, /on remittance slip REM-1/);
+  await query("update collections set linked_remittance_id = null, remittance_status = 'Remitted' where collection_id = 'C3'");
+
+  const preview = await move({ C3: 500 }, false);
+  assert.equal(preview.status, 200, JSON.stringify(preview.body));
+  assert.equal(Number((await query("select amount_collected from collections where collection_id = 'C3'"))[0].amount_collected), 350, 'a preview changes nothing');
+  const saved = await move({ C3: 1000 });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  const [row] = await query("select enrollment_id, amount_collected, nop_from, nop_to, remittance_amount from collections where collection_id = 'C3'");
+  assert.deepEqual([row.enrollment_id, Number(row.amount_collected), row.nop_to - row.nop_from + 1, Number(row.remittance_amount)], ['E5', 1000, 2, 900], 'two ₱500 months, incentives worked out again');
+  assert.match(saved.body.result.notes.join(' '), /OR 103 A: amount ₱350 → ₱1,000/);
+});
+
 test('corrections: an Administrator confirms an OR number really has no letter; IT cannot (October 28, 2026)', async () => {
   const h = harness(correctionAdmin);
   await seedCorrectionMember();
