@@ -17,6 +17,11 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Collections: one Waiver for several receipts of an account in a batch (2026-10-28)
+
+- **Owner:** the NOP is already solved when a member has several receipts in a batch; do the same for the Waiver: once it is selected it should not ask again.
+- **Done:** `chainSameAccount` (app/collections/page.tsx) also marks `waiverAbove` on each later receipt for the same member and program after one with Waiver selected; that receipt skips the If Suspended question and its check, shows "Waiver selected on the earlier receipt for this account", and is sent with Waiver. Clearing the earlier Waiver asks again. The server (app/api/collections/route.ts) carries the Waiver to later receipts of the same account in the batch and saves it on record. New test: a suspended account with two receipts, Waiver on the first only, saves both with Waiver (refused when neither has it).
+
 ### Traced: Charnny Ambasing's pending cash (2026-10-28)
 
 - **Owner:** trace Ambasing Charny's report: why does it have Pending cash, to be encoded?

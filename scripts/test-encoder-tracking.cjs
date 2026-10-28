@@ -3375,6 +3375,29 @@ test('Collections find the account when its MAS name differs only in capitals', 
   assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
 });
 
+test('a Waiver on the first receipt of a suspended account covers its later receipts in the same batch', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const doiMonth = rules.monthName(rules.monthIndex(month) - 4);
+  const first = rules.monthName(rules.monthIndex(doiMonth) + 1), second = rules.monthName(rules.monthIndex(doiMonth) + 2);
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, false, 'active']];
+  await seedAccount({ doi: doiMonth + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
+  const route = h.load('app/api/collections/route.ts');
+  const receipt = (month, nop, orNumber, ifSuspended = '') => ({ memberNumber: 'PH-1', programId: 'DP-1', monthFrom: month, monthTo: month, amountCollected: 350, nopFrom: nop, nopTo: nop, orNumber, orDate: today, ifSuspended });
+  const save = (collections) => route.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 400, collections }));
+  const refused = await (await save([receipt(first, 2, '1001 C'), receipt(second, 3, '1002 C')])).json();
+  assert.match(refused.message, /Select Waiver/, 'a suspended account still needs a Waiver');
+  const saved = await save([receipt(first, 2, '1001 C', 'Waiver'), receipt(second, 3, '1002 C')]);
+  assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
+  assert.deepEqual((await query('select or_number, suspended from collections order by nop_from')).map((row) => [row.or_number, row.suspended]), [['1001 C', 'Waiver'], ['1002 C', 'Waiver']], 'the later receipt is saved with the Waiver on record');
+});
+
 test('the Attendance Review number counts unmarked system absences of listed employees only', async () => {
   const h = harness();
   h.rows.Users = [[]];

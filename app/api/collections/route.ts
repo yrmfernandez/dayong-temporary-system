@@ -133,6 +133,9 @@ async function saveCollections(request: Request) {
       // Each OR Number is one receipt for one entry: reusing one, here or in an earlier batch, is a double entry.
       const batchReceipts = new Map<string, string>();
       const touched = new Map<string, typeof data.accounts[number]>();
+      // Accounts with Waiver selected on an earlier receipt in this batch: their later receipts are not asked again
+      // (owner, October 28, 2026) and are saved with the Waiver on record.
+      const waived = new Set<string>();
       const rows: NewCollection[] = [];
       const timestamp = new Date().toISOString();
       const batchId = createReadableId("CBT");
@@ -149,6 +152,8 @@ async function saveCollections(request: Request) {
           orDate: String(entry.orDate ?? ""), orNumber: normalizeOrNumber(String(entry.orNumber ?? "")), waiver: String(entry.ifSuspended ?? ""),
           collectedByRole: collectedBy, originalMas,
         };
+        if (!input.waiver && waived.has(account.id)) input.waiver = "Waiver";
+        if (input.waiver === "Waiver") waived.add(account.id);
         // The OR number ends with the branch letter (lib/or-number.ts).
         const orProblem = orNumberProblem(input.orNumber);
         if (orProblem) throw new Error(`Collection for ${account.memberNumber}: ${orProblem}`);

@@ -125,6 +125,8 @@ type CollectionEntry = {
   /** The account's next unpaid month and NOP when it was loaded, before this batch (see chainSameAccount). */
   accountNextMonth?: string;
   accountNextNop?: number | null;
+  /** An earlier receipt for the same account in this batch has Waiver selected, so this one is not asked again (see chainSameAccount). */
+  waiverAbove?: boolean;
 
   isExpanded: boolean;
 };
@@ -227,13 +229,21 @@ function lastMonthCovered(from: string, count: number) {
  * would repeat the first one's and the save was refused. In batch order, each receipt after the first for an account
  * starts the month and NOP after the previous one ends, keeping its number of months; the first starts where the
  * account stands. The server checks the batch's receipts in the same order (app/api/collections/route.ts).
+ * A Waiver works the same way (owner, October 28, 2026): once Waiver is selected on a receipt, the later receipts for the
+ * same account in the batch are not asked again.
  */
 function chainSameAccount(list: CollectionEntry[]) {
   const ends = new Map<string, { month: string; nop: number }>();
+  const waived = new Set<string>();
   let changed = false;
-  const next = list.map((entry) => {
-    if (!entry.memberId || !entry.programId || entry.accountLoading || !entry.accountNextMonth || entry.accountNextNop == null) return entry;
-    const key = `${entry.memberId}|${entry.programId}`;
+  const next = list.map((original) => {
+    if (!original.memberId || !original.programId) return original;
+    const key = `${original.memberId}|${original.programId}`;
+    const waiverAbove = waived.has(key);
+    if (original.ifSuspended === "Waiver") waived.add(key);
+    let entry = original;
+    if (Boolean(entry.waiverAbove) !== waiverAbove) { changed = true; entry = { ...entry, waiverAbove }; }
+    if (entry.accountLoading || !entry.accountNextMonth || entry.accountNextNop == null) return entry;
     const before = ends.get(key);
     const startMonth = before ? lastMonthCovered(before.month, 2) : entry.accountNextMonth;
     const startNop = before ? before.nop + 1 : entry.accountNextNop;
@@ -680,7 +690,7 @@ export default function CollectionsPage() {
     if (entry.accountLoading || !entry.accountStatus) return "Load the program account before saving.";
     // Payments on forfeited accounts are allowed only on the owner's chosen days (lib/account-rules.ts).
     if (entry.accountStatus === "Forfeited" && !forfeitedPaymentsAllowed()) return "This program account is forfeited. Payments are blocked.";
-    if (needsWaiver(entry) && entry.ifSuspended !== "Waiver") return "The account was suspended on the OR date. Select Waiver under If Suspended.";
+    if (needsWaiver(entry) && !entry.waiverAbove && entry.ifSuspended !== "Waiver") return "The account was suspended on the OR date. Select Waiver under If Suspended.";
     const rate = programs.find((p) => p.id === entry.programId)?.basePay ?? 0;
     const months = getMonthDifference(entry.monthFrom, entry.monthTo);
     if (months < 1 || Number(entry.amountCollected) * 100 < Math.round(rate * 100) * months) return "Amount must cover every selected full monthly installment.";
@@ -926,6 +936,8 @@ export default function CollectionsPage() {
           fidelityAmount,
           collections: collections.map((entry) => ({
             ...entry,
+            // Covered by the Waiver on an earlier receipt for the same account; saved with it on record.
+            ifSuspended: entry.waiverAbove && !entry.ifSuspended ? "Waiver" : entry.ifSuspended,
             memberNumber: members.find(
               (member) => member.id === entry.memberId,
             )?.phMemberNumber,
@@ -1490,9 +1502,11 @@ export default function CollectionsPage() {
                             {" · "}Remittance <strong className="text-foreground">{(() => { const quote = quoteEntry(entry); return "remittance" in quote ? formatCurrency(quote.remittance) : "Pending"; })()}</strong>
                             <span title="NOP is set from the covered months and the account's history (an NS account's New Sale is NOP 1, so its first collection is NOP 2; on a program with a registration fee the New Sale is not a NOP, so the first collection is NOP 1). The remittance uses the MAS or Collector incentive tier and mark-up."> ⓘ</span>
                             {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
-                            {needsWaiver(entry) && <p className="mt-1 text-amber-700">Suspended on the OR date. Select Waiver under If Suspended.</p>}
+                            {needsWaiver(entry) && (entry.waiverAbove
+                              ? <p className="mt-1 text-foreground">Suspended on the OR date: Waiver selected on the earlier receipt for this account.</p>
+                              : <p className="mt-1 text-amber-700">Suspended on the OR date. Select Waiver under If Suspended.</p>)}
                             {entry.accountStatus === "Forfeited" && <p className={`mt-1 ${forfeitedPaymentsAllowed() ? "text-amber-700" : "text-red-600"}`}>{forfeitedPaymentsAllowed() ? "Forfeited: payments are allowed today only." : "Payments are blocked for this program."}</p>}
-                            {needsWaiver(entry) && <label className="mt-2 block text-foreground">If Suspended *<select className="ml-2 rounded border p-1" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
+                            {needsWaiver(entry) && !entry.waiverAbove && <label className="mt-2 block text-foreground">If Suspended *<select className="ml-2 rounded border p-1" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
                           </div>
 
                           {/* NO INCENTIVE (owner, October 20, 2026): this one collection earns the collector nothing; it is remitted whole. */}
