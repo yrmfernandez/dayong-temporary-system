@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Status clock: a month is missed the day after its due day (2026-10-28)
+
+- **Owner:** before it becomes 60D it should be the next day: last payment on the 10th, 60D on the 11th.
+- **Done:** `accountState` (`lib/account-rules.ts`): each month after Month of falls due on the OR date's day and is missed the day after, so U → 60D (and the Waiver), 90D, 120D and 150D each start one day later; Forfeited was already the day after (unchanged). Paid October 10 for July: 60D/Waiver September 11, 90D October 11, 150D December 11, Forfeited January 11. A payment made on the due day itself needs no Waiver. Short months: paid January 31, February due February 28 and missed March 1, 60D April 1. Tests updated (`scripts/test-account-rules.mjs`, `scripts/test-money-rules.mjs`); all 271 pass; build passes.
+- **Impact (production preview, read only, October 28):** it only differs from the old rule on the due day itself, so at any moment it moves just the accounts whose day is today one step down (about 135 on October 28: 60D → U 67, 90D → 60D 27, 120D → 90D 27, 150D → 120D 14). Nobody becomes Forfeited because of it. The preview's other rows (Fully Paid → …, a few Forfeited → …) come from the preview script not reading full payments or old-system forfeits, not from this change.
+- **In progress:** none.
+- **To do (owner):** deploy. No migration.
+
 ### Corrections: an Administrator confirms an OR number without a letter (2026-10-28)
 
 - **Owner:** in corrections, the admin can tick a box that the OR number really has no letter.

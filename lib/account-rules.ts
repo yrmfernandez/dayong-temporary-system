@@ -125,22 +125,25 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   /*
    * Everything counts from "Month of" on the OR date's day (owner, October 24, 2026, the October 17 rule extended to
    * Forfeited): the account is paid through the last covered month on the day of the last payment's OR date, and each
-   * later month is missed on that day. Paid October 10 for July: paid through July 10, so one month missed August 10,
-   * 60D and temporarily suspended (Waiver needed) September 10, 90D October 10, 120D November 10, 150D December 10, and
-   * Forfeited the day after six missed months (January 11), or twelve for Pay the Balance programs (forfeitMonthsFor).
+   * later month falls due on that day and is missed the day after (owner, October 28, 2026). Paid October 10 for July:
+   * paid through July 10, so one month missed August 11, 60D and temporarily suspended (Waiver needed) September 11, 90D
+   * October 11, 120D November 11, 150D December 11, and Forfeited the day after six months (January 11), or twelve for
+   * Pay the Balance programs (forfeitMonthsFor).
    * An advance counts the same way from its last covered month. Before any collection the New Sale covers the DOI month
    * on the DOI day. Days past the end of a short month fall on its last day. `anchor` (the last OR date, or the DOI day
    * of an advance's last covered month) is still reported but no longer moves any status.
    */
   const lastPaidMonth = lastCoveredMonth || account.doi.slice(0, 7);
   const payDay = Number((latest?.orDate ?? account.doi).slice(8, 10));
-  // The day the k-th month after the last covered one is missed (k = 0: the paid-through date), clamped to short months.
-  const missedOn = (k: number) => dateInMonth(monthName(monthIndex(lastPaidMonth) + k), payDay);
-  const paidThrough = missedOn(0);
+  // The k-th month after the last covered one falls due on this day (k = 0: the paid-through date), clamped to short
+  // months. It is missed the day after (owner, October 28, 2026: last payment on the 10th, 60D on the 11th), as
+  // Forfeited already was.
+  const dueOn = (k: number) => dateInMonth(monthName(monthIndex(lastPaidMonth) + k), payDay);
+  const paidThrough = dueOn(0);
   let missedMonths = Math.max(0, monthIndex(today) - monthIndex(lastPaidMonth));
-  if (missedMonths > 0 && missedOn(missedMonths) > today) missedMonths--;
-  const suspendedAt = missedOn(2);
-  const forfeitedAt = addDay(missedOn(account.forfeitMonths ?? 6));
+  if (missedMonths > 0 && dueOn(missedMonths) >= today) missedMonths--;
+  const suspendedAt = addDay(dueOn(2));
+  const forfeitedAt = addDay(dueOn(account.forfeitMonths ?? 6));
   // Fully Paid (owner, October 27, 2026): a recorded full payment (certificate, old Fully Paid list, or entered by hand),
   // or the program completed: its months reach the term (fixed programs: Pay Balance Total ÷ rate, e.g. 25,200 ÷ 420 =
   // 60; the New Sale is NOP 1 without a registration fee) or what was received (New Sale included) reaches the total. Before, only collections were added up, so a term program was never shown paid.

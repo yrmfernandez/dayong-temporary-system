@@ -21,10 +21,10 @@ test("NS counts the New Sale as NOP 1; the first collection is NOP 2 the month a
   assert.deepEqual([...allocations([payment({ monthTo: "2026-03", nopTo: 3, amount: 1050 })]).values()].map((v) => v.nop), [1, 2, 3]);
 });
 test("OR Date and DOI establish exact suspension and forfeiture boundaries", () => {
-  // Day to day (owner, October 17, 2026): the New Sale covers January to the DOI day (the 15th); February missed on
-  // February 15, March on March 15, so suspended from March 15.
-  assert.equal(accountState(account, [], "2026-03-14").temporarilySuspended, false);
-  assert.equal(accountState(account, [], "2026-03-15").temporarilySuspended, true);
+  // Day to day (owner, October 17, 2026): the New Sale covers January to the DOI day (the 15th); February is due on
+  // February 15 and missed the day after (October 28, 2026), March missed March 16, so suspended from March 16.
+  assert.equal(accountState(account, [], "2026-03-15").temporarilySuspended, false);
+  assert.equal(accountState(account, [], "2026-03-16").temporarilySuspended, true);
   assert.notEqual(accountState(account, [], "2026-07-15").status, "Forfeited");
   assert.equal(accountState(account, [], "2026-07-16").status, "Forfeited");
   assert.equal(accountState(account, [payment()], "2026-03-15").anchor, "2026-01-15");
@@ -35,7 +35,7 @@ test("advance coverage counts from its last covered month on the OR day (October
   const state = accountState(a, [p], "2026-11-20");
   assert.equal(state.anchor, "2026-11-15");
   assert.equal(state.paidThrough, "2026-11-20", "covered through November, on the payment day (the 20th)");
-  assert.equal(state.suspendedAt, "2027-01-20", "December missed on December 20, January on January 20");
+  assert.equal(state.suspendedAt, "2027-01-21", "December due December 20, January January 20, missed the day after");
   assert.equal(state.forfeitedAt, "2027-05-21", "the day after six missed months on the OR day");
   assert.equal(state.status, "U");
   assert.equal(accountState(a, [p], "2026-09-20").status, "ADV");
@@ -74,22 +74,24 @@ test("programs are isolated and missing-month statuses stop at 150D", () => {
   // Another program's payment is ignored: this account is still NS at NOP 1 (its New Sale).
   const isolated = accountState(account, [payment({ enrollmentId: "OTHER" })], "2026-01-20");
   assert.deepEqual([isolated.status, isolated.nop, isolated.nextNop], ["NS", 1, 2]);
-  // Paid January 15 for January: each later month is missed on the 15th (owner, October 17, 2026); 60D is two.
-  assert.equal(accountState(account, [payment()], "2026-02-14").status, "U");
-  assert.equal(accountState(account, [payment()], "2026-03-14").status, "U", "only February is missed");
-  assert.equal(accountState(account, [payment()], "2026-03-15").status, "60D");
-  assert.equal(accountState(account, [payment()], "2026-04-15").status, "90D");
-  assert.equal(accountState(account, [payment()], "2026-05-15").status, "120D");
-  assert.equal(accountState(account, [payment()], "2026-06-15").status, "150D");
+  // Paid January 15 for January: each later month is due on the 15th and missed the day after (owner, October 28,
+  // 2026: last payment on the 10th, 60D on the 11th); 60D is two.
+  assert.equal(accountState(account, [payment()], "2026-02-15").status, "U");
+  assert.equal(accountState(account, [payment()], "2026-03-15").status, "U", "only February is missed");
+  assert.equal(accountState(account, [payment()], "2026-03-16").status, "60D");
+  assert.equal(accountState(account, [payment()], "2026-04-15").status, "60D", "March due today, not yet missed");
+  assert.equal(accountState(account, [payment()], "2026-04-16").status, "90D");
+  assert.equal(accountState(account, [payment()], "2026-05-16").status, "120D");
+  assert.equal(accountState(account, [payment()], "2026-06-16").status, "150D");
   assert.equal(accountState(account, [payment()], "2026-07-10").status, "150D");
   assert.equal(accountState(account, [payment()], "2026-01-20").balance, 350, "nothing missed: the next month is due");
-  assert.equal(accountState(account, [payment()], "2026-03-15").balance, 700, "60D: two months due");
+  assert.equal(accountState(account, [payment()], "2026-03-16").balance, 700, "60D: two months due");
 });
-test("paid October 10 for October: 60D and suspended on December 10, 90D on January 10 (owner, October 17, 2026)", () => {
+test("paid October 10 for October: 60D and suspended on December 11, 90D on January 11 (owner, October 28, 2026)", () => {
   const a = { ...account, doi: "2026-01-15" };
   const history = [payment({ id: "A", orDate: "2026-02-10", monthFrom: "2026-02", monthTo: "2026-09", nopFrom: 2, nopTo: 9, amount: 2800 }), payment({ id: "B", orDate: "2026-10-10", monthFrom: "2026-10", monthTo: "2026-10", nopFrom: 10, nopTo: 10, amount: 350 })];
   assert.equal(accountState(a, history, "2026-10-20").paidThrough, "2026-10-10");
-  for (const [day, status, suspended] of [["2026-11-09", "U", false], ["2026-11-10", "U", false], ["2026-12-09", "U", false], ["2026-12-10", "60D", true], ["2027-01-10", "90D", true]]) {
+  for (const [day, status, suspended] of [["2026-11-10", "U", false], ["2026-11-11", "U", false], ["2026-12-10", "U", false], ["2026-12-11", "60D", true], ["2027-01-10", "60D", true], ["2027-01-11", "90D", true]]) {
     const state = accountState(a, history, day);
     assert.deepEqual([state.status, state.temporarilySuspended], [status, suspended], day);
   }
@@ -106,11 +108,12 @@ test("a forfeited account takes payments only on the owner's chosen days (Octobe
 test("the Waiver is judged on the OR date, not the day it is encoded (October 14, 2026)", () => {
   const a = { ...account, doi: "2026-01-15" };
   const history = [payment({ id: "A", orDate: "2026-02-10", monthFrom: "2026-02", monthTo: "2026-07", nopFrom: 2, nopTo: 7, amount: 2100 })];
-  // Paid through July 10 (Month of July on the OR day, October 24, 2026): August missed on August 10, September on September 10.
+  // Paid through July 10 (Month of July on the OR day, October 24, 2026): August missed on August 11, September on
+  // September 11 (the day after, October 28, 2026).
   const august = (orDate, waiver = "") => input({ monthFrom: "2026-08", monthTo: "2026-08", nopFrom: 8, nopTo: 8, orDate, orNumber: "OR-AUG", waiver });
   assert.equal(accountState(a, history, "2026-10-14").temporarilySuspended, true);
-  validatePayment(a, history, august("2026-09-09"), "2026-10-14");
-  assert.throws(() => validatePayment(a, history, august("2026-09-10"), "2026-10-14"), /Waiver/, "paid on September 10: two months missed, suspended then");
+  validatePayment(a, history, august("2026-09-10"), "2026-10-14");
+  assert.throws(() => validatePayment(a, history, august("2026-09-11"), "2026-10-14"), /Waiver/, "paid on September 11: two months missed, suspended then");
   validatePayment(a, history, august("2026-10-02", "Waiver"), "2026-10-14");
 });
 
@@ -118,8 +121,8 @@ test("paid October 10 for July: counted from Month of on the OR day, so paid thr
   const a = { ...account, doi: "2026-01-15" };
   const history = [payment({ id: "A", orDate: "2026-02-10", monthFrom: "2026-02", monthTo: "2026-06", nopFrom: 2, nopTo: 6, amount: 1750 }), payment({ id: "B", orDate: "2026-10-10", monthFrom: "2026-07", monthTo: "2026-07", nopFrom: 7, nopTo: 7, amount: 350, orNumber: "OR-JUL" })];
   const state = accountState(a, history, "2026-10-10");
-  assert.deepEqual([state.paidThrough, state.suspendedAt, state.temporarilySuspended, state.status, state.forfeitedAt], ["2026-07-10", "2026-09-10", true, "90D", "2027-01-11"]);
-  for (const [day, status, suspended] of [["2026-11-09", "90D", true], ["2026-11-10", "120D", true], ["2026-12-10", "150D", true], ["2027-01-10", "150D", true], ["2027-01-11", "Forfeited", false]]) {
+  assert.deepEqual([state.paidThrough, state.suspendedAt, state.temporarilySuspended, state.status, state.forfeitedAt], ["2026-07-10", "2026-09-11", true, "60D", "2027-01-11"]);
+  for (const [day, status, suspended] of [["2026-10-11", "90D", true], ["2026-11-10", "90D", true], ["2026-11-11", "120D", true], ["2026-12-11", "150D", true], ["2027-01-10", "150D", true], ["2027-01-11", "Forfeited", false]]) {
     const later = accountState(a, history, day);
     assert.deepEqual([later.status, later.temporarilySuspended], [status, suspended], `${day}: 60D and the Waiver on the same day, Forfeited after six missed months`);
   }

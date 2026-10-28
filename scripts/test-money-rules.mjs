@@ -99,19 +99,21 @@ test("No incentive and forfeited incentives: the whole amount is the company's a
   assert.deepEqual(withoutIncentive(350, 350), { remittance: 350, forfeited: 0 }, "nothing to forfeit (DTO, non-commissionable)");
 });
 
-test("short months: a payment on the 31st is missed on the last day of shorter months, 60D and Forfeited follow the same day", () => {
+test("short months: a payment on the 31st is due on the last day of shorter months and missed the day after (October 28, 2026)", () => {
   const account = { id: "E1", memberId: "M1", memberNumber: "PH1", programId: "P1", doi: "2025-12-31", branch: "B1", mas: "MAS1", basePay: 350, payBalanceTotal: 0, storedStatus: "" };
   const paid = [{ id: "C1", enrollmentId: "E1", orDate: "2026-01-31", orNumber: "1", monthFrom: "2026-01", monthTo: "2026-01", nopFrom: 2, nopTo: 2, amount: 350, dateRemitted: "", mas: "" }];
   const on = (today) => accountState(account, paid, today);
   assert.equal(on("2026-02-01").paidThrough, "2026-01-31");
-  assert.equal(on("2026-03-30").status, "U", "one month missed on February 28");
-  assert.equal(on("2026-03-31").status, "60D", "two months missed on March 31");
-  assert.equal(on("2026-03-31").suspendedAt, "2026-03-31");
+  assert.equal(on("2026-02-28").unpaidMonths, 0, "February due on February 28");
+  assert.equal(on("2026-03-01").unpaidMonths, 1, "February missed the day after");
+  assert.equal(on("2026-03-31").status, "U", "March due today, not yet missed");
+  assert.equal(on("2026-04-01").status, "60D", "two months missed the day after March 31");
+  assert.equal(on("2026-04-01").suspendedAt, "2026-04-01");
   assert.equal(on("2026-07-31").forfeitedAt, "2026-08-01", "the day after six missed months");
   assert.equal(on("2026-07-31").status, "150D");
   assert.equal(on("2026-08-01").status, "Forfeited");
   assert.equal(on("2026-08-01").balance, null, "a forfeited account has no amount due");
-  assert.equal(on("2026-03-31").balance, 700, "60D owes the two missed months");
+  assert.equal(on("2026-04-01").balance, 700, "60D owes the two missed months");
 });
 
 test("Fidelity: the first ₱10,000 is locked until the employee leaves; only the balance above it can be withdrawn", () => {
