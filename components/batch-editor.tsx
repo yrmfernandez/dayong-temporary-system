@@ -11,7 +11,7 @@ import { parseJsonResponse } from "@/lib/api-response";
 import type { EditableBatch, SaleDetails } from "@/lib/batch-edit";
 import { INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 
-type Entry = EditableBatch["entries"][number] & { remove: boolean; amountText: string; open?: boolean };
+type Entry = EditableBatch["entries"][number] & { remove: boolean; amountText: string; open?: boolean; noIncentive: boolean };
 type ProgramOption = NonNullable<EditableBatch["programs"]>[number];
 type Method = { name: string; isCash: boolean; status: string };
 
@@ -21,13 +21,16 @@ const field = "h-8 text-sm";
 
 /**
  * Edit a batch the approver returned (lib/batch-edit.ts): the batch details and every entry, as encoded, or remove an
- * entry. Saving keeps the batch Returned; the clerk resubmits it from My Entries.
+ * entry. Saving keeps the batch Returned; the clerk resubmits it from My Entries. Also what was set when encoding
+ * (October 29, 2026): ORC, No incentive, and per Collection Reactivation, Transferred and Waiver; a New Sale's program
+ * is chosen on its row.
  */
 export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]; onClose: () => void; onSaved: (message: string) => void }) {
   const [batch, setBatch] = useState<EditableBatch | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [methods, setMethods] = useState<Method[]>([]);
   const [form, setForm] = useState({ masEmployeeId: "", dateRemitted: "", dateRemittedReason: "", paymentMethod: "", paymentReference: "", collectedBy: "MAS", penalty: "", penaltyNote: "", fidelity: "", note: "" });
+  const [orc, setOrc] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -47,7 +50,8 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
         setMethods(((methodResult.methods ?? []) as Method[]).filter((method) => method.status === "active"));
         const loaded = result.batch;
         setBatch(loaded);
-        setEntries(loaded.entries.map((entry) => ({ ...entry, remove: false, amountText: String(entry.amount) })));
+        setEntries(loaded.entries.map((entry) => ({ ...entry, remove: false, amountText: String(entry.amount), noIncentive: Boolean(entry.noIncentiveReason) })));
+        setOrc(loaded.orc);
         setForm({ masEmployeeId: loaded.personEmployeeId, dateRemitted: loaded.dateRemitted, dateRemittedReason: "", paymentMethod: loaded.paymentMethod, paymentReference: loaded.paymentReference, collectedBy: loaded.collectedBy || "MAS",
           penalty: loaded.penalty ? String(loaded.penalty) : "", penaltyNote: loaded.penaltyNote, fidelity: loaded.fidelity ? String(loaded.fidelity) : "", note: "" });
       } catch (caught) {
@@ -62,6 +66,9 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
   const kept = entries.filter((entry) => !entry.remove);
   const total = kept.reduce((sum, entry) => sum + (Number(entry.amountText) || 0), 0);
   const isSale = batch?.kind === "New Sale";
+  // ORC is for a Collector batch only; a DTO batch earns no incentive, so it has no No incentive mark (as when encoding).
+  const orcAllowed = !isSale && form.collectedBy === "Collector";
+  const dtoBatch = !isSale && batch?.collectedBy === "DTO";
   // A changed Date Remitted needs a clearing that covers it and a reason (owner, October 13, 2026).
   const dateRemittedChanged = Boolean(batch && form.dateRemitted !== batch.dateRemitted);
 
@@ -81,9 +88,11 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
     setSaving(true);
     try {
       const response = await fetch("/api/my-entries/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        ids: entryIds, ...form, penalty: Number(form.penalty) || 0, fidelity: Number(form.fidelity) || 0,
+        ids: entryIds, ...form, penalty: Number(form.penalty) || 0, fidelity: Number(form.fidelity) || 0, ...(isSale ? {} : { orc: orcAllowed && orc }),
         entries: entries.map((entry) => ({ id: entry.id, remove: entry.remove, orNumber: entry.orNumber, orDate: entry.orDate, amount: Number(entry.amountText), monthTo: entry.monthTo,
-          backdateReason: entry.backdateReason, applicationNumber: entry.applicationNumber, notes: entry.notes, ...(isSale ? { doiTime: entry.doiTime } : {}), ...(entry.sale ? { sale: entry.sale } : {}) })),
+          backdateReason: entry.backdateReason, applicationNumber: entry.applicationNumber, notes: entry.notes, ...(isSale ? { doiTime: entry.doiTime } : {}), ...(entry.sale ? { sale: entry.sale } : {}),
+          ...(dtoBatch ? {} : { noIncentive: entry.noIncentive, noIncentiveReason: entry.noIncentive ? entry.noIncentiveReason : "" }),
+          ...(isSale ? {} : { reactivation: entry.reactivation, transferred: entry.transferred, waiver: entry.waiver }) })),
       }) });
       const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the batch.");
@@ -143,6 +152,8 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
                 <select id="edit-collected-by" className="h-8 w-full rounded-md border bg-background px-2 text-sm" value={form.collectedBy} onChange={(event) => set("collectedBy", event.target.value)}>
                   <option value="MAS">MAS</option><option value="Collector">Collector</option><option value="DTO">DTO (Direct to Office)</option>
                 </select>
+                {/* ORC, outright commission (owner, October 13, 2026): the Collector earns half of the MAS incentive. */}
+                {orcAllowed && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={orc} onChange={(event) => setOrc(event.target.checked)} />ORC (outright commission)</label>}
               </div>
             )}
             <div className="space-y-1"><Label htmlFor="edit-penalty">Penalty</Label><Input id="edit-penalty" type="number" min="0" step="0.01" className={field} value={form.penalty} onChange={(event) => set("penalty", event.target.value)} /></div>
@@ -170,7 +181,12 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
                   return (
                     <Fragment key={entry.id}>
                     <tr className={`border-t align-top ${entry.remove ? "opacity-50" : ""}`}>
-                      <td className="p-2"><span className="block font-medium">{shownName || entry.memberNumber}</span><span className="block text-xs text-muted-foreground">{entry.memberNumber} · {shownProgram}</span>{entry.remove && <span className="text-xs font-semibold text-red-700">Will be removed</span>}
+                      <td className="p-2"><span className="block font-medium">{shownName || entry.memberNumber}</span><span className="block text-xs text-muted-foreground">{entry.memberNumber}{entry.sale ? "" : ` · ${shownProgram}`}</span>
+                        {/* The program of a New Sale, on its row (owner, October 29, 2026); fixed once the account has collections. */}
+                        {entry.sale && <div className="mt-1 w-56"><SearchSelect aria-label="Program" className="h-8" value={entry.sale.programId} disabled={entry.remove || entry.sale.hasCollections} onValueChange={(programId) => programId && setSale(entry, { programId })}
+                          options={(batch.programs ?? []).map((program) => ({ value: program.id, label: program.name, description: program.flexible ? `at least ₱${program.amount}` : `₱${program.amount}${program.amountEditable ? " (editable)" : ""}` }))} />
+                          {entry.sale.hasCollections && <span className="block text-xs text-muted-foreground">Has collections: the program stays.</span>}</div>}
+                        {entry.remove && <span className="text-xs font-semibold text-red-700">Will be removed</span>}
                         {entry.sale && !entry.remove && <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" aria-expanded={Boolean(entry.open)} onClick={() => change(entry.id, { open: !entry.open })}>{entry.open ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}Details</Button>}</td>
                       {isSale ? (
                         <>
@@ -190,7 +206,17 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
                       )}
                       <td className="p-2"><Input aria-label="Amount" type="number" min="0" step="0.01" className={`${field} w-28`} disabled={entry.remove} value={entry.amountText} onChange={(event) => change(entry.id, { amountText: event.target.value })} /></td>
                       {isSale && <td className="p-2"><Input aria-label="Notes" className={field} disabled={entry.remove} value={entry.notes} onChange={(event) => change(entry.id, { notes: event.target.value })} /></td>}
-                      <td className="p-2"><Input aria-label="Late-entry reason" className={field} placeholder="Only if the date is late" disabled={entry.remove} value={entry.backdateReason} onChange={(event) => change(entry.id, { backdateReason: event.target.value })} /></td>
+                      <td className="p-2"><Input aria-label="Late-entry reason" className={field} placeholder="Only if the date is late" disabled={entry.remove} value={entry.backdateReason} onChange={(event) => change(entry.id, { backdateReason: event.target.value })} />
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                          {!isSale && <>
+                            <label className="flex items-center gap-1"><input type="checkbox" disabled={entry.remove} checked={entry.reactivation} onChange={(event) => change(entry.id, { reactivation: event.target.checked })} />Reactivation</label>
+                            <label className="flex items-center gap-1"><input type="checkbox" disabled={entry.remove} checked={entry.transferred} onChange={(event) => change(entry.id, { transferred: event.target.checked })} />Transferred</label>
+                            <label className="flex items-center gap-1"><input type="checkbox" disabled={entry.remove} checked={entry.waiver} onChange={(event) => change(entry.id, { waiver: event.target.checked })} />Waiver (if suspended)</label>
+                          </>}
+                          {!dtoBatch && <label className="flex items-center gap-1"><input type="checkbox" disabled={entry.remove} checked={entry.noIncentive} onChange={(event) => change(entry.id, { noIncentive: event.target.checked })} />No incentive</label>}
+                        </div>
+                        {entry.noIncentive && !dtoBatch && <Input aria-label="Why no incentive" className={`${field} mt-1`} maxLength={300} placeholder="Why no incentive? *" disabled={entry.remove} value={entry.noIncentiveReason} onChange={(event) => change(entry.id, { noIncentiveReason: event.target.value })} />}
+                      </td>
                       <td className="p-2 text-right">
                         <Button type="button" size="sm" variant="ghost" onClick={() => change(entry.id, { remove: !entry.remove })}>
                           {entry.remove ? <><Undo2 className="size-3.5" />Keep</> : <><Trash2 className="size-3.5" />Remove</>}

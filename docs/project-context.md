@@ -17,6 +17,11 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Returned batch: ORC and the other encoding marks can be fixed; program on the New Sale row (2026-10-29)
+
+- **Owner:** when a remittance is rejected, the clerk cannot change ORC (true or false); add it and anything else not yet editable. Then: in New Sales, the program can be edited too.
+- **Done:** My Entries → Edit batch (`lib/batch-edit.ts`, `components/batch-editor.tsx`) now edits **ORC** (checkbox under Collected by, Collector batches only), and per entry **No incentive** with its reason (both kinds; not on DTO batches); Collections also **Reactivation**, **Transferred** and **Waiver (if suspended)**. The remittance is worked out again as when encoding: ORC lives in the remittance breakdown; ORC with a reactivation, or ORC on a non-Collector batch, is refused; unmarking No incentive clears its reason and the forfeited amount; a changed Waiver re-checks the payment. Each change is in Record Corrections. A New Sale's **program** is now chosen on its row (it was only under Details; still fixed once the account has collections). No migration. Test extended; all 278 tests and the build pass.
+
 ### Two handovers a day before encoding: the clerk picks the handover (2026-10-29)
 
 - **Owner:** Clearing says "already cleared"; **New handover: clear again** appears only once the earlier clearing is encoded, but clerks sometimes need to clear a MAS more than once a day before encoding. Asked which time each batch should then get: **the clerk picks**, with a clear sign of which is which.

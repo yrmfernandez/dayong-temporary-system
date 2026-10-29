@@ -3157,7 +3157,8 @@ test('a returned Collections batch can be edited by its clerk, and only while it
   h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, false, 'active']];
   await seedAccount({ doi: month + '-01' });
   await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
-  await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
+  await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 },
+    { incentive_id: 'I2', program_id: 'DP-1', role: 'Collector', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 20 }]);
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 C', orDate: today };
   const saved = await h.load('app/api/collections/route.ts').POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] }));
   assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
@@ -3180,6 +3181,23 @@ test('a returned Collections batch can be edited by its clerk, and only while it
   assert.equal(fixed.status, 200, JSON.stringify(await fixed.clone().json()));
   const [row] = await query('select or_number, month_to, nop_to, amount_collected::float8 as amount, remittance_amount::float8 as remit, remittance_method, penalty_amount::float8 as penalty, remittance_status, encoded_by_employee_id from collections');
   assert.deepEqual(row, { or_number: '1002 C', month_to: after, nop_to: 3, amount: 700, remit: 400, remittance_method: 'Cash', penalty: 20, remittance_status: 'Returned', encoded_by_employee_id: 'DPE-0001' });
+
+  // What was set when encoding can be fixed too (October 29, 2026): ORC (Collector batches only, never with a
+  // reactivation), Reactivation, Transferred, Waiver and No incentive with its reason.
+  const kept = { orNumber: '1002 C', amount: 700, monthTo: after };
+  assert.match((await (await edit(kept, { orc: true })).json()).message, /only when the batch is collected by a Collector/);
+  assert.match((await (await edit({ ...kept, reactivation: true }, { collectedBy: 'Collector', orc: true })).json()).message, /reactivation cannot be in an ORC batch/);
+  assert.match((await (await edit({ ...kept, noIncentive: true }, {})).json()).message, /give the reason it earns no incentive/);
+  const marked = await edit({ ...kept, transferred: true, waiver: true, noIncentive: true, noIncentiveReason: 'Paid late' }, { collectedBy: 'Collector', orc: true });
+  assert.equal(marked.status, 200, JSON.stringify(await marked.clone().json()));
+  const [flags] = await query('select collected_by_role, transferred, suspended, no_incentive_reason, remittance_amount::float8 as remit, forfeited_incentive::float8 as forfeited, remittance_breakdown from collections');
+  assert.deepEqual([flags.collected_by_role, flags.transferred, flags.suspended, flags.no_incentive_reason, flags.remit], ['Collector', true, 'Waiver', 'Paid late', 700]);
+  assert.equal(flags.remittance_breakdown.every((item) => item.orc === true), true, 'ORC is kept in the breakdown');
+  assert.equal((await (await open()).json()).batch.orc, true);
+  const unmarked = await edit({ ...kept, noIncentive: false }, { collectedBy: 'MAS' });
+  assert.equal(unmarked.status, 200, JSON.stringify(await unmarked.clone().json()));
+  const [cleared] = await query('select no_incentive_reason, forfeited_incentive, remittance_amount::float8 as remit, remittance_breakdown from collections');
+  assert.deepEqual([cleared.no_incentive_reason, cleared.forfeited_incentive, cleared.remit, cleared.remittance_breakdown.some((item) => item.orc)], [null, null, 400, false]);
 
   // Another clerk cannot edit it.
   h.setUser({ userId: 'USR-2', employeeId: 'DPE-0005', name: 'Other', roleNames: ['Entry Clerk'], permissions: {} });
