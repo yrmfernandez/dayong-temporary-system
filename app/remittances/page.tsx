@@ -1,6 +1,6 @@
 "use client";
 
-import { confirmDialog, promptDialog } from "@/components/app-dialog";
+import { alertDialog, confirmDialog, promptDialog } from "@/components/app-dialog";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, BarChart3, CheckCircle2, ChevronDown, ChevronUp, Clock3, FileCheck2, LayoutDashboard, List, RefreshCw, Search, Wallet } from "lucide-react";
 
@@ -27,6 +27,8 @@ type Remittance = {
   collectionIds: string[]; paymentMethods: string[]; paymentReferences: string[]; penaltyAmount: number; penaltyNotes: string[]; photoIds: string[]; missingPhotos: string[]; clerkIds: string[]; clerkNames: string[];
   /** Why the Date Remitted of its entries was changed ("date: reason"), when it was. */
   dateRemittedReasons?: string[];
+  /** An open turnover sheet short or over on this slip (lib/turnover-variance.ts); difference − short, + over. */
+  turnover?: { id: string; difference: number; note: string } | null;
 };
 type Dashboard = {
   summary: { outstandingAmount: number; outstandingCount: number; pendingAmount: number; pendingCount: number; approvedTodayAmount: number; approvedTodayCount: number; discrepancyAmount: number; historicalReviewCount: number };
@@ -115,12 +117,26 @@ export default function RemittancesPage() {
   const decide = async (ids: string[], decision: "approve" | "reject") => {
     if (!ids.length) return;
     const discrepancy = decision === "approve" && pending.some((item) => ids.includes(item.id) && item.difference !== 0);
+    // A turnover sheet short or over (lib/turnover-variance.ts) is approved one slip at a time, saying whether the cash
+    // changed hands now; that cash goes in the Entry Clerk's report of today.
+    const turnovers = decision === "approve" ? pending.filter((item) => ids.includes(item.id) && item.turnover) : [];
+    if (turnovers.length && ids.length > 1) { await alertDialog(`${turnovers.map((item) => item.id).join(", ")} ${turnovers.length === 1 ? "has" : "have"} a turnover sheet short or over. Approve ${turnovers.length === 1 ? "it" : "them"} one at a time to say how each was settled.`); return; }
+    let settleCash = false;
+    const turnover = turnovers[0]?.turnover;
+    if (turnover) {
+      const amount = money(Math.abs(turnover.difference));
+      const about = `${turnover.id}${turnover.note ? `: ${turnover.note}` : ""}`;
+      settleCash = await confirmDialog(turnover.difference < 0
+        ? `The turnover sheet was short by ${amount} (${about}). Did the MAS hand over the ${amount} now? Yes puts it in the Entry Clerk's report of today as Turnover settled; No cash means none came in (explain why next).`
+        : `The turnover sheet was over by ${amount} (${about}). Was the ${amount} returned to the MAS now? Yes takes it out in the Entry Clerk's report of today as Turnover settled; No cash means none went out (explain why next).`,
+        { title: "How was the turnover difference settled?", confirmLabel: turnover.difference < 0 ? `Yes, MAS paid ${amount}` : `Yes, returned ${amount}`, cancelLabel: "No cash", requireChoice: true });
+    }
     const reason = decision === "reject" ? await promptDialog(`Why ${ids.length === 1 ? "is this remittance" : `are these ${ids.length} remittances`} being rejected? The entries go back to the Entry Clerk with this reason.`, { required: true }) : discrepancy ? await promptDialog("Explain how the discrepancy was resolved (required):", { required: true }) : "";
     if ((decision === "reject" || discrepancy) && !reason?.trim()) return;
     if (decision === "approve" && ids.length > 1 && !await confirmDialog(`Approve ${ids.length} remittances?`)) return;
     setSaving(true); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/remittances", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remittanceIds: ids, decision, reason }) });
+      const response = await fetch("/api/remittances", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remittanceIds: ids, decision, reason, settleCash }) });
       const result = await parseJsonResponse<{ error?: string; done?: string[]; failed?: string[] }>(response);
       if (!response.ok) throw new Error(result.error || "Unable to update the remittances.");
       setMessage(`${result.done?.length ?? ids.length} ${decision === "approve" ? "approved" : "rejected"}.${result.failed?.length ? ` Not done: ${result.failed.join(" ")}` : ""}`);
@@ -209,6 +225,7 @@ export default function RemittancesPage() {
                       {canApprove && <div className="flex gap-2"><Button type="button" size="sm" disabled={saving || item.missingPhotos.length > 0} title={item.missingPhotos.length ? "Every item needs a receipt photo" : undefined} onClick={() => void decide([item.id], "approve")}>Approve</Button><Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void decide([item.id], "reject")}>Reject</Button>{canDelete && <Button type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => setDeletingId(deletingId === item.id ? "" : item.id)}>Delete</Button>}</div>}
                     </div>
                     {item.penaltyAmount > 0 && <p className="text-xs font-semibold text-red-700">Penalty {money(item.penaltyAmount)} (separate from remittance): <span className="font-normal">{item.penaltyNotes.join("; ")}</span></p>}
+                    {item.turnover && <p className="text-xs font-semibold text-amber-800">Turnover sheet {item.turnover.difference < 0 ? "short" : "over"} by {money(Math.abs(item.turnover.difference))} ({item.turnover.id}){item.turnover.note && <span className="font-normal">: {item.turnover.note}</span>}</p>}
                     {Boolean(item.dateRemittedReasons?.length) && <p className="text-xs font-semibold text-amber-800">Date Remitted changed: <span className="font-normal">{item.dateRemittedReasons!.join("; ")}</span></p>}
                     {item.fidelityAmount > 0 && <p className="text-xs font-semibold text-emerald-700">Fidelity {money(item.fidelityAmount)} included in the expected amount</p>}
                     {item.remarks && <p className="text-xs text-muted-foreground">{item.remarks}</p>}

@@ -232,6 +232,13 @@
       "when": 1793232507644,
       "tag": "0032_turnover_variances",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793235233140,
+      "tag": "0033_turnover_settlement",
+      "breakpoints": true
     }
   ]
 }

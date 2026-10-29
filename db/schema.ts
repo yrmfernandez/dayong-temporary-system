@@ -583,9 +583,15 @@ export const turnover_variances = pgTable("turnover_variances", {
   resolution: text(),
   resolved_by_name: text(),
   resolved_at: moment("resolved_at"),
+  /** How it was settled: Paid by MAS, Returned to MAS, No cash, or Entries corrected (lib/turnover-variance.ts). */
+  settlement: text(),
+  /** Cash that changed hands to settle it, in the clerk's report of settled_on: + the MAS paid the short, − the overage returned. */
+  settled_cash: money("settled_cash"),
+  settled_on: day("settled_on"),
   ...encoder(),
 }, (t) => [
   index("turnover_variances_status_idx").on(t.status),
+  index("turnover_variances_encoder_idx").on(t.encoded_by_employee_id, t.encoded_at),
   index("turnover_variances_remittance_idx").on(t.remittance_id),
   index("turnover_variances_entries_idx").using("gin", t.entry_ids),
 ]).enableRLS();

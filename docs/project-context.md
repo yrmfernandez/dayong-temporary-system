@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Turnover short/over in the Entry Clerk report, settlement, and the audit gate (2026-10-29)
+
+- **Owner:** the entries are usually right and the MAS gave or added up the wrong amount. Show the short/over in the report, not as a balance; a report can be approved only when it is balanced or its discrepancies are settled.
+- **Done:** migration 0033 adds `settlement`, `settled_cash`, `settled_on` to `turnover_variances`. Remittances: a pending slip shows its turnover short/over; approving it asks whether the cash changed hands now (Yes, MAS paid / Yes, returned / No cash), then the explanation; such slips are approved one at a time (`settleCash` in the PATCH, `decideVariance`). A partly corrected batch keeps the difference left. Entry Clerk report (`lib/clerk-report.ts`, `components/clerk-report.tsx`): Cash In lines **Turnover short/over** and **Turnover settled**, plus a table of each one. Audits (`decideDailyAudit`): approval refused while a turnover difference on the clerk's batches in the period is open.
+- **Tests:** the turnover test now also checks the report (Collection Net 350, short −50, Cash In 300), the audit refusal, settlement Paid by MAS ₱50 (Cash In 350) and the audit approval after. Full suite and build: see the reply.
+- **In progress:** none.
+- **To do (owner), in order:** `npm run prod -- npm run db:migrate` (applies 0032 if not yet, and 0033), then `npm run prod -- node scripts/check-database.mjs` (49 tables, 0033 present), then deploy; staging: `npm run db:migrate`.
+
 ### Control total: turnover sheet short or over is allowed and traced (2026-10-29)
 
 - **Owner:** in the control total, allow over or short so it can be traced easily; add ideas to make it easy to trace and fix. Decided: any amount saves as usual (no limit, note optional); the slip goes to Discrepancy.

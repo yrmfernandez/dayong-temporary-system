@@ -6,6 +6,7 @@ import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { createReadableId } from "@/lib/readable-id";
 import { buildClerkReport } from "@/lib/clerk-report";
+import { clerkTurnover, varianceLabel } from "@/lib/turnover-variance";
 import { formatDate, formatMonth } from "@/lib/date-format";
 import { manilaDateOf } from "@/lib/manila-date";
 
@@ -188,6 +189,12 @@ export async function decideDailyAudit(input: { date: string; employeeId: string
   // The figures to lock in are worked out before the transaction; the status is checked again inside it.
   const before = await lockedAudit(currentDb(), period, date, employeeId);
   if (!before) throw new Error("Save the audit before approving it.");
+  if (input.decision === "approve") {
+    // Approved only when the report is balanced: every turnover short or over on its batches settled (owner, October 29, 2026).
+    const { start, end } = periodSpan(period, before.date);
+    const { open } = await clerkTurnover(before.employeeId, start, end);
+    if (open.length) throw new Error(`This report has ${open.length === 1 ? "a turnover sheet short or over" : `${open.length} turnover sheets short or over`} not settled yet: ${open.map((item) => `${item.id} (${item.mas}, ${varianceLabel(item.difference).toLowerCase()})`).join("; ")}. Settle ${open.length === 1 ? "it" : "them"} in Remittances (approve the Discrepancy slip with how it was settled) before approving.`);
+  }
   const figures = input.decision === "approve" ? await figuresFor(period, before.date, { name: before.employeeName, employeeId: before.employeeId }) : null;
   return inTransaction(async (tx) => {
     const audit = await lockedAudit(tx, period, date, employeeId);

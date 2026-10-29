@@ -2777,7 +2777,7 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   assert.equal(report.summaryLabel, '3RD WEEKLY REPORT');
   assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity, row.penalty]), [['Jun 15, 2026', 1, 350, 50, 300, 20, 0], ['Jun 16, 2026', 1, 700, 100, 600, 0, 50]], 'by date; the other clerk\'s COL-3 is not counted');
   assert.deepEqual([report.newSales.total.accounts, report.newSales.total.gross, report.newSales.total.incentives], [1, 500, 50]);
-  assert.deepEqual(report.cash, { cashBeg: 0, cashBegEdit: null, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, pendingCash: 0, totalCashIn: 1420, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
+  assert.deepEqual(report.cash, { cashBeg: 0, cashBegEdit: null, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, turnoverShortOver: 0, turnoverSettled: 0, pendingCash: 0, totalCashIn: 1420, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
   assert.deepEqual(report.masSummary.rows.map((row) => [row.name, row.sales.accounts, row.collections.accounts, row.collections.gross]), [['Maria', 1, 2, 1050]]);
   // Cash Beg is typed case by case (owner, October 13, 2026): the next week does not carry what was left.
   const next = await buildClerkReport('weekly', '2026-06-24', { employeeId: 'DPE-7', name: 'Clerk' });
@@ -3544,14 +3544,27 @@ test('a turnover sheet short or over still saves, is recorded, sends the slip to
     assert.match(breakdown.causes[0], /turnover sheet short by ₱50\.00 .* the sheet says ₱300\.00, the entries ₱350\.00/);
     const { categories } = await h.load('lib/exceptions.ts').findExceptions();
     assert.equal(categories.find((item) => item.category === 'turnover').total, 1, 'listed in Exceptions while open');
-    // Approval needs how it was settled; then the variance is settled with that explanation.
+    // The clerk's report shows it in the cash, so Remaining Cash on Hand is the ₱300 really received.
+    const report = () => h.load('lib/clerk-report.ts').buildClerkReport('daily', today, { employeeId: 'DPE-0001', name: '=encoder', branch: 'BR-1' });
+    let cash = (await report()).cash;
+    assert.deepEqual([cash.collectionNet, cash.turnoverShortOver, cash.turnoverSettled, cash.totalCashIn], [350, -50, 0, 300]);
+    assert.equal((await report()).turnover.openCount, 1);
+    // The report cannot be approved in Audits while it is not settled.
+    await query("insert into daily_audits (audit_id, report_date, employee_id, employee_name, status) values ('AUD-T', $1, 'DPE-0001', '=encoder', 'Draft')", [today]);
     const admin = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
-    const patch = (reason) => admin.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: slip.id, decision: 'approve', reason }));
+    const approveAudit = () => admin.load('app/api/audit/route.ts').PATCH(request({ date: today, employeeId: 'DPE-0001', decision: 'approve' }));
+    assert.match(JSON.stringify(await (await approveAudit()).json()), /turnover sheet short or over not settled yet: TOV-.*short by ₱50\.00/);
+    // The slip's approval needs how it was settled; the MAS paid the ₱50 now, so it comes in on today's report.
+    const patch = (reason) => admin.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: slip.id, decision: 'approve', reason, settleCash: true }));
     assert.match(JSON.stringify(await (await patch('')).json()), /Explain how the remittance discrepancy was resolved/);
     const approved = await patch('Member paid the ₱50 the next day');
     assert.equal(approved.status, 200, JSON.stringify(await approved.clone().json()));
-    const [settled] = await query('select status, resolution, resolved_by_name from turnover_variances');
-    assert.deepEqual(settled, { status: 'Resolved', resolution: 'Member paid the ₱50 the next day', resolved_by_name: 'Admin' });
+    const [settled] = await query('select status, resolution, resolved_by_name, settlement, settled_cash::float8 as cash, settled_on::text as day from turnover_variances');
+    assert.deepEqual(settled, { status: 'Resolved', resolution: 'Member paid the ₱50 the next day', resolved_by_name: 'Admin', settlement: 'Paid by MAS', cash: 50, day: today });
+    cash = (await report()).cash;
+    assert.deepEqual([cash.turnoverShortOver, cash.turnoverSettled, cash.totalCashIn], [-50, 50, 350], 'the short and the cash that settled it');
+    const audited = await approveAudit();
+    assert.equal(audited.status, 200, JSON.stringify(await audited.clone().json()));
     assert.equal((await h.load('lib/exceptions.ts').findExceptions()).categories.find((item) => item.category === 'turnover').total, 0);
     // A matching batch records nothing.
     await h.load('app/api/collections/route.ts').POST(request({ ...batch, controlTotal: 350, collections: [{ ...entry, monthFrom: rules.monthName(rules.monthIndex(month) + 2), monthTo: rules.monthName(rules.monthIndex(month) + 2), nopFrom: 3, nopTo: 3, orNumber: '3002 C' }] }));

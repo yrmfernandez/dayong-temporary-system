@@ -59,7 +59,8 @@ export const PATCH = withEncoder(async (request: Request) => {
     if (!ids.length) throw new Error("Choose the remittances to decide.");
     const done: string[] = [], failed: string[] = [];
     for (const id of ids) {
-      try { await decideCashRemittance(id, body.decision, String(body.reason ?? ""), allowOwnDecision); done.push(id); }
+      // settleCash: a turnover short or over on the slip was settled in cash now (lib/turnover-variance.ts).
+      try { await decideCashRemittance(id, body.decision, String(body.reason ?? ""), allowOwnDecision, body.settleCash === true); done.push(id); }
       catch (error) { failed.push(`${id}: ${error instanceof Error ? error.message : "failed"}`); }
     }
     if (!done.length) throw new Error(failed.join(" "));

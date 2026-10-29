@@ -9,6 +9,7 @@ import { expensePhotoIds } from "@/lib/receipt-photos";
 import { manilaDateOf } from "@/lib/remittance-deadline";
 import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
 import { formatDate as showDate } from "@/lib/date-format";
+import { clerkTurnover } from "@/lib/turnover-variance";
 
 /**
  * An Entry Clerk's own report for a day, week (Monday to Sunday), month or year, in the company's report layout:
@@ -134,6 +135,8 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
     getDeposits(clerk.employeeId, end), getReportNotes(clerk.employeeId, kind, start, branch, primary), getCashBegEdits(clerk.employeeId),
     clerkFidelitySlips(clerk.employeeId, start, end),
   ]);
+  // Turnover sheets short or over on the batches the clerk encoded, and cash that settled one (lib/turnover-variance.ts).
+  const turnover = await clerkTurnover(clerk.employeeId, start, end, branch);
   const inPeriod = (day: string) => day >= start && day <= end;
   const encoded = history.filter((entry) => inPeriod(entry.encodedAt.slice(0, 10)));
   // Every branch the clerk encoded for in the period, for the branch choice.
@@ -170,7 +173,13 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const fidelity = round(newSales.total.fidelity + collection.total.fidelity + fidelityLater);
   // Penalties are cash the clerk receives with the batch (the turnover control total includes them), so they count in.
   const penalty = round(newSales.total.penalty + collection.total.penalty);
-  const totalCashIn = round(cashBeg + newSales.total.net + collection.total.net + fidelity + penalty + notes.pendingCash);
+  /*
+   * Turnover short/over (owner, October 29, 2026): Sales and Collection Net are what the entries need; the MAS handed over
+   * the turnover sheet amount, so its difference (− short, + over) is added, and the cash that settled one in this period
+   * (+ MAS paid the short, − overage returned). Remaining Cash on Hand is then the cash really held. Not carried as a balance.
+   */
+  const turnoverShortOver = round(turnover.shortOver), turnoverSettled = round(turnover.settledCash);
+  const totalCashIn = round(cashBeg + newSales.total.net + collection.total.net + fidelity + penalty + turnoverShortOver + turnoverSettled + notes.pendingCash);
   const expenseTotal = round(expenses.reduce((total, item) => total + item.amount, 0));
   const depositTotal = round(deposits.reduce((total, item) => total + item.amount, 0));
   const totalCashOut = round(expenseTotal + depositTotal);
@@ -213,10 +222,16 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
       ...fidelitySlips.map((item) => ({ id: item.id, kind: "slip" as const, masName: item.masName, branch: item.branch, date: item.date, when: whenLabel(kind, item.date), amount: item.amount, status: item.status, remarks: item.remarks || "Handed in after encoding" })),
     ].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     cash: {
-      cashBeg, cashBegEdit: typedCashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, pendingCash: notes.pendingCash, totalCashIn,
+      cashBeg, cashBegEdit: typedCashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, turnoverShortOver, turnoverSettled, pendingCash: notes.pendingCash, totalCashIn,
       expenses: expenseTotal, forwardedToBank: depositTotal, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,
     },
     notes,
+    /** Each turnover difference behind the two cash lines, and the ones still open (they stop the audit approval). */
+    turnover: {
+      encoded: turnover.encoded.map((item) => ({ id: item.id, kind: item.kind, mas: item.mas, branch: item.branch, dateRemitted: item.dateRemitted, controlTotal: item.controlTotal, systemTotal: item.systemTotal, difference: item.cashEffect, note: item.note, status: item.status, settlement: item.settlement, resolution: item.resolution, remittanceId: item.remittanceId })),
+      settled: turnover.settled.map((item) => ({ id: item.id, mas: item.mas, settledOn: item.settledOn, amount: item.settledCash, settlement: item.settlement, resolution: item.resolution })),
+      openCount: turnover.open.length,
+    },
     masSummary: { title: `REPORT FOR ${MONTHS[parts(start).month - 1].toUpperCase()} ${parts(start).year}`, rows: masRows, total: { sales: sum(sales), collections: sum(collections),
       cve: { ...cveTotal, percent: cveTotal.gross > 0 ? round((sum(collections).gross / cveTotal.gross) * 100) : null } } },
     // Kept for audits, which store these totals with their findings.

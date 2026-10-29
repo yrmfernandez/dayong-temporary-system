@@ -197,6 +197,17 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 action={editable ? (index) => { const item = report.fidelitySlips.find((slip) => slip.id === report.fidelityReceived[index].id); return item && ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this Fidelity entry being voided?", { required: true }); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
             )}
 
+            {(report.turnover.encoded.length > 0 || report.turnover.settled.length > 0) && (
+              // Each turnover difference behind the Turnover lines; an open one stops the audit approval.
+              <Grid title={`Turnover short/over${report.turnover.openCount ? ` (${report.turnover.openCount} not settled: the report cannot be approved yet)` : ""}`} color={tone.cashFlow}
+                headers={["MAS", "Batch", "Sheet", "Entries", "Short/over", "Status", "Rmks", "Ref"]}
+                rows={[
+                  ...report.turnover.encoded.map((item) => [item.mas, `${item.kind} ${showDate(item.dateRemitted)}`, money(item.controlTotal), money(item.systemTotal), money(item.difference), item.status === "Open" ? "Not settled" : item.settlement || "Settled", item.resolution || item.note, item.id]),
+                  ...report.turnover.settled.map((item) => [item.mas, `Settled ${showDate(item.settledOn)}`, "", "", money(item.amount), item.settlement, item.resolution, item.id]),
+                ]}
+                total={Math.round((report.cash.turnoverShortOver + report.cash.turnoverSettled) * 100) / 100} />
+            )}
+
             <div className="grid gap-3 lg:grid-cols-[1.1fr_0.8fr_1.6fr] print:grid-cols-[1.1fr_0.8fr_1.6fr]">
               <dl className="space-y-0.5">
                 <Cash label="Cash Beg/Pending COH" value={report.cash.cashBeg} color={tone.cashBeg} />
@@ -205,6 +216,9 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 <Cash label="Collection Net" value={report.cash.collectionNet} />
                 <Cash label="Fidelity Bond" value={report.cash.fidelity} />
                 <Cash label="Penalty" value={report.cash.penalty} />
+                {/* The turnover sheet short (−) or over (+) on the clerk's batches, and cash that settled one (lib/turnover-variance.ts). */}
+                {(report.cash.turnoverShortOver !== 0 || report.turnover.encoded.length > 0) && <Cash label="Turnover short/over" value={report.cash.turnoverShortOver} color={report.cash.turnoverShortOver ? "text-amber-700" : ""} />}
+                {report.cash.turnoverSettled !== 0 && <Cash label="Turnover settled" value={report.cash.turnoverSettled} />}
                 <Cash label="Pending cash, to be encoded" value={report.cash.pendingCash} />
                 <Cash label="Total Cash In" value={report.cash.totalCashIn} color={tone.cashIn} strong />
                 <div className="h-2" />

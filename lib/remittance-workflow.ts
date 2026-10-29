@@ -13,7 +13,7 @@ import { clearedAt, closeClearings } from "@/lib/clearing";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import { incentiveDecisions } from "@/lib/incentive-decision";
 import { formatDate as showDate } from "@/lib/date-format";
-import { decideVariance, linkVarianceToSlip, openVarianceFor, varianceLabel } from "@/lib/turnover-variance";
+import { decideVariance, linkVarianceToSlip, openVarianceFor, varianceLabel, variancesOfSlips } from "@/lib/turnover-variance";
 
 
 /**
@@ -250,6 +250,8 @@ const reasonLines = (ids: string[], reasons: Map<string, { date: string; reason:
 export async function getRemittanceDashboard(clerkId = "") {
   // Read-only: the active part of the ledger is enough for the summary, the queues and the clerk list.
   const [all, reasons] = await Promise.all([loadLedger(), dateRemittedReasons()]);
+  // The turnover short or over of each slip still waiting (lib/turnover-variance.ts), for the approval question.
+  const turnovers = await variancesOfSlips(all.remittances.filter((remittance) => ["Pending Approval", "Discrepancy"].includes(remittance.status)).map((remittance) => remittance.id));
   const ledger = clerkId
     ? { ...all, collections: all.collections.filter((item) => item.encodedByEmployeeId === clerkId), remittances: all.remittances.filter((remittance) => remittance.clerkIds.includes(clerkId)) }
     : all;
@@ -290,7 +292,7 @@ export async function getRemittanceDashboard(clerkId = "") {
     },
     accountability,
     outstanding: available.map((item) => ({ ...item, dateRemittedReason: reasons.get(item.id)?.reason ?? "" })),
-    remittances: ledger.remittances.map((remittance) => ({ ...remittance, dateRemittedReasons: reasonLines(remittance.collectionIds, reasons) })),
+    remittances: ledger.remittances.map((remittance) => { const turnover = turnovers.get(remittance.id); return { ...remittance, dateRemittedReasons: reasonLines(remittance.collectionIds, reasons), turnover: turnover && turnover.status === "Open" ? { id: turnover.id, difference: turnover.difference, note: turnover.note } : null }; }),
     clerks,
   };
 }
@@ -457,7 +459,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
     });
     await tx.insert(schema.remittance_collections).values(collections.map((collection) => ({ remittance_collection_id: createReadableId("RCL") + Math.random().toString(36).slice(2, 5).toUpperCase(), remittance_id: id, collection_id: collection.id, amount: due.get(collection.id) ?? collection.remittanceAmount, linked_at: timestamp, ...identity })));
     for (const collection of collections) await setStatus(tx, collection, approved ? "Remitted" : "Pending Remittance Approval", id, forfeits.includes(collection) ? { remittanceAmount: collection.amount, forfeited: incentiveOf(collection) } : undefined);
-    if (variance) await linkVarianceToSlip(tx, variance.id, id, input.actualIsExpected ? turnoverOffset : difference);
+    if (variance) await linkVarianceToSlip(tx, variance, id, input.actualIsExpected ? turnoverOffset : difference);
   });
   // The person's clearing for that day is done once their entries are on a slip (lib/clearing.ts). A DTO slip has no
   // clearing: its accountable person is the clerk who received the cash, whose own clearing (as a MAS) stays open.
@@ -465,7 +467,8 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   return { id, type: kind, status, expectedAmount: expected, actualAmount: actual, difference, fidelityAmount: Math.round(fidelityAmount*100)/100, forfeitedCount: forfeits.length, forfeitedAmount: forfeitedTotal };
 }
 
-export async function decideCashRemittance(remittanceId: string, decision: "approve" | "reject", reason = "", allowOwnDecision = false) {
+/** `settleCash`: a turnover short or over on the slip was settled in cash now (lib/turnover-variance.ts decideVariance). */
+export async function decideCashRemittance(remittanceId: string, decision: "approve" | "reject", reason = "", allowOwnDecision = false, settleCash = false) {
   const actor = getEncoder();
   const ledger = await loadLedger();
   const remittance = ledger.remittances.find((item) => item.id === remittanceId);
@@ -505,7 +508,7 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
       await setStatus(tx, item, decision === "approve" ? "Remitted" : "Returned", remittance.id, giveBack ? { remittanceAmount: Math.round((item.amount - item.forfeitedIncentive) * 100) / 100, forfeited: 0 } : undefined);
     }
     // A turnover short or over is settled by the approval's explanation; a rejected slip leaves it open for the next one.
-    await decideVariance(tx, remittance.id, decision, reason);
+    await decideVariance(tx, remittance.id, decision, reason, settleCash);
   });
   return { id: remittance.id, status };
 }
