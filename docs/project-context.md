@@ -1699,8 +1699,8 @@ Submission now locks the selected New Sales or Collections inside the write tran
 - **Done (2026-10-29):** owner ran `scripts/_tmp-check-realtime-partitions.mts` on production: realtime.messages has 0 partitions (none ever made), so every broadcast is dropped and other users see changes only on the fallback reload. Staging has them. The Realtime service makes the partitions once browsers connect to it, so the browser connection (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, built in at deploy) was checked next.
 - **Done (2026-10-29), cause found:** both variables are set on Vercel, but the live site's Realtime connection goes to `nziflfmwqnaqcisssapy` (the **staging** project). Production pages listened to staging's change signals and never connected to production's Realtime, so production never made its partitions and its broadcasts were dropped. Only table names travel on the channel, so no records were exposed.
 - **Done (2026-10-29), fixed:** owner set both Vercel Production variables to the production project and redeployed. The check script then showed 5 partitions on production (October 28 to November 1), today included, so broadcasts are stored and sent. Temporary script deleted. System guide (Live updates, item 2) now says both values must match the environment's project and how to check. The fallback reloads stay as a safety net.
-- **In progress (owner):** two-user test on the live site: one saves (e.g. a collection), the other's open page updates within about 2 seconds without a refresh.
-- **To do:** none.
+- **Done (2026-10-29):** owner confirmed on the live site: a save by one user shows on another user's open page without a refresh.
+- **In progress / To do:** none.
 
 ### Merge members registered twice (2026-10-23)
 
