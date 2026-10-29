@@ -1,0 +1,27 @@
+{
+  "_about": "scripts/complete-old-site-reports.mjs (owner, October 29, 2026): completes the Entry Clerks' monthly reports with the old web app and old sheet records of the month. branches as given by the owner on October 29, 2026. encoders: old-site Encoder / Encoded By name -> Employee ID, only for names the script cannot match by itself. branches: branch -> Employee ID of the clerk whose report gets that branch's old-site collections (and New Sales with no encoder); needed for every branch the script lists as 'ask the owner'. skipExpenseTypes: old-site expense types not imported because this system already counts them (MAS incentives are taken out of Sales and Collection Net).",
+  "month": "2026-10",
+  "encoders": {},
+  "branches": {
+    "BUHANGIN": "MD-2026-0077",
+    "MATINA": "MD-2026-0077",
+    "AGDAO": "MD-2026-0077",
+    "TIBUNGCO": "MD-2026-0077",
+    "DIGOS": "MD-2026-0057",
+    "STA. CRUZ": "MD-2026-0057",
+    "TORIL": "MD-2026-0081",
+    "BALIOK": "MD-2026-0081",
+    "COMPOSTELA": "DNDO-2026-0075",
+    "CALINAN": "DNDO-2026-0002",
+    "MONKAYO": "DNDO-2026-0075",
+    "PANTUKAN": "DNDO-2026-0003",
+    "MINTAL": "MD-2026-0078",
+    "NABUNTURAN": "DNDO-2026-0082",
+    "MAWAB": "DNDO-2026-0082",
+    "MONTEVISTA": "DNDO-2026-0075"
+  },
+  "skipExpenseTypes": [
+    "OVERALL MAS INCENTIVES"
+  ],
+  "oldSheet": "legacy-data/old-data/2026 DATABASE (NS + COLL).xlsx"
+}

@@ -482,6 +482,8 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-12665b-link-private.mjs](../scripts/check-12665b-link-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs` | No flag detected; read source before running |
 | [scripts/check-clerk-report-saves.mjs](../scripts/check-clerk-report-saves.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/inspect-clerk-pending-cash.mjs](../scripts/inspect-clerk-pending-cash.mjs) | `@next/env`, `postgres` | Read only; give part of the clerk's name |
+| [scripts/inspect-month-coverage.mjs](../scripts/inspect-month-coverage.mjs) | `@next/env`, `postgres` | Read only; give the month (YYYY-MM): entries by source, encoder, branch and week, and the Entry Clerks with their branches |
+| [scripts/complete-old-site-reports.mjs](../scripts/complete-old-site-reports.mjs) | `node:fs`, `node:path`, `@next/env`, `postgres`, `config/old-site-report-clerks.json` | Yes with `--apply` (refused while anything is unresolved); `--apply --rollback` tests the writes and undoes them |
 | [scripts/check-collections.mjs](../scripts/check-collections.mjs) | `@next/env`, `googleapis` | No flag detected; read source before running |
 | [scripts/check-company-report.mjs](../scripts/check-company-report.mjs) | `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/check-database.mjs](../scripts/check-database.mjs) | `@next/env`, `node:fs`, `postgres` | No flag detected; read source before running |
