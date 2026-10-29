@@ -2,7 +2,7 @@ import { refuseOnDayOff } from "@/lib/day-off";
 import { canDeleteRecords } from "@/lib/admin-delete";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
-import { createCashRemittance, decideCashRemittance, getRemittanceDashboard } from "@/lib/remittance-workflow";
+import { createCashRemittance, decideCashRemittance, getRemittanceDashboard, undoRemittanceApproval } from "@/lib/remittance-workflow";
 import { canAccessPath, isAdministratorRole } from "@/lib/access-control";
 
 /**
@@ -52,6 +52,12 @@ export const PATCH = withEncoder(async (request: Request) => {
   if (!user || !(await canManageUsers())) return Response.json({ error: "You are not allowed to approve Remittances." }, { status: 403 });
   try {
     const body = await request.json();
+    // An approval made by mistake is undone by an Administrator, one slip at a time.
+    if (body.decision === "undo") {
+      if (!user.roleNames.some(isAdministratorRole)) return Response.json({ error: "Only an Administrator can undo an approval." }, { status: 403 });
+      const result = await undoRemittanceApproval(String(body.remittanceId ?? "").trim(), String(body.reason ?? ""));
+      return Response.json({ success: true, remittance: result });
+    }
     if (!['approve', 'reject'].includes(body.decision)) throw new Error("Choose approve or reject.");
     const normalizedRoles = user.roleNames.map((role) => role.trim().toLowerCase());
     const allowOwnDecision = normalizedRoles.some((role) => role === "administrator" || role === "admin") && normalizedRoles.includes("entry clerk");

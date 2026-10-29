@@ -145,6 +145,22 @@ export default function RemittancesPage() {
     finally { setSaving(false); }
   };
 
+  // An approval made by mistake: an Administrator puts the slip back in Pending Approval, to reject (or approve) it again.
+  const canUndo = Boolean(data?.canDecideIncentive);
+  const undoApproval = async (id: string) => {
+    const reason = await promptDialog(`Undo the approval of ${id}? It goes back to Pending Approval and its entries to Pending Remittance Approval, so it can be rejected or approved again. Why is the approval being undone?`, { required: true });
+    if (!reason?.trim()) return;
+    setSaving(true); setError(""); setMessage("");
+    try {
+      const response = await fetch("/api/remittances", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remittanceId: id, decision: "undo", reason }) });
+      const result = await parseJsonResponse<{ error?: string; remittance?: { status: string } }>(response);
+      if (!response.ok) throw new Error(result.error || "Unable to undo the approval.");
+      setMessage(`Approval of ${id} undone: it is back in ${result.remittance?.status ?? "Pending Approval"}.`);
+      await load(clerk);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to undo the approval."); }
+    finally { setSaving(false); }
+  };
+
   if (loading && !data) return <p className="p-6 text-sm text-muted-foreground">Loading remittances...</p>;
 
   return (
@@ -258,8 +274,11 @@ export default function RemittancesPage() {
             {deletingId && records.some((item) => item.id === deletingId) && <div className="mb-3">{deletePanel(deletingId)}</div>}
             {explainingId && records.some((item) => item.id === explainingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Why {explainingId} is {(records.find((item) => item.id === explainingId)?.difference ?? 0) < 0 ? "short" : "over"}</p><Button type="button" size="sm" variant="ghost" onClick={() => setExplainingId("")}>Close</Button></div><RemittanceDiscrepancy remittanceId={explainingId} /></div>}
             {viewingId && records.some((item) => item.id === viewingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Entries on {viewingId}</p><Button type="button" size="sm" variant="ghost" onClick={() => setViewingId("")}>Close</Button></div><RemittanceEntries remittanceId={viewingId} canDecideIncentive={Boolean(data?.canDecideIncentive)} onChanged={() => void load(clerk)} /></div>}
-            <DataTable headers={["Remittance", "Slip", "Received", "Accountable person", "Encoded by", "Expected", "Actual", "Difference", "Status", "Remarks / Reason", "Decision by", ...(canDelete ? [""] : [])]} rows={records.map((item) => [<button key="id" type="button" className="font-mono text-left hover:underline" title="View the entries on this remittance" aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}>{item.id}</button>, item.type, item.remittanceTime ? `${item.remittanceDate} ${item.remittanceTime}` : item.remittanceDate, item.accountableName, item.clerkNames.join(", ") || "—", money(item.expectedAmount), money(item.actualAmount), item.difference !== 0 ? <button key="difference" type="button" className="font-semibold text-red-700 underline-offset-2 hover:underline dark:text-red-400" title="See why" aria-expanded={explainingId === item.id} onClick={() => toggleExplain(item.id)}>{money(item.difference)}</button> : money(item.difference), <StatusBadge key="status" status={item.status} />, <span key="reason">{item.decisionReason || item.remarks || "—"}{Boolean(item.dateRemittedReasons?.length) && <span className="block text-xs text-amber-800">Date Remitted changed: {item.dateRemittedReasons!.join("; ")}</span>}</span>, item.decisionByName,
-              ...(canDelete ? [<Button key="delete" type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => setDeletingId(deletingId === item.id ? "" : item.id)}>Delete</Button>] : [])])} empty="No approved or rejected remittances." />
+            <DataTable headers={["Remittance", "Slip", "Received", "Accountable person", "Encoded by", "Expected", "Actual", "Difference", "Status", "Remarks / Reason", "Decision by", ...(canDelete || canUndo ? [""] : [])]} rows={records.map((item) => [<button key="id" type="button" className="font-mono text-left hover:underline" title="View the entries on this remittance" aria-expanded={viewingId === item.id} onClick={() => toggleView(item.id)}>{item.id}</button>, item.type, item.remittanceTime ? `${item.remittanceDate} ${item.remittanceTime}` : item.remittanceDate, item.accountableName, item.clerkNames.join(", ") || "—", money(item.expectedAmount), money(item.actualAmount), item.difference !== 0 ? <button key="difference" type="button" className="font-semibold text-red-700 underline-offset-2 hover:underline dark:text-red-400" title="See why" aria-expanded={explainingId === item.id} onClick={() => toggleExplain(item.id)}>{money(item.difference)}</button> : money(item.difference), <StatusBadge key="status" status={item.status} />, <span key="reason">{item.decisionReason || item.remarks || "—"}{Boolean(item.dateRemittedReasons?.length) && <span className="block text-xs text-amber-800">Date Remitted changed: {item.dateRemittedReasons!.join("; ")}</span>}</span>, item.decisionByName,
+              ...(canDelete || canUndo ? [<div key="actions" className="flex flex-wrap gap-1">
+                {canUndo && item.status === "Approved" && <Button type="button" size="sm" variant="outline" disabled={saving} title="Approved by mistake? Put it back in Pending Approval." onClick={() => void undoApproval(item.id)}>Undo approval</Button>}
+                {canDelete && <Button type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => setDeletingId(deletingId === item.id ? "" : item.id)}>Delete</Button>}
+              </div>] : [])])} empty="No approved or rejected remittances." />
           </CardContent></Card>
         </div>
       )}

@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Undo a remittance approved by mistake (2026-10-29)
+
+- **Owner:** an admin approved a remittance that should have been rejected; an accidental approval must be revertible.
+- **Done:** an Administrator can **Undo approval** on an Approved slip (Remittances → Reports → Remittance Records), with a reason. The slip returns to Pending Approval (Discrepancy when short or over) with the decision cleared, its entries to Pending Remittance Approval, and a turnover short or over its approval settled is open again; then it is rejected or approved in the usual way. The reason is added to the slip's remarks. Refused when an entry left the slip after approval, or when turnover cash settled on that approval is in an approved clerk report. Approval only marked the slip and its entries (cash ledger, Fidelity savings, Clearing and reports read them live), so nothing else needs reversing. `undoRemittanceApproval` (lib/remittance-workflow.ts), `reopenVariance` (lib/turnover-variance.ts), `PATCH /api/remittances` `decision: "undo"`; system guide section 6, step 5. Build passes.
+- **In progress (owner):** deploy (no migration needed), then on the slip approved by mistake: Undo approval with the reason, then Reject it with the rejection reason.
+- **To do:** none.
+
 ### October monthly reports completed with the old web app and old sheet records (2026-10-29)
 
 - **Owner:** the system was started around the 2nd week of October, so the clerks' October monthly reports are incomplete; complete them from the data (branch, dates, MAS). Decided: collections go to the branch's clerk assigned today, and where a clerk has several branches the owner names the clerk per branch; old-site expenses and bank remittances are imported too; each record counts on the day it was created on the old site.

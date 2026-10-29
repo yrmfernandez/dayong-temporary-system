@@ -13,7 +13,7 @@ import { clearedAt, closeClearings } from "@/lib/clearing";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import { incentiveDecisions } from "@/lib/incentive-decision";
 import { formatDate as showDate } from "@/lib/date-format";
-import { decideVariance, linkVarianceToSlip, openVarianceFor, varianceLabel, variancesOfSlips } from "@/lib/turnover-variance";
+import { decideVariance, linkVarianceToSlip, openVarianceFor, reopenVariance, varianceLabel, variancesOfSlips } from "@/lib/turnover-variance";
 
 
 /**
@@ -509,6 +509,46 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
     }
     // A turnover short or over is settled by the approval's explanation; a rejected slip leaves it open for the next one.
     await decideVariance(tx, remittance.id, decision, reason, settleCash);
+  });
+  return { id: remittance.id, status };
+}
+
+/**
+ * An approval made by mistake (owner, October 29, 2026: a slip approved instead of rejected). An Administrator undoes it
+ * with a reason: the slip goes back to Pending Approval (Discrepancy when short or over) and its entries back to Pending
+ * Remittance Approval, as before the decision, so it can be rejected or approved again in the usual way. A turnover
+ * short or over its approval settled is open again; the reason is added to the slip's remarks (and the Audit Log keeps
+ * every change). Refused when an entry left the slip since, or when the settled turnover cash is in an approved report.
+ */
+export async function undoRemittanceApproval(remittanceId: string, reason: string) {
+  const actor = getEncoder();
+  if (text(reason).length < 3) throw new Error("Give the reason for undoing the approval.");
+  const ledger = await loadLedger();
+  const remittance = ledger.remittances.find((item) => item.id === remittanceId);
+  if (!remittance) throw new Error("Remittance not found.");
+  if (remittance.status !== "Approved") throw new Error("Only an approved Remittance can have its approval undone.");
+  const items = remittance.collectionIds.map((id) => ledger.collections.find((collection) => collection.id === id));
+  if (items.some((item) => !item || item.linkedRemittanceId !== remittance.id || item.remittanceStatus !== "Remitted")) throw new Error(`A ${remittance.type === "New Sales" ? "New Sale" : "Collection"} on this Remittance changed after its approval. Refresh and investigate it.`);
+  const variance = (await variancesOfSlips([remittance.id])).get(remittance.id);
+  if (variance?.status === "Resolved" && variance.settledCash && variance.settledOn) {
+    const { reportLockProblem } = await import("@/lib/daily-audit");
+    if (await reportLockProblem(variance.encodedByEmployeeId, variance.settledOn)) throw new Error(`The turnover cash settled on this approval is in ${variance.encodedByName}'s report for ${showDate(variance.settledOn)}, which is approved in Audits. Reopen that report first.`);
+  }
+  const status = remittance.difference !== 0 ? "Discrepancy" : "Pending Approval";
+  const note = `Approval by ${remittance.decisionByName || "—"} undone by ${actor.name} on ${showDate(manilaNow().date)}: ${text(reason).slice(0, 300)}`;
+  await inTransaction(async (tx) => {
+    const current = await lockSlip(tx, remittance.id);
+    if (current.status !== "Approved") throw new Error(`This Remittance is now ${current.status.toLowerCase()}. Refresh the page.`);
+    if (items.length) {
+      const kindTable = remittance.type === "New Sales" ? schema.sales : schema.collections;
+      const idColumn = remittance.type === "New Sales" ? schema.sales.sale_id : schema.collections.collection_id;
+      const stillLinked = await tx.select({ id: idColumn }).from(kindTable).where(and(inArray(idColumn, items.map((item) => item!.id)), eq(kindTable.linked_remittance_id, remittance.id), eq(kindTable.remittance_status, "Remitted"))).for("update");
+      if (stillLinked.length !== items.length) throw new Error(`A ${remittance.type === "New Sales" ? "New Sale" : "Collection"} on this Remittance changed after its approval. Refresh and investigate it.`);
+    }
+    await tx.update(schema.remittances).set({ status, decision_by_user_id: null, decision_by_employee_id: null, decision_by_name: null, decision_at: null, rejection_reason: null, remarks: [remittance.remarks, note].filter(Boolean).join(" | ") })
+      .where(eq(schema.remittances.remittance_id, remittance.id));
+    for (const item of items) await setStatus(tx, item!, "Pending Remittance Approval", remittance.id);
+    await reopenVariance(tx, remittance.id);
   });
   return { id: remittance.id, status };
 }

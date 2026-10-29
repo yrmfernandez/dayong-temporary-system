@@ -123,6 +123,16 @@ export async function decideVariance(tx: Queryable, remittanceId: string, decisi
   }).where(eq(t.variance_id, open.variance_id));
 }
 
+/**
+ * An approval undone (lib/remittance-workflow.ts undoRemittanceApproval): the variance its approval settled is open again
+ * on the same slip, so the next decision settles it. One settled by corrected entries (when the slip was made) stays.
+ */
+export async function reopenVariance(tx: Queryable, remittanceId: string) {
+  const t = schema.turnover_variances;
+  await tx.update(t).set({ status: "Open", resolution: null, resolved_by_name: null, resolved_at: null, settlement: null, settled_cash: null, settled_on: null })
+    .where(and(eq(t.remittance_id, remittanceId), eq(t.status, "Resolved"), sql`coalesce(${t.settlement}, '') <> 'Entries corrected'`));
+}
+
 const manilaDayOf = (value: string) => value ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date(value)) : "";
 
 /**
