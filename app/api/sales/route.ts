@@ -1,5 +1,5 @@
 import { refuseOnDayOff } from "@/lib/day-off";
-import { clearedEmployee, clearingProblem, dateRemittedReasonProblem, waitingBatchProblem } from "@/lib/clearing";
+import { clearedEmployee, clearingProblem, dateRemittedReasonProblem, pickedClearingProblem, waitingBatchProblem } from "@/lib/clearing";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
@@ -29,6 +29,8 @@ type SalePayload = {
   dateRemitted: string;
   /** Why the Date Remitted is not the day the MAS was cleared (lib/clearing.ts dateRemittedReasonProblem). */
   dateRemittedReason?: string;
+  /** The clearing (handover) picked in From Clearing, kept on each sale (lib/clearing.ts); blank for a MAS submission. */
+  clearingId?: string;
   sales: SalePayloadItem[];
   /** The total written on the MAS's turnover sheet. Short or over still saves and is recorded (lib/turnover-variance.ts). */
   controlTotal?: number | string;
@@ -186,13 +188,17 @@ async function saveSales(request: Request, user: SessionUser) {
         selectedBranch &&
         employee.branchIds.includes(selectedBranch.id),
     );
+    const clearingId = String(body.clearingId ?? "").trim();
     const clearedId = selectedBranch && sameName.length > 1 ? await clearedEmployee(sameName.map((employee) => employee.id), selectedBranch.name, body.dateRemitted.trim(), "New Sales") : "";
     const selectedStaff = sameName.find((employee) => employee.id === clearedId) ?? sameName[0];
+    // The handover picked in From Clearing must be this MAS's, branch's and kind's (two handovers a day, October 29, 2026).
+    const pickedProblem = clearingId && selectedBranch && selectedStaff ? await pickedClearingProblem(clearingId, selectedStaff.id, selectedBranch.name, body.dateRemitted.trim(), "New Sales") : "";
+    if (pickedProblem) return NextResponse.json({ success: false, message: pickedProblem }, { status: 400 });
     // Encoding follows Clearing: the MAS must be cleared for this branch on the Date Remitted.
     const notCleared = selectedBranch && selectedStaff ? await clearingProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim(), "New Sales") : "";
     if (notCleared) return NextResponse.json({ success: false, message: notCleared }, { status: 400 });
     // No second batch while one for the same MAS and day is waiting for approval (double entries; lib/clearing.ts).
-    const waiting = selectedBranch && selectedStaff ? await waitingBatchProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim(), "New Sales") : "";
+    const waiting = selectedBranch && selectedStaff ? await waitingBatchProblem(selectedStaff.id, selectedStaff.name, selectedBranch.name, body.dateRemitted.trim(), "New Sales", clearingId) : "";
     if (waiting) return NextResponse.json({ success: false, message: waiting }, { status: 400 });
     // A Date Remitted moved off the clearing day (encoding delayed by meetings and the like) needs a reason, kept on each sale.
     const dateRemittedReason = String(body.dateRemittedReason ?? "").trim().slice(0, 300);
@@ -823,6 +829,7 @@ async function saveSales(request: Request, user: SessionUser) {
             sale.orDate,
           backdateReason: lateEntryReason(String(sale.orDate ?? "").trim(), String(sale.backdateReason ?? "").trim().slice(0, 300), dateRemittedReason, manilaNow().date, calendar),
           dateRemittedReason,
+          clearingId,
         };
 
         const quote = quotes[savedSales.length];

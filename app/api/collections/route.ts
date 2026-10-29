@@ -1,5 +1,5 @@
 import { refuseOnDayOff } from "@/lib/day-off";
-import { clearingProblem, dateRemittedReasonProblem, waitingBatchProblem } from "@/lib/clearing";
+import { clearingProblem, dateRemittedReasonProblem, pickedClearingProblem, waitingBatchProblem } from "@/lib/clearing";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
@@ -76,12 +76,16 @@ async function saveCollections(request: Request) {
     if (!selectedBranch) throw new Error("Select an active branch.");
     if (!accountable) throw new Error(dto ? "DTO needs your own active employee record: you are accountable for the cash you received." : "Select an active accountable employee assigned to the selected branch.");
     let dateRemittedReason = "";
+    // The clearing (handover) picked in From Clearing, kept on each row (two handovers a day, October 29, 2026).
+    const clearingId = dto ? "" : String(body.clearingId ?? "").trim();
     if (!dto) {
+      const pickedProblem = clearingId ? await pickedClearingProblem(clearingId, accountable.id, selectedBranch.name, dateRemitted, "Collections") : "";
+      if (pickedProblem) throw new Error(pickedProblem);
       // Encoding follows Clearing: the accountable person must be cleared for this branch on the Date Remitted.
       const notCleared = await clearingProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections");
       if (notCleared) throw new Error(notCleared);
       // No second batch while one for the same person and day is waiting for approval (double entries; lib/clearing.ts).
-      const waiting = await waitingBatchProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections");
+      const waiting = await waitingBatchProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections", clearingId);
       if (waiting) throw new Error(waiting);
       // A Date Remitted moved off the clearing day (encoding delayed by meetings and the like) needs a reason, kept on each row.
       dateRemittedReason = String(body.dateRemittedReason ?? "").trim().slice(0, 300);
@@ -198,6 +202,7 @@ async function saveCollections(request: Request) {
           accountable_employee_id: accountableEmployeeId, accountable_name: dto ? accountable.name : mas, accountable_role: dto ? "DTO" : "MAS", remittance_method: paymentMethod.name, payment_reference: paymentReference || null,
           penalty_amount: first && penalty > 0 ? penalty : null, penalty_note: first && penalty > 0 ? penaltyNote : null, fidelity_amount: first && fidelity > 0 ? fidelity : null,
           backdate_reason: backdateReason || null, date_remitted: dateRemitted, date_remitted_reason: dateRemittedReason || null,
+          clearing_id: clearingId || null,
         });
       }
       // The batch's total remittance (server calculation, plus Fidelity) is compared with the net total on the turnover

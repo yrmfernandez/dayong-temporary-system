@@ -239,6 +239,13 @@
       "when": 1793235233140,
       "tag": "0033_turnover_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793259158512,
+      "tag": "0034_entry_clearing",
+      "breakpoints": true
     }
   ]
 }

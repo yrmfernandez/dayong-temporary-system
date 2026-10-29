@@ -926,6 +926,8 @@ export default function CollectionsPage() {
           accountableEmployeeId: (cleared?.employeeName === mas ? cleared.employeeId : "") || (masStaff.find((staff) => staff.fullName === mas)?.employeeId ?? ""),
           dateRemitted,
           dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "",
+          // The handover picked in From Clearing: its time decides the incentive (lib/clearing.ts).
+          clearingId: !dto && cleared?.employeeName === mas ? cleared.id : "",
           dto,
           orc: orc && !dto && collectedBy === "Collector",
           collectedBy: dto ? "DTO" : collectedBy,

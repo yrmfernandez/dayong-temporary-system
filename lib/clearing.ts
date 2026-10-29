@@ -16,7 +16,13 @@ import { manilaNow } from "@/lib/remittance-deadline";
  *   - the clearing time decides the incentive deadline (3:00 PM the day after the OR date), however late the entries
  *     are encoded; without a clearing the encoding time is used (lib/remittance-workflow.ts receivedAtOf);
  *   - a clearing stays Open until that person's entries for the day are sent for approval (Encoded), or it is Removed.
- * A person may be cleared again the same day once their earlier clearing is Encoded (a second handover).
+ * A person may be cleared again the same day for a new handover of cash, once the clerk confirms it (newHandover).
+ *
+ * Handovers (owner, October 29, 2026): a MAS may hand over cash more than once a day before anything is encoded, so
+ * each clearing of a person, branch and day is numbered (1st handover, 2nd handover, …) and the clerk picks the one a
+ * batch belongs to when encoding. The batch keeps it (clearing_id on its New Sales or Collections): its time decides
+ * the incentive and sending the batch for approval closes only that clearing. Entries saved before then have none and
+ * follow the time rule (the latest clearing made before they were encoded).
  *
  * Progress (owner, October 9, 2026): each line also shows how far that person's entries have got, worked out from the
  * New Sales and Collections it covers (`withProgress`): Waiting for encoding → Waiting for receipt (in My Entries
@@ -38,7 +44,7 @@ const text = (value: unknown) => String(value ?? "").trim();
 const manilaStamp = (value: string | Date | null | undefined) => { if (!value) return ""; const now = manilaNow(new Date(value)); return `${now.date} ${now.time}`; };
 
 export type ClearingStage = "Waiting for encoding" | "Waiting for receipt" | "For approval" | "Returned" | "Approved" | "Removed";
-export { CLEARING_COVERS, coveredKinds, type ClearingCovers, type ClearingKind } from "@/lib/clearing-kinds";
+export { CLEARING_COVERS, coveredKinds, handoverLabel, type ClearingCovers, type ClearingKind } from "@/lib/clearing-kinds";
 type Tally = { total: number; receipt: number; approval: number; returned: number; approved: number };
 /** Who approved or returned a kind's entries, and when ("YYYY-MM-DD HH:MM", Manila), one line per person and decision. */
 export type ClearingDecision = { status: "Approved" | "Returned"; by: string; at: string };
@@ -55,6 +61,9 @@ export type Clearing = {
   employeeRoles?: string[];
   /** getEncodableClearings, an Encoded clearing of an earlier day: the kinds still waiting for encoding (only these can be picked). */
   waitingKinds?: ClearingKind[];
+  /** getClearingPage and getEncodableClearings: which handover of the person, branch and day this is (1, 2, …), of how many. */
+  handover?: number;
+  handovers?: number;
 };
 const toClearing = (row: typeof clearings.$inferSelect): Clearing => ({
   id: row.clearing_id, branch: row.branch, employeeId: row.employee_id, employeeName: text(row.employee_name), clearedAt: manilaStamp(row.cleared_at), clearedDate: text(row.cleared_date),
@@ -71,9 +80,9 @@ const UNFINISHED_DAYS = 60;
 const addDays = (date: string, count: number) => new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10);
 
 /**
- * Adds each clearing's stage from the entries it covers. An entry (New Sale or Collection of that accountable person
- * and branch, of a kind the clearing covers) belongs to the latest such clearing made on or after its Date Remitted
- * and, when the encoding time is known, no later than it was encoded. Each kind's stage is its least advanced entry's:
+ * Adds each clearing's stage from the entries it covers. An entry belongs to the clearing picked for its batch; one saved
+ * without (before October 29, 2026) to the latest clearing of that accountable person and branch, of its kind, made on
+ * or after its Date Remitted and, when the encoding time is known, no later than it was encoded. Each kind's stage is its least advanced entry's:
  * Returned, Waiting for receipt, For approval, then Approved; a covered kind with no entry yet is Waiting for encoding.
  * The line's stage is its least advanced kind's.
  */
@@ -85,10 +94,10 @@ export async function withProgress(list: Clearing[]): Promise<Clearing[]> {
   const earliest = addDays(live.map((item) => item.clearedDate).sort()[0], -UNFINISHED_DAYS);
   const { collections, sales, receipt_photos: photos } = schema;
   const [collectionRows, saleRows, photoRows, cashNames] = await Promise.all([
-    currentDb().select({ id: collections.collection_id, employeeId: collections.accountable_employee_id, branch: collections.branch, dateRemitted: collections.date_remitted, status: collections.remittance_status, encodedAt: collections.encoded_at, method: collections.remittance_method, remittanceId: collections.linked_remittance_id })
+    currentDb().select({ id: collections.collection_id, employeeId: collections.accountable_employee_id, branch: collections.branch, dateRemitted: collections.date_remitted, status: collections.remittance_status, encodedAt: collections.encoded_at, method: collections.remittance_method, remittanceId: collections.linked_remittance_id, clearingId: collections.clearing_id })
       // DTO collections (accountable: the receiving clerk) belong to no clearing, even when that clerk was cleared too.
       .from(collections).where(and(inArray(collections.accountable_employee_id, ids), sql`lower(coalesce(${collections.status}, '')) = 'posted'`, sql`coalesce(${collections.accountable_role}, '') <> 'DTO'`, gte(collections.date_remitted, earliest), sql`${collections.date_remitted} <= ${latest}`)),
-    currentDb().select({ id: sales.sale_id, employeeId: sql<string>`coalesce(${sales.accountable_employee_id}, ${sales.mas_employee_id})`, branch: sales.branch, dateRemitted: sales.date_remitted, status: sales.remittance_status, encodedAt: sales.encoded_at, method: sales.payment_method, remittanceId: sales.linked_remittance_id })
+    currentDb().select({ id: sales.sale_id, employeeId: sql<string>`coalesce(${sales.accountable_employee_id}, ${sales.mas_employee_id})`, branch: sales.branch, dateRemitted: sales.date_remitted, status: sales.remittance_status, encodedAt: sales.encoded_at, method: sales.payment_method, remittanceId: sales.linked_remittance_id, clearingId: sales.clearing_id })
       .from(sales).where(and(or(inArray(sales.accountable_employee_id, ids), inArray(sales.mas_employee_id, ids)), gte(sales.date_remitted, earliest), sql`${sales.date_remitted} <= ${latest}`)),
     currentDb().select({ entryIds: photos.entry_ids }).from(photos).where(sql`${photos.uploaded_at} >= ${`${earliest}T00:00:00+08:00`}`),
     cashMethodNames(),
@@ -102,7 +111,7 @@ export async function withProgress(list: Clearing[]): Promise<Clearing[]> {
   const tagged = [...collectionRows.map((row) => ({ ...row, kind: "Collections" as const })), ...saleRows.map((row) => ({ ...row, kind: "New Sales" as const }))];
   for (const entry of tagged) {
     const dateRemitted = text(entry.dateRemitted), encodedAt = manilaStamp(entry.encodedAt as string | Date | null);
-    const owner = live.filter((item) => item.employeeId === entry.employeeId && coveredKinds(item.covers).includes(entry.kind) && key(item.branch) === key(entry.branch ?? "") && item.clearedDate >= dateRemitted && (!encodedAt || item.clearedAt <= encodedAt))
+    const owner = text(entry.clearingId) ? live.find((item) => item.id === text(entry.clearingId)) : live.filter((item) => item.employeeId === entry.employeeId && coveredKinds(item.covers).includes(entry.kind) && key(item.branch) === key(entry.branch ?? "") && item.clearedDate >= dateRemitted && (!encodedAt || item.clearedAt <= encodedAt))
       .sort((a, b) => b.clearedAt.localeCompare(a.clearedAt))[0];
     if (!owner) continue;
     const tally = counts.get(owner.id)![entry.kind];
@@ -204,6 +213,24 @@ export async function settleDayEnd(input: { keep?: unknown; clear?: unknown }, b
 }
 
 /**
+ * Numbers each clearing among all clearings (whoever made them, not Removed) of the same person, branch and day, by
+ * time: handover 1, 2, … of `handovers`.
+ */
+async function withHandovers(list: Clearing[]): Promise<Clearing[]> {
+  if (!list.length) return list;
+  const rows = await currentDb().select({ id: clearings.clearing_id, employeeId: clearings.employee_id, branch: clearings.branch, day: clearings.cleared_date }).from(clearings)
+    .where(and(inArray(clearings.employee_id, [...new Set(list.map((item) => item.employeeId))]), inArray(clearings.cleared_date, [...new Set(list.map((item) => item.clearedDate))]), ne(clearings.status, "Removed")))
+    .orderBy(clearings.cleared_at, clearings.clearing_id);
+  const groupOf = (employeeId: string, branch: string, day: string) => `${employeeId}|${text(branch).toLowerCase()}|${text(day)}`;
+  const groups = new Map<string, string[]>();
+  for (const row of rows) { const key = groupOf(row.employeeId, row.branch, text(row.day)); groups.set(key, [...(groups.get(key) ?? []), row.id]); }
+  return list.map((item) => {
+    const group = groups.get(groupOf(item.employeeId, item.branch, item.clearedDate)) ?? [];
+    return group.includes(item.id) ? { ...item, handover: group.indexOf(item.id) + 1, handovers: group.length } : item;
+  });
+}
+
+/**
  * The Clearing page: today's clearings, and earlier ones not yet Approved (up to 60 days back), each with its progress;
  * with the branches and their people. An earlier day's line leaves once Approved or Removed, or once the clerk cleared
  * it from the list at day end (getDayEndReview).
@@ -214,7 +241,7 @@ export async function getClearingPage(clearedBy = "") {
     currentDb().select().from(clearings).where(and(mine(clearedBy), or(eq(clearings.cleared_date, today), and(ne(clearings.status, "Removed"), gte(clearings.cleared_date, addDays(today, -UNFINISHED_DAYS)))))).orderBy(desc(clearings.cleared_at)),
     getBranches(), getEmployees(),
   ]);
-  const listed = (await withProgress(rows.map(toClearing))).filter((item) => item.clearedDate === today || (item.stage !== "Approved" && !listCleared(item)));
+  const listed = await withHandovers((await withProgress(rows.map(toClearing))).filter((item) => item.clearedDate === today || (item.stage !== "Approved" && !listCleared(item))));
   return {
     today,
     clearings: listed,
@@ -238,24 +265,25 @@ export async function getEncodableClearings(clearedBy = "") {
   const list = rows.map(toClearing).map((item) => ({ ...item, employeeRoles: roles.get(item.employeeId) ?? [] }));
   const earlier = list.filter((item) => item.status === "Encoded" && item.clearedDate !== today);
   const progress = new Map((await withProgress(earlier)).map((item) => [item.id, item]));
-  return list.flatMap((item) => {
+  return withHandovers(list.flatMap((item) => {
     if (item.status === "Open" || item.clearedDate === today) return [item];
     const waitingKinds = (progress.get(item.id)?.kinds ?? []).filter((part) => part.stage === "Waiting for encoding").map((part) => part.kind);
     return waitingKinds.length ? [{ ...item, waitingKinds }] : [];
-  });
+  }));
 }
 
-/** Lists a MAS or employee as cleared now, for one branch. */
 /**
- * The person was already cleared today for this kind and that clearing's entries are encoded (owner, October 23, 2026:
- * RACHO, KRISTINE handed over her cash at 2:41 PM, but the clerk cleared her again at 3:18 and 3:23 PM for two more
- * batches, and their incentives were forfeited from those times). An Encoded clearing still covers more batches the
- * same day, so a new clearing is only for a new handover of cash: the clerk must confirm it (newHandover).
+ * The person was already cleared today for this kind (owner, October 23, 2026: RACHO, KRISTINE handed over her cash at
+ * 2:41 PM, but the clerk cleared her again at 3:18 and 3:23 PM for two more batches, and their incentives were forfeited
+ * from those times). A clearing covers every batch of that handover, so a new clearing is only for a new handover of
+ * cash: the clerk must confirm it (newHandover). Since October 29, 2026 this holds whether or not the earlier clearing
+ * is encoded yet (a MAS may hand over cash twice before the clerk encodes); the clerk then picks the handover per batch.
  */
 export class AlreadyClearedError extends Error {
   code = "ALREADY_CLEARED" as const;
 }
 
+/** Lists a MAS or employee as cleared now, for one branch. */
 export async function addClearing(input: { branch: string; employeeId: string; amount?: unknown; notes?: unknown; covers?: unknown; newHandover?: boolean }) {
   const branchName = text(input.branch), employeeId = text(input.employeeId), notes = text(input.notes);
   const covers = (text(input.covers) || "Both") as ClearingCovers;
@@ -270,20 +298,15 @@ export async function addClearing(input: { branch: string; employeeId: string; a
   if (!employee) throw new Error("Choose an active MAS or employee.");
   if (!employee.branchIds.includes(branch.id)) throw new Error(`${employee.name} is not assigned to ${branch.name}. Add the branch in Employees → Edit first.`);
   const now = new Date(), day = manilaNow(now).date;
-  // One Open clearing per person, branch, day and kind (owner, October 13, 2026): someone cleared for New Sales only can
-  // still be cleared for Collections the same day, and the other way round.
-  const open = await currentDb().select({ id: clearings.clearing_id, covers: clearings.covers }).from(clearings)
-    .where(and(eq(clearings.employee_id, employee.id), eq(clearings.branch, branch.name), eq(clearings.cleared_date, day), eq(clearings.status, "Open")));
-  const overlap = open.flatMap((row) => coveredKinds((CLEARING_COVERS as string[]).includes(text(row.covers)) ? row.covers as ClearingCovers : "Both")).filter((kind) => coveredKinds(covers).includes(kind));
-  if (overlap.length) throw new Error(`${employee.name} is already cleared for ${[...new Set(overlap)].join(" and ")} in ${branch.name} today and not yet encoded.`);
+  // Someone cleared for New Sales only can still be cleared for Collections the same day without asking (owner, October 13, 2026).
   if (!input.newHandover) {
-    const encoded = await currentDb().select({ at: clearings.cleared_at, covers: clearings.covers }).from(clearings)
-      .where(and(eq(clearings.employee_id, employee.id), eq(clearings.branch, branch.name), eq(clearings.cleared_date, day), eq(clearings.status, "Encoded")))
+    const sameDay = await currentDb().select({ at: clearings.cleared_at, covers: clearings.covers, status: clearings.status }).from(clearings)
+      .where(and(eq(clearings.employee_id, employee.id), eq(clearings.branch, branch.name), eq(clearings.cleared_date, day), ne(clearings.status, "Removed")))
       .orderBy(clearings.cleared_at);
-    const earlier = encoded.filter((row) => coveredKinds((CLEARING_COVERS as string[]).includes(text(row.covers)) ? row.covers as ClearingCovers : "Both").some((kind) => coveredKinds(covers).includes(kind)));
+    const earlier = sameDay.filter((row) => coveredKinds((CLEARING_COVERS as string[]).includes(text(row.covers)) ? row.covers as ClearingCovers : "Both").some((kind) => coveredKinds(covers).includes(kind)));
     if (earlier.length) {
-      const times = earlier.map((row) => manilaStamp(row.at).slice(11)).join(", ");
-      throw new AlreadyClearedError(`${employee.name} was already cleared in ${branch.name} today at ${times}. Encode the remaining batches under that clearing: no new clearing is needed. Clear again only for a new handover of cash; its time is the time received and decides the incentives.`);
+      const times = earlier.map((row) => `${manilaStamp(row.at).slice(11)}${row.status === "Open" ? " (not yet encoded)" : ""}`).join(", ");
+      throw new AlreadyClearedError(`${employee.name} was already cleared in ${branch.name} today at ${times}. If it is the same cash, encode all its batches under that clearing: no new clearing is needed. Clear again only for a new handover of cash; its time is the time received and decides the incentives. When encoding, pick the handover each batch belongs to.`);
     }
   }
   const id = createReadableId("CLR");
@@ -308,7 +331,8 @@ export async function removeClearing(input: { id: string; reason: string }, clea
  * Corrects a clearing listed by mistake (owner, October 14, 2026): what is being remitted, the branch, the MAS /
  * employee. The branch and person change only while nothing is encoded for the clearing (like removing it); a kind can
  * be unticked only when none of its entries are encoded. Same checks as a new clearing (active branch, active person
- * assigned to it, no second open clearing of a kind the same day). Own clearings only, unless an administrator.
+ * assigned to it). A second clearing of a kind the same day is another handover (October 29, 2026), so it is allowed.
+ * Own clearings only, unless an administrator.
  */
 export async function editClearing(input: { id: string; branch: string; employeeId: string; covers: unknown }, clearedBy = "") {
   const [row] = await currentDb().select().from(clearings).where(and(eq(clearings.clearing_id, text(input.id)), mine(clearedBy)));
@@ -329,11 +353,6 @@ export async function editClearing(input: { id: string; branch: string; employee
   for (const kind of coveredKinds(current).filter((item) => !coveredKinds(covers).includes(item))) {
     if (encoded(kind) > 0) throw new Error(`${kind} are already encoded on this clearing, so keep ${kind} ticked.`);
   }
-  // No second open clearing of a kind for the same person, branch and day (as when clearing).
-  const others = await currentDb().select({ id: clearings.clearing_id, covers: clearings.covers }).from(clearings)
-    .where(and(eq(clearings.employee_id, employee.id), eq(clearings.branch, branch.name), eq(clearings.cleared_date, text(row.cleared_date)), eq(clearings.status, "Open"), ne(clearings.clearing_id, row.clearing_id)));
-  const overlap = others.flatMap((item) => coveredKinds((CLEARING_COVERS as string[]).includes(text(item.covers)) ? item.covers as ClearingCovers : "Both")).filter((kind) => coveredKinds(covers).includes(kind));
-  if (overlap.length) throw new Error(`${employee.name} is already cleared for ${[...new Set(overlap)].join(" and ")} in ${branch.name} that day.`);
   await currentDb().update(clearings).set({ branch: branch.name, employee_id: employee.id, employee_name: employee.name, covers }).where(eq(clearings.clearing_id, row.clearing_id));
   return { id: row.clearing_id, employeeName: employee.name, branch: branch.name, covers };
 }
@@ -392,27 +411,43 @@ export async function clearingProblem(employeeId: string, employeeName: string, 
 }
 
 /**
+ * Why the clearing picked for a batch cannot take it, or "" (owner, October 29, 2026): it must be of this person and
+ * branch, cover the kind, not be Removed, and be made on or after the Date Remitted.
+ */
+export async function pickedClearingProblem(clearingId: string, employeeId: string, branch: string, dateRemitted: string, kind: ClearingKind) {
+  const [row] = await currentDb().select().from(clearings).where(eq(clearings.clearing_id, text(clearingId)));
+  if (!row || row.status === "Removed") return "The clearing picked for this batch was removed. Pick the person again in From Clearing.";
+  const covers = (CLEARING_COVERS as string[]).includes(text(row.covers)) ? row.covers as ClearingCovers : "Both";
+  if (row.employee_id !== text(employeeId) || text(row.branch).toLowerCase() !== text(branch).toLowerCase() || !coveredKinds(covers).includes(kind) || text(row.cleared_date) < text(dateRemitted)) {
+    return `The clearing picked (${text(row.employee_name)}, ${row.branch}, ${manilaStamp(row.cleared_at)}) is not for this batch's ${kind}, branch, MAS and Date Remitted. Pick it again in From Clearing.`;
+  }
+  return "";
+}
+
+/**
  * Why a batch cannot be saved yet, or "" (owner, October 16, 2026: double entries). While an earlier batch of the same
  * kind for this person, branch and Date Remitted is still waiting (Outstanding or Pending Approval) or Returned, another
  * one is refused: the clerk could otherwise encode the same receipts again from the same clearing. A new clearing of the
  * person made after that batch was encoded is another handover, so it is allowed. Only batches encoded in this system
- * count (imported entries have no encoder); DTO batches (paid at the office) are not limited.
+ * count (imported entries have no encoder); DTO batches (paid at the office) are not limited. With the clearing picked
+ * for the batch (October 29, 2026), only a waiting batch of that same clearing (handover) counts.
  */
-export async function waitingBatchProblem(employeeId: string, employeeName: string, branch: string, dateRemitted: string, kind: ClearingKind) {
+export async function waitingBatchProblem(employeeId: string, employeeName: string, branch: string, dateRemitted: string, kind: ClearingKind, clearingId = "") {
   if ((globalThis as { dayongClearingNotRequired?: boolean }).dayongClearingNotRequired) return "";
   const waiting = sql`('Outstanding', 'Pending Remittance Approval', 'Returned')`;
+  const picked = text(clearingId) ? sql` and clearing_id = ${text(clearingId)}` : sql``;
   const query = kind === "Collections"
     ? sql`select count(*)::int as n, coalesce(sum(amount_collected), 0)::float8 as total, max(encoded_at) as last, min(encoded_by_name) as clerk, string_agg(distinct remittance_status, ', ') as statuses
         from collections where accountable_employee_id = ${text(employeeId)} and lower(trim(branch)) = ${text(branch).toLowerCase()} and date_remitted = ${text(dateRemitted)}::date
-          and status = 'Posted' and remittance_status in ${waiting} and coalesce(encoded_by_employee_id, '') <> '' and coalesce(collected_by_role, '') <> 'DTO'`
+          and status = 'Posted' and remittance_status in ${waiting} and coalesce(encoded_by_employee_id, '') <> '' and coalesce(collected_by_role, '') <> 'DTO'${picked}`
     : sql`select count(*)::int as n, coalesce(sum(amount_paid), 0)::float8 as total, max(encoded_at) as last, min(encoded_by_name) as clerk, string_agg(distinct remittance_status, ', ') as statuses
         from sales where accountable_employee_id = ${text(employeeId)} and lower(trim(branch)) = ${text(branch).toLowerCase()} and date_remitted = ${text(dateRemitted)}::date
-          and remittance_status in ${waiting} and coalesce(encoded_by_employee_id, '') <> ''`;
+          and remittance_status in ${waiting} and coalesce(encoded_by_employee_id, '') <> ''${picked}`;
   const rows = await currentDb().execute(query);
   const [row] = (Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? []) as Array<{ n: number; total: number; last: string | Date | null; clerk: string | null; statuses: string | null }>;
   if (!Number(row?.n) || !row?.last) return "";
   const last = row.last instanceof Date ? row.last.toISOString() : String(row.last);
-  const [newer] = await currentDb().select({ id: clearings.clearing_id }).from(clearings).where(and(
+  const [newer] = text(clearingId) ? [] : await currentDb().select({ id: clearings.clearing_id }).from(clearings).where(and(
     eq(clearings.employee_id, text(employeeId)), sameBranch(branch), ne(clearings.status, "Removed"), inArray(clearings.covers, ["Both", kind]),
     sql`${clearings.cleared_at} > ${last}::timestamptz`,
   )).limit(1);
@@ -457,11 +492,31 @@ export async function clearedAt(employeeId: string, branch: string, day: string,
   return (encodedAt ? stamps.filter((stamp) => stamp <= encodedAt).at(-1) : undefined) ?? stamps[0];
 }
 
-/** Marks a person's Open clearings covering the branch and day as Encoded once their entries are sent for approval. */
-export async function closeClearings(employeeId: string, branch: string, day: string, remittanceId: string, kind?: ClearingKind) {
+/**
+ * The clearing picked for each of these entries (New Sales or Collections), by entry ID, with its time ("YYYY-MM-DD
+ * HH:MM", Manila); only entries that have one, and not a Removed clearing.
+ */
+export async function pickedClearings(ids: string[]) {
+  const list = [...new Set(ids.map(text).filter(Boolean))];
+  if (!list.length) return new Map<string, { id: string; at: string }>();
+  const values = sql.join(list.map((id) => sql`${id}`), sql`, `);
+  const result = await currentDb().execute(sql`select e.id, c.clearing_id, c.cleared_at from (
+      select sale_id as id, clearing_id from sales where sale_id in (${values}) and clearing_id is not null
+      union all select collection_id, clearing_id from collections where collection_id in (${values}) and clearing_id is not null) e
+    join clearings c on c.clearing_id = e.clearing_id and c.status <> 'Removed'`);
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; clearing_id: string; cleared_at: string | Date }>;
+  return new Map(rows.map((row) => [row.id, { id: row.clearing_id, at: manilaStamp(row.cleared_at) }]));
+}
+
+/**
+ * Marks a person's Open clearings covering the branch and day as Encoded once their entries are sent for approval. With
+ * `picked` (the clearings picked for the entries on the slip, October 29, 2026), only those: another handover the same
+ * day stays Open for its own batches.
+ */
+export async function closeClearings(employeeId: string, branch: string, day: string, remittanceId: string, kind?: ClearingKind, picked: string[] = []) {
   if (!text(employeeId) || !text(day)) return 0;
   const updated = await currentDb().update(clearings).set({ status: "Encoded", remittance_id: remittanceId, closed_at: new Date().toISOString() })
-    .where(and(covering([employeeId], branch, day, kind), eq(clearings.status, "Open")))
+    .where(and(picked.length ? and(inArray(clearings.clearing_id, picked), eq(clearings.employee_id, text(employeeId))) : covering([employeeId], branch, day, kind), eq(clearings.status, "Open")))
     .returning({ id: clearings.clearing_id });
   return updated.length;
 }

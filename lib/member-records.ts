@@ -292,6 +292,8 @@ export type SaleSheetData = {
   backdateReason?: string;
   /** Why the Date Remitted is not the day the MAS was cleared. */
   dateRemittedReason?: string;
+  /** The clearing (handover) picked for the batch (lib/clearing.ts). */
+  clearingId?: string;
 };
 
 /**
@@ -313,7 +315,7 @@ export async function addSale(
     or_date: optionalDate(sale.orDate), ...encoded(), remittance_status: "Outstanding", accountable_employee_id: accountableEmployeeId,
     penalty_amount: penalty.amount > 0 ? penalty.amount : null, penalty_note: penalty.amount > 0 ? penalty.note : null,
     mas_incentive: quote.incentive, remittance_amount: quote.remittance, fidelity_amount: quote.fidelity > 0 ? quote.fidelity : null,
-    backdate_reason: optional(sale.backdateReason), date_remitted_reason: optional(sale.dateRemittedReason),
+    backdate_reason: optional(sale.backdateReason), date_remitted_reason: optional(sale.dateRemittedReason), clearing_id: optional(sale.clearingId),
     // No incentive (owner, October 20, 2026): the incentive it would have earned is kept as forfeited.
     forfeited_incentive: quote.forfeited && quote.forfeited > 0 ? quote.forfeited : null, no_incentive_reason: optional(quote.noIncentiveReason),
   });

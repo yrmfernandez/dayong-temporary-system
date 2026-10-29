@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { readApiResponse } from "@/lib/api-response";
 import type { Clearing, ClearingCovers, ClearingStage } from "@/lib/clearing";
+import { handoverLabel } from "@/lib/clearing-kinds";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type PageData = { today: string; clearings: Clearing[]; branches: Array<{ id: string; name: string }>; employees: Array<{ id: string; name: string; roles: string[]; branchIds: string[] }> };
@@ -104,6 +105,7 @@ export default function ClearingPage() {
       if (!result.success && result.code === "ALREADY_CLEARED") {
         const newHandover = await confirmDialog(result.message, { title: "Already cleared today", confirmLabel: "New handover: clear again", cancelLabel: "Cancel", requireChoice: true });
         if (!newHandover) { setMessage("Not cleared again. Encode the remaining batches under the earlier clearing."); return; }
+        // Allowed even before the earlier clearing is encoded (October 29, 2026); each batch then picks its handover.
         result = await send(true);
       }
       if (!result.success) throw new Error(result.message || "Unable to clear.");
@@ -129,7 +131,7 @@ export default function ClearingPage() {
   const row = (item: Clearing) => (
     <Fragment key={item.id}>
     <tr className="border-t align-top">
-      <td className="p-3"><strong>{item.employeeName || item.employeeId}</strong><span className="block text-xs text-muted-foreground">{item.employeeId}</span></td>
+      <td className="p-3"><strong>{item.employeeName || item.employeeId}</strong><span className="block text-xs text-muted-foreground">{item.employeeId}</span>{/* Two handovers the same day (October 29, 2026): the clerk picks the matching one when encoding. */}{(item.handovers ?? 0) > 1 && <span className="mt-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{handoverLabel(item.handover ?? 1)} of {item.handovers}</span>}</td>
       <td className="p-3">{item.branch}</td>
       <td className="p-3 tabular-nums">{item.clearedDate === data?.today ? time(item.clearedAt) : `${item.clearedDate} ${time(item.clearedAt)}`}<span className="block text-xs text-muted-foreground">by {item.clearedBy || "—"}</span></td>
       <td className="p-3 tabular-nums">{item.amount != null ? money(item.amount) : "—"}</td>

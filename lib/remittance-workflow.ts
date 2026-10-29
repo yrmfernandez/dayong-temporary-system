@@ -9,7 +9,7 @@ import { INCENTIVE_GRACE_DAYS, incentiveDeadline, keepsIncentive, manilaDateOf, 
 import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { cashCountProblem } from "@/lib/cash-count";
 import { photosByEntry } from "@/lib/receipt-photos";
-import { clearedAt, closeClearings } from "@/lib/clearing";
+import { clearedAt, closeClearings, pickedClearings } from "@/lib/clearing";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import { incentiveDecisions } from "@/lib/incentive-decision";
 import { formatDate as showDate } from "@/lib/date-format";
@@ -461,9 +461,10 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
     for (const collection of collections) await setStatus(tx, collection, approved ? "Remitted" : "Pending Remittance Approval", id, forfeits.includes(collection) ? { remittanceAmount: collection.amount, forfeited: incentiveOf(collection) } : undefined);
     if (variance) await linkVarianceToSlip(tx, variance, id, input.actualIsExpected ? turnoverOffset : difference);
   });
-  // The person's clearing for that day is done once their entries are on a slip (lib/clearing.ts). A DTO slip has no
+  // The person's clearing for that day is done once their entries are on a slip (lib/clearing.ts); with a clearing picked
+  // for the batch, only that one (another handover the same day stays Open). A DTO slip has no
   // clearing: its accountable person is the clerk who received the cash, whose own clearing (as a MAS) stays open.
-  if (owner.accountableRole !== "DTO") await closeClearings(owner.accountableEmployeeId, owner.branch, owner.dateRemitted || input.remittanceDate, id, kind);
+  if (owner.accountableRole !== "DTO") await closeClearings(owner.accountableEmployeeId, owner.branch, owner.dateRemitted || input.remittanceDate, id, kind, [...new Set([...(await pickedClearings(ids)).values()].map((clearing) => clearing.id))]);
   return { id, type: kind, status, expectedAmount: expected, actualAmount: actual, difference, fidelityAmount: Math.round(fidelityAmount*100)/100, forfeitedCount: forfeits.length, forfeitedAmount: forfeitedTotal };
 }
 
@@ -613,7 +614,8 @@ export async function voidFidelitySlip(id: string, reason: string, by: { employe
 }
 
 /**
- * When the cash for a batch was received (owner's rule, October 8, 2026): the time its accountable person was cleared
+ * When the cash for a batch was received (owner's rule, October 8, 2026): the time of the clearing picked for it when it
+ * was encoded (October 29, 2026: a MAS may hand over cash twice a day), else the time its accountable person was cleared
  * for that branch on the Date Remitted (lib/clearing.ts); without a clearing, the time it was encoded. The incentive is
  * kept when this is by 3:00 PM the day after the OR date. (It used to assume 11:59 PM of the Date Remitted when encoded
  * on a later day, which made cash received on time look late.)
@@ -624,8 +626,8 @@ export async function receivedAtOf(items: Array<Pick<CashCollection, "id" | "enc
   // A resubmitted batch (owner, October 16, 2026): its cash was received once, when it was cleared. The clearing linked
   // to its earlier slip says when, exactly; and it is never later than that returned slip's time. Searching again could
   // pick a later clearing of the same person (another handover that day or the next) and forfeit the incentive.
-  const earlier = await earlierReceipt(items.map((item) => item.id));
-  const cleared = earlier.clearedAt || await clearedAt(items[0].accountableEmployeeId, items[0].branch, day, encoded, items[0].kind);
+  const [earlier, picked] = await Promise.all([earlierReceipt(items.map((item) => item.id)), pickedClearings(items.map((item) => item.id))]);
+  const cleared = [...picked.values()].map((clearing) => clearing.at).sort()[0] || earlier.clearedAt || await clearedAt(items[0].accountableEmployeeId, items[0].branch, day, encoded, items[0].kind);
   const found = cleared || encoded || `${manilaNow().date} ${manilaNow().time}`;
   const stamp = earlier.slipAt && earlier.slipAt < found ? earlier.slipAt : found;
   /*

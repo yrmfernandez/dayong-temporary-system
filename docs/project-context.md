@@ -17,6 +17,27 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Two handovers a day before encoding: the clerk picks the handover (2026-10-29)
+
+- **Owner:** Clearing says "already cleared"; **New handover: clear again** appears only once the earlier clearing is encoded, but clerks sometimes need to clear a MAS more than once a day before encoding. Asked which time each batch should then get: **the clerk picks**, with a clear sign of which is which.
+- **Done:** migration **0034** adds `clearing_id` to `sales` and `collections`. `addClearing` (lib/clearing.ts) asks "Already cleared today" for an Open (not yet encoded) clearing too, instead of refusing; `editClearing` no longer refuses a second clearing of a kind. Each clearing of a person, branch and day is numbered (`withHandovers`: **1st handover of 2**, badge on the Clearing page; picker label `MAS · 2nd handover (3:18 PM)`). New Sales and Collections send the picked clearing; the save checks it (`pickedClearingProblem`) and keeps it on every entry. The picked clearing's time is the time received (`receivedAtOf` via `pickedClearings`), progress follows it (`withProgress`), the double-entry check counts only that handover (`waitingBatchProblem`), and sending the batch closes only that clearing (`closeClearings`). Batch edit drops the link when the MAS or Date Remitted changes. Entries saved before this, and MAS submissions saved without a pick, follow the old time rule. `scripts/check-database.mjs` checks 0034. Test added; all 278 tests and the build pass.
+- **To do (owner), in order:** `npm run prod -- npm run db:migrate` (applies 0034), then `npm run prod -- node scripts/check-database.mjs` (0034 present, OK), then deploy; staging: `npm run db:migrate`.
+
+### PH-67986231 shows D-180 in Collections instead of DC-180 (2026-10-29)
+
+- **Owner:** why does Collections take PH-67986231 as D-180 and not DC-180?
+- **Found (new read-only `scripts/inspect-account-program.mjs`, staging; production to confirm):** the member has two accounts, both from the old sheets and never changed here: ENR-LEG-4708B211A2 **DC-180** (6 receipts, Jan 31–Sep 16, 2026) and ENR-LEG-FD41656464 **D-180** (2 receipts, Feb 26 and Jul 7, 2026). The old sheet labelled those 2 receipts D-180, so the import made a second account. The import mapping is right (`DC-180` and `C-180` → DC-180). Collections offers both accounts; it picks one only when the member has a single program.
+- **Production differs:** only ENR-LEG-4708B211A2 **DC-180** is listed under the number (U; 8 old-sheet receipts Jan 31–Sep 16 plus 1 encoded Oct 2; Fix coverage by Maintenance Admin Oct 29 14:19). Staging is an older copy, so the D-180 receipts were already on DC-180 there.
+- **Done:** the script (accounts linked to the member or saved with the number, a different number saved on an account, program changes, corrections, receipts and New Sales by program, deleted or moved-away accounts in the Audit Log). No app change, no migration.
+- **In progress:** rerun on production with the wider search; owner to say where D-180 still shows (member pick, program list, history, or a message).
+
+### PH-20172465 still Forfeited: old-system hold (2026-10-29)
+
+- **Owner:** PH-20172465 is still Forfeited although it should be updated; then: list the other accounts like it.
+- **Found (read-only `scripts/inspect-account-status.mjs`, production):** ENR-LEG-234F5F8223 (DF-650) has `forfeit_held` (Forfeited carried from the old system, not in the Audit Log); its 8 receipts (Feb–Sep 2026, NOP 2–9) give **U** (paid through Sep 29). Production: 607 stored Forfeited, 4 held only by the old-system mark. Not a bug: the hold works as decided on Oct 26.
+- **Done:** the script now also prints each held account's member number, account, program and status from the receipts alone. No app change, no migration.
+- **To do (owner):** reopen PH-20172465 in Member Corrections → Fix coverage with the start unchanged (preview shows Forfeited → U; the "Nothing changes" summary only means no receipt is renumbered), with a reason; decide on the other 3 one by one.
+
 ### Opened views update live too (2026-10-29)
 
 - **Owner:** live updates work, but an expanded view does not change (e.g. a member's name edited by another user changes in the Members list, not in the opened details); same on other pages.

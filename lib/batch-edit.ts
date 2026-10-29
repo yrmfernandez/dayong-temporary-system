@@ -446,6 +446,8 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
     const after = {
       application_no: applicationNumber, or_date: orDate || null, doi: doi || null, doi_time: doiTime || null, amount_paid: amount, notes: notes || null, backdate_reason: backdateReason || null,
       date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), payment_method: common.method, mas_incentive: quote.incentive, remittance_amount: quote.remittance,
+      // Another MAS or Date Remitted no longer matches the handover picked when encoding: the time rule decides (lib/clearing.ts).
+      ...(row.clearing_id && (common.mas || common.dateRemitted !== day(row.date_remitted)) ? { clearing_id: null } : {}),
       ...(noIncentive ? { forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null } : {}),
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
@@ -536,6 +538,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
     const after = {
       or_number: orNumber, or_date: orDate, amount_collected: amount, month_to: monthTo, nop_to: nopTo, backdate_reason: backdateReason || null,
       date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), remittance_method: common.method, payment_reference: common.reference || null, collected_by_role: common.collectedBy,
+      ...(row.clearing_id && common.dateRemitted !== day(row.date_remitted) ? { clearing_id: null } : {}),
       original_mas: common.collectedBy === "Collector" ? text(row.mas) : null, remittance_amount: noIncentive ? kept.remittance : quote.remittance, remittance_breakdown: quote.breakdown,
       ...(noIncentive ? { forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null } : {}),
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,

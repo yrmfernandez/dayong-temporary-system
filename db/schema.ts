@@ -382,6 +382,8 @@ export const sales = pgTable("sales", {
   date_remitted_reason: text(),
   /** Why this sale earns the MAS no incentive (owner, October 20, 2026): its whole amount is remitted. */
   no_incentive_reason: text(),
+  /** The clearing (handover of cash) the clerk picked for this batch (owner, October 29, 2026; lib/clearing.ts). Blank before then. */
+  clearing_id: text(),
   /** An Administrator's decision on the incentive (owner, October 23, 2026; lib/incentive-decision.ts): "Keep" or "Forfeit" overrides the 3:00 PM rule; blank follows it. */
   incentive_decision: text(),
   incentive_decision_reason: text(),
@@ -514,6 +516,8 @@ export const collections = pgTable("collections", {
   date_remitted_reason: text(),
   /** Why this collection earns the collector no incentive (owner, October 20, 2026): its whole amount is remitted. */
   no_incentive_reason: text(),
+  /** The clearing (handover of cash) the clerk picked for this batch (owner, October 29, 2026; lib/clearing.ts). Blank before then. */
+  clearing_id: text(),
   /** An Administrator's decision on the incentive (owner, October 23, 2026; lib/incentive-decision.ts): "Keep" or "Forfeit" overrides the 3:00 PM rule; blank follows it. */
   incentive_decision: text(),
   incentive_decision_reason: text(),

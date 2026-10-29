@@ -1330,6 +1330,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
             mas,
             dateRemitted,
             dateRemittedReason: dateRemittedChanged || submissionId ? dateRemittedReason.trim() : "",
+            // The handover picked in From Clearing: its time decides the incentive (lib/clearing.ts).
+            clearingId: clearingId || undefined,
             sales:
               preparedSales,
             penalty: penaltyAmount,

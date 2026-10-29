@@ -6,3 +6,6 @@ export const CLEARING_COVERS: ClearingCovers[] = ["Both", "New Sales", "Collecti
 export const coveredKinds = (covers: ClearingCovers): ClearingKind[] => covers === "Both" ? ["New Sales", "Collections"] : [covers];
 /** At least this many characters explain a Date Remitted that is not the clearing day (lib/clearing.ts). */
 export const DATE_REMITTED_REASON_MIN = 5;
+const ORDINALS = ["1st", "2nd", "3rd"];
+/** "1st handover", "2nd handover", …: which clearing of a person, branch and day (lib/clearing.ts withHandovers). */
+export const handoverLabel = (n: number) => `${ORDINALS[n - 1] ?? `${n}th`} handover`;

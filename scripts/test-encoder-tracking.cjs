@@ -3439,7 +3439,7 @@ test('a clearing for both kinds stays in the New Sales list while only its Colle
   assert.equal(await clearing.clearingProblem('DPE-0002', 'MAS-2', 'BR-1', yesterday, 'New Sales'), '', 'its New Sales can still be saved for that day');
 });
 
-test('a person cleared for New Sales only can be cleared for Collections the same day, not twice for one kind', async () => {
+test('a person cleared for New Sales only can be cleared for Collections the same day; twice for one kind only as a new handover', async () => {
   const h = harness();
   h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
@@ -3451,9 +3451,44 @@ test('a person cleared for New Sales only can be cleared for Collections the sam
   const { runAsSystem } = h.load('lib/encoder-context.ts');
   await runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'New Sales' }));
   await runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Collections' }));
-  await assert.rejects(() => runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Both' })), /already cleared for New Sales and Collections in BR-1 today/);
-  await assert.rejects(() => runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Collections' })), /already cleared for Collections in BR-1 today/);
+  // Not yet encoded: the clerk is still asked whether it is a new handover (October 29, 2026), not refused.
+  await assert.rejects(() => runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Both' })), (error) => error.code === 'ALREADY_CLEARED' && /not yet encoded/.test(error.message));
+  await assert.rejects(() => runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Collections' })), (error) => error.code === 'ALREADY_CLEARED');
   assert.deepEqual((await query("select covers from clearings where status = 'Open' order by covers")).map((row) => row.covers), ['Collections', 'New Sales']);
+  await runAsSystem(() => clearing.addClearing({ branch: 'BR-1', employeeId: 'DPE-0002', covers: 'Collections', newHandover: true }));
+  assert.deepEqual((await query("select covers from clearings where status = 'Open' order by covers")).map((row) => row.covers), ['Collections', 'Collections', 'New Sales']);
+});
+
+test('two handovers the same day before encoding: each batch keeps the handover the clerk picked (October 29, 2026)', async () => {
+  const h = harness();
+  const today = h.load('lib/account-rules.ts').todayInManila();
+  await seedAccount({ doi: today });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }, { employee_id: 'DPE-0003', full_name: 'MAS-3' }]);
+  // 2:41 PM and 3:18 PM Manila, both Open: nothing encoded yet.
+  await seed('clearings', [
+    { clearing_id: 'CLR-1ST', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T06:41:00Z`, cleared_date: today, status: 'Open', covers: 'Both' },
+    { clearing_id: 'CLR-2ND', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T07:18:00Z`, cleared_date: today, status: 'Open', covers: 'Both' },
+  ]);
+  const clearing = h.load('lib/clearing.ts');
+  const listed = await clearing.getEncodableClearings('');
+  assert.deepEqual(listed.map((item) => [item.id, item.handover, item.handovers]).sort(), [['CLR-1ST', 1, 2], ['CLR-2ND', 2, 2]], 'numbered for the picker');
+  assert.equal(clearing.handoverLabel(2), '2nd handover');
+  assert.equal(await clearing.pickedClearingProblem('CLR-1ST', 'DPE-0002', 'br-1', today, 'Collections'), '');
+  assert.match(await clearing.pickedClearingProblem('CLR-1ST', 'DPE-0003', 'BR-1', today, 'Collections'), /not for this batch/);
+  // The 1st handover's batch is encoded at 3:30 PM, after the 2nd clearing: it still belongs to the 1st.
+  await seed('collections', [{ collection_id: 'COL-1', collection_batch_id: 'CBT-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'BR-1', or_number: '4001 C', amount_collected: 350, status: 'Posted', remittance_status: 'Outstanding', accountable_employee_id: 'DPE-0002', date_remitted: today, encoded_at: `${today}T07:30:00Z`, encoded_by_employee_id: 'DPE-7', encoded_by_name: 'Clerk', remittance_method: 'Cash', clearing_id: 'CLR-1ST' }]);
+  assert.equal((await clearing.pickedClearings(['COL-1'])).get('COL-1').at, `${today} 14:41`, 'its time received is the 1st handover');
+  const progress = new Map((await clearing.withProgress(listed)).map((item) => [item.id, item.entries.total]));
+  assert.deepEqual([progress.get('CLR-1ST'), progress.get('CLR-2ND')], [1, 0], 'progress follows the picked handover, not the latest clearing');
+  // A second batch of the 1st handover is a double entry; the 2nd handover's batch is not.
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    assert.match(await clearing.waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', today, 'Collections', 'CLR-1ST'), /already has a Collections batch/);
+    assert.equal(await clearing.waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', today, 'Collections', 'CLR-2ND'), '');
+  } finally { globalThis.dayongClearingNotRequired = true; }
+  // Sending the 1st handover's batch closes only that clearing.
+  assert.equal(await clearing.closeClearings('DPE-0002', 'BR-1', today, 'REM-1', 'Collections', ['CLR-1ST']), 1);
+  assert.deepEqual((await query("select clearing_id, status from clearings order by clearing_id")).map((row) => [row.clearing_id, row.status]), [['CLR-1ST', 'Encoded'], ['CLR-2ND', 'Open']]);
 });
 
 test('clearing a person again after their clearing was encoded asks whether it is a new handover (October 23, 2026)', async () => {

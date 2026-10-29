@@ -4,7 +4,8 @@
  * from its receipts with and without a Forfeited carried from the old system (forfeit_held, migration 0029), every
  * posted receipt (OR date, months, NOP, amount) and who changed the stored status, and when (Audit Log). Then, across
  * all accounts: how many are stored Forfeited although their receipts alone do not make them forfeited, and who stored
- * that status. IDs, dates, amounts and statuses only; no names. Nothing is written.
+ * that status, and the member numbers of those held only as carried from the old system (owner, October 29, 2026: to
+ * reopen one by one in Member Corrections). IDs, dates, amounts and statuses only; no names. Nothing is written.
  *
  *   npm run prod -- node scripts/inspect-account-status.mjs PH-73684484
  */
@@ -19,7 +20,7 @@ const sql = postgres(process.env.DIRECT_DATABASE_URL, { max: 1, connect_timeout:
 const ref = /postgres\.([a-z0-9]+)[:@]/.exec(process.env.DIRECT_DATABASE_URL ?? "")?.[1] ?? "?";
 const today = todayInManila();
 
-const accountsWhere = (where) => sql`select mp.enrollment_id, mp.member_id, mp.program_id, mp.doi::text as doi, mp.account_status, mp.forfeit_held, mp.status as enrollment_status,
+const accountsWhere = (where) => sql`select mp.enrollment_id, mp.member_id, mp.member_number, mp.program_id, mp.doi::text as doi, mp.account_status, mp.forfeit_held, mp.status as enrollment_status,
     p.program_name, p.category_id, c.category_name, coalesce(p.base_pay, 0)::float8 as rate, coalesce(p.pay_balance_total, 0)::float8 as total,
     coalesce(p.flexible, false) as flexible, p.max_monthly_payment::float8 as max
   from member_programs mp join programs p on p.program_id = mp.program_id left join program_categories c on c.category_id = p.category_id where ${where}`;
@@ -62,6 +63,10 @@ try {
           and changes_json -> 'account_status' ->> 'to' = 'Forfeited' order by record_id, logged_at desc) a group by 1 order by 2 desc`;
     const logged = who.reduce((sum, row) => sum + row.n, 0);
     console.log(`  who last stored Forfeited on them: ${who.map((row) => `${row.by} ${row.n}`).join(", ") || "none logged"}${heldOnly.length - logged ? `; not in the Audit Log (imported or before logging) ${heldOnly.length - logged}` : ""}`);
+    for (const account of heldOnly.filter((a) => a.forfeit_held)) {
+      const { receiptsOnly } = states(account, byAccount.get(account.enrollment_id) ?? []);
+      console.log(`    ${account.member_number || "(no member number)"} · ${account.enrollment_id} · ${account.program_name} · from the receipts alone: ${receiptsOnly.status}${receiptsOnly.paidThrough ? ` · paid through ${receiptsOnly.paidThrough}` : ""}`);
+    }
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

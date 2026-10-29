@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { readApiResponse } from "@/lib/api-response";
 import type { Clearing } from "@/lib/clearing";
-import { coveredKinds, type ClearingKind } from "@/lib/clearing-kinds";
+import { coveredKinds, handoverLabel, type ClearingKind } from "@/lib/clearing-kinds";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 const time = (stamp: string) => { if (!stamp) return ""; const [hours, minutes] = stamp.slice(11, 16).split(":").map(Number); return `${((hours + 11) % 12) + 1}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`; };
@@ -40,8 +40,9 @@ export function ClearingPicker({ value, onPick, disabled, kind }: { value: strin
     <Label className="flex items-center gap-2"><BadgeCheck className="size-4 text-primary" />From Clearing *</Label>
     <SearchSelect aria-label="From Clearing" value={value} disabled={disabled} placeholder={clearings.length ? "Search the MAS or employee listed in Clearing" : `Nobody is in Clearing for ${kind} yet`}
       emptyText={`Nobody in Clearing for ${kind} matches. List them in Clearing (with ${kind} ticked) first.`}
-      options={clearings.map((clearing) => ({ value: clearing.id, label: clearing.employeeName || clearing.employeeId, description: `${clearing.branch} · cleared ${clearing.clearedDate} ${time(clearing.clearedAt)}${clearing.waitingKinds ? ` · ${kind} not encoded yet` : clearing.status === "Encoded" ? " · already encoded once" : ""}`, keywords: clearing.employeeId }))}
+      // Two handovers of one person the same day (October 29, 2026): the label says which one, with its time.
+      options={clearings.map((clearing) => ({ value: clearing.id, label: `${clearing.employeeName || clearing.employeeId}${(clearing.handovers ?? 0) > 1 ? ` · ${handoverLabel(clearing.handover ?? 1)} (${time(clearing.clearedAt)})` : ""}`, description: `${clearing.branch} · cleared ${clearing.clearedDate} ${time(clearing.clearedAt)}${clearing.waitingKinds ? ` · ${kind} not encoded yet` : clearing.status === "Encoded" ? " · already encoded once" : ""}`, keywords: clearing.employeeId }))}
       onValueChange={(id) => { const clearing = clearings.find((item) => item.id === id); if (clearing) onPick(clearing); }} />
-    <p className="text-xs text-muted-foreground">{error || "Choose the person whose receipts were cleared; Branch, MAS and Date Remitted are filled in from the clearing."}</p>
+    <p className="text-xs text-muted-foreground">{error || "Choose the person whose receipts were cleared; Branch, MAS and Date Remitted are filled in from the clearing. A person handed over twice today is listed once per handover: pick the one these receipts came with."}</p>
   </div>;
 }
