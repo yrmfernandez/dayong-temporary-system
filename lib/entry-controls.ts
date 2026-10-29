@@ -9,8 +9,9 @@ import { previousWorkingDay, type WorkCalendar } from "@/lib/working-days";
  *
  * Control total: before saving a batch, the clerk types the net total written on the MAS's turnover sheet: the total
  * remittance (amount collected less incentives, plus Fidelity), the same figure as "Total remittance" in the batch
- * summary. The batch saves only when it matches exactly, so a mistyped, missed or doubled entry, a wrong amount or a
- * wrong incentive is caught at once. A penalty is separate and not part of it.
+ * summary. A penalty is separate and not part of it. Until October 29, 2026 the batch saved only on an exact match;
+ * now it saves short or over too (owner): the difference is shown before saving, recorded with the batch, and its slip
+ * goes to Discrepancy so it is traced and settled (lib/turnover-variance.ts).
  */
 export const BACKDATE_REASON_MIN = 5;
 
@@ -42,17 +43,42 @@ export function checkBackdate(date: string, reason: string, label: string, today
 const cents = (value: number) => Math.round(value * 100);
 
 /**
- * "" when the batch's total remittance equals the control total, otherwise what is wrong. `totalRemittance` is null
- * while an entry is incomplete (its remittance cannot be calculated yet).
+ * "" when the control total is entered and the total remittance can be calculated, otherwise what is missing.
+ * `totalRemittance` is null while an entry is incomplete (its remittance cannot be calculated yet). A total that does
+ * not match is not a problem: see controlTotalDifference.
  */
 export function controlTotalProblem(controlTotal: unknown, totalRemittance: number | null) {
   const total = Number(controlTotal);
   if (controlTotal === "" || controlTotal === null || controlTotal === undefined || !Number.isFinite(total) || total <= 0) return "Enter the net total (total remittance) from the MAS's turnover sheet.";
   if (totalRemittance === null) return "Complete the entries so the total remittance can be calculated.";
-  const sum = cents(totalRemittance);
-  if (sum === cents(total)) return "";
-  const peso = (value: number) => (value / 100).toLocaleString("en-PH", { style: "currency", currency: "PHP" });
-  return `The total remittance is ${peso(sum)} but the turnover sheet says ${peso(cents(total))} (${sum > cents(total) ? "over" : "short"} by ${peso(Math.abs(sum - cents(total)))}). Check the amounts, incentives and Fidelity, and look for a missing or repeated entry.`;
+  return "";
+}
+
+/** The longest note kept with a short or over turnover sheet (lib/turnover-variance.ts). */
+export const TURNOVER_NOTE_MAX = 300;
+
+/** "Short by ₱50.00" / "Over by ₱50.00" for a difference (control total − total remittance). */
+export const varianceLabel = (difference: number) => `${difference < 0 ? "Short" : "Over"} by ${Math.abs(difference).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}`;
+
+/** Control total − total remittance, in pesos: negative is short, positive is over, 0 matches; null when not comparable. */
+export function controlTotalDifference(controlTotal: unknown, totalRemittance: number | null) {
+  if (controlTotalProblem(controlTotal, totalRemittance) || totalRemittance === null) return null;
+  return (cents(Number(controlTotal)) - cents(totalRemittance)) / 100;
+}
+
+/** What the form shows beside the control total: what is missing, a match, or how much it is short or over. */
+export function controlTotalStatus(controlTotal: unknown, totalRemittance: number | null) {
+  const difference = controlTotalDifference(controlTotal, totalRemittance);
+  if (difference === null) return { tone: "problem" as const, difference: 0, text: controlTotalProblem(controlTotal, totalRemittance) };
+  if (!difference) return { tone: "match" as const, difference, text: "Matches the total remittance." };
+  const peso = Math.abs(difference).toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+  return {
+    tone: "variance" as const,
+    difference,
+    text: difference < 0
+      ? `Short by ${peso}: the turnover sheet is less than the entries. Look for a doubled entry or a wrong amount. It can still be saved; its slip goes to Discrepancy.`
+      : `Over by ${peso}: the turnover sheet is more than the entries. Look for a missing entry or a wrong incentive. It can still be saved; its slip goes to Discrepancy.`,
+  };
 }
 
 /**

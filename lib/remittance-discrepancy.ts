@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
+import { varianceLabel, varianceOfSlip } from "@/lib/turnover-variance";
 
 /**
  * Why a remittance slip is short or over (owner, October 19, 2026: the discrepancies could not be opened). Read-only.
@@ -99,6 +100,15 @@ export async function getDiscrepancyBreakdown(remittanceId: string, clerkId = ""
   });
 
   const causes: string[] = [];
+  // Saved with the turnover sheet short or over (lib/turnover-variance.ts): the most likely cause, with where to look.
+  const turnover = await varianceOfSlip(id);
+  if (turnover) {
+    const gap = Math.abs(turnover.difference);
+    const same = rows.filter((row) => Math.round(row.shareOnSlip * 100) === Math.round(gap * 100));
+    causes.push(`Saved with the turnover sheet ${varianceLabel(turnover.difference).toLowerCase()} (${turnover.id}): the sheet says ${peso(turnover.controlTotal)}, the entries ${peso(turnover.systemTotal)}, encoded by ${turnover.encodedByName || "?"}${turnover.note ? `. Note: "${turnover.note}"` : ""}.`
+      + (same.length ? ` ${same.map((row) => `${row.id}${row.orNumber ? ` (${row.orNumber})` : ""}`).join(", ")} ${same.length === 1 ? "has" : "have"} a share of exactly ${peso(gap)}: check ${turnover.difference < 0 ? "whether it was entered twice or not paid" : "whether a second receipt like it is missing"}.` : "")
+      + ` ${turnover.difference < 0 ? "Short: the MAS pays the difference, or an entry was doubled or too high." : "Over: an entry is missing or too low, an incentive is wrong, or the overage is returned to the MAS."}`);
+  }
   const startGap = round(actualAtStart - expectedAtStart);
   if (startGap) causes.push(`When the slip was made, the amount recorded (${peso(actualAtStart)}) was ${startGap < 0 ? "short" : "over"} the expected ${peso(expectedAtStart)} by ${peso(startGap)}.`);
   else if (changes.length) causes.push(`The slip balanced when it was made (${peso(expectedAtStart)} expected and recorded).`);

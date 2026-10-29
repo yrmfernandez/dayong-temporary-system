@@ -225,6 +225,13 @@
       "when": 1793064585823,
       "tag": "0031_clerk_edit_allowed",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793232507644,
+      "tag": "0032_turnover_variances",
+      "breakpoints": true
     }
   ]
 }

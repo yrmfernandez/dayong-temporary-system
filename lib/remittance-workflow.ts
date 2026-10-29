@@ -13,6 +13,7 @@ import { clearedAt, closeClearings } from "@/lib/clearing";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import { incentiveDecisions } from "@/lib/incentive-decision";
 import { formatDate as showDate } from "@/lib/date-format";
+import { decideVariance, linkVarianceToSlip, openVarianceFor, varianceLabel } from "@/lib/turnover-variance";
 
 
 /**
@@ -416,7 +417,15 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const forfeitedTotal = Math.round(forfeits.reduce((sum, collection) => sum + incentiveOf(collection), 0) * 100) / 100;
   const due = new Map(collections.map((collection) => [collection.id, amountDue(collection, receivedAt)]));
   const expected = Math.round((collections.reduce((sum, collection) => sum + (due.get(collection.id) ?? 0), 0) + fidelityAmount) * 100) / 100;
-  const actual = input.actualIsExpected ? expected : Math.round(input.actualAmount * 100) / 100;
+  /*
+   * A batch saved with its turnover sheet short or over (lib/turnover-variance.ts): the automatic slip records the cash
+   * handed over, the expected amount moved by the turnover difference. The difference is worked out again from the
+   * entries as they are now, so a returned batch whose mistake was corrected in My Entries comes back matching.
+   */
+  const variance = await openVarianceFor(ids, getDb());
+  const entriesNow = Math.round((collections.reduce((sum, collection) => sum + collection.remittanceAmount, 0) + fidelityAmount) * 100) / 100;
+  const turnoverOffset = variance ? Math.round((variance.controlTotal - entriesNow) * 100) / 100 : 0;
+  const actual = input.actualIsExpected ? Math.round((expected + turnoverOffset) * 100) / 100 : Math.round(input.actualAmount * 100) / 100;
   const cashCount = text(input.cashCount);
   const countProblem = cashCountProblem(cashCount, actual);
   if (countProblem) throw new Error(countProblem);
@@ -429,7 +438,8 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const penaltyText = penalized.map((collection) => `Penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (separate from remittance): ${collection.penaltyNote}`).join("; ");
   const fidelityText = fidelityAmount > 0 ? `Fidelity ${fidelityAmount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (employee's own money), included in the expected amount` : "";
   const forfeitText = forfeits.length ? `Incentive forfeited on ${forfeits.length} item${forfeits.length === 1 ? "" : "s"} (${forfeitedTotal.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}): cash received after 3:00 PM the day after the OR date, or an Administrator's decision` : "";
-  const remarks = [text(input.remarks), penaltyText, fidelityText, forfeitText].filter(Boolean).join(" | ");
+  const turnoverText = variance && turnoverOffset ? `Turnover sheet ${varianceLabel(turnoverOffset).toLowerCase()} (${variance.id})${variance.note ? `: ${variance.note}` : ""}` : "";
+  const remarks = [text(input.remarks), turnoverText, penaltyText, fidelityText, forfeitText].filter(Boolean).join(" | ");
   const status = approved ? "Approved" : difference === 0 ? "Pending Approval" : "Discrepancy";
   const id = createReadableId("REM");
   const timestamp = actor.encodedAt;
@@ -447,6 +457,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
     });
     await tx.insert(schema.remittance_collections).values(collections.map((collection) => ({ remittance_collection_id: createReadableId("RCL") + Math.random().toString(36).slice(2, 5).toUpperCase(), remittance_id: id, collection_id: collection.id, amount: due.get(collection.id) ?? collection.remittanceAmount, linked_at: timestamp, ...identity })));
     for (const collection of collections) await setStatus(tx, collection, approved ? "Remitted" : "Pending Remittance Approval", id, forfeits.includes(collection) ? { remittanceAmount: collection.amount, forfeited: incentiveOf(collection) } : undefined);
+    if (variance) await linkVarianceToSlip(tx, variance.id, id, input.actualIsExpected ? turnoverOffset : difference);
   });
   // The person's clearing for that day is done once their entries are on a slip (lib/clearing.ts). A DTO slip has no
   // clearing: its accountable person is the clerk who received the cash, whose own clearing (as a MAS) stays open.
@@ -493,6 +504,8 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
       const giveBack = decision === "reject" && item.forfeitedIncentive > 0 && !noIncentive.has(item.id);
       await setStatus(tx, item, decision === "approve" ? "Remitted" : "Returned", remittance.id, giveBack ? { remittanceAmount: Math.round((item.amount - item.forfeitedIncentive) * 100) / 100, forfeited: 0 } : undefined);
     }
+    // A turnover short or over is settled by the approval's explanation; a rejected slip leaves it open for the next one.
+    await decideVariance(tx, remittance.id, decision, reason);
   });
   return { id: remittance.id, status };
 }

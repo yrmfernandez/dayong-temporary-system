@@ -1152,21 +1152,22 @@ test('collection batch is encoded atomically without creating a remittance', asy
   const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', controlTotal: 580, collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: '1002 B' }] };
   const route = h.load('app/api/collections/route.ts');
   // The reference number is optional since October 8, 2026 (the receipt photo is the proof): a GCash batch without one is
-  // not refused for it, and fails only on the next check (the turnover total).
-  assert.doesNotMatch((await (await route.POST(request({ ...batch, paymentReference: '' }))).json()).message, /reference number/);
+  // not refused for it, and fails only on a later check (here the missing turnover total).
+  assert.doesNotMatch((await (await route.POST(request({ ...batch, paymentReference: '', controlTotal: '' }))).json()).message, /reference number/);
   assert.match((await (await route.POST(request({ ...batch, autoApproveRemittance: true, cashReceived: 400 }))).json()).message, /verified in Remittances/);
   // A remittance penalty needs a note saying what it is for.
   assert.match((await (await route.POST(request({ ...batch, penalty: 50, penaltyNote: '' }))).json()).message, /what the penalty is for/);
   assert.match((await (await route.POST(request({ ...batch, penalty: -5, penaltyNote: 'x' }))).json()).message, /zero or a positive/);
   // Fidelity is the employee's own money: no limit and any batch (covered by the Fidelity tests below).
-  // Direct to Office earns no incentive: the turnover total is the whole gross, 2 × ₱350 (owner, October 10, 2026).
-  assert.match((await (await route.POST(request(batch))).json()).message, /700/, 'a DTO batch expects the gross as its total');
+  // Direct to Office earns no incentive, so its total is the whole gross (owner, October 10, 2026): covered by the
+  // turnover short or over test, since a total that does not match saves since October 29, 2026.
   assert.equal((await query('select count(*)::int as n from collections'))[0].n, 0, 'rejected batches save nothing');
   const response = await route.POST(request({ ...batch, collectedBy: 'Collector', originalMasOfficerName: 'ignored', penalty: 50, penaltyNote: 'Late turnover' }));
   const result = await response.json();
   assert.equal(response.status, 201, JSON.stringify(result));
   const written = await query('select * from collections order by or_number');
   assert.equal(written.length, 2);
+  assert.equal((await query('select count(*)::int as n from turnover_variances'))[0].n, 0, 'the ₱580 turnover sheet matches: nothing short or over');
   // The database links each collection to its branch and MAS records from their names (migration 0011).
   assert.deepEqual(written.map((row) => [row.branch_id, row.mas_employee_id]), [['BR-1', 'DPE-0002'], ['BR-1', 'DPE-0002']]);
   assert.deepEqual(written.map((row) => row.collection_id).sort(), [...result.collectionIds].sort());
@@ -2478,7 +2479,7 @@ test('a program locks the New Sale amount unless it allows editing', async () =>
   assert.equal(different.status, 200, JSON.stringify(different.body));
 });
 
-test('a New Sales batch must match the turnover sheet total, and a late application date needs a reason', async () => {
+test('a New Sales batch needs the turnover sheet total, and a late application date needs a reason', async () => {
   const h = harness();
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
   h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active']];
@@ -2491,8 +2492,7 @@ test('a New Sales batch must match the turnover sheet total, and a late applicat
     const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: body.dateRemitted ?? '2026-09-25', dateRemittedReason: body.dateRemittedReason, controlTotal: body.controlTotal, sales: [sale] }));
     return { status: response.status, body: await response.json() };
   };
-  assert.match((await post({ controlTotal: 3500 })).body.message, /total remittance is ₱200\.00 but the turnover sheet says ₱3,500\.00 \(short by ₱3,300\.00\)/);
-  assert.match((await post({ controlTotal: 350 })).body.message, /total remittance is ₱200\.00 .* says ₱350\.00/, 'the amount collected is not the control total');
+  // Short or over saves since October 29, 2026 (the new turnover test); a missing total is still refused.
   assert.match((await post({})).body.message, /Enter the net total/);
   // Only the year and series letters: the form number is missing, so the sale is refused before anything else.
   assert.match((await post({ controlTotal: 200, sale: { applicationNo: '2026SP-' } })).body.message, /whole Application Number/);
@@ -2538,10 +2538,10 @@ test('No incentive on one New Sale: the MAS earns nothing on it, it is remitted 
     return { status: response.status, body: await response.json() };
   };
   assert.match((await post({ controlTotal: 350, sale: { noIncentiveReason: ' ' } })).body.message, /reason it earns no incentive/);
-  // With no incentive the whole 350 is remitted, not 200.
-  assert.match((await post({ controlTotal: 200, sale: { noIncentiveReason: 'Walk-in member' } })).body.message, /total remittance is ₱350\.00/);
+  // With no incentive the whole 350 is remitted, not 200: the turnover sheet matches it, so nothing short is recorded.
   const saved = await post({ controlTotal: 350, sale: { noIncentiveReason: 'Walk-in member' } });
   assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal((await query('select count(*)::int as n from turnover_variances'))[0].n, 0);
   const [row] = await query('select mas_incentive::float8 as incentive, remittance_amount::float8 as share, forfeited_incentive::float8 as forfeited, no_incentive_reason from sales');
   assert.deepEqual(row, { incentive: 0, share: 350, forfeited: 150, no_incentive_reason: 'Walk-in member' });
 });
@@ -3506,6 +3506,56 @@ test('a DTO batch: a member of a resigned MAS paid at the office, without a clea
       'the account keeps its MAS; the clerk is accountable; DTO earns no incentive, so all ₱350 is remitted');
     const { entries } = await h.load('lib/todays-entries.ts').getEntriesForRange(today, today, 'encoded', {});
     assert.deepEqual(entries.map((entry) => entry.person), ['DTO'], 'shown as DTO, not the clerk or the MAS');
+  } finally { globalThis.dayongClearingNotRequired = true; }
+});
+
+test('a turnover sheet short or over still saves, is recorded, sends the slip to Discrepancy and is settled on approval (October 29, 2026)', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1);
+  h.rows.Employees = [[], ['DPE-0001', '=encoder', 'BR-1', 'Entry Clerk', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  await seedAccount({ doi: month + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0001', full_name: '=encoder' }]);
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '3001 C', orDate: today };
+  // A DTO batch (no incentive): the entries need ₱350; the turnover sheet says ₱300.
+  const batch = { dto: true, branch: 'BR-1', mas: '', accountableEmployeeId: '', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'Cash', controlTotal: 300, controlTotalNote: 'Member to bring the rest', collections: [entry] };
+  const controls = h.load('lib/entry-controls.ts');
+  assert.equal(controls.controlTotalDifference(300, 350), -50);
+  assert.equal(controls.controlTotalStatus(300, 350).tone, 'variance');
+  assert.match(controls.controlTotalStatus(300, 350).text, /^Short by ₱50\.00/);
+  assert.match(controls.controlTotalStatus(400, 350).text, /^Over by ₱50\.00/);
+  assert.equal(controls.controlTotalStatus(350, 350).tone, 'match');
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    const saved = await h.load('app/api/collections/route.ts').POST(request(batch));
+    const body = await saved.json();
+    assert.equal(saved.status, 201, JSON.stringify(body));
+    assert.match(body.message, /Turnover sheet short by ₱50\.00 \(TOV-/);
+    const [variance] = await query('select kind, entry_ids, control_total::float8 as control, system_total::float8 as system, difference::float8 as difference, note, status, remittance_id, encoded_by_name from turnover_variances');
+    const slip = await lastSlip();
+    assert.deepEqual({ ...variance, entry_ids: variance.entry_ids.length }, { kind: 'Collections', entry_ids: 1, control: 300, system: 350, difference: -50, note: 'Member to bring the rest', status: 'Open', remittance_id: slip.id, encoded_by_name: '=encoder' });
+    // The cash slip records what was handed over, so it is a Discrepancy and says why.
+    assert.deepEqual([slip.status, slip.expected, slip.actual, slip.difference], ['Discrepancy', 350, 300, -50]);
+    assert.match(slip.remarks, /Turnover sheet short by ₱50\.00 \(TOV-.*\): Member to bring the rest/);
+    const breakdown = await h.load('lib/remittance-discrepancy.ts').getDiscrepancyBreakdown(slip.id);
+    assert.match(breakdown.causes[0], /turnover sheet short by ₱50\.00 .* the sheet says ₱300\.00, the entries ₱350\.00/);
+    const { categories } = await h.load('lib/exceptions.ts').findExceptions();
+    assert.equal(categories.find((item) => item.category === 'turnover').total, 1, 'listed in Exceptions while open');
+    // Approval needs how it was settled; then the variance is settled with that explanation.
+    const admin = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+    const patch = (reason) => admin.load('app/api/remittances/route.ts').PATCH(request({ remittanceId: slip.id, decision: 'approve', reason }));
+    assert.match(JSON.stringify(await (await patch('')).json()), /Explain how the remittance discrepancy was resolved/);
+    const approved = await patch('Member paid the ₱50 the next day');
+    assert.equal(approved.status, 200, JSON.stringify(await approved.clone().json()));
+    const [settled] = await query('select status, resolution, resolved_by_name from turnover_variances');
+    assert.deepEqual(settled, { status: 'Resolved', resolution: 'Member paid the ₱50 the next day', resolved_by_name: 'Admin' });
+    assert.equal((await h.load('lib/exceptions.ts').findExceptions()).categories.find((item) => item.category === 'turnover').total, 0);
+    // A matching batch records nothing.
+    await h.load('app/api/collections/route.ts').POST(request({ ...batch, controlTotal: 350, collections: [{ ...entry, monthFrom: rules.monthName(rules.monthIndex(month) + 2), monthTo: rules.monthName(rules.monthIndex(month) + 2), nopFrom: 3, nopTo: 3, orNumber: '3002 C' }] }));
+    assert.equal((await query('select count(*)::int as n from turnover_variances'))[0].n, 1);
   } finally { globalThis.dayongClearingNotRequired = true; }
 });
 

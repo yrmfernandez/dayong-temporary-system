@@ -13,6 +13,7 @@ import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-dea
 import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { dateWarnings } from "@/lib/date-checks";
 import { formatDate as showDate } from "@/lib/date-format";
+import { openVariances, varianceLabel } from "@/lib/turnover-variance";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
@@ -33,6 +34,7 @@ export const EXCEPTION_CATEGORIES = {
   receipts: "OR numbers without a branch letter",
   incomplete: "Application numbers to complete",
   shared: "Imported receipts sharing a number",
+  turnover: "Turnover sheets short or over",
 } as const;
 export type ExceptionCategory = keyof typeof EXCEPTION_CATEGORIES;
 
@@ -224,6 +226,13 @@ export async function findExceptions({ includeLegacy = false } = {}) {
   const since = new Date(Date.parse(`${today}T00:00:00Z`) - 30 * 86400000).toISOString().slice(0, 10);
   for (const row of posted) if (text(row[39]) && manilaDateOf(text(row[24])) >= since) add({ category: "backdated", key: `late-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `OR date ${text(row[9]).slice(0, 10)} encoded on ${manilaDateOf(text(row[24]))} by ${text(row[23]) || "?"}. Reason: ${text(row[39])}`, date: text(row[9]).slice(0, 10), legacy: false, entry: collectionEntry(row) });
   for (const row of sales.slice(1)) if (text(row[0]) && text(row[44]) && manilaDateOf(text(row[34])) >= since) add({ category: "backdated", key: `late-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: `Application date ${text(row[30]).slice(0, 10)} encoded on ${manilaDateOf(text(row[34]))} by ${text(row[33]) || "?"}. Reason: ${text(row[44])}`, date: text(row[30]).slice(0, 10), legacy: false, entry: saleEntry(row) });
+
+  // Batches saved with the turnover sheet short or over, until their slip is approved with how it was settled.
+  for (const variance of await openVariances(LIMIT)) add({
+    category: "turnover", key: `turnover-${variance.id}`, recordId: variance.id, title: `${variance.kind} · ${variance.branch} · ${variance.mas} · ${variance.dateRemitted ? showDate(variance.dateRemitted) : "no date"}`,
+    problem: `${varianceLabel(variance.difference)}: the turnover sheet says ${peso(variance.controlTotal)}, the ${variance.entryIds.length} entr${variance.entryIds.length === 1 ? "y" : "ies"} ${peso(variance.systemTotal)}. Encoded by ${variance.encodedByName || "?"}${variance.note ? `. Note: ${variance.note}` : ""}. ${variance.remittanceId ? `Slip ${variance.remittanceId} is waiting in Remittances (Discrepancy).` : "No slip yet: the batch waits for its receipt photo, or was returned."}`,
+    date: variance.dateRemitted, legacy: false, href: "/remittances",
+  });
 
   const categories = (Object.keys(EXCEPTION_CATEGORIES) as ExceptionCategory[]).map((category) => {
     const all = items.filter((item) => item.category === category).sort((a, b) => b.date.localeCompare(a.date));

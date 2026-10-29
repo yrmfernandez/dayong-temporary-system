@@ -29,7 +29,8 @@ import { useParkedDrafts } from "@/lib/use-parked-drafts";
 import { ParkedDrafts } from "@/components/parked-drafts";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
-import { BACKDATE_REASON_MIN, controlTotalProblem, lateCheckDay, needsBackdateReason } from "@/lib/entry-controls";
+import { BACKDATE_REASON_MIN, controlTotalDifference, controlTotalProblem, lateCheckDay, needsBackdateReason, varianceLabel } from "@/lib/entry-controls";
+import { ControlTotalField } from "@/components/control-total-field";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { ReceiptPhotosPicker, uploadBatchPhotos, type PickedPhoto } from "@/components/receipt-photos-picker";
 import { RemittanceSummary } from "@/components/remittance-summary";
@@ -333,8 +334,10 @@ export default function CollectionsPage() {
   const [saveMessage, setSaveMessage] = useState("");
 
   const [saving, setSaving] = useState(false);
-  // The total written on the MAS's turnover sheet; the batch saves only when the entries add up to it.
+  // The total written on the MAS's turnover sheet; short or over still saves, recorded with the batch.
   const [controlTotal, setControlTotal] = useState("");
+  // Optional note kept with a short or over turnover sheet (lib/turnover-variance.ts).
+  const [controlTotalNote, setControlTotalNote] = useState("");
   // The batch's receipt photos: at least one, as many as needed (owner, October 14, 2026); attached right after saving.
   const [receiptPhotos, setReceiptPhotos] = useState<PickedPhoto[]>([]);
   // Batch-level: who brought these payments in, and how the MAS remitted them to the office.
@@ -931,6 +934,7 @@ export default function CollectionsPage() {
           // Saved first; the approved remittance is created below once the receipt photo is attached.
           autoApproveRemittance: false,
           controlTotal: Number(controlTotal),
+          controlTotalNote: controlTotalNote.trim(),
           penalty: penaltyAmount,
           penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "",
           fidelityAmount,
@@ -982,6 +986,7 @@ export default function CollectionsPage() {
     setSaveMessage("");
     setShowPreview(false);
     setControlTotal("");
+    setControlTotalNote("");
     setReceiptPhotos([]);
     setPenalty("");
     setPenaltyNote("");
@@ -1697,7 +1702,7 @@ export default function CollectionsPage() {
               {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026). */}
               <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="collection" optional={isCashPayment} />
 
-              {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatCurrency(totalCollected)} · Total remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p></div>}
+              {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatCurrency(totalCollected)} · Total remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p>{(() => { const turnover = controlTotalDifference(controlTotal, totalDue); return turnover ? <p className="font-semibold text-amber-700">Turnover sheet {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
             </CardContent>
 
             {/* SAVE BAR (October 9, 2026): stays at the bottom of the entries panel with the totals, the control total and
@@ -1708,11 +1713,7 @@ export default function CollectionsPage() {
                 <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{totalDue === null ? "pending" : formatCurrency(totalDue)}</strong></span>
                 <span className="text-muted-foreground">{collections.length} {collections.length === 1 ? "entry" : "entries"}</span>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Label htmlFor="control-total" className="whitespace-nowrap" title="The net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary.">Control total *</Label>
-                <Input id="control-total" type="number" min="0" step="0.01" className="w-36" value={controlTotal} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setControlTotal(event.target.value)} placeholder="From turnover sheet" />
-                {controlTotal !== "" && (() => { const problem = controlTotalProblem(controlTotal, totalDue); return <span className={`text-xs ${problem ? "text-red-700" : "text-emerald-700"}`}>{problem || "Matches the total remittance."}</span>; })()}
-              </div>
+              <ControlTotalField id="control-total" title="The net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={totalDue} />
               {saveMessage && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">{saveMessage}</div>}
               <div className="flex gap-2">
                 <Button type="button" className="flex-1" onClick={async () => { if (showPreview) { void saveCollections(); return; } await alertDialog(COLLECTION_CHECK_REMINDER, { title: "Check every entry before saving", warning: true, confirmLabel: "I have checked every entry" }); setShowPreview(true); }} disabled={saving}>

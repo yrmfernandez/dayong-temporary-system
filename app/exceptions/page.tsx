@@ -25,6 +25,7 @@ const HELP: Record<ExceptionCategory, string> = {
   receipts: "OR numbers written without the branch letter (for example \"12345\" instead of \"12345 S\") whose letter could not be worked out with certainty. Check the receipt and correct each one. Listed even for old data.",
   incomplete: "New Sales whose application number is only the year and series letters (\"2026SP (need edit)\"): the form number was never typed. Find the paper application form, then use Correct to enter the whole number. New Sales now refuse numbers like these.",
   shared: "Collections and New Sales brought in from the old sheet or the old web app whose OR or application number was already on another entry; both were kept. Each item names the other entry. Check the paper receipt or application and use Correct on whichever number is wrong; once the number is unique the item leaves the list. Listed even for old data. (Entries already labelled \"(duplicated)\" on October 7 were reviewed then and are not listed.)",
+  turnover: "New Sales and Collections batches saved although the control total from the MAS's turnover sheet was not the batch's total remittance. Short: the sheet is less than the entries (an entry doubled or too high, or the MAS owes the difference). Over: the sheet is more (an entry missing or too low, or a wrong incentive). The slip goes to Discrepancy; open Remittances, see why, and fix the entry or approve with how it was settled. It leaves this list once the slip is approved or the corrected entries match.",
 };
 
 export default function ExceptionsPage() {

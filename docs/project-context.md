@@ -17,6 +17,15 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Control total: turnover sheet short or over is allowed and traced (2026-10-29)
+
+- **Owner:** in the control total, allow over or short so it can be traced easily; add ideas to make it easy to trace and fix. Decided: any amount saves as usual (no limit, note optional); the slip goes to Discrepancy.
+- **Done:** a mismatch no longer refuses the save (`controlTotalProblem` only asks for a missing total; `controlTotalDifference` / `controlTotalStatus` in `lib/entry-controls.ts`). Both forms use `components/control-total-field.tsx`: Matches (green) or Short by / Over by ₱X (amber) with where to look, and an optional note; the review before saving repeats it. The APIs record the difference in the new table `turnover_variances` (migration 0032, `lib/turnover-variance.ts`) in the batch's own transaction: kind, entry IDs, branch, MAS, Date Remitted, control total, total remittance, difference (− short, + over), note, clerk.
+- **Trace and fix ideas built in:** (1) the automatic slip records the cash at the turnover amount, so it is a **Discrepancy** that needs an explanation to approve; the explanation settles the variance. (2) The Discrepancy breakdown lists the turnover cause first and names any entry whose share equals the difference (likely doubled or missing receipt). (3) Rejected and corrected in My Entries: the next slip recomputes from the corrected entries, and a match settles it as "Entries corrected". (4) **Exceptions → Turnover sheets short or over** lists open ones with MAS, clerk, note and slip. (5) Slip remarks carry "Turnover sheet short by ₱X (TOV-…)".
+- **Tests:** new test (save short, variance row, Discrepancy slip 350/300, remarks, breakdown, Exceptions, approval needs explanation, settled, matching batch records nothing); old refusal assertions updated.
+- **In progress:** none.
+- **To do (owner), in order:** `npm run prod -- npm run db:migrate`, then `npm run prod -- node scripts/check-database.mjs` (49 tables, 0032 present), then deploy; staging: `npm run db:migrate`. Possible follow-ups: show the short/over on the Entry Clerk report and on My Entries.
+
 ### Collections: one Waiver for several receipts of an account in a batch (2026-10-28)
 
 - **Owner:** the NOP is already solved when a member has several receipts in a batch; do the same for the Waiver: once it is selected it should not ask again.
@@ -603,7 +612,7 @@ Programs T `new_sale_amount_editable` and U `collection_amount_editable` hold TR
 
 ## Data-entry controls (2026-10-03)
 
-- **Control total:** before saving a New Sales or Collections batch, the clerk types the **net total (total remittance)** from the MAS's turnover sheet: amount collected less incentives, plus Fidelity; the penalty is separate. The batch saves only when it equals the batch's Total remittance exactly (`lib/entry-controls.ts`; the server checks its own calculation). Until October 7, 2026 it was compared with the total collected.
+- **Control total:** before saving a New Sales or Collections batch, the clerk types the **net total (total remittance)** from the MAS's turnover sheet: amount collected less incentives, plus Fidelity; the penalty is separate (`lib/entry-controls.ts`; the server checks its own calculation). Until October 7, 2026 it was compared with the total collected. Until October 29, 2026 the batch saved only on an exact match; now short or over saves and is recorded (`lib/turnover-variance.ts`, see the October 29 entry at the top).
 - **Late entries:** an OR or application date older than yesterday needs a reason, kept in Collections AN / Sales AS `backdate_reason` and listed in Exceptions for 30 days.
 - **Cash count:** a slip may carry a bill-and-coin count (₱1000 to ₱1) in Remittances AB `cash_count` (e.g. `1000x3, 500x1`), and the server checks that a submitted count adds up to the amount. Since slips became automatic (later on 2026-10-04), no screen collects a count.
 - **Member check:** Collections shows the selected member's birthdate, address and last payment, and warns when another member has the same name.

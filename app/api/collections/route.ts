@@ -5,6 +5,7 @@ import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { checkBackdate, controlTotalProblem, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
+import { recordTurnoverVariance, TURNOVER_NOTE_MAX, varianceLabel } from "@/lib/turnover-variance";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { currentEncoder, withEncoder } from "@/lib/encoder-context";
@@ -199,16 +200,23 @@ async function saveCollections(request: Request) {
           backdate_reason: backdateReason || null, date_remitted: dateRemitted, date_remitted_reason: dateRemittedReason || null,
         });
       }
-      // The batch's total remittance (server calculation, plus Fidelity) must equal the net total on the turnover sheet.
-      const controlProblem = controlTotalProblem(body.controlTotal, (remittanceCents + Math.round(fidelity * 100)) / 100);
+      // The batch's total remittance (server calculation, plus Fidelity) is compared with the net total on the turnover
+      // sheet. Short or over still saves; the difference is recorded with the batch (lib/turnover-variance.ts).
+      const totalRemittance = (remittanceCents + Math.round(fidelity * 100)) / 100;
+      const controlProblem = controlTotalProblem(body.controlTotal, totalRemittance);
       if (controlProblem) throw new Error(controlProblem);
+      const controlNote = String(body.controlTotalNote ?? "").trim();
+      if (controlNote.length > TURNOVER_NOTE_MAX) throw new Error(`The turnover note must be ${TURNOVER_NOTE_MAX} characters or fewer.`);
       writing = true;
       await commitCollections(tx, rows, [...touched.values()], payments);
-      return { ids: rows.map((row) => row.collection_id), grossCents };
+      const ids = rows.map((row) => row.collection_id);
+      const variance = await recordTurnoverVariance({ kind: "Collections", entryIds: ids, branch: selectedBranch.name, mas: accountable.name, accountableEmployeeId: accountable.id, dateRemitted, controlTotal: Math.round(Number(body.controlTotal) * 100) / 100, systemTotal: totalRemittance, note: controlNote });
+      return { ids, grossCents, variance };
     });
     // Paid in cash: straight to Pending Approval (lib/entry-batches.ts); other methods wait for the receipt photo.
     const slips = await submitCashAfterSave(saved.ids);
-    return Response.json({ success: true, collectionIds: saved.ids, slips, grossCollection: saved.grossCents / 100, message: `${saved.ids.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}. ${slips.length ? `Cash sent for approval: ${slips.join(", ")}.` : "Attach the receipt photo in My Entries to send them for approval."}` }, { status: 201 });
+    const varianceText = saved.variance ? ` Turnover sheet ${varianceLabel(saved.variance.difference).toLowerCase()} (${saved.variance.id}); the slip goes to Discrepancy.` : "";
+    return Response.json({ success: true, collectionIds: saved.ids, slips, varianceId: saved.variance?.id, grossCollection: saved.grossCents / 100, message: `${saved.ids.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}.${varianceText} ${slips.length ? `Cash sent for approval: ${slips.join(", ")}.` : "Attach the receipt photo in My Entries to send them for approval."}` }, { status: 201 });
   } catch (error) {
     // Another save used the same OR Number at the same moment; the database's unique rule refused this one.
     if (isUniqueViolation(error, "collections_or_key_unique")) return Response.json({ success: false, message: "One of these OR Numbers was just recorded by another save. Each OR Number is used once; check the receipts and try again." }, { status: 409 });

@@ -18,6 +18,7 @@ import { getEmployees } from "@/lib/employees";
 import { ageRestrictionError } from "@/lib/program-age";
 import { todayInManila } from "@/lib/account-rules";
 import { inTransaction, isUniqueViolation } from "@/lib/db";
+import { recordTurnoverVariance, TURNOVER_NOTE_MAX, varianceLabel } from "@/lib/turnover-variance";
 import { calculateSaleIncentive, noIncentiveReasonOf, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { newSalesDoubleEntry, personKey } from "@/lib/duplicate-entries";
 
@@ -29,8 +30,10 @@ type SalePayload = {
   /** Why the Date Remitted is not the day the MAS was cleared (lib/clearing.ts dateRemittedReasonProblem). */
   dateRemittedReason?: string;
   sales: SalePayloadItem[];
-  /** The total written on the MAS's turnover sheet; the batch must add up to it exactly. */
+  /** The total written on the MAS's turnover sheet. Short or over still saves and is recorded (lib/turnover-variance.ts). */
   controlTotal?: number | string;
+  /** Optional: what the clerk knows about a short or over turnover sheet. */
+  controlTotalNote?: string;
   /** Optional remittance penalty on the batch, charged to the MAS, with what it is for. */
   penalty?: number;
   penaltyNote?: string;
@@ -604,10 +607,15 @@ async function saveSales(request: Request, user: SessionUser) {
       }
       catch (error) { return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${error instanceof Error ? error.message : "The incentive could not be calculated."}` }, { status: 400 }); }
     }
-    // The batch's total remittance (server calculation, plus Fidelity) must equal the net total on the turnover sheet.
+    // The batch's total remittance (server calculation, plus Fidelity) is compared with the net total on the turnover
+    // sheet. Short or over still saves; the difference is recorded below with the batch (lib/turnover-variance.ts).
     const totalRemittance = (quotes.reduce((sum, quote) => sum + Math.round(quote.remittance * 100), 0) + Math.round(fidelity * 100)) / 100;
     const controlProblem = controlTotalProblem(body.controlTotal, totalRemittance);
     if (controlProblem) return NextResponse.json({ success: false, message: controlProblem }, { status: 400 });
+    const controlTotal = Math.round(Number(body.controlTotal) * 100) / 100;
+    const controlNote = typeof body.controlTotalNote === "string" ? body.controlTotalNote.trim() : "";
+    if (controlNote.length > TURNOVER_NOTE_MAX) return NextResponse.json({ success: false, message: `The turnover note must be ${TURNOVER_NOTE_MAX} characters or fewer.` }, { status: 400 });
+    let variance: { id: string; difference: number } | null = null;
 
     /*
      * =====================================================
@@ -835,16 +843,19 @@ async function saveSales(request: Request, user: SessionUser) {
         });
       }
       if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId));
+      variance = await recordTurnoverVariance({ kind: "New Sales", entryIds: savedSales.map((saved) => saved.saleId), branch: body.branch.trim(), mas: body.mas.trim(), accountableEmployeeId: selectedStaff.id, dateRemitted: body.dateRemitted.trim(), controlTotal, systemTotal: totalRemittance, note: controlNote });
     });
 
     // Paid in cash: straight to Pending Approval (lib/entry-batches.ts); other methods wait for the receipt photo.
     const slips = await submitCashAfterSave(savedSales.map((saved) => saved.saleId));
+    const recorded = variance as { id: string; difference: number } | null;
     return NextResponse.json({
       success: true,
       message:
-        `All new sales were saved successfully.${slips.length ? ` Cash sent for approval: ${slips.join(", ")}.` : " Attach the receipt photo in My Entries to send them for approval."}`,
+        `All new sales were saved successfully.${recorded ? ` Turnover sheet ${varianceLabel(recorded.difference).toLowerCase()} (${recorded.id}); the slip goes to Discrepancy.` : ""}${slips.length ? ` Cash sent for approval: ${slips.join(", ")}.` : " Attach the receipt photo in My Entries to send them for approval."}`,
       savedSales,
       slips,
+      varianceId: recorded?.id,
     });
   } catch (error: unknown) {
     const conflict = isUniqueViolation(error, "sales_application_key_unique") ? "An Application Number in this batch was just recorded by another save."

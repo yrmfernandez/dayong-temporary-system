@@ -559,6 +559,37 @@ export const remittance_collections = pgTable("remittance_collections", {
   index("remittance_collections_collection_idx").on(t.collection_id),
 ]).enableRLS();
 
+/**
+ * A New Sales or Collections batch saved although its total remittance did not equal the control total on the MAS's
+ * turnover sheet (owner, October 29, 2026; lib/turnover-variance.ts). difference = control total − total remittance:
+ * negative is short (less cash handed over than the entries need), positive is over. Its slip is recorded at the
+ * cash handed over, so it goes to Discrepancy; the variance is Open until that slip is approved with the explanation.
+ */
+export const turnover_variances = pgTable("turnover_variances", {
+  ...rowSeq(),
+  variance_id: text().primaryKey(),
+  kind: text().notNull(),
+  entry_ids: jsonb().$type<string[]>().notNull(),
+  branch: text(),
+  mas: text(),
+  accountable_employee_id: text(),
+  date_remitted: day("date_remitted"),
+  control_total: money("control_total").notNull(),
+  system_total: money("system_total").notNull(),
+  difference: money("difference").notNull(),
+  note: text(),
+  status: text().notNull().default("Open"),
+  remittance_id: text(),
+  resolution: text(),
+  resolved_by_name: text(),
+  resolved_at: moment("resolved_at"),
+  ...encoder(),
+}, (t) => [
+  index("turnover_variances_status_idx").on(t.status),
+  index("turnover_variances_remittance_idx").on(t.remittance_id),
+  index("turnover_variances_entries_idx").using("gin", t.entry_ids),
+]).enableRLS();
+
 /** Receipt photos: which entries a photo covers, and the compressed photo itself in up to four base64 chunks. */
 export const receipt_photos = pgTable("receipt_photos", {
   ...rowSeq(),
