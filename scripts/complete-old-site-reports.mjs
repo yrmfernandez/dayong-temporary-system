@@ -139,7 +139,11 @@ try {
   const plan = { sales: [], collections: [], expenses: [], deposits: [] };
   const notes = { notInSystem: 0, alreadyEncoded: 0, alreadyAdded: 0, skippedTypes: new Map(), unknownBranch: new Set(), unresolved: 0 };
   const summary = new Map();
-  const add = (clerk, what, value) => { const line = summary.get(clerk.employee_id) ?? { name: clerk.full_name, sales: 0, salesGross: 0, collections: 0, collectionsGross: 0, expenses: 0, expensesTotal: 0, deposits: 0, depositsTotal: 0 }; line[what] += 1; line[`${what}${what === "sales" || what === "collections" ? "Gross" : "Total"}`] += value; summary.set(clerk.employee_id, line); };
+  // An old-site name set to "branch" in "encoders" (owner: no employee record) goes to the clerk of the record's branch.
+  const clerkOf = (name, branch) => (config.encoders?.[str(name)] === "branch" ? branchClerk(branch) : employeeFor(name));
+  // The expense account the owner gave an old expense type ("expenseAccounts"), else its own account or type.
+  const accountOf = (type, own) => Object.entries(config.expenseAccounts ?? {}).find(([name]) => key(name) === key(type))?.[1] ?? own;
+  const add = (clerk, what, value) => { const line = summary.get(clerk.employee_id) ?? { name: clerk.full_name, sales: 0, salesGross: 0, collections: 0, collectionsGross: 0, expenses: 0, expensesTotal: 0, deposits: 0, depositsTotal: 0 }; line[what] += 1; const total = `${what}${what === "sales" || what === "collections" ? "Gross" : "Total"}`; line[total] = Math.round((line[total] + value) * 100) / 100; summary.set(clerk.employee_id, line); };
 
   for (const row of siteSales) {
     const id = `SALE-WEB-${row.record_id}`, db = saleRow.get(id), date = day(row.data_created_at || row["Created At"]);
@@ -147,7 +151,7 @@ try {
     if (db.encoder) { notes.alreadyEncoded++; continue; }
     const member = members.get(str(row.member_id_value));
     const sameDay = member && day(member.data_created_at) === date && str(member.Encoder);
-    const clerk = sameDay ? employeeFor(member.Encoder) : branchClerk(db.branch);
+    const clerk = sameDay ? clerkOf(member.Encoder, db.branch) : branchClerk(db.branch);
     if (!clerk) { notes.unresolved++; continue; }
     plan.sales.push({ id, clerk, date }); add(clerk, "sales", db.amount);
   }
@@ -166,10 +170,10 @@ try {
     if (skip.has(key(type))) { notes.skippedTypes.set(type, (notes.skippedTypes.get(type) ?? 0) + 1); continue; }
     const branch = branchName.get(key(row.Branch));
     if (!branch) { notes.unknownBranch.add(str(row.Branch)); notes.unresolved++; continue; }
-    const clerk = employeeFor(row["Encoded By"]);
+    const clerk = clerkOf(row["Encoded By"], branch);
     if (!clerk) { notes.unresolved++; continue; }
     plan.expenses.push({ id, clerk, date: day(row.Date), recordedOn: day(row.Date), amount: amount(row.Amount), type, source: "old web app", values: {
-      category: type || "Old web app expense", description: str(row["Member Burial"]) || null, payee: str(row.MAS) || null, branch,
+      category: accountOf(type, type) || "Old web app expense", description: [accountOf(type, type) !== type ? type : "", str(row["Member Burial"])].filter(Boolean).join(" · ") || null, payee: str(row.MAS) || null, branch,
       reference_number: str(row["OR#"]) || null, receipt_number: str(row["Receipt#"]) || null,
       remarks: [`Imported from the old web app (expense ${row.record_id}).`, str(row.Remarks)].filter(Boolean).join(" "),
     } }); add(clerk, "expenses", amount(row.Amount));
@@ -179,7 +183,7 @@ try {
     if (haveDeposit.has(id)) { notes.alreadyAdded++; continue; }
     const branch = branchName.get(key(row.Branch));
     if (!branch) { notes.unknownBranch.add(str(row.Branch)); notes.unresolved++; continue; }
-    const clerk = employeeFor(row["Encoded By"]);
+    const clerk = clerkOf(row["Encoded By"], branch);
     if (!clerk) { notes.unresolved++; continue; }
     plan.deposits.push({ id, clerk, row, branch, date: day(row.Date), amount: amount(row.Amount) }); add(clerk, "deposits", amount(row.Amount));
   }
@@ -235,7 +239,7 @@ try {
       if (!clerk) { notes.unresolved++; return; }
       const value = amount(cell(v[col.amount]));
       plan.expenses.push({ id, clerk, date: sheetDay(v[col.date]) || recorded, recordedOn: recorded, amount: value, type, source: "old sheet", values: {
-        category: str(cell(v[col.account])) || "Old sheet expense", description: str(cell(v[col.purpose])) || null, branch, receipt_number: str(cell(v[col.receipt])) || null,
+        category: accountOf(type, str(cell(v[col.account]))) || "Old sheet expense", description: str(cell(v[col.purpose])) || null, branch, receipt_number: str(cell(v[col.receipt])) || null,
         approved_by: str(cell(v[col.approved])) || null, remarks: [`Imported from the old sheet (Expenses Entry row ${number}).`, str(cell(v[col.remarks]))].filter(Boolean).join(" "),
       } }); add(clerk, "expenses", value);
     });
@@ -247,7 +251,7 @@ try {
   console.log(`To give a clerk or add: New Sales ${plan.sales.length} (${fromSheet(plan.sales)} old sheet), Collections ${plan.collections.length} (${fromSheet(plan.collections)} old sheet), expenses ${plan.expenses.length} (${fromSheet(plan.expenses)} old sheet), bank/GCash remittances ${plan.deposits.length}.`);
   console.log(`Old web app records not in this system (left out of the import): ${notes.notInSystem} · already with an encoder: ${notes.alreadyEncoded} · expenses/remittances already added: ${notes.alreadyAdded}`);
   for (const [type, n] of notes.skippedTypes) console.log(`Expense type skipped (skipExpenseTypes): ${type} × ${n}`);
-  const incentiveLike = [...new Set(plan.expenses.filter((item) => /incentive|\borc\b/i.test(item.type)).map((item) => item.type))];
+  const incentiveLike = [...new Set(plan.expenses.filter((item) => /incentive|\borc\b/i.test(item.type) && !accountOf(item.type, "")).map((item) => item.type))];
   if (incentiveLike.length) console.log(`CHECK: these expense types look like incentives; add them to skipExpenseTypes if this system already counts them: ${incentiveLike.join(" | ")}`);
 
   console.log("\nPer clerk (what their reports will gain):");
