@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { DiscrepancyBreakdown } from "@/lib/remittance-discrepancy";
 import { formatDateTime as showDateTime } from "@/lib/date-format";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 
@@ -16,6 +17,9 @@ const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "curren
 export function RemittanceDiscrepancy({ remittanceId }: { remittanceId: string }) {
   const [data, setData] = useState<DiscrepancyBreakdown | null>(null);
   const [error, setError] = useState("");
+  const [version, setVersion] = useState(0);
+  // Live updates: the explanation is worked out again when the slip or its entries change (lib/use-live-refresh.ts).
+  useLiveRefresh(["remittances", "remittance_collections", "collections", "sales", "receipt_photos", "turnover_variances"], () => setVersion((value) => value + 1));
 
   useEffect(() => {
     let active = true;
@@ -28,7 +32,7 @@ export function RemittanceDiscrepancy({ remittanceId }: { remittanceId: string }
       } catch (caught) { if (active) setError(caught instanceof Error ? caught.message : "Unable to explain the difference."); }
     })();
     return () => { active = false; };
-  }, [remittanceId]);
+  }, [remittanceId, version]);
 
   if (error) return <p className="text-sm text-red-700">{error}</p>;
   if (!data) return <p className="text-sm text-muted-foreground">Working out the difference...</p>;

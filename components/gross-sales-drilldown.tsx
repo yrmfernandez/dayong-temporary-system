@@ -7,6 +7,7 @@ import { Change } from "@/components/executive-charts";
 import { Input } from "@/components/ui/input";
 import type { GrossSalesBreakdown, GrossSalesEntry } from "@/lib/gross-sales";
 import { formatDate as showDate } from "@/lib/date-format";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Page = { totals: GrossSalesBreakdown["totals"]; branches: GrossSalesBreakdown["branches"]; filtered: { count: number; total: number }; entries: GrossSalesEntry[] };
 
@@ -29,6 +30,9 @@ export function GrossSalesDrilldown({ label, value, note, change, from, to }: { 
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<"" | GrossSalesEntry["kind"]>("");
   const [branch, setBranch] = useState("");
+  const [version, setVersion] = useState(0);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["sales", "collections", "members", "member_programs"], () => { if (open) setVersion((value) => value + 1); });
   // The search asks the server once typing pauses.
   useEffect(() => { const timer = setTimeout(() => setQuery(search.trim()), 350); return () => clearTimeout(timer); }, [search]);
   const params = (offset = 0, format = "") => new URLSearchParams({ from, to, ...(query && { q: query }), ...(kind && { kind }), ...(branch && { branch }), ...(offset && { offset: String(offset) }), ...(format && { format }) }).toString();
@@ -49,7 +53,7 @@ export function GrossSalesDrilldown({ label, value, note, change, from, to }: { 
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load reads the filters listed here
-  }, [open, from, to, query, kind, branch]);
+  }, [open, from, to, query, kind, branch, version]);
   async function showMore() {
     if (!data) return;
     setLoading(true);

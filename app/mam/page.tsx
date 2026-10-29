@@ -105,13 +105,14 @@ export default function MamPage() {
   }, []);
   const pending = useRef<AbortController | null>(null);
 
-  async function load(sync = false) {
+  /** `live`: a live update; the open member detail stays open and shows the reloaded row. */
+  async function load(sync = false, live = false) {
     pending.current?.abort();
     const controller = new AbortController();
     pending.current = controller;
     setBusy(true);
     setError("");
-    setSelected(null);
+    if (!live) setSelected(null);
     try {
       if (!from || !to || from > to) throw new Error("Choose a valid From / To month range.");
       if (!branch && !choices?.ownMembersOnly) { setReport(null); return; }
@@ -124,7 +125,7 @@ export default function MamPage() {
       const response = await fetch(`/api/mam?${query}`, { cache: "no-store", signal: controller.signal });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load MAM.");
-      if (!controller.signal.aborted) setReport(result);
+      if (!controller.signal.aborted) { setReport(result); if (live) setSelected((current) => current && (result.rows.find((row: Row) => row.id === current.id) ?? current)); }
     } catch (failure) {
       if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load MAM.");
     } finally {
@@ -167,7 +168,7 @@ export default function MamPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choices, branch, mas, member]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["collections", "sales", "member_programs"], () => { if (choices) void load(); }, 15000);
+  useLiveRefresh(["collections", "sales", "member_programs"], () => { if (choices) void load(false, true); }, 15000);
 
   const branchId = choices?.branches.find((item) => item.name === branch)?.id ?? "";
   const masChoices = (choices?.staff ?? []).filter((staff) => branchId && staff.branchIds.includes(branchId)).map((staff) => staff.fullName);

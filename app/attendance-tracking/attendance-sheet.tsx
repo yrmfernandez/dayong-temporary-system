@@ -12,6 +12,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { usePeopleFilter } from "@/components/people-filter";
 import type { GridCell, GridTone, SheetDay, SheetEmployee, SheetSummary } from "@/lib/attendance-sheet";
 import { formatDate as showDate } from "@/lib/date-format";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type AllRow = { employee: SheetEmployee; summary: SheetSummary; cells: GridCell[]; rate: string };
 type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: AllRow[]; showRates: boolean; totals: SheetSummary };
@@ -97,6 +98,8 @@ export function AttendanceSheet() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
   useEffect(() => { void load(); }, []);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["attendance", "leave_requests", "holidays", "employees"], () => load());
 
   const employees = one?.employees ?? all?.employees ?? [];
   const openEmployee = (id: string) => { setEmployeeId(id); void load({ employeeId: id }); };

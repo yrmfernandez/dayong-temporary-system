@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { CashOutFields, cashOutReady, manilaToday, type CashOut } from "@/components/cash-out-fields";
 import { CheckCircle2, Clock3, HandCoins, PiggyBank, Target, Users } from "lucide-react";
 
@@ -30,6 +31,8 @@ function useFidelity(scope: "all" | "me") {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load().catch((failure) => setError(failure instanceof Error ? failure.message : "Unable to load Fidelity."));
   }, [load]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["fidelity", "remittances", "collections", "sales", "cash_transactions"], () => load().catch(() => undefined));
   return { data, error, setError, load };
 }
 

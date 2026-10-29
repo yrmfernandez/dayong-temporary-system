@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity lock) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Opened views update live too (2026-10-29)
+
+- **Owner:** live updates work, but an expanded view does not change (e.g. a member's name edited by another user changes in the Members list, not in the opened details); same on other pages.
+- **Cause:** pages kept a copy of the row taken when it was opened (Members details, MAM member detail, payroll payslip), so a reload refreshed the list only; MAM even closed its open detail on every live reload. Several panels load their own data and never listened for changes.
+- **Done:** after a live reload the opened row is replaced by its reloaded version (Members, MAM: the detail stays open now; payroll payslip follows the reloaded run; the open payroll run reloads). Live refresh added to the member MAM panel, remittance View entries and Why the difference, Fidelity, Notices to Explain, gross sales breakdown, My attendance history, Attendance Tracking and the attendance sheet. Edit forms and the Clearing day-end review are left alone so typing or choices are not lost. System guide (Live updates, item 3) updated. Build passes.
+- **In progress (owner):** deploy; with two users, open a member's details on one and rename the member on the other.
+- **To do:** none.
+
 ### Undo a remittance approved by mistake (2026-10-29)
 
 - **Owner:** an admin approved a remittance that should have been rejected; an accidental approval must be revertible.

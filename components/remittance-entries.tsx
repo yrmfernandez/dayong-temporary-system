@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { RemittanceEntry } from "@/lib/remittance-workflow";
 import { formatDate as showDate } from "@/lib/date-format";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 
@@ -58,6 +59,8 @@ export function RemittanceEntries({ remittanceId, canDecideIncentive = false, on
     })();
     return () => { active = false; };
   }, [remittanceId, version]);
+  // Live updates: the entries reload when another user changes them or the slip (lib/use-live-refresh.ts).
+  useLiveRefresh(["remittances", "remittance_collections", "collections", "sales", "receipt_photos", "turnover_variances"], () => setVersion((value) => value + 1));
 
   if (error) return <p className="text-sm text-red-700">{error}</p>;
   if (!data) return <p className="text-sm text-muted-foreground">Loading entries...</p>;

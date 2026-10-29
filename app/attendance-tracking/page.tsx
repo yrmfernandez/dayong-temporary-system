@@ -12,6 +12,7 @@ import { dayTotals } from "@/lib/attendance";
 import { AttendanceSheet } from "./attendance-sheet";
 import { DailyBoard } from "./daily-board";
 import { formatDate as showDate } from "@/lib/date-format";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Employee = { id: string; name: string; roles: string[]; status: string; branches: string[] };
 type Record = { id: string; employeeId: string; attendanceDate: string; branch: string; scheduledTimeIn: string; scheduledTimeOut: string; timeIn: string; timeOut: string; workedHours: number; overtimeHours: number; status: string; lateMinutes: number; undertimeMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string };
@@ -56,6 +57,8 @@ function AttendanceHistory() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
   useEffect(() => { void load(); }, []);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["attendance", "leave_requests", "holidays", "employees"], () => load());
   const selectedEmployee = employees.find((employee) => employee.id === employeeId);
   const summary = useMemo(() => ({
     present: records.filter((record) => record.status === "Present").length,

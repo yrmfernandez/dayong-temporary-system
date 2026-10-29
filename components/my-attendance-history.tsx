@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import type { AttendanceHistory, HistoryPeriod, HistoryTotals } from "@/lib/attendance-board";
 import { formatDate as showDate } from "@/lib/date-format";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 const PERIODS: { id: HistoryPeriod; label: string }[] = [{ id: "week", label: "Week" }, { id: "month", label: "Month" }, { id: "year", label: "Year" }];
 /** Category → tone (globals.css .tone-*) and the share it takes in a breakdown bar. Colour always comes with a label. */
@@ -28,6 +29,9 @@ export function MyAttendanceHistory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showDays, setShowDays] = useState(false);
+  const [version, setVersion] = useState(0);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["attendance", "leave_requests", "holidays"], () => setVersion((value) => value + 1));
 
   useEffect(() => {
     let cancelled = false;
@@ -40,7 +44,7 @@ export function MyAttendanceHistory() {
       .catch((failure) => { if (!cancelled) setError(failure instanceof Error ? failure.message : "Unable to load your attendance history."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [period, date]);
+  }, [period, date, version]);
 
   const t = data?.totals;
   const isCurrent = data ? data.today >= data.from && data.today <= data.to : true;

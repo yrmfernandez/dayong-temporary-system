@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { paidInMonth } from "@/lib/mam-format";
 import { formatDate as showDate } from "@/lib/date-format";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Receipt = { id: string; orNumber: string; orDate: string; amount: number; monthFrom: string; monthTo: string; nopFrom: number; nopTo: number };
 type Period = { month: string; projected: boolean; error: string; collected: number; coveredAmount: number; receipts: Receipt[]; state: { status: string; temporarilySuspended: boolean; nop: number; lastCoveredMonth: string; balance: number | null } | null };
@@ -25,19 +26,27 @@ export function MemberMam({ memberId }: { memberId: string }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function toggle() {
-    const next = !open;
-    setOpen(next);
-    if (!next || rows) return;
-    setLoading(true); setError("");
+  async function load(quiet = false) {
+    if (!quiet) { setLoading(true); setError(""); }
     try {
       const response = await fetch(`/api/mam/member?memberId=${encodeURIComponent(memberId)}`, { cache: "no-store" });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load this member's MAM.");
-      setRows(result.rows);
-    } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to load this member's MAM."); }
-    finally { setLoading(false); }
+      setRows(result.rows); setError("");
+    } catch (failure) { if (!quiet) setError(failure instanceof Error ? failure.message : "Unable to load this member's MAM."); }
+    finally { if (!quiet) setLoading(false); }
   }
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (!next || rows) return;
+    await load();
+  }
+
+  // Live updates: an opened MAM reloads when a payment or account changes (lib/use-live-refresh.ts); a closed one reloads
+  // when it is opened again.
+  useLiveRefresh(["collections", "sales", "member_programs", "programs"], () => { if (open) void load(true); else setRows(null); });
 
   return <div className="rounded-lg border">
     <button type="button" aria-expanded={open} onClick={() => void toggle()} className="flex w-full items-center justify-between gap-2 p-3 text-left text-sm font-semibold hover:bg-muted/40">

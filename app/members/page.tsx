@@ -72,7 +72,8 @@ export default function MembersPage() {
     fetch(`/api/members/directory?${query}`, { cache: "no-store", signal: controller.signal }).then(async (response) => {
       const result = await readApiResponse(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load members.");
-      setError(""); setMembers(result.members); setTotals({ total: result.total, matched: result.matched, pages: result.pages }); setCounts(result.counts ?? {}); setChoices(result.options);
+      // The open member's details follow the reload too (another user changed the name, an account...).
+      setError(""); setMembers(result.members); setSelected((current) => current && (result.members.find((member: DirectoryMember) => member.id === current.id) ?? current)); setTotals({ total: result.total, matched: result.matched, pages: result.pages }); setCounts(result.counts ?? {}); setChoices(result.options);
       if (result.page !== page) setPage(result.page);
       setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanDelete(Boolean(result.canDelete)); setCanTransfer(Boolean(result.canTransfer)); setCanMoveProgram(Boolean(result.canMoveProgram)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []); setDeactivations(result.deactivations ?? {});
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })

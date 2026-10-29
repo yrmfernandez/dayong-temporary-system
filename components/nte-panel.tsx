@@ -3,6 +3,7 @@
 import { promptDialog } from "@/components/app-dialog";
 import { AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,8 @@ export function NtePanel({ employees }: { employees: Array<{ id: string; name: s
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the notices once
     void load();
   }, [load]);
+  // Live updates: reload when another user saves (lib/use-live-refresh.ts).
+  useLiveRefresh(["notices_to_explain"], load);
   if (!allowed) return null;
 
   const send = async (method: "POST" | "PATCH", body: Record<string, unknown>) => {

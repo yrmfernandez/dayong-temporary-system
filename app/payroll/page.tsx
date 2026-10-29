@@ -66,7 +66,7 @@ export default function PayrollPage() {
     void loadOverview().catch((failure) => setError(failure instanceof Error ? failure.message : "Unable to load payroll."));
   }, [loadOverview]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["payroll_runs", "payroll_lines", "payroll_adjustments", "pay_profiles", "commissions"], () => loadOverview().catch(() => undefined));
+  useLiveRefresh(["payroll_runs", "payroll_lines", "payroll_adjustments", "pay_profiles", "commissions"], () => { void loadOverview().catch(() => undefined); if (detail) void openRun(detail.run.id).catch(() => undefined); });
 
   async function act(body: Record<string, unknown>, success: string, after?: (result: Record<string, unknown>) => Promise<void>) {
     setBusy(true); setError(""); setMessage("");
@@ -398,7 +398,7 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
     {run.status === "Void" && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">Voided: {run.voidReason}</p>}
     {run.status === "Paid" && <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">Paid on {showDate(run.payDate)} from {run.cashAccount}{run.paymentReference ? ` (ref ${run.paymentReference})` : ""}. Cash ledger entry {run.cashTransactionId || "—"}.</p>}
 
-    {payslip && <Payslip run={run} line={payslip} adjustments={adjustments} onClose={() => setPayslip(null)} />}
+    {payslip && <Payslip run={run} line={lines.find((line) => line.employeeId === payslip.employeeId) ?? payslip} adjustments={adjustments} onClose={() => setPayslip(null)} />}
   </div>;
 }
 
