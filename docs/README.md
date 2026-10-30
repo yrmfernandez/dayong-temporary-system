@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 30, 2026: report weeks stay in the month.** A week still runs Monday to Sunday, but the first week of a month starts on the 1st and the last ends on its last day: October 2026 is Oct 1-4, 5-11, 12-18, 19-25, 26-31. See [reports](reports.md).
+
 **October 30, 2026: pages follow the open workspace.** Switching workspace in the sidebar now changes every page and action to that role, not just the dashboard: an Administrator in their Entry Clerk workspace sees Reports as an Entry Clerk, and the MAS workspace works as a MAS (own members only, the new MAM view). Users with several roles switch workspace to use another role's powers. See [access control](access-control.md).
 
 **October 30, 2026: MAM for MAS users.** A MAS sees My Members' Accounts with a this-month collection list (who owes, how much, who is close to forfeiting), phone cards, and simpler filters; clicking a member opens a Payment Card for everyone. A MAS can no longer run the company-wide Sync Statuses. See the [system guide](system-guide.md) (section 10, MAM).

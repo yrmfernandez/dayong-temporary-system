@@ -17,6 +17,15 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Report weeks start on the 1st and end on the month's last day (2026-10-30)
+
+- **Owner:** the start of the week is the first day of the month, and the end as well: the first week of October starts October 1. Chosen: Monday to Sunday, cut at the month (October 2026: Oct 1-4, 5-11, 12-18, 19-25, 26-31).
+- **Found:** the weekly report and audit ran a full Monday to Sunday, so the week of October 1 was Sep 28 - Oct 4; week N was the week of the Nth Monday.
+- **Done:** `lib/report-week.ts` (`reportWeek`) used by `periodSpan('weekly')` (weekly report, weekly audit, its notes, Cash Beg and deposit days) and This week on Company Reports and My Entries; `weekOfMonth` counts the same weeks (October 12 is now the 3RD WEEK, a month can have a 6TH). The monthly report's week rows follow. No migration.
+- **Saved weekly items:** weekly audits, notes and Cash Beg are keyed by the week's first day. A week that used to cross months (e.g. saved under Sep 28) now covers only its own month's days (Sep 28-30); Oct 1-4 is a new week with nothing saved yet. Weeks inside one month are unchanged.
+- **Tests:** week numbers and spans (Oct 1-4, Oct 26-31, Sep 28-30, Nov 30 = 6TH WEEK), the October 1 weekly report heading. All 282 tests and the build pass.
+- **Not checked in a browser:** Reports → Weekly, choose October 2.
+
 ### Every page follows the open workspace, including the virtual MAS (2026-10-30)
 
 - **Owner:** the MAM upgrade should also apply to the virtual MAS in the workspace. And when changing workspace, pages do not behave as that workspace's role (an Administrator in their Entry Clerk workspace still sees Reports as an Administrator); fix it for all pages and roles.
@@ -1392,7 +1401,7 @@ Administrators, HR, the CEO and President (and anyone with manage-attendance) ca
 
 ## Audits (daily, weekly, monthly, yearly)
 
-The Audits page (`/audit`, formerly Daily Audit) audits each Entry Clerk's report by day, week (Monday to Sunday), month or year, with the same workflow: HR/Finance prepare, only an Administrator approves (which locks the figures) or reopens with a reason. Weekly, monthly and yearly audits use the report totals for the whole period plus how the clerk's daily audits in that period stand. They are stored in Weekly Audits, Monthly Audits and Yearly Audits, laid out like Daily Audits with report_date = the period's first day (`npm run sheets:period-audits -- --apply`, applied 2026-10-02). The Daily summary tab still summarizes approved daily audits.
+The Audits page (`/audit`, formerly Daily Audit) audits each Entry Clerk's report by day, week (Monday to Sunday within the month, since 2026-10-30), month or year, with the same workflow: HR/Finance prepare, only an Administrator approves (which locks the figures) or reopens with a reason. Weekly, monthly and yearly audits use the report totals for the whole period plus how the clerk's daily audits in that period stand. They are stored in Weekly Audits, Monthly Audits and Yearly Audits, laid out like Daily Audits with report_date = the period's first day (`npm run sheets:period-audits -- --apply`, applied 2026-10-02). The Daily summary tab still summarizes approved daily audits.
 
 ## Live updates and linked tables (from October 7, 2026)
 

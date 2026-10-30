@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { parseJsonResponse } from "@/lib/api-response";
+import { reportWeek } from "@/lib/report-week";
 import type { ReportLine, ReportSummary } from "@/lib/reports";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDateTime as showDateTime } from "@/lib/date-format";
@@ -32,9 +33,8 @@ type Row = { label: string; detail?: string; salesCount: number; salesGross: num
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const round = (value: number) => Math.round(value * 100) / 100;
 const todayInManila = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
-const shift = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 function rangeFor(period: Period, today: string): [string, string] {
-  if (period === "week") { const start = shift(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7)); return [start, shift(start, 6)]; }
+  if (period === "week") { const { start, end } = reportWeek(today); return [start, end]; }
   if (period === "month") return [`${today.slice(0, 7)}-01`, new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10)];
   if (period === "year") return [`${today.slice(0, 4)}-01-01`, `${today.slice(0, 4)}-12-31`];
   return [today, today];

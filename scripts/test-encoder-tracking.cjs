@@ -2850,8 +2850,15 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   h.rows.Expenses = [[], expense];
   await h.sync();
   const { buildClerkReport, weekOfMonth } = h.load('lib/clerk-report.ts');
-  // Week N is the week of the month's Nth Monday; days before the first Monday are week 1.
-  assert.deepEqual(['2026-10-01', '2026-10-04', '2026-10-05', '2026-10-12', '2026-09-30', '2026-06-01', '2026-06-15'].map(weekOfMonth), [1, 1, 1, 2, 4, 1, 3]);
+  // Weeks run Monday to Sunday within the month (owner, October 30, 2026): week 1 starts on the 1st, the last ends on the month's last day.
+  assert.deepEqual(['2026-10-01', '2026-10-04', '2026-10-05', '2026-10-12', '2026-10-31', '2026-09-30', '2026-06-01', '2026-06-15', '2026-11-30'].map(weekOfMonth), [1, 1, 2, 3, 5, 5, 1, 3, 6]);
+  const { periodSpan } = h.load('lib/daily-audit.ts');
+  assert.deepEqual(['2026-10-01', '2026-10-04', '2026-10-07', '2026-10-28', '2026-09-29', '2026-06-17'].map((day) => periodSpan('weekly', day)), [
+    { start: '2026-10-01', end: '2026-10-04' }, { start: '2026-10-01', end: '2026-10-04' }, { start: '2026-10-05', end: '2026-10-11' },
+    { start: '2026-10-26', end: '2026-10-31' }, { start: '2026-09-28', end: '2026-09-30' }, { start: '2026-06-15', end: '2026-06-21' },
+  ], 'the first week of October starts October 1; no week crosses into another month');
+  const first = await buildClerkReport('weekly', '2026-10-02', { employeeId: 'DPE-7', name: 'Clerk' });
+  assert.deepEqual([first.from, first.to, first.dateLine, first.summaryLabel], ['2026-10-01', '2026-10-04', 'WEEK 1 OCTOBER 1-4, 2026', '1ST WEEKLY REPORT']);
   const report = await buildClerkReport('weekly', '2026-06-17', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.equal(report.reportName, 'WEEKLY REPORT');
   assert.equal(report.dateLine, 'WEEK 3 JUNE 15-21, 2026');

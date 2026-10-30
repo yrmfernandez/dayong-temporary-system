@@ -17,7 +17,7 @@ Reports are per Entry Clerk, not company-wide: each clerk sees only the New Sale
 | Summary sheet | Weekly, monthly, yearly: New Member and Collection by Marketing Account Staff. CVE columns are shown but not yet defined. |
 | Checks | Remitted and not-yet-remitted shares, penalties, forfeited incentives, receipt photos, date warnings, and every entry with its details, filtered by New Sales or Collections, Remitted / Returned / missing receipt photo, OR or application number, MAS and program. |
 
-Entries count by the date the clerk encoded them. Weeks run Monday to Sunday; week N of a month is the week of its Nth Monday, and days before the first Monday are week 1. Cash Beg is what the clerk types for that report (zero when none), case by case; nothing is carried from earlier periods (since October 13, 2026).
+Entries count by the date the clerk encoded them. Weeks run Monday to Sunday but stay inside the month (since October 30, 2026): week 1 starts on the 1st and runs to the first Sunday, and the last week ends on the month's last day. October 2026 is WEEK 1 Oct 1-4, WEEK 2 Oct 5-11, WEEK 3 Oct 12-18, WEEK 4 Oct 19-25, WEEK 5 Oct 26-31; a month can have 6 weeks. The weekly report, its audit, This week on Reports and My Entries all use these weeks ([report-week.ts](../lib/report-week.ts)). Cash Beg is what the clerk types for that report (zero when none), case by case; nothing is carried from earlier periods (since October 13, 2026).
 
 On their own report a clerk records expenses (saved to Expenses for their primary branch, so Finance sees them; each needs at least one photo of its receipt, viewed with **Receipt** on the report, October 21, 2026), cash forwarded to the bank (voided with a reason, never deleted), and the report notes.
 

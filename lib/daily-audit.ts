@@ -9,9 +9,10 @@ import { buildClerkReport } from "@/lib/clerk-report";
 import { clerkTurnover, varianceLabel } from "@/lib/turnover-variance";
 import { formatDate, formatMonth } from "@/lib/date-format";
 import { manilaDateOf } from "@/lib/manila-date";
+import { monthEnd, reportWeek } from "@/lib/report-week";
 
 /**
- * Audits of each Entry Clerk's report: one per clerk per day, week (Monday to Sunday), month, or year (Entry Clerks only;
+ * Audits of each Entry Clerk's report: one per clerk per day, week (Monday to Sunday within one month), month, or year (Entry Clerks only;
  * other roles are never audited here). HR and Administrators prepare and edit an audit; only an Administrator approves it.
  * An approved audit is locked until an Administrator reopens it with a reason. Tables daily_audits, weekly_audits,
  * monthly_audits and yearly_audits share one layout; report_date holds the first day of the period.
@@ -34,13 +35,15 @@ export type AuditStatus = "Not started" | "Draft" | "Approved";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const shift = (date: string, days: number) => { const day = new Date(`${date}T00:00:00Z`); day.setUTCDate(day.getUTCDate() + days); return day.toISOString().slice(0, 10); };
 
-/** The audited span of the period containing `date`: its first day (the audit's report_date) and its last day. */
+/**
+ * The audited span of the period containing `date`: its first day (the audit's report_date) and its last day.
+ * A week is Monday to Sunday within its month (lib/report-week.ts, October 30, 2026).
+ */
 export function periodSpan(period: AuditPeriod, date: string) {
   if (!datePattern.test(date) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) throw new Error("Choose a valid audit date.");
-  if (period === "weekly") { const start = shift(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7)); return { start, end: shift(start, 6) }; }
-  if (period === "monthly") { const start = `${date.slice(0, 7)}-01`; return { start, end: new Date(Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)), 0)).toISOString().slice(0, 10) }; }
+  if (period === "weekly") return reportWeek(date);
+  if (period === "monthly") return { start: `${date.slice(0, 7)}-01`, end: monthEnd(date) };
   if (period === "yearly") return { start: `${date.slice(0, 4)}-01-01`, end: `${date.slice(0, 4)}-12-31` };
   return { start: date, end: date };
 }

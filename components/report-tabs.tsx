@@ -9,7 +9,7 @@ type Kind = "daily" | "weekly" | "monthly" | "yearly";
 
 const TABS: Array<{ id: Kind; label: string; icon: typeof CalendarDays; description: string }> = [
   { id: "daily", label: "Daily", icon: CalendarDays, description: "One day, by MAS." },
-  { id: "weekly", label: "Weekly", icon: CalendarRange, description: "Monday to Sunday, by date." },
+  { id: "weekly", label: "Weekly", icon: CalendarRange, description: "Monday to Sunday within the month, by date." },
   { id: "monthly", label: "Monthly", icon: Calendar, description: "One month, by week." },
   { id: "yearly", label: "Yearly", icon: BarChart3, description: "One year, by month." },
 ];
