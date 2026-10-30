@@ -6,6 +6,7 @@ import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, X } from "l
 import { useEffect, useMemo, useState } from "react";
 
 import type { ShellUser } from "@/components/app-shell";
+import { alertDialog } from "@/components/app-dialog";
 import { BrandLogo } from "@/components/brand-logo";
 import { Avatar, ProfileMenu } from "@/components/profile";
 import { clearFormDrafts } from "@/lib/use-form-draft";
@@ -60,7 +61,12 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, count
   const rail = collapsed ? "md:hidden" : "";
 
   async function signOut() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      if (!(await fetch("/api/auth/logout", { method: "POST" })).ok) throw new Error();
+    } catch {
+      await alertDialog("Could not reach the server to sign out, so you are still signed in. Check the connection and try again.");
+      return;
+    }
     removePreference(preferenceKeys.activeRole);
     clearFormDrafts();
     onMobileClose();

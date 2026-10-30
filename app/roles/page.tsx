@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { defaultRoutesForRole, isAdministratorRole } from "@/lib/access-control";
+import { readApiResponse } from "@/lib/api-response";
 import { pageCatalog, pageCatalogRoutes } from "@/lib/page-catalog";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
@@ -30,11 +31,13 @@ export default function RolesPage() {
 
   const load = useCallback(async () => {
     setBusy(true);
-    const response = await fetch("/api/roles", { cache: "no-store" });
-    const result = await response.json();
-    setMessage(response.ok ? "" : result.message);
-    setRoles(result.roles ?? []);
-    setBusy(false);
+    try {
+      const response = await fetch("/api/roles", { cache: "no-store" });
+      const result = await readApiResponse(response);
+      setMessage(response.ok ? "" : result.message);
+      if (response.ok) setRoles(result.roles ?? []);
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to load roles. Check the connection and try again."); }
+    finally { setBusy(false); }
   }, []);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
@@ -59,19 +62,24 @@ export default function RolesPage() {
   async function save(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
-    const response = await fetch("/api/roles", { method: form.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    const result = await response.json();
-    setMessage(response.ok ? `Role ${form.id ? "updated" : "created"}. Page access applies the next time its users sign in.` : result.message);
-    if (response.ok) { setSavedId(form.id ?? ""); setForm(empty); await load(); } else setBusy(false);
+    try {
+      const response = await fetch("/api/roles", { method: form.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const result = await readApiResponse(response);
+      setMessage(response.ok ? `Role ${form.id ? "updated" : "created"}. Page access applies the next time its users sign in.` : result.message);
+      if (response.ok) { setSavedId(form.id ?? ""); setForm(empty); await load(); }
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to save the role. Check the connection and try again."); }
+    finally { setBusy(false); }
   }
 
   async function remove(role: Role) {
     if (!await confirmDialog(`Delete ${role.name}?`)) return;
     setSavedId("");
-    const response = await fetch("/api/roles", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: role.id }) });
-    const result = await response.json();
-    setMessage(response.ok ? "Role deleted." : result.message);
-    if (response.ok) await load();
+    try {
+      const response = await fetch("/api/roles", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: role.id }) });
+      const result = await readApiResponse(response);
+      setMessage(response.ok ? "Role deleted." : result.message);
+      if (response.ok) await load();
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to delete the role. Check the connection and try again."); }
   }
 
   const roleForm = (

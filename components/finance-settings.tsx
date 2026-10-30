@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { readApiResponse } from "@/lib/api-response";
 
 type Account = { id: string; name: string; type: string; openingBalance: number; status: string };
 type AccountForm = { id: string; name: string; type: string; openingBalance: string; status: string };
@@ -13,21 +14,30 @@ const blank: AccountForm = { id: "", name: "", type: "Cash on Hand", openingBala
 export function FinanceSettings() {
   const [accounts, setAccounts] = useState<Account[]>([]), [allowed, setAllowed] = useState(false), [message, setMessage] = useState("");
   // New accounts use the form at the top; an existing account is edited in place, under its own row.
-  const [form, setForm] = useState<AccountForm>(blank), [editing, setEditing] = useState<AccountForm | null>(null), [savedId, setSavedId] = useState("");
-  async function load() { const r = await fetch("/api/finance-options", { cache: "no-store" }); if (r.status === 403) return; const j = await r.json(); if (r.ok) { setAllowed(true); setAccounts(j.accounts ?? []); } }
+  const [form, setForm] = useState<AccountForm>(blank), [editing, setEditing] = useState<AccountForm | null>(null), [savedId, setSavedId] = useState(""), [busy, setBusy] = useState(false);
+  async function load() {
+    try {
+      const r = await fetch("/api/finance-options", { cache: "no-store" }); if (r.status === 403) return;
+      const j = await readApiResponse(r); if (r.ok) { setAllowed(true); setAccounts(j.accounts ?? []); } else setMessage(j.message || "Unable to load cash accounts.");
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to load cash accounts. Check the connection and try again."); }
+  }
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
   useEffect(() => { void load(); }, []);
   async function save(values: AccountForm, done: () => void) {
-    const r = await fetch("/api/finance-options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...values, openingBalance: Number(values.openingBalance) }) }), j = await r.json();
-    if (!r.ok) { setMessage(j.message); return; }
-    setSavedId(values.id); setMessage("Cash account saved."); done(); await load();
+    setBusy(true); setMessage("");
+    try {
+      const r = await fetch("/api/finance-options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...values, openingBalance: Number(values.openingBalance) }) }), j = await readApiResponse(r);
+      if (!r.ok) { setMessage(j.message); return; }
+      setSavedId(values.id); setMessage("Cash account saved."); done(); await load();
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to save the cash account. Check the connection and try again."); }
+    finally { setBusy(false); }
   }
   const fields = (values: AccountForm, change: (next: AccountForm) => void, onSubmit: (event: FormEvent) => void, extra?: React.ReactNode) => (
     <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-4">
       <div><Label>Account name</Label><Input value={values.name} onChange={(e) => change({ ...values, name: e.target.value })} /></div>
       <div><Label>Type</Label><select className="h-9 w-full rounded-md border bg-background px-3" value={values.type} onChange={(e) => change({ ...values, type: e.target.value })}>{["Cash on Hand", "Bank", "E-wallet"].map((x) => <option key={x}>{x}</option>)}</select></div>
       <div><Label>Opening balance</Label><Input type="number" step="0.01" value={values.openingBalance} onChange={(e) => change({ ...values, openingBalance: e.target.value })} /></div>
-      <div className="flex items-end gap-2"><Button type="submit">Save account</Button>{extra}</div>
+      <div className="flex items-end gap-2"><Button type="submit" disabled={busy}>{busy ? "Saving..." : "Save account"}</Button>{extra}</div>
     </form>
   );
   if (!allowed) return null;

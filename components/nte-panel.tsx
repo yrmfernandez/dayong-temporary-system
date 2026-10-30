@@ -31,10 +31,12 @@ export function NtePanel({ employees }: { employees: Array<{ id: string; name: s
   const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/nte", { cache: "no-store" });
-    if (response.status === 403) { setAllowed(false); return; }
-    const result = await readApiResponse(response);
-    if (response.ok && result.success) setData(result as unknown as Data); else setMessage(result.message || "Unable to load notices.");
+    try {
+      const response = await fetch("/api/nte", { cache: "no-store" });
+      if (response.status === 403) { setAllowed(false); return; }
+      const result = await readApiResponse(response);
+      if (response.ok && result.success) setData(result as unknown as Data); else setMessage(result.message || "Unable to load notices.");
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to load notices. Check the connection and try again."); }
   }, []);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the notices once
@@ -52,7 +54,8 @@ export function NtePanel({ employees }: { employees: Array<{ id: string; name: s
       setMessage(result.message || (response.ok ? "Saved." : "Unable to save."));
       if (response.ok && result.success) await load();
       return response.ok && result.success;
-    } finally { setBusy(false); }
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to save. Check the connection and try again."); return false; }
+    finally { setBusy(false); }
   };
   const flagged = data?.standing.filter((item) => item.subjectToSuspension) ?? [];
   const shown = (data?.notices ?? []).filter((nte) => showAll || nte.status === "Active");

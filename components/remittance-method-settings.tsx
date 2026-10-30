@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { readApiResponse } from "@/lib/api-response";
 
 type Method = { id: string; name: string; isCash: boolean; requiresReference: boolean; status: "active" | "inactive" };
 // The reference number is optional for every method since October 8, 2026 (receipt photos in My Entries are the proof).
@@ -26,21 +27,25 @@ export function RemittanceMethodSettings() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/remittance-methods", { cache: "no-store" });
-    const result = await response.json();
-    if (!response.ok) { setMessage(result.message); return; }
-    setMethods(result.methods ?? []); setCanManage(Boolean(result.canManage));
+    try {
+      const response = await fetch("/api/remittance-methods", { cache: "no-store" });
+      const result = await readApiResponse(response);
+      if (!response.ok) { setMessage(result.message); return; }
+      setMethods(result.methods ?? []); setCanManage(Boolean(result.canManage));
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to load remittance methods. Check the connection and try again."); }
   }, []);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
 
   async function save(values: Method, done: () => void) {
     setBusy(true); setMessage("");
-    const response = await fetch("/api/remittance-methods", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
-    const result = await response.json();
-    setBusy(false);
-    if (!response.ok) { setMessage(result.message); return; }
-    setSavedId(values.id); setMessage(`${result.method.name} saved.`); done(); await load();
+    try {
+      const response = await fetch("/api/remittance-methods", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
+      const result = await readApiResponse(response);
+      if (!response.ok) { setMessage(result.message); return; }
+      setSavedId(values.id); setMessage(`${result.method.name} saved.`); done(); await load();
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to save the remittance method. Check the connection and try again."); }
+    finally { setBusy(false); }
   }
 
   const fields = (values: Method, change: (next: Method) => void, onSubmit: (event: FormEvent) => void, extra?: React.ReactNode) => (

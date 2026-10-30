@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Error handling: crash screen, page not found, network failures (2026-10-30)
+
+- **Owner:** do we have error handling, loading states and graceful failures? Then: do it.
+- **Found:** API routes and most screens already report errors and show loading/busy states; missing were a crash screen (`error.tsx` / `global-error.tsx`), an in-app 404, and network-failure handling on six screens.
+- **Done:** `app/error.tsx` (inside the app: Try again via `retry`, Go to dashboard, Reference digest), `app/global-error.tsx` (own document, theme and styles, full reload to `/`), `app/not-found.tsx`. Roles, My Notices, NTE panel, Cash accounts (finance-settings, Save now disabled while saving), Remittance methods: every load/save wrapped, replies read with `readApiResponse`, busy always cleared. Sidebar Sign out: a failed logout shows a dialog and stays put (the session cookie was not cleared). No migration.
+- **Not tested in a browser:** the crash and 404 screens are checked by the build only; to see them, open a mistyped address while signed in.
+
 ### Fidelity: the ₱10,000 is no longer locked (2026-10-30)
 
 - **Owner:** in Fidelity we don't lock the 10k. It can be withdrawn by percentage or fixed; the excess is a different withdrawal; and a whole Fidelity withdrawal.

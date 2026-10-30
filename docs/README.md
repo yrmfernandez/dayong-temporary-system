@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 30, 2026: crash screen and network failures.** A page error shows a "Something went wrong" screen with Try again and Go to dashboard; a mistyped address shows Page not found inside the app; the last screens that failed silently on a dropped connection now say so. See the [system guide](system-guide.md) (troubleshooting).
+
 **October 30, 2026: Fidelity is no longer locked.** The first ₱10,000 can be withdrawn by percentage or fixed amount, the excess above it on its own, or the whole balance, any time, while employed or after leaving. See [Fidelity](fidelity.md).
 
 **October 27, 2026: one date format.** Every screen shows dates as Oct 27, 2026 (times Oct 27, 2026 3:05 PM, months Oct 2026); downloads keep 2026-10-27 for Excel. See the [system guide](system-guide.md) (implementation limits, item 7).

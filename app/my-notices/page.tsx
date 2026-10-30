@@ -26,9 +26,11 @@ export default function MyNoticesPage() {
   const [editing, setEditing] = useState("");
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/nte/mine", { cache: "no-store" });
-    const result = await readApiResponse(response);
-    if (response.ok && result.success) setData(result as unknown as Data); else setMessage(result.message || "Unable to load your notices.");
+    try {
+      const response = await fetch("/api/nte/mine", { cache: "no-store" });
+      const result = await readApiResponse(response);
+      if (response.ok && result.success) setData(result as unknown as Data); else setMessage(result.message || "Unable to load your notices.");
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to load your notices. Check the connection and try again."); }
   }, []);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the notices once
@@ -44,7 +46,8 @@ export default function MyNoticesPage() {
       if (result.message) setMessage(result.message);
       if (response.ok && result.success) { await load(); window.dispatchEvent(new Event("notifications:refresh")); }
       return response.ok && result.success;
-    } finally { setBusy(""); }
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to send. Check the connection and try again."); return false; }
+    finally { setBusy(""); }
   };
 
   const notices = data?.notices ?? [];
