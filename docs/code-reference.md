@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-45 page routes, 76 API handlers, 143 library files, 64 component files; 641 scanned source/configuration/public-text files in total.
+45 page routes, 76 API handlers, 144 library files, 67 component files; 648 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -34,7 +34,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/leave-approvals` | [app/leave-approvals/page.tsx](../app/leave-approvals/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/use-live-refresh`, `@/lib/date-format` |
 | `/leave-requests` | [app/leave-requests/page.tsx](../app/leave-requests/page.tsx) | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/select`, `@/components/ui/textarea`, `@/lib/use-live-refresh`, `@/lib/date-format` |
 | `/login` | [app/login/page.tsx](../app/login/page.tsx) | `@/components/brand-logo`, `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label` |
-| `/mam` | [app/mam/page.tsx](../app/mam/page.tsx) | `@/lib/mam-format`, `@/lib/mam-report`, `@/lib/account-rules`, `@/components/ui/button`, `@/components/ui/badge`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/use-live-refresh`, `@/lib/date-format`, `@/components/mam-print` |
+| `/mam` | [app/mam/page.tsx](../app/mam/page.tsx) | `@/lib/mam-format`, `@/lib/mam-report`, `@/lib/account-rules`, `@/components/ui/button`, `@/components/ui/badge`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/use-live-refresh`, `@/lib/date-format`, `@/components/mam-print`, `@/components/mam-member-card`, `@/components/mam-status`, `@/components/mas-collection-list` |
 | `/mas-sales` | [app/mas-sales/page.tsx](../app/mas-sales/page.tsx) | `@/components/new-sales-form` |
 | `/master-data` | [app/master-data/page.tsx](../app/master-data/page.tsx) |  |
 | `/member-corrections` | [app/member-corrections/page.tsx](../app/member-corrections/page.tsx) | `@/components/or-no-letter-check`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/date-format` |
@@ -51,7 +51,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/reports` | [app/reports/page.tsx](../app/reports/page.tsx) | `@/components/report-tabs` |
 | `/reports/weekly` | [app/reports/weekly/page.tsx](../app/reports/weekly/page.tsx) |  |
 | `/reports/yearly` | [app/reports/yearly/page.tsx](../app/reports/yearly/page.tsx) |  |
-| `/roles` | [app/roles/page.tsx](../app/roles/page.tsx) | `@/components/app-dialog`, `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/lib/access-control`, `@/lib/page-catalog`, `@/lib/use-live-refresh` |
+| `/roles` | [app/roles/page.tsx](../app/roles/page.tsx) | `@/components/app-dialog`, `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/lib/access-control`, `@/lib/api-response`, `@/lib/page-catalog`, `@/lib/use-live-refresh` |
 | `/settings` | [app/settings/page.tsx](../app/settings/page.tsx) | `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/finance-settings`, `@/components/profile`, `@/components/theme-toggle`, `@/components/remittance-method-settings`, `@/lib/ui-preferences`, `@/lib/use-form-draft` |
 | `/soa` | [app/soa/page.tsx](../app/soa/page.tsx) | `@/components/brand-logo`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/statement-of-account`, `@/lib/use-live-refresh`, `@/lib/date-format` |
 | `/todays-entries` | [app/todays-entries/page.tsx](../app/todays-entries/page.tsx) | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/remittance-deadline`, `@/lib/today-mode`, `@/lib/todays-entries`, `@/components/entry-correction-form`, `@/components/entry-details`, `@/components/admin-delete`, `@/components/receipt-photo`, `@/lib/use-live-refresh`, `@/lib/date-format` |
@@ -200,7 +200,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/lib/db`, `@/lib/sheets-on-db`, `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/date-format`, `@/lib/turnover-variance` |
 | [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/db`, `@/lib/company-targets`, `@/lib/remittance-deadline`, `@/lib/google-sheets` |
 | [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `BURIAL_ACCOUNT`, `isOtherChoice`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList`, `expenseNumbers` | — |
-| [lib/fidelity-cap.ts](../lib/fidelity-cap.ts) | `FIDELITY_CAP`, `fidelityStanding` | — |
+| [lib/fidelity-cap.ts](../lib/fidelity-cap.ts) | `FIDELITY_CAP`, `fidelityStanding`, `baseWithdrawalAmount` | — |
 | [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `OPENING_TYPE`, `OLD_WITHDRAWAL_TYPE`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/db`, `@/lib/finance-data`, `@/lib/finance-operations`, `@/lib/fidelity-cap` |
 | [lib/finance-access.ts](../lib/finance-access.ts) | `canUseFinance` | `@/lib/auth-server` |
 | [lib/finance-data.ts](../lib/finance-data.ts) | `ExpenseRecord`, `CashLedgerEntry`, `getFinanceData`, `createExpense`, `editExpense`, `deleteExpense`, `createCashTransaction`, `voidFinanceRecord`, `cashTransactionsFor` | `@/lib/db`, `@/lib/encoder-context`, `@/lib/expense-options`, `@/lib/readable-id`, `@/lib/receipt-photos` |
@@ -218,6 +218,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/mam-format.ts](../lib/mam-format.ts) | `paidInMonth` | — |
 | [lib/mam-report.ts](../lib/mam-report.ts) | `MamAccount`, `monitoringMonths`, `buildMamReport` | `@/lib/account-rules` |
 | [lib/manila-date.ts](../lib/manila-date.ts) | `manilaToday`, `manilaDateOf` | — |
+| [lib/mas-collection.ts](../lib/mas-collection.ts) | `CLOSE_TO_FORFEIT_DAYS`, `collectionList`, `monthsLabel` | `@/lib/account-rules`, `@/lib/date-format` |
 | [lib/mas-expected.ts](../lib/mas-expected.ts) | `Expected`, `duesIn`, `expectedByMas` | `@/lib/db` |
 | [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `lockedPayChange`, `ProgramInput`, `updateProgramRecord`, `ProgramBulkChanges`, `updateProgramsBulk`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `setBranchLocation`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `MemberRecordInput`, `getMemberRecord`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/users-sheet`, `@/lib/program-incentive-store`, `@/lib/member-records`, `@/lib/manila-date` |
 | [lib/member-corrections.ts](../lib/member-corrections.ts) | `ReceiptLine`, `StatusLine`, `CorrectionResult`, `searchMembers`, `getMemberForCorrection`, `CoverageInput`, `fixCoverage`, `MoveInput`, `moveReceipts`, `MERGE_FIELDS`, `MergeField`, `MergeInput`, `mergeMembers`, `SplitInput`, `splitMember`, `programChoices`, `sharedPrograms`, `InsertInput`, `insertReceipt` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/entry-edit`, `@/lib/duplicate-entries`, `@/lib/or-number`, `@/lib/or-no-letter`, `@/lib/record-corrections`, `@/lib/remittance-deadline`, `@/lib/date-format` |
@@ -314,13 +315,16 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/executive-charts.tsx](../components/executive-charts.tsx) | `Legend`, `RevenueTrend`, `Columns`, `RankRow`, `RankBars`, `Change`, `ShareBar` | — |
 | [components/executive-dashboard.tsx](../components/executive-dashboard.tsx) | `ExecutiveDashboard` | `@/components/company-targets`, `@/components/print-button`, `@/components/executive-charts`, `@/components/status-badge`, `@/components/ui/card`, `@/lib/executive-analytics`, `@/components/gross-sales-drilldown`, `@/lib/date-format` |
 | [components/finance-dashboard.tsx](../components/finance-dashboard.tsx) | `FinanceDashboard` | `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/card`, `@/lib/executive-analytics`, `@/lib/remittance-workflow`, `@/lib/finance-operations`, `@/components/gross-sales-drilldown`, `@/lib/date-format` |
-| [components/finance-settings.tsx](../components/finance-settings.tsx) | `FinanceSettings` | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label` |
+| [components/finance-settings.tsx](../components/finance-settings.tsx) | `FinanceSettings` | `@/components/inline-panel`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response` |
 | [components/gross-sales-drilldown.tsx](../components/gross-sales-drilldown.tsx) | `GrossSalesDrilldown` | `@/components/executive-charts`, `@/components/ui/input`, `@/lib/gross-sales`, `@/lib/date-format`, `@/lib/use-live-refresh` |
 | [components/inline-panel.tsx](../components/inline-panel.tsx) | `InlinePanel`, `InlineRow` | `@/lib/utils` |
 | [components/live-router-refresh.tsx](../components/live-router-refresh.tsx) | `LiveRouterRefresh` | `@/lib/use-live-refresh` |
 | [components/lunch-break-screen.tsx](../components/lunch-break-screen.tsx) | `LunchBreakScreen` | `@/lib/lunch-break` |
 | [components/maintenance-notice-panel.tsx](../components/maintenance-notice-panel.tsx) | `MaintenanceNoticePanel` | `@/components/ui/button`, `@/components/ui/card`, `@/lib/maintenance-notice-text`, `@/lib/date-format` |
+| [components/mam-member-card.tsx](../components/mam-member-card.tsx) | `MamMemberCard` | `@/components/mam-status`, `@/components/ui/badge`, `@/lib/date-format`, `@/lib/mam-report` |
 | [components/mam-print.tsx](../components/mam-print.tsx) | `MamPrint` | `@/components/brand-logo`, `@/lib/mam-report`, `@/lib/date-format` |
+| [components/mam-status.tsx](../components/mam-status.tsx) | `mamStatusClass` | — |
+| [components/mas-collection-list.tsx](../components/mas-collection-list.tsx) | `MasCollectionList` | `@/components/mam-status`, `@/components/metric-tile`, `@/components/ui/badge`, `@/components/ui/card`, `@/lib/date-format`, `@/lib/mas-collection` |
 | [components/member-edit-form.tsx](../components/member-edit-form.tsx) | `MemberEditForm` | `@/components/ui/button`, `@/lib/api-response`, `@/lib/member-directory`, `@/lib/master-data-crud`, `@/lib/manila-date` |
 | [components/member-mam.tsx](../components/member-mam.tsx) | `MemberMam` | `@/components/status-badge`, `@/lib/mam-format`, `@/lib/date-format`, `@/lib/use-live-refresh` |
 | [components/metric-tile.tsx](../components/metric-tile.tsx) | `MetricTile` | `@/components/status-badge` |
@@ -338,10 +342,10 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/receipt-photos-picker.tsx](../components/receipt-photos-picker.tsx) | `PickedPhoto`, `ReceiptPhotosPicker`, `uploadBatchPhotos` | `@/components/receipt-photo` |
 | [components/remittance-discrepancy.tsx](../components/remittance-discrepancy.tsx) | `RemittanceDiscrepancy` | `@/lib/api-response`, `@/lib/remittance-discrepancy`, `@/lib/date-format`, `@/lib/use-live-refresh` |
 | [components/remittance-entries.tsx](../components/remittance-entries.tsx) | `RemittanceEntries` | `@/components/app-dialog`, `@/components/receipt-photo`, `@/components/status-badge`, `@/lib/api-response`, `@/lib/remittance-workflow`, `@/lib/date-format`, `@/lib/use-live-refresh` |
-| [components/remittance-method-settings.tsx](../components/remittance-method-settings.tsx) | `RemittanceMethodSettings` | `@/components/inline-panel`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label` |
+| [components/remittance-method-settings.tsx](../components/remittance-method-settings.tsx) | `RemittanceMethodSettings` | `@/components/inline-panel`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response` |
 | [components/remittance-summary.tsx](../components/remittance-summary.tsx) | `RemittanceSummary` | — |
 | [components/report-tabs.tsx](../components/report-tabs.tsx) | `ReportTabs` | `@/components/clerk-report` |
-| [components/sidebar.tsx](../components/sidebar.tsx) | `Sidebar`, `initials` | `@/components/app-shell`, `@/components/brand-logo`, `@/components/profile`, `@/lib/use-form-draft`, `@/components/theme-toggle`, `@/lib/navigation`, `@/lib/ui-preferences` |
+| [components/sidebar.tsx](../components/sidebar.tsx) | `Sidebar`, `initials` | `@/components/app-shell`, `@/components/app-dialog`, `@/components/brand-logo`, `@/components/profile`, `@/lib/use-form-draft`, `@/components/theme-toggle`, `@/lib/navigation`, `@/lib/ui-preferences` |
 | [components/status-badge.tsx](../components/status-badge.tsx) | `Tone`, `toneForStatus`, `StatusBadge` | — |
 | [components/system-health-dashboard.tsx](../components/system-health-dashboard.tsx) | `SystemHealthDashboard` | `@/components/status-badge`, `@/components/ui/card`, `@/lib/system-health`, `@/components/maintenance-notice-panel`, `@/components/nightly-jobs-panel`, `@/lib/date-format` |
 | [components/theme-toggle.tsx](../components/theme-toggle.tsx) | `useThemePreference`, `ThemeToggle` | `@/lib/theme` |
@@ -447,10 +451,13 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/attendance-tracking/attendance-sheet.tsx](../app/attendance-tracking/attendance-sheet.tsx) | `AttendanceSheet` | `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/components/people-filter`, `@/lib/attendance-sheet`, `@/lib/date-format`, `@/lib/use-live-refresh` |
 | [app/attendance-tracking/daily-board.tsx](../app/attendance-tracking/daily-board.tsx) | `DailyBoard` | `@/components/app-dialog`, `@/components/clock-in-location-flag`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh` |
 | [app/branches/branch-locations.tsx](../app/branches/branch-locations.tsx) | `LocatedBranch`, `locationIsSet`, `BranchLocations` | `@/components/app-dialog`, `@/components/inline-panel`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/clock-in-location`, `@/lib/date-format` |
-| [app/fidelity/fidelity-views.tsx](../app/fidelity/fidelity-views.tsx) | `MyFidelity`, `FidelityMonitoring` | `@/lib/use-live-refresh`, `@/components/cash-out-fields`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/search-select`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/date-format` |
+| [app/error.tsx](../app/error.tsx) | `PageError`, `default` | `@/components/ui/button` |
+| [app/fidelity/fidelity-views.tsx](../app/fidelity/fidelity-views.tsx) | `MyFidelity`, `FidelityMonitoring` | `@/lib/use-live-refresh`, `@/components/cash-out-fields`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/search-select`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/date-format`, `@/lib/fidelity-cap` |
+| [app/global-error.tsx](../app/global-error.tsx) | `GlobalError`, `default` | `./globals.css`, `@/lib/theme` |
 | [app/globals.css](../app/globals.css) | — | — |
 | [app/layout.tsx](../app/layout.tsx) | `metadata`, `viewport`, `RootLayout`, `default` | `./globals.css`, `@/components/app-dialog`, `@/components/app-shell`, `@/lib/theme` |
 | [app/loading.tsx](../app/loading.tsx) | `Loading`, `default` | — |
+| [app/not-found.tsx](../app/not-found.tsx) | `NotFound`, `default` | `@/components/ui/button` |
 | [app/programs/program-bulk-edit.tsx](../app/programs/program-bulk-edit.tsx) | `ProgramBulkEdit` | `@/components/app-dialog`, `@/components/ui/button`, `@/components/ui/input`, `./program-categories` |
 | [app/programs/program-categories.tsx](../app/programs/program-categories.tsx) | `ProgramCategory`, `ProgramCategoriesManager` | `@/components/app-dialog`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input` |
 | [app/programs/program-transfer.tsx](../app/programs/program-transfer.tsx) | `ProgramTransfer` | `@/components/app-dialog`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/program-transfer`, `@/lib/date-format` |

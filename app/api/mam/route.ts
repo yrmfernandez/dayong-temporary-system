@@ -39,8 +39,14 @@ export async function GET(request: Request) {
     return Response.json({ success: true, ...await mamReport(from, to, onlyMas, { branch: value("branch"), mas: value("mas"), memberId: value("member") }) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load MAM." }, { status: 500 }); }
 }
+/**
+ * Sync rewrites the stored status of every account in the company, so a MAS (who sees only their own members) may not
+ * run it (owner, October 30, 2026); the nightly job keeps statuses current for them.
+ */
 export const POST = withEncoder(async () => {
-  if (!(await userWithPageAccess("/mam"))) return Response.json({ success: false, message: "You do not have access to MAM." }, { status: 403 });
+  const user = await userWithPageAccess("/mam");
+  if (!user) return Response.json({ success: false, message: "You do not have access to MAM." }, { status: 403 });
+  if (await ownMembersScope(user) !== null) return Response.json({ success: false, message: "Only staff who see every account can sync statuses." }, { status: 403 });
   try { await syncAccountStatuses(); return Response.json({ success: true, message: "Current account statuses synchronized." }); }
   catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to refresh statuses." }, { status: 500 }); }
 });

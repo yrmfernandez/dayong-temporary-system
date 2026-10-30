@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 30, 2026: MAM for MAS users.** A MAS sees My Members' Accounts with a this-month collection list (who owes, how much, who is close to forfeiting), phone cards, and simpler filters; clicking a member opens a Payment Card for everyone. A MAS can no longer run the company-wide Sync Statuses. See the [system guide](system-guide.md) (section 10, MAM).
+
 **October 30, 2026: crash screen and network failures.** A page error shows a "Something went wrong" screen with Try again and Go to dashboard; a mistyped address shows Page not found inside the app; the last screens that failed silently on a dropped connection now say so. See the [system guide](system-guide.md) (troubleshooting).
 
 **October 30, 2026: Fidelity is no longer locked.** The first ₱10,000 can be withdrawn by percentage or fixed amount, the excess above it on its own, or the whole balance, any time, while employed or after leaving. See [Fidelity](fidelity.md).

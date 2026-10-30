@@ -29,7 +29,11 @@ export function buildMamReport(data: { accounts: MamAccount[]; payments: Account
           coveredAmount: state.allocations.find((a) => a.month === month)?.amount ?? 0 };
       } catch (error) { return { month, projected, state: null, error: error instanceof Error ? error.message : "Review account data.", receipts, collected, coveredAmount: 0 }; }
     });
-    return { ...account, applicationNumber: sale?.applicationNumber ?? "", registrationFee: sale?.registrationFee ?? 0, periods, history };
+    // Today's standing whatever the month range: the MAS collection list and the member payment card read it.
+    let current: ReturnType<typeof accountState> | null = null, currentError = "";
+    try { current = accountState(account, history.filter((p) => p.orDate <= today), today); }
+    catch (error) { currentError = error instanceof Error ? error.message : "Review account data."; }
+    return { ...account, applicationNumber: sale?.applicationNumber ?? "", registrationFee: sale?.registrationFee ?? 0, periods, history, current, currentError };
   });
   return { today, from, to, months, rows };
 }

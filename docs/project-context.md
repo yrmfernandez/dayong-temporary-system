@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### MAM for MAS users upgraded (2026-10-30)
+
+- **Owner:** the MAM, in the MAS users: update it, upgrade it. Chose all four: collection list, phone cards, simpler filters, member payment card.
+- **Done:** `lib/mas-collection.ts` (`collectionList`: owes this month when next month due ≤ this month and not ADV / Fully Paid / Forfeited; to collect = months from next due through this month × monthly; sorted by forfeit date; close to forfeiting = within 31 days) and `components/mas-collection-list.tsx` at the top of MAM for a MAS; `buildMamReport` rows carry `current` (today's `accountState`) and `currentError`. MAS view: title My Members' Accounts, no Branch / MAS / Member pickers, plain labels (Collected, Amount Due, Collected vs Due, Totals), phone cards below md. Payment card (`components/mam-member-card.tsx`) replaces the Account Details drawer for everyone. Status colours moved to `components/mam-status.tsx`. **Fixed:** a MAS could press Sync Statuses, which rewrites every account's stored status company-wide; hidden for MAS and refused by `POST /api/mam` (403). No migration. Tests: collection list (60D, ADV, NS this month, 150D close to forfeit with waiver) and the sync refusal; all 281 tests and the build pass.
+- **Not checked in a browser:** no MAS sign-in here; to see it, sign in as a MAS and open MAM (on a phone for the cards).
+- **To confirm with owner:** To collect counts every month owed through this month (a 60D member paid through August owes Sep–Oct, ₱700 at ₱350), which can be more than the status's Amount due (overdue months only).
+
 ### Error handling: crash screen, page not found, network failures (2026-10-30)
 
 - **Owner:** do we have error handling, loading states and graceful failures? Then: do it.

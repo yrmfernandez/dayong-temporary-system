@@ -1758,6 +1758,42 @@ test('MAM month range counts actual receipts once and preserves later advance co
   assert.equal(before.rows.length, 0);
 });
 
+test('MAS collection list: who owes this month, how much, the closest to forfeiting first (October 30, 2026)', () => {
+  const h = harness();
+  const acct = (id, doi, name) => ({ id, memberId: `M-${id}`, memberNumber: `PH-${id}`, programId: 'P1', doi, branch: 'B', mas: 'MAS', basePay: 350, storedStatus: '', rowNumber: 2, memberName: name, programName: 'Program' });
+  const pay = (id, enrollmentId, orDate, monthFrom, monthTo, nopFrom, nopTo) => ({ id, enrollmentId, orDate, orNumber: id, monthFrom, monthTo, nopFrom, nopTo, amount: 350 * (nopTo - nopFrom + 1), dateRemitted: orDate, mas: 'MAS' });
+  const accounts = [
+    acct('A', '2026-06-15', 'Behind Two'),          // paid through August: owes September and October
+    acct('B', '2026-06-15', 'Advance'),             // paid through December, paid again this month
+    acct('C', '2026-10-05', 'New This Month'),      // New Sale this month: first payment due November
+    acct('D', '2026-01-15', 'Nearly Forfeited'),    // paid through April on the 25th: forfeits October 26
+  ];
+  const payments = [
+    pay('A1', 'A', '2026-08-10', '2026-07', '2026-08', 2, 3),
+    pay('B1', 'B', '2026-07-01', '2026-07', '2026-10', 2, 5), pay('B2', 'B', '2026-10-03', '2026-11', '2026-12', 6, 7),
+    pay('D1', 'D', '2026-04-25', '2026-02', '2026-04', 2, 4),
+  ];
+  const today = '2026-10-20';
+  const report = h.load('lib/mam-report.ts').buildMamReport({ accounts, payments, sales: [] }, '2026-10', '2026-10', today);
+  assert.deepEqual(report.rows.map((row) => [row.id, row.current.status]), [['A', '60D'], ['B', 'ADV'], ['C', 'NS'], ['D', '150D']], "each row carries today's standing");
+  const { collectionList, monthsLabel } = h.load('lib/mas-collection.ts');
+  const list = collectionList(report.rows, today);
+  assert.deepEqual(list.owing.map((item) => [item.row.id, item.months, item.from, item.toCollect, item.closeToForfeit, item.waiverNeeded]),
+    [['D', 6, '2026-05', 2100, true, true], ['A', 2, '2026-09', 700, false, true]], 'advance and new accounts owe nothing this month; the nearest forfeit is first; 60D past its suspension day needs a waiver');
+  assert.equal(list.owing[0].forfeitsOn, '2026-10-26');
+  assert.equal(list.owing[0].daysToForfeit, 6);
+  assert.deepEqual([list.toCollect, list.closeToForfeit, list.paidThisMonth, list.collected, list.forfeited], [2800, 1, 1, 700, 0]);
+  assert.equal(monthsLabel('2026-09', '2026-10'), 'Sep 2026 – Oct 2026');
+  assert.equal(monthsLabel('2026-10', '2026-10'), 'Oct 2026');
+});
+
+test('a MAS cannot run Sync Statuses, which rewrites every account in the company (October 30, 2026)', async () => {
+  const h = harness({ userId: 'U2', employeeId: 'DPE-0002', name: 'mas', roleNames: ['MAS'], permissions: {} });
+  const refused = await h.load('app/api/mam/route.ts').POST(new Request('http://localhost/api/mam', { method: 'POST' }));
+  assert.equal(refused.status, 403);
+  assert.match((await refused.json()).message, /Only staff who see every account/);
+});
+
 test('MAM future columns are projections and do not include future receipt data', () => {
   const h = harness();
   const a = { id: 'E1', memberId: 'M1', memberNumber: 'PH1', programId: 'P1', doi: '2026-09-15', branch: 'B', mas: 'MAS', basePay: 350, storedStatus: '', rowNumber: 2, memberName: 'Member', programName: 'Program' };

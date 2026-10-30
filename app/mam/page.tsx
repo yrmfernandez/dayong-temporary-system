@@ -27,6 +27,10 @@ import {
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate } from "@/lib/date-format";
 import { MamPrint } from "@/components/mam-print";
+import { MamMemberCard } from "@/components/mam-member-card";
+import { mamStatusClass } from "@/components/mam-status";
+import { MasCollectionList } from "@/components/mas-collection-list";
+import { formatMonth } from "@/lib/date-format";
 
 type Report = ReturnType<typeof buildMamReport>;
 type Row = Report["rows"][number];
@@ -55,27 +59,6 @@ const monthLabel = (value: string) =>
 
 const csvCell = (value: unknown) =>
   `"${String(value ?? "").replace(/^[=+@\-]/, "'$&").replaceAll('"', '""')}"`;
-
-// Status badge styling helper
-const getStatusBadgeVariant = (status?: string) => {
-  switch (status) {
-    case "ADV":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200";
-    case "NS":
-      return "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200";
-    case "U":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200";
-    case "60D":
-    case "90D":
-      return "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-200";
-    case "120D":
-    case "150D":
-    case "Forfeited":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-200";
-    default:
-      return "bg-secondary text-secondary-foreground";
-  }
-};
 
 export default function MamPage() {
   const [report, setReport] = useState<Report | null>(null);
@@ -170,6 +153,9 @@ export default function MamPage() {
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
   useLiveRefresh(["collections", "sales", "member_programs"], () => { if (choices) void load(false, true); }, 15000);
 
+  // A MAS sees only their own members (owner, October 30, 2026): the collection list, plain wording, phone cards,
+  // and no branch / MAS pickers or company-wide Sync.
+  const masView = Boolean(choices?.ownMembersOnly);
   const branchId = choices?.branches.find((item) => item.name === branch)?.id ?? "";
   const masChoices = (choices?.staff ?? []).filter((staff) => branchId && staff.branchIds.includes(branchId)).map((staff) => staff.fullName);
 
@@ -200,6 +186,8 @@ export default function MamPage() {
       return (sortDescending ? -order : order) || a.memberName.localeCompare(b.memberName);
     });
   }
+
+  const listRows = report?.rows.filter((r) => (!program || r.programId === program) && `${r.memberName} ${r.memberNumber} ${r.applicationNumber}`.toLowerCase().includes(search.toLowerCase())) ?? [];
 
   const groups = new Map<string, Row[]>();
   for (const row of rows) {
@@ -278,16 +266,17 @@ export default function MamPage() {
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-violet-90 pb-5">
         <div>
           <span className="rounded-md bg-purple-95 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-purple-60">Account Monitoring</span>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-violet-10">Member Account Monitoring</h1>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-violet-10">{masView ? "My Members' Accounts" : "Member Account Monitoring"}</h1>
           <p className="mt-1 text-sm text-violet-40">
-            Track account coverage, payment histories, and overall balances across branches.
+            {masView ? "Who to collect from this month, and each member's payments month by month." : "Track account coverage, payment histories, and overall balances across branches."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <Button disabled={busy} variant="outline" size="sm" onClick={() => void load(true)}>
+          {/* Sync rewrites every account in the company: not for a MAS (the server refuses it too). */}
+          {!masView && <Button disabled={busy} variant="outline" size="sm" onClick={() => void load(true)}>
             <RefreshCw className={`mr-2 h-4 w-4 ${busy ? "animate-spin" : ""}`} />
             Sync Statuses
-          </Button>
+          </Button>}
           <Button disabled={!report} variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="mr-2 h-4 w-4" />
             Print
@@ -303,7 +292,7 @@ export default function MamPage() {
       <Card className="rounded-3xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)] print:hidden">
         <CardHeader className="pb-3 pt-4">
           <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-            <Filter className="h-4 w-4" /> Filter Monitoring Scope
+            <Filter className="h-4 w-4" /> {masView ? "Months and filters" : "Filter Monitoring Scope"}
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -315,6 +304,7 @@ export default function MamPage() {
             <label className="text-xs font-semibold text-muted-foreground">To Month</label>
             <Input type="month" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
           </div>
+          {!masView && <>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Branch</label>
             <SearchSelect
@@ -354,6 +344,7 @@ export default function MamPage() {
               options={memberOptions.map((item) => ({ value: item.id, label: item.name, description: item.number }))}
             />
           </div>
+          </>}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Program</label>
             <SearchSelect
@@ -464,6 +455,8 @@ export default function MamPage() {
         </div>
       )}
 
+      {masView && report && <MasCollectionList rows={listRows} today={report.today} onOpen={setSelected} />}
+
       {/* Overview Stat Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
@@ -479,7 +472,7 @@ export default function MamPage() {
 
         <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Collections Received</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">{masView ? "Collected" : "Collections Received"}</CardTitle>
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -490,25 +483,25 @@ export default function MamPage() {
 
         <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Quota Remaining</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">{masView ? "Amount Due" : "Quota Remaining"}</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{money(quota)}</div>
-            <p className="text-xs text-muted-foreground mt-1">At range end</p>
+            <p className="text-xs text-muted-foreground mt-1">{masView ? `As of ${report ? formatMonth(report.to) : "the last month"}` : "At range end"}</p>
           </CardContent>
         </Card>
 
         <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Final Month Collection Rate</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">{masView ? "Collected vs Due" : "Final Month Collection Rate"}</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {quota ? `${((lastMonthCollected / quota) * 100).toFixed(1)}%` : "—"}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Collection / Quota</p>
+            <p className="text-xs text-muted-foreground mt-1">{masView ? `In ${report ? formatMonth(report.to) : "the last month"}` : "Collection / Quota"}</p>
           </CardContent>
         </Card>
       </div>
@@ -518,7 +511,7 @@ export default function MamPage() {
         {statuses.map((s) => {
           const count = rows.filter((r) => r.periods.at(-1)?.state?.status === s).length;
           return (
-            <Badge key={s} variant="outline" className={`px-2.5 py-1 text-xs font-medium ${getStatusBadgeVariant(s)}`}>
+            <Badge key={s} variant="outline" className={`px-2.5 py-1 text-xs font-medium ${mamStatusClass(s)}`}>
               {s}: {count}
             </Badge>
           );
@@ -539,7 +532,29 @@ export default function MamPage() {
             </Badge>
           </div>
 
-          <div className="mam-scroll overflow-x-auto" tabIndex={0} role="region" aria-label={`Monthly monitoring for ${group[0].mas}`}>
+          {masView && <ul className="divide-y md:hidden">
+            {group.map((row) => {
+              const now = row.current;
+              return <li key={row.id}>
+                <button type="button" onClick={() => setSelected(row)} className="w-full space-y-2 p-4 text-left hover:bg-muted/30">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-primary">{row.memberName}</p>
+                      <p className="truncate text-xs text-muted-foreground">{row.memberNumber} · {row.programName}</p>
+                    </div>
+                    {now ? <Badge className={`shrink-0 border font-mono text-[10px] ${mamStatusClass(now.status)}`}>{now.status}</Badge> : <Badge variant="outline" className="shrink-0 text-[10px] text-destructive">Needs review</Badge>}
+                  </div>
+                  {now && <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs">
+                    <dt className="text-muted-foreground">Amount due</dt><dd className="text-right font-semibold">{now.balance === null ? "—" : money(now.balance)}</dd>
+                    <dt className="text-muted-foreground">Paid up to</dt><dd className="text-right">{now.lastCoveredMonth ? formatMonth(now.lastCoveredMonth) : "New Sale only"}</dd>
+                    <dt className="text-muted-foreground">Months behind</dt><dd className="text-right">{now.unpaidMonths || "None"}</dd>
+                    <dt className="text-muted-foreground">Last payment</dt><dd className="text-right">{now.latestOrDate ? showDate(now.latestOrDate) : "None yet"}</dd>
+                  </dl>}
+                </button>
+              </li>;
+            })}
+          </ul>}
+          <div className={`mam-scroll overflow-x-auto ${masView ? "hidden md:block" : ""}`} tabIndex={0} role="region" aria-label={`Monthly monitoring for ${group[0].mas}`}>
             <table className="w-max min-w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b bg-muted/20 text-left">
@@ -594,7 +609,7 @@ export default function MamPage() {
                         ) : (
                           <div className="space-y-3">
                             <div className="flex items-center justify-between gap-2 border-b pb-2">
-                              <Badge className={`border font-mono text-[10px] ${getStatusBadgeVariant(period.state.status)}`}>
+                              <Badge className={`border font-mono text-[10px] ${mamStatusClass(period.state.status)}`}>
                                 {period.state.status}
                               </Badge>
                               <span className="font-bold text-sm">{money(period.collected)}</span>
@@ -652,13 +667,13 @@ export default function MamPage() {
               <tfoot>
                 <tr className="bg-muted/40 font-semibold border-t">
                   <td className="sticky left-0 bg-background p-4 shadow-[1px_0_0_0_rgba(0,0,0,0.1)]">
-                    MAS Totals
+                    {masView ? "Totals" : "MAS Totals"}
                   </td>
                   {report?.months.map((month, i) => (
                     <td key={month} className="border-l p-4 text-[11px] space-y-0.5">
                       <div>Collected: {money(group.reduce((sum, row) => sum + row.periods[i].collected, 0))}</div>
                       <div className="text-muted-foreground">
-                        Quota: {money(group.reduce((sum, row) => sum + (row.periods[i].state?.balance ?? 0), 0))}
+                        {masView ? "Due" : "Quota"}: {money(group.reduce((sum, row) => sum + (row.periods[i].state?.balance ?? 0), 0))}
                       </div>
                     </td>
                   ))}
@@ -684,69 +699,19 @@ export default function MamPage() {
           <aside
             role="dialog"
             aria-modal="true"
-            aria-label="Account details"
+            aria-label="Payment card"
             className="ml-auto flex h-full w-full max-w-md flex-col bg-background shadow-2xl animate-in slide-in-from-right duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b px-6 py-4">
-              <h2 className="text-lg font-bold">Account Details</h2>
+              <h2 className="text-lg font-bold">Payment Card</h2>
               <Button size="icon" variant="ghost" autoFocus onClick={() => setSelected(null)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              <div>
-                <h3 className="text-xl font-bold">{selected.memberName}</h3>
-                <p className="text-sm font-mono text-muted-foreground">{selected.memberNumber}</p>
-                <Badge variant="secondary" className="mt-2">
-                  {selected.programName}
-                </Badge>
-              </div>
-
-              <div className="rounded-lg border bg-muted/20 p-4 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">MAS:</span>
-                  <span className="font-medium">{selected.mas}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Branch:</span>
-                  <span className="font-medium">{selected.branch}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Date of Issuance:</span>
-                  <span className="font-medium">{selected.doi}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Monthly Base Pay:</span>
-                  <span className="font-semibold">{money(selected.basePay)}</span>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="font-semibold text-sm mb-3">Complete Payment History</h4>
-                {selected.history.length ? (
-                  <div className="space-y-3">
-                    {selected.history.map((p) => (
-                      <div key={p.id} className="rounded-lg border p-3 text-xs space-y-1 bg-card">
-                        <div className="flex justify-between font-bold text-sm">
-                          <span>{money(p.amount)}</span>
-                          <span className="text-muted-foreground font-normal text-xs">{showDate(p.orDate)}</span>
-                        </div>
-                        <p className="font-mono text-muted-foreground">OR #{p.orNumber}</p>
-                        <div className="border-t pt-1.5 mt-1 text-muted-foreground">
-                          Covers: {p.monthFrom} – {p.monthTo} (NOP {p.nopFrom} – {p.nopTo})
-                        </div>
-                        <div className="text-muted-foreground">
-                          Remitted: {showDate(p.dateRemitted) || "Unremitted"}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground italic">No payment transactions found.</p>
-                )}
-              </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <MamMemberCard row={selected} />
             </div>
           </aside>
         </div>
