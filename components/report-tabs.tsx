@@ -9,8 +9,8 @@ type Kind = "daily" | "weekly" | "monthly" | "yearly";
 
 const TABS: Array<{ id: Kind; label: string; icon: typeof CalendarDays; description: string }> = [
   { id: "daily", label: "Daily", icon: CalendarDays, description: "One day, by MAS." },
-  { id: "weekly", label: "Weekly", icon: CalendarRange, description: "Monday to Sunday within the month, by date." },
-  { id: "monthly", label: "Monthly", icon: Calendar, description: "One month, by week." },
+  { id: "weekly", label: "Weekly", icon: CalendarRange, description: "Your own dates, submitted for audit; by date." },
+  { id: "monthly", label: "Monthly", icon: Calendar, description: "Your approved weekly reports, submitted for audit; by week." },
   { id: "yearly", label: "Yearly", icon: BarChart3, description: "One year, by month." },
 ];
 const isKind = (value: string | null): value is Kind => TABS.some((tab) => tab.id === value);

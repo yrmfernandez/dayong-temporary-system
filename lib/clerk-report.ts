@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { getCashBegEdits, getDeposits, getReportNotes, type BankDeposit } from "@/lib/clerk-cash";
 import { getDb } from "@/lib/db";
 import { periodSpan, type AuditPeriod } from "@/lib/daily-audit";
+import type { ReportSpan } from "@/lib/report-periods";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { expectedByMas, type Expected } from "@/lib/mas-expected";
 import { expensePhotoIds } from "@/lib/receipt-photos";
@@ -51,8 +52,17 @@ export function weekOfMonth(date: string) {
   return Math.floor((parts(date).day - 1 + firstWeekday) / 7) + 1;
 }
 
-function headings(kind: AuditPeriod, start: string, end: string) {
+function headings(kind: AuditPeriod, start: string, end: string, monthLabel = "", ownDates = false) {
   const month = MONTHS[parts(start).month - 1];
+  // Submitted weeklies and monthlies (lib/report-periods.ts) run over the clerk's own dates, which may cross months.
+  const span = parts(start).year !== parts(end).year ? `${longDate(start).toUpperCase()} - ${longDate(end).toUpperCase()}`
+    : parts(start).month === parts(end).month ? `${month.toUpperCase()} ${parts(start).day}-${parts(end).day}, ${parts(end).year}`
+    : `${MONTHS[parts(start).month - 1].toUpperCase()} ${parts(start).day} - ${MONTHS[parts(end).month - 1].toUpperCase()} ${parts(end).day}, ${parts(end).year}`;
+  if (kind === "weekly" && ownDates) return { reportName: "WEEKLY REPORT", dateLine: span, weekLine: "", summaryLabel: "WEEKLY REPORT", summaryWeek: span };
+  if (kind === "monthly" && monthLabel) {
+    const named = `${MONTHS[Number(monthLabel.slice(5, 7)) - 1].toUpperCase()} ${monthLabel.slice(0, 4)}`;
+    return { reportName: "MONTHLY REPORT", dateLine: `${named} · ${span}`, weekLine: "WHOLE MONTH", summaryLabel: `WHOLE MONTH - ${named}`, summaryWeek: span };
+  }
   if (kind === "daily") return { reportName: "DAILY REPORT", dateLine: `${weekday(start)}, ${longDate(start)}`, weekLine: `${ORDINALS[weekOfMonth(start) - 1]} WEEK`, summaryLabel: `${ORDINALS[weekOfMonth(start) - 1]} WEEK REPORT`, summaryWeek: longDate(start) };
   if (kind === "weekly") {
     const span = parts(start).month === parts(end).month ? `${month.toUpperCase()} ${parts(start).day}-${parts(end).day}, ${parts(end).year}` : `${longDate(start).toUpperCase()} - ${longDate(end).toUpperCase()}`;
@@ -62,9 +72,19 @@ function headings(kind: AuditPeriod, start: string, end: string) {
   return { reportName: "YEARLY REPORT", dateLine: `January 1 - December 31, ${parts(start).year}`, weekLine: "WHOLE YEAR", summaryLabel: `WHOLE YEAR - ${parts(start).year}`, summaryWeek: "WHOLE YEAR" };
 }
 
+/**
+ * The week of a monthly report a date falls in: the clerk's weekly report containing it (1, 2, … in order) when the
+ * monthly is made of submitted weeklies, else the calendar week of the month.
+ */
+type Weeks = ReportSpan["weeks"];
+const weekNumber = (date: string, weeks?: Weeks) => {
+  const index = weeks?.findIndex((week) => week.start <= date && date <= week.end) ?? -1;
+  return index >= 0 ? index + 1 : weekOfMonth(date);
+};
+
 /** The row label for a date in this kind of report: the date (day, week), Week N (month) or the month (year). */
-function whenLabel(kind: AuditPeriod, date: string) {
-  if (kind === "monthly") return `WEEK ${weekOfMonth(date)}`;
+function whenLabel(kind: AuditPeriod, date: string, weeks?: Weeks) {
+  if (kind === "monthly") return `WEEK ${weekNumber(date, weeks)}`;
   if (kind === "yearly") return MONTHS[parts(date).month - 1].toUpperCase();
   return shortDate(date);
 }
@@ -79,12 +99,12 @@ const addTo = (line: ReportLine, entry: DayEntry) => {
 const sum = (entries: DayEntry[]) => { const line = empty("TOTAL"); for (const entry of entries) addTo(line, entry); return line; };
 
 /** Section rows: by MAS for a day, by date for a week, by week for a month, by month for a year. */
-function section(kind: AuditPeriod, entries: DayEntry[]) {
+function section(kind: AuditPeriod, entries: DayEntry[], weeks?: Weeks) {
   const groups = new Map<string, ReportLine>();
   for (const entry of entries) {
     const encoded = entry.encodedAt.slice(0, 10);
-    const key = kind === "daily" ? entry.person || "(no MAS)" : kind === "weekly" ? encoded : kind === "monthly" ? String(weekOfMonth(encoded)).padStart(2, "0") : encoded.slice(5, 7);
-    const line = groups.get(key) ?? empty(kind === "daily" ? key : whenLabel(kind, encoded));
+    const key = kind === "daily" ? entry.person || "(no MAS)" : kind === "weekly" ? encoded : kind === "monthly" ? String(weekNumber(encoded, weeks)).padStart(2, "0") : encoded.slice(5, 7);
+    const line = groups.get(key) ?? empty(kind === "daily" ? key : whenLabel(kind, encoded, weeks));
     addTo(line, entry);
     groups.set(key, line);
   }
@@ -124,8 +144,13 @@ async function clerkFidelitySlips(employeeId: string, from: string, to: string) 
   return (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; branch: string; masName: string; masEmployeeId: string; date: string; amount: number; status: string; remarks: string }>;
 }
 
-export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: { employeeId: string; name: string; branch?: string }, branch = "") {
-  const { start, end } = periodSpan(kind, date);
+/**
+ * `span` (owner, October 30, 2026): the dates of a weekly or monthly report the clerk submits (lib/report-periods.ts),
+ * and a monthly's weeklies; without it a weekly or monthly runs over the calendar week or month of `date`.
+ */
+export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: { employeeId: string; name: string; branch?: string }, branch = "", span?: ReportSpan) {
+  const { start, end } = span ?? periodSpan(kind, date);
+  const weeks = span?.weeks;
   const sameBranch = (value: string) => !branch || text(value).toLowerCase() === branch.trim().toLowerCase();
   const primary = Boolean(branch) && text(clerk.branch).toLowerCase() === branch.trim().toLowerCase();
   // What the clerk recorded in the period; nothing before it counts (Cash Beg is typed, not carried).
@@ -154,7 +179,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
     .map(text).filter(Boolean).map((name) => [name.toLowerCase(), name])).values()].sort();
 
   const sales = entries.filter((entry) => entry.kind === "New Sale"), collections = entries.filter((entry) => entry.kind === "Collection");
-  const newSales = section(kind, sales), collection = section(kind, collections);
+  const newSales = section(kind, sales, weeks), collection = section(kind, collections, weeks);
 
   /*
    * Cash Beg is the cash received, case by case (owner, October 13, 2026): the clerk types it for a report, with a
@@ -202,23 +227,24 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const cveTotal = masRows.reduce((total, row) => ({ accounts: total.accounts + row.cve.accounts, gross: round(total.gross + row.cve.gross) }), { accounts: 0, gross: 0 });
 
   return {
-    company: COMPANY, kind, from: start, to: end, ...headings(kind, start, end),
+    company: COMPANY, kind, from: start, to: end, ...headings(kind, start, end, span?.monthLabel, Boolean(span)), monthLabel: span?.monthLabel ?? "",
+    weeks: weeks ?? [],
     branch: branch || branches.join(", ") || clerk.branch || "", encodedBranches, activeBranches, encoder: { employeeId: clerk.employeeId, name: clerk.name },
     groupLabel: kind === "daily" ? "MAS" : kind === "weekly" ? "DATE" : kind === "monthly" ? "WEEK" : "MONTH",
     whenLabel: kind === "monthly" ? "WEEK" : kind === "yearly" ? "MONTH" : "DATE",
     newSales, collection,
-    expenses: expenses.map((item): ExpenseRow => ({ ...item, when: whenLabel(kind, item.date) })), expenseTotal,
-    deposits: deposits.map((item: BankDeposit) => ({ ...item, when: whenLabel(kind, item.date) })), depositTotal,
-    cashFlowTotals: kind === "monthly" || kind === "yearly" ? depositTotals(kind, deposits) : null,
-    fidelitySlips: fidelitySlips.map((item) => ({ ...item, when: whenLabel(kind, item.date) })), fidelityLater,
+    expenses: expenses.map((item): ExpenseRow => ({ ...item, when: whenLabel(kind, item.date, weeks) })), expenseTotal,
+    deposits: deposits.map((item: BankDeposit) => ({ ...item, when: whenLabel(kind, item.date, weeks) })), depositTotal,
+    cashFlowTotals: kind === "monthly" || kind === "yearly" ? depositTotals(kind, deposits, weeks) : null,
+    fidelitySlips: fidelitySlips.map((item) => ({ ...item, when: whenLabel(kind, item.date, weeks) })), fidelityLater,
     /*
      * Every Fidelity received in the period (owner, October 13, 2026: its total equals the Fidelity Bond line): Fidelity
      * entered with a batch (on the batch's first entry) and Fidelity handed in after encoding (Fidelity slips, which the
      * clerk can still edit or void until approved).
      */
     fidelityReceived: [
-      ...entries.filter((entry) => entry.fidelity > 0).map((entry) => ({ id: entry.id, kind: "batch" as const, masName: entry.person, branch: entry.branch, date: entry.encodedAt.slice(0, 10), when: whenLabel(kind, entry.encodedAt.slice(0, 10)), amount: entry.fidelity, status: "With the batch", remarks: entry.kind === "New Sale" ? "New Sales batch" : "Collections batch" })),
-      ...fidelitySlips.map((item) => ({ id: item.id, kind: "slip" as const, masName: item.masName, branch: item.branch, date: item.date, when: whenLabel(kind, item.date), amount: item.amount, status: item.status, remarks: item.remarks || "Handed in after encoding" })),
+      ...entries.filter((entry) => entry.fidelity > 0).map((entry) => ({ id: entry.id, kind: "batch" as const, masName: entry.person, branch: entry.branch, date: entry.encodedAt.slice(0, 10), when: whenLabel(kind, entry.encodedAt.slice(0, 10), weeks), amount: entry.fidelity, status: "With the batch", remarks: entry.kind === "New Sale" ? "New Sales batch" : "Collections batch" })),
+      ...fidelitySlips.map((item) => ({ id: item.id, kind: "slip" as const, masName: item.masName, branch: item.branch, date: item.date, when: whenLabel(kind, item.date, weeks), amount: item.amount, status: item.status, remarks: item.remarks || "Handed in after encoding" })),
     ].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     cash: {
       cashBeg, cashBegEdit: typedCashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, turnoverShortOver, turnoverSettled, pendingCash: notes.pendingCash, totalCashIn,
@@ -231,7 +257,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
       settled: turnover.settled.map((item) => ({ id: item.id, mas: item.mas, settledOn: item.settledOn, amount: item.settledCash, settlement: item.settlement, resolution: item.resolution })),
       openCount: turnover.open.length,
     },
-    masSummary: { title: `REPORT FOR ${MONTHS[parts(start).month - 1].toUpperCase()} ${parts(start).year}`, rows: masRows, total: { sales: sum(sales), collections: sum(collections),
+    masSummary: { title: span?.monthLabel ? `REPORT FOR ${MONTHS[Number(span.monthLabel.slice(5, 7)) - 1].toUpperCase()} ${span.monthLabel.slice(0, 4)}` : `REPORT FOR ${MONTHS[parts(start).month - 1].toUpperCase()} ${parts(start).year}`, rows: masRows, total: { sales: sum(sales), collections: sum(collections),
       cve: { ...cveTotal, percent: cveTotal.gross > 0 ? round((sum(collections).gross / cveTotal.gross) * 100) : null } } },
     // Kept for audits, which store these totals with their findings.
     totals: { accounts: entries.length, gross: round(newSales.total.gross + collection.total.gross), incentives: round(newSales.total.incentives + collection.total.incentives), net: round(newSales.total.net + collection.total.net), fidelity },
@@ -272,11 +298,11 @@ function byBranch(entries: DayEntry[], fidelitySlips: Array<{ branch: string; am
  * The Cash Flow section of a monthly or yearly report (owner, October 20, 2026): one row per week (monthly) or month
  * (yearly), its total, with the bank accounts, transfer types and MAS of its deposits.
  */
-function depositTotals(kind: AuditPeriod, deposits: BankDeposit[]) {
+function depositTotals(kind: AuditPeriod, deposits: BankDeposit[], weeks?: Weeks) {
   const groups = new Map<string, { when: string; amount: number; count: number; bankAccounts: Set<string>; transferTypes: Set<string>; mas: Set<string> }>();
   for (const item of deposits) {
-    const key = kind === "monthly" ? String(weekOfMonth(item.date)).padStart(2, "0") : item.date.slice(5, 7);
-    const group = groups.get(key) ?? { when: whenLabel(kind, item.date), amount: 0, count: 0, bankAccounts: new Set(), transferTypes: new Set(), mas: new Set() };
+    const key = kind === "monthly" ? String(weekNumber(item.date, weeks)).padStart(2, "0") : item.date.slice(5, 7);
+    const group = groups.get(key) ?? { when: whenLabel(kind, item.date, weeks), amount: 0, count: 0, bankAccounts: new Set(), transferTypes: new Set(), mas: new Set() };
     group.amount = round(group.amount + item.amount); group.count += 1;
     if (text(item.bankAccount)) group.bankAccounts.add(text(item.bankAccount));
     if (text(item.transferType)) group.transferTypes.add(text(item.transferType));

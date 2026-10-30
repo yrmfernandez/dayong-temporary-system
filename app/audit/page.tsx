@@ -24,7 +24,10 @@ type Figures = {
 type Period = "daily" | "weekly" | "monthly" | "yearly";
 const PERIODS: Array<[Period, string, string]> = [["daily", "Daily", "day"], ["weekly", "Weekly", "week"], ["monthly", "Monthly", "month"], ["yearly", "Yearly", "year"]];
 type Audit = { id: string; status: string; findings: string; result: string; approvedByName: string; approvedAt: string; reopenReason: string; updatedAt: string; preparedBy: string; editAllowedByName: string; editAllowedAt: string; editReason: string };
-type Row = { employeeId: string; employeeName: string; branch: string; status: "Not started" | "Draft" | "Approved"; audit: Audit | null; figures: Figures };
+// A weekly or monthly the clerk submitted (owner, October 30, 2026; lib/report-periods.ts): its own dates, Submitted or Returned.
+type SubmittedPeriod = { start: string; end: string; monthLabel: string; submission: "Submitted" | "Returned"; submittedBy: string; submittedAt: string; returnedBy: string; returnedAt: string; returnReason: string };
+type Row = { employeeId: string; employeeName: string; branch: string; status: "Not started" | "Draft" | "Approved"; audit: Audit | null; figures: Figures; period: SubmittedPeriod | null };
+const periodDates = (period: SubmittedPeriod) => `${period.monthLabel ? `${new Date(`${period.monthLabel}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}: ` : ""}${showDate(period.start)} – ${showDate(period.end)}`;
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
 const when = (value: string) => (value ? showDateTime(value) : "");
@@ -37,13 +40,14 @@ export default function DailyAuditPage() {
   const [date, setDate] = useState(todayInManila());
   const [span, setSpan] = useState({ from: "", to: "" });
   const [rows, setRows] = useState<Row[]>([]);
+  const [notSubmitted, setNotSubmitted] = useState<string[]>([]);
   const [canApprove, setCanApprove] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [open, setOpen] = useState("");
   // The branch of the report opened inside an audit: all branches first (like the audit's totals), switchable.
   const [reportBranch, setReportBranch] = useState("all");
-  const [draft, setDraft] = useState({ findings: "", result: "Balanced", reason: "", editReason: "" });
+  const [draft, setDraft] = useState({ findings: "", result: "Balanced", reason: "", editReason: "", returnReason: "" });
   const [message, setMessage] = useState("");
 
   const load = useCallback(async (day: string, which: Period) => {
@@ -52,7 +56,7 @@ export default function DailyAuditPage() {
       const response = await fetch(`/api/audit?date=${encodeURIComponent(day)}&period=${which}`, { cache: "no-store" });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load audits.");
-      setRows(result.audits); setCanApprove(Boolean(result.canApprove)); setSpan({ from: result.from, to: result.to });
+      setRows(result.audits); setNotSubmitted(result.notSubmitted ?? []); setCanApprove(Boolean(result.canApprove)); setSpan({ from: result.from, to: result.to });
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to load audits."); }
     finally { setBusy(false); }
   }, []);
@@ -70,7 +74,7 @@ export default function DailyAuditPage() {
     if (open === row.employeeId) { setOpen(""); return; }
     setOpen(row.employeeId);
     setReportBranch("all");
-    setDraft({ findings: row.audit?.findings ?? "", result: row.audit?.result || "Balanced", reason: "", editReason: "" });
+    setDraft({ findings: row.audit?.findings ?? "", result: row.audit?.result || "Balanced", reason: "", editReason: "", returnReason: "" });
   }
 
   async function send(method: "POST" | "PATCH", body: Record<string, unknown>, done: string) {
@@ -95,7 +99,7 @@ export default function DailyAuditPage() {
           </div>
         </div>
         {tab === "daily" && <label className="text-sm">Report date<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(event.target.value); } }} /></label>}
-        {tab === "weekly" && <label className="text-sm">Any day in the week<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(event.target.value); } }} /></label>}
+        {tab === "weekly" && <label className="text-sm">Any day in the weekly report<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(event.target.value); } }} /></label>}
         {tab === "monthly" && <label className="text-sm">Month<Input type="month" className="mt-1 h-9" max={todayInManila().slice(0, 7)} value={date.slice(0, 7)} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(`${event.target.value}-01`); } }} /></label>}
         {tab === "yearly" && <label className="text-sm">Year<Input type="number" className="mt-1 h-9 w-28" min={2019} max={Number(todayInManila().slice(0, 4))} value={date.slice(0, 4)} onChange={(event) => { const year = event.target.value; if (/^\d{4}$/.test(year)) { setOpen(""); setDate(`${year}-01-01`); } }} /></label>}
       </div>
@@ -109,6 +113,10 @@ export default function DailyAuditPage() {
 
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {span.from && period !== "daily" && <p className="text-sm text-muted-foreground">Auditing the {unit} from <strong>{span.from}</strong> to <strong>{span.to}</strong>: each Entry Clerk&apos;s report totals for the whole {unit}, with how their daily audits stand.</p>}
+    {(period === "weekly" || period === "monthly") && <p className="text-sm text-muted-foreground">
+      {period === "weekly" ? "Each Entry Clerk's submitted weekly report containing this day, over the dates they chose." : "Each Entry Clerk's submitted monthly report for this month: the weekly reports it gathers."} Only submitted reports are audited; return one to the clerk with a reason for them to fix it.
+      {notSubmitted.length > 0 && <span className="mt-1 block text-amber-700 dark:text-amber-400">Not submitted: {notSubmitted.join(", ")}.</span>}
+    </p>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <MetricTile tone="brand" label="Entry Clerks to audit" value={String(rows.length)} detail="Present, or encoded, in the period" />
       <MetricTile tone="warning" label="Not started" value={String(count("Not started"))} />
@@ -123,12 +131,13 @@ export default function DailyAuditPage() {
           <div className="min-w-48 flex-1">
             <p className="font-semibold">{row.employeeName}</p>
             <p className="text-xs text-muted-foreground"><span className="font-mono">{row.employeeId}</span>{row.branch ? ` · ${row.branch}` : ""}</p>
+            {row.period && <p className="text-xs font-medium">{periodDates(row.period)}</p>}
           </div>
           <dl className="grid grid-cols-3 gap-x-6 gap-y-1 text-sm">
             {[["Accounts", String(row.figures.accounts)], ["Collected", money(row.figures.gross)], ["Expected remittance", money(row.figures.expectedRemittance)]].map(([label, value]) =>
               <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-semibold tabular-nums">{value}</dd></div>)}
           </dl>
-          <div className="min-w-28"><StatusBadge status={row.status} tone={row.status === "Approved" ? "success" : row.status === "Draft" ? "info" : "warning"} />{row.audit?.result && <span className="mt-1 block text-xs text-muted-foreground">{row.audit.result}</span>}{row.status === "Approved" && row.audit?.editAllowedAt && <span className="mt-1 block text-xs text-amber-700 dark:text-amber-400">Clerk may edit</span>}</div>
+          <div className="min-w-28"><StatusBadge status={row.period?.submission === "Returned" && row.status !== "Approved" ? "Returned to clerk" : row.status} tone={row.status === "Approved" ? "success" : row.period?.submission === "Returned" ? "warning" : row.status === "Draft" ? "info" : "warning"} />{row.audit?.result && <span className="mt-1 block text-xs text-muted-foreground">{row.audit.result}</span>}{row.status === "Approved" && row.audit?.editAllowedAt && <span className="mt-1 block text-xs text-amber-700 dark:text-amber-400">Clerk may edit</span>}</div>
           <Button type="button" size="sm" variant={open === row.employeeId ? "default" : "outline"} aria-expanded={open === row.employeeId} onClick={() => toggle(row)}>{open === row.employeeId ? "Close" : row.status === "Approved" ? "View" : "Audit"}</Button>
         </div>
         {open === row.employeeId && <div className="space-y-5 border-t bg-muted/20 p-4">
@@ -176,12 +185,18 @@ export default function DailyAuditPage() {
                 <details className="rounded-lg border bg-background p-3">
                   <summary className="cursor-pointer text-sm font-semibold">Open {row.employeeName}&apos;s report and every entry</summary>
                   <p className="mt-1 text-xs text-muted-foreground">Check each entry from its dates (OR, remitted, encoded) to its numbers and receipt photo before deciding Balanced or With findings.</p>
-                  <div className="mt-3"><ClerkReport kind={period} review hideEmptyBranches employeeId={row.employeeId} date={span.from || date} branch={reportBranch} onBranchChange={setReportBranch} /></div>
+                  <div className="mt-3"><ClerkReport kind={period} review hideEmptyBranches employeeId={row.employeeId} date={row.period?.start || span.from || date} to={row.period?.end} branch={reportBranch} onBranchChange={setReportBranch} /></div>
                 </details>
           </section>
           <section className="space-y-3 rounded-lg border bg-background p-3">
             <h3 className="text-sm font-semibold">Decision</h3>
                 {row.audit?.reopenReason && row.status === "Draft" && <p className="text-xs text-amber-700">Reopened: {row.audit.reopenReason}</p>}
+                {row.period?.submission === "Returned" && row.status !== "Approved" && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">Returned to the clerk by {row.period.returnedBy} on {when(row.period.returnedAt)}: {row.period.returnReason}. It is audited again once they submit it.</p>}
+                {row.period?.submission === "Submitted" && row.status !== "Approved" && <div className="flex flex-wrap items-end gap-2">
+                  {/* HR, Finance and Administrators return a submitted report for the clerk to fix (owner, October 30, 2026). */}
+                  <label className="text-xs">Reason to return it to the clerk<Input className="mt-1 h-9 min-w-72 bg-background" value={draft.returnReason} onChange={(event) => setDraft({ ...draft, returnReason: event.target.value })} /></label>
+                  <Button type="button" variant="outline" disabled={busy || draft.returnReason.trim().length < 3} onClick={() => void send("PATCH", { employeeId: row.employeeId, decision: "return", reason: draft.returnReason }, "Returned to the clerk.")}>Return to clerk</Button>
+                </div>}
                 {row.status === "Approved" ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
                   <p><strong>{row.audit?.result}</strong> · approved by {row.audit?.approvedByName} on {when(row.audit?.approvedAt ?? "")}. Figures are locked as approved.</p>
                   {row.audit?.findings && <p className="mt-1 whitespace-pre-wrap">{row.audit.findings}</p>}
@@ -193,7 +208,7 @@ export default function DailyAuditPage() {
                     ? <div className="mt-3"><Button type="button" variant="outline" disabled={busy} onClick={() => void send("PATCH", { employeeId: row.employeeId, decision: "lock" }, "The clerk's report is locked again.")}>Lock the report again</Button></div>
                     : <div className="mt-3 flex flex-wrap items-end gap-2"><label className="text-xs">Reason to let the clerk edit<Input className="mt-1 h-9 min-w-72 bg-background" value={draft.editReason} onChange={(event) => setDraft({ ...draft, editReason: event.target.value })} /></label><Button type="button" variant="outline" disabled={busy || draft.editReason.trim().length < 3} onClick={() => void send("PATCH", { employeeId: row.employeeId, decision: "allow-edit", reason: draft.editReason }, "The clerk can edit this report until you lock it again.")}>Allow the clerk to edit</Button></div>)}
                   {canApprove && <div className="mt-3 flex flex-wrap items-end gap-2"><label className="text-xs">Reason to reopen<Input className="mt-1 h-9 min-w-72 bg-background" value={draft.reason} onChange={(event) => setDraft({ ...draft, reason: event.target.value })} /></label><Button type="button" variant="outline" disabled={busy || draft.reason.trim().length < 3} onClick={() => void send("PATCH", { employeeId: row.employeeId, decision: "reopen", reason: draft.reason }, "Audit reopened.")}>Reopen</Button></div>}
-                </div> : <div className="space-y-3">
+                </div> : row.period?.submission === "Returned" ? null : <div className="space-y-3">
                   <div role="radiogroup" aria-label="Audit result" className="flex flex-wrap gap-2">{(["Balanced", "With findings"] as const).map((result) => <label key={result} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${draft.result === result ? "border-primary bg-primary/5 font-semibold" : ""}`}><input type="radio" name={`result-${row.employeeId}`} checked={draft.result === result} onChange={() => setDraft({ ...draft, result })} />{result}</label>)}</div>
                   <label className="block text-sm">Findings{draft.result === "With findings" ? " *" : ""}<textarea className="mt-1 block min-h-24 w-full rounded-md border bg-background p-2 text-sm" maxLength={2000} value={draft.findings} placeholder="What was checked (receipts, slips, cash) and anything that does not match." onChange={(event) => setDraft({ ...draft, findings: event.target.value })} /></label>
                   <div className="flex flex-wrap items-center gap-2">

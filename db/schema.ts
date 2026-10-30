@@ -994,6 +994,18 @@ const periodAudit = (name: string) => pgTable(name, {
   clerk_edit_allowed_by_name: text(),
   clerk_edit_allowed_at: moment("clerk_edit_allowed_at"),
   clerk_edit_reason: text(),
+  /**
+   * Weekly and monthly reports the clerk submits (owner, October 30, 2026; lib/report-periods.ts): the period's last day
+   * (report_date is its first), the month a monthly is for ("2026-10"), and Submitted or Returned with who and why.
+   */
+  end_date: day("end_date"),
+  month_label: text(),
+  submission: text(),
+  submitted_at: moment("submitted_at"),
+  submitted_by_name: text(),
+  returned_at: moment("returned_at"),
+  returned_by_name: text(),
+  return_reason: text(),
   updated_at: moment("updated_at"),
   ...encoder(),
 }, (t) => [index(`${name}_employee_date_idx`).on(t.employee_id, t.report_date)]).enableRLS();

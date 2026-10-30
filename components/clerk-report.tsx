@@ -14,13 +14,14 @@ import { Input } from "@/components/ui/input";
 import { readApiResponse } from "@/lib/api-response";
 import type { ClerkReport as Report, ReportLine } from "@/lib/clerk-report";
 import type { ClerkAuditView } from "@/lib/daily-audit";
+import type { ClerkPeriod, PeriodView } from "@/lib/report-periods";
 import { BURIAL_ACCOUNT, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
 type Remark = { id: string; comment: string; createdAt: string; encodedBy: string };
-type Result = { success: boolean; message?: string; report: Report; remarks: Remark[]; canChoose: boolean; isOwn: boolean; audit: ClerkAuditView; branch: string; branchChoices: string[]; masChoices: Array<{ id: string; name: string }>; clerks: Array<{ employeeId: string; name: string; branch: string }> };
+type Result = { success: boolean; message?: string; report: Report; period: PeriodView | null; remarks: Remark[]; canChoose: boolean; isOwn: boolean; audit: ClerkAuditView; branch: string; branchChoices: string[]; masChoices: Array<{ id: string; name: string }>; clerks: Array<{ employeeId: string; name: string; branch: string }> };
 
 const money = (value: number) => (value ? new Intl.NumberFormat("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) : "-");
 const todayInManila = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
@@ -39,8 +40,12 @@ const tone = {
  * An Entry Clerk's report in the company's layout. A clerk sees their own and records expenses, bank deposits and notes
  * on it; with `review` (Report Review and Audits) the reviewer chooses the clerk and gets the entry checklist and remarks.
  */
-export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, date: fixedDate, branch: sharedBranch, onBranchChange, hideEmptyBranches = false }: { kind: Kind; review?: boolean; employeeId?: string; date?: string; branch?: string; onBranchChange?: (branch: string) => void; hideEmptyBranches?: boolean }) {
+export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, date: fixedDate, to: fixedTo, branch: sharedBranch, onBranchChange, hideEmptyBranches = false }: { kind: Kind; review?: boolean; employeeId?: string; date?: string; to?: string; branch?: string; onBranchChange?: (branch: string) => void; hideEmptyBranches?: boolean }) {
   const [date, setDate] = useState(fixedDate ?? todayInManila());
+  // Weekly and monthly reports the clerk submits (owner, October 30, 2026; lib/report-periods.ts): `to` is the last day
+  // of a new weekly, or the last weekly a new monthly covers; "" shows the report containing `date`.
+  const [to, setTo] = useState(fixedTo ?? "");
+  const submitted = kind === "weekly" || kind === "monthly";
   const [employeeId, setEmployeeId] = useState(fixedEmployee ?? "");
   // Reports are per branch (owner, October 13, 2026): "" = the clerk's primary branch, "all" = every branch (Audits).
   // The tabs share the choice through `branch` / `onBranchChange`.
@@ -68,7 +73,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ kind, date, ...(employeeId ? { employeeId } : {}), ...(branch ? { branch } : {}) });
+      const params = new URLSearchParams({ kind, date, ...(submitted && to ? { to } : {}), ...(employeeId ? { employeeId } : {}), ...(branch ? { branch } : {}) });
       const response = await fetch(`/api/clerk-report?${params}`, { cache: "no-store" });
       const result = await response.json() as Result;
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to build the report.");
@@ -78,7 +83,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
     } finally {
       setLoading(false);
     }
-  }, [kind, date, employeeId, branch]);
+  }, [kind, date, to, submitted, employeeId, branch]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reload when the period or clerk changes
@@ -92,10 +97,12 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   /** Sends one of the clerk's own report actions, then reloads the report. */
   // Never fails silently (owner, October 24, 2026: Save did nothing): a reply that is not the route's own (a time-out,
   // an upload too large, an expired sign-in) or no connection is shown as a message; what was typed stays.
+  // A weekly's or monthly's notes, Cash Beg and lock follow its first day; the other reports any day in them.
+  const reportDate = submitted ? data?.report.from ?? date : date;
   const act = async (body: Record<string, unknown>) => {
     setMessage(""); setSaved(null); setSaving(true);
     try {
-      const response = await fetch("/api/clerk-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, date, reportKind: kind, reportDate: date, branch: data?.branch === "all" ? "" : data?.branch ?? "", ...body }) });
+      const response = await fetch("/api/clerk-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, date: reportDate, reportKind: kind, reportDate, reportTo: data?.report.to ?? "", branch: data?.branch === "all" ? "" : data?.branch ?? "", ...body }) });
       const result = await readApiResponse(response) as { success?: boolean; message?: string };
       const ok = response.ok && Boolean(result.success);
       const text = result.message || (ok ? "Saved." : "Unable to save.");
@@ -129,9 +136,9 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3 print:hidden">
-        <label className="text-sm">Period
+        {submitted ? <PeriodPicker kind={kind} view={data?.period ?? null} date={date} fixed={Boolean(fixedDate)} onPick={(start, end) => { setDate(start); setTo(end); }} /> : <label className="text-sm">Period
           <Input className="mt-1 w-44" type={inputType(kind)} min={kind === "yearly" ? 2000 : undefined} max={kind === "yearly" ? 2100 : undefined} value={toInput(kind, date)} disabled={Boolean(fixedDate)} onChange={(event) => event.target.value && setDate(fromInput(kind, event.target.value))} />
-        </label>
+        </label>}
         {data?.canChoose && !fixedEmployee && (
           <label className="text-sm">Entry Clerk
             <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={employeeId || report?.encoder.employeeId || ""} onChange={(event) => { setEmployeeId(event.target.value); setBranch(""); }}>
@@ -154,6 +161,9 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       </div>
 
       {message && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">{message}</p>}
+      {data && submitted && data.period && <PeriodNotice kind={kind} view={data.period} own={own} saving={saving}
+        onSubmit={async () => { const draft = data.period?.draft; if (!draft) return; if (await act({ action: "submit-period", from: draft.start, to: draft.end })) { setDate(draft.start); setTo(draft.end); } }}
+        onResubmit={() => void act({ action: "resubmit-period" })} />}
       {data && own && <AuditNotice audit={data.audit} />}
 
       {report && (
@@ -314,6 +324,73 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       )}
     </div>
   );
+}
+
+const PERIOD_STATUS = (period: ClerkPeriod) => period.auditStatus === "Approved" ? "Approved" : period.submission === "Returned" ? "Returned" : "Submitted";
+const spanLabel = (start: string, end: string) => (start === end ? showDate(start) : `${showDate(start)} – ${showDate(end)}`);
+const monthLabelName = (label: string) => (/^\d{4}-\d{2}$/.test(label) ? new Date(`${label}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }) : label);
+
+/**
+ * Which weekly or monthly report to show (owner, October 30, 2026): one the clerk submitted, or the new one. A new
+ * weekly starts the day after the last (the first one on a day chosen) and ends on the day chosen; a new monthly gathers
+ * the weeklies after the last monthly, up to the weekly chosen.
+ */
+function PeriodPicker({ kind, view, date, fixed, onPick }: { kind: Kind; view: PeriodView | null; date: string; fixed: boolean; onPick: (start: string, end: string) => void }) {
+  const today = todayInManila();
+  const selected = view?.current ? `${view.current.start}|${view.current.end}` : "new";
+  const draft = view?.draft;
+  return <>
+    <label className="text-sm">{kind === "weekly" ? "Weekly report" : "Monthly report"}
+      <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={selected} disabled={fixed || !view}
+        onChange={(event) => { const [start, end] = event.target.value.split("|"); if (event.target.value === "new") onPick(today, "new"); else onPick(start, end); }}>
+        <option value="new">{kind === "weekly" ? "New weekly report (not submitted)" : "New monthly report (not submitted)"}</option>
+        {[...(view?.periods ?? [])].reverse().map((period) => <option key={period.id} value={`${period.start}|${period.end}`}>
+          {kind === "monthly" && period.monthLabel ? `${monthLabelName(period.monthLabel)} · ` : ""}{spanLabel(period.start, period.end)} · {PERIOD_STATUS(period)}
+        </option>)}
+      </select>
+    </label>
+    {draft && !fixed && kind === "weekly" && <>
+      <label className="text-sm">From
+        {draft.chooseStart
+          ? <Input className="mt-1 w-40" type="date" max={today} value={draft.start} onChange={(event) => event.target.value && onPick(event.target.value, draft.end)} />
+          : <span className="mt-1 flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm" title="The day after your last weekly report">{showDate(draft.start)}</span>}
+      </label>
+      <label className="text-sm">To
+        <Input className="mt-1 w-40" type="date" min={draft.start} max={today} value={draft.end} onChange={(event) => event.target.value && onPick(draft.start, event.target.value)} />
+      </label>
+    </>}
+    {draft && !fixed && kind === "monthly" && draft.choices.length > 0 && <label className="text-sm">Up to the weekly report
+      <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={draft.end} onChange={(event) => onPick(date, event.target.value)}>
+        {draft.choices.map((week) => <option key={week.id} value={week.end}>{spanLabel(week.start, week.end)} · {PERIOD_STATUS(week)}</option>)}
+      </select>
+    </label>}
+  </>;
+}
+
+/** Where the weekly or monthly report stands: not submitted (with Submit), submitted, returned (with Submit again), approved. */
+function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit }: { kind: Kind; view: PeriodView; own: boolean; saving: boolean; onSubmit: () => void; onResubmit: () => void }) {
+  const name = kind === "weekly" ? "weekly report" : "monthly report";
+  const current = view.current, draft = view.draft;
+  if (current) {
+    const returned = current.submission === "Returned" && current.auditStatus !== "Approved";
+    return <div className={`space-y-1 rounded-lg border px-4 py-3 text-sm print:hidden ${returned ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100" : "bg-muted/40"}`}>
+      <p className="flex flex-wrap items-center gap-2"><span className="font-semibold">{kind === "monthly" && current.monthLabel ? `${monthLabelName(current.monthLabel)}: ` : ""}{spanLabel(current.start, current.end)}</span>
+        <StatusBadge status={PERIOD_STATUS(current)} tone={current.auditStatus === "Approved" ? "success" : returned ? "warning" : "info"} />
+        <span className="text-xs">submitted by {current.submittedBy} on {showDateTime(current.submittedAt)}</span></p>
+      {returned ? <>
+        <p><span className="font-semibold">Returned by {current.returnedBy}</span> on {showDateTime(current.returnedAt)}: {current.returnReason}</p>
+        {own && <p className="flex flex-wrap items-center gap-2 text-xs">Fix it, then submit it again; it is locked again once submitted.<Button type="button" size="sm" disabled={saving} onClick={onResubmit}>Submit again</Button></p>}
+      </> : current.auditStatus !== "Approved" && <p className="text-xs">Submitted: locked until the audit approves it or returns it to {own ? "you" : "the clerk"}.</p>}
+    </div>;
+  }
+  if (!draft) return null;
+  return <div className="space-y-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">
+    <p><span className="font-semibold">New {name}{draft.monthLabel ? ` for ${monthLabelName(draft.monthLabel)}` : ""}:</span> {draft.weeks.length || kind === "weekly" ? spanLabel(draft.start, draft.end) : ""} · not submitted yet.</p>
+    {kind === "monthly" && draft.weeks.length > 0 && <ul className="list-inside list-disc text-xs">{draft.weeks.map((week) => <li key={week.id}>{spanLabel(week.start, week.end)}: {PERIOD_STATUS(week)}</li>)}</ul>}
+    {draft.problem ? <p className="text-xs font-medium text-amber-800 dark:text-amber-300">{draft.problem}</p>
+      : own && <p className="flex flex-wrap items-center gap-2 text-xs">{kind === "weekly" ? "Check the report, then submit it. Once submitted you cannot change anything in these days unless the audit returns it." : "Every weekly report in it is approved; submit the monthly report."}
+        <Button type="button" size="sm" disabled={saving} onClick={onSubmit}>Submit {name}</Button></p>}
+  </div>;
 }
 
 /**

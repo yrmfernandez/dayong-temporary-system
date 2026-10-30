@@ -2319,6 +2319,80 @@ test('daily audit: HR, Finance, and Admin can open it; only Admin approves and a
   assert.deepEqual((await audits()).map((row) => [row.status, row.approved_by_name, row.reopen_reason]), [['Draft', null, 'Recount needed']]);
 });
 
+test('weekly and monthly reports are submitted by the clerk over their own dates, locked until returned, and the monthly gathers approved weeklies (October 30, 2026)', async () => {
+  const h = harness({ userId: 'USR-3', employeeId: 'MD-3', name: 'Clerk One', roleNames: ['Entry Clerk'], permissions: {} });
+  h.rows.Users = [['user_id', 'employee_id', 'full_name', 'password_hash', 'status', 'created_at', 'role_id'], ['USR-3', 'MD-3', 'Clerk One', 'x', 'active', '', 'R-EC']];
+  h.rows.Roles = [[], ['R-EC', 'Entry Clerk', '', false, false, false, 'active']];
+  h.rows['User Roles'] = [[], ['USR-3', 'R-EC']];
+  h.rows.Employees = [[], ['MD-3', 'Clerk One', 'MATINA', 'Entry Clerk', 'active']];
+  h.rows['Employee Branches'] = [[]];
+  await h.sync();
+  const periods = h.load('lib/report-periods.ts');
+  assert.deepEqual([periods.monthOfMost('2026-09-28', '2026-11-01'), periods.monthOfMost('2026-10-26', '2026-11-08'), periods.monthOfMost('2026-10-05', '2026-10-18')], ['2026-10', '2026-11', '2026-10'], 'the month most of its days fall in');
+  const asClerk = () => h.setUser({ userId: 'USR-3', employeeId: 'MD-3', name: 'Clerk One', roleNames: ['Entry Clerk'], permissions: {} });
+  const asHr = () => h.setUser({ userId: 'USR-2', employeeId: 'MD-1', name: 'HR Person', roleNames: ['HR Officer'], permissions: {} });
+  const asAdmin = () => h.setUser({ userId: 'USR-1', employeeId: 'MD-0', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const report = h.load('app/api/clerk-report/route.ts'), audit = h.load('app/api/audit/route.ts');
+  const get = async (query) => (await report.GET(new Request(`http://localhost/api/clerk-report?${query}`))).json();
+  const post = async (body) => (await report.POST(request(body))).json();
+
+  asClerk();
+  // The first weekly: the clerk chooses its first day too.
+  const first = await get('kind=weekly&date=2026-10-05&to=2026-10-11');
+  assert.deepEqual([first.period.current, first.period.draft.start, first.period.draft.end, first.period.draft.chooseStart, first.report.from, first.report.to, first.report.dateLine], [null, '2026-10-05', '2026-10-11', true, '2026-10-05', '2026-10-11', 'OCTOBER 5-11, 2026']);
+  assert.equal((await post({ action: 'submit-period', kind: 'weekly', from: '2026-10-05', to: '2026-10-11' })).success, true);
+  // The next one starts the day after: the day chosen as its first is ignored.
+  const second = await get('kind=weekly&date=2026-10-20&to=new');
+  assert.deepEqual([second.period.draft.start, second.period.draft.chooseStart], ['2026-10-12', false]);
+  assert.match((await post({ action: 'submit-period', kind: 'weekly', to: '2026-10-11' })).message, /cannot be before/);
+  assert.match((await post({ action: 'submit-period', kind: 'weekly', to: '2099-01-01' })).message, /after today/);
+  const saved = await post({ action: 'submit-period', kind: 'weekly', from: '2026-10-01', to: '2026-10-18' });
+  assert.deepEqual([saved.success, saved.start, saved.end], [true, '2026-10-12', '2026-10-18']);
+
+  // Submitted: the days are locked for the clerk; the report shows the submitted weekly containing the day.
+  const shown = await get('kind=weekly&date=2026-10-07');
+  assert.deepEqual([shown.period.current.start, shown.period.current.end, shown.period.current.submission, shown.report.from, shown.report.to], ['2026-10-05', '2026-10-11', 'Submitted', '2026-10-05', '2026-10-11']);
+  assert.match(shown.audit.lock, /weekly report for Oct 5, 2026 – Oct 11, 2026 is submitted and locked/);
+  assert.match((await post({ action: 'save-notes', kind: 'daily', date: '2026-10-07', specificRemarks: 'Late' })).message, /submitted and locked/, 'a day inside the submitted weekly');
+  assert.match((await post({ action: 'save-notes', kind: 'weekly', date: '2026-10-05', specificRemarks: 'Late' })).message, /submitted and locked/);
+
+  // The monthly needs every weekly approved.
+  const monthDraft = await get('kind=monthly&date=2026-10-30');
+  assert.deepEqual([monthDraft.period.draft.start, monthDraft.period.draft.end, monthDraft.period.draft.monthLabel, monthDraft.period.draft.weeks.length], ['2026-10-05', '2026-10-18', '2026-10', 2]);
+  assert.match(monthDraft.period.draft.problem, /must be approved first/);
+  assert.match((await post({ action: 'submit-period', kind: 'monthly', to: '2026-10-18' })).message, /must be approved first/);
+
+  // HR returns the first weekly with the reason; the clerk fixes it and submits it again.
+  asHr();
+  const listed = await (await audit.GET(new Request('http://localhost/api/audit?period=weekly&date=2026-10-07'))).json();
+  assert.deepEqual(listed.audits.map((row) => [row.employeeId, row.status, row.period.start, row.period.end]), [['MD-3', 'Not started', '2026-10-05', '2026-10-11']]);
+  assert.match((await (await audit.PATCH(request({ period: 'weekly', date: '2026-10-07', employeeId: 'MD-3', decision: 'return', reason: '' }))).json()).message, /reason/);
+  assert.equal((await audit.PATCH(request({ period: 'weekly', date: '2026-10-07', employeeId: 'MD-3', decision: 'return', reason: 'Deposit slip missing' }))).status, 200);
+  assert.match((await (await audit.POST(request({ period: 'weekly', date: '2026-10-07', employeeId: 'MD-3', findings: '', result: 'Balanced' }))).json()).message, /returned to the clerk/);
+  asClerk();
+  const returned = await get('kind=weekly&date=2026-10-07');
+  assert.deepEqual([returned.period.current.submission, returned.period.current.returnReason, returned.audit.lock], ['Returned', 'Deposit slip missing', '']);
+  assert.equal((await post({ action: 'save-notes', kind: 'daily', date: '2026-10-07', specificRemarks: 'Slip added' })).success, true, 'returned: the clerk can fix it');
+  assert.equal((await post({ action: 'resubmit-period', kind: 'weekly', date: '2026-10-05' })).success, true);
+  assert.match((await post({ action: 'save-notes', kind: 'daily', date: '2026-10-07', specificRemarks: 'Again' })).message, /submitted and locked/, 'locked again');
+
+  // HR prepares, only an Administrator approves; then the monthly can be submitted.
+  asHr();
+  for (const day of ['2026-10-07', '2026-10-15']) assert.equal((await audit.POST(request({ period: 'weekly', date: day, employeeId: 'MD-3', findings: 'Checked', result: 'Balanced' }))).status, 200);
+  asAdmin();
+  for (const day of ['2026-10-07', '2026-10-15']) { const approved = await audit.PATCH(request({ period: 'weekly', date: day, employeeId: 'MD-3', decision: 'approve' })); assert.equal(approved.status, 200, JSON.stringify(await approved.clone().json())); }
+  assert.match((await (await audit.PATCH(request({ period: 'weekly', date: '2026-10-07', employeeId: 'MD-3', decision: 'return', reason: 'Too late' }))).json()).message, /approved/, 'an approved weekly is not returned');
+  asClerk();
+  assert.match((await get('kind=weekly&date=2026-10-07')).audit.lock, /approved in the audit and locked/);
+  const month = await post({ action: 'submit-period', kind: 'monthly', to: '2026-10-18' });
+  assert.deepEqual([month.success, month.start, month.end, month.monthLabel], [true, '2026-10-05', '2026-10-18', '2026-10']);
+  const monthly = await get('kind=monthly&date=2026-10-10');
+  assert.deepEqual([monthly.period.current.monthLabel, monthly.report.from, monthly.report.to, monthly.report.weeks.length, monthly.report.dateLine], ['2026-10', '2026-10-05', '2026-10-18', 2, 'OCTOBER 2026 · OCTOBER 5-18, 2026']);
+  asHr();
+  const monthAudits = await (await audit.GET(new Request('http://localhost/api/audit?period=monthly&date=2026-10-01'))).json();
+  assert.deepEqual([monthAudits.audits.map((row) => row.period.monthLabel), monthAudits.notSubmitted], [['2026-10'], []]);
+});
+
 test('a program enrollment transfers to an active employee of any branch, keeping or moving its branch, with a reason and history', async () => {
   const h = harness({ userId: 'USR-2', employeeId: 'MD-1', name: 'HR Person', roleNames: ['HR Officer'], permissions: {} });
   await seedAccount({ doi: '2026-01-15', branch: 'MATINA', mas: 'Old MAS' });

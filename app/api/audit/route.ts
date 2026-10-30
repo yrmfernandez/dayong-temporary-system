@@ -1,6 +1,7 @@
 import { canAccessPath } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
-import { AUDIT_DECISIONS, AUDIT_RESULTS, asAuditPeriod, type AuditDecision, decideDailyAudit, getDailyAudits, periodSpan, saveDailyAudit } from "@/lib/daily-audit";
+import { AUDIT_DECISIONS, AUDIT_RESULTS, asAuditPeriod, auditedEmployees, type AuditDecision, decideDailyAudit, getDailyAudits, periodSpan, saveDailyAudit, submittedPeriodFor } from "@/lib/daily-audit";
+import { isPeriodKind, returnPeriod } from "@/lib/report-periods";
 import { withEncoder } from "@/lib/encoder-context";
 
 // HR Officers, Finance, and Administrators prepare and edit audits (daily, weekly, monthly, yearly); only Administrators approve or
@@ -18,8 +19,11 @@ export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
     const date = params.get("date") ?? "", period = asAuditPeriod(params.get("period"));
-    const span = periodSpan(period, date);
-    return Response.json({ success: true, date, period, from: span.start, to: span.end, audits: await getDailyAudits(date, period), results: AUDIT_RESULTS, canApprove }, { headers: { "Cache-Control": "private, no-store" } });
+    // Weekly and monthly reports run over each clerk's own submitted dates (lib/report-periods.ts): no common span.
+    const span = isPeriodKind(period) ? { start: "", end: "" } : periodSpan(period, date);
+    const audits = await getDailyAudits(date, period);
+    const notSubmitted = isPeriodKind(period) ? (await auditedEmployees()).filter((clerk) => !audits.some((row) => row.employeeId === clerk.employeeId)).map((clerk) => clerk.name) : [];
+    return Response.json({ success: true, date, period, from: span.start, to: span.end, audits, notSubmitted, results: AUDIT_RESULTS, canApprove }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load audits." }, { status: 400 }); }
 }
 
@@ -33,7 +37,19 @@ export const POST = withEncoder(async (request: Request) => {
 });
 
 export const PATCH = withEncoder(async (request: Request) => {
-  const { canApprove } = await access();
+  const { canView, canApprove } = await access();
+  // HR, Finance and Administrators return a submitted weekly or monthly to the clerk, with the reason (October 30, 2026).
+  const peek = await request.clone().json().catch(() => ({})) as Record<string, unknown>;
+  if (peek.decision === "return") {
+    if (!canView) return Response.json({ success: false, message: "You do not have access to Audits." }, { status: 403 });
+    try {
+      const period = asAuditPeriod(peek.period), employeeId = String(peek.employeeId ?? "");
+      if (!isPeriodKind(period)) throw new Error("Only a submitted weekly or monthly report is returned to the clerk.");
+      const found = await submittedPeriodFor(period, employeeId, String(peek.date ?? ""));
+      if (!found) throw new Error("The clerk has not submitted this report.");
+      return Response.json({ success: true, audit: await returnPeriod(period, employeeId, found.start, String(peek.reason ?? "")) });
+    } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to return the report." }, { status: 400 }); }
+  }
   if (!canApprove) return Response.json({ success: false, message: "Only an Administrator can approve, reopen or unlock an audit." }, { status: 403 });
   try {
     const body = await request.json();

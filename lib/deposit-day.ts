@@ -10,7 +10,9 @@ import { formatDate as showDate } from "@/lib/date-format";
 export function depositDayProblem(body: Record<string, unknown>) {
   const kind = asAuditPeriod(String(body.reportKind ?? "")), reportDate = String(body.reportDate ?? "");
   if (!kind || !/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) return "";
-  const { start, end } = periodSpan(kind, reportDate), date = String(body.date ?? "");
+  // A submitted-style weekly or monthly runs over the clerk's own dates: the report sends its last day (October 30, 2026).
+  const reportTo = String(body.reportTo ?? "");
+  const { start, end } = (kind === "weekly" || kind === "monthly") && /^\d{4}-\d{2}-\d{2}$/.test(reportTo) ? { start: reportDate, end: reportTo } : periodSpan(kind, reportDate), date = String(body.date ?? "");
   if (date >= start && date <= end) return "";
   return start === end
     ? `A deposit belongs to the report it is entered on: this report is for ${showDate(start)}. To record it on ${date ? showDate(date) : "another day"}, open the report for that day. Put the real transfer date in the remarks if it differs.`

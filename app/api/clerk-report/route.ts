@@ -13,6 +13,7 @@ import { createExpense, deleteExpense, editExpense } from "@/lib/finance-data";
 import { getBranches } from "@/lib/google-sheets-data";
 import { expensePhotoIds, expensePhotosFrom, saveExpensePhotos } from "@/lib/receipt-photos";
 import { createFidelitySlip, editFidelitySlip, voidFidelitySlip } from "@/lib/remittance-workflow";
+import { isPeriodKind, periodView, resubmitPeriod, submitPeriod } from "@/lib/report-periods";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const same = (a: unknown, b: unknown) => text(a).toLowerCase() === text(b).toLowerCase();
@@ -41,6 +42,8 @@ async function masChoices(branchName: string) {
 /**
  * An Entry Clerk's report (?kind=daily|weekly|monthly|yearly&date=YYYY-MM-DD). A clerk always gets their own. People
  * who review reports (Report Review or Audits access) may choose any Entry Clerk with ?employeeId=.
+ * Weekly and monthly (owner, October 30, 2026; lib/report-periods.ts): the clerk's submitted report containing `date`,
+ * or the one not submitted yet (&to= its last day, or the last weekly a monthly covers); `period` lists them.
  */
 export async function GET(request: Request) {
   const user = await getSessionUser();
@@ -58,7 +61,8 @@ export async function GET(request: Request) {
     const own = await clerkBranches(clerk.employeeId);
     const asked = params.get("branch")?.trim() ?? "";
     const branch = asked.toLowerCase() === "all" ? "" : asked || own.primary || own.names[0] || "";
-    const report = await buildClerkReport(kind, date, { ...clerk, branch: own.primary || ("branch" in clerk ? clerk.branch : "") }, branch);
+    const period = isPeriodKind(kind) ? await periodView(kind, clerk.employeeId, date, params.get("to")?.trim() ?? "") : null;
+    const report = await buildClerkReport(kind, period?.span.start ?? date, { ...clerk, branch: own.primary || ("branch" in clerk ? clerk.branch : "") }, branch, period?.span);
     const branchChoices = [...new Map([...own.names, ...(branch ? [branch] : [])].map((name) => [name.toLowerCase(), name])).values()];
     // Remarks left on this clerk's report for the same period.
     const remarks = (await getReportRemarks(report.from, report.to)).filter((remark) => remark.scope === report.encoder.name);
@@ -66,7 +70,7 @@ export async function GET(request: Request) {
     const isOwn = report.encoder.employeeId === user.employeeId;
     // The audit of this report, so the clerk knows it is approved and its findings (owner, October 27, 2026).
     const audit = await clerkAuditView(report.encoder.employeeId, kind, report.from);
-    return Response.json({ success: true, report, remarks, canChoose, isOwn, audit, branch: branch || "all", branchChoices, masChoices: isOwn ? await masChoices(branch) : [], clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, report, period, remarks, canChoose, isOwn, audit, branch: branch || "all", branchChoices, masChoices: isOwn ? await masChoices(branch) : [], clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to build the report." }, { status: 400 });
   }
@@ -88,7 +92,7 @@ async function lockedBy(body: Record<string, unknown>, employeeId: string) {
   if (["edit-fidelity", "void-fidelity"].includes(action)) days.push([await clerkItemDay("fidelity", id), "daily"]);
   if (action === "save-notes" || action === "save-cash-beg") {
     const kind = asAuditPeriod(body.kind);
-    days.push([periodSpan(kind, text(body.date)).start, kind]);
+    days.push([periodStart(kind, text(body.date)), kind]);
   }
   for (const [day, from] of days) {
     const problem = await reportLockProblem(employeeId, day, from);
@@ -96,6 +100,9 @@ async function lockedBy(body: Record<string, unknown>, employeeId: string) {
   }
   return "";
 }
+
+/** The first day of the report: a weekly's or monthly's is the date sent (report.from), the rest are calendar periods. */
+const periodStart = (kind: AuditPeriod, date: string) => (isPeriodKind(kind) ? date : periodSpan(kind, date).start);
 
 /**
  * What a clerk records on their own report: an expense (saved in Expenses for their branch, so Finance sees it), a
@@ -170,14 +177,27 @@ export const POST = withEncoder(async (request: Request) => {
         return Response.json({ success: true, message: "Deposit voided." });
       case "save-notes": {
         const kind = asAuditPeriod(body.kind);
-        await saveReportNotes(user.employeeId, kind, periodSpan(kind, String(body.date ?? "")).start, body, chosen);
+        await saveReportNotes(user.employeeId, kind, periodStart(kind, String(body.date ?? "")), body, chosen);
         return Response.json({ success: true, message: "Report notes saved." });
       }
       case "save-cash-beg": {
         // The clerk's own report only: the Cash Beg they received for this period, with the reason (lib/clerk-cash.ts).
         const kind = asAuditPeriod(body.kind);
-        await saveCashBeg(user.employeeId, kind, periodSpan(kind, String(body.date ?? "")).start, body, chosen);
+        await saveCashBeg(user.employeeId, kind, periodStart(kind, String(body.date ?? "")), body, chosen);
         return Response.json({ success: true, message: body.cashBeg === "" || body.cashBeg === null ? "Cash Beg cleared." : "Cash Beg saved." });
+      }
+      // The clerk submits a weekly (up to the day chosen) or monthly (up to the weekly chosen), or a returned one again.
+      case "submit-period": {
+        const kind = asAuditPeriod(body.kind);
+        if (!isPeriodKind(kind)) throw new Error("Only weekly and monthly reports are submitted.");
+        const saved = await submitPeriod(kind, clerk, { from: text(body.from), to: text(body.to) });
+        return Response.json({ success: true, ...saved, message: `${kind === "weekly" ? "Weekly" : "Monthly"} report submitted. It is locked until the audit approves it or returns it to you.` });
+      }
+      case "resubmit-period": {
+        const kind = asAuditPeriod(body.kind);
+        if (!isPeriodKind(kind)) throw new Error("Only weekly and monthly reports are submitted.");
+        await resubmitPeriod(kind, user.employeeId, text(body.date));
+        return Response.json({ success: true, message: "Report submitted again." });
       }
       default:
         return Response.json({ success: false, message: "Unknown report action." }, { status: 400 });

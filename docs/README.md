@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 30, 2026: clerks submit weekly and monthly reports.** A weekly runs from the day after the clerk's last one to the day they choose; once submitted it is locked until the audit returns it with a reason. A monthly gathers the approved weeklies after the last monthly and is named for the month most of its days fall in. Needs migration 0035 on production before deploying. See [reports](reports.md).
+
 **October 30, 2026: October weeks 1 and 2 incentives.** Old-workbook entries filed under the clerks on Oct 1-11 had no company share, so the reports showed almost no incentive; `scripts/reprice-legacy-weeks.mjs` recalculates them with today's program rules (owner runs `--apply` on production).
 
 **October 30, 2026: old-site member imported.** Crispin Coffreros Santander (old web app, Calinan, DS-320) is in the database, his Sep 30 payment under receipt 24619 C (the old site had 24618 C, which is another member's receipt).
