@@ -10,6 +10,7 @@ import { LunchBreakScreen } from "@/components/lunch-break-screen";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { executiveRoles, isAdministratorRole, type AccessContext } from "@/lib/access-control";
+import { sessionForWorkspace } from "@/lib/workspace-session";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { installFriendlyApiErrors } from "@/lib/friendly-api-errors";
 import type { MaintenanceNotice } from "@/lib/maintenance-notice-text";
@@ -23,13 +24,14 @@ const safeDecode = (value: string) => { try { return decodeURIComponent(value); 
 
 export type ShellUser = { name: string; employeeId: string };
 
-const emptyAccess: AccessContext = { roleNames: [], permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false } };
+type ShellAccess = AccessContext & { rolePermissions?: Record<string, AccessContext["permissions"]> };
+const emptyAccess: ShellAccess = { roleNames: [], permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false } };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<ShellUser | null>(null);
-  const [access, setAccess] = useState<AccessContext>(emptyAccess);
+  const [access, setAccess] = useState<ShellAccess>(emptyAccess);
   const [activeRole, setActiveRole] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   // Sidebar numbers: page → how many things wait for this user there (lib/notifications.ts).
@@ -83,6 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             viewAttendanceReports: Boolean(result.user?.permissions?.viewAttendanceReports),
           },
           rolePages: result.user?.rolePages && typeof result.user.rolePages === "object" ? result.user.rolePages : {},
+          rolePermissions: result.user?.rolePermissions && typeof result.user.rolePermissions === "object" ? result.user.rolePermissions : undefined,
         });
         const available = roleOptions(roleNames);
         const saved = readPreference(preferenceKeys.activeRole);
@@ -107,7 +110,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const roles = useMemo(() => roleOptions(access.roleNames), [access.roleNames]);
-  const sections = useMemo(() => activeRole ? visibleNavigation(activeRole, access) : [], [activeRole, access]);
+  // The sidebar lists what the open workspace's role may open, as the server decides it (lib/workspace-session.ts).
+  const sections = useMemo(() => activeRole ? visibleNavigation(activeRole, sessionForWorkspace(access, activeRole)) : [], [activeRole, access]);
 
   // Choosing a workspace opens its dashboard (the server draws it for the role in the cookie). Until it arrives the
   // page shows that it is loading instead of the previous workspace's dashboard.

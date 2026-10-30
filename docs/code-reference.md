@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-45 page routes, 76 API handlers, 144 library files, 67 component files; 648 scanned source/configuration/public-text files in total.
+45 page routes, 76 API handlers, 145 library files, 67 component files; 649 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -157,7 +157,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/attendance-sheet.ts](../lib/attendance-sheet.ts) | `SheetDayStatus`, `SheetDay`, `SheetSummary`, `SheetEmployee`, `PAPER_SHEET_NOTE`, `emptySummary`, `attendanceSheet`, `GridTone`, `GridCell`, `gridCell`, `sumSummaries` | `@/lib/attendance-data`, `@/lib/attendance-board`, `@/lib/attendance`, `@/lib/working-days` |
 | [lib/attendance.ts](../lib/attendance.ts) | `ATTENDANCE_TIME_ZONE`, `SCHEDULED_TIME_IN`, `SCHEDULED_TIME_OUT`, `LATE_GRACE_MINUTES`, `BREAK_START`, `BREAK_END`, `timeToMinutes`, `workingMinutesBetween`, `lateMinutesFor`, `clockOutFigures`, `dayTotals`, `withDayTotals`, `WORKING_DAYS`, `AttendanceStatus`, `getPhilippineDate`, `getPhilippineTime`, `isWorkingDay`, `carriedNotRequired`, `carriedNotRequiredNote` | — |
 | [lib/audit-log.ts](../lib/audit-log.ts) | `AUDIT_SHEET`, `AUDIT_HEADERS`, `AuditActor`, `AuditAction`, `AuditChanges`, `parseRange`, `planValuesUpdate`, `planValuesBatchUpdate`, `planBatchUpdate`, `diffRow`, `auditedWrite`, `resetAuditSheetCache` | — |
-| [lib/auth-server.ts](../lib/auth-server.ts) | `getSessionUser`, `userWithPageAccess`, `canManageAccounts`, `canManageEmployees`, `canManageConfiguration`, `canManageUsers`, `canManageAttendance` | `@/lib/access-control`, `@/lib/auth` |
+| [lib/auth-server.ts](../lib/auth-server.ts) | `getSessionUser`, `getRealSessionUser`, `userWithPageAccess`, `canManageAccounts`, `canManageEmployees`, `canManageConfiguration`, `canManageUsers`, `canManageAttendance` | `@/lib/access-control`, `@/lib/ui-preferences`, `@/lib/workspace-session`, `@/lib/auth` |
 | [lib/auth.ts](../lib/auth.ts) | `SessionUser`, `SESSION_COOKIE`, `SESSION_SECONDS`, `sessionCookieOptions`, `sessionMaxAge`, `serializeSessionCookie`, `createSessionToken`, `verifySessionToken` | `@/lib/server-environment` |
 | [lib/auto-absence.ts](../lib/auto-absence.ts) | `SYSTEM_ABSENCE_NOTE`, `isSystemAbsence`, `systemAbsences`, `closeFinishedAttendanceDays`, `closeFinishedAttendanceDaysQuietly`, `SYSTEM_ABSENCE_REVIEW_DAYS`, `systemAbsencesWaiting` | `@/lib/attendance-calendar`, `@/lib/attendance-data`, `@/lib/attendance`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/google-sheets`, `@/lib/google-sheets-data`, `@/lib/system-settings` |
 | [lib/batch-edit.ts](../lib/batch-edit.ts) | `BatchKind`, `EditableBatch`, `SaleBeneficiary`, `SaleDetails`, `getReturnedBatch`, `BatchEditInput`, `saveReturnedBatch` | `@/lib/account-rules`, `@/lib/account-data`, `@/lib/admin-delete`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/date-checks`, `@/lib/db`, `@/lib/duplicate-entries`, `@/lib/employees`, `@/lib/entry-batches`, `@/lib/entry-controls`, `@/lib/google-sheets-data`, `@/lib/member-records`, `@/lib/program-age`, `@/lib/or-number`, `@/lib/program-amount-lock`, `@/lib/record-corrections`, `@/lib/work-calendar`, `@/lib/working-days`, `@/lib/remittance`, `@/lib/remittance-methods`, `@/lib/remittance-deadline` |
@@ -289,6 +289,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/utils.ts](../lib/utils.ts) | `cn` | — |
 | [lib/work-calendar.ts](../lib/work-calendar.ts) | `declaredNonWorkingDays`, `loadWorkCalendar` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/working-days` |
 | [lib/working-days.ts](../lib/working-days.ts) | `DeclaredDay`, `WorkCalendar`, `isWorkingDay`, `nextWorkingDay`, `previousWorkingDay` | — |
+| [lib/workspace-session.ts](../lib/workspace-session.ts) | `sessionForWorkspace` | `@/lib/access-control` |
 
 ## Components and UI connections
 
@@ -296,7 +297,7 @@ All routes pass through the authentication proxy except the three public auth en
 | --- | --- | --- |
 | [components/admin-delete.tsx](../components/admin-delete.tsx) | `AdminDeletePanel` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/admin-delete` |
 | [components/app-dialog.tsx](../components/app-dialog.tsx) | `confirmDialog`, `promptDialog`, `alertDialog`, `AppDialogHost` | `@/components/ui/button`, `@/components/ui/input` |
-| [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/clearing-day-end`, `@/components/lunch-break-screen`, `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/navigation`, `@/lib/friendly-api-errors`, `@/lib/maintenance-notice-text`, `@/lib/use-live-refresh`, `@/lib/ui-preferences` |
+| [components/app-shell.tsx](../components/app-shell.tsx) | `ShellUser`, `AppShell` | `@/components/clearing-day-end`, `@/components/lunch-break-screen`, `@/components/sidebar`, `@/components/topbar`, `@/lib/access-control`, `@/lib/workspace-session`, `@/lib/navigation`, `@/lib/friendly-api-errors`, `@/lib/maintenance-notice-text`, `@/lib/use-live-refresh`, `@/lib/ui-preferences` |
 | [components/attendance-calendar.tsx](../components/attendance-calendar.tsx) | `AttendanceCalendar` | `@/components/app-dialog`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/philippine-holidays`, `@/lib/date-format` |
 | [components/batch-editor.tsx](../components/batch-editor.tsx) | `BatchEditor` | `@/components/ui/button`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/batch-edit`, `@/lib/entry-controls` |
 | [components/brand-logo.tsx](../components/brand-logo.tsx) | `BrandLogo` | — |
@@ -333,7 +334,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [components/nightly-jobs-panel.tsx](../components/nightly-jobs-panel.tsx) | `NightlyJobsPanel` | `@/components/ui/button`, `@/components/ui/card`, `@/lib/nightly-jobs`, `@/lib/date-format` |
 | [components/nte-panel.tsx](../components/nte-panel.tsx) | `NtePanel` | `@/components/app-dialog`, `@/lib/use-live-refresh`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/search-select`, `@/lib/api-response`, `@/lib/nte`, `@/lib/date-format` |
 | [components/one-time-password.tsx](../components/one-time-password.tsx) | `IssuedPassword`, `OneTimePasswordNotice` | `@/components/ui/button`, `@/lib/date-format` |
-| [components/or-no-letter-check.tsx](../components/or-no-letter-check.tsx) | `OrNoLetterCheck` | `@/lib/access-control`, `@/lib/or-number` |
+| [components/or-no-letter-check.tsx](../components/or-no-letter-check.tsx) | `OrNoLetterCheck` | `@/lib/access-control`, `@/lib/or-number`, `@/lib/ui-preferences` |
 | [components/parked-drafts.tsx](../components/parked-drafts.tsx) | `ParkedDrafts` | `@/components/app-dialog`, `@/components/ui/button`, `@/lib/date-format` |
 | [components/people-filter.tsx](../components/people-filter.tsx) | `FilterPerson`, `NO_BRANCH`, `usePeopleFilter` | `@/components/ui/button`, `@/components/ui/input`, `@/lib/ui-preferences` |
 | [components/print-button.tsx](../components/print-button.tsx) | `PrintButton` | `@/components/ui/button` |
@@ -466,7 +467,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [next.config.ts](../next.config.ts) | — | — |
 | [package.json](../package.json) | — | — |
 | [postcss.config.mjs](../postcss.config.mjs) | — | — |
-| [proxy.ts](../proxy.ts) | `proxy`, `config` | `@/lib/auth`, `@/lib/access-control`, `@/lib/lunch-break`, `@/lib/session-account` |
+| [proxy.ts](../proxy.ts) | `proxy`, `config` | `@/lib/auth`, `@/lib/access-control`, `@/lib/lunch-break`, `@/lib/session-account`, `@/lib/ui-preferences`, `@/lib/workspace-session` |
 | [tsconfig.json](../tsconfig.json) | — | — |
 
 ## Maintenance scripts

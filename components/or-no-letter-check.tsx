@@ -4,13 +4,19 @@ import { useEffect, useState } from "react";
 
 import { canConfirmOrWithoutLetterFor } from "@/lib/access-control";
 import { isDigitsOnlyOrNumber } from "@/lib/or-number";
+import { ACTIVE_ROLE_COOKIE } from "@/lib/ui-preferences";
 
-// Whether the signed-in user is an Administrator, asked once per page load.
-let administrator: Promise<boolean> | null = null;
-const isAdministrator = () => administrator ??= fetch("/api/auth/session", { cache: "no-store" })
-  .then((response) => response.json() as Promise<{ success?: boolean; user?: { roleNames?: string[]; permissions?: { manageUsers?: boolean; manageAttendance?: boolean; viewAttendanceReports?: boolean } } }>)
-  .then((result) => Boolean(result.success && result.user && canConfirmOrWithoutLetterFor({ roleNames: result.user.roleNames ?? [], permissions: { manageUsers: Boolean(result.user.permissions?.manageUsers), manageAttendance: false, viewAttendanceReports: false } })))
-  .catch(() => false);
+// Whether the open workspace is an Administrator's (lib/workspace-session.ts), asked once per workspace.
+let administrator: { workspace: string; answer: Promise<boolean> } | null = null;
+const workspaceCookie = () => document.cookie.split("; ").find((item) => item.startsWith(`${ACTIVE_ROLE_COOKIE}=`)) ?? "";
+const isAdministrator = () => {
+  const workspace = workspaceCookie();
+  if (administrator?.workspace !== workspace) administrator = { workspace, answer: fetch("/api/auth/session", { cache: "no-store" })
+    .then((response) => response.json() as Promise<{ success?: boolean; active?: { roleNames?: string[]; permissions?: { manageUsers?: boolean } } }>)
+    .then((result) => Boolean(result.success && result.active && canConfirmOrWithoutLetterFor({ roleNames: result.active.roleNames ?? [], permissions: { manageUsers: Boolean(result.active.permissions?.manageUsers), manageAttendance: false, viewAttendanceReports: false } })))
+    .catch(() => false) };
+  return administrator.answer;
+};
 
 /**
  * "This OR number really has no letter" (owner, October 28, 2026): in a correction, an Administrator confirms a receipt

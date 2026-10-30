@@ -754,7 +754,7 @@ Role access is the union of assigned roles. Administrator/Admin always has all p
 | MAS | Member monitoring and cash/savings views; own-account member scope applies without oversight role. |
 | Collector or custom role | Shared employee pages by default; configure specialized page access as needed. |
 
-Nonexecutive roles using defaults also receive shared employee pages: Programs, Branches, Master Data, Members, MAM, Fidelity, Attendance, Leave Requests. Choosing a sidebar workspace does not grant a new role or action permission.
+Nonexecutive roles using defaults also receive shared employee pages: Programs, Branches, Master Data, Members, MAM, Fidelity, Attendance, Leave Requests. Choosing a sidebar workspace does not grant a new role or action permission; since October 30, 2026 it narrows every page and API to that workspace's role, including the MAS workspace (a virtual MAS sees only their own members). See [access control](access-control.md).
 
 Management rights are separated: IT/account managers maintain login accounts and roles; HR/IT/employee managers maintain employees; IT/configuration managers maintain programs and branches. `manage_users` remains broad and also controls remittance decisions, corrections and finance voiding. Privilege guards protect administrator and elevated role changes; page visibility alone does not bypass those guards.
 

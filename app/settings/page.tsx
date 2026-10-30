@@ -34,6 +34,8 @@ function SettingsContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [user, setUser] = useState<SessionUser | null>(null);
+  // The open workspace's role decides what may be managed here (lib/workspace-session.ts).
+  const [active, setActive] = useState<Pick<SessionUser, "roleNames" | "permissions"> | null>(null);
   const [sessionError, setSessionError] = useState("");
   const { profile, error: profileError, reload } = useProfile();
 
@@ -42,11 +44,12 @@ function SettingsContent() {
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load account settings.");
       setUser(result.user);
+      setActive(result.active ?? result.user);
     }).catch((failure) => setSessionError(failure instanceof Error ? failure.message : "Unable to load account settings."));
   }, []);
 
   // Organization settings are company-wide; only administrators and Finance manage them.
-  const canManageOrganization = Boolean(user && (user.permissions.manageUsers || user.roleNames.some((role) => ["administrator", "admin", "finance"].includes(role.trim().toLowerCase()))));
+  const canManageOrganization = Boolean(active && (active.permissions.manageUsers || active.roleNames.some((role) => ["administrator", "admin", "finance"].includes(role.trim().toLowerCase()))));
   const visibleTabs = tabs.filter((tab) => tab.id !== "organization" || canManageOrganization);
   const requested = searchParams.get("tab") as Tab | null;
   const tab: Tab = visibleTabs.some((item) => item.id === requested) ? requested! : "profile";

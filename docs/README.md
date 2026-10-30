@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 30, 2026: pages follow the open workspace.** Switching workspace in the sidebar now changes every page and action to that role, not just the dashboard: an Administrator in their Entry Clerk workspace sees Reports as an Entry Clerk, and the MAS workspace works as a MAS (own members only, the new MAM view). Users with several roles switch workspace to use another role's powers. See [access control](access-control.md).
+
 **October 30, 2026: MAM for MAS users.** A MAS sees My Members' Accounts with a this-month collection list (who owes, how much, who is close to forfeiting), phone cards, and simpler filters; clicking a member opens a Payment Card for everyone. A MAS can no longer run the company-wide Sync Statuses. See the [system guide](system-guide.md) (section 10, MAM).
 
 **October 30, 2026: crash screen and network failures.** A page error shows a "Something went wrong" screen with Try again and Go to dashboard; a mistyped address shows Page not found inside the app; the last screens that failed silently on a dropped connection now say so. See the [system guide](system-guide.md) (troubleshooting).

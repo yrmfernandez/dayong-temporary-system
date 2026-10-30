@@ -14,6 +14,8 @@ import {
 import { canAccessPath, isAdministratorRole } from "@/lib/access-control";
 import { allowedDuringLunch, isLunchBreak, LUNCH_BREAK_MESSAGE } from "@/lib/lunch-break";
 import { recheckSession, SESSION_RECHECK_MS } from "@/lib/session-account";
+import { ACTIVE_ROLE_COOKIE } from "@/lib/ui-preferences";
+import { sessionForWorkspace } from "@/lib/workspace-session";
 
 // API routes reachable without a session. Every other /api route needs a valid sign-in before its handler runs;
 // handlers still check their own page or action permission.
@@ -131,17 +133,8 @@ export async function proxy(request: NextRequest) {
     return finish(NextResponse.redirect(settingsUrl));
   }
 
-  if (
-    pathname !== "/" &&
-    !canAccessPath(
-      {
-        roleNames: session.roleNames,
-        permissions: session.permissions,
-        rolePages: session.rolePages,
-      },
-      pathname,
-    )
-  ) {
+  // Pages follow the open workspace (lib/workspace-session.ts); the lunch-break check above keeps the real roles.
+  if (pathname !== "/" && !canAccessPath(sessionForWorkspace(session, request.cookies.get(ACTIVE_ROLE_COOKIE)?.value), pathname)) {
     return finish(NextResponse.redirect(new URL("/", request.url)));
   }
 

@@ -17,6 +17,15 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Every page follows the open workspace, including the virtual MAS (2026-10-30)
+
+- **Owner:** the MAM upgrade should also apply to the virtual MAS in the workspace. And when changing workspace, pages do not behave as that workspace's role (an Administrator in their Entry Clerk workspace still sees Reports as an Administrator); fix it for all pages and roles.
+- **Found:** only the dashboard read the `dayong_role` cookie; every API and page check used all of the session's roles.
+- **Done:** `lib/workspace-session.ts` (`sessionForWorkspace`): a held role → that role only, its own permissions (new `rolePermissions` in the session, from Roles at sign-in and each 5-minute recheck; older sessions keep the combined ones until then) and its page access; MAS (not held, not executive-only) → virtual MAS with no permissions; anything else unchanged. `realAccess` keeps the real roles and `canAccessPath` requires both. Applied in `getSessionUser` (every API and the dashboard), the proxy's page check (not the lunch-break exception), and the sidebar (`app-shell`). `getRealSessionUser` for `/api/auth/session` (returns `user` real + `active` workspace) and the password change (re-issues the token); `createSessionToken` refuses a narrowed view. Settings' Organization tab and the OR-without-letter check follow `active`. No migration.
+- **Behaviour change:** a user with several roles now uses one role's powers at a time (e.g. Entry Clerk + Finance approves remittances in the Finance workspace only).
+- **Tests:** narrowing (Entry Clerk workspace loses Administrator pages, permissions and actions; virtual MAS; HR's MAS workspace never gains MAS-only pages; unheld, empty, malformed and executive cases unchanged; old sessions), MAM in the virtual MAS (own members, no Sync). Also fixed the lunch-break test, which failed whenever it ran during the real 12:00–12:59 PM break (its last check used the real clock; now pinned to 1:30 PM). All 282 tests and the build pass.
+- **Not checked in a browser:** sign in as an Administrator who also holds Entry Clerk, open the Entry Clerk workspace, then Reports.
+
 ### MAM for MAS users upgraded (2026-10-30)
 
 - **Owner:** the MAM, in the MAS users: update it, upgrade it. Chose all four: collection list, phone cards, simpler filters, member payment card.

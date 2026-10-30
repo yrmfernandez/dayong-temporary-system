@@ -21,6 +21,9 @@ export function sessionFor(user: LoginUserData, mustChangePassword: boolean): Se
       manageAttendance: user.roles.some((role) => role.manageAttendance),
       viewAttendanceReports: user.roles.some((role) => role.viewAttendanceReports),
     },
+    rolePermissions: Object.fromEntries(user.roles.map((role) => [role.name.trim().toLowerCase(), {
+      manageUsers: Boolean(role.manageUsers), manageAttendance: Boolean(role.manageAttendance), viewAttendanceReports: Boolean(role.viewAttendanceReports),
+    }])),
     // Only roles with configured page access are listed; the rest use their default pages.
     rolePages: Object.fromEntries(
       user.roles

@@ -1,24 +1,27 @@
 import { cookies } from "next/headers";
 
-import { canAccessPath, canManageAccountsFor, canManageConfigurationFor, canManageEmployeesFor } from "@/lib/access-control";
+import { canAccessPath, canManageAccountsFor, canManageConfigurationFor, canManageEmployeesFor, type AccessContext } from "@/lib/access-control";
+import { ACTIVE_ROLE_COOKIE } from "@/lib/ui-preferences";
+import { sessionForWorkspace } from "@/lib/workspace-session";
 import {
   SESSION_COOKIE,
   type SessionUser,
   verifySessionToken,
 } from "@/lib/auth";
 
-export async function getSessionUser(): Promise<
-  SessionUser | null
-> {
-  const cookieStore = await cookies();
+/**
+ * The signed-in user as the workspace chosen in the sidebar sees it (lib/workspace-session.ts): every page and API
+ * follows that role. Use getRealSessionUser for the account itself (its role list, issuing a new token).
+ */
+export async function getSessionUser(): Promise<(SessionUser & { realAccess?: AccessContext }) | null> {
+  const session = await getRealSessionUser();
+  return session && sessionForWorkspace(session, (await cookies()).get(ACTIVE_ROLE_COOKIE)?.value);
+}
 
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-
-  if (!token) {
-    return null;
-  }
-
-  return verifySessionToken(token);
+/** The signed-in user with all their roles, whatever workspace is open. */
+export async function getRealSessionUser(): Promise<SessionUser | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? verifySessionToken(token) : null;
 }
 
 /**

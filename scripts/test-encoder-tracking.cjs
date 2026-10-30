@@ -199,6 +199,7 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
         const withRoles = () => user && { roleNames: [], ...user, permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false, ...user.permissions } };
         return {
           getSessionUser: async () => user,
+          getRealSessionUser: async () => user,
           canManageUsers: async () => Boolean(user?.permissions?.manageUsers),
           canManageAttendance: async () => Boolean(user?.permissions?.manageAttendance),
           canManageAccounts: async () => Boolean(user && access.canManageAccountsFor(withRoles())),
@@ -1785,6 +1786,50 @@ test('MAS collection list: who owes this month, how much, the closest to forfeit
   assert.deepEqual([list.toCollect, list.closeToForfeit, list.paidThisMonth, list.collected, list.forfeited], [2800, 1, 1, 700, 0]);
   assert.equal(monthsLabel('2026-09', '2026-10'), 'Sep 2026 – Oct 2026');
   assert.equal(monthsLabel('2026-10', '2026-10'), 'Oct 2026');
+});
+
+test('a workspace narrows the session to its role; the MAS workspace is a MAS with only their own members (October 30, 2026)', async () => {
+  const h = harness();
+  const { sessionForWorkspace } = h.load('lib/workspace-session.ts');
+  const { canAccessPath, canConfirmOrWithoutLetterFor } = h.load('lib/access-control.ts');
+  const all = { manageUsers: true, manageAttendance: false, viewAttendanceReports: false }, none = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };
+  const admin = { userId: 'U1', employeeId: 'DPE-0001', name: 'Admin', roles: ['ROL-A', 'ROL-E'], roleNames: ['Administrator', 'Entry Clerk'], permissions: all,
+    rolePermissions: { administrator: all, 'entry clerk': none }, rolePages: {}, mustChangePassword: false, passwordStamp: '', checkedAt: 0 };
+
+  const clerk = sessionForWorkspace(admin, 'Entry%20Clerk');
+  assert.deepEqual([clerk.roleNames, clerk.roles, clerk.permissions], [['Entry Clerk'], ['ROL-E'], none], "only the Entry Clerk role and its own permissions");
+  assert.equal(canAccessPath(clerk, '/reports'), true);
+  assert.equal(canAccessPath(clerk, '/roles'), false, 'Administrator pages are closed in the Entry Clerk workspace');
+  assert.equal(canConfirmOrWithoutLetterFor(clerk), false, 'Administrator actions too');
+  assert.deepEqual(sessionForWorkspace(admin, 'Administrator').roleNames, ['Administrator']);
+
+  const mas = sessionForWorkspace(admin, 'MAS');
+  assert.deepEqual([mas.roleNames, mas.permissions], [['MAS'], none], 'the virtual MAS');
+  assert.equal(canAccessPath(mas, '/mam'), true);
+  assert.equal(canAccessPath(mas, '/payroll'), false);
+  // An HR officer's MAS workspace never opens a MAS page HR itself cannot open.
+  const hr = { ...admin, roles: ['ROL-H'], roleNames: ['HR Officer'], permissions: none, rolePermissions: { 'hr officer': none } };
+  assert.equal(canAccessPath(sessionForWorkspace(hr, 'MAS'), '/mas-sales'), false);
+  assert.equal(canAccessPath(sessionForWorkspace(hr, 'MAS'), '/mam'), true);
+
+  // Never wider: a role not held, no workspace, a single role, or an executive asking for MAS leave it as it is.
+  assert.equal(sessionForWorkspace(admin, 'Finance'), admin);
+  assert.equal(sessionForWorkspace(admin, ''), admin);
+  assert.equal(sessionForWorkspace(admin, '%E0%A4%A'), admin, 'a malformed cookie');
+  const ceo = { ...admin, roles: ['ROL-C'], roleNames: ['CEO'], permissions: none, rolePermissions: { ceo: none } };
+  assert.equal(sessionForWorkspace(ceo, 'MAS'), ceo);
+  assert.equal(sessionForWorkspace(ceo, 'CEO'), ceo);
+  // A session from before per-role permissions keeps the combined ones until its recheck.
+  assert.deepEqual(sessionForWorkspace({ ...admin, rolePermissions: undefined }, 'Entry Clerk').permissions, all);
+
+  // MAM in the virtual MAS: own members without choosing a branch, and no company-wide Sync.
+  const viewing = harness(mas);
+  const route = viewing.load('app/api/mam/route.ts');
+  const options = await (await route.GET(new Request('http://localhost/api/mam?options=1'))).json();
+  assert.equal(options.ownMembersOnly, true);
+  assert.equal((await route.POST(new Request('http://localhost/api/mam', { method: 'POST' }))).status, 403);
+  const real = harness(admin);
+  assert.equal((await (await real.load('app/api/mam/route.ts').GET(new Request('http://localhost/api/mam?options=1'))).json()).ownMembersOnly, false, 'the Administrator workspace still sees every member');
 });
 
 test('a MAS cannot run Sync Statuses, which rewrites every account in the company (October 30, 2026)', async () => {
@@ -4813,7 +4858,9 @@ test('lunch break: 12:00–12:59 PM Manila nobody saves except clocking in or ou
     assert.notEqual((await call(['Entry Clerk'], '/api/attendance')).status, 423, 'clocking in or out still works');
     assert.notEqual((await call(['Entry Clerk'], '/api/collections', 'GET')).status, 423, 'reading is not a save');
     assert.notEqual((await call(['Administrator'], '/api/collections')).status, 423, 'an Administrator\'s urgent fix');
+    // At 1:30 PM (pinned, so the test does not fail when it runs during the real lunch break).
+    Date.now = () => new Date('2026-10-28T05:30:00Z').getTime();
+    assert.notEqual((await call(['Entry Clerk'], '/api/collections')).status, 423, 'outside the break');
   } finally { Date.now = realNow; }
-  assert.notEqual((await call(['Entry Clerk'], '/api/collections')).status, 423, 'outside the break');
   delete Response.next;
 });

@@ -17,6 +17,8 @@ export type SessionUser = {
     manageAttendance: boolean;
     viewAttendanceReports: boolean;
   };
+  /** Each role's own permissions, keyed by lowercase role name, so a workspace gets only its role's (lib/workspace-session.ts). */
+  rolePermissions?: Record<string, SessionUser["permissions"]>;
   /** Signed in with the default or a weak password: only Settings is reachable until it is changed. */
   mustChangePassword: boolean;
   /** Fingerprint of the password hash at sign-in; a password change or reset elsewhere ends this session. */
@@ -60,6 +62,8 @@ function getSecretKey() {
 export async function createSessionToken(
   user: SessionUser,
 ) {
+  // A workspace view narrows the roles for one request; saving it would make the narrowing permanent.
+  if ("realAccess" in user && user.realAccess) throw new Error("A session token must be issued from the real session, not a workspace view.");
   const { expiresAt, ...claims } = user;
   return new SignJWT(claims)
     .setProtectedHeader({
@@ -120,6 +124,7 @@ export async function verifySessionToken(
               )
             : false,
       },
+      rolePermissions: readRolePermissions(payload.rolePermissions),
       mustChangePassword: payload.mustChangePassword === true,
       passwordStamp: String(payload.passwordStamp ?? ""),
       // Sessions issued before rechecks existed are rechecked on their next request.
@@ -129,6 +134,14 @@ export async function verifySessionToken(
   } catch {
     return null;
   }
+}
+
+function readRolePermissions(value: unknown): SessionUser["rolePermissions"] {
+  if (!value || typeof value !== "object") return undefined;
+  return Object.fromEntries(Object.entries(value).map(([role, flags]) => {
+    const flag = (key: string) => Boolean(flags && typeof flags === "object" && (flags as Record<string, unknown>)[key]);
+    return [role, { manageUsers: flag("manageUsers"), manageAttendance: flag("manageAttendance"), viewAttendanceReports: flag("viewAttendanceReports") }];
+  }));
 }
 
 function readRolePages(value: unknown): Record<string, string[]> {

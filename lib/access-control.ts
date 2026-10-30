@@ -7,6 +7,8 @@ export type AccessContext = {
   };
   /** Pages configured in Roles → Page access, keyed by lowercase role name. Absent means the role uses its defaults. */
   rolePages?: Record<string, string[]>;
+  /** In a sidebar workspace, the user's real roles: a page must be allowed by both (lib/workspace-session.ts). */
+  realAccess?: AccessContext;
 };
 
 // Default page access for roles whose page access has not been configured in the Roles sheet.
@@ -101,7 +103,8 @@ export function accessibleRoutes(context: AccessContext) {
   return [...routes];
 }
 
-export function canAccessPath(context: AccessContext, pathname: string) {
+export function canAccessPath(context: AccessContext, pathname: string): boolean {
+  if (context.realAccess && !canAccessPath(context.realAccess, pathname)) return false;
   const routes = accessibleRoutes(context);
   return routes.includes("*") || routes.some((route) => routeMatches(pathname, route));
 }

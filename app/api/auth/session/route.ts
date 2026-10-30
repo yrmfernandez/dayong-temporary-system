@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { getSessionUser } from "@/lib/auth-server";
+import { getRealSessionUser, getSessionUser } from "@/lib/auth-server";
 
 export async function GET() {
-  const user = await getSessionUser();
+  const [user, active] = await Promise.all([getRealSessionUser(), getSessionUser()]);
 
-  if (!user) {
+  if (!user || !active) {
     return NextResponse.json(
       {
         success: false,
@@ -17,6 +17,7 @@ export async function GET() {
 
   return NextResponse.json({
     success: true,
+    // The account with all its roles: the sidebar lists a workspace for each.
     user: {
       employeeId: user.employeeId,
       name: user.name,
@@ -25,7 +26,10 @@ export async function GET() {
       roleIds: user.roles,
       roleNames: user.roleNames,
       permissions: user.permissions,
+      rolePermissions: user.rolePermissions,
       mustChangePassword: user.mustChangePassword,
     },
+    // The open workspace's role and permissions (lib/workspace-session.ts): screens that change with the role use these.
+    active: { roleNames: active.roleNames, permissions: active.permissions },
   });
 }

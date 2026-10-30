@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth-server";
+import { getRealSessionUser } from "@/lib/auth-server";
 import { eq } from "drizzle-orm";
 import { currentDb, schema } from "@/lib/db";
 import { readingFresh } from "@/lib/google-sheets";
@@ -10,7 +10,8 @@ import { passwordStamp } from "@/lib/session-account";
 import { loadUsers } from "@/lib/users-sheet";
 
 export async function PATCH(request: Request) {
-  const session = await getSessionUser();
+  // The real session: the new token must keep every role, not the open workspace's.
+  const session = await getRealSessionUser();
   if (!session) return NextResponse.json({ success: false, message: "Please sign in." }, { status: 401 });
   try {
     const body = await request.json();
