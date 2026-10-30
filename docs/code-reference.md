@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-45 page routes, 76 API handlers, 146 library files, 67 component files; 650 scanned source/configuration/public-text files in total.
+45 page routes, 76 API handlers, 146 library files, 67 component files; 652 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -659,6 +659,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/repair-source-month-coverage.mjs](../scripts/repair-source-month-coverage.mjs) | `node:assert/strict`, `node:fs`, `@next/env`, `postgres`, `../lib/account-rules.ts`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
 | [scripts/report-other-program-source.mjs](../scripts/report-other-program-source.mjs) | `node:fs` | Yes; read source for semantics |
 | [scripts/reprice-corrected-entries.mjs](../scripts/reprice-corrected-entries.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | Yes; read source for semantics |
+| [scripts/reprice-legacy-weeks.mjs](../scripts/reprice-legacy-weeks.mjs) | `@next/env`, `postgres`, `../lib/entry-finance.mjs`, `../lib/remittance.ts` | Yes; read source for semantics |
 | [scripts/resolve-older-source-coverage-private.mjs](../scripts/resolve-older-source-coverage-private.mjs) | `node:fs`, `./source-history-rules.mjs`, `../lib/account-rules.ts` | No flag detected; read source before running |
 | [scripts/restore-clearing-incentives.mts](../scripts/restore-clearing-incentives.mts) | `@next/env`, `drizzle-orm`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/remittance-deadline`, `@/lib/remittance-workflow`, `@/lib/work-calendar` | Yes; read source for semantics |
 | [scripts/restore-ph70661323-4191s.mjs](../scripts/restore-ph70661323-4191s.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
@@ -773,5 +774,6 @@ These are an inventory, not instructions to run every script. Read each script's
 - [config/receipt-consolidations.json](../config/receipt-consolidations.json)
 - [config/seven-same-pay-consolidations-20261016.json](../config/seven-same-pay-consolidations-20261016.json)
 - [config/sheet-database-schema.json](../config/sheet-database-schema.json)
+- [config/web1327-crispin-receipt-correction-20261030.json](../config/web1327-crispin-receipt-correction-20261030.json)
 - [config/web24037-ds320-amount-correction-20261016.json](../config/web24037-ds320-amount-correction-20261016.json)
 - [public/robots.txt](../public/robots.txt)

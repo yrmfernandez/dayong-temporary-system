@@ -1,5 +1,9 @@
 # Dayong System documentation
 
+**October 30, 2026: October weeks 1 and 2 incentives.** Old-workbook entries filed under the clerks on Oct 1-11 had no company share, so the reports showed almost no incentive; `scripts/reprice-legacy-weeks.mjs` recalculates them with today's program rules (owner runs `--apply` on production).
+
+**October 30, 2026: old-site member imported.** Crispin Coffreros Santander (old web app, Calinan, DS-320) is in the database, his Sep 30 payment under receipt 24619 C (the old site had 24618 C, which is another member's receipt).
+
 **October 30, 2026: two handovers in From Clearing.** After one handover's batch is saved, From Clearing marks it "batch already saved" and lists it last; picking it again says which handover to pick instead of asking to clear again.
 
 **October 30, 2026: report weeks stay in the month.** A week still runs Monday to Sunday, but the first week of a month starts on the 1st and the last ends on its last day: October 2026 is Oct 1-4, 5-11, 12-18, 19-25, 26-31. See [reports](reports.md).

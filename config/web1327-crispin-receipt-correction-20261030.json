@@ -1,0 +1,12 @@
+{
+  "collections": [
+    {
+      "id": "1327",
+      "expectedAmount": 320,
+      "expectedProgram": "DS-320",
+      "expectedOr": "24618C",
+      "orNumber": "24619C",
+      "reason": "Owner, October 30, 2026: old web app collection 1327 (Crispin Coffreros Santander, DS-320, PHP 320, Sep 30, MAS Percy Cagaanan) was typed 24618 C, which is Ivy Bangkil's D-230 receipt already in the database. Percy's Calinan booklet has 24617, 24618 and 24620 C on Sep 30 and no 24619 C anywhere; the owner assigned 24619 C to this payment."
+    }
+  ]
+}

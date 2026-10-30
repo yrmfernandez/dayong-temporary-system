@@ -107,6 +107,13 @@ for (const correction of sourceCorrections) {
   if (!selectedCollectionIds?.includes(String(correction.id))) throw new Error('Every source correction must be in --collection-ids.');
   const row = siteCollections.find(row => row.record_id === String(correction.id));
   if (!row || money(row.Amount) !== correction.expectedAmount || row.Program !== correction.expectedProgram || !str(correction.reason)) throw new Error(`Source correction ${correction.id} does not match the reviewed record.`);
+  // A corrected receipt number (owner, October 30, 2026): expectedOr must match the export, as the amount does.
+  if (correction.orNumber !== undefined) {
+    if (str(row.OR) !== str(correction.expectedOr) || !/^\d+\s?[A-Z]$/i.test(str(correction.orNumber))) throw new Error(`Source correction ${correction.id}: the receipt number does not match the reviewed record.`);
+    row.OR = row.or_number = str(correction.orNumber);
+    console.log(`Reviewed correction ${correction.id}: receipt ${correction.expectedOr} → ${correction.orNumber}.`);
+  }
+  if (correction.amount === undefined) continue;
   if (!Number.isFinite(correction.amount) || correction.amount <= 0) throw new Error('Corrected amount must be positive.');
   row.Amount = row.amount = row.data_amount = String(correction.amount);
   console.log(`Reviewed correction ${correction.id}: amount ${correction.expectedAmount} → ${correction.amount}; incentive will be recalculated.`);
