@@ -11,8 +11,9 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate as showDate } from "@/lib/date-format";
+import { baseWithdrawalAmount } from "@/lib/fidelity-cap";
 
-type Account = { masEmployeeId: string; masName: string; employmentStatus: string; branch?: string; roles?: string[]; approved: number; pending: number; claimed: number; locked: number; withdrawable: number; remaining: number; separated: boolean; readyForRelease: boolean };
+type Account = { masEmployeeId: string; masName: string; employmentStatus: string; branch?: string; roles?: string[]; approved: number; pending: number; claimed: number; base: number; excess: number; remaining: number; separated: boolean };
 type Transaction = { id: string; masEmployeeId: string; masName: string; date: string; status: string; amount: number; type: string; direction: "in" | "out"; encodedBy: string; branch?: string; remarks?: string };
 type Data = { canViewAll: boolean; canMonitor: boolean; canClaim: boolean; currentEmployeeId: string; currentName: string; cap: number; accounts: Account[]; transactions: Transaction[] };
 
@@ -41,9 +42,9 @@ export function MyFidelity() {
   const { data, error } = useFidelity("me");
   const cap = data?.cap ?? 10000;
   const account: Account = data?.accounts.find((item) => item.masEmployeeId === data.currentEmployeeId)
-    ?? { masEmployeeId: data?.currentEmployeeId ?? "", masName: data?.currentName ?? "", employmentStatus: "", approved: 0, pending: 0, claimed: 0, locked: 0, withdrawable: 0, remaining: cap, separated: false, readyForRelease: false };
-  // The bar shows progress toward the locked amount; savings above it are withdrawable.
-  const progress = Math.min(100, Math.round((account.locked / cap) * 1000) / 10);
+    ?? { masEmployeeId: data?.currentEmployeeId ?? "", masName: data?.currentName ?? "", employmentStatus: "", approved: 0, pending: 0, claimed: 0, base: 0, excess: 0, remaining: cap, separated: false };
+  // The bar shows progress toward the base; savings above it are the excess.
+  const progress = Math.min(100, Math.round((account.base / cap) * 1000) / 10);
   const pendingProgress = Math.min(100 - progress, Math.round((account.pending / cap) * 1000) / 10);
   const history = data?.transactions ?? [];
 
@@ -56,7 +57,7 @@ export function MyFidelity() {
           <h1 className="text-2xl font-bold">My Fidelity</h1>
           <p className="mt-1 text-sm text-muted-foreground">{data ? `${data.currentName} · ${data.currentEmployeeId}` : "Loading your savings..."}</p>
         </div>
-        {data && <StatusBadge status={account.withdrawable > 0 ? "Excess withdrawable" : "Saving"} tone={account.withdrawable > 0 ? "success" : "info"} />}
+        {data && <StatusBadge status={account.excess > 0 ? "Above the base" : "Saving"} tone={account.excess > 0 ? "success" : "info"} />}
       </div>
     </header>
 
@@ -77,10 +78,10 @@ export function MyFidelity() {
             <div className="h-full bg-brand-gold/60" style={{ width: `${pendingProgress}%` }} title="Pending approval" />
           </div>
           <p className="text-sm text-muted-foreground">
-            {`The first ${money(cap)} stays locked until you leave the company. `}
-            {account.withdrawable > 0
-              ? `${money(account.withdrawable)} above it can be withdrawn any time through Finance.`
-              : `${money(account.remaining)} more until the locked amount is complete; anything above it can be withdrawn any time.`}
+            {`Your savings are not locked: through Finance you may withdraw part of the first ${money(cap)} (a percentage or a fixed amount), the excess above it, or the whole balance, any time. `}
+            {account.excess > 0
+              ? `${money(account.excess)} is above the first ${money(cap)}.`
+              : `${money(account.remaining)} more until you reach ${money(cap)}.`}
             {account.pending ? ` ${money(account.pending)} is waiting for remittance approval.` : ""}
           </p>
         </CardContent>
@@ -89,7 +90,7 @@ export function MyFidelity() {
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <MetricTile tone="success" icon={CheckCircle2} label="Current balance" value={money(account.approved)} detail="Approved savings" />
         <MetricTile tone="warning" icon={Clock3} label="Pending" value={money(account.pending)} detail="Awaiting remittance approval" />
-        <MetricTile tone="info" icon={Target} label="Withdrawable now" value={money(account.withdrawable)} detail={`Balance above ${money(cap)}`} />
+        <MetricTile tone="info" icon={Target} label="Excess" value={money(account.excess)} detail={`Balance above ${money(cap)}`} />
         <MetricTile tone="teal" icon={HandCoins} label="Withdrawn" value={money(account.claimed)} detail="Total paid out" />
       </div>
 
@@ -103,7 +104,7 @@ export function MyFidelity() {
                 {history.map((item) => <tr key={item.id} className="border-t">
                   <td className="p-3">{showDate(item.date)}</td>
                   <td className="p-3 font-mono text-xs">{item.id}</td>
-                  <td className="p-3">{item.type}</td>
+                  <td className="p-3">{item.type}{item.direction === "out" && item.remarks && <span className="block text-xs text-muted-foreground">{item.remarks}</span>}</td>
                   <td className="p-3 font-semibold tabular-nums">{item.direction === "in" ? "+" : "−"}{money(item.amount)}</td>
                   <td className="p-3"><StatusBadge status={item.status} /></td>
                   <td className="p-3">{item.encodedBy || "—"}</td>
@@ -122,8 +123,10 @@ type Filters = { masId: string; branch: string; role: string; employment: string
 const emptyFilters: Filters = { masId: "", branch: "", role: "", employment: "", standing: "", balance: "", from: "", to: "", type: "", status: "" };
 const field = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 /** An employee's Fidelity standing, as the Status column shows it. */
-const STANDINGS: Array<[string, string]> = [["saving", "Saving (below the locked amount)"], ["excess", "Excess withdrawable"], ["release", "Left the company, balance to release"], ["left", "Left the company, nothing to release"]];
-const standingOf = (item: Account) => item.separated ? (item.readyForRelease ? "release" : "left") : item.withdrawable > 0 ? "excess" : "saving";
+const STANDINGS: Array<[string, string]> = [["saving", "Saving (up to the base)"], ["excess", "Above the base (has excess)"], ["release", "Left the company, balance to pay out"], ["left", "Left the company, nothing to pay out"]];
+const standingOf = (item: Account) => item.separated ? (item.approved > 0 ? "release" : "left") : item.excess > 0 ? "excess" : "saving";
+type Kind = "base" | "excess" | "full";
+const KIND_LABEL: Record<Kind, string> = { base: "Withdraw base", excess: "Withdraw excess", full: "Withdraw all" };
 
 /** A labelled dropdown filter; `options` are values, or [value, label] pairs. */
 function Choice({ label, value, onChange, all, options }: { label: string; value: string; onChange: (value: string) => void; all: string; options: Array<string | [string, string]> }) {
@@ -145,8 +148,9 @@ export function FidelityMonitoring() {
   const set = (key: keyof Filters) => (value: string) => setFilters((current) => ({ ...current, [key]: value }));
   const masId = filters.masId;
   const [busy, setBusy] = useState(false);
-  // The payout being recorded: excess withdrawal or separation release, with where the cash came from.
-  const [payout, setPayout] = useState<{ account: Account; kind: "excess" | "separation"; amount: string; notes: string; cash: CashOut } | null>(null);
+  // The payout being recorded (owner, October 30, 2026): from the base by percentage or fixed amount, the excess, or
+  // the whole balance, with where the cash came from.
+  const [payout, setPayout] = useState<{ account: Account; kind: Kind; mode: "percent" | "fixed"; amount: string; notes: string; cash: CashOut } | null>(null);
   const options = useMemo(() => {
     const list = data?.accounts ?? [];
     const sorted = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -183,19 +187,28 @@ export function FidelityMonitoring() {
   const total = accounts.reduce((sum, item) => sum + item.approved, 0);
   const pending = accounts.reduce((sum, item) => sum + item.pending, 0);
 
-  // An excess withdrawal takes part or all of the balance above the cap; a separation release pays out everything.
-  const startPayout = (account: Account, kind: "excess" | "separation") => {
+  const startPayout = (account: Account, kind: Kind) => {
     setError(""); setMessage("");
     setPayout((current) => current?.account.masEmployeeId === account.masEmployeeId && current.kind === kind ? null
-      : { account, kind, amount: String(kind === "excess" ? account.withdrawable : account.approved), notes: "", cash: { account: "", branch: account.branch ?? "", date: manilaToday() } });
+      : { account, kind, mode: "percent", amount: kind === "excess" ? String(account.excess) : kind === "base" ? "100" : String(account.approved), notes: "", cash: { account: "", branch: account.branch ?? "", date: manilaToday() } });
+  };
+  /** What the payout pays: null when the entry is not a usable amount. */
+  const payoutAmount = (current: NonNullable<typeof payout>) => {
+    const { account, kind } = current, entered = Number(current.amount);
+    if (kind === "full") return account.approved > 0 ? account.approved : null;
+    if (kind === "base") return baseWithdrawalAmount(account.base, current.mode, entered);
+    return entered > 0 && entered <= account.excess ? Math.round(entered * 100) / 100 : null;
   };
   async function withdraw() {
     if (!payout) return;
-    const { account, kind } = payout, amount = kind === "excess" ? Number(payout.amount) : account.approved;
-    if (kind === "excess" && (!(amount > 0) || amount > account.withdrawable)) { setError(`Enter an amount from ₱0.01 to ${money(account.withdrawable)}.`); return; }
+    const { account, kind, mode } = payout, paid = payoutAmount(payout);
+    if (paid === null) {
+      setError(kind === "base" && mode === "percent" ? "Enter a percentage from 0.01 to 100." : `Enter an amount from ₱0.01 to ${money(kind === "base" ? account.base : account.excess)}.`);
+      return;
+    }
     setBusy(true); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/fidelity", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ masEmployeeId: account.masEmployeeId, kind, amount, notes: payout.notes, ...payout.cash }) });
+      const response = await fetch("/api/fidelity", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ masEmployeeId: account.masEmployeeId, kind, mode, amount: kind === "base" ? Number(payout.amount) : paid, notes: payout.notes, ...payout.cash }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || "Unable to record the withdrawal.");
       setPayout(null); setMessage(`${result.message} The payout is in the cash ledger.`); await load();
@@ -210,7 +223,7 @@ export function FidelityMonitoring() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[.2em] text-muted-foreground">Employee savings</p>
           <h1 className="text-2xl font-bold">Fidelity Monitoring</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Fidelity is the employee&apos;s own money added to their remittances, with no limit. The first {money(data?.cap ?? 10000)} is released only when the employee leaves the company; anything above it can be withdrawn any time.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Fidelity is the employee&apos;s own money added to their remittances, with no limit. Nothing is locked: the first {money(data?.cap ?? 10000)} (the base) can be withdrawn by a percentage or a fixed amount, the excess above it on its own, or the whole balance at once.</p>
         </div>
       </div>
     </header>
@@ -221,7 +234,7 @@ export function FidelityMonitoring() {
         <MetricTile tone="brand" icon={Users} label="MAS accounts" value={String(accounts.length)} />
         <MetricTile tone="success" icon={PiggyBank} label="Current balances" value={money(total)} />
         <MetricTile tone="warning" icon={Clock3} label="Pending" value={money(pending)} detail="Awaiting remittance approval" />
-        <MetricTile tone="teal" icon={CheckCircle2} label="With withdrawable excess" value={String(accounts.filter((item) => item.withdrawable > 0).length)} detail={money(accounts.reduce((sum, item) => sum + item.withdrawable, 0))} />
+        <MetricTile tone="teal" icon={CheckCircle2} label="With excess" value={String(accounts.filter((item) => item.excess > 0).length)} detail={money(accounts.reduce((sum, item) => sum + item.excess, 0))} />
       </div>
       <Card><CardContent className="space-y-3 p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -250,26 +263,36 @@ export function FidelityMonitoring() {
         <CardContent>
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full min-w-[900px] text-left text-sm">
-              <thead><tr>{["Employee", "Balance", `Locked (first ${money(data.cap)})`, "Withdrawable", "Pending", "Withdrawn", "Status", "Action"].map((item) => <th key={item} className="p-3">{item}</th>)}</tr></thead>
+              <thead><tr>{["Employee", "Balance", `Base (first ${money(data.cap)})`, "Excess", "Pending", "Withdrawn", "Status", "Action"].map((item) => <th key={item} className="p-3">{item}</th>)}</tr></thead>
               <tbody>
                 {accounts.map((item) => <Fragment key={item.masEmployeeId}><tr className="border-t">
                   <td className="p-3 font-medium">{item.masName}<span className="block text-xs font-normal text-muted-foreground">{item.masEmployeeId}</span></td>
                   <td className="p-3 font-semibold tabular-nums">{money(item.approved)}</td>
-                  <td className="p-3 tabular-nums">{money(item.locked)}</td>
-                  <td className="p-3 tabular-nums">{money(item.withdrawable)}</td>
+                  <td className="p-3 tabular-nums">{money(item.base)}</td>
+                  <td className="p-3 tabular-nums">{money(item.excess)}</td>
                   <td className="p-3 tabular-nums">{money(item.pending)}</td>
                   <td className="p-3 tabular-nums">{money(item.claimed)}</td>
-                  <td className="p-3"><StatusBadge status={item.separated ? `Left (${item.employmentStatus})` : item.withdrawable > 0 ? "Excess withdrawable" : "Saving"} tone={item.separated ? "warning" : item.withdrawable > 0 ? "success" : "info"} />{item.branch && <span className="mt-1 block text-xs text-muted-foreground">{item.branch}</span>}</td>
-                  <td className="p-3">{data.canClaim && (item.withdrawable > 0 || item.readyForRelease) ? <div className="flex flex-wrap gap-2">
-                    {item.withdrawable > 0 && !item.separated && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startPayout(item, "excess")}>Withdraw excess</Button>}
-                    {item.readyForRelease && <Button type="button" size="sm" disabled={busy} onClick={() => startPayout(item, "separation")}>Release all (left company)</Button>}
+                  <td className="p-3"><StatusBadge status={item.separated ? `Left (${item.employmentStatus})` : item.excess > 0 ? "Above the base" : "Saving"} tone={item.separated ? "warning" : item.excess > 0 ? "success" : "info"} />{item.branch && <span className="mt-1 block text-xs text-muted-foreground">{item.branch}</span>}</td>
+                  <td className="p-3">{data.canClaim && item.approved > 0 ? <div className="flex flex-wrap gap-2">
+                    {item.base > 0 && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startPayout(item, "base")}>{KIND_LABEL.base}</Button>}
+                    {item.excess > 0 && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startPayout(item, "excess")}>{KIND_LABEL.excess}</Button>}
+                    <Button type="button" size="sm" disabled={busy} onClick={() => startPayout(item, "full")}>{KIND_LABEL.full}</Button>
                   </div> : "—"}</td>
                 </tr>
                 {payout?.account.masEmployeeId === item.masEmployeeId && <tr><td colSpan={8} className="border-t bg-muted/30 p-3">
-                  <p className="mb-2 text-sm font-semibold">{payout.kind === "excess" ? `Withdraw from ${item.masName}'s Fidelity (up to ${money(item.withdrawable)})` : `Release the whole ${money(item.approved)} to ${item.masName}, who has left the company`}</p>
+                  <p className="mb-2 text-sm font-semibold">{payout.kind === "base" ? `Withdraw from ${item.masName}'s base (up to ${money(item.base)})` : payout.kind === "excess" ? `Withdraw from ${item.masName}'s excess (up to ${money(item.excess)})` : `Withdraw the whole ${money(item.approved)} of ${item.masName}'s Fidelity`}</p>
                   <CashOutFields value={payout.cash} onChange={(cash) => setPayout({ ...payout, cash })} />
-                  <div className="mt-3 grid gap-3 sm:grid-cols-[10rem_1fr_auto] sm:items-end">
-                    <label className="space-y-1 text-sm">Amount<input type="number" min="0.01" step="0.01" max={item.withdrawable} className={field} disabled={payout.kind === "separation"} value={payout.kind === "separation" ? String(item.approved) : payout.amount} onChange={(event) => setPayout({ ...payout, amount: event.target.value })} /></label>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[16rem_1fr_auto] sm:items-end">
+                    {payout.kind === "base" ? <div className="space-y-1 text-sm">
+                      <div className="flex gap-2">
+                        <select aria-label="Withdraw by" className={`${field} w-28`} value={payout.mode} onChange={(event) => setPayout({ ...payout, mode: event.target.value === "fixed" ? "fixed" : "percent", amount: event.target.value === "fixed" ? String(item.base) : "100" })}>
+                          <option value="percent">Percent</option><option value="fixed">Fixed ₱</option>
+                        </select>
+                        <input type="number" min="0.01" step="0.01" max={payout.mode === "percent" ? 100 : item.base} aria-label={payout.mode === "percent" ? "Percentage of the base" : "Amount"} className={field} value={payout.amount} onChange={(event) => setPayout({ ...payout, amount: event.target.value })} />
+                      </div>
+                      <span className="block text-xs text-muted-foreground">{payoutAmount(payout) === null ? "Enter a usable amount" : `Pays ${money(payoutAmount(payout)!)}`}</span>
+                    </div>
+                    : <label className="space-y-1 text-sm">Amount<input type="number" min="0.01" step="0.01" max={item.excess} className={field} disabled={payout.kind === "full"} value={payout.kind === "full" ? String(item.approved) : payout.amount} onChange={(event) => setPayout({ ...payout, amount: event.target.value })} /></label>}
                     <label className="space-y-1 text-sm">Reference or notes (optional)<input className={field} value={payout.notes} onChange={(event) => setPayout({ ...payout, notes: event.target.value })} /></label>
                     <div className="flex gap-2"><Button type="button" disabled={busy || !cashOutReady(payout.cash)} onClick={() => void withdraw()}>Record payout</Button><Button type="button" variant="ghost" onClick={() => setPayout(null)}>Cancel</Button></div>
                   </div>
@@ -293,7 +316,7 @@ export function FidelityMonitoring() {
                   <td className="p-3 font-mono text-xs">{item.id}</td>
                   <td className="p-3">{item.masName}</td>
                   <td className="p-3">{item.branch || branchOf.get(item.masEmployeeId) || "—"}</td>
-                  <td className="p-3">{item.type}</td>
+                  <td className="p-3">{item.type}{item.direction === "out" && item.remarks && <span className="block text-xs text-muted-foreground">{item.remarks}</span>}</td>
                   <td className="p-3 font-semibold tabular-nums">{item.direction === "in" ? "+" : "−"}{money(item.amount)}</td>
                   <td className="p-3"><StatusBadge status={item.status} /></td>
                   <td className="p-3">{item.encodedBy || "—"}</td>

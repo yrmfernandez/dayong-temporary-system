@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 30, 2026: Fidelity is no longer locked.** The first ₱10,000 can be withdrawn by percentage or fixed amount, the excess above it on its own, or the whole balance, any time, while employed or after leaving. See [Fidelity](fidelity.md).
+
 **October 27, 2026: one date format.** Every screen shows dates as Oct 27, 2026 (times Oct 27, 2026 3:05 PM, months Oct 2026); downloads keep 2026-10-27 for Excel. See the [system guide](system-guide.md) (implementation limits, item 7).
 
 **October 27, 2026: Fully Paid.** Accounts that complete their program are **Fully Paid** (no dues, no more payments, never forfeited), recorded automatically or by hand on the new Fully Paid page with certificate numbers that continue the old pattern per area (DAVAO2026-039), and certificate release tracking; the old Fully Paid form can be imported. See the [system guide](system-guide.md) (section 5, Fully Paid).

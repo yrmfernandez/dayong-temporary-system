@@ -4073,7 +4073,42 @@ test('Fidelity opening balances from the old system count in; an old withdrawal 
   const data = await getFidelityData('', true);
   assert.deepEqual(data.transactions.map((item) => [item.id, item.direction]).sort(), [['FOB-1', 'in'], ['FOW-1', 'out'], ['REM-1', 'in']]);
   const account = data.accounts.find((item) => item.masEmployeeId === 'DPE-0002');
-  assert.deepEqual([account.approved, account.claimed, account.locked, account.withdrawable], [12504.2, 4378.4, 10000, 2504.2], 'total minus the old withdrawal, plus the new contribution');
+  assert.deepEqual([account.approved, account.claimed, account.base, account.excess], [12504.2, 4378.4, 10000, 2504.2], 'total minus the old withdrawal, plus the new contribution');
+});
+
+test('Fidelity is not locked: an active employee withdraws part of the base by percent, the excess, or everything (October 30, 2026)', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-0009', name: 'finance', roleNames: ['Finance'], permissions: {} });
+  h.rows.Employees = [[], ['DPE-0002', 'MAS Two', 'BR-1', 'MAS', 'active']];
+  h.rows.Remittances = [['remittance_id']];
+  h.rows.Fidelity = [['claim_id'], ['FOB-1', 'DPE-0002', 'MAS Two', '', '', 'Opening Balance (old system)', 0, 13000, '2026-09-30', 'Approved', '']];
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS Two' }]);
+  await seed('cash_accounts', [{ cash_account_id: 'CAC-1', account_name: 'Cash on Hand', account_type: 'cash', opening_balance: 0, status: 'active' }]);
+  await h.sync();
+  const route = h.load('app/api/fidelity/route.ts');
+  const patch = (body) => route.PATCH(new Request('http://localhost/api/fidelity', { method: 'PATCH', body: JSON.stringify({ masEmployeeId: 'DPE-0002', account: 'Cash on Hand', branch: 'BR-1', date: '2026-10-20', ...body }), headers: { 'Content-Type': 'application/json' } }));
+  // The test sheet does not read the database: copy the saved payouts into it, as production reads them.
+  const opening = h.rows.Fidelity;
+  const balance = async () => {
+    const saved = await query("select fidelity_id, mas_employee_id, mas_name, transaction_type, fidelity_amount::float8 as amount, transaction_date::text as date, status, notes from fidelity where fidelity_id like 'FCL%' order by row_seq");
+    h.rows.Fidelity = [...opening, ...saved.map((row) => [row.fidelity_id, row.mas_employee_id, row.mas_name, '', '', row.transaction_type, 0, row.amount, row.date, row.status, row.notes ?? ''])];
+    const { getFidelityData } = h.load('lib/fidelity.ts'); const account = (await getFidelityData('', true)).accounts.find((item) => item.masEmployeeId === 'DPE-0002'); return [account.approved, account.base, account.excess]; };
+  assert.deepEqual(await balance(), [13000, 10000, 3000]);
+  assert.equal((await patch({ kind: 'excess', amount: 3000.01 })).status, 400, 'no more than the excess');
+  assert.equal((await patch({ kind: 'base', mode: 'percent', amount: 120 })).status, 400, 'no more than 100%');
+  const excess = await patch({ kind: 'excess', amount: 3000 });
+  assert.equal(excess.status, 200, JSON.stringify(await excess.clone().json()));
+  assert.deepEqual(await balance(), [10000, 10000, 0]);
+  const half = await patch({ kind: 'base', mode: 'percent', amount: 50 });
+  assert.equal(half.status, 200, JSON.stringify(await half.clone().json()));
+  assert.deepEqual(await balance(), [5000, 5000, 0], 'the base is withdrawn while still employed');
+  assert.equal((await patch({ kind: 'base', mode: 'fixed', amount: 1000 })).status, 200);
+  assert.deepEqual(await balance(), [4000, 4000, 0]);
+  const all = await patch({ kind: 'full' });
+  assert.equal(all.status, 200, JSON.stringify(await all.clone().json()));
+  assert.deepEqual(await balance(), [0, 0, 0]);
+  const paid = await query("select transaction_type, fidelity_amount::float8 as amount, notes from fidelity where fidelity_id like 'FCL%' order by row_seq");
+  assert.deepEqual(paid.map((row) => Object.values(row)), [['Excess Withdrawal', 3000, null], ['Base Withdrawal', 5000, '50% of ₱10,000.00'], ['Base Withdrawal', 1000, null], ['Full Withdrawal', 4000, null]]);
+  assert.equal((await query("select sum(amount)::float8 as out from cash_transactions where direction = 'outflow' and category = 'Fidelity release'"))[0].out, 13000, 'each payout leaves the cash ledger');
 });
 
 test('a resubmitted batch keeps the time its cash was cleared, even when the MAS was cleared again later', async () => {

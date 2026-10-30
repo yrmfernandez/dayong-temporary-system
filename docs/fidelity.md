@@ -5,15 +5,17 @@ Fidelity is a voluntary savings benefit. It is the employee's **own money**, han
 - The Entry Clerk records the amount with a Collections or New Sales batch (or on the Remittance for batches encoded without it). Zero is allowed and there is **no limit**.
 - Fidelity is **added to the total remittance**: the cash expected from the batch is the company remittance plus the Fidelity. Incentives and commissions are not reduced.
 - Any accountable employee (MAS or Collector) may give Fidelity. It counts once the remittance is approved.
-- **The first ₱10,000 of the balance is locked** until the employee leaves the company (employment status no longer Active, such as resigned or inactive). Contributions continue past ₱10,000.
-- **Anything above ₱10,000 can be withdrawn any time.** Finance or an Administrator records an **Excess Withdrawal** of up to the amount above ₱10,000.
-- When an employee has left, Finance or an Administrator records a **Separation Release** of the whole balance.
-- Every contribution and withdrawal stores its encoder and timestamp. The older "Claim" records (from the previous release-at-₱10,000 rule) still count as money paid out.
+- **Nothing is locked (owner, October 30, 2026).** The first ₱10,000 of the balance is the **base**; anything above it is the **excess**. Contributions continue past ₱10,000. Finance or an Administrator records, at any time, whether the employee is still employed or has left:
+  - a **Base Withdrawal** from the first ₱10,000, by **percentage** (of the base the employee holds now: 50% of ₱10,000 is ₱5,000, 25% of a ₱8,000 base is ₱2,000) or by **fixed amount**, up to the base. A percentage is kept with the payout ("50% of ₱10,000.00") and shown in the history;
+  - an **Excess Withdrawal** of up to the amount above ₱10,000;
+  - a **Full Withdrawal** of the whole balance.
+- The balance is one amount: after any payout the base and excess are worked out again from what is left (₱13,000 less a ₱5,000 base withdrawal leaves ₱8,000, all base).
+- Every contribution and withdrawal stores its encoder and timestamp. The older "Claim" records (from the release-at-₱10,000 rule) and "Separation Release" records (from the October 2 to October 29 rule, when the first ₱10,000 was locked until the employee left) still count as money paid out.
 
 ## My Fidelity vs Fidelity monitoring
 
-- **My Fidelity** (`/fidelity/me`) always shows only the signed-in employee's own savings: balance, the locked amount, what can be withdrawn now, pending amounts, total withdrawn, and their history. It is under My Portfolio for MAS and under My HR for every other role, and uses `GET /api/fidelity?scope=me`.
-- **Fidelity** (`/fidelity`) is company-wide monitoring for Administrator, Finance, CEO, and President. Finance or an Administrator records withdrawals there (`PATCH /api/fidelity` with `kind: "excess"` and an amount, or `kind: "separation"`). Other roles opening `/fidelity` are redirected to My Fidelity.
+- **My Fidelity** (`/fidelity/me`) always shows only the signed-in employee's own savings: balance, the excess above ₱10,000, pending amounts, total withdrawn, and their history. It is under My Portfolio for MAS and under My HR for every other role, and uses `GET /api/fidelity?scope=me`.
+- **Fidelity** (`/fidelity`) is company-wide monitoring for Administrator, Finance, CEO, and President. Finance or an Administrator records withdrawals there (`PATCH /api/fidelity` with `kind: "base"` plus `mode: "percent"` or `"fixed"` and `amount`, `kind: "excess"` and an amount, or `kind: "full"`). Other roles opening `/fidelity` are redirected to My Fidelity.
 
 ## Where it shows
 

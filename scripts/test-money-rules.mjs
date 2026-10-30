@@ -1,12 +1,12 @@
 // Money rules (upgrade #9, October 26, 2026): the rules that decide pesos, tested on their own so a change to one of
 // them cannot move an amount unnoticed. Basic cases live in test-remittance.mjs and test-account-rules.mjs; this file
 // adds the invariants (every centavo accounted for), rounding, short months, multi-month and flexible splits, and the
-// Fidelity lock. Deadline minutes and declared days are in test-encoder-tracking.cjs (the deadline module uses @/ paths).
+// Fidelity base. Deadline minutes and declared days are in test-encoder-tracking.cjs (the deadline module uses @/ paths).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { calculateRemittance, calculateSaleIncentive, withoutIncentive } from "../lib/remittance.ts";
 import { accountState, allocations } from "../lib/account-rules.ts";
-import { FIDELITY_CAP, fidelityStanding } from "../lib/fidelity-cap.ts";
+import { FIDELITY_CAP, baseWithdrawalAmount, fidelityStanding } from "../lib/fidelity-cap.ts";
 
 const cents = (value) => Math.round(value * 100);
 const tier = (overrides = {}) => ({ id: "T", role: "MAS", fromMonth: 1, toMonth: 999, incentiveType: "percentage", markUp: 0, incentiveAmount: 30, ...overrides });
@@ -116,12 +116,19 @@ test("short months: a payment on the 31st is due on the last day of shorter mont
   assert.equal(on("2026-04-01").balance, 700, "60D owes the two missed months");
 });
 
-test("Fidelity: the first ₱10,000 is locked until the employee leaves; only the balance above it can be withdrawn", () => {
+test("Fidelity: nothing is locked; the base (first ₱10,000) by percent or fixed amount, the excess on its own", () => {
   assert.equal(FIDELITY_CAP, 10000);
-  assert.deepEqual(fidelityStanding(0, false), { locked: 0, withdrawable: 0, remaining: 10000, readyForRelease: false });
-  assert.deepEqual(fidelityStanding(9999.99, false), { locked: 9999.99, withdrawable: 0, remaining: 0.01, readyForRelease: false });
-  assert.deepEqual(fidelityStanding(10000, false), { locked: 10000, withdrawable: 0, remaining: 0, readyForRelease: false });
-  assert.deepEqual(fidelityStanding(12500.5, false), { locked: 10000, withdrawable: 2500.5, remaining: 0, readyForRelease: false });
-  assert.equal(fidelityStanding(12500.5, true).readyForRelease, true, "an employee who left may take the whole balance");
-  assert.equal(fidelityStanding(0, true).readyForRelease, false, "nothing to release");
+  assert.deepEqual(fidelityStanding(0), { base: 0, excess: 0, remaining: 10000 });
+  assert.deepEqual(fidelityStanding(9999.99), { base: 9999.99, excess: 0, remaining: 0.01 });
+  assert.deepEqual(fidelityStanding(10000), { base: 10000, excess: 0, remaining: 0 });
+  assert.deepEqual(fidelityStanding(12500.5), { base: 10000, excess: 2500.5, remaining: 0 });
+  assert.equal(baseWithdrawalAmount(10000, "percent", 50), 5000, "50% of the base");
+  assert.equal(baseWithdrawalAmount(8000, "percent", 25), 2000, "a percentage of the base held, not of ₱10,000");
+  assert.equal(baseWithdrawalAmount(10000, "percent", 100), 10000);
+  assert.equal(baseWithdrawalAmount(10000, "percent", 101), null, "over 100%");
+  assert.equal(baseWithdrawalAmount(10000, "fixed", 3000), 3000);
+  assert.equal(baseWithdrawalAmount(10000, "fixed", 10000.01), null, "more than the base");
+  assert.equal(baseWithdrawalAmount(10000, "fixed", 0), null);
+  assert.equal(baseWithdrawalAmount(0, "percent", 50), null, "no base");
+  assert.equal(baseWithdrawalAmount(10000, "", 50), null, "a mode is required");
 });

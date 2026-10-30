@@ -107,7 +107,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/cash-transactions` | Consolidated cash ledger plus other manual inflows/outflows. |
 | `/vendor-payables` | Vendor invoices, outstanding balances, and partial/full payment tracking. |
 | `/commissions` | Earned incentive comparison and the commission register; create and mark commissions Paid. |
-| `/fidelity`, `/fidelity/me` | Staff savings, contributions, pending amounts, locked balance, withdrawals, and separation releases. |
+| `/fidelity`, `/fidelity/me` | Staff savings, contributions, pending amounts, base and excess, and base (percent or fixed), excess and full withdrawals. |
 | `/payroll` | Pay profiles, Draft runs, adjustments, approval, payment, printable payslips. |
 | `/employees` | Staff register, employment status, operational roles, multiple branches, and primary branch. Administrators can change an Employee ID; every reference follows (section 11). |
 | `/attendance` | Your current-day time-in/time-out and attendance calendar. |
@@ -440,17 +440,17 @@ Only **Approved** Remittance contributions count toward available Fidelity. Pend
 
 ```text
 Balance      = max(0, approved contributions − recorded withdrawals)
-Locked       = min(balance, PHP 10,000)
-Withdrawable = max(0, balance − PHP 10,000), while employed
+Base         = min(balance, PHP 10,000)
+Excess       = max(0, balance − PHP 10,000)
 ```
 
-PHP 10,000 is the locked portion, **not a lifetime contribution cap**. Staff may continue adding money. Active employees can withdraw only the excess; once employment status is no longer Active, a Separation Release pays the whole remaining balance. Old Claim records still count as paid out.
+**Nothing is locked (October 30, 2026).** PHP 10,000 is the base, **not a lifetime contribution cap** and no longer held until the employee leaves. At any time Finance or an Administrator records a **Base Withdrawal** (a percentage of the base held, or a fixed amount, up to the base), an **Excess Withdrawal** (up to the excess), or a **Full Withdrawal** (the whole balance). Old Claim and Separation Release records still count as paid out.
 
-**Filters on Fidelity Monitoring (October 16, 2026).** Employee (search by name or ID), branch, role, employment status, Fidelity status (Saving, Excess withdrawable, Left with a balance to release, Left with nothing to release) and balance (with savings or pending, or none yet) narrow both the balances and the history; History from/to dates, type (Contribution, Excess Withdrawal, Separation Release, Claim) and status narrow the history. The line under the filters counts what is shown and, with dates, the approved savings and the amounts paid out in that period. **Clear filters** resets them. The history shows each entry's branch. [fidelity-views.tsx](../app/fidelity/fidelity-views.tsx).
+**Filters on Fidelity Monitoring (October 16, 2026).** Employee (search by name or ID), branch, role, employment status, Fidelity status (Saving, Above the base, Left with a balance to pay out, Left with nothing to pay out) and balance (with savings or pending, or none yet) narrow both the balances and the history; History from/to dates, type (Contribution, Base Withdrawal, Excess Withdrawal, Full Withdrawal, and the older Separation Release and Claim) and status narrow the history. The line under the filters counts what is shown and, with dates, the approved savings and the amounts paid out in that period. **Clear filters** resets them. The history shows each entry's branch. [fidelity-views.tsx](../app/fidelity/fidelity-views.tsx).
 
 **History status and Encoded by (October 16, 2026).** A contribution whose slip the approver rejected shows as **Returned** (the batch went back to the clerk; it never counts toward the balance, and the resubmitted batch's slip carries the Fidelity again). Slips are created by System, so **Encoded by** names the person who encoded the slip's entries (a returned slip keeps its links), or who received a Fidelity handed in after encoding ([fidelity.ts](../lib/fidelity.ts)).
 
-**Example:** PHP 12,500 approved savings means PHP 10,000 locked and PHP 2,500 available for excess withdrawal. On separation, the full remaining approved balance may be released.
+**Example:** PHP 12,500 approved savings means a PHP 10,000 base and PHP 2,500 excess. Finance may pay the PHP 2,500 excess, 50% of the base (PHP 5,000), a fixed PHP 3,000, or the whole PHP 12,500.
 
 Since October 24, 2026 a Fidelity withdrawal posts its cash outflow from the chosen cash account in the same step, dated on the payment date (today in Manila unless an earlier date is chosen).
 
