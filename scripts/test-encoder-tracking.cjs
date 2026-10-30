@@ -3586,10 +3586,16 @@ test('two handovers the same day before encoding: each batch keeps the handover 
   assert.equal((await clearing.pickedClearings(['COL-1'])).get('COL-1').at, `${today} 14:41`, 'its time received is the 1st handover');
   const progress = new Map((await clearing.withProgress(listed)).map((item) => [item.id, item.entries.total]));
   assert.deepEqual([progress.get('CLR-1ST'), progress.get('CLR-2ND')], [1, 0], 'progress follows the picked handover, not the latest clearing');
+  // The picker says which handover already has its batch saved (both stay Open until sent for approval).
+  assert.deepEqual((await clearing.getEncodableClearings('')).map((item) => [item.id, item.status, item.batchWaiting ?? []]).sort(), [['CLR-1ST', 'Open', ['Collections']], ['CLR-2ND', 'Open', []]]);
   // A second batch of the 1st handover is a double entry; the 2nd handover's batch is not.
   globalThis.dayongClearingNotRequired = false;
   try {
-    assert.match(await clearing.waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', today, 'Collections', 'CLR-1ST'), /already has a Collections batch/);
+    // Picking the 1st handover again names the 2nd one to pick, not Clear again in Clearing (October 30, 2026).
+    const again = await clearing.waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', today, 'Collections', 'CLR-1ST');
+    assert.match(again, /MAS-2's 1st handover \(14:41\), which already has a Collections batch waiting for approval \(1 entry/);
+    assert.match(again, /Pick their 2nd handover \(15:18\) in From Clearing/);
+    assert.doesNotMatch(again, /clear .* again in Clearing/);
     assert.equal(await clearing.waitingBatchProblem('DPE-0002', 'MAS-2', 'BR-1', today, 'Collections', 'CLR-2ND'), '');
   } finally { globalThis.dayongClearingNotRequired = true; }
   // Sending the 1st handover's batch closes only that clearing.

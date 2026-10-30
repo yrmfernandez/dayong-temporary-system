@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 30, 2026: two handovers in From Clearing.** After one handover's batch is saved, From Clearing marks it "batch already saved" and lists it last; picking it again says which handover to pick instead of asking to clear again.
+
 **October 30, 2026: report weeks stay in the month.** A week still runs Monday to Sunday, but the first week of a month starts on the 1st and the last ends on its last day: October 2026 is Oct 1-4, 5-11, 12-18, 19-25, 26-31. See [reports](reports.md).
 
 **October 30, 2026: pages follow the open workspace.** Switching workspace in the sidebar now changes every page and action to that role, not just the dashboard: an Administrator in their Entry Clerk workspace sees Reports as an Entry Clerk, and the MAS workspace works as a MAS (own members only, the new MAM view). Users with several roles switch workspace to use another role's powers. See [access control](access-control.md).

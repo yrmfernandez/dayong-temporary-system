@@ -3,7 +3,7 @@ import { and, desc, eq, gt, gte, inArray, ne, or, sql } from "drizzle-orm";
 import { currentDb, encodedBy, schema } from "@/lib/db";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
-import { CLEARING_COVERS, coveredKinds, DATE_REMITTED_REASON_MIN, type ClearingCovers, type ClearingKind } from "@/lib/clearing-kinds";
+import { CLEARING_COVERS, coveredKinds, DATE_REMITTED_REASON_MIN, handoverLabel, type ClearingCovers, type ClearingKind } from "@/lib/clearing-kinds";
 import { cashMethodNames, isCashMethod } from "@/lib/entry-batches";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -61,6 +61,8 @@ export type Clearing = {
   employeeRoles?: string[];
   /** getEncodableClearings, an Encoded clearing of an earlier day: the kinds still waiting for encoding (only these can be picked). */
   waitingKinds?: ClearingKind[];
+  /** getEncodableClearings: the kinds that already have a batch of this clearing waiting for approval (or returned): picking it again is refused. */
+  batchWaiting?: ClearingKind[];
   /** getClearingPage and getEncodableClearings: which handover of the person, branch and day this is (1, 2, …), of how many. */
   handover?: number;
   handovers?: number;
@@ -265,11 +267,31 @@ export async function getEncodableClearings(clearedBy = "") {
   const list = rows.map(toClearing).map((item) => ({ ...item, employeeRoles: roles.get(item.employeeId) ?? [] }));
   const earlier = list.filter((item) => item.status === "Encoded" && item.clearedDate !== today);
   const progress = new Map((await withProgress(earlier)).map((item) => [item.id, item]));
-  return withHandovers(list.flatMap((item) => {
+  const listed = await withHandovers(list.flatMap((item) => {
     if (item.status === "Open" || item.clearedDate === today) return [item];
     const waitingKinds = (progress.get(item.id)?.kinds ?? []).filter((part) => part.stage === "Waiting for encoding").map((part) => part.kind);
     return waitingKinds.length ? [{ ...item, waitingKinds }] : [];
   }));
+  // A saved batch leaves its clearing Open until it is sent for approval, so two handovers looked the same in the
+  // picker after the first was encoded (owner, October 30, 2026): say which one already has a batch.
+  const batches = await batchesWaitingFor(listed.map((item) => item.id));
+  return listed.map((item) => batches.has(item.id) ? { ...item, batchWaiting: batches.get(item.id) } : item);
+}
+
+const WAITING_STATUSES = sql`('Outstanding', 'Pending Remittance Approval', 'Returned')`;
+
+/** For each clearing, the kinds with a batch encoded under it that is still waiting for approval or returned (as waitingBatchProblem counts). */
+async function batchesWaitingFor(ids: string[]): Promise<Map<string, ClearingKind[]>> {
+  const found = new Map<string, ClearingKind[]>();
+  if (!ids.length) return found;
+  const list = sql.join(ids.map((id) => sql`${id}`), sql`, `);
+  const result = await currentDb().execute(sql`select distinct clearing_id, 'Collections' as kind from collections where clearing_id in (${list}) and status = 'Posted'
+      and remittance_status in ${WAITING_STATUSES} and coalesce(encoded_by_employee_id, '') <> '' and coalesce(collected_by_role, '') <> 'DTO'
+    union select distinct clearing_id, 'New Sales' from sales where clearing_id in (${list}) and remittance_status in ${WAITING_STATUSES} and coalesce(encoded_by_employee_id, '') <> ''`);
+  for (const row of (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ clearing_id: string; kind: ClearingKind }>) {
+    found.set(row.clearing_id, [...(found.get(row.clearing_id) ?? []), row.kind]);
+  }
+  return found;
 }
 
 /**
@@ -434,7 +456,7 @@ export async function pickedClearingProblem(clearingId: string, employeeId: stri
  */
 export async function waitingBatchProblem(employeeId: string, employeeName: string, branch: string, dateRemitted: string, kind: ClearingKind, clearingId = "") {
   if ((globalThis as { dayongClearingNotRequired?: boolean }).dayongClearingNotRequired) return "";
-  const waiting = sql`('Outstanding', 'Pending Remittance Approval', 'Returned')`;
+  const waiting = WAITING_STATUSES;
   const picked = text(clearingId) ? sql` and clearing_id = ${text(clearingId)}` : sql``;
   const query = kind === "Collections"
     ? sql`select count(*)::int as n, coalesce(sum(amount_collected), 0)::float8 as total, max(encoded_at) as last, min(encoded_by_name) as clerk, string_agg(distinct remittance_status, ', ') as statuses
@@ -452,9 +474,25 @@ export async function waitingBatchProblem(employeeId: string, employeeName: stri
     sql`${clearings.cleared_at} > ${last}::timestamptz`,
   )).limit(1);
   if (newer) return "";
+  // The picked handover already has its batch, but the person has another handover with none yet (owner, October 30, 2026).
+  const other = text(clearingId) ? await otherHandover(clearingId, kind) : null;
   const peso = Number(row.total).toLocaleString("en-PH", { style: "currency", currency: "PHP" });
   const returned = text(row.statuses).includes("Returned");
+  if (other) return `The clearing picked is ${employeeName || employeeId}'s ${handoverLabel(other.picked.handover ?? 1)} (${other.picked.clearedAt.slice(11)}), which already has a ${kind} batch ${returned ? "returned or " : ""}waiting for approval (${row.n} entr${Number(row.n) === 1 ? "y" : "ies"}, ${peso}, encoded by ${text(row.clerk) || "a clerk"} at ${manilaStamp(last).slice(11)}). Pick their ${handoverLabel(other.free.handover ?? 1)} (${other.free.clearedAt.slice(11)}) in From Clearing for these receipts.`;
   return `${employeeName || employeeId} already has a ${kind} batch for ${branch} on ${dateRemitted} that is ${returned ? "returned or " : ""}waiting for approval (${row.n} entr${Number(row.n) === 1 ? "y" : "ies"}, ${peso}, encoded by ${text(row.clerk) || "a clerk"} at ${manilaStamp(last).slice(11)}). Saving again would enter the same receipts twice. ${returned ? "Fix a returned batch in My Entries → Edit batch. " : ""}If this is another handover, clear ${employeeName || "them"} again in Clearing first.`;
+}
+
+/** The picked clearing and another handover of the same person, branch and day for this kind that has no batch waiting yet, if any. */
+async function otherHandover(clearingId: string, kind: ClearingKind) {
+  const [row] = await currentDb().select().from(clearings).where(eq(clearings.clearing_id, text(clearingId)));
+  if (!row) return null;
+  const same = await currentDb().select().from(clearings).where(and(eq(clearings.employee_id, row.employee_id), sameBranch(row.branch), eq(clearings.cleared_date, text(row.cleared_date)),
+    ne(clearings.status, "Removed"), inArray(clearings.covers, ["Both", kind])));
+  const numbered = await withHandovers(same.map(toClearing));
+  const busy = await batchesWaitingFor(numbered.map((item) => item.id));
+  const picked = numbered.find((item) => item.id === row.clearing_id);
+  const free = numbered.find((item) => item.id !== row.clearing_id && !(busy.get(item.id) ?? []).includes(kind));
+  return picked && free ? { picked, free } : null;
 }
 
 /**

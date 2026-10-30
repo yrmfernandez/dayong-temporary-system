@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Two handovers: the picker shows which one already has its batch (2026-10-30)
+
+- **Owner:** CABILAN, LOTSMAN was refused with "already has a Collections batch ... clear again in Clearing first" although there were two clearings; it happens after saving a batch and encoding the same MAS again.
+- **Found:** a saved batch leaves its clearing Open until it is sent for approval, so after the first save both handovers looked the same in From Clearing (same name, both Open). Picking the one already used was refused, correctly, but the message asked for a new clearing that already existed. The server rule itself is right: the other handover saves (tested).
+- **Done:** `getEncodableClearings` adds `batchWaiting` (kinds with a batch of that clearing waiting or returned, `batchesWaitingFor`); the picker lists that handover last with "batch already saved, waiting for approval". `waitingBatchProblem` with a picked clearing names the free handover: "The clearing picked is X's 1st handover (14:41), which already has a Collections batch waiting ... Pick their 2nd handover (15:18) in From Clearing". No migration.
+- **Not checked:** the live clearings and batch for CABILAN (database access was not allowed here). All 282 tests and the build pass.
+
 ### Report weeks start on the 1st and end on the month's last day (2026-10-30)
 
 - **Owner:** the start of the week is the first day of the month, and the end as well: the first week of October starts October 1. Chosen: Monday to Sunday, cut at the month (October 2026: Oct 1-4, 5-11, 12-18, 19-25, 26-31).
