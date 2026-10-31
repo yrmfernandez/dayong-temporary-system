@@ -40,11 +40,12 @@ export async function loadMemberDirectory(onlyMas: string | null = null) {
     id: row.member_id, number: row.member_number, surname: text(row.surname), firstName: text(row.first_name), middleName: text(row.middle_name), nameExtension: text(row.name_extension),
     birthdate: row.birthdate ?? "", birthplace: text(row.birthplace), gender: text(row.gender), civilStatus: text(row.civil_status), contact: text(row.member_contact),
     address: text(row.address), status: text(row.status), claimant: text(row.claimant_name), claimantContact: text(row.claimant_contact),
-    claimantSameAddress: row.claimant_same_address, claimantAddress: text(row.claimant_address),
+    claimantSameAddress: row.claimant_same_address, claimantAddress: text(row.claimant_address), diedOn: row.died_on ?? "",
   }));
   const enrollmentRecords: EnrollmentRecord[] = enrollmentRows.map((row) => ({
     id: row.enrollment_id, memberId: row.member_id, memberNumber: text(row.member_number), programId: row.program_id, doi: row.doi ?? "", doiTime: text(row.doi_time).slice(0, 5),
     branch: text(row.branch), mas: text(row.mas), paymentMethod: text(row.remittance_method), status: text(row.status),
+    deactivatedOn: row.deactivated_on ?? "", fullyPaidOn: row.fully_paid_on ?? "", storedStatus: text(row.account_status),
   }));
   const programNames = Object.fromEntries(programRows.map((row) => [row.id, text(row.name) || text(row.code)]));
   const collectorRecords: CollectorRecord[] = collectorRows.map((row) => ({ memberNumber: text(row.memberNumber), programId: row.programId, date: row.date ?? "", person: text(row.person) }));

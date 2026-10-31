@@ -1759,6 +1759,17 @@ test('MAM month range counts actual receipts once and preserves later advance co
   assert.equal(before.rows.length, 0);
 });
 
+test('MAM: a dropped account counts up to the month it was deactivated and leaves the quota after it (October 31, 2026)', () => {
+  const h = harness();
+  const a = { id: 'E1', memberId: 'M1', memberNumber: 'PH1', programId: 'P1', doi: '2026-06-15', branch: 'B', mas: 'MAS', basePay: 350, storedStatus: '', rowNumber: 2, memberName: 'Member', programName: 'Program', deactivatedOn: '2026-09-10' };
+  const report = h.load('lib/mam-report.ts').buildMamReport({ accounts: [a], payments: [], sales: [] }, '2026-08', '2026-10', '2026-10-20');
+  const [aug, sep, oct] = report.rows[0].periods;
+  assert.ok(aug.state && sep.state, 'August and September (the month it was dropped) still count');
+  assert.ok(sep.state.balance > 0, 'September keeps its quota');
+  assert.deepEqual([oct.state, oct.ended], [null, true], 'October is ended: no quota');
+  assert.equal(report.rows[0].current, null, 'no standing today: off the collection list');
+});
+
 test('MAS collection list: who owes this month, how much, the closest to forfeiting first (October 30, 2026)', () => {
   const h = harness();
   const acct = (id, doi, name) => ({ id, memberId: `M-${id}`, memberNumber: `PH-${id}`, programId: 'P1', doi, branch: 'B', mas: 'MAS', basePay: 350, storedStatus: '', rowNumber: 2, memberName: name, programName: 'Program' });
@@ -2515,7 +2526,8 @@ test('member directory: Collector per program, deceased members, and the standin
   const collector = (memberNumber, date, person) => ({ memberNumber, programId: 'DP-1', date, person });
   const members = buildMemberDirectory(
     [member('M1', 'PH-1', 'Active'), member('M2', 'PH-2', 'Deceased'), member('M3', 'PH-3', 'Inactive')],
-    [enrollment('E1', 'M1', 'PH-1'), enrollment('E2', 'M2', 'PH-2'), enrollment('E3', 'M3', 'PH-3')],
+    // Inactive is worked out (October 31, 2026): M3's only program is forfeited; a hand-set Inactive alone no longer counts.
+    [enrollment('E1', 'M1', 'PH-1'), enrollment('E2', 'M2', 'PH-2'), { ...enrollment('E3', 'M3', 'PH-3'), storedStatus: 'Forfeited' }],
     { 'DP-1': 'Program' },
     [collector('PH-1', '2026-05-01', 'Jun Collector'), collector('PH-1', '2026-03-01', 'Old Collector')],
   );
@@ -2523,6 +2535,10 @@ test('member directory: Collector per program, deceased members, and the standin
   assert.equal(one('M1').enrollments[0].collector, 'Jun Collector', 'the latest Collector collection');
   assert.equal(one('M3').enrollments[0].collector, '');
   assert.equal(one('M2').deceased, true);
+  assert.deepEqual([one('M1').status, one('M2').status, one('M3').status], ['Active', 'Deceased', 'Inactive']);
+  const { memberStanding } = harness().load('lib/member-directory.ts');
+  assert.equal(memberStanding(false, [{ status: 'Active', storedStatus: 'U' }, { status: 'Deactivated', storedStatus: 'U' }]), 'Active', 'one open program keeps the member Active');
+  assert.equal(memberStanding(false, [{ status: 'Deactivated' }, { status: 'Active', fullyPaidOn: '2026-10-01' }]), 'Inactive', 'dropped and fully paid');
   one('M3').enrollments[0].accountStatus = 'Forfeited';
   const ids = (standing) => filterMemberDirectory(members, { ...emptyDirectoryFilters, standing }).map((item) => item.id).sort().join(',');
   assert.equal(ids('active'), 'M1');

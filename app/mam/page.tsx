@@ -187,7 +187,8 @@ export default function MamPage() {
     });
   }
 
-  const listRows = report?.rows.filter((r) => (!program || r.programId === program) && `${r.memberName} ${r.memberNumber} ${r.applicationNumber}`.toLowerCase().includes(search.toLowerCase())) ?? [];
+  // A dropped (deactivated) account is not collected any more: off the collection list, still in the months it counted.
+  const listRows = report?.rows.filter((r) => !r.deactivatedOn && (!program || r.programId === program) && `${r.memberName} ${r.memberNumber} ${r.applicationNumber}`.toLowerCase().includes(search.toLowerCase())) ?? [];
 
   const groups = new Map<string, Row[]>();
   for (const row of rows) {
@@ -542,7 +543,7 @@ export default function MamPage() {
                       <p className="truncate font-semibold text-primary">{row.memberName}</p>
                       <p className="truncate text-xs text-muted-foreground">{row.memberNumber} · {row.programName}</p>
                     </div>
-                    {now ? <Badge className={`shrink-0 border font-mono text-[10px] ${mamStatusClass(now.status)}`}>{now.status}</Badge> : <Badge variant="outline" className="shrink-0 text-[10px] text-destructive">Needs review</Badge>}
+                    {row.deactivatedOn ? <Badge variant="outline" className="shrink-0 text-[10px]">Dropped</Badge> : now ? <Badge className={`shrink-0 border font-mono text-[10px] ${mamStatusClass(now.status)}`}>{now.status}</Badge> : <Badge variant="outline" className="shrink-0 text-[10px] text-destructive">Needs review</Badge>}
                   </div>
                   {now && <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs">
                     <dt className="text-muted-foreground">Amount due</dt><dd className="text-right font-semibold">{now.balance === null ? "—" : money(now.balance)}</dd>
@@ -605,7 +606,7 @@ export default function MamPage() {
                             <span className="font-semibold">Needs review:</span> {period.error}
                           </div>
                         ) : !period.state ? (
-                          <span className="italic text-muted-foreground">Not enrolled yet</span>
+                          <span className="italic text-muted-foreground">{period.ended ? `Dropped (deactivated ${showDate(row.deactivatedOn ?? "")}): not counted` : "Not enrolled yet"}</span>
                         ) : (
                           <div className="space-y-3">
                             <div className="flex items-center justify-between gap-2 border-b pb-2">

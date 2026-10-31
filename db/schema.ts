@@ -217,6 +217,8 @@ export const members = pgTable("members", {
   claimant_same_address: boolean().notNull().default(false),
   claimant_address: text(),
   status: text(),
+  /** Date of death (migration 0037): set with status Deceased through an approved Dropout; a record, not the quota date. */
+  died_on: day("died_on"),
   ...encoder(),
 }, (t) => [
   uniqueIndex("members_member_number_key").on(t.member_number),
@@ -265,6 +267,12 @@ export const member_programs = pgTable("member_programs", {
   certificate_status: text(),
   certificate_released_on: day("certificate_released_on"),
   certificate_released_by: text(),
+  /**
+   * The day the account was deactivated (dropped out, deceased, entered by mistake; migration 0037). MAM still counts it
+   * in that month and stops from the next, so finished months keep their quota. Blank on accounts deactivated before
+   * October 31, 2026: those stay out of every month, as before.
+   */
+  deactivated_on: day("deactivated_on"),
 }, (t) => [uniqueIndex("member_programs_certificate_key").on(t.certificate_number).where(sql`${t.certificate_number} is not null`), index("member_programs_branch_id_idx").on(t.branch_id), index("member_programs_mas_employee_id_idx").on(t.mas_employee_id), 
   // A member enrolls in each program once (app/api/sales/route.ts checks first; this stops two racing saves).
   uniqueIndex("member_programs_member_program_key").on(t.member_id, t.program_id),
@@ -490,6 +498,39 @@ export const collection_submissions = pgTable("collection_submissions", {
 }, (t) => [
   index("collection_submissions_branch_status_idx").on(t.branch_id, t.status),
   index("collection_submissions_mas_idx").on(t.mas_employee_id),
+]).enableRLS();
+
+/**
+ * Dropout requests (owner, October 31, 2026; lib/dropouts.ts): an Entry Clerk asks to drop one member's program
+ * account(s), with a reason; an Administrator approves (the accounts are deactivated that day, and a Deceased reason
+ * also marks the member Deceased with the date of death) or rejects it with a note.
+ */
+export const dropout_requests = pgTable("dropout_requests", {
+  ...rowSeq(),
+  request_id: text().primaryKey(),
+  branch_id: text(),
+  branch: text().notNull(),
+  /** No foreign key: merging or deleting a member must not be blocked by an old request. */
+  member_id: text().notNull(),
+  member_number: text().notNull(),
+  member_name: text().notNull(),
+  /** [{ enrollmentId, programId, programName, accountStatus }] */
+  accounts: jsonb().notNull(),
+  /** Dropped out, Deceased, Entered by mistake, Other */
+  reason_type: text().notNull(),
+  reason: text().notNull(),
+  died_on: day("died_on"),
+  status: text().notNull().default("Pending"),
+  requested_at: moment("requested_at").notNull(),
+  requested_by_employee_id: text(),
+  requested_by_name: text(),
+  reviewed_by_name: text(),
+  reviewed_at: moment("reviewed_at"),
+  review_note: text(),
+  ...encoder(),
+}, (t) => [
+  index("dropout_requests_status_idx").on(t.status),
+  index("dropout_requests_member_idx").on(t.member_id),
 ]).enableRLS();
 
 export const beneficiaries = pgTable("beneficiaries", {

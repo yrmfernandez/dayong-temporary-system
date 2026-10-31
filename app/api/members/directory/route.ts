@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     if (params.get("memberId")) return memberRecord(params.get("memberId")!.trim());
     const value = (key: string) => (params.get(key) ?? "").trim();
-    const filters: DirectoryFilters = { ...emptyDirectoryFilters, search: value("search"), branch: value("branch"), mas: value("mas"), program: value("program"), status: value("status"), accountStatus: value("accountStatus"), standing: value("standing") };
+    const filters: DirectoryFilters = { ...emptyDirectoryFilters, search: value("search"), branch: value("branch"), mas: value("mas"), program: value("program"), status: value("status"), accountStatus: value("accountStatus"), standing: value("standing"), dateField: value("dateField"), dateFrom: value("dateFrom"), dateTo: value("dateTo") };
     const sort = (SORTS as readonly string[]).includes(value("sort")) ? value("sort") as (typeof SORTS)[number] : "name";
     // A MAS sees only members they handle, and only those programs; only those are loaded.
     const scope = await ownMembersScope(user);

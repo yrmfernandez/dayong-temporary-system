@@ -2,13 +2,14 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { currentDb, inTransaction, schema } from "@/lib/db";
 import { recordCorrection } from "@/lib/record-corrections";
+import { manilaNow } from "@/lib/remittance-deadline";
 
 /**
  * Deactivating a program for one member (owner, October 17, 2026): the member no longer has the program. The account
  * is marked Deactivated (member_programs.status) with the reason, and stays in the member's history: its New Sale and
  * past collections remain in reports, but it takes no collections (Collections lists only active accounts and refuses
  * others) and leaves MAM, payment statuses, Follow Up, status sync and account counts (lib/account-data.ts leaves it
- * out). Administrators, HR Officers and IT (the same people who transfer members) do it from Members, and can
+ * out; from the month after its deactivated_on, migration 0037). Administrators, HR Officers and IT (the same people who transfer members) do it from Members, and can
  * reactivate it the same way. Every change is kept in Record Corrections.
  */
 export const DEACTIVATED = "Deactivated";
@@ -17,7 +18,7 @@ const MODULE = "Program account status";
 const text = (value: unknown) => String(value ?? "").trim();
 
 /** Entries of the account still waiting on a remittance: they are settled before the account is deactivated. */
-async function pendingEntries(enrollmentId: string, memberNumber: string, programId: string) {
+export async function pendingEntries(enrollmentId: string, memberNumber: string, programId: string) {
   const waiting = ["Outstanding", "Returned", "Pending Remittance Approval"];
   const [collections, sales] = await Promise.all([
     currentDb().select({ n: sql<number>`count(*)::int` }).from(schema.collections)
@@ -42,7 +43,8 @@ export async function setAccountActive(input: { enrollmentId: string; active: bo
       if (pending) throw new Error(`This program has ${pending} entr${pending === 1 ? "y" : "ies"} still waiting on a remittance (not yet remitted, returned or for approval). Settle ${pending === 1 ? "it" : "them"} first, then deactivate.`);
     }
     const status = input.active ? "Active" : DEACTIVATED;
-    await tx.update(schema.member_programs).set({ status }).where(eq(schema.member_programs.enrollment_id, enrollmentId));
+    // The day matters for MAM (migration 0037): it counts the account in that month and stops from the next.
+    await tx.update(schema.member_programs).set({ status, deactivated_on: input.active ? null : manilaNow().date }).where(eq(schema.member_programs.enrollment_id, enrollmentId));
     return { enrollmentId, memberNumber: text(account.member_number), programId: account.program_id, before: was, status };
   });
   // The change stands even if the correction log cannot be written; the Audit Log has it as well.

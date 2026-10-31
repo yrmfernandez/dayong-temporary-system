@@ -682,6 +682,8 @@ MAM joins member, enrollment, program, New Sale reference, and real posted Colle
 - On a phone each member is a card (status, amount due, paid up to, months behind, last payment) instead of the wide month table; the table stays from tablet width up.
 - **Sync Statuses** is hidden and the server refuses it for a MAS (`POST /api/mam`), since it rewrites the stored status of every account in the company; the nightly job keeps statuses current.
 
+**Quota leaves out dropped, deceased and forfeited accounts (owner, October 31, 2026).** Forfeited accounts already counted nothing. A deactivated (dropped) account now counts in the month it was deactivated and stops from the next month, so finished months keep their quota: the month cells after it read *Dropped (deactivated …): not counted*, and it is off the MAS collection list. Accounts deactivated before October 31, 2026 have no date and stay out of every month, as before. A member marked Deceased whose accounts were not deactivated (marked before Dropouts existed) is left out of every month; from now on a death goes through Dropouts, which deactivates the accounts when approved.
+
 **Payment card (October 30, 2026, everyone).** Clicking a member in MAM opens their **Payment Card**: today's status (with Suspended · waiver needed), paid up to, next month due and its amount, months behind, amount due now, last payment, the suspension and forfeit dates, the account details, and every receipt newest first with what it covers and when it was remitted ([mam-member-card.tsx](../components/mam-member-card.tsx)). Each MAM row carries today's standing (`current` in [mam-report.ts](../lib/mam-report.ts)) for this.
 
 Past months calculate state at month end, current month at today. Future columns are marked projections based only on already received receipts. Historical calculations do not inherit today's Forfeited carried from the old system. Invalid histories produce explicit review errors.
@@ -832,6 +834,23 @@ Accounts already in a branch of the new MAS only change MAS. One transaction (as
 An entry that is part of a remittance cannot be deleted until that remittance is deleted (its totals would no longer match the cash). One transaction; each deleted row is kept in full in the Audit Log (database trigger), and a summary with the reason goes to Record Corrections (module "Delete …"). Other roles keep the lifecycle rules ([CRUD policy](crud-policy.md)).
 
 Referenced Members, Programs, Branches, and assigned Roles have deletion guards. Use inactive/status updates when history still references them. Employee login and operational identities are maintained separately. Branches are assigned to employees by ID, but many transactions store branch/MAS **names**; renaming requires reviewing historical joins rather than expecting automatic cascading changes.
+
+### Dropouts (October 31, 2026)
+
+An Entry Clerk opens **Dropouts**, searches a member with an active program in their branches, ticks the program(s) to drop, chooses the reason (**Dropped out**, **Deceased** with the date of death, **Entered by mistake**, **Other**) and writes the details. The request waits for an approver: Administrators, HR Officers and IT, the people who deactivate accounts on Members. Nothing changes until it is approved, so a MAS cannot have late payers, or members whose payments they kept, quietly removed.
+
+- **Approve:** each ticked account is deactivated that day (no more collections; MAM counts it this month and stops from the next). The day of approval decides it, not a typed date, so a dropout cannot be backdated into a finished month. A Deceased reason also marks the member Deceased with the date of death. Each change is kept in Record Corrections with the reason and the request number.
+- **Reject:** with a note the clerk sees.
+- An account with entries still waiting on a remittance (not yet remitted, returned or for approval) cannot be requested or approved until they are settled. An account already in a pending request cannot be requested again.
+- Sidebar count: approvers see the pending requests; a clerk sees their requests rejected in the last 2 days. Reactivating stays on Members, which now also records the deactivation date.
+
+**Member status (October 31, 2026).** Set by hand only as **Active** or **Deceased**. **Inactive** is worked out: a living member whose every program is dropped, forfeited or fully paid (by the stored status), or who has no program.
+
+### Search Records (October 31, 2026)
+
+Finds any receipt, New Sale or member, with the filters combined: **Anything** (name, PH number, contact number, OR number, address), **Look in** (everything, Collections, New Sales, members and contacts), **OR or application number**, a **date range** on OR date, date remitted, date encoded, DOI (New Sales) or birthdate (members), remittance status, branch, program and MAS. Each kind returns at most 200 rows, newest first; kinds without the chosen date are skipped. Each member name opens Members already searched. A MAS finds only their own accounts. Members filters people by member dates (below); this page finds the records themselves, so receipts by date are searched here, not in Members.
+
+**Members date filter (October 31, 2026).** Members → Filters → **Date of**: DOI (New Sale), Dropped (deactivated), Fully paid or Date of death, with From and To. A program date is matched on the same program as the branch, MAS, program and payment status filters, so for example NS in a date range in one branch.
 
 ### Member Corrections (October 24, 2026)
 

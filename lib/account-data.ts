@@ -24,8 +24,19 @@ export type AccountScope = {
    * leave MAM, statuses and Follow Up. Corrections of their past entries and their statement ask for them.
    */
   includeDeactivated?: boolean;
+  /**
+   * MAM (owner, October 31, 2026): also the accounts deactivated on or after this day (YYYY-MM-DD), so the months up to
+   * their deactivation still count them. Accounts deactivated with no date (before migration 0037) stay out.
+   */
+  includeDeactivatedFrom?: string;
 };
-export type LoadedAccount = Account & { memberName: string; programName: string };
+export type LoadedAccount = Account & {
+  memberName: string; programName: string;
+  /** Set on a deactivated account (member_programs.deactivated_on): MAM counts it up to that month. */
+  deactivatedOn?: string;
+  /** The member's status is Deceased. */
+  memberDeceased?: boolean;
+};
 export type AccountData = Awaited<ReturnType<typeof loadAccountData>>;
 
 const text = (value: string | null | undefined) => (value ?? "").trim();
@@ -41,7 +52,8 @@ function scopeCondition(scope: AccountScope): SQL | undefined {
     const pairs = scope.memberPrograms.filter((pair) => pair.memberNumber && pair.programId);
     conditions.push(pairs.length ? sql`(${memberPrograms.member_number}, ${memberPrograms.program_id}) in (${sql.join(pairs.map((pair) => sql`(${pair.memberNumber}, ${pair.programId})`), sql`, `)})` : sql`false`);
   }
-  if (!scope.includeDeactivated) conditions.push(sql`lower(trim(coalesce(${memberPrograms.status}, ''))) <> 'deactivated'`);
+  if (scope.includeDeactivatedFrom && !scope.includeDeactivated) conditions.push(sql`(lower(trim(coalesce(${memberPrograms.status}, ''))) <> 'deactivated' or ${memberPrograms.deactivated_on} >= ${scope.includeDeactivatedFrom}::date)`);
+  else if (!scope.includeDeactivated) conditions.push(sql`lower(trim(coalesce(${memberPrograms.status}, ''))) <> 'deactivated'`);
   return conditions.length ? and(...conditions) : undefined;
 }
 
@@ -59,6 +71,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
     doi: memberPrograms.doi, branch: memberPrograms.branch, mas: memberPrograms.mas, storedStatus: memberPrograms.account_status, forfeitHeld: memberPrograms.forfeit_held, fullyPaidOn: memberPrograms.fully_paid_on,
     basePay: programs.base_pay, payBalanceTotal: programs.pay_balance_total, programName: programs.program_name, flexible: programs.flexible, maxMonthlyPayment: programs.max_monthly_payment, registrationFee: programs.registration_fee_required,
     categoryId: programs.category_id, surname: members.surname, firstName: members.first_name, middleName: members.middle_name,
+    accountActive: memberPrograms.status, deactivatedOn: memberPrograms.deactivated_on, memberStatus: members.status,
   }).from(memberPrograms)
     .innerJoin(programs, eq(programs.program_id, memberPrograms.program_id))
     .innerJoin(members, eq(members.member_id, memberPrograms.member_id))
@@ -69,6 +82,8 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
     id: row.id, memberId: row.memberId, memberNumber: text(row.memberNumber), programId: row.programId, doi: row.doi ?? "",
     branch: text(row.branch), mas: text(row.mas), basePay: row.basePay ?? 0, payBalanceTotal: row.payBalanceTotal ?? 0, storedStatus: text(row.storedStatus), forfeitHeld: Boolean(row.forfeitHeld), fullyPaidOn: row.fullyPaidOn ?? "", flexible: row.flexible, maxMonthlyPayment: row.maxMonthlyPayment ?? null, forfeitMonths: forfeitMonthsFor(row.categoryId), registrationFee: Boolean(row.registrationFee),
     memberName: memberName(row.surname, row.firstName, row.middleName) || text(row.memberNumber), programName: row.programName,
+    deactivatedOn: text(row.accountActive).toLowerCase() === "deactivated" ? text(row.deactivatedOn) || "0000-00-00" : undefined,
+    memberDeceased: text(row.memberStatus).toLowerCase() === "deceased",
   }));
 
   const ids = accounts.map((account) => account.id);
@@ -143,7 +158,14 @@ export async function mamReport(from?: string, to?: string, onlyMas: string | nu
   if (filter.memberId) scope.memberId = filter.memberId;
   // A MAS user's own name always wins over a chosen MAS.
   if (onlyMas !== null) scope.mas = onlyMas; else if (filter.mas) scope.mas = filter.mas;
-  return buildMamReport(await loadAccountData(scope), from || today.slice(0, 7), to || today.slice(0, 7), today);
+  // Quota (owner, October 31, 2026): an account dropped or deceased counts up to the month of its deactivation and stops
+  // from the next, so finished months keep their quota (lib/mam-report.ts). A Deceased member's account not yet
+  // deactivated (marked before Dropouts existed) is left out of every month: it has no date to count up to.
+  const first = from || today.slice(0, 7);
+  scope.includeDeactivatedFrom = `${first}-01`;
+  const data = await loadAccountData(scope);
+  data.accounts = data.accounts.filter((account) => account.deactivatedOn || !account.memberDeceased);
+  return buildMamReport(data, first, to || today.slice(0, 7), today);
 }
 
 /** One member's MAM: each of their program accounts, month by month, from enrollment (at most the last 36 months) to today. */

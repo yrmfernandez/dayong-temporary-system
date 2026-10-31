@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 
-import { canAccessPath } from "@/lib/access-control";
+import { canAccessPath, canCorrectEntriesFor, hasRole, hrRoles } from "@/lib/access-control";
 import { todayInManila } from "@/lib/account-rules";
 import type { SessionUser } from "@/lib/auth";
 import { systemAbsencesWaiting } from "@/lib/auto-absence";
@@ -23,6 +23,7 @@ import { listCollectionsForReview } from "@/lib/collection-submissions";
  *   /attendance-reviews absences the system recorded in the last 7 days for employees still listed there, not yet marked
  *   /clearing           MAS and employees the user cleared (administrators: anyone's) whose entries are not yet sent for approval
  *   /my-notices         the user's own Notices to Explain in force that they have not confirmed or not yet explained
+ *   /dropouts           approvers (Administrators, HR, IT): dropout requests waiting; clerks: their branches' requests rejected in the last 2 days
  *   /employees          administrators: employees' explanations on Notices to Explain not yet marked reviewed
  */
 export type NotificationCounts = Record<string, number>;
@@ -51,6 +52,11 @@ export async function getNotificationCounts(user: SessionUser): Promise<Notifica
   if (can("/mas-sales") && me) tasks.push(["/mas-sales", countOf(sql`select count(*)::int as count from sale_submissions where mas_employee_id = ${me} and status = 'Returned'`)]);
   if (can("/collections")) tasks.push(["/collections", listCollectionsForReview(user).then((list) => list.length).catch(() => 0)]);
   if (can("/mas-collections") && me) tasks.push(["/mas-collections", countOf(sql`select count(*)::int as count from collection_submissions where mas_employee_id = ${me} and status = 'Rejected' and reviewed_at > now() - interval '2 days'`)]);
+  if (can("/dropouts")) {
+    const approves = isApprover(user) || hasRole(user, hrRoles) || canCorrectEntriesFor(user);
+    tasks.push(["/dropouts", approves ? countOf(sql`select count(*)::int as count from dropout_requests where status = 'Pending'`)
+      : countOf(sql`select count(*)::int as count from dropout_requests where requested_by_employee_id = ${me} and status = 'Rejected' and reviewed_at > now() - interval '2 days'`)]);
+  }
   if (can("/clearing")) tasks.push(["/clearing", countOpenClearings(isApprover(user) ? "" : me)]);
   const today = todayInManila();
   if (me) tasks.push(["/my-notices", countOf(sql`select count(*)::int as count from notices_to_explain

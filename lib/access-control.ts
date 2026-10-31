@@ -17,15 +17,15 @@ const roleRoutes: Record<string, string[]> = {
   administrator: ["*"],
   admin: ["*"],
   // The executive workspace is the analytics dashboard, Company Reports, Report Review, MAM, Statements of Account, Members, and attendance; it does not receive the shared employee pages.
-  ceo: ["/", "/company-reports", "/admin-reports", "/mam", "/soa", "/members", "/attendance-tracking", "/attendance", "/settings"],
-  president: ["/", "/company-reports", "/admin-reports", "/mam", "/soa", "/members", "/attendance-tracking", "/attendance", "/settings"],
-  "hr officer": ["/", "/todays-entries", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
-  hr: ["/", "/todays-entries", "/audit", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
-  finance: ["/", "/audit", "/members", "/fully-paid", "/clearing", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
-  "entry clerk": ["/", "/todays-entries", "/clearing", "/my-entries", "/new-sales", "/members", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/settings"],
+  ceo: ["/", "/company-reports", "/admin-reports", "/mam", "/soa", "/members", "/search-records", "/attendance-tracking", "/attendance", "/settings"],
+  president: ["/", "/company-reports", "/admin-reports", "/mam", "/soa", "/members", "/search-records", "/attendance-tracking", "/attendance", "/settings"],
+  "hr officer": ["/", "/todays-entries", "/audit", "/dropouts", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
+  hr: ["/", "/todays-entries", "/audit", "/dropouts", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
+  finance: ["/", "/audit", "/members", "/search-records", "/fully-paid", "/clearing", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
+  "entry clerk": ["/", "/todays-entries", "/clearing", "/my-entries", "/new-sales", "/members", "/search-records", "/dropouts", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/settings"],
   // IT builds and runs the system: accounts, roles, configuration, and the audit trail.
-  "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/fully-paid", "/settings"],
-  it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/fully-paid", "/settings"],
+  "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/dropouts", "/search-records", "/fully-paid", "/settings"],
+  it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/dropouts", "/search-records", "/fully-paid", "/settings"],
   mas: ["/", "/mas-sales", "/mas-collections", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
 };
 
@@ -45,7 +45,7 @@ export const hrRoles = ["hr officer", "hr"];
  * dashboard and may read what Finance reads; changing money (payroll, Fidelity payouts) stays with Finance itself.
  */
 export const isFinanceFamilyRole = (role: string) => { const name = normalizeRoleName(role); return name === "finance" || /^finance[\s-]/.test(name); };
-const hasRole = (context: Pick<AccessContext, "roleNames">, names: string[]) => context.roleNames.some((role) => names.includes(normalizeRoleName(role)) || isAdministratorRole(role));
+export const hasRole = (context: Pick<AccessContext, "roleNames">, names: string[]) => context.roleNames.some((role) => names.includes(normalizeRoleName(role)) || isAdministratorRole(role));
 
 /**
  * Job-specific management rights. `manage_users` still grants all of them, but it also approves remittances and voids

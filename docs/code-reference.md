@@ -37,6 +37,8 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/mam` | [app/mam/page.tsx](../app/mam/page.tsx) | `@/lib/mam-format`, `@/lib/mam-report`, `@/lib/account-rules`, `@/components/ui/button`, `@/components/ui/badge`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select`, `@/lib/use-live-refresh`, `@/lib/date-format`, `@/components/mam-print`, `@/components/mam-member-card`, `@/components/mam-status`, `@/components/mas-collection-list` |
 | `/mas-sales` | [app/mas-sales/page.tsx](../app/mas-sales/page.tsx) | `@/components/new-sales-form` |
 | `/mas-collections` | [app/mas-collections/page.tsx](../app/mas-collections/page.tsx) | `@/components/app-dialog`, `@/components/mam-status`, `@/components/ui/*`, `@/lib/date-format`, `@/lib/mas-collection-quote`, `@/lib/remittance-deadline`, `@/lib/use-form-draft`, `@/lib/use-live-refresh`, `@/lib/use-work-calendar` |
+| `/dropouts` | [app/dropouts/page.tsx](../app/dropouts/page.tsx) | `@/components/app-dialog`, `@/components/ui/*`, `@/lib/date-format`, `@/lib/use-live-refresh` |
+| `/search-records` | [app/search-records/page.tsx](../app/search-records/page.tsx) | `@/components/ui/*`, `@/lib/api-response`, `@/lib/date-format`, `@/lib/record-search-options` |
 | `/master-data` | [app/master-data/page.tsx](../app/master-data/page.tsx) |  |
 | `/member-corrections` | [app/member-corrections/page.tsx](../app/member-corrections/page.tsx) | `@/components/or-no-letter-check`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/date-format` |
 | `/members` | [app/members/page.tsx](../app/members/page.tsx) | `@/components/app-dialog`, `@/components/admin-delete`, `@/components/member-edit-form`, `@/components/inline-panel`, `@/components/ui/search-select`, `@/components/ui/input`, `@/lib/api-response`, `@/components/ui/button`, `@/components/status-badge`, `@/components/member-mam`, `@/lib/member-directory`, `@/lib/use-live-refresh`, `@/components/transfer-branch-choice`, `@/lib/date-format` |
@@ -133,6 +135,10 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/sale-submissions` | GET, POST, PATCH | [app/api/sale-submissions/route.ts](../app/api/sale-submissions/route.ts) |
 | [app/api/collection-submissions/route.ts](../app/api/collection-submissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/access-control`, `@/lib/clearing`, `@/lib/day-off`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/collection-submissions` |
 | `/api/collection-submissions` | GET, POST, PATCH | [app/api/collection-submissions/route.ts](../app/api/collection-submissions/route.ts) |
+| [app/api/dropouts/route.ts](../app/api/dropouts/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/auth-server`, `@/lib/day-off`, `@/lib/dropouts`, `@/lib/encoder-context`, `@/lib/member-transfer` |
+| `/api/dropouts` | GET, POST, PATCH | [app/api/dropouts/route.ts](../app/api/dropouts/route.ts) |
+| [app/api/search-records/route.ts](../app/api/search-records/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/record-search` |
+| `/api/search-records` | GET | [app/api/search-records/route.ts](../app/api/search-records/route.ts) |
 | `/api/sales` | POST | [app/api/sales/route.ts](../app/api/sales/route.ts) |
 | `/api/sales/validate` | POST | [app/api/sales/validate/route.ts](../app/api/sales/validate/route.ts) |
 | `/api/server-time` | GET | [app/api/server-time/route.ts](../app/api/server-time/route.ts) |
@@ -234,6 +240,8 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/mock-members.ts](../lib/mock-members.ts) | `mockMembers` | `./types` |
 | [lib/navigation.ts](../lib/navigation.ts) | `NavItem`, `NavSection`, `normalizeRole`, `workspaceFor`, `routeMatches`, `visibleNavigation`, `isInWorkspace`, `locatePage`, `activeHref` | `@/lib/access-control` |
 | [lib/nightly-jobs.ts](../lib/nightly-jobs.ts) | `NIGHTLY_KEY`, `NightlyStep`, `NightlyRun`, `runNightlyJobs`, `lastNightlyRun` | `@/lib/account-data`, `@/lib/auto-absence`, `@/lib/capacity`, `@/lib/encoder-context`, `@/lib/exceptions`, `@/lib/manila-date`, `@/lib/system-settings` |
+| [lib/dropouts.ts](../lib/dropouts.ts) | `DROPOUT_REASONS`, `searchDropoutMembers`, `requestDropout`, `listDropouts`, `approveDropout`, `rejectDropout` | `@/lib/account-deactivation`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/member-directory`, `@/lib/readable-id`, `@/lib/record-corrections`, `@/lib/remittance-deadline`, `@/lib/sale-submissions` |
+| [lib/record-search.ts](../lib/record-search.ts) | `LIMIT`, `cleanQuery`, `searchRecords`, `recordSearchOptions` | `@/lib/db`, `@/lib/record-search-options` |
 | [lib/notifications.ts](../lib/notifications.ts) | `NotificationCounts`, `getNotificationCounts` | `@/lib/access-control`, `@/lib/account-rules`, `@/lib/auth`, `@/lib/auto-absence`, `@/lib/db`, `@/lib/clearing`, `@/lib/sale-submissions`, `@/lib/collection-submissions` |
 | [lib/nte.ts](../lib/nte.ts) | `NTE_DAYS`, `SUSPENSION_THRESHOLD`, `Nte`, `EXPLANATION_MAX`, `listNtes`, `issueNte`, `withdrawNte`, `listMyNtes`, `acknowledgeNte`, `explainNte`, `markNteReviewed` | `@/lib/db`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
 | [lib/or-no-letter.ts](../lib/or-no-letter.ts) | `orNoLetterConfirmed`, `NO_LETTER_NOTE` | `@/lib/access-control`, `@/lib/auth-server` |

@@ -12,7 +12,7 @@ import { readApiResponse } from "@/lib/api-response";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { MemberMam } from "@/components/member-mam";
-import { emptyDirectoryFilters, STANDING_FILTERS, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
+import { DATE_FILTERS, emptyDirectoryFilters, STANDING_FILTERS, type DirectoryFilters, type DirectoryMember } from "@/lib/member-directory";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { branchChoiceReady, branchesOutside, noBranchChoice, TransferBranchChoice, type BranchChoice } from "@/components/transfer-branch-choice";
 import { formatDate as showDate } from "@/lib/date-format";
@@ -77,10 +77,10 @@ export default function MembersPage() {
   // The member just saved, so the confirmation shows on that row.
   const [savedId, setSavedId] = useState("");
   const [message, setMessage] = useState("");
-  const { branch, mas, program, status, accountStatus, standing } = filters;
+  const { branch, mas, program, status, accountStatus, standing, dateField, dateFrom, dateTo } = filters;
   useEffect(() => {
     const controller = new AbortController();
-    const query = new URLSearchParams({ search, branch, mas, program, status, accountStatus, standing, sort, order: descending ? "desc" : "asc", page: String(page) });
+    const query = new URLSearchParams({ search, branch, mas, program, status, accountStatus, standing, dateField, dateFrom, dateTo, sort, order: descending ? "desc" : "asc", page: String(page) });
     // eslint-disable-next-line react-hooks/set-state-in-effect -- shows loading while this page of members arrives
     setBusy(true);
     fetch(`/api/members/directory?${query}`, { cache: "no-store", signal: controller.signal }).then(async (response) => {
@@ -93,7 +93,7 @@ export default function MembersPage() {
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
-  }, [revision, search, branch, mas, program, status, accountStatus, standing, sort, descending, page]);
+  }, [revision, search, branch, mas, program, status, accountStatus, standing, dateField, dateFrom, dateTo, sort, descending, page]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
   useLiveRefresh(["members", "member_programs", "beneficiaries", "member_transfers"], () => { if (!editing) setRevision((value) => value + 1); }, 15000);
   const visible = members;
@@ -103,7 +103,7 @@ export default function MembersPage() {
     // A new branch clears the MAS / Collector, which belongs to the branch.
     setFilters((previous) => ({ ...previous, [key]: value, ...(key === "branch" ? { mas: "" } : {}) })); setPage(1); setSelected(null);
   }
-  const options: { key: Exclude<keyof DirectoryFilters, "search" | "standing">; label: string; values: [string, string][] }[] = [
+  const options: { key: Exclude<keyof DirectoryFilters, "search" | "standing" | "dateField" | "dateFrom" | "dateTo">; label: string; values: [string, string][] }[] = [
     { key: "accountStatus", label: "Payment status (today)", values: ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Fully Paid", "Forfeited", "Suspended", "Needs review", "Not started"].map((v) => [v, v === "U" ? "U - Updated" : v === "ADV" ? "ADV - Advance" : v]) },
     { key: "branch", label: "Branch", values: choices.branches.map((v) => [v, v]) },
     // Branch first: only the employees assigned to the chosen branch.
@@ -128,6 +128,9 @@ export default function MembersPage() {
       <label className="text-sm">Sort by<select className={fieldClass} value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>{[["name", "Member name"], ["number", "PH number"], ["status", "Member status"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="text-sm">Order<select className={fieldClass} value={descending ? "desc" : "asc"} onChange={(e) => { setDescending(e.target.value === "desc"); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
       {options.map(({ key, label, values }) => key === "branch" || key === "mas" || key === "program" ? <label key={key} className="text-sm">{label}<SearchSelect aria-label={label} className="mt-1 h-9" clearable disabled={key === "mas" && !filters.branch} placeholder={key === "mas" && !filters.branch ? "Choose a branch first" : "All"} value={filters[key]} onValueChange={(value) => update(key, value)} options={values.map(([value, text]) => ({ value, label: text }))}/></label> : <label key={key} className="text-sm">{label}<select className={fieldClass} value={filters[key]} onChange={(e) => update(key, e.target.value)}><option value="">All</option>{values.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>)}
+      {/* Dates (owner, October 31, 2026): e.g. NS (DOI) in a date range; collections and receipts by date are in Search Records. */}
+      <label className="text-sm">Date of<select className={fieldClass} value={filters.dateField} onChange={(e) => update("dateField", e.target.value)}><option value="">Any date</option>{DATE_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      {filters.dateField && <div className="grid grid-cols-2 gap-2"><label className="text-sm">From<input type="date" className={fieldClass} value={filters.dateFrom} onChange={(e) => update("dateFrom", e.target.value)} /></label><label className="text-sm">To<input type="date" className={fieldClass} value={filters.dateTo} onChange={(e) => update("dateTo", e.target.value)} /></label></div>}
       <div className="flex items-end"><Button variant="ghost" onClick={() => { setFilters({ ...emptyDirectoryFilters }); setPage(1); setSelected(null); }}>Reset filters</Button></div>
     </div>
     <p className="hidden text-sm text-muted-foreground md:block">Branch, MAS / Collector, program, and payment status filters match the same enrollment. The Collector is whoever brought in that program&apos;s latest Collector collection. Payment statuses use today&apos;s MAM calculations. View payment history in <Link className="underline" href="/mam">MAM</Link>.</p>
