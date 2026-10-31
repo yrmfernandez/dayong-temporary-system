@@ -174,8 +174,11 @@ export type DayEndLine = { id: string; branch: string; employeeName: string; cle
 export async function getDayEndReview(employeeId: string): Promise<DayEndLine[]> {
   if (!text(employeeId)) return [];
   const today = manilaNow().date;
+  // A clearing recorded by Mark remitted on a MAS batch whose OR numbers are still to be typed is not asked about: clearing
+  // it from the list would remove the handover time that decides the batch's incentive (lib/collection-submissions.ts).
   const rows = await currentDb().select().from(clearings).where(and(eq(clearings.encoded_by_employee_id, text(employeeId)), ne(clearings.status, "Removed"),
-    sql`${clearings.cleared_date} < ${today}`, gte(clearings.cleared_date, addDays(today, -UNFINISHED_DAYS))));
+    sql`${clearings.cleared_date} < ${today}`, gte(clearings.cleared_date, addDays(today, -UNFINISHED_DAYS)),
+    sql`not exists (select 1 from collection_submissions s where s.clearing_id = ${clearings.clearing_id} and s.status = 'Remitted')`));
   const listed = (await withProgress(rows.map(toClearing))).filter((item) => item.stage !== "Approved" && !listCleared(item) && item.closedReason !== `${KEPT} ${today}`);
   return listed.sort((a, b) => a.clearedAt.localeCompare(b.clearedAt)).map((item) => ({
     id: item.id, branch: item.branch, employeeName: item.employeeName, clearedDate: item.clearedDate, covers: item.covers,
@@ -343,6 +346,9 @@ export async function addClearing(input: { branch: string; employeeId: string; a
 export async function removeClearing(input: { id: string; reason: string }, clearedBy = "") {
   const id = text(input.id), reason = text(input.reason);
   if (reason.length < 3 || reason.length > 300) throw new Error("Give the reason for removing it (3–300 characters).");
+  const linked = await currentDb().execute(sql`select submission_id from collection_submissions where clearing_id = ${id} and status = 'Remitted' limit 1`);
+  const batch = (Array.isArray(linked) ? linked : (linked as { rows?: unknown[] }).rows ?? [])[0] as { submission_id?: string } | undefined;
+  if (batch?.submission_id) throw new Error(`This handover is a MAS batch marked remitted (${batch.submission_id}). Save that batch on Collections first; its time decides the incentive.`);
   const updated = await currentDb().update(clearings).set({ status: "Removed", closed_at: new Date().toISOString(), closed_reason: reason })
     .where(and(eq(clearings.clearing_id, id), eq(clearings.status, "Open"), mine(clearedBy))).returning({ id: clearings.clearing_id });
   if (!updated.length) throw new Error(clearedBy ? "Only an Open clearing you made can be removed." : "Only an Open clearing can be removed.");

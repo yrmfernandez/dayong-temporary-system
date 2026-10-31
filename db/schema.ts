@@ -456,6 +456,42 @@ export const sale_submissions = pgTable("sale_submissions", {
   index("sale_submissions_mas_idx").on(t.mas_employee_id),
 ]).enableRLS();
 
+/**
+ * Collections a MAS submits from the field (Submit Collections page, owner, October 31, 2026). The MAS picks their own
+ * members and how many months each paid; the OR date is the day the member was added. An Entry Clerk assigned to the
+ * branch reviews and corrects one on Collections → Submitted by MAS (the MAS cannot change it), types the OR numbers,
+ * picks the MAS's handover in From Clearing and saves it as a normal Collections batch (status Saved, collection_ids set
+ * in the same transaction), or rejects it with a reason (status Rejected). `entries` holds what the MAS chose
+ * (lib/collection-submissions.ts SubmittedCollection).
+ */
+export const collection_submissions = pgTable("collection_submissions", {
+  ...rowSeq(),
+  submission_id: text().primaryKey(),
+  branch_id: text().notNull(),
+  branch: text().notNull(),
+  mas_employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
+  mas: text().notNull(),
+  status: text().notNull().default("Submitted"),
+  entries: jsonb().notNull(),
+  entry_count: integer().notNull(),
+  total_amount: money("total_amount").notNull(),
+  total_incentive: money("total_incentive").notNull(),
+  submitted_at: moment("submitted_at").notNull(),
+  return_reason: text(),
+  reviewed_by_employee_id: text(),
+  reviewed_by_name: text(),
+  reviewed_at: moment("reviewed_at"),
+  collection_ids: text(),
+  /** Mark remitted: the clerk received the cash; a Clearing is recorded at that moment and its time decides the incentive. */
+  clearing_id: text(),
+  remitted_at: moment("remitted_at"),
+  remitted_by_name: text(),
+  ...encoder(),
+}, (t) => [
+  index("collection_submissions_branch_status_idx").on(t.branch_id, t.status),
+  index("collection_submissions_mas_idx").on(t.mas_employee_id),
+]).enableRLS();
+
 export const beneficiaries = pgTable("beneficiaries", {
   ...rowSeq(),
   beneficiary_id: text().primaryKey(),

@@ -7,6 +7,7 @@ import { systemAbsencesWaiting } from "@/lib/auto-absence";
 import { getDb } from "@/lib/db";
 import { countOpenClearings } from "@/lib/clearing";
 import { listForReview } from "@/lib/sale-submissions";
+import { listCollectionsForReview } from "@/lib/collection-submissions";
 
 /**
  * Numbers shown beside sidebar pages (October 8, 2026): how many things wait for this user there. Only pages the user
@@ -17,6 +18,8 @@ import { listForReview } from "@/lib/sale-submissions";
  *   /my-entries         their own entries still Outstanding without a receipt photo (a photo sends them for approval)
  *   /new-sales          New Sales submitted by MAS waiting to be saved, in the clerk's branches
  *   /mas-sales          the MAS's own submissions returned to them
+ *   /collections        Collections submitted by MAS waiting to be saved, in the clerk's branches
+ *   /mas-collections    the MAS's own collection submissions the clerk rejected in the last 2 days
  *   /attendance-reviews absences the system recorded in the last 7 days for employees still listed there, not yet marked
  *   /clearing           MAS and employees the user cleared (administrators: anyone's) whose entries are not yet sent for approval
  *   /my-notices         the user's own Notices to Explain in force that they have not confirmed or not yet explained
@@ -46,6 +49,8 @@ export async function getNotificationCounts(user: SessionUser): Promise<Notifica
     + (select count(*) from sales s where s.encoded_by_employee_id = ${me} and s.remittance_status = 'Outstanding' and ${noPhoto(sql`s.sale_id`)}) as count`)]);
   if (can("/new-sales")) tasks.push(["/new-sales", listForReview(user).then((list) => list.length).catch(() => 0)]);
   if (can("/mas-sales") && me) tasks.push(["/mas-sales", countOf(sql`select count(*)::int as count from sale_submissions where mas_employee_id = ${me} and status = 'Returned'`)]);
+  if (can("/collections")) tasks.push(["/collections", listCollectionsForReview(user).then((list) => list.length).catch(() => 0)]);
+  if (can("/mas-collections") && me) tasks.push(["/mas-collections", countOf(sql`select count(*)::int as count from collection_submissions where mas_employee_id = ${me} and status = 'Rejected' and reviewed_at > now() - interval '2 days'`)]);
   if (can("/clearing")) tasks.push(["/clearing", countOpenClearings(isApprover(user) ? "" : me)]);
   const today = todayInManila();
   if (me) tasks.push(["/my-notices", countOf(sql`select count(*)::int as count from notices_to_explain

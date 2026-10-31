@@ -84,7 +84,7 @@ export async function submitSales(user: SessionUser, input: { submissionId?: unk
 }
 
 /** Branch IDs whose submissions this user reviews; null means every branch (administrators). */
-async function reviewBranches(user: SessionUser) {
+export async function reviewBranches(user: SessionUser) {
   if (user.roleNames.some(isAdministratorRole)) return null;
   const employee = (await getEmployees()).find((item) => item.id === user.employeeId);
   return employee?.branchIds ?? [];

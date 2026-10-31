@@ -18,6 +18,8 @@ import { calculateRemittance, noIncentiveReasonOf, tiersForBranch, withoutIncent
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
+import { markCollectionSubmissionSaved, reviewableCollectionSubmission } from "@/lib/collection-submissions";
+import type { SessionUser } from "@/lib/auth";
 
 /**
  * The same branch or MAS name, ignoring case and extra spaces: accounts keep the MAS as first encoded (e.g. "Nagliba,
@@ -44,12 +46,12 @@ export const POST = withEncoder(async (request: Request) => {
   // Day Off locks the day's entries (lib/day-off.ts).
   const dayOff = await refuseOnDayOff();
   if (dayOff) return dayOff;
-  if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
-  // Nobody encodes from the 3:00 PM cutoff until midnight.
-  return saveCollections(request);
+  const user = await userWithPageAccess("/collections");
+  if (!user) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
+  return saveCollections(request, user);
 });
 
-async function saveCollections(request: Request) {
+async function saveCollections(request: Request, user: SessionUser) {
   let writing = false;
   try {
     const body = await request.json();
@@ -75,6 +77,11 @@ async function saveCollections(request: Request) {
       : employees.find((employee) => employee.id === accountableEmployeeId && employee.name === mas && employee.status.toLowerCase() === "active" && selectedBranch && employee.branchIds.includes(selectedBranch.id));
     if (!selectedBranch) throw new Error("Select an active branch.");
     if (!accountable) throw new Error(dto ? "DTO needs your own active employee record: you are accountable for the cash you received." : "Select an active accountable employee assigned to the selected branch.");
+    // A batch the MAS submitted from the field (lib/collection-submissions.ts): it must be this branch's and MAS's and
+    // still waiting; it is marked Saved in the same transaction below.
+    const submissionId = dto ? "" : String(body.submissionId ?? "").trim();
+    if (submissionId) await reviewableCollectionSubmission(user, submissionId, selectedBranch.id, accountable.id, String(body.clearingId ?? ""));
+    if (submissionId && String(body.collectedBy ?? "") !== "MAS") throw new Error("A batch the MAS submitted is collected by MAS.");
     let dateRemittedReason = "";
     // The clearing (handover) picked in From Clearing, kept on each row (two handovers a day, October 29, 2026).
     const clearingId = dto ? "" : String(body.clearingId ?? "").trim();
@@ -215,6 +222,7 @@ async function saveCollections(request: Request) {
       writing = true;
       await commitCollections(tx, rows, [...touched.values()], payments);
       const ids = rows.map((row) => row.collection_id);
+      if (submissionId) await markCollectionSubmissionSaved(submissionId, ids);
       const variance = await recordTurnoverVariance({ kind: "Collections", entryIds: ids, branch: selectedBranch.name, mas: accountable.name, accountableEmployeeId: accountable.id, dateRemitted, controlTotal: Math.round(Number(body.controlTotal) * 100) / 100, systemTotal: totalRemittance, note: controlNote });
       return { ids, grossCents, variance };
     });

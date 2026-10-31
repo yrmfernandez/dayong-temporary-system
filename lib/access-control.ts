@@ -26,7 +26,7 @@ const roleRoutes: Record<string, string[]> = {
   // IT builds and runs the system: accounts, roles, configuration, and the audit trail.
   "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/fully-paid", "/settings"],
   it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/fully-paid", "/settings"],
-  mas: ["/", "/mas-sales", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
+  mas: ["/", "/mas-sales", "/mas-collections", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
 };
 
 // Every signed-in employee's shared workspace, added to roles that still use default access.

@@ -1,5 +1,6 @@
 "use client";
-import { alertDialog } from "@/components/app-dialog";
+import { alertDialog, confirmDialog, promptDialog } from "@/components/app-dialog";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { COLLECTION_CHECK_REMINDER } from "@/lib/entry-check-reminder";
 
 import { ClearingPicker } from "@/components/clearing-picker";
@@ -46,7 +47,8 @@ import type { Member } from "@/lib/types";
 import { calculateRemittance, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive, type IncentiveTier } from "@/lib/remittance";
 import { forfeitedPaymentsAllowed } from "@/lib/account-rules";
 import { isValidOrNumber, nextOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
-import { formatDate as showDate } from "@/lib/date-format";
+import { formatDate as showDate, formatDateTime } from "@/lib/date-format";
+import { formatDeadline } from "@/lib/remittance-deadline";
 
 type CollectionChannel = "MAS" | "Collector" | "DTO";
 type PaymentMethodOption = { id: string; name: string; isCash: boolean; requiresReference: boolean };
@@ -71,6 +73,16 @@ type ProgramOption = {
   collectionAmountEditable?: boolean;
   incentiveTiers?: IncentiveTier[];
 };
+
+/** A batch a MAS submitted from the field, as /api/collection-submissions returns it (lib/collection-submissions.ts). */
+type CollectionSubmissionSummary = {
+  id: string; branchId: string; branch: string; masEmployeeId: string; mas: string; entryCount: number; totalAmount: number; totalIncentive: number; submittedAt: string; incentiveDeadline: string;
+  /** Submitted, or Remitted: the clerk marked the cash received; clearingId and remittedAt ("YYYY-MM-DD HH:MM") are set. */
+  status: "Submitted" | "Remitted"; clearingId: string; remittedAt: string; remittedByName: string;
+  entries: Array<{ enrollmentId: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; months: number; amount: number; orDate: string; waiver: boolean }>;
+};
+/** The MAS submission open on the form: saving it marks it Saved; its handover must be this MAS's. */
+type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string };
 
 type CollectionMember = Member & {
   programIds: string[];
@@ -350,9 +362,27 @@ export default function CollectionsPage() {
   const [penaltyNote, setPenaltyNote] = useState("");
   // Fidelity: the accountable employee's own money handed over with this batch, added to its total remittance.
   const [fidelity, setFidelity] = useState("");
+  // MAS submissions (owner, October 31, 2026): the Submitted by MAS tab lists them; Review opens one on the form.
+  const [tab, setTab] = useState<"encode" | "submitted">("encode");
+  const [reviewing, setReviewing] = useState<ReviewedSubmission | null>(null);
+  const [submissionList, setSubmissionList] = useState<CollectionSubmissionSummary[]>([]);
+  const [submissionError, setSubmissionError] = useState("");
+  const [submissionRevision, setSubmissionRevision] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/collection-submissions?view=review", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to load MAS submissions.");
+        setSubmissionList(result.submissions ?? []); setSubmissionError("");
+      })
+      .catch((error) => { if (!controller.signal.aborted) setSubmissionError(error instanceof Error ? error.message : "Unable to load MAS submissions."); });
+    return () => controller.abort();
+  }, [submissionRevision]);
+  useLiveRefresh(["collection_submissions"], () => setSubmissionRevision((value) => value + 1));
 
   // The unsaved batch survives leaving the page and coming back (member search results included, so picks still show).
-  const draftSnapshot = { dto, orc, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity };
+  const draftSnapshot = { dto, orc, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity, reviewing };
   type CollectionsDraft = typeof draftSnapshot;
   const restoreDraft = (draft: Partial<CollectionsDraft>) => {
       setDto(Boolean(draft.dto));
@@ -373,6 +403,7 @@ export default function CollectionsPage() {
       setPenalty(draft.penalty ?? "");
       setPenaltyNote(draft.penaltyNote ?? "");
       setFidelity(draft.fidelity ?? "");
+      setReviewing(draft.reviewing ?? null);
     };
   useFormDraft("collections", draftSnapshot, restoreDraft);
   // Batches set aside to finish later (owner, October 14, 2026; lib/use-parked-drafts.ts).
@@ -466,6 +497,7 @@ export default function CollectionsPage() {
   function chooseBatchType(next: boolean) {
     if (next === dto) return;
     setDto(next);
+    setReviewing(null);
     setCleared(null);
     setBranch("");
     setMas("");
@@ -928,6 +960,8 @@ export default function CollectionsPage() {
           dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "",
           // The handover picked in From Clearing: its time decides the incentive (lib/clearing.ts).
           clearingId: !dto && cleared?.employeeName === mas ? cleared.id : "",
+          // A batch the MAS submitted (lib/collection-submissions.ts): marked Saved with these collections.
+          submissionId: !dto && reviewing ? reviewing.id : undefined,
           dto,
           orc: orc && !dto && collectedBy === "Collector",
           collectedBy: dto ? "DTO" : collectedBy,
@@ -959,6 +993,7 @@ export default function CollectionsPage() {
       // Attach every receipt photo; the first one sends a bank or e-wallet batch to Pending Approval.
       const ids: string[] = result.collectionIds ?? [];
       const uploaded = await uploadBatchPhotos(ids, receiptPhotos);
+      if (reviewing) setSubmissionRevision((value) => value + 1);
       resetForm();
       setSaveMessage(uploaded.problem
         ? `${ids.length} collection(s) saved; ${uploaded.saved} of ${receiptPhotos.length} receipt photo(s) attached. ${uploaded.problem} Add the rest in My Entries.`
@@ -998,6 +1033,89 @@ export default function CollectionsPage() {
     if (dto) setDateRemitted(manilaNow().date);
     setPaymentMethod(paymentMethods.find((method) => method.isCash)?.name || paymentMethods[0]?.name || "");
     setPaymentReference("");
+    setReviewing(null);
+  }
+
+  /**
+   * Opens a MAS submission on the form: Branch, MAS and Collected by MAS are set, and each member's account is loaded
+   * fresh, so the months start at its next unpaid month and run for the months the MAS entered. The clerk then picks the
+   * MAS's handover in From Clearing, types each OR number, checks everything and saves.
+   */
+  async function openSubmission(submission: CollectionSubmissionSummary) {
+    if (batchHasWork && reviewing?.id !== submission.id && !await confirmDialog("Replace the batch on the form with this MAS submission? Unsaved entries on the form are lost.")) return;
+    resetForm();
+    setDto(false);
+    setDateRemitted("");
+    setBranch(submission.branch);
+    setMas(submission.mas);
+    setCollectedBy("MAS");
+    setReviewing({ id: submission.id, masEmployeeId: submission.masEmployeeId, mas: submission.mas, branch: submission.branch, clearingId: submission.clearingId, remittedAt: submission.remittedAt });
+    // Marked remitted: saved under the clearing recorded then. The Date Remitted starts on that day and can still be
+    // changed with a reason (no work, day off, on leave...), as for any batch.
+    if (submission.clearingId) {
+      const clearedDate = submission.remittedAt.slice(0, 10);
+      setCleared({ id: submission.clearingId, employeeId: submission.masEmployeeId, employeeName: submission.mas, clearedDate });
+      setDateRemitted(clearedDate);
+    }
+    setTab("encode");
+    setSaveMessage(`Loading ${submission.entryCount} member(s) from ${submission.mas}...`);
+    const loaded = await Promise.all(submission.entries.map(async (item, index) => {
+      const id = `collection-${index + 1}`;
+      const program = programs.find((candidate) => candidate.id === item.programId);
+      const base: CollectionEntry = { ...createEmptyCollection(id), memberId: item.memberId, memberSearch: item.memberName, programId: item.programId, programSearch: program?.code ?? item.programName, orDate: item.orDate, ifSuspended: item.waiver ? "Waiver" : "", isExpanded: index === 0 };
+      try {
+        const response = await fetch(`/api/collections?memberId=${encodeURIComponent(item.memberId)}&programId=${encodeURIComponent(item.programId)}&branch=${encodeURIComponent(submission.branch)}&mas=${encodeURIComponent(submission.mas)}`, { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to load account.");
+        const account = result.account;
+        return { entry: { ...base, accountStatus: account.status, temporarilySuspended: account.temporarilySuspended, suspendedAt: account.suspendedAt ?? "",
+          monthFrom: account.nextMonth, monthTo: lastMonthCovered(account.nextMonth, item.months), nopFrom: account.nextNop, nopTo: account.nextNop + item.months - 1,
+          amountCollected: (Math.round(account.monthlyAmount * 100) * item.months / 100).toFixed(2), accountNextMonth: account.nextMonth, accountNextNop: account.nextNop }, history: result.history ?? [], problem: "" };
+      } catch (error) {
+        return { entry: base, history: [], problem: `${item.memberName}: ${error instanceof Error ? error.message : "Unable to load account."}` };
+      }
+    }));
+    setCollections(loaded.map((item) => item.entry));
+    setHistories(Object.fromEntries(loaded.map((item) => [item.entry.id, item.history])));
+    setActiveCollectionId("collection-1");
+    setNextCollectionId(loaded.length + 1);
+    const problems = loaded.map((item) => item.problem).filter(Boolean);
+    setSaveMessage(problems.length ? problems.join(" ") : submission.clearingId
+      ? `Reviewing ${submission.mas}'s batch, remitted at ${submission.remittedAt.slice(11)}. Type each OR number, correct anything wrong, then save.`
+      : `Reviewing ${submission.mas}'s submission. Pick their handover in From Clearing, type each OR number, correct anything wrong, then save.`);
+  }
+
+  /**
+   * Mark remitted (owner, October 31, 2026): the MAS handed the cash over, so the time is recorded now (a Clearing for the
+   * MAS) and decides the incentive; the OR numbers can be typed later. Already cleared today: asks whether it is the same
+   * cash or a new handover.
+   */
+  async function markRemitted(submission: CollectionSubmissionSummary) {
+    const remit = Math.round((submission.totalAmount - submission.totalIncentive) * 100) / 100;
+    if (!await confirmDialog(`Mark ${submission.mas}'s batch remitted now (${formatCurrency(remit)} to remit)? Only once the cash is in your hands: this time decides the incentive.`)) return;
+    const send = (handover = "") => fetch("/api/collection-submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remit", id: submission.id, handover }) })
+      .then(async (response) => ({ response, result: await response.json() }));
+    let { response, result } = await send();
+    if (response.status === 409 && result.code === "ALREADY_CLEARED") {
+      const handover = await confirmDialog(`${result.message}\n\nIs this cash part of that handover?`) ? "same"
+        : await confirmDialog("Record it as a new handover of cash now?") ? "new" : "";
+      if (!handover) return;
+      ({ response, result } = await send(handover));
+    }
+    if (!response.ok || !result.success) { setSubmissionError(result.message || "Unable to mark it remitted."); return; }
+    setSubmissionError(""); setSaveMessage(result.message);
+    setSubmissionRevision((value) => value + 1);
+  }
+
+  /** Rejects a MAS batch that should not be saved at all; mistakes are corrected on the form instead. */
+  async function rejectSubmission(submission: CollectionSubmissionSummary) {
+    const reason = (await promptDialog(`Why reject ${submission.mas}'s batch? Only for one that should not be saved (for example the cash was not remitted); fix mistakes with Review instead. ${submission.mas} sees the reason and can submit those members again.`, { required: true }))?.trim();
+    if (!reason) return;
+    const response = await fetch("/api/collection-submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: submission.id, reason }) });
+    const result = await response.json();
+    if (!response.ok || !result.success) { setSubmissionError(result.message || "Unable to reject the submission."); return; }
+    if (reviewing?.id === submission.id) resetForm();
+    setSubmissionRevision((value) => value + 1);
   }
 
   // Set aside / resume (owner, October 14, 2026): a batch with anything in it can be set aside; resuming a draft sets
@@ -1032,6 +1150,21 @@ export default function CollectionsPage() {
         </p></div><Badge variant="secondary">{collections.length} {collections.length===1?"entry":"entries"}</Badge>
       </div>
 
+      <div role="tablist" aria-label="Collections" className="inline-flex rounded-lg border bg-muted/40 p-1">
+        <button type="button" role="tab" aria-selected={tab === "encode"} className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "encode" ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => setTab("encode")}>Encode</button>
+        <button type="button" role="tab" aria-selected={tab === "submitted"} className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "submitted" ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => setTab("submitted")}>
+          Submitted by MAS{submissionList.length ? <Badge className="ml-2">{submissionList.length}</Badge> : null}
+        </button>
+      </div>
+      {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
+
+      {tab === "submitted" ? <CollectionSubmissionList submissions={submissionList} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} /> : <>
+      {reviewing && (
+        <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p>Reviewing a submission from {reviewing.mas} ({reviewing.branch}). Pick their handover in From Clearing (save only once the cash is received), type each OR number, and correct anything wrong here: months, amount, Waiver, or remove a member. The MAS cannot change it.</p>
+          <Button type="button" variant="outline" size="sm" onClick={resetForm}>Stop reviewing</Button>
+        </div>
+      )}
       <ParkedDrafts drafts={parked.drafts} canPark={batchHasWork} onPark={parkBatch} onResume={resumeBatch} onDelete={parked.remove} />
 
       {/* COLLECTION BATCH HEADER */}
@@ -1051,6 +1184,14 @@ export default function CollectionsPage() {
             </p>
           ) : (
           <div className="mb-4"><ClearingPicker kind="Collections" value={cleared?.id ?? ""} onPick={(clearing) => {
+            // Reviewing a MAS submission: only that MAS's handover, and the loaded entries stay.
+            if (reviewing) {
+              if (reviewing.clearingId && clearing.id !== reviewing.clearingId) { setSaveMessage(`This batch was marked remitted at ${reviewing.remittedAt.slice(11)}; it stays on that handover. Change the Date Remitted with a reason if needed.`); return; }
+              if (clearing.employeeId !== reviewing.masEmployeeId || clearing.branch.trim().toLowerCase() !== reviewing.branch.trim().toLowerCase()) { setSaveMessage(`This batch was submitted by ${reviewing.mas} (${reviewing.branch}). Pick their handover.`); return; }
+              setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName, clearedDate: clearing.clearedDate });
+              setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setDateRemittedReason("");
+              return;
+            }
             setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName, clearedDate: clearing.clearedDate });
             setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setDateRemittedReason(""); setOrc(false); clearScopedMemberSelections();
             // A Collector (role Collector, not MAS) collects as Collector by default; the clerk can still change it (owner, October 14, 2026).
@@ -1085,7 +1226,7 @@ export default function CollectionsPage() {
               {dateRemittedChanged && (
                 <div className="space-y-1">
                   <Label className="text-xs text-amber-800">Why was the Date Remitted changed? *</Label>
-                  <Input aria-label="Reason for changing the Date Remitted" value={dateRemittedReason} maxLength={300} onChange={(event) => setDateRemittedReason(event.target.value)} placeholder="e.g. Remitted on this day; encoding delayed by a meeting" />
+                  <Input aria-label="Reason for changing the Date Remitted" value={dateRemittedReason} maxLength={300} onChange={(event) => setDateRemittedReason(event.target.value)} placeholder="e.g. No work, day off, on leave, or encoding delayed by a meeting" />
                   <p className="text-xs text-muted-foreground">Cleared on {cleared?.clearedDate}. The reason is kept with every entry of the batch.</p>
                 </div>
               )}
@@ -1098,6 +1239,7 @@ export default function CollectionsPage() {
               <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/50 p-1">
                 {collectionChannels.map((channel) => (
                   <button key={channel.value} type="button" role="radio" aria-checked={collectedBy === channel.value} title={channel.hint}
+                    disabled={Boolean(reviewing) && channel.value !== "MAS"}
                     onClick={() => { if (channel.value !== collectedBy) setOrc(false); setCollectedBy(channel.value); }}
                     className={`rounded-md px-2 py-1.5 text-sm font-semibold transition-colors ${collectedBy === channel.value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
                     {channel.label}
@@ -2001,6 +2143,40 @@ export default function CollectionsPage() {
           </div>
         </Card>
       </div>
+      </>}
     </div>
+  );
+}
+
+/** Collections that MAS submitted in the clerk's branches, oldest first (lib/collection-submissions.ts). */
+function CollectionSubmissionList({ submissions, activeId, onOpen, onReject, onRemit, onRefresh }: { submissions: CollectionSubmissionSummary[]; activeId: string; onOpen: (submission: CollectionSubmissionSummary) => void; onReject: (submission: CollectionSubmissionSummary) => void; onRemit: (submission: CollectionSubmissionSummary) => void; onRefresh: () => void }) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base">Submitted by MAS</CardTitle>
+        <Button type="button" variant="outline" size="sm" onClick={onRefresh}>Refresh</Button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">The MAS chose the members and months; the OR date is the day they added each member. Only you can change a batch. When the MAS hands the cash over, press <strong>Mark remitted</strong> at once: that time decides the incentive (kept if by the deadline shown, 3:00 PM the next working day), so the OR numbers can be typed later with Review, even after 3:00 PM. The Date Remitted can still be changed with a reason.</p>
+        {!submissions.length && <p className="text-sm text-muted-foreground">No submissions waiting in your branches.</p>}
+        {submissions.map((submission) => (
+          <div key={submission.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">{submission.mas} · {submission.branch}</p>
+              <p className="text-muted-foreground">{submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · {formatCurrency(submission.totalAmount)} collected · incentive {formatCurrency(submission.totalIncentive)} · submitted {formatDateTime(submission.submittedAt)}</p>
+              {submission.status === "Remitted"
+                ? <p className={submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline ? "font-medium text-amber-700" : "font-medium text-emerald-700"}>Remitted {formatDateTime(submission.remittedAt)}{submission.remittedByName ? ` (${submission.remittedByName})` : ""}{submission.incentiveDeadline ? (submission.remittedAt > submission.incentiveDeadline ? " · after the deadline: incentive forfeited" : " · in time: incentive kept") : ""} · OR numbers still to type</p>
+                : submission.incentiveDeadline && <p className="text-muted-foreground">Not yet remitted · incentive kept if received by {formatDeadline(submission.incentiveDeadline)}</p>}
+              <p className="truncate">{submission.entries.map((entry) => `${entry.memberName} (${entry.months} mo${entry.waiver ? ", Waiver" : ""})`).join(", ")}</p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              {submission.status === "Submitted" && <Button type="button" size="sm" onClick={() => onRemit(submission)}>Mark remitted</Button>}
+              <Button type="button" size="sm" variant={submission.status === "Remitted" ? "default" : "outline"} onClick={() => onOpen(submission)}>{submission.id === activeId ? "Continue review" : submission.status === "Remitted" ? "Type OR numbers" : "Review"}</Button>
+              {submission.status === "Submitted" && <Button type="button" size="sm" variant="outline" className="text-destructive" onClick={() => onReject(submission)}>Reject</Button>}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

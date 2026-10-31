@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     const result = await queryMemberDirectory({ filters, sort, descending: value("order") === "desc", page: Number(value("page")) || 1, pageSize: 25, onlyMas: scope });
     const shown = new Set(result.members.flatMap((member) => member.enrollments.map((enrollment) => enrollment.id)));
     const [canTransfer, transfers, deactivations] = await Promise.all([canTransferMembers(), getTransferHistory(), deactivationNotes([...shown])]);
-    return Response.json({ success: true, ...result, canManage: await canManageUsers(), canDelete: canDeleteRecords(user), canTransfer, canMoveProgram: await canMovePrograms(), transfers: transfers.filter((transfer) => shown.has(transfer.enrollmentId)), deactivations: Object.fromEntries(deactivations), canAddMember: canAccessPath(user, "/new-sales") }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, ...result, canManage: await canManageUsers(), canDelete: canDeleteRecords(user), canTransfer, canMoveProgram: await canMovePrograms(), transfers: transfers.filter((transfer) => shown.has(transfer.enrollmentId)), deactivations: Object.fromEntries(deactivations), canAddMember: canAccessPath(user, "/new-sales"), ownOnly: Boolean(scope) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Member directory error:", error);
     return Response.json({ success: false, message: "Unable to load members. Please retry or check the member records." }, { status: 500 });

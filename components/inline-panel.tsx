@@ -20,7 +20,10 @@ export function InlinePanel({ children, className, focus = true }: { children: R
   return <div ref={ref} className={cn("rounded-lg border border-primary/30 bg-primary/5 p-4 duration-150 animate-in fade-in-0 slide-in-from-top-1", className)}>{children}</div>;
 }
 
-/** InlinePanel as a full-width table row under the row being edited. */
-export function InlineRow({ colSpan, children, className }: { colSpan: number; children: ReactNode; className?: string }) {
-  return <tr><td colSpan={colSpan} className="p-2"><InlinePanel className={className}>{children}</InlinePanel></td></tr>;
+/**
+ * InlinePanel as a full-width table row under the row being edited. `stack`: in a table whose rows become cards on a
+ * phone (block below md, as on Members), the panel row stacks the same way.
+ */
+export function InlineRow({ colSpan, children, className, stack = false }: { colSpan: number; children: ReactNode; className?: string; stack?: boolean }) {
+  return <tr className={stack ? "block md:table-row" : undefined}><td colSpan={colSpan} className={stack ? "block p-2 md:table-cell" : "p-2"}><InlinePanel className={className}>{children}</InlinePanel></td></tr>;
 }

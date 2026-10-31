@@ -7,6 +7,7 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
     { href: "/new-sales", label: "New Sales" },
     { href: "/mas-sales", label: "Submit New Sales (MAS, reviewed by the branch clerk)" },
     { href: "/collections", label: "Collections" },
+    { href: "/mas-collections", label: "Submit Collections (MAS, reviewed by the branch clerk)" },
     { href: "/remittances", label: "Remittances" },
     { href: "/mam", label: "MAM" },
   ] },

@@ -18,6 +18,16 @@ import { branchChoiceReady, branchesOutside, noBranchChoice, TransferBranchChoic
 import { formatDate as showDate } from "@/lib/date-format";
 
 const fieldClass = "mt-1 block w-full rounded-md border bg-background p-2 text-sm";
+/*
+ * Phone layout (owner, October 31, 2026): below md each table row is a card and each cell a line, labeled from its
+ * data-label; from md up it is the usual table. One set of rows, so the open member's details are not loaded twice.
+ */
+const stackTable = "block w-full md:table";
+const stackHead = "hidden md:table-header-group";
+const stackBody = "block md:table-row-group";
+const stackRow = "block border-t px-3 py-2 md:table-row md:p-0";
+const stackCell = "block py-0.5 md:table-cell md:align-top";
+const labeled = "before:mr-2 before:text-xs before:font-medium before:text-muted-foreground before:content-[attr(data-label)] md:before:content-none";
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort();
 type DirectoryOptions = { branches: string[]; mas: string[]; programs: [string, string][]; statuses: string[]; staff: Array<{ name: string; branches: string[] }> };
 
@@ -57,6 +67,10 @@ export default function MembersPage() {
   const [canMoveProgram, setCanMoveProgram] = useState(false);
   // New members are added through New Sales, which only encoders can open.
   const [canAddMember, setCanAddMember] = useState(false);
+  // A MAS sees only their own members (lib/member-scope.ts): the page is My Members, without the MAS filter.
+  const [ownOnly, setOwnOnly] = useState(false);
+  // On a phone the filters fold away under the search box.
+  const [showFilters, setShowFilters] = useState(false);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [deactivations, setDeactivations] = useState<Record<string, Deactivation>>({});
   const [editing, setEditing] = useState<DirectoryMember | null>(null);
@@ -75,7 +89,7 @@ export default function MembersPage() {
       // The open member's details follow the reload too (another user changed the name, an account...).
       setError(""); setMembers(result.members); setSelected((current) => current && (result.members.find((member: DirectoryMember) => member.id === current.id) ?? current)); setTotals({ total: result.total, matched: result.matched, pages: result.pages }); setCounts(result.counts ?? {}); setChoices(result.options);
       if (result.page !== page) setPage(result.page);
-      setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanDelete(Boolean(result.canDelete)); setCanTransfer(Boolean(result.canTransfer)); setCanMoveProgram(Boolean(result.canMoveProgram)); setCanAddMember(Boolean(result.canAddMember)); setTransfers(result.transfers ?? []); setDeactivations(result.deactivations ?? {});
+      setStatusWarning(result.statusWarning || ""); setCanManage(Boolean(result.canManage)); setCanDelete(Boolean(result.canDelete)); setCanTransfer(Boolean(result.canTransfer)); setCanMoveProgram(Boolean(result.canMoveProgram)); setCanAddMember(Boolean(result.canAddMember)); setOwnOnly(Boolean(result.ownOnly)); setTransfers(result.transfers ?? []); setDeactivations(result.deactivations ?? {});
     }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load members."); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -93,46 +107,50 @@ export default function MembersPage() {
     { key: "accountStatus", label: "Payment status (today)", values: ["NS", "U", "ADV", "60D", "90D", "120D", "150D", "Fully Paid", "Forfeited", "Suspended", "Needs review", "Not started"].map((v) => [v, v === "U" ? "U - Updated" : v === "ADV" ? "ADV - Advance" : v]) },
     { key: "branch", label: "Branch", values: choices.branches.map((v) => [v, v]) },
     // Branch first: only the employees assigned to the chosen branch.
-    { key: "mas", label: "MAS / Collector", values: filters.branch ? choices.staff.filter((item) => item.branches.includes(filters.branch)).map((item): [string, string] => [item.name, item.name]).sort((a, b) => a[0].localeCompare(b[0])) : [] },
+    ...(ownOnly ? [] : [{ key: "mas" as const, label: "MAS / Collector", values: filters.branch ? choices.staff.filter((item) => item.branches.includes(filters.branch)).map((item): [string, string] => [item.name, item.name]).sort((a, b) => a[0].localeCompare(b[0])) : [] }]),
     { key: "program", label: "Program", values: choices.programs },
     { key: "status", label: "Member status", values: choices.statuses.map((v): [string, string] => [v, v]) },
   ];
-  return <section className="space-y-6">
+  return <section className="space-y-4 md:space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h1 className="text-2xl font-bold">Members</h1><p className="text-sm text-muted-foreground">Member master data. Each person appears once, with all their program enrollments.</p></div>
+      <div><h1 className="text-2xl font-bold">{ownOnly ? "My Members" : "Members"}</h1><p className="text-sm text-muted-foreground">{ownOnly ? "Your members, each with all their programs. Tap View for details and payments." : "Member master data. Each person appears once, with all their program enrollments."}</p></div>
       <div className="flex gap-2">{canAddMember && <Link className={buttonVariants()} href="/new-sales">Add Member</Link>}<Button variant="outline" disabled={busy} onClick={() => { setError(""); setSelected(null); setRevision((v) => v + 1); }}>Refresh</Button></div>
     </div>
-    <div role="group" aria-label="Member standing" className="flex flex-wrap gap-2">
-      {[["", "All"] as const, ...STANDING_FILTERS].map(([value, label]) => <Button key={value || "all"} type="button" size="sm" variant={filters.standing === value ? "default" : "outline"} aria-pressed={filters.standing === value} onClick={() => update("standing", value)}>{label}{counts[value] !== undefined && <span className="ml-1.5 tabular-nums opacity-70">{counts[value]}</span>}</Button>)}
+    <div role="group" aria-label="Member standing" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:flex-wrap md:overflow-visible">
+      {[["", "All"] as const, ...STANDING_FILTERS].map(([value, label]) => <Button key={value || "all"} type="button" size="sm" className="shrink-0" variant={filters.standing === value ? "default" : "outline"} aria-pressed={filters.standing === value} onClick={() => update("standing", value)}>{label}{counts[value] !== undefined && <span className="ml-1.5 tabular-nums opacity-70">{counts[value]}</span>}</Button>)}
     </div>
-    <div className="grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-4">
-      <label className="text-sm">Search<input className={fieldClass} value={filters.search} onChange={(e) => update("search", e.target.value)} placeholder="Name, PH number, contact number, address" /></label>
+    <div className="flex items-end gap-2 sm:hidden">
+      <label className="flex-1 text-sm">Search<input type="search" className={`${fieldClass} h-11 text-base`} value={filters.search} onChange={(e) => update("search", e.target.value)} placeholder="Name, PH number, contact, address" /></label>
+      <Button type="button" variant="outline" className="h-11" aria-expanded={showFilters} onClick={() => setShowFilters((value) => !value)}>{showFilters ? "Hide filters" : "Filters"}</Button>
+    </div>
+    <div className={`${showFilters ? "grid" : "hidden"} gap-3 rounded-xl border bg-background p-4 sm:grid sm:grid-cols-2 lg:grid-cols-4`}>
+      <label className="hidden text-sm sm:block">Search<input className={fieldClass} value={filters.search} onChange={(e) => update("search", e.target.value)} placeholder="Name, PH number, contact number, address" /></label>
       <label className="text-sm">Sort by<select className={fieldClass} value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>{[["name", "Member name"], ["number", "PH number"], ["status", "Member status"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="text-sm">Order<select className={fieldClass} value={descending ? "desc" : "asc"} onChange={(e) => { setDescending(e.target.value === "desc"); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
       {options.map(({ key, label, values }) => key === "branch" || key === "mas" || key === "program" ? <label key={key} className="text-sm">{label}<SearchSelect aria-label={label} className="mt-1 h-9" clearable disabled={key === "mas" && !filters.branch} placeholder={key === "mas" && !filters.branch ? "Choose a branch first" : "All"} value={filters[key]} onValueChange={(value) => update(key, value)} options={values.map(([value, text]) => ({ value, label: text }))}/></label> : <label key={key} className="text-sm">{label}<select className={fieldClass} value={filters[key]} onChange={(e) => update(key, e.target.value)}><option value="">All</option>{values.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>)}
       <div className="flex items-end"><Button variant="ghost" onClick={() => { setFilters({ ...emptyDirectoryFilters }); setPage(1); setSelected(null); }}>Reset filters</Button></div>
     </div>
-    <p className="text-sm text-muted-foreground">Branch, MAS / Collector, program, and payment status filters match the same enrollment. The Collector is whoever brought in that program&apos;s latest Collector collection. Payment statuses use today&apos;s MAM calculations. View payment history in <Link className="underline" href="/mam">MAM</Link>.</p>
+    <p className="hidden text-sm text-muted-foreground md:block">Branch, MAS / Collector, program, and payment status filters match the same enrollment. The Collector is whoever brought in that program&apos;s latest Collector collection. Payment statuses use today&apos;s MAM calculations. View payment history in <Link className="underline" href="/mam">MAM</Link>.</p>
     {statusWarning && <p role="alert" className="text-amber-700">{statusWarning}</p>}
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {message && !savedId && <p role="status" className="text-sm">{message}</p>}
     {busy && !members.length ? <p role="status">Loading members...</p> : !error && <>
       <p className="text-sm" aria-live="polite">{busy ? "Updating... " : ""}{totals.matched} of {totals.total} members</p>
-      <div className="overflow-x-auto rounded-xl border bg-background">
+      <div className="overflow-hidden rounded-xl border bg-background md:overflow-x-auto">
         {/* Seven columns that fit the page (October 11, 2026): the PH number and contact sit under the name, the Collector
             under the MAS; cells wrap instead of making the table scroll sideways. */}
-        <table className="w-full text-left text-[13px] leading-snug"><thead className="bg-muted"><tr>{["Member", "DOI", "Location", "MAS / Collector", "Status", "Programs / Payment status", ""].map((label, index) => <th key={index} scope="col" className="px-2 py-2 align-bottom text-xs font-semibold">{label}</th>)}</tr></thead>
-          <tbody>{visible.map((member) => <Fragment key={member.id}><tr className="border-t">
-            <td className="px-2 py-2 align-top"><span className="block font-medium">{member.name || "Unnamed member"}</span><span className="block text-xs text-muted-foreground">{member.number || "-"}{member.contact ? ` · ${member.contact}` : ""}</span></td>
+        <table className={`${stackTable} text-left text-[13px] leading-snug`}><thead className={`${stackHead} bg-muted`}><tr>{["Member", "DOI", "Location", "MAS / Collector", "Status", "Programs / Payment status", ""].map((label, index) => <th key={index} scope="col" className="px-2 py-2 align-bottom text-xs font-semibold">{label}</th>)}</tr></thead>
+          <tbody className={stackBody}>{visible.map((member) => <Fragment key={member.id}><tr className={stackRow}>
+            <td className={`${stackCell} md:px-2 md:py-2`}><span className="block text-base font-semibold md:text-[13px] md:font-medium">{member.name || "Unnamed member"}</span><span className="block text-xs text-muted-foreground">{member.number || "-"}{member.contact ? <> · <a className="underline md:no-underline" href={`tel:${member.contact.replace(/[^\d+]/g, "")}`}>{member.contact}</a></> : ""}</span></td>
             {/* Each program account has its own DOI; with several programs, each is labeled with its program. */}
-            <td className="px-2 py-2 align-top">{member.enrollments.length ? (member.enrollments.length === 1 ? <span className="whitespace-nowrap">{member.enrollments[0].doi || "-"}{member.enrollments[0].doiTime ? ` ${member.enrollments[0].doiTime}` : ""}</span> : <span className="flex flex-col gap-0.5">{member.enrollments.map((e) => <span key={e.id}><span className="whitespace-nowrap">{showDate(e.doi) || "-"}{e.doiTime ? ` ${e.doiTime}` : ""}</span><span className="block text-xs text-muted-foreground">{e.programName}</span></span>)}</span>) : "-"}</td>
-            <td className="px-2 py-2 align-top break-words">{member.address || "-"}<span className="block text-xs text-muted-foreground">{unique(member.enrollments.map((enrollment) => enrollment.branch)).join(", ")}</span></td>
-            <td className="px-2 py-2 align-top">{unique(member.enrollments.map((enrollment) => enrollment.mas)).join(", ") || "-"}{unique(member.enrollments.map((enrollment) => enrollment.collector)).length > 0 && <span className="block text-xs text-muted-foreground">Collector: {unique(member.enrollments.map((enrollment) => enrollment.collector)).join(", ")}</span>}</td>
-            <td className="px-2 py-2 align-top"><span className="flex flex-col items-start gap-1"><StatusBadge status={member.deceased ? "Deceased" : member.status || "Not recorded"} tone={member.deceased ? "danger" : undefined} />{!member.deceased && <span className="text-xs text-muted-foreground">Alive</span>}</span></td>
-            <td className="px-2 py-2 align-top">{member.enrollments.length ? <span className="flex flex-col items-start gap-1">{member.enrollments.map((e) => <span key={e.id} className="flex flex-wrap items-center gap-1"><span>{e.programName}: {e.accountStatus || "Needs review"}</span><StandingBadge enrollment={e} /></span>)}</span> : "No enrollments"}</td>
-            <td className="px-2 py-2 align-top text-right"><Button size="sm" variant="outline" aria-expanded={selected?.id === member.id} aria-label={`View ${member.name}`} onClick={() => { setSavedId(""); setEditing(null); setDeleting(false); setSelected((current) => current?.id === member.id ? null : member); }}>{selected?.id === member.id ? "Collapse" : "View"}</Button></td>
-          </tr>{savedId === member.id && !selected && message && <tr><td colSpan={7} className="px-3 pb-3"><p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{message}</p></td></tr>}{selected?.id === member.id && <InlineRow colSpan={7}><section aria-label="Member details" className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selected.name}</h2><div className="flex gap-2">{canManage && <Button variant={editing?.id === selected.id ? "default" : "outline"} aria-expanded={editing?.id === selected.id} onClick={() => setEditing((current) => current?.id === selected.id ? null : selected)}>{editing?.id === selected.id ? "Editing" : "Edit"}</Button>}{canDelete && <Button variant={deleting ? "default" : "outline"} className={deleting ? "" : "text-destructive"} aria-expanded={deleting} onClick={() => setDeleting((value) => !value)}>Delete permanently</Button>}{canManage && !canDelete && <Button variant="outline" className="text-destructive" onClick={async () => { if (!await confirmDialog(`Delete ${selected.name}?`)) return; setSavedId(""); const response = await fetch("/api/members/directory", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selected.id }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member deleted." : result.message || "Unable to delete member."); if (response.ok) { setSelected(null); setRevision((value) => value + 1); } }}>Delete</Button>}<Button variant="ghost" onClick={() => setSelected(null)}>Close details</Button></div></div>
+            <td data-label="DOI" className={`${stackCell} ${labeled} md:px-2 md:py-2`}>{member.enrollments.length ? (member.enrollments.length === 1 ? <span className="whitespace-nowrap">{member.enrollments[0].doi || "-"}{member.enrollments[0].doiTime ? ` ${member.enrollments[0].doiTime}` : ""}</span> : <span className="flex flex-col gap-0.5">{member.enrollments.map((e) => <span key={e.id}><span className="whitespace-nowrap">{showDate(e.doi) || "-"}{e.doiTime ? ` ${e.doiTime}` : ""}</span><span className="block text-xs text-muted-foreground">{e.programName}</span></span>)}</span>) : "-"}</td>
+            <td data-label="Location" className={`${stackCell} ${labeled} break-words md:px-2 md:py-2`}>{member.address || "-"}<span className="block text-xs text-muted-foreground">{unique(member.enrollments.map((enrollment) => enrollment.branch)).join(", ")}</span></td>
+            <td data-label="MAS" className={`${stackCell} ${labeled} ${ownOnly ? "hidden md:table-cell" : ""} md:px-2 md:py-2`}>{unique(member.enrollments.map((enrollment) => enrollment.mas)).join(", ") || "-"}{unique(member.enrollments.map((enrollment) => enrollment.collector)).length > 0 && <span className="block text-xs text-muted-foreground">Collector: {unique(member.enrollments.map((enrollment) => enrollment.collector)).join(", ")}</span>}</td>
+            <td data-label="Status" className={`${stackCell} ${labeled} md:px-2 md:py-2`}><span className="inline-flex flex-wrap items-center gap-1 md:flex md:flex-col md:items-start"><StatusBadge status={member.deceased ? "Deceased" : member.status || "Not recorded"} tone={member.deceased ? "danger" : undefined} />{!member.deceased && <span className="text-xs text-muted-foreground">Alive</span>}</span></td>
+            <td data-label="Programs" className={`${stackCell} ${labeled} md:px-2 md:py-2`}>{member.enrollments.length ? <span className="mt-1 flex flex-col items-start gap-1 md:mt-0">{member.enrollments.map((e) => <span key={e.id} className="flex flex-wrap items-center gap-1"><span>{e.programName}: {e.accountStatus || "Needs review"}</span><StandingBadge enrollment={e} /></span>)}</span> : "No enrollments"}</td>
+            <td className={`${stackCell} pt-2 md:px-2 md:py-2 md:text-right`}><Button size="sm" variant="outline" className="h-10 w-full md:h-7 md:w-auto" aria-expanded={selected?.id === member.id} aria-label={`View ${member.name}`} onClick={() => { setSavedId(""); setEditing(null); setDeleting(false); setSelected((current) => current?.id === member.id ? null : member); }}>{selected?.id === member.id ? "Collapse" : "View"}</Button></td>
+          </tr>{savedId === member.id && !selected && message && <tr className="block md:table-row"><td colSpan={7} className="block px-3 pb-3 md:table-cell"><p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{message}</p></td></tr>}{selected?.id === member.id && <InlineRow stack colSpan={7} className="p-3 md:p-4"><section aria-label="Member details" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selected.name}</h2><div className="flex flex-wrap gap-2">{canManage && <Button variant={editing?.id === selected.id ? "default" : "outline"} aria-expanded={editing?.id === selected.id} onClick={() => setEditing((current) => current?.id === selected.id ? null : selected)}>{editing?.id === selected.id ? "Editing" : "Edit"}</Button>}{canDelete && <Button variant={deleting ? "default" : "outline"} className={deleting ? "" : "text-destructive"} aria-expanded={deleting} onClick={() => setDeleting((value) => !value)}>Delete permanently</Button>}{canManage && !canDelete && <Button variant="outline" className="text-destructive" onClick={async () => { if (!await confirmDialog(`Delete ${selected.name}?`)) return; setSavedId(""); const response = await fetch("/api/members/directory", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selected.id }) }); const result = await readApiResponse(response); setMessage(response.ok && result.success ? "Member deleted." : result.message || "Unable to delete member."); if (response.ok) { setSelected(null); setRevision((value) => value + 1); } }}>Delete</Button>}<Button variant="ghost" onClick={() => setSelected(null)}>Close details</Button></div></div>
       {canDelete && deleting && <div className="rounded-lg border border-red-200 p-3 dark:border-red-900"><AdminDeletePanel kind="member" id={selected.id} onCancel={() => setDeleting(false)} onDeleted={(text) => { setDeleting(false); setSelected(null); setMessage(text); setRevision((value) => value + 1); }} /></div>}
       <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">{[
         ["PH number", selected.number], ["Member status", selected.status], ["Alive / deceased", selected.deceased ? "Deceased" : "Alive"], ["Birthdate", showDate(selected.birthdate)], ["Birthplace", selected.birthplace],
@@ -146,10 +164,10 @@ export default function MembersPage() {
         onBranchChanged={(enrollmentId, branch) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, branch } : item) }); setRevision((value) => value + 1); }}
         onProgramMoved={(enrollmentId, programId, programName, merged) => { setSelected((current) => current && { ...current, enrollments: merged ? current.enrollments.filter((item) => item.id !== enrollmentId) : current.enrollments.map((item) => item.id === enrollmentId ? { ...item, programId, programName } : item) }); setRevision((value) => value + 1); }} />
       <MemberMam memberId={selected.id} />
-</section>{editing?.id === member.id && <MemberEditForm memberId={editing.id} onCancel={() => setEditing(null)} onSaved={(text) => { setMessage(text); setSavedId(editing.id); setEditing(null); setSelected(null); setRevision((value) => value + 1); }} />}</InlineRow>}</Fragment>)}{!visible.length && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">{totals.total ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
+</section>{editing?.id === member.id && <MemberEditForm memberId={editing.id} onCancel={() => setEditing(null)} onSaved={(text) => { setMessage(text); setSavedId(editing.id); setEditing(null); setSelected(null); setRevision((value) => value + 1); }} />}</InlineRow>}</Fragment>)}{!visible.length && <tr className="block md:table-row"><td colSpan={7} className="block p-8 text-center text-muted-foreground md:table-cell">{totals.total ? "No members match these filters." : "No members recorded yet."}</td></tr>}</tbody>
         </table>
       </div>
-      <div className="flex items-center justify-end gap-3"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-sm">Page {currentPage} of {pages}</span><Button type="button" variant="outline" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
+      <div className="flex items-center justify-between gap-3 md:justify-end"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-sm">Page {currentPage} of {pages}</span><Button type="button" variant="outline" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
     </>}
   </section>;
 }
@@ -278,24 +296,25 @@ function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMo
   ).filter(([, , allowed]) => allowed);
   const masIsIn = (branch: string) => branchOptions.masBranches.some((item) => item.toLowerCase() === branch.toLowerCase());
   const headers = ["Program", "DOI", "Branch", "MAS / Officer", "Collector", "Remittance method", "Enrollment status", "Payment status", ...(canAct ? [""] : [])];
-  return <div className="overflow-x-auto">
-    <table className="w-full text-left text-sm">
-      <thead><tr>{headers.map((label, index) => <th key={index} scope="col" className="p-2">{label}</th>)}</tr></thead>
-      <tbody>{enrollments.map((e) => {
+  const cell = `${stackCell} ${labeled} md:p-2`;
+  return <div className="md:overflow-x-auto">
+    <table className={`${stackTable} text-left text-sm`}>
+      <thead className={stackHead}><tr>{headers.map((label, index) => <th key={index} scope="col" className="p-2">{label}</th>)}</tr></thead>
+      <tbody className={stackBody}>{enrollments.map((e) => {
         const last = transfers.find((item) => item.enrollmentId === e.id);
         return <Fragment key={e.id}>
-          <tr className="border-t">
-            <td className="p-2">{e.programName || "-"}</td><td className="p-2">{showDate(e.doi) || "-"}{e.doiTime ? <span className="block text-xs text-muted-foreground">{e.doiTime}</span> : null}</td><td className="p-2">{e.branch || "-"}</td>
-            <td className="p-2">{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">Transferred from {last.fromMas}{last.at ? ` on ${showDate(last.at)}` : ""} · {last.reason}</span>}</td>
-            <td className="p-2">{e.collector || "-"}</td><td className="p-2">{e.paymentMethod || "-"}</td>
-            <td className="p-2">{deactivated(e.status) ? <><StatusBadge status="Deactivated" tone="danger" />{deactivations[e.id] && <span className="block text-xs text-muted-foreground">{deactivations[e.id].reason}{deactivations[e.id].by ? ` · ${deactivations[e.id].by}` : ""}{deactivations[e.id].at ? ` · ${showDate(deactivations[e.id].at)}` : ""}</span>}</> : e.status || "-"}</td>
-            <td className="p-2">{deactivated(e.status) ? "—" : e.accountError || <span className="flex flex-wrap items-center gap-1">{e.accountStatus || "Needs review"}<StandingBadge enrollment={e} /></span>}</td>
-            {canAct && <td className="p-2 text-right"><span className="inline-flex flex-wrap justify-end gap-1">{modesFor(e).length > 0 && <Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{deactivated(e.status) ? "Reactivate" : open === e.id ? "Changing" : "Transfer / deactivate"}</Button>}
+          <tr className={`${stackRow} rounded-lg border md:rounded-none md:border-x-0 md:border-b-0 mb-2 md:mb-0`}>
+            <td className={`${stackCell} font-semibold md:p-2 md:font-normal`}>{e.programName || "-"}</td><td data-label="DOI" className={cell}>{showDate(e.doi) || "-"}{e.doiTime ? <span className="text-xs text-muted-foreground md:block"> {e.doiTime}</span> : null}</td><td data-label="Branch" className={cell}>{e.branch || "-"}</td>
+            <td data-label="MAS" className={cell}>{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">Transferred from {last.fromMas}{last.at ? ` on ${showDate(last.at)}` : ""} · {last.reason}</span>}</td>
+            <td data-label="Collector" className={cell}>{e.collector || "-"}</td><td data-label="Remittance" className={cell}>{e.paymentMethod || "-"}</td>
+            <td data-label="Enrollment" className={cell}>{deactivated(e.status) ? <><StatusBadge status="Deactivated" tone="danger" />{deactivations[e.id] && <span className="block text-xs text-muted-foreground">{deactivations[e.id].reason}{deactivations[e.id].by ? ` · ${deactivations[e.id].by}` : ""}{deactivations[e.id].at ? ` · ${showDate(deactivations[e.id].at)}` : ""}</span>}</> : e.status || "-"}</td>
+            <td data-label="Payment status" className={cell}>{deactivated(e.status) ? "—" : e.accountError || <span className="inline-flex flex-wrap items-center gap-1">{e.accountStatus || "Needs review"}<StandingBadge enrollment={e} /></span>}</td>
+            {canAct && <td className={`${stackCell} pt-2 md:p-2 md:text-right`}><span className="inline-flex flex-wrap justify-end gap-1">{modesFor(e).length > 0 && <Button type="button" size="sm" variant={open === e.id ? "default" : "outline"} aria-expanded={open === e.id} onClick={() => void start(e)}>{deactivated(e.status) ? "Reactivate" : open === e.id ? "Changing" : "Transfer / deactivate"}</Button>}
               {/* An account entered by mistake (owner, October 28, 2026): once deactivated, Administrators delete it with a reason; the member stays. */}
               {canDelete && deactivated(e.status) && <Button type="button" size="sm" variant={open === `delete:${e.id}` ? "default" : "outline"} className={open === `delete:${e.id}` ? "" : "text-destructive"} aria-expanded={open === `delete:${e.id}`} onClick={() => setOpen((current) => current === `delete:${e.id}` ? "" : `delete:${e.id}`)}>Delete account</Button>}</span></td>}
           </tr>
-          {open === `delete:${e.id}` && <InlineRow colSpan={headers.length}><div className="rounded-lg border border-red-200 p-3 dark:border-red-900"><AdminDeletePanel kind="account" id={e.id} onCancel={() => setOpen("")} onDeleted={(text) => { setOpen(""); onDeleted(e.id, text); }} /></div></InlineRow>}
-          {open === e.id && <InlineRow colSpan={headers.length}>
+          {open === `delete:${e.id}` && <InlineRow stack colSpan={headers.length}><div className="rounded-lg border border-red-200 p-3 dark:border-red-900"><AdminDeletePanel kind="account" id={e.id} onCancel={() => setOpen("")} onDeleted={(text) => { setOpen(""); onDeleted(e.id, text); }} /></div></InlineRow>}
+          {open === e.id && <InlineRow stack colSpan={headers.length}>
             {modesFor(e).length > 1 && <div className="mb-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Transfer to">
               {modesFor(e).map(([value, label]) => <Button key={value} type="button" size="sm" role="radio" aria-checked={mode === value} variant={mode === value ? "default" : "outline"} onClick={() => { if (mode !== value) { setMode(value); setReason(""); void load(e, value); } }}>{label}</Button>)}
             </div>}
