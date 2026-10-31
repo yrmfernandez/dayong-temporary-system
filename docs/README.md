@@ -1,5 +1,7 @@
 # Dayong System documentation
 
+**October 31, 2026: old records taken back out of the clerks' October reports.** The old web app and old sheet entries, expenses and remittances added to the clerks' reports on October 29 are reverted on production (`scripts/revert-old-site-reports.mjs`), so weeks 1-2 show only what clerks encoded in the system; the entries stay as company records and their recalculated incentives are kept. See [project context](project-context.md).
+
 **October 30, 2026: clerks submit weekly and monthly reports.** A weekly runs from the day after the clerk's last one to the day they choose; once submitted it is locked until the audit returns it with a reason. A monthly gathers the approved weeklies after the last monthly and is named for the month most of its days fall in. Needs migration 0035 on production before deploying. See [reports](reports.md).
 
 **October 30, 2026: October weeks 1 and 2 incentives.** Old-workbook entries filed under the clerks on Oct 1-11 had no company share, so the reports showed almost no incentive; `scripts/reprice-legacy-weeks.mjs` recalculates them with today's program rules (owner runs `--apply` on production).

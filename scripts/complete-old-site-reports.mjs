@@ -24,6 +24,9 @@
  *   … --apply                                                         write (refused while anything is unresolved)
  *   … --dir=legacy-data/export                                        another export folder
  *   … --apply --rollback                                              test the writes of what is resolved, then undo them
+ *
+ * October 2026 was reverted (owner, October 31, 2026: scripts/revert-old-site-reports.mjs); a month in config "reverted"
+ * is refused.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -38,6 +41,8 @@ const DIR = args.find((arg) => arg.startsWith("--dir="))?.slice(6) || "legacy-da
 const CONFIG_FILE = "config/old-site-report-clerks.json";
 const config = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
 const MONTH = config.month;
+// Owner, October 31, 2026: the October completion was undone (scripts/revert-old-site-reports.mjs); not added to this month again.
+if (config.reverted?.includes(MONTH)) { console.log(`The ${MONTH} completion was reverted at the owner's request (scripts/revert-old-site-reports.mjs); nothing to do.`); process.exit(0); }
 const FROM = `${MONTH}-01`, TO = new Date(Date.UTC(Number(MONTH.slice(0, 4)), Number(MONTH.slice(5, 7)), 0)).toISOString().slice(0, 10);
 const BY = "Old records report completion";
 const OLD_SHEET = config.oldSheet ?? "legacy-data/old-data/2026 DATABASE (NS + COLL).xlsx";

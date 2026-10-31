@@ -1,6 +1,7 @@
 {
   "_about": "scripts/complete-old-site-reports.mjs (owner, October 29, 2026): completes the Entry Clerks' monthly reports with the old web app and old sheet records of the month. branches as given by the owner on October 29, 2026. encoders: old-site Encoder / Encoded By name -> Employee ID, only for names the script cannot match by itself. branches: branch -> Employee ID of the clerk whose report gets that branch's old-site collections (and New Sales with no encoder); needed for every branch the script lists as 'ask the owner'. skipExpenseTypes: old-site expense types not imported because this system already counts them (MAS incentives are taken out of Sales and Collection Net). encoders value \"branch\": that name has no employee record, so its records go to the clerk of their branch (owner, October 29, 2026). expenseAccounts: old expense type -> the expense account it is recorded under (owner, October 29, 2026).",
   "month": "2026-10",
+  "reverted": ["2026-10"],
   "encoders": {
     "118 RYE-EL N/A ABAS": "branch"
   },

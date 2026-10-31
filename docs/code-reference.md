@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-45 page routes, 76 API handlers, 147 library files, 67 component files; 653 scanned source/configuration/public-text files in total.
+45 page routes, 76 API handlers, 147 library files, 67 component files; 654 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -666,6 +666,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/restore-ph70661323-4191s.mjs](../scripts/restore-ph70661323-4191s.mjs) | `@next/env`, `postgres`, `../lib/account-rules.ts` | Yes; read source for semantics |
 | [scripts/restore-program-move-repair-20261021.mts](../scripts/restore-program-move-repair-20261021.mts) | `@next/env`, `drizzle-orm`, `@/lib/account-rules`, `@/lib/account-data`, `@/lib/db`, `@/lib/encoder-context`, `@/lib/entry-edit`, `@/lib/readable-id` | Yes; read source for semantics |
 | [scripts/restore-resubmit-incentives.mjs](../scripts/restore-resubmit-incentives.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
+| [scripts/revert-old-site-reports.mjs](../scripts/revert-old-site-reports.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/review-amount-discrepancies.mjs](../scripts/review-amount-discrepancies.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/review-member-finance-private.mjs](../scripts/review-member-finance-private.mjs) | `node:fs`, `@next/env`, `postgres`, `../lib/entry-finance.mjs` | No flag detected; read source before running |
 | [scripts/review-member-private.mjs](../scripts/review-member-private.mjs) | `node:fs`, `@next/env`, `postgres`, `./source-history-rules.mjs`, `node:util`, `../lib/account-rules.ts` | No flag detected; read source before running |
