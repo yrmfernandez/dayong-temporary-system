@@ -574,7 +574,12 @@ export default function CollectionsPage() {
     try {
       const selected = programs.find((p) => p.id === entry.programId);
       const count = getMonthDifference(entry.monthFrom, entry.monthTo);
-      if (!selected || count < 1 || !entry.nopFrom || !entry.nopTo || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "Select the program, months, and matching NOP range." };
+      // Name the one step still missing (owner, October 31, 2026: the old catch-all asked for the program when it was already selected).
+      if (!selected) return { error: entry.memberId ? "Select the program." : "Select the member and program." };
+      if (entry.accountLoading) return { error: "Loading the program account..." };
+      if (!entry.monthFrom || entry.nopFrom == null) return { error: "The program account did not load. Select the program again." };
+      if (count < 1) return { error: "Type the months paid." };
+      if (entry.nopTo == null || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "The NOP range does not match the months paid. Type the months paid again." };
       const quote = calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto && collectedBy === "Collector", reactivation: entry.reactivation === "Yes" });
       // No incentive (owner, October 20, 2026): remitted whole, as the server saves it.
       return { ...quote, ...(noIncentiveOn(entry) ? { remittance: withoutIncentive(Number(entry.amountCollected), quote.remittance).remittance } : {}), error: "" };

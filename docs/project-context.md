@@ -17,6 +17,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Collections: the receipt message names the step still missing (2026-10-31)
+
+- **Found (owner):** a receipt showed "Select the program, months, and matching NOP range." even with the program already selected. It was one message for every gap: Months paid still empty, the account still loading, or the account not loaded.
+- **Done:** `quoteEntry` in `app/collections/page.tsx` now names one step: Select the program (or member and program), Loading the program account..., The program account did not load. Select the program again., Type the months paid., or The NOP range does not match the months paid. The same message blocks the save. No migration.
+- **To do (owner):** not checked in a browser. Check it on Collections: pick a member and program, leave Months paid empty, and look for "Type the months paid."
+
 ### Production down: Supabase egress over the Pro quota; the app now reads far less (2026-10-31)
 
 - **Found:** at 17:39 every page hung until Vercel cut it off after 300 s (ECHECKOUTTIMEOUT, "authentication did not complete"): production had used 278.65 GB of the 250 GB monthly egress with the spend cap on, so Supabase restricted it. Nearly all of it is Shared Pooler Egress (the database sending rows to the app): about 1 GB a day early in October, 9-10 GB a day lately, 35 GB on October 31. The owner turned the spend cap off.
