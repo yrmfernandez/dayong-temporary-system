@@ -7,17 +7,21 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { ClearingDayEndPrompt } from "@/components/clearing-day-end";
 import { LunchBreakScreen } from "@/components/lunch-break-screen";
+import { SaveQueueNotice } from "@/components/save-queue-notice";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { executiveRoles, isAdministratorRole, type AccessContext } from "@/lib/access-control";
 import { sessionForWorkspace } from "@/lib/workspace-session";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { installFriendlyApiErrors } from "@/lib/friendly-api-errors";
+import { installSaveQueue } from "@/lib/save-queue";
 import type { MaintenanceNotice } from "@/lib/maintenance-notice-text";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 // Plain-text server failures read as a clear message on every page, not "Unexpected token" (lib/friendly-api-errors.ts).
 installFriendlyApiErrors();
+// A save still waiting after 2 s shows "Saving, please wait" until it is saved (lib/save-queue.ts).
+installSaveQueue();
 import { ACTIVE_ROLE_COOKIE, onPreferencesChange, preferenceKeys, readDensity, readPreference, writeActiveRoleCookie, writePreference } from "@/lib/ui-preferences";
 
 const safeDecode = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };
@@ -140,6 +144,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       {/* Day-end Clearing review for the Entry Clerk (components/clearing-day-end.tsx). */}
       {user && <ClearingDayEndPrompt />}
+      <SaveQueueNotice />
       {/* 12:00–12:59 PM: nobody can use the system except Attendance (components/lunch-break-screen.tsx). */}
       <LunchBreakScreen pathname={pathname} administrator={access.roleNames.some(isAdministratorRole)} />
     </div>

@@ -25,6 +25,15 @@ export function installFriendlyApiErrors() {
       const body = await this.text().catch(() => "");
       throw new Error(explainServerFailure(this.status, body));
     }
-    return original.call(this);
+    const result = await original.call(this);
+    // The database pooler was full ("(EMAXCONN) max client connections reached") even after the save waited in line.
+    if (own && result && typeof result === "object") {
+      for (const key of ["message", "error"] as const) {
+        if (typeof result[key] === "string" && /EMAXCONN|max client connections/i.test(result[key])) result[key] = SYSTEM_BUSY;
+      }
+    }
+    return result;
   };
 }
+
+export const SYSTEM_BUSY = "The system is very busy right now and could not finish this. Wait a moment, refresh the page to check whether it went through, and try again if it did not.";

@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Database connections full on Collections: smaller pools, saves wait in line (2026-10-31)
+
+- **Found:** the Collections page showed "(EMAXCONN) max client connections reached, limit 200": Supabase's pooler allows 200 clients, and every Vercel instance kept up to 15 (10 for reads, 5 for transactions in `lib/db.ts`), idle ones for 20 s.
+- **Done:** pools of 5 for reads and 2 for transactions; idle connections close after 5 s on Vercel (20 s for scripts and local runs). A query beyond the pool waits for a free connection, it does not fail. Measured on staging from this PC: 8 page loads and 3 saves at once 1.6 s (0.9 s before), 30 and 10 at once 5 s (3 s before), none failed; pools of 3 were too slow (9 s).
+- **Done:** a save the pooler refuses before it begins waits and tries again for about 15 s (`inTransaction`, only when nothing ran yet, so nothing saves twice). Any save still running after 2 s shows "Saving, please wait..." at the bottom of every page until it is answered (`lib/save-queue.ts`, `components/save-queue-notice.tsx`); a pooler error that still comes back reads as a plain message (`lib/friendly-api-errors.ts`).
+- **Tested:** tsc, lint, build, 284 tests pass. **Owner:** push, then watch Collections at busy times; if the error still shows, Supabase's larger compute raises the 200 limit.
+
 ### Dropouts, MAM quota, Search Records, Members date filter (2026-10-31)
 
 - **Owner:** a Dropout section for entry clerks (search a member, drop their program/s); in MAM, forfeited, deceased and dropout/inactive accounts must not count in the quota; a section to search any record (OR number, date, contacts, collections) with filters combined; dates in the Members filter (NS in this date, etc.). Asked to analyze the ideas for loopholes, redundancy and bad organization.
