@@ -17,6 +17,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Member Corrections: split a whole account, even an NS one (2026-10-31)
+
+- **Owner:** in Member Corrections, a member could not be split when the account was NS: a member has two programs, and one of them belongs to another person. Split member only took ticked receipts, and an NS account has none.
+- **Built:** Split member now asks what belongs to the other person: some receipts (as before) or **the whole account**. The whole account (the only choice for an account with no receipts) goes to a new member or to a member already in the system (refused if they already have that program; use Move receipts then). It keeps its ID, DOI, status and NOPs; its receipts, New Sale (found by PH number and program) and transfers follow it. Beneficiaries stay; the preview notes a member left with no account. `lib/member-corrections.ts` `moveWholeAccount`, previewed and saved with a reason like every correction.
+- **Status:** done; type check, lint and build pass. No migration.
+
 ### MAS submit Collections from their phone; My Members on a phone (2026-10-31)
 
 - **Owner:** in MAS, add Collections: the MAS chooses the member and how many months were paid, by batch; the day they add the member is the OR date; they cannot add a member without clicking Waiver; the incentive is calculated for them; phone friendly, My Members too; the clerk side like New Sales (a new tab). Asked how cash remitted after 3:00 PM is handled.

@@ -23,7 +23,9 @@ import { formatDate as showDate } from "@/lib/date-format";
  *             kept member; two accounts in the same program are joined first (mergeAccountInto); blank details are
  *             filled from the other; the other member is deleted. Two different birthdates are refused.
  *   split     Split a member who is really two people: a new member with an account in the same program, branch and MAS
- *             takes the chosen receipts; both accounts are numbered again.
+ *             takes the chosen receipts; both accounts are numbered again. Or (owner, October 31, 2026: a member with two
+ *             programs, one of them another person's, possibly still NS with no receipts) the whole account goes to a new
+ *             member or to an existing one, with its receipts, New Sale and transfers, numbers unchanged.
  *   insert    Insert a missing receipt (owner, October 24, 2026: "also inserting of record"), for example one on the paper
  *             or old-system record that was never encoded: saved as a posted, already remitted collection with no
  *             remittance slip (a history repair, not new cash), placed among the account's receipts by OR date, which
@@ -381,6 +383,10 @@ export type SplitInput = {
   newDoi: string; newStartNop?: number; newStartMonth?: string;
   /** The kept member's corrected first name, when the import joined two names (e.g. "Fe" and "Fe Dhivenil"). */
   keepFirstName?: string;
+  /** The whole account goes to the other person (its receipts, New Sale and transfers too); no receipts need ticking. */
+  wholeAccount?: boolean;
+  /** With wholeAccount: an existing member who takes the account; blank creates the new member from newMember. */
+  targetMemberId?: string;
 };
 
 async function freeMemberNumber(tx: Transaction) {
@@ -394,6 +400,7 @@ async function freeMemberNumber(tx: Transaction) {
 
 /** Splits one member who is really two people: a new member with an account in the same program takes the chosen receipts. */
 export function splitMember(input: SplitInput, reason: string, apply: boolean) {
+  if (input.wholeAccount) return moveWholeAccount(input, reason, apply);
   return run("Split member", reason, apply, async (tx) => {
     const today = manilaNow().date;
     const ids = [...new Set((input.collectionIds ?? []).map(text).filter(Boolean))];
@@ -446,6 +453,60 @@ export function splitMember(input: SplitInput, reason: string, apply: boolean) {
       receipts: lines, statuses, notes, recordId: member.member_id,
       before: { member: member.member_id, number: member.member_number, firstName: member.first_name, account: account.id, receipts: ids },
       after: { newMember: newMemberId, newNumber, newAccount: newEnrollment, doi, receipts: lines.map(({ id, account: at, before: was, after: now }) => ({ id, account: at, before: was, after: now })), statuses, repriced: priced.repriced },
+    };
+  });
+}
+
+/**
+ * Split, whole account: the account belongs to another person (a new member, or an existing one who has no account in
+ * that program). The account keeps its ID, DOI, status and receipt numbers; its receipts, its New Sale (sales are found
+ * by PH number and program) and its transfers follow it.
+ */
+function moveWholeAccount(input: SplitInput, reason: string, apply: boolean) {
+  return run("Split member", reason, apply, async (tx) => {
+    const today = manilaNow().date;
+    const [row] = await tx.select().from(memberPrograms).where(eq(memberPrograms.enrollment_id, text(input.enrollmentId))).for("update");
+    if (!row) throw new Error("Account not found.");
+    const [program] = await tx.select({ name: programs.program_name }).from(programs).where(eq(programs.program_id, row.program_id));
+    const programName = text(program?.name) || row.program_id;
+    const [member] = await tx.select().from(members).where(eq(members.member_id, row.member_id)).for("update");
+    const targetId = text(input.targetMemberId);
+    let target: { id: string; number: string; name: string };
+    if (targetId) {
+      if (targetId === member.member_id) throw new Error("Choose a different member to take the account.");
+      const [found] = await tx.select().from(members).where(eq(members.member_id, targetId)).for("update");
+      if (!found) throw new Error("The member to take the account was not found.");
+      const [clash] = await tx.select({ id: memberPrograms.enrollment_id }).from(memberPrograms).where(and(eq(memberPrograms.member_id, targetId), eq(memberPrograms.program_id, row.program_id)));
+      if (clash) throw new Error(`${found.member_number} already has a ${programName} account (${clash.id}). Use Move receipts to join the receipts to it instead.`);
+      target = { id: found.member_id, number: found.member_number, name: `${text(found.surname)}, ${text(found.first_name)}` };
+    } else {
+      const person = input.newMember ?? { surname: "", firstName: "" };
+      if (!text(person.surname) || !text(person.firstName)) throw new Error("Enter the new member's surname and first name, or pick an existing member.");
+      if (text(person.birthdate) && (!validDate(text(person.birthdate)) || text(person.birthdate) > today)) throw new Error("Enter a valid birthdate for the new member.");
+      const stamp = Date.now().toString(36).toUpperCase();
+      const id = `MEM-${Date.now()}-SPLIT${stamp.slice(-3)}`, number = await freeMemberNumber(tx);
+      await tx.insert(members).values({ member_id: id, member_number: number, surname: text(person.surname).toUpperCase(), first_name: text(person.firstName).toUpperCase(),
+        middle_name: text(person.middleName).toUpperCase() || null, name_extension: text(person.nameExtension).toUpperCase() || null, birthdate: text(person.birthdate) || null, claimant_same_address: false, status: member.status });
+      target = { id, number, name: `${text(person.surname).toUpperCase()}, ${text(person.firstName).toUpperCase()}` };
+    }
+    await tx.update(memberPrograms).set({ member_id: target.id, member_number: target.number }).where(eq(memberPrograms.enrollment_id, row.enrollment_id));
+    const moved = await tx.update(collections).set({ member_id: target.id, member_number: target.number }).where(eq(collections.enrollment_id, row.enrollment_id)).returning({ id: collections.collection_id });
+    const sales = await tx.update(schema.sales).set({ member_number: target.number }).where(and(eq(schema.sales.member_number, member.member_number), eq(schema.sales.program_id, row.program_id))).returning({ id: schema.sales.sale_id });
+    const transfers = await tx.update(schema.member_transfers).set({ member_id: target.id, member_number: target.number }).where(eq(schema.member_transfers.enrollment_id, row.enrollment_id)).returning({ id: schema.member_transfers.transfer_id });
+    if (text(input.keepFirstName) && text(input.keepFirstName) !== member.first_name) await tx.update(members).set({ first_name: text(input.keepFirstName).toUpperCase() }).where(eq(members.member_id, member.member_id));
+    const [left] = await tx.select({ count: sql<number>`count(*)::int` }).from(memberPrograms).where(eq(memberPrograms.member_id, member.member_id));
+    const notes = [
+      targetId ? "" : `New member ${target.number} ${target.name}. Add details and beneficiaries in Members.`,
+      sales.length ? `${sales.length} New Sale(s) now under ${target.number}; the name typed on the New Sale is unchanged.` : `No New Sale of ${programName} was found under ${member.member_number}.`,
+      Number(left?.count ?? 0) === 0 ? `${member.member_number} has no account left. Delete it from Members if it should not exist.` : "",
+      "Beneficiaries stay with the member they were entered under; add the right ones in Members.",
+      text(input.keepFirstName) && text(input.keepFirstName) !== member.first_name ? `${member.member_number} first name ${member.first_name} → ${text(input.keepFirstName).toUpperCase()}.` : "",
+    ].filter(Boolean);
+    return {
+      summary: `${programName} account ${row.enrollment_id} (${text(row.account_status) || "NS"}, ${moved.length} receipt(s)) moves from ${member.member_number} to ${targetId ? "" : "the new member "}${target.number} ${target.name}; its NOPs and status stay.`,
+      receipts: [], statuses: [], notes, recordId: member.member_id,
+      before: { member: member.member_id, number: member.member_number, firstName: member.first_name, account: row.enrollment_id },
+      after: { member: target.id, number: target.number, account: row.enrollment_id, receipts: moved.map((item) => item.id), sales: sales.map((item) => item.id), transfers: transfers.map((item) => item.id) },
     };
   });
 }

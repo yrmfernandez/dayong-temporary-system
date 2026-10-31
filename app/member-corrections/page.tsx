@@ -26,7 +26,7 @@ const TOOLS: Array<[Tool, string, string]> = [
   ["move", "Move receipts", "Move several receipts to another account of this member; both accounts are numbered again."],
   ["insert", "Insert missing receipt", "Add a receipt that was never encoded. It is saved as already remitted (no slip), so it does not enter Clearing or Remittances."],
   ["merge", "Merge members", "Another member is the same person: everything of theirs moves to this member and the duplicate is removed."],
-  ["split", "Split member", "Some receipts belong to a different person: a new member with an account in the same program takes them."],
+  ["split", "Split member", "Some receipts, or a whole account (even an NS one with no receipts), belong to a different person: a new member or another existing member takes them."],
 ];
 const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const nop = (receipt: Receipt) => `NOP ${receipt.nopFrom}${receipt.nopTo > receipt.nopFrom ? `-${receipt.nopTo}` : ""} (${receipt.monthFrom}${receipt.monthTo !== receipt.monthFrom ? ` to ${receipt.monthTo}` : ""})`;
@@ -133,6 +133,9 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
   const set = (key: string, value: string) => { setForm((current) => ({ ...current, [key]: value })); setPreview(null); };
   const toggle = (id: string) => { setChosen((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); setPreview(null); };
   const number = (value: string | undefined) => (value === undefined || value === "" ? undefined : Number(value));
+  // Split: the whole account goes to the other person; always so for an account with no receipts (e.g. NS).
+  const splitWhole = form.splitWhole === "yes" || Boolean(account && !account.receipts.length);
+  const splitToExisting = splitWhole && form.splitTo === "other";
 
   useEffect(() => {
     if (tool !== "move" || programChoices.length) return;
@@ -165,9 +168,12 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       const fields = Object.fromEntries(Object.entries(picks).map(([field, pick]) => [field, pick === kept ? "keep" : "other"]));
       return keepOther ? { keepMemberId: other?.id ?? "", otherMemberId: member.member.id, fields } : { keepMemberId: member.member.id, otherMemberId: other?.id ?? "", fields };
     }
+    // Whole account (owner, October 31, 2026): a member's second program is another person's, e.g. still NS with no receipts.
+    if (splitWhole) return { enrollmentId: accountId, wholeAccount: true, collectionIds: [], newDoi: "", targetMemberId: form.splitTo === "other" ? other?.id ?? "" : undefined, keepFirstName: form.keepFirstName || undefined,
+      newMember: { surname: form.surname ?? "", firstName: form.firstName ?? "", middleName: form.middleName, nameExtension: form.nameExtension, birthdate: form.birthdate } };
     return { enrollmentId: accountId, collectionIds: [...chosen].filter((id) => account?.receipts.some((receipt) => receipt.id === id)), newDoi: form.newDoi ?? "", newStartNop: number(form.startNop), newStartMonth: form.startMonth || undefined,
       keepFirstName: form.keepFirstName || undefined, newMember: { surname: form.surname ?? "", firstName: form.firstName ?? "", middleName: form.middleName, nameExtension: form.nameExtension, birthdate: form.birthdate } };
-  }, [tool, accountId, account, form, months, chosen, amounts, other, moveTo, keepOther, picks, member.member.id]);
+  }, [tool, accountId, account, form, months, chosen, amounts, other, moveTo, keepOther, picks, member.member.id, splitWhole]);
 
   async function send(apply: boolean) {
     setBusy(true); setMessage("");
@@ -273,17 +279,32 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
 
     {tool === "split" && account && <>
       {accountSelect}
-      <p className="text-sm font-medium">Tick the receipts that belong to the new member</p>
-      <ReceiptTable receipts={account.receipts} tick={{ chosen, toggle }} />
-      <div className="grid gap-3 sm:grid-cols-3">
+      <fieldset className="space-y-2"><legend className="text-sm font-medium">What belongs to the other person</legend>
+        <label className="flex items-center gap-2 text-sm"><input type="radio" name="split-what" checked={!splitWhole} disabled={!account.receipts.length} onChange={() => set("splitWhole", "")} />Some receipts of this account{account.receipts.length ? "" : " (it has none)"}</label>
+        <label className="flex items-center gap-2 text-sm"><input type="radio" name="split-what" checked={splitWhole} onChange={() => set("splitWhole", "yes")} />The whole {account.program} account ({account.status || "NS"}, {account.receipts.length} receipt(s)), with its New Sale</label>
+      </fieldset>
+      {splitWhole ? <>
+        <fieldset className="space-y-2"><legend className="text-sm font-medium">Who takes the account</legend>
+          <label className="flex items-center gap-2 text-sm"><input type="radio" name="split-who" checked={form.splitTo !== "other"} onChange={() => set("splitTo", "")} />A new member</label>
+          <label className="flex items-center gap-2 text-sm"><input type="radio" name="split-who" checked={form.splitTo === "other"} onChange={() => set("splitTo", "other")} />A member already in the system</label>
+        </fieldset>
+        {splitToExisting && (other
+          ? <p className="text-sm">Goes to <strong>{other.name}</strong> {other.number} <Button type="button" size="sm" variant="ghost" onClick={() => { setOther(null); setPreview(null); }}>Change</Button></p>
+          : <MemberPicker label="Member who takes the account" exclude={member.member.id} onPick={(found) => { setOther(found); setPreview(null); }} />)}
+        <p className="text-xs text-muted-foreground">The account keeps its ID, DOI, status and NOPs; its receipts, New Sale and transfers move with it.</p>
+      </> : <>
+        <p className="text-sm font-medium">Tick the receipts that belong to the new member</p>
+        <ReceiptTable receipts={account.receipts} tick={{ chosen, toggle }} />
+      </>}
+      {!splitToExisting && <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1"><Label htmlFor="sp-surname">New member surname</Label><Input id="sp-surname" value={form.surname ?? ""} onChange={(event) => set("surname", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sp-first">First name</Label><Input id="sp-first" value={form.firstName ?? ""} onChange={(event) => set("firstName", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sp-middle">Middle name</Label><Input id="sp-middle" value={form.middleName ?? ""} onChange={(event) => set("middleName", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sp-ext">Extension (Jr, Sr)</Label><Input id="sp-ext" value={form.nameExtension ?? ""} onChange={(event) => set("nameExtension", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sp-birth">Birthdate</Label><Input id="sp-birth" type="date" max={today()} value={form.birthdate ?? ""} onChange={(event) => set("birthdate", event.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="sp-doi">New member&apos;s DOI</Label><Input id="sp-doi" type="date" max={today()} value={form.newDoi ?? ""} onChange={(event) => set("newDoi", event.target.value)} /></div>
-      </div>
-      {startFields(`default: ${account.firstNop}, month after DOI`)}
+        {!splitWhole && <div className="space-y-1"><Label htmlFor="sp-doi">New member&apos;s DOI</Label><Input id="sp-doi" type="date" max={today()} value={form.newDoi ?? ""} onChange={(event) => set("newDoi", event.target.value)} /></div>}
+      </div>}
+      {!splitWhole && startFields(`default: ${account.firstNop}, month after DOI`)}
       <div className="space-y-1 sm:w-80"><Label htmlFor="sp-keep">Correct {member.member.number}&apos;s first name (optional)</Label><Input id="sp-keep" placeholder={member.member.firstName} value={form.keepFirstName ?? ""} onChange={(event) => set("keepFirstName", event.target.value)} /></div>
     </>}
 
