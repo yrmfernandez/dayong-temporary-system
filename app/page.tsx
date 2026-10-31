@@ -75,7 +75,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   })();
   // Live updates (components/live-router-refresh.tsx): the dashboard re-renders when the data it summarizes changes. The
   // executive and finance views run heavier queries, so they refresh at most every 30 seconds; System Health is not live.
-  const live = loaded.view === "it" ? null : <LiveRouterRefresh tables={["sales", "collections", "remittances", "member_programs", "attendance", "leave_requests", "expenses", "cash_transactions", "commissions", "vendor_payables"]} delayMs={loaded.view === "operational" ? 3000 : 30000} />;
+  const live = loaded.view === "it" ? null : <LiveRouterRefresh tables={["sales", "collections", "remittances", "member_programs", "attendance", "leave_requests", "expenses", "cash_transactions", "commissions", "vendor_payables"]} delayMs={30000} />;
   return <>{live}{view}</>;
 }
 

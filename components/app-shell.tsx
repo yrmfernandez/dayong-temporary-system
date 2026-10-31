@@ -50,11 +50,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (response.ok && result.success) { setCounts(result.counts ?? {}); setMaintenance(result.maintenance?.on ? result.maintenance : null); }
     } catch { /* the numbers are a convenience; the pages themselves are unaffected */ }
   }, []);
-  // On sign-in and every page change, when the tables behind the numbers change, and every 2 minutes as a fallback.
+  // On sign-in and every page change, at most every 30 s while the tables behind the numbers change (every open tab of
+  // every user reloads them, so 3 s added up to much of the Supabase egress; October 31, 2026), and every 2 minutes.
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the numbers for the page just opened
   useEffect(() => { void loadCounts(); }, [loadCounts, pathname]);
   useEffect(() => { const timer = window.setInterval(() => { if (!document.hidden) void loadCounts(); }, 120000); return () => window.clearInterval(timer); }, [loadCounts]);
-  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "collection_submissions", "dropout_requests", "attendance", "receipt_photos", "clearings", "notices_to_explain", "system_settings"], loadCounts, 3000);
+  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "collection_submissions", "dropout_requests", "attendance", "receipt_photos", "clearings", "notices_to_explain", "system_settings"], loadCounts, 30000);
   // A page that just cleared something (e.g. My Notices) asks for the numbers at once.
   useEffect(() => { const refresh = () => void loadCounts(); window.addEventListener("notifications:refresh", refresh); return () => window.removeEventListener("notifications:refresh", refresh); }, [loadCounts]);
   // True while the dashboard of a newly chosen workspace is loading, so the old one is not mistaken for it.

@@ -2,7 +2,7 @@
 
 import { confirmDialog } from "@/components/app-dialog";
 import Link from "next/link";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { AdminDeletePanel } from "@/components/admin-delete";
 import { MemberEditForm } from "@/components/member-edit-form";
 import { InlineRow } from "@/components/inline-panel";
@@ -58,6 +58,7 @@ export default function MembersPage() {
   const [statusWarning, setStatusWarning] = useState("");
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const liveReload = useRef(false);
   const [canManage, setCanManage] = useState(false);
   // Administrators delete permanently, with every account, sale and collection (lib/admin-delete.ts).
   const [canDelete, setCanDelete] = useState(false);
@@ -81,6 +82,8 @@ export default function MembersPage() {
   useEffect(() => {
     const controller = new AbortController();
     const query = new URLSearchParams({ search, branch, mas, program, status, accountStatus, standing, dateField, dateFrom, dateTo, sort, order: descending ? "desc" : "asc", page: String(page) });
+    // A live update reads the directory again; paging and filters may use the server's copy from the last 15 s.
+    if (liveReload.current) { query.set("fresh", "1"); liveReload.current = false; }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- shows loading while this page of members arrives
     setBusy(true);
     fetch(`/api/members/directory?${query}`, { cache: "no-store", signal: controller.signal }).then(async (response) => {
@@ -95,7 +98,10 @@ export default function MembersPage() {
     return () => controller.abort();
   }, [revision, search, branch, mas, program, status, accountStatus, standing, dateField, dateFrom, dateTo, sort, descending, page]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["members", "member_programs", "beneficiaries", "member_transfers"], () => { if (!editing) setRevision((value) => value + 1); }, 15000);
+  // Not member_programs: a collection that changes an account's status writes there, so every collection saved anywhere
+  // reloaded every open Members page (about 7.5 MB each, a large share of the Supabase egress; October 31, 2026).
+  // Statuses are worked out when the page loads; a dropped or moved account shows on the next load or filter change.
+  useLiveRefresh(["members", "beneficiaries", "member_transfers"], () => { if (!editing) { liveReload.current = true; setRevision((value) => value + 1); } }, 30000);
   const visible = members;
   const pages = totals.pages;
   const currentPage = page;

@@ -1,7 +1,7 @@
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
-import { currentDb, schema } from "@/lib/db";
+import { currentDb, inTransaction, schema } from "@/lib/db";
 import { DATE_FIELDS, RECORD_KINDS } from "@/lib/record-search-options";
 
 /**
@@ -65,8 +65,30 @@ export function cleanQuery(input: Partial<Record<keyof RecordQuery, unknown>>): 
   return query;
 }
 
-/** Runs the search. `onlyMas` limits it to that MAS's accounts (null: everyone's). */
+/** How long one search may run in the database before it is stopped. */
+export const SEARCH_TIMEOUT = "15s";
+export const SEARCH_TOO_SLOW = "This search took too long and was stopped. Add more words or a filter (a branch, a program or a date range) and search again.";
+
+/**
+ * Runs the search. `onlyMas` limits it to that MAS's accounts (null: everyone's). It runs in its own transaction with a
+ * statement timeout: on October 31, 2026, searches left running on production held the pooler's connections until no
+ * page could reach the database (ECHECKOUTTIMEOUT, every request cut off after 300 s). Now the database stops a search
+ * after SEARCH_TIMEOUT, and the transaction pool (2 per instance) caps how many run at once.
+ */
 export async function searchRecords(query: RecordQuery, onlyMas: string | null) {
+  try {
+    return await inTransaction(async (tx) => {
+      await tx.execute(sql.raw(`set local statement_timeout = '${SEARCH_TIMEOUT}'`));
+      return runSearch(query, onlyMas);
+    });
+  } catch (error) {
+    const failure = ((error as { cause?: unknown })?.cause ?? error) as { code?: string };
+    if (failure?.code === "57014") throw new Error(SEARCH_TOO_SLOW);
+    throw error;
+  }
+}
+
+async function runSearch(query: RecordQuery, onlyMas: string | null) {
   const dated = query.dateField && (query.dateFrom || query.dateTo) ? query.dateField : "";
   if (!query.q && !query.orNumber && !dated && !query.program && !query.mas && !query.remittanceStatus && !query.branch) throw new Error("Type something to search for, or choose a date range or another filter.");
   if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) throw new Error("The From date is after the To date.");

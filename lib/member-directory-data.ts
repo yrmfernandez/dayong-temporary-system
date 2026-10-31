@@ -15,18 +15,53 @@ const text = (value: string | null | undefined) => (value ?? "").trim();
  * The Members directory from the database. With `onlyMas` (lib/member-scope.ts), only that MAS's program accounts and
  * their members are loaded, so a MAS never receives anyone else's member data.
  */
-export async function loadMemberDirectory(onlyMas: string | null = null) {
+/**
+ * Only the columns the directory shows (October 31, 2026): reading whole rows sent about 7.5 MB from the database on every
+ * Members page, filter or page change, a large share of the Supabase egress; these columns are about half of that.
+ */
+const enrollmentColumns = {
+  enrollment_id: memberPrograms.enrollment_id, member_id: memberPrograms.member_id, member_number: memberPrograms.member_number, program_id: memberPrograms.program_id,
+  doi: memberPrograms.doi, doi_time: memberPrograms.doi_time, branch: memberPrograms.branch, mas: memberPrograms.mas, remittance_method: memberPrograms.remittance_method,
+  status: memberPrograms.status, deactivated_on: memberPrograms.deactivated_on, fully_paid_on: memberPrograms.fully_paid_on, account_status: memberPrograms.account_status,
+};
+const memberColumns = {
+  member_id: members.member_id, member_number: members.member_number, surname: members.surname, first_name: members.first_name, middle_name: members.middle_name,
+  name_extension: members.name_extension, birthdate: members.birthdate, birthplace: members.birthplace, gender: members.gender, civil_status: members.civil_status,
+  member_contact: members.member_contact, address: members.address, status: members.status, claimant_name: members.claimant_name, claimant_contact: members.claimant_contact,
+  claimant_same_address: members.claimant_same_address, claimant_address: members.claimant_address, died_on: members.died_on,
+};
+
+/**
+ * The whole directory (everyone's, onlyMas null) is kept for DIRECTORY_CACHE_MS in this server, so paging, sorting and
+ * changing filters do not read every member again; a save in this server clears it (inTransaction in lib/db.ts), and a
+ * live refresh asks for fresh data (`fresh`).
+ */
+const DIRECTORY_CACHE_MS = 15_000;
+const directoryCache = globalThis as typeof globalThis & { dayongDirectoryCache?: { at: number; data: Promise<DirectoryMember[]> } };
+export function clearMemberDirectoryCache() { directoryCache.dayongDirectoryCache = undefined; }
+
+export async function loadMemberDirectory(onlyMas: string | null = null, { fresh = false }: { fresh?: boolean } = {}) {
+  if (onlyMas !== null) return readMemberDirectory(onlyMas);
+  const cached = directoryCache.dayongDirectoryCache;
+  if (!fresh && cached && Date.now() - cached.at < DIRECTORY_CACHE_MS) return cached.data;
+  const data = readMemberDirectory(null);
+  directoryCache.dayongDirectoryCache = { at: Date.now(), data };
+  data.catch(() => { if (directoryCache.dayongDirectoryCache?.data === data) clearMemberDirectoryCache(); });
+  return data;
+}
+
+async function readMemberDirectory(onlyMas: string | null) {
   const db = currentDb();
   const masCondition = onlyMas === null ? undefined : sql`lower(trim(${memberPrograms.mas})) = ${onlyMas.trim().toLowerCase()}`;
   // Everyone's directory (administrators) needs every member anyway, so both tables are read at the same time instead of
   // one after the other (about 1 second each; October 10, 2026). A MAS's directory reads only their own members.
   const [enrollmentRows, allMembers] = await Promise.all([
-    db.select().from(memberPrograms).where(masCondition),
-    onlyMas === null ? db.select().from(members) : Promise.resolve(null),
+    db.select(enrollmentColumns).from(memberPrograms).where(masCondition),
+    onlyMas === null ? db.select(memberColumns).from(members) : Promise.resolve(null),
   ]);
   const memberIds = [...new Set(enrollmentRows.map((row) => row.member_id))];
   const [memberRows, programRows, collectorRows] = await Promise.all([
-    allMembers ?? (!memberIds.length ? [] : db.select().from(members).where(inArray(members.member_id, memberIds))),
+    allMembers ?? (!memberIds.length ? [] : db.select(memberColumns).from(members).where(inArray(members.member_id, memberIds))),
     db.select({ id: programs.program_id, name: programs.program_name, code: programs.program_code }).from(programs),
     // The latest posted Collector collection per member number and program (the directory shows that Collector).
     db.selectDistinctOn([collections.member_number, collections.program_id], {
@@ -59,6 +94,8 @@ export type DirectoryQuery = {
   page: number;
   pageSize: number;
   onlyMas: string | null;
+  /** A live refresh: read the directory again instead of this server's copy from the last 15 seconds. */
+  fresh?: boolean;
 };
 
 /**
@@ -67,7 +104,9 @@ export type DirectoryQuery = {
  * other filters leave, so the page never loads every payment just to show 25 members.
  */
 export async function queryMemberDirectory(query: DirectoryQuery) {
-  const [everyone, employees, branchList] = await Promise.all([loadMemberDirectory(query.onlyMas), getEmployees(), getBranches()]);
+  const [loaded, employees, branchList] = await Promise.all([loadMemberDirectory(query.onlyMas, { fresh: query.fresh }), getEmployees(), getBranches()]);
+  // Payment statuses are written onto the enrollments below, so each request works on its own copy of the cached list.
+  const everyone = loaded.map((member) => ({ ...member, enrollments: member.enrollments.map((enrollment) => ({ ...enrollment })) }));
   // Branch first: the MAS / Collector choices are the active employees assigned to each branch.
   const branchNames = new Map(branchList.map((branch) => [branch.id, branch.name]));
   const staff = employees.filter((employee) => employee.status === "active").map((employee) => ({ name: employee.name, branches: employee.branchIds.map((id) => branchNames.get(id) ?? "").filter(Boolean) }));

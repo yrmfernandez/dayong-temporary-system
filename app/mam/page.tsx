@@ -151,7 +151,8 @@ export default function MamPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choices, branch, mas, member]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["collections", "sales", "member_programs"], () => { if (choices) void load(false, true); }, 15000);
+  // At most once a minute: a branch's MAM reads about 2 MB from the database (Supabase egress; October 31, 2026).
+  useLiveRefresh(["collections", "sales", "member_programs"], () => { if (choices) void load(false, true); }, 60000);
 
   // A MAS sees only their own members (owner, October 30, 2026): the collection list, plain wording, phone cards,
   // and no branch / MAS pickers or company-wide Sync.

@@ -2,9 +2,9 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb, inTransaction, schema, type Queryable } from "@/lib/db";
 
-import { readSheetRows, readSheetRowsNumbered } from "@/lib/sheets-on-db";
+import { readSheetRows } from "@/lib/sheets-on-db";
 import { createReadableId } from "@/lib/readable-id";
-import { getEncoder, runAsSystem } from "@/lib/encoder-context";
+import { getEncoder, isEncodingRequest, runAsSystem } from "@/lib/encoder-context";
 import { INCENTIVE_GRACE_DAYS, incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime } from "@/lib/remittance-deadline";
 import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { cashCountProblem } from "@/lib/cash-count";
@@ -132,14 +132,34 @@ export type CashRemittance = {
  * 60,000 collections). Saves update by ID inside one transaction (owner, October 24, 2026; upgrade #6), never by row
  * position.
  */
-async function loadLedger() {
+/**
+ * Kept for LEDGER_CACHE_MS in this server and shared by every reader (October 31, 2026): each operations dashboard and
+ * Remittances page read the whole ledger, every few seconds in every open tab, a large share of the Supabase egress.
+ * A save in this server clears it (inTransaction in lib/db.ts), and saves always read it fresh. Readers get their own
+ * copy, so one page changing an item never changes another's.
+ */
+const LEDGER_CACHE_MS = 10_000;
+const ledgerCache = globalThis as typeof globalThis & { dayongLedgerCache?: { at: number; data: ReturnType<typeof readLedger> } };
+async function loadLedger(): ReturnType<typeof readLedger> {
+  if (isEncodingRequest()) return readLedger();
+  const cached = ledgerCache.dayongLedgerCache;
+  if (cached && Date.now() - cached.at < LEDGER_CACHE_MS) return structuredClone(await cached.data);
+  const data = readLedger();
+  ledgerCache.dayongLedgerCache = { at: Date.now(), data };
+  data.catch(() => { if (ledgerCache.dayongLedgerCache?.data === data) ledgerCache.dayongLedgerCache = undefined; });
+  return structuredClone(await data);
+}
+
+async function readLedger() {
   const active = sql`(coalesce(remittance_status, '') <> 'Remitted' or coalesce(encoded_by_employee_id, '') <> '' or linked_remittance_id is not null)`;
   // The receipt-photo index is read alongside, not after: one round trip less on every Remittances and Finance load.
   const [remittanceRows, linkRows, activeCollections, activeSales, photos, cashNames, offDays, decisions] = await Promise.all([
     readSheetRows("Remittances", sql`true`),
     readSheetRows("Remittance Collections", sql`true`),
-    readSheetRowsNumbered("Collections", active),
-    readSheetRowsNumbered("Sales", active),
+    // Not numbered: numbering every row of Collections before filtering was one of the reads production timed out on
+    // (October 31, 2026); saves go by ID, so the row numbers were no longer used.
+    readSheetRows("Collections", active).then((rows) => ({ rows, rowNumbers: [] as number[] })),
+    readSheetRows("Sales", active).then((rows) => ({ rows, rowNumbers: [] as number[] })),
     photosByEntry(),
     cashMethodNames(),
     declaredNonWorkingDays(),
@@ -152,7 +172,7 @@ async function loadLedger() {
     id: text(row[0]), remittanceId: text(row[1]), collectionId: text(row[2]), amount: number(row[3]), linkedAt: text(row[4]),
   }));
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
-    kind: "Collections" as const, photoId: "", cash: false, encodedByEmployeeId: text(row[22]), encodedByName: text(row[23]), encodedAt: manilaStamp(text(row[24])), dateRemitted: text(row[40]).slice(0, 10), id: text(row[0]), batchId: text(row[1]), rowNumber: activeCollections.rowNumbers[index], memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
+    kind: "Collections" as const, photoId: "", cash: false, encodedByEmployeeId: text(row[22]), encodedByName: text(row[23]), encodedAt: manilaStamp(text(row[24])), dateRemitted: text(row[40]).slice(0, 10), id: text(row[0]), batchId: text(row[1]), rowNumber: activeCollections.rowNumbers[index] ?? 0, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[32]) === "DTO" || text(row[25]) === "DTO" ? "DTO" : text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS", // DTO shows as DTO; the clerk stays accountable by ID
     orNumber: text(row[8]), orDate: text(row[9]), amount: number(row[10]), remittanceAmount:number(row[26]), forfeitedIncentive: number(row[FORFEIT_COLUMN.Collections]), incentiveDeadline: deadline(text(row[9]), text(row[6])), remittanceStatus: text(row[28]) || "Needs Historical Review", linkedRemittanceId: text(row[29]),
     collectedBy: text(row[25]), paymentMethod: text(row[33]) || "Cash", paymentReference: text(row[34]), penalty: number(row[35]), penaltyNote: text(row[36]), fidelity: number(row[37]),
@@ -164,7 +184,7 @@ async function loadLedger() {
   // A New Sale has no OR; its date is the Manila date it was created (date_created is a UTC stamp).
   const saleDate = (row: unknown[]) => text(row[30]) || manilaDateOf(text(row[1]));
   const sales: CashCollection[] = rows.Sales.slice(1).map((row, index) => ({
-    kind: "New Sales" as const, photoId: "", cash: false, encodedByEmployeeId: text(row[32]), encodedByName: text(row[33]), encodedAt: manilaStamp(text(row[34]) || text(row[1])), dateRemitted: text(row[4]).slice(0, 10), id: text(row[0]), batchId: "", rowNumber: activeSales.rowNumbers[index], memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
+    kind: "New Sales" as const, photoId: "", cash: false, encodedByEmployeeId: text(row[32]), encodedByName: text(row[33]), encodedAt: manilaStamp(text(row[34]) || text(row[1])), dateRemitted: text(row[4]).slice(0, 10), id: text(row[0]), batchId: "", rowNumber: activeSales.rowNumbers[index] ?? 0, memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
     accountableEmployeeId: text(row[37]), accountableName: text(row[3]), accountableRole: "MAS",
     orNumber: text(row[29]) || (text(row[28]) ? `App ${text(row[28])}` : ""), orDate: saleDate(row), amount: number(row[26]), remittanceAmount: text(row[41]) === "" ? number(row[26]) : number(row[41]),
     forfeitedIncentive: number(row[FORFEIT_COLUMN["New Sales"]]), incentiveDeadline: deadline(saleDate(row), text(row[2])),

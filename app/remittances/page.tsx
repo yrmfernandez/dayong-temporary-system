@@ -89,7 +89,7 @@ export default function RemittancesPage() {
     void load(clerk);
   }, [load, clerk]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["remittances", "remittance_collections", "collections", "sales", "bank_deposits", "receipt_photos"], () => load(clerk), 5000);
+  useLiveRefresh(["remittances", "remittance_collections", "collections", "sales", "bank_deposits", "receipt_photos"], () => load(clerk), 15000);
 
   // Search narrows every list: slip or entry ID, accountable person, branch, or Entry Clerk.
   const term = search.trim().toLowerCase();

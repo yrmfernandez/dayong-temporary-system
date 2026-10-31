@@ -1,7 +1,7 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Printer, Save } from "lucide-react";
+import { Printer, RefreshCw, Save } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -51,9 +51,13 @@ function StatementContent() {
   }, []);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load; loading state is already set
   useEffect(() => { void loadAccounts(); }, [loadAccounts]);
-  // Live updates (lib/use-live-refresh.ts): the account list and the open statement reload when payments or enrollments change.
+  // Live updates (lib/use-live-refresh.ts): the open statement reloads when payments or enrollments change. The account
+  // list does not: it reads every account with every payment (about 12 MB from the database), and reloading it after
+  // every save in the company was a large share of the Supabase egress (October 31, 2026). Refresh list reloads it.
   const [liveRevision, setLiveRevision] = useState(0);
-  useLiveRefresh(["member_programs", "members", "collections", "sales", "programs", "system_settings"], () => { void loadAccounts(); setLiveRevision((value) => value + 1); }, 10000);
+  const [refreshingList, setRefreshingList] = useState(false);
+  const refreshList = async () => { setRefreshingList(true); await loadAccounts(); setRefreshingList(false); };
+  useLiveRefresh(["member_programs", "members", "collections", "sales", "programs", "system_settings"], () => { if (selected) setLiveRevision((value) => value + 1); }, 10000);
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
@@ -98,6 +102,7 @@ function StatementContent() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 max-w-xl flex-1"><SearchSelect aria-label="Member account" className="h-10" clearable placeholder={filtering ? `Choose from ${filtered.length} matching account${filtered.length === 1 ? "" : "s"}` : "Search member name, member no., or program"} value={selected} onValueChange={choose} options={filtered.map((item) => ({ value: item.id, label: `${item.memberName} · ${item.programName}`, description: `${item.memberNumber} · ${item.branch} · MAS ${item.mas} · ${statusLabel(item)}` }))} /></div>
         <p className="text-sm text-muted-foreground" aria-live="polite">{filtered.length} of {accounts.length} accounts</p>
+        <Button type="button" variant="outline" size="sm" disabled={refreshingList} onClick={() => void refreshList()} title="Statuses in this list are from when the page was opened"><RefreshCw className={`size-4 ${refreshingList ? "animate-spin" : ""}`} />{refreshingList ? "Refreshing..." : "Refresh list"}</Button>
         {filtering && <Button type="button" variant="ghost" onClick={() => setFilters(noFilters)}>Reset filters</Button>}
       </div>
     </div>
