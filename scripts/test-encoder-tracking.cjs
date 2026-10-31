@@ -4967,3 +4967,15 @@ test('lunch break: 12:00–12:59 PM Manila nobody saves except clocking in or ou
   } finally { Date.now = realNow; }
   delete Response.next;
 });
+
+test('Search Records: names typed as shown and contact numbers in any format (October 31, 2026)', () => {
+  const { searchWords, phoneDigits } = harness().load('lib/record-search.ts');
+  assert.deepEqual(searchWords('Cruz, Juan D.'), ['Cruz', 'Juan', 'D']);
+  assert.deepEqual(searchWords('  PH-12345 '), ['PH-12345']);
+  assert.deepEqual(searchWords('Oct 27, 2026 1,500'), ['2026-10-27', '1500'], 'dates as shown and amounts with commas');
+  assert.deepEqual(searchWords('10/27/2026 October 2026 may'), ['2026-10-27', '2026-10', 'may'], 'a month alone stays a word');
+  assert.equal(phoneDigits('2026-10-27'), '', 'a date is not a phone number');
+  for (const typed of ['09171234567', '0917-123-4567', '+639171234567', '(0917)1234567']) assert.equal(phoneDigits(typed), '9171234567', typed);
+  assert.equal(phoneDigits('PH-12345'), '', 'a PH number is not a phone number');
+  assert.equal(phoneDigits('123'), '', 'too short to compare as a number');
+});

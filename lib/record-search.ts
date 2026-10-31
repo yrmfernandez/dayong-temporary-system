@@ -26,6 +26,34 @@ const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 const like = (value: string) => `%${value.replace(/[%_\\]/g, (match) => `\\${match}`)}%`;
 const manilaDay = (column: AnyPgColumn) => sql`(${column} at time zone 'Asia/Manila')::date`;
 const between = (column: SQL, from: string, to: string) => and(from ? sql`${column} >= ${from}::date` : undefined, to ? sql`${column} <= ${to}::date` : undefined);
+/**
+ * "Anything" means anything (owner, October 31, 2026): each typed word must appear somewhere in the record, in any of
+ * its columns (the whole row as text, so a column added later is searched too) or the member's and program's. Dates are
+ * typed as the app shows them ("Oct 27, 2026", "10/27/2026", "Oct 2026") and stored as 2026-10-27, so they are turned
+ * into that form; amounts lose their thousands commas (1,500 → 1500); names are typed as shown ("Cruz, Juan D."), so
+ * commas and periods are not part of a word. A word of 4 or more digits also matches contact numbers whatever their
+ * format ("0917-123 4567", "+63 917…", "09171234567"): only the digits are compared, without a leading 0 or 63.
+ */
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const pad = (value: string | number) => String(value).padStart(2, "0");
+export function searchWords(q: string) {
+  const month = (name: string) => MONTHS.indexOf(name.slice(0, 3).toLowerCase()) + 1;
+  const normalized = q
+    .replace(/\b([a-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})\b/gi, (all, name: string, day: string, year: string) => month(name) ? `${year}-${pad(month(name))}-${pad(day)}` : all)
+    .replace(/\b([a-z]{3,9})\.?,?\s+(\d{4})\b/gi, (all, name: string, year: string) => month(name) ? `${year}-${pad(month(name))}` : all)
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g, (_all, m: string, d: string, year: string) => `${year}-${pad(m)}-${pad(d)}`)
+    .replace(/(\d),(?=\d{3}\b)/g, "$1");
+  return normalized.replace(/[,;]+/g, " ").split(/\s+/).map((word) => word.replace(/^\.+|\.+$/g, "")).filter(Boolean).slice(0, 6);
+}
+export function phoneDigits(word: string) {
+  const digits = word.replace(/\D/g, "");
+  return digits.length >= 4 && !/^\d{4}-\d{2}(-\d{2})?$/.test(word) && digits.length >= word.replace(/[\s()+.-]/g, "").length ? digits.replace(/^(63|0)/, "") : "";
+}
+/** `haystack`: every column of the record as one text; `phones`: its contact numbers, compared by digits too. */
+const wordMatch = (word: string, haystack: SQL, phones: AnyPgColumn[]) => {
+  const digits = phoneDigits(word);
+  return or(sql`${haystack} ilike ${like(word)}`, ...(digits ? phones.map((column) => sql`regexp_replace(coalesce(${column}, ''), '\\D', '', 'g') like ${like(digits)}`) : []));
+};
 const fullName = (surname: unknown, first: unknown, middle?: unknown) => `${text(surname)}, ${text(first)} ${text(middle)}`.trim().replace(/^,\s*$/, "");
 
 export function cleanQuery(input: Partial<Record<keyof RecordQuery, unknown>>): RecordQuery {
@@ -42,7 +70,7 @@ export async function searchRecords(query: RecordQuery, onlyMas: string | null) 
   const dated = query.dateField && (query.dateFrom || query.dateTo) ? query.dateField : "";
   if (!query.q && !query.orNumber && !dated && !query.program && !query.mas && !query.remittanceStatus && !query.branch) throw new Error("Type something to search for, or choose a date range or another filter.");
   if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) throw new Error("The From date is after the To date.");
-  const words = query.q.split(/\s+/).filter(Boolean).slice(0, 5);
+  const words = searchWords(query.q);
   const want = (kind: string) => query.kind === "all" || query.kind === kind;
   const masScope = (column: AnyPgColumn) => onlyMas === null ? undefined : sql`lower(trim(${column})) = ${onlyMas.trim().toLowerCase()}`;
   const masFilter = (column: AnyPgColumn) => query.mas ? ilike(column, like(query.mas)) : undefined;
@@ -58,7 +86,7 @@ export async function searchRecords(query: RecordQuery, onlyMas: string | null) 
     collector: collections.accountable_name, role: collections.collected_by_role, dateRemitted: collections.date_remitted, remittanceStatus: collections.remittance_status, status: collections.status, encodedBy: collections.encoded_by_name,
   }).from(collections).leftJoin(members, eq(members.member_id, collections.member_id)).leftJoin(programs, eq(programs.program_id, collections.program_id))
     .where(and(
-      ...words.map((word) => or(ilike(collections.or_number, like(word)), ilike(collections.member_number, like(word)), ilike(members.surname, like(word)), ilike(members.first_name, like(word)), ilike(members.member_contact, like(word)))),
+      ...words.map((word) => wordMatch(word, sql`concat_ws(' ', "collections"::text, "members"::text, ${programs.program_name})`, [members.member_contact, members.claimant_contact])),
       query.orNumber ? ilike(collections.or_number, like(query.orNumber)) : undefined,
       collectionDate ? between(collectionDate, query.dateFrom, query.dateTo) : undefined,
       query.program ? eq(collections.program_id, query.program) : undefined,
@@ -74,7 +102,7 @@ export async function searchRecords(query: RecordQuery, onlyMas: string | null) 
     branch: sales.branch, mas: sales.mas, dateRemitted: sales.date_remitted, remittanceStatus: sales.remittance_status, dateCreated: sales.date_created, encodedBy: sales.encoded_by_name,
   }).from(sales).leftJoin(programs, eq(programs.program_id, sales.program_id))
     .where(and(
-      ...words.map((word) => or(ilike(sales.or_number, like(word)), ilike(sales.application_no, like(word)), ilike(sales.member_number, like(word)), ilike(sales.surname, like(word)), ilike(sales.first_name, like(word)), ilike(sales.member_contact, like(word)), ilike(sales.claimant_contact, like(word)))),
+      ...words.map((word) => wordMatch(word, sql`concat_ws(' ', "sales"::text, ${programs.program_name})`, [sales.member_contact, sales.claimant_contact])),
       query.orNumber ? or(ilike(sales.or_number, like(query.orNumber)), ilike(sales.application_no, like(query.orNumber))) : undefined,
       saleDate ? between(saleDate, query.dateFrom, query.dateTo) : undefined,
       query.program ? eq(sales.program_id, query.program) : undefined,
@@ -92,7 +120,9 @@ export async function searchRecords(query: RecordQuery, onlyMas: string | null) 
     programs: sql<string>`(select string_agg(distinct p.program_name, ', ') from member_programs mp join programs p on p.program_id = mp.program_id where mp.member_id = ${members.member_id})`,
   }).from(members)
     .where(and(
-      ...words.map((word) => or(ilike(members.member_number, like(word)), ilike(members.surname, like(word)), ilike(members.first_name, like(word)), ilike(members.member_contact, like(word)), ilike(members.claimant_contact, like(word)), ilike(members.address, like(word)))),
+      // The member's own columns, or one of their accounts (branch, MAS, status, account ID) with its program's name.
+      ...words.map((word) => or(wordMatch(word, sql`"members"::text`, [members.member_contact, members.claimant_contact]),
+        sql`exists (select 1 from member_programs mp left join programs p on p.program_id = mp.program_id where mp.member_id = "members"."member_id" and concat_ws(' ', mp::text, p.program_name) ilike ${like(word)})`)),
       memberDate ? between(memberDate, query.dateFrom, query.dateTo) : undefined,
       accountFilter ? sql`exists (select 1 from ${memberPrograms} where ${memberPrograms.member_id} = ${members.member_id}
         ${query.branch ? sql`and lower(trim(${memberPrograms.branch})) = ${query.branch.toLowerCase()}` : sql``}

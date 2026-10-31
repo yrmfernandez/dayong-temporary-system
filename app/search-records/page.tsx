@@ -60,7 +60,7 @@ export default function SearchRecordsPage() {
 
     <Card><CardContent className="pt-5">
       <form onSubmit={(event) => void search(event)} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="text-sm sm:col-span-2">Anything<input type="search" className={field} value={form.q} onChange={(e) => set("q", e.target.value)} placeholder="Name, PH number, contact number, OR number, address" /></label>
+        <label className="text-sm sm:col-span-2">Anything<input type="search" className={field} value={form.q} onChange={(e) => set("q", e.target.value)} placeholder="Any detail: name, PH or OR number, contact, program, branch, MAS, amount, date (Oct 27, 2026)..." /></label>
         <label className="text-sm">Look in<select className={field} value={form.kind} onChange={(e) => set("kind", e.target.value)}>{RECORD_KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="text-sm">OR or application number<input className={field} value={form.orNumber} onChange={(e) => set("orNumber", e.target.value)} placeholder="e.g. 24619" /></label>
         <label className="text-sm">Date of<select className={field} value={form.dateField} onChange={(e) => set("dateField", e.target.value)}><option value="">Any date</option>{DATE_FIELDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

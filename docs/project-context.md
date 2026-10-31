@@ -17,6 +17,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Search Records: Anything searches every detail (2026-10-31)
+
+- **Found:** the Anything box only looked at name, PH number, contact, OR number and address, so a program, branch, MAS, amount or date found nothing; a name typed as shown (Cruz, Juan D.) or a contact in another format (0917-123-4567, +63...) missed records that exist; middle names were not searched.
+- **Done:** each typed word must appear somewhere in the record: any column of the collection, New Sale or member (the whole row as text, so later columns are searched too), the member and the program; for members also any of their accounts. Dates typed as shown become 2026-10-27, thousands commas are dropped, commas and periods in names ignored, and contact numbers compared by digits (`searchWords`, `phoneDigits` in `lib/record-search.ts`).
+- **Tested:** on staging, branch, MAS, program, amount, a date as shown and combinations each find records in about 1.5-2 s; contact formats find the same members; tsc, lint, build, tests pass.
+
 ### Database connections full on Collections: smaller pools, saves wait in line (2026-10-31)
 
 - **Found:** the Collections page showed "(EMAXCONN) max client connections reached, limit 200": Supabase's pooler allows 200 clients, and every Vercel instance kept up to 15 (10 for reads, 5 for transactions in `lib/db.ts`), idle ones for 20 s.
