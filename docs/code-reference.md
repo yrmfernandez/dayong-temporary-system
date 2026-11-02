@@ -226,7 +226,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/mam-format.ts](../lib/mam-format.ts) | `paidInMonth` | — |
 | [lib/mam-report.ts](../lib/mam-report.ts) | `MamAccount`, `monitoringMonths`, `buildMamReport` | `@/lib/account-rules` |
 | [lib/manila-date.ts](../lib/manila-date.ts) | `manilaToday`, `manilaDateOf` | — |
-| [lib/mas-collection-quote.ts](../lib/mas-collection-quote.ts) | `MAX_SUBMISSION_MONTHS`, `QuoteAccount`, `masCollectionQuote` | `@/lib/account-rules`, `@/lib/remittance` |
+| [lib/mas-collection-quote.ts](../lib/mas-collection-quote.ts) | `MAX_SUBMISSION_MONTHS`, `MAX_SUBMISSION_ENTRIES`, `QuoteAccount`, `masCollectionQuote` | `@/lib/account-rules`, `@/lib/remittance` |
 | [lib/mas-collection.ts](../lib/mas-collection.ts) | `CLOSE_TO_FORFEIT_DAYS`, `collectionList`, `monthsLabel` | `@/lib/account-rules`, `@/lib/date-format` |
 | [lib/mas-expected.ts](../lib/mas-expected.ts) | `Expected`, `duesIn`, `expectedByMas` | `@/lib/db` |
 | [lib/master-data-crud.ts](../lib/master-data-crud.ts) | `lockedPayChange`, `ProgramInput`, `updateProgramRecord`, `ProgramBulkChanges`, `updateProgramsBulk`, `deleteProgramRecord`, `BranchInput`, `updateBranchRecord`, `setBranchLocation`, `deleteBranchRecord`, `getUserAccounts`, `updateUserAccount`, `resetUserPassword`, `deleteUserAccount`, `MemberRecordInput`, `getMemberRecord`, `updateMemberRecord`, `deleteMemberRecord` | `@/lib/db`, `@/lib/google-sheets-data`, `@/lib/google-sheets`, `@/lib/passwords`, `@/lib/users-sheet`, `@/lib/program-incentive-store`, `@/lib/member-records`, `@/lib/manila-date` |

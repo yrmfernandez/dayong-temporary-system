@@ -7,6 +7,8 @@ import { calculateRemittance, type IncentiveTier } from "@/lib/remittance";
  * follow from the account. Pure, so the page shows exactly what the server stores (lib/collection-submissions.ts).
  */
 export const MAX_SUBMISSION_MONTHS = 60;
+/** Members in one submit, all branches together. */
+export const MAX_SUBMISSION_ENTRIES = 30;
 
 export type QuoteAccount = { basePay: number; flexible: boolean; maxMonthlyPayment: number | null; nextMonth: string; nextNop: number; tiers: IncentiveTier[] };
 

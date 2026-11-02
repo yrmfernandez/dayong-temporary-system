@@ -1155,6 +1155,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       resetForm();
       setSaveMessage(result.message || "Submitted to the branch clerk.");
       setSubmissionRevision((value) => value + 1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error: unknown) {
       setSaveMessage(error instanceof Error ? error.message : "Unable to submit the sales.");
     } finally {
@@ -1418,6 +1419,10 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
       {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
 
+      {/* MAS: what the last submit did, and the submissions the clerk sent back, first thing on the page. */}
+      {masMode && saveMessage && !showPreview && <p role="status" className="rounded-lg border bg-muted/40 p-3 text-sm">{saveMessage}</p>}
+      {masMode && <ReturnedSubmissions submissions={submissionList.filter((item) => item.status === "Returned" && item.id !== submissionId)} onOpen={openSubmission} />}
+
       {!masMode && tab === "submitted" ? (
         <SubmissionList submissions={submissionList} activeId={submissionId} onOpen={openSubmission} onReturn={(submission) => void returnToMas(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} />
       ) : (<>
@@ -1448,7 +1453,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
             </div>
             <div className="space-y-2">
               <Label>Submitted on</Label>
-              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{today}; each sale&apos;s date enrolled is its application date</p>
+              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{showDate(today)}; each sale&apos;s date enrolled is its application date</p>
             </div>
           </CardContent>
         </Card>
@@ -1747,6 +1752,12 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                           )}
                         </div>
                       </div>
+                      {/* MAS: what this sale earns them and what they hand over, as soon as the program and amount are in. */}
+                      {masMode && saleQuotes[index] && !("error" in saleQuotes[index]!) && <dl className="grid grid-cols-3 gap-2 rounded-md bg-muted/40 p-2 text-center text-sm">
+                        <div><dt className="text-[11px] text-muted-foreground">Collect</dt><dd className="font-semibold tabular-nums">{peso(amountPaidOf(sale))}</dd></div>
+                        <div><dt className="text-[11px] text-muted-foreground">Your incentive</dt><dd className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{peso(saleQuotes[index]!.incentive)}</dd></div>
+                        <div><dt className="text-[11px] text-muted-foreground">To remit</dt><dd className="font-semibold tabular-nums">{peso(saleQuotes[index]!.remittance)}</dd></div>
+                      </dl>}
                       {/* NO INCENTIVE (owner, October 20, 2026): this one sale earns the MAS nothing; it is remitted whole. */}
                       {!masMode && <div className={`rounded-md border px-3 py-2 text-sm ${noIncentiveOn(sale) ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2">
@@ -2899,6 +2910,9 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
       {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" optional={allCash} />}
 
+      {/* Above the save bar, so the bar stays at the bottom of the screen to the end of the page. */}
+      {masMode && <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={openSubmission} />}
+
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}
       <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
@@ -2907,6 +2921,10 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
             <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
               <span>Total amount collected <strong className="text-lg tabular-nums">{peso(totalPaid)}</strong></span>
               {!masMode && <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{saleTotalDue === null ? "pending" : peso(saleTotalDue)}</strong></span>}
+              {masMode && totalSaleRemittance !== null && <>
+                <span className="text-muted-foreground">Your incentive <strong className="tabular-nums text-emerald-700 dark:text-emerald-400">{peso(Math.round((totalPaid - totalSaleRemittance) * 100) / 100)}</strong></span>
+                <span className="text-muted-foreground">To remit <strong className="tabular-nums text-foreground">{peso(totalSaleRemittance)}</strong></span>
+              </>}
               <span className="text-muted-foreground">{sales.length} {sales.length === 1 ? "sale" : "sales"}</span>
             </p>
             <p className="truncate text-muted-foreground">{branch || "Branch not selected"} · {mas || "MAS not selected"}</p>
@@ -2916,15 +2934,17 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
             <ControlTotalField id="sales-control-total" title="The net total the MAS wrote on the turnover sheet: amount paid less MAS incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={saleTotalDue} />
           )}
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={resetForm} disabled={saving}>Cancel</Button>
+            <Button type="button" variant="outline" disabled={saving} onClick={async () => {
+              // A MAS fills the cards on a phone: one stray tap must not wipe them.
+              if (masMode && batchHasWork && !await confirmDialog(submissionId ? "Stop editing this submission? Your changes on the form are lost." : "Clear every sale card on the form?")) return;
+              resetForm();
+            }}>Cancel</Button>
             <Button type="button" onClick={async () => { if (showPreview) { void (masMode ? submitToClerk() : saveSales()); return; } if (!masMode) await alertDialog(SALE_CHECK_REMINDER, { title: "Check every sale before saving", warning: true, confirmLabel: "I have checked every sale" }); setShowPreview(true); }} disabled={saving}>
               {saving ? (masMode ? "Submitting..." : "Saving...") : showPreview ? (masMode ? "Confirm and Submit" : "Confirm and Save") : "Preview Sales"}
             </Button>
           </div>
         </div>
       </div>
-
-      {masMode && <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={openSubmission} />}
       </>)}
     </div>
   );
@@ -2958,6 +2978,26 @@ function SubmissionList({ submissions, activeId, onOpen, onReturn, onRefresh }: 
         ))}
       </CardContent>
     </Card>
+  );
+}
+
+/** MAS: submissions the clerk sent back, with what to fix, at the top of the page so they are not missed. */
+function ReturnedSubmissions({ submissions, onOpen }: { submissions: SubmissionSummary[]; onOpen: (submission: SubmissionSummary) => void }) {
+  if (!submissions.length) return null;
+  return (
+    <div role="alert" className="space-y-2 rounded-xl border border-red-300 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/30">
+      <p className="flex items-center gap-2 font-semibold text-red-800 dark:text-red-300"><TriangleAlert className="size-4" />{submissions.length === 1 ? "1 submission was" : `${submissions.length} submissions were`} returned to you to fix</p>
+      {submissions.map((submission) => (
+        <div key={submission.id} className="flex flex-col gap-2 rounded-lg border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="truncate font-medium">{memberNames(submission)}</p>
+            <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {peso(submission.totalAmount)} · {submission.branch}</p>
+            <p className="font-medium text-destructive">To fix: {submission.returnReason}{submission.reviewedByName ? ` (${submission.reviewedByName})` : ""}</p>
+          </div>
+          <Button type="button" className="h-11 shrink-0" onClick={() => onOpen(submission)}>Fix and resubmit</Button>
+        </div>
+      ))}
+    </div>
   );
 }
 

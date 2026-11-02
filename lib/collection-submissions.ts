@@ -7,7 +7,7 @@ import { addClearing } from "@/lib/clearing";
 import { coveredKinds, type ClearingCovers } from "@/lib/clearing-kinds";
 import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
-import { masCollectionQuote } from "@/lib/mas-collection-quote";
+import { masCollectionQuote, MAX_SUBMISSION_ENTRIES } from "@/lib/mas-collection-quote";
 import { createReadableId } from "@/lib/readable-id";
 import { tiersForBranch } from "@/lib/remittance";
 import { incentiveDeadline, manilaNow } from "@/lib/remittance-deadline";
@@ -18,7 +18,7 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  * Collections submitted by a MAS (owner, October 31, 2026), as New Sales already are (lib/sale-submissions.ts). On
  * Submit Collections the MAS picks their own members and how many months each paid; the OR date is the day the member
  * was added to the batch, and the system works out the months, NOP, amount and their incentive. A suspended account
- * needs Waiver ticked.
+ * needs Waiver ticked. Members of several branches submitted together become one submission per branch.
  *
  * Only the clerk changes a batch once it is submitted (owner, October 31, 2026): the MAS can neither edit nor withdraw it,
  * nor mark it remitted, since a MAS could claim cash they have not handed over. An Entry Clerk assigned to the branch
@@ -36,7 +36,7 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  * Clearing by 3:00 PM the next working day after the OR date, otherwise forfeited and the whole amount handed over.
  */
 const submissions = schema.collection_submissions;
-export const MAX_SUBMISSION_ENTRIES = 30;
+export { MAX_SUBMISSION_ENTRIES };
 const text = (value: unknown) => String(value ?? "").trim();
 const sameName = (a: unknown, b: unknown) => text(a).replace(/\s+/g, " ").toLowerCase() === text(b).replace(/\s+/g, " ").toLowerCase();
 const cents = (value: number) => Math.round(value * 100) / 100;
@@ -132,13 +132,14 @@ export async function listMyCollectionSubmissions(user: SessionUser) {
 }
 
 /**
- * Saves the members a MAS collected from as a new submission, OR date today. Everything shown to the MAS is worked out
- * again here from the account, with the same money rules as the Collections save. It cannot be changed afterwards.
+ * Saves the members a MAS collected from, OR date today. Members of different branches can be sent together; each
+ * branch becomes its own submission (owner, November 2, 2026), since each branch's clerk saves and remits its own.
+ * Everything shown to the MAS is worked out again here from the account, with the same money rules as the Collections
+ * save. It cannot be changed afterwards.
  */
-export async function submitCollections(user: SessionUser, input: { branchId?: unknown; entries?: unknown }) {
+export async function submitCollections(user: SessionUser, input: { entries?: unknown }) {
   const profile = await masProfile(user);
-  const branch = profile.branches.find((item) => item.id === text(input.branchId)) ?? (profile.branches.length === 1 && !text(input.branchId) ? profile.branches[0] : undefined);
-  if (!branch) throw new Error(profile.branches.length ? "Choose one of your branches." : "You are not assigned to an active branch. Ask HR to assign you.");
+  if (!profile.branches.length) throw new Error("You are not assigned to an active branch. Ask HR to assign you.");
   if (!Array.isArray(input.entries) || !input.entries.length) throw new Error("Add at least one member.");
   if (input.entries.length > MAX_SUBMISSION_ENTRIES) throw new Error(`Submit at most ${MAX_SUBMISSION_ENTRIES} members at a time.`);
   const chosen = (input.entries as Array<Record<string, unknown>>).map((entry) => ({ enrollmentId: text(entry?.enrollmentId), months: Number(entry?.months), waiver: entry?.waiver === true }));
@@ -155,12 +156,13 @@ export async function submitCollections(user: SessionUser, input: { branchId?: u
 
   const today = manilaNow().date;
   const data = await loadAccountData({ enrollmentIds: ids });
-  const entries: SubmittedCollection[] = chosen.map((item) => {
+  const entries = chosen.map((item) => {
     const account = data.accounts.find((candidate) => candidate.id === item.enrollmentId);
     if (!account) throw new Error("A member in the batch no longer has this program. Reload the page.");
     const label = `${account.memberName} (${account.programName})`;
     if (!sameName(account.mas, profile.name)) throw new Error(`${label} is not your member.`);
-    if (!sameName(account.branch, branch.name)) throw new Error(`${label} belongs to ${account.branch}. Submit it with that branch.`);
+    const branch = profile.branches.find((candidate) => sameName(candidate.name, account.branch));
+    if (!branch) throw new Error(`${label} belongs to ${account.branch || "no branch"}, which is not one of your branches. Ask HR.`);
     const orDate = today;
     const state = accountState(account, data.payments, today);
     const blocked = blockedReason(state.status, today);
@@ -172,18 +174,28 @@ export async function submitCollections(user: SessionUser, input: { branchId?: u
       const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months);
       // The clerk types the OR number when saving; a stand-in lets the same payment rules run now.
       validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate, orNumber: "(typed by the clerk)", waiver: item.waiver ? "Waiver" : "", collectedByRole: "MAS", originalMas: "" }, today);
-      return { enrollmentId: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, ...quote, orDate, waiver: item.waiver };
+      const entry: SubmittedCollection = { enrollmentId: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, ...quote, orDate, waiver: item.waiver };
+      return { branch, entry };
     } catch (error) {
       throw new Error(`${label}: ${error instanceof Error ? error.message : "cannot be collected."}`);
     }
   });
-  const totalAmount = cents(entries.reduce((sum, entry) => sum + entry.amount, 0));
-  const totalIncentive = cents(entries.reduce((sum, entry) => sum + entry.incentive, 0));
+
+  // One submission per branch, in the order the branches first appear; all saved or none.
+  const byBranch = new Map<string, { branch: { id: string; name: string }; entries: SubmittedCollection[] }>();
+  for (const { branch, entry } of entries) {
+    const group = byBranch.get(branch.id) ?? { branch, entries: [] };
+    group.entries.push(entry);
+    byBranch.set(branch.id, group);
+  }
   const actor = getEncoder();
-  const values = { branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted", entries, entry_count: entries.length, total_amount: totalAmount, total_incentive: totalIncentive, submitted_at: actor.encodedAt };
-  const newId = createReadableId("CSUB");
-  await getDb().insert(submissions).values({ submission_id: newId, ...values, ...encodedBy() });
-  return { id: newId, entryCount: entries.length };
+  const batches = [...byBranch.values()].map(({ branch, entries: group }) => ({
+    submission_id: createReadableId("CSUB"), branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted",
+    entries: group, entry_count: group.length, total_amount: cents(group.reduce((sum, entry) => sum + entry.amount, 0)),
+    total_incentive: cents(group.reduce((sum, entry) => sum + entry.incentive, 0)), submitted_at: actor.encodedAt, ...encodedBy(),
+  }));
+  await inTransaction(() => currentDb().insert(submissions).values(batches));
+  return { ids: batches.map((batch) => batch.submission_id), entryCount: entries.length, batches: batches.map((batch) => ({ branch: batch.branch, entryCount: batch.entry_count })) };
 }
 
 /** Submissions waiting for the clerk in their branches (submitted, or marked remitted and not yet saved), oldest first. */

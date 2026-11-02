@@ -39,7 +39,11 @@ export const POST = withEncoder(async (request: Request) => {
   if (!user) return noAccess("Submit Collections");
   try {
     const result = await submitCollections(user, await request.json());
-    return Response.json({ success: true, ...result, message: `${result.entryCount} member${result.entryCount === 1 ? "" : "s"} submitted to the branch clerk.` }, { status: 201 });
+    const members = (count: number) => `${count} member${count === 1 ? "" : "s"}`;
+    const message = result.batches.length === 1
+      ? `${members(result.entryCount)} submitted to the ${result.batches[0].branch} clerk.`
+      : `Submitted as ${result.batches.length} batches, one per branch: ${result.batches.map((batch) => `${batch.branch} (${members(batch.entryCount)})`).join(", ")}. Remit each at its branch.`;
+    return Response.json({ success: true, ...result, message }, { status: 201 });
   } catch (error) { return failure(error, "Unable to submit the collections."); }
 });
 
