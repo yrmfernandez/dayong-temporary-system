@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
+import { employeeIs, SYSTEM_EMPLOYEE } from "@/lib/attendance-data";
 import { currentDb, schema } from "@/lib/db";
 import { getBranches } from "@/lib/google-sheets-data";
 import type { DeclaredDay, WorkCalendar } from "@/lib/working-days";
@@ -16,7 +17,7 @@ export async function declaredNonWorkingDays(): Promise<DeclaredDay[]> {
   const { attendance } = schema;
   const [rows, branches] = await Promise.all([
     currentDb().select({ date: attendance.attendance_date, branch: attendance.branch }).from(attendance)
-      .where(and(eq(attendance.employee_id, "SYSTEM"), eq(attendance.attendance_status, "Non-working Day"))),
+      .where(and(employeeIs(SYSTEM_EMPLOYEE), eq(attendance.attendance_status, "Non-working Day"))),
     getBranches(),
   ]);
   const names = new Map(branches.map((branch) => [branch.id, branch.name]));

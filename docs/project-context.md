@@ -17,6 +17,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Declaring a non-working day failed: the calendar row has no employee (2026-11-02)
+
+- **Found (owner):** declaring November 2, 2026 (All branches, Holiday) failed with "Failed query: insert into attendance ... NWD-20261102, SYSTEM". The calendar keeps each declared day as an attendance row of employee "SYSTEM", but `attendance.employee_id` links to `employees` and there is no employee SYSTEM, so PostgreSQL refused it (23503, `attendance_employee_id_employees_employee_id_fk`; reproduced on staging). No declaration has saved since the move to Postgres.
+- **Done:** migration `0038_calendar_rows` lets `attendance.employee_id` be empty; the calendar's rows store it empty. The app still calls them "SYSTEM": `lib/attendance-data.ts` turns SYSTEM into empty on save and back on read (`SYSTEM_EMPLOYEE`, `employeeIs`), and `lib/work-calendar.ts` looks them up the same way. Every employee's own row keeps its link. Staging migrated; a calendar row with no employee now saves (tested in a rolled-back transaction).
+- **To do (owner):** `npm run prod -- npm run db:migrate`, then `npm run prod -- node scripts/check-database.mjs` (0038 present, OK, 51 tables) **before** deploying, then declare November 2 again on Attendance → Holiday & Non-working Day Calendar. Clock-ins already made that day are cancelled when it is declared.
+
 ### Collections: the receipt message names the step still missing (2026-10-31)
 
 - **Found (owner):** a receipt showed "Select the program, months, and matching NOP range." even with the program already selected. It was one message for every gap: Months paid still empty, the account still loading, or the account not loaded.

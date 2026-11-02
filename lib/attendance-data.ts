@@ -1,4 +1,4 @@
-import { and, asc, between, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, between, eq, inArray, isNull, type SQL } from "drizzle-orm";
 
 import { currentDb, encodedBy, getDb, schema } from "@/lib/db";
 import { currentEncoder } from "@/lib/encoder-context";
@@ -91,8 +91,17 @@ function readAttendanceRow(row: unknown[]): AttendanceRecord {
   };
 }
 
+/**
+ * The calendar's own rows (declared non-working days) belong to no employee: the app calls that employee "SYSTEM" and
+ * the table keeps employee_id empty, because the employee link refuses an ID with no employee (migration 0038).
+ */
+export const SYSTEM_EMPLOYEE = "SYSTEM";
+const employeeIdValue = (employeeId: string) => (employeeId === SYSTEM_EMPLOYEE ? null : employeeId);
+export const employeeIs = (employeeId: string) =>
+  employeeId === SYSTEM_EMPLOYEE ? isNull(attendanceTable.employee_id) : eq(attendanceTable.employee_id, employeeId);
+
 type AttendanceRow = typeof attendanceTable.$inferSelect;
-const toRecord = (row: AttendanceRow) => readAttendanceRow([row.attendance_id, row.employee_id, row.attendance_date, row.branch, row.scheduled_time_in, row.scheduled_time_out, row.time_in, row.time_out,
+const toRecord = (row: AttendanceRow) => readAttendanceRow([row.attendance_id, row.employee_id ?? SYSTEM_EMPLOYEE, row.attendance_date, row.branch, row.scheduled_time_in, row.scheduled_time_out, row.time_in, row.time_out,
   row.worked_hours, row.overtime_hours, row.attendance_status, row.late_minutes, row.undertime_minutes, row.leave_type, row.leave_approval_status, row.notes, row.created_at, row.updated_at]);
 
 /** Attendance rows matching `where` (all when omitted), in the order they were added. */
@@ -103,7 +112,7 @@ async function attendanceRows(where?: SQL) {
 const blankToNull = (value: string) => (value ? value : null);
 function attendanceValues(record: AttendanceRecord) {
   return {
-    employee_id: record.employeeId, attendance_date: record.attendanceDate, branch: blankToNull(record.branch),
+    employee_id: employeeIdValue(record.employeeId), attendance_date: record.attendanceDate, branch: blankToNull(record.branch),
     scheduled_time_in: blankToNull(record.scheduledTimeIn), scheduled_time_out: blankToNull(record.scheduledTimeOut), time_in: blankToNull(record.timeIn), time_out: blankToNull(record.timeOut),
     worked_hours: record.workedHours, overtime_hours: record.overtimeHours, attendance_status: record.status, late_minutes: record.lateMinutes, undertime_minutes: record.undertimeMinutes,
     leave_type: blankToNull(record.leaveType), leave_approval_status: blankToNull(record.leaveApprovalStatus), notes: blankToNull(record.notes),
@@ -118,7 +127,7 @@ export async function getAttendanceForEmployeeDate(
   record: AttendanceRecord | null;
   rowNumber: number | null;
 }> {
-  const [row] = await attendanceRows(and(eq(attendanceTable.employee_id, employeeId), eq(attendanceTable.attendance_date, attendanceDate)));
+  const [row] = await attendanceRows(and(employeeIs(employeeId), eq(attendanceTable.attendance_date, attendanceDate)));
   return row ? { record: toRecord(row), rowNumber: row.row_seq } : { record: null, rowNumber: null };
 }
 
@@ -172,7 +181,7 @@ export async function getAttendanceRecordsForDate(
 
 /** The administrator's non-working day declarations (SYSTEM control rows) dated within the range, oldest first. */
 export async function getNonWorkingDayRecords(dateFrom: string, dateTo: string): Promise<AttendanceRecord[]> {
-  return (await attendanceRows(and(eq(attendanceTable.employee_id, "SYSTEM"), between(attendanceTable.attendance_date, dateFrom, dateTo)))).map(toRecord)
+  return (await attendanceRows(and(employeeIs(SYSTEM_EMPLOYEE), between(attendanceTable.attendance_date, dateFrom, dateTo)))).map(toRecord)
     .filter((record) => record.status === "Non-working Day")
     .sort((first, second) => first.attendanceDate.localeCompare(second.attendanceDate));
 }

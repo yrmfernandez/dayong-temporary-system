@@ -839,7 +839,8 @@ export const commissions = pgTable("commissions", {
 export const attendance = pgTable("attendance", {
   ...rowSeq(),
   attendance_id: text().primaryKey(),
-  employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
+  /** Empty on the calendar's own rows (declared non-working days), which the app calls employee "SYSTEM" (migration 0038). */
+  employee_id: text().references(() => employees.employee_id, employeeRef),
   attendance_date: day("attendance_date").notNull(),
   branch: text(),
   scheduled_time_in: text(),
