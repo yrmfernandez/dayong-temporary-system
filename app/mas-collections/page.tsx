@@ -87,9 +87,10 @@ export default function MasCollectionsPage() {
   const reload = useCallback(() => setRevision((value) => value + 1), []);
   useLiveRefresh(["collection_submissions", "collections"], reload, 3000);
 
-  // The highlight on the member just added fades after a moment.
+  // The member just added: scrolled into view (its card, wherever its branch group is) and highlighted for a moment.
   useEffect(() => {
     if (!justAdded) return;
+    document.getElementById(`batch-${justAdded}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     const timer = window.setTimeout(() => setJustAdded(""), 2500);
     return () => window.clearTimeout(timer);
   }, [justAdded]);
@@ -140,11 +141,10 @@ export default function MasCollectionsPage() {
   const add = (account: Account) => {
     setMessage("");
     if (full) { setMessage(`A batch holds at most ${MAX_SUBMISSION_ENTRIES} members. Submit these first.`); return; }
-    // Newest on top, and the page goes back up so the MAS sees the card and sets the months.
+    // Newest on top of its branch; the effect above scrolls to the card so the MAS sees it and sets the months.
     setBatch((current) => current.some((pick) => pick.enrollmentId === account.id) ? current : [{ enrollmentId: account.id, months: Math.max(1, Math.min(account.unpaidMonths || 1, MAX_SUBMISSION_MONTHS)), waiver: false }, ...current]);
     setJustAdded(account.id);
     setSearch("");
-    window.requestAnimationFrame(scrollPageToTop);
   };
   const change = (id: string, update: Partial<BatchItem>) => setBatch((current) => current.map((pick) => pick.enrollmentId === id ? { ...pick, ...update } : pick));
   const remove = (id: string) => setBatch((current) => current.filter((pick) => pick.enrollmentId !== id));
@@ -208,7 +208,7 @@ export default function MasCollectionsPage() {
           <h3 className="font-semibold">{group.name} <span className="text-sm font-normal text-muted-foreground">· {plural(group.rows.length, "member")}</span></h3>
           <p className="text-xs text-muted-foreground">Remit <strong className="text-foreground">{money(cents(group.totals.remittance))}</strong>{group.deadline ? ` by ${formatDeadline(group.deadline)}` : ""}</p>
         </div>}
-        {group.rows.map(({ pick, account, orDate, quote, problem }) => <Card key={pick.enrollmentId} className={`transition-shadow ${justAdded === pick.enrollmentId ? "ring-2 ring-primary" : ""} ${problem || (needsWaiver(account, orDate) && !pick.waiver) ? "border-amber-400" : ""}`}>
+        {group.rows.map(({ pick, account, orDate, quote, problem }) => <Card key={pick.enrollmentId} id={`batch-${pick.enrollmentId}`} className={`scroll-mt-4 transition-shadow ${justAdded === pick.enrollmentId ? "ring-2 ring-primary" : ""} ${problem || (needsWaiver(account, orDate) && !pick.waiver) ? "border-amber-400" : ""}`}>
           <CardContent className="space-y-3 p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
