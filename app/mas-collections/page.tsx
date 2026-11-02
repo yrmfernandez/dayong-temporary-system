@@ -13,6 +13,7 @@ import { formatDate, formatDateTime, formatMonth } from "@/lib/date-format";
 import { masCollectionQuote, MAX_SUBMISSION_ENTRIES, MAX_SUBMISSION_MONTHS } from "@/lib/mas-collection-quote";
 import { formatDeadline, incentiveDeadline, manilaNow } from "@/lib/remittance-deadline";
 import type { IncentiveTier } from "@/lib/remittance";
+import { scrollPageToTop } from "@/lib/scroll-top";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
@@ -116,11 +117,14 @@ export default function MasCollectionsPage() {
     catch (failure) { return { pick, account, orDate, quote: null, problem: failure instanceof Error ? failure.message : "Cannot be collected." }; }
   });
   type Row = (typeof rows)[number];
+  // One branch picked: only its members are shown, totalled and submitted; the others wait in the batch.
+  const shownRows = filterBranch ? rows.filter((row) => row.account?.branchId === filterBranch.id) : rows;
+  const hiddenCount = rows.length - shownRows.length;
   const needsWaiver = (account: Account | undefined, orDate: string) => Boolean(account?.suspendedAt && orDate >= account.suspendedAt);
   const sum = (list: Row[]) => list.reduce((total, row) => row.quote ? { amount: total.amount + row.quote.amount, incentive: total.incentive + row.quote.incentive, remittance: total.remittance + row.quote.remittance } : total, { amount: 0, incentive: 0, remittance: 0 });
-  const totals = sum(rows);
+  const totals = sum(shownRows);
   // Each branch is its own batch: its own clerk, its own remittance and deadline (lib/collection-submissions.ts).
-  const groups = [...rows.reduce((map, row) => {
+  const groups = [...shownRows.reduce((map, row) => {
     const key = row.account?.branchId ?? "";
     map.set(key, [...(map.get(key) ?? []), row]);
     return map;
@@ -129,8 +133,8 @@ export default function MasCollectionsPage() {
     const firstOrDate = list.map((row) => row.orDate).sort()[0] ?? today;
     return { id, name, rows: list, totals: sum(list), deadline: id ? incentiveDeadline(firstOrDate, { days: offDays, branch: name }) : "" };
   });
-  const missingWaiver = rows.filter((row) => needsWaiver(row.account, row.orDate) && !row.pick.waiver);
-  const problems = rows.filter((row) => row.problem);
+  const missingWaiver = shownRows.filter((row) => needsWaiver(row.account, row.orDate) && !row.pick.waiver);
+  const problems = shownRows.filter((row) => row.problem);
   const full = batch.length >= MAX_SUBMISSION_ENTRIES;
 
   const add = (account: Account) => {
@@ -140,26 +144,27 @@ export default function MasCollectionsPage() {
     setBatch((current) => current.some((pick) => pick.enrollmentId === account.id) ? current : [{ enrollmentId: account.id, months: Math.max(1, Math.min(account.unpaidMonths || 1, MAX_SUBMISSION_MONTHS)), waiver: false }, ...current]);
     setJustAdded(account.id);
     setSearch("");
-    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    window.requestAnimationFrame(scrollPageToTop);
   };
   const change = (id: string, update: Partial<BatchItem>) => setBatch((current) => current.map((pick) => pick.enrollmentId === id ? { ...pick, ...update } : pick));
   const remove = (id: string) => setBatch((current) => current.filter((pick) => pick.enrollmentId !== id));
-  const reset = () => setBatch([]);
+  // Clears the members shown (one branch, or all of them).
+  const reset = () => { const shown = new Set(shownRows.map((row) => row.pick.enrollmentId)); setBatch((current) => current.filter((pick) => !shown.has(pick.enrollmentId))); };
 
   async function submit() {
-    if (!batch.length || busy) return;
+    if (!shownRows.length || busy) return;
     if (problems.length) { setMessage(`${problems[0].account?.memberName ?? "A member"}: ${problems[0].problem}`); return; }
     if (missingWaiver.length) { setMessage(`${missingWaiver[0].account?.memberName} is suspended. Have the member sign the Waiver, then tick Waiver.`); return; }
     const perBranch = groups.map((group) => `${group.name}: ${plural(group.rows.length, "member")}, collected ${money(cents(group.totals.amount))}; remit ${money(cents(group.totals.remittance))} by ${formatDeadline(group.deadline)} to keep your ${money(cents(group.totals.incentive))} incentive.`);
-    const intro = groups.length > 1 ? `Submit ${plural(batch.length, "member")} as ${groups.length} batches, one per branch?` : `Submit ${plural(batch.length, "member")} to the clerk?`;
+    const intro = groups.length > 1 ? `Submit ${plural(shownRows.length, "member")} as ${groups.length} batches, one per branch?` : `Submit ${plural(shownRows.length, "member")} to the ${groups[0]?.name ?? ""} clerk?`;
     if (!await confirmDialog(`${intro} You cannot change it after this; the clerk checks it when you remit the cash.\n\n${perBranch.join("\n")}`)) return;
     setBusy(true); setMessage("");
     try {
-      const response = await fetch("/api/collection-submissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entries: batch.map(({ enrollmentId, months, waiver }) => ({ enrollmentId, months, waiver })) }) });
+      const response = await fetch("/api/collection-submissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entries: shownRows.map(({ pick: { enrollmentId, months, waiver } }) => ({ enrollmentId, months, waiver })) }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to submit.");
       reset(); setMessage(result.message); reload();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      scrollPageToTop();
     } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to submit."); }
     finally { setBusy(false); }
   }
@@ -183,9 +188,20 @@ export default function MasCollectionsPage() {
       {plural(waitingCount, "submission")} not yet remitted. Hand the cash to the clerk; see My submissions below for each deadline.
     </p>}
 
+    {/* BRANCH: one branch shows only its members, in the batch and in the list; All branches shows every branch. */}
+    {manyBranches && <div role="radiogroup" aria-label="Branch" className="flex gap-2 overflow-x-auto pb-1">
+      {[{ id: "", name: "All branches" }, ...branches].map((item) => {
+        const count = item.id ? rows.filter((row) => row.account?.branchId === item.id).length : rows.length;
+        return <Button key={item.id || "all"} type="button" size="sm" role="radio" aria-checked={branchId === item.id} variant={branchId === item.id ? "default" : "outline"} className="h-9 shrink-0" onClick={() => setBranchId(item.id)}>{item.name}{count ? ` (${count})` : ""}</Button>;
+      })}
+    </div>}
+    {hiddenCount > 0 && <p className="-mt-2 text-xs text-muted-foreground">
+      {plural(hiddenCount, "more member")} of other branches {hiddenCount === 1 ? "is" : "are"} in your batch. <button type="button" className="font-medium text-primary underline-offset-2 hover:underline" onClick={() => setBranchId("")}>Show all branches</button>
+    </p>}
+
     {/* THE BATCH: grouped by branch, since each branch is submitted as its own batch. */}
-    {rows.length > 0 && <section aria-label="This batch" className="space-y-4">
-      <h2 className="text-lg font-semibold">This batch · {plural(rows.length, "member")}{groups.length > 1 ? ` · ${groups.length} branches` : ""}</h2>
+    {shownRows.length > 0 && <section aria-label="This batch" className="space-y-4">
+      <h2 className="text-lg font-semibold">{filterBranch ? `${filterBranch.name} batch` : "This batch"} · {plural(shownRows.length, "member")}{groups.length > 1 ? ` · ${groups.length} branches` : ""}</h2>
       {groups.length > 1 && <p className="-mt-2 text-xs text-muted-foreground">Each branch is sent as its own batch, to that branch&apos;s clerk, with its own remittance.</p>}
       {groups.map((group) => <div key={group.id} className="space-y-3">
         {(manyBranches || groups.length > 1) && <div className="flex flex-wrap items-baseline justify-between gap-x-3 border-b pb-1">
@@ -239,9 +255,6 @@ export default function MasCollectionsPage() {
     <Card>
       <CardHeader className="space-y-3 pb-3">
         <CardTitle className="text-lg">Add a member who paid</CardTitle>
-        {manyBranches && <div role="radiogroup" aria-label="Branch" className="flex gap-2 overflow-x-auto pb-1">
-          {[{ id: "", name: "All branches" }, ...branches].map((item) => <Button key={item.id || "all"} type="button" size="sm" role="radio" aria-checked={branchId === item.id} variant={branchId === item.id ? "default" : "outline"} className="h-9 shrink-0" onClick={() => setBranchId(item.id)}>{item.name}</Button>)}
-        </div>}
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input type="search" className="h-11 pl-9 text-base" placeholder="Search name, PH number or program" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search your members" />
@@ -276,7 +289,7 @@ export default function MasCollectionsPage() {
     <MySubmissions submissions={submissions} />
 
     {/* TOTALS AND SUBMIT: kept at the bottom of the screen while the batch is filled. */}
-    {rows.length > 0 && <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+    {shownRows.length > 0 && <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
       <div className="mx-auto max-w-3xl space-y-2">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div><p className="text-[11px] text-muted-foreground">Collected</p><p className="font-bold tabular-nums">{money(cents(totals.amount))}</p></div>
@@ -287,8 +300,8 @@ export default function MasCollectionsPage() {
         {groups.length > 1 && <p className="text-center text-xs text-muted-foreground">Sent as {groups.length} batches, one per branch: remit each at its branch by its deadline above to keep the incentive. Check before submitting: only the clerk can change it after.</p>}
         {(problems.length > 0 || missingWaiver.length > 0) && <p className="text-center text-xs font-medium text-destructive">{problems.length ? `${problems[0].account?.memberName ?? "A member"}: ${problems[0].problem}` : `${missingWaiver[0].account?.memberName}: tick Waiver after the member signs it.`}</p>}
         <div className="flex gap-2">
-          <Button type="button" variant="outline" className="h-12" aria-label="Clear the batch" onClick={async () => { if (await confirmDialog("Remove every member from this batch?")) reset(); }}><X className="h-5 w-5" /></Button>
-          <Button type="button" className="h-12 flex-1 text-base" disabled={busy || Boolean(problems.length)} onClick={() => void submit()}>{busy ? "Submitting..." : `Submit ${plural(rows.length, "member")}${groups.length > 1 ? ` (${groups.length} batches)` : ""}`}</Button>
+          <Button type="button" variant="outline" className="h-12" aria-label="Clear the batch" onClick={async () => { if (await confirmDialog(filterBranch ? `Remove every ${filterBranch.name} member from the batch?` : "Remove every member from this batch?")) reset(); }}><X className="h-5 w-5" /></Button>
+          <Button type="button" className="h-12 flex-1 text-base" disabled={busy || Boolean(problems.length)} onClick={() => void submit()}>{busy ? "Submitting..." : `Submit ${plural(shownRows.length, "member")}${filterBranch ? ` of ${filterBranch.name}` : groups.length > 1 ? ` (${groups.length} batches)` : ""}`}</Button>
         </div>
       </div>
     </div>}

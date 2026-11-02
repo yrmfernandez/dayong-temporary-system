@@ -17,6 +17,19 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### New Sales submissions are corrected by the clerk, never sent back (2026-11-03)
+
+- **Asked (owner):** like collections, a clerk cannot reject a MAS New Sales submission; they edit it instead.
+- **Done:** Return to MAS is gone from New Sales → Submitted by MAS, and its API (`PATCH /api/sale-submissions`, `returnSubmission`) is removed; the review banner tells the clerk to correct anything wrong and save. As with collections, the MAS can no longer edit a submission waiting with the clerk: My submissions shows "With the clerk" and "Only the clerk can change it now", and `submitSales` updates only a submission already Returned (those returned earlier can still be fixed and resubmitted from the top of the page). No migration.
+- **Note:** Submit Collections still has **Reject** (before Mark remitted) for a batch that should not be saved at all, such as cash never handed over. Say if that should go too.
+
+### Scroll back to the top did nothing (2026-11-03)
+
+- **Found (owner):** on Submit Collections, adding a member still did not scroll back up. Pages scroll inside the app shell's main panel (`.app-main` in `components/app-shell.tsx`, `overflow-y-auto`), not the window, so `window.scrollTo` did nothing there; the same went for the scroll after Submit on both MAS pages and when a submission is opened on New Sales.
+- **Done:** `scrollPageToTop` (`lib/scroll-top.ts`) scrolls the main panel (the window when there is none); used on Submit Collections (Add, Submit) and in the New Sales form (MAS Submit, opening a submission). No migration.
+- **To do (owner):** check on a phone: Submit Collections → All → Add a member far down the list; the page should glide to the top with the new card highlighted.
+- **Also asked (owner):** a branch picked should show only that branch's members in the batch, with its own totals; All branches shows all, still divided by branch, with every total. **Done** (`app/mas-collections/page.tsx`): the branch buttons moved above the batch and filter both the batch and the member list, each with its count in the batch; with one branch picked the batch, the bottom totals, the deadline, the checks, Submit ("Submit 3 members of Tagum") and Clear cover only that branch, and the other branches' members stay in the batch ("2 more members of other branches are in your batch. Show all branches"). All branches works as before: grouped by branch, overall totals, one submission per branch.
+
 ### MAS Submit Collections across branches; Submit New Sales improved (2026-11-02)
 
 - **Asked (owner):** on Submit Collections, scroll back up after adding a member so it is seen; let a MAS add members of their other branches too, sent as separate batches; improve both MAS submit pages.

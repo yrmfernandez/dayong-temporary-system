@@ -1,7 +1,7 @@
 import { refuseOnDayOff } from "@/lib/day-off";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
-import { listForReview, listMySubmissions, masProfile, returnSubmission, submitSales } from "@/lib/sale-submissions";
+import { listForReview, listMySubmissions, masProfile, submitSales } from "@/lib/sale-submissions";
 
 const noStore = { "Cache-Control": "private, no-store" };
 const failure = (error: unknown, fallback: string, status = 400) => Response.json({ success: false, message: error instanceof Error ? error.message : fallback }, { status });
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   } catch (error) { return failure(error, "Unable to load your submissions."); }
 }
 
-/** The MAS submits sale cards (new, or an edit of one still waiting or returned). */
+/** The MAS submits sale cards (new, or one returned before November 3, 2026). Once submitted only the clerk changes them. */
 export const POST = withEncoder(async (request: Request) => {
   // Day Off locks the day's entries (lib/day-off.ts).
   const dayOff = await refuseOnDayOff();
@@ -38,17 +38,4 @@ export const POST = withEncoder(async (request: Request) => {
     const result = await submitSales(user, await request.json());
     return Response.json({ success: true, ...result, message: `${result.saleCount} sale${result.saleCount === 1 ? "" : "s"} submitted to the branch clerk.` }, { status: 201 });
   } catch (error) { return failure(error, "Unable to submit the sales."); }
-});
-
-/** The clerk returns a submission to the MAS with what to fix. */
-export const PATCH = withEncoder(async (request: Request) => {
-  // Day Off locks the day's entries (lib/day-off.ts).
-  const dayOff = await refuseOnDayOff();
-  if (dayOff) return dayOff;
-  const user = await userWithPageAccess("/new-sales");
-  if (!user) return Response.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
-  try {
-    const body = await request.json();
-    return Response.json({ success: true, ...await returnSubmission(user, String(body.id ?? ""), String(body.reason ?? "")), message: "Returned to the MAS." });
-  } catch (error) { return failure(error, "Unable to return the submission."); }
 });

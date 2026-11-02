@@ -1,6 +1,6 @@
 "use client";
 
-import { alertDialog, confirmDialog, promptDialog } from "@/components/app-dialog";
+import { alertDialog, confirmDialog } from "@/components/app-dialog";
 import { SALE_CHECK_REMINDER } from "@/lib/entry-check-reminder";
 import {
   useCallback,
@@ -35,6 +35,7 @@ import { ControlTotalField } from "@/components/control-total-field";
 import { BACKDATE_REASON_MIN, controlTotalDifference, controlTotalProblem, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { manilaNow } from "@/lib/remittance-deadline";
+import { scrollPageToTop } from "@/lib/scroll-top";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import { calculateSaleIncentive, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive } from "@/lib/remittance";
@@ -1155,7 +1156,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       resetForm();
       setSaveMessage(result.message || "Submitted to the branch clerk.");
       setSubmissionRevision((value) => value + 1);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      scrollPageToTop();
     } catch (error: unknown) {
       setSaveMessage(error instanceof Error ? error.message : "Unable to submit the sales.");
     } finally {
@@ -1176,18 +1177,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     setShowPreview(false);
     setSaveMessage("");
     setTab("encode");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  /** Clerk: sends a submission back to the MAS with what to fix. */
-  const returnToMas = async (submission: SubmissionSummary) => {
-    const reason = (await promptDialog(`What should ${submission.mas} fix?`, { required: true }))?.trim();
-    if (!reason) return;
-    const response = await fetch("/api/sale-submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: submission.id, reason }) });
-    const result = await response.json();
-    if (!response.ok || !result.success) { setSubmissionError(result.message || "Unable to return the submission."); return; }
-    if (submission.id === submissionId) resetForm();
-    setSubmissionRevision((value) => value + 1);
+    scrollPageToTop();
   };
 
   // Any unexpected error must show on screen; otherwise the button appears to do nothing.
@@ -1424,13 +1414,13 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       {masMode && <ReturnedSubmissions submissions={submissionList.filter((item) => item.status === "Returned" && item.id !== submissionId)} onOpen={openSubmission} />}
 
       {!masMode && tab === "submitted" ? (
-        <SubmissionList submissions={submissionList} activeId={submissionId} onOpen={openSubmission} onReturn={(submission) => void returnToMas(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} />
+        <SubmissionList submissions={submissionList} activeId={submissionId} onOpen={openSubmission} onRefresh={() => setSubmissionRevision((value) => value + 1)} />
       ) : (<>
       {submissionId && (
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <p>{masMode
             ? "Editing a submission you sent. Submit again when it is fixed."
-            : `Reviewing a submission from ${mas} (${branch}). Check every sale, add the Date Remitted and the control total, then save.`}</p>
+            : `Reviewing a submission from ${mas} (${branch}). Check every sale and correct anything wrong (a MAS submission is not sent back), add the Date Remitted and the control total, then save.`}</p>
           <Button type="button" variant="outline" size="sm" onClick={resetForm}>{masMode ? "Stop editing" : "Stop reviewing"}</Button>
         </div>
       )}
@@ -2954,7 +2944,8 @@ const submittedAt = (value: string) => value ? showDateTime(value) : "";
 const memberNames = (submission: SubmissionSummary) => submission.sales.map((sale) => [sale.member?.name?.firstName, sale.member?.name?.surname].filter(Boolean).join(" ") || "Unnamed member").join(", ");
 
 /** Clerk: MAS submissions waiting in their branches. */
-function SubmissionList({ submissions, activeId, onOpen, onReturn, onRefresh }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary) => void; onReturn: (submission: SubmissionSummary) => void; onRefresh: () => void }) {
+/** Clerk: MAS submissions are corrected here and saved, never sent back (owner, November 3, 2026). */
+function SubmissionList({ submissions, activeId, onOpen, onRefresh }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary) => void; onRefresh: () => void }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -2972,7 +2963,6 @@ function SubmissionList({ submissions, activeId, onOpen, onReturn, onRefresh }: 
             </div>
             <div className="flex shrink-0 gap-2">
               <Button type="button" size="sm" onClick={() => onOpen(submission)}>{submission.id === activeId ? "Continue review" : "Review"}</Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => onReturn(submission)}>Return to MAS</Button>
             </div>
           </div>
         ))}
@@ -3001,11 +2991,11 @@ function ReturnedSubmissions({ submissions, onOpen }: { submissions: SubmissionS
   );
 }
 
-/** MAS: their submissions; one still waiting or returned can be edited and submitted again. */
+/** MAS: their submissions. Once sent only the clerk changes one; one returned before November 3, 2026 can be fixed and sent again. */
 function MySubmissions({ submissions, activeId, onOpen }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary) => void }) {
   if (!submissions.length) return null;
   const tone = { Submitted: "secondary", Returned: "destructive", Saved: "default" } as const;
-  const label = { Submitted: "Waiting for the clerk", Returned: "Returned", Saved: "Saved" } as const;
+  const label = { Submitted: "With the clerk", Returned: "Returned", Saved: "Saved" } as const;
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">My submissions</CardTitle></CardHeader>
@@ -3017,9 +3007,10 @@ function MySubmissions({ submissions, activeId, onOpen }: { submissions: Submiss
               <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {peso(submission.totalAmount)} · {submission.branch}</p>
               <p className="truncate">{memberNames(submission)}</p>
               {submission.status === "Returned" && <p className="mt-1 font-medium text-destructive">To fix: {submission.returnReason}{submission.reviewedByName ? ` (${submission.reviewedByName})` : ""}</p>}
+              {submission.status === "Submitted" && <p className="mt-1 text-muted-foreground">Only the clerk can change it now. Something wrong? Tell the clerk.</p>}
               {submission.status === "Saved" && submission.reviewedByName && <p className="mt-1 text-muted-foreground">Saved by {submission.reviewedByName}</p>}
             </div>
-            {submission.status !== "Saved" && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(submission)}>{submission.id === activeId ? "Editing" : "Edit"}</Button>}
+            {submission.status === "Returned" && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(submission)}>{submission.id === activeId ? "Editing" : "Fix"}</Button>}
           </div>
         ))}
       </CardContent>

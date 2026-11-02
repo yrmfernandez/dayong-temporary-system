@@ -14,7 +14,11 @@ import { manilaNow } from "@/lib/remittance-deadline";
  * branch and MAS are their own and the Date Enrolled is the day they submit. An Entry Clerk assigned to that branch
  * (administrators: every branch) reviews it on New Sales → Submitted by MAS, adds the batch details (Date Remitted,
  * control total, Fidelity, penalty) and saves it through the normal New Sales save, which marks it Saved in the same
- * transaction; or returns it to the MAS with a reason, and the MAS edits and submits it again.
+ * transaction.
+ *
+ * As with collections (lib/collection-submissions.ts), once submitted only the clerk changes it (owner, November 3, 2026):
+ * the clerk corrects the cards on the form and saves, and can no longer return it; the MAS can no longer edit it. A
+ * submission returned before then can still be fixed and submitted again by the MAS.
  */
 const submissions = schema.sale_submissions;
 export const MAX_SUBMISSION_SALES = 20;
@@ -52,8 +56,8 @@ export async function listMySubmissions(user: SessionUser) {
 }
 
 /**
- * Saves a MAS's sale cards as a submission, or updates one still waiting or returned. Each card's Date Enrolled is the
- * submission day, and its branch and MAS are the submitter's. The clerk checks every detail again when saving.
+ * Saves a MAS's sale cards as a new submission, or submits again one returned before November 3, 2026. Each card's
+ * Date Enrolled is the submission day, and its branch and MAS are the submitter's. The clerk checks and corrects every detail when saving.
  */
 export async function submitSales(user: SessionUser, input: { submissionId?: unknown; branchId?: unknown; sales?: unknown }) {
   const profile = await masProfile(user);
@@ -73,9 +77,9 @@ export async function submitSales(user: SessionUser, input: { submissionId?: unk
   const id = text(input.submissionId);
   if (id) {
     const updated = await getDb().update(submissions).set(values)
-      .where(and(eq(submissions.submission_id, id), eq(submissions.mas_employee_id, profile.employeeId), inArray(submissions.status, ["Submitted", "Returned"])))
+      .where(and(eq(submissions.submission_id, id), eq(submissions.mas_employee_id, profile.employeeId), eq(submissions.status, "Returned")))
       .returning({ id: submissions.submission_id });
-    if (!updated.length) throw new Error("This submission was already saved by the clerk, so it can no longer be changed.");
+    if (!updated.length) throw new Error("This submission is with the clerk, so only the clerk can change it now. Tell the clerk what needs fixing.");
     return { id, saleCount: sales.length };
   }
   const newId = createReadableId("SUB");
@@ -115,19 +119,5 @@ export async function markSubmissionSaved(id: string, saleIds: string[]) {
   const actor = getEncoder();
   const updated = await currentDb().update(submissions).set({ status: "Saved", sale_ids: saleIds.join(","), reviewed_by_employee_id: actor.employeeId, reviewed_by_name: actor.name, reviewed_at: actor.encodedAt })
     .where(and(eq(submissions.submission_id, text(id)), eq(submissions.status, "Submitted"))).returning({ id: submissions.submission_id });
-  if (!updated.length) throw new Error("This MAS submission was just saved or returned by someone else. Nothing was saved.");
-}
-
-/** The clerk sends a submission back to the MAS with what to fix. */
-export async function returnSubmission(user: SessionUser, id: string, reason: string) {
-  if (text(reason).length < 3) throw new Error("Tell the MAS what to fix (at least 3 characters).");
-  const [row] = await getDb().select().from(submissions).where(eq(submissions.submission_id, text(id)));
-  if (!row) throw new Error("The MAS submission was not found.");
-  const scope = await reviewBranches(user);
-  if (scope && !scope.includes(row.branch_id)) throw new Error("This MAS submission belongs to a branch you are not assigned to.");
-  const actor = getEncoder();
-  const updated = await getDb().update(submissions).set({ status: "Returned", return_reason: text(reason).slice(0, 500), reviewed_by_employee_id: actor.employeeId, reviewed_by_name: actor.name, reviewed_at: actor.encodedAt })
-    .where(and(eq(submissions.submission_id, row.submission_id), eq(submissions.status, "Submitted"))).returning({ id: submissions.submission_id });
-  if (!updated.length) throw new Error("This MAS submission was already saved or returned.");
-  return { id: row.submission_id };
+  if (!updated.length) throw new Error("This MAS submission was just saved by someone else. Nothing was saved.");
 }
