@@ -21,6 +21,7 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 
 - **Asked (owner):** like collections, a clerk cannot reject a MAS New Sales submission; they edit it instead.
 - **Done:** Return to MAS is gone from New Sales → Submitted by MAS, and its API (`PATCH /api/sale-submissions`, `returnSubmission`) is removed; the review banner tells the clerk to correct anything wrong and save. As with collections, the MAS can no longer edit a submission waiting with the clerk: My submissions shows "With the clerk" and "Only the clerk can change it now", and `submitSales` updates only a submission already Returned (those returned earlier can still be fixed and resubmitted from the top of the page). No migration.
+- **Checked (owner asked):** Submit New Sales already shows Collect, Your incentive and To remit on each sale card and their totals in the bottom bar for a MAS, from the same program tiers (branch tiers included) the clerk's save uses (`saleQuotes`; `/api/programs` and `/api/branches` need only a sign-in). Added: when a sale's incentive cannot be worked out (a missing tier), the reason now shows on the MAS's card too; before, only the clerk's totals card showed it, and Submit is refused until it is fixed.
 - **Note:** Submit Collections still has **Reject** (before Mark remitted) for a batch that should not be saved at all, such as cash never handed over. Say if that should go too.
 
 ### Scroll back to the top did nothing (2026-11-03)

@@ -1748,6 +1748,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
                         <div><dt className="text-[11px] text-muted-foreground">Your incentive</dt><dd className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{peso(saleQuotes[index]!.incentive)}</dd></div>
                         <div><dt className="text-[11px] text-muted-foreground">To remit</dt><dd className="font-semibold tabular-nums">{peso(saleQuotes[index]!.remittance)}</dd></div>
                       </dl>}
+                      {/* The clerk sees this in the totals card; a MAS has no totals card, so it shows on the sale. */}
+                      {masMode && saleQuotes[index] && "error" in saleQuotes[index]! && <p role="alert" className="text-sm text-destructive">Your incentive cannot be worked out: {(saleQuotes[index] as { error: string }).error} Ask the office.</p>}
                       {/* NO INCENTIVE (owner, October 20, 2026): this one sale earns the MAS nothing; it is remitted whole. */}
                       {!masMode && <div className={`rounded-md border px-3 py-2 text-sm ${noIncentiveOn(sale) ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2">
