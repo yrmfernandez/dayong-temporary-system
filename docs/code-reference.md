@@ -134,7 +134,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/remittances` | GET, POST, PATCH | [app/api/remittances/route.ts](../app/api/remittances/route.ts) |
 | `/api/reports` | GET, POST | [app/api/reports/route.ts](../app/api/reports/route.ts) |
 | `/api/roles` | GET, POST, PATCH, DELETE | [app/api/roles/route.ts](../app/api/roles/route.ts) |
-| `/api/sale-submissions` | GET, POST | [app/api/sale-submissions/route.ts](../app/api/sale-submissions/route.ts) |
+| `/api/sale-submissions` | GET, POST, PATCH | [app/api/sale-submissions/route.ts](../app/api/sale-submissions/route.ts) |
 | `/api/sales` | POST | [app/api/sales/route.ts](../app/api/sales/route.ts) |
 | `/api/sales/validate` | POST | [app/api/sales/validate/route.ts](../app/api/sales/validate/route.ts) |
 | `/api/search-records` | GET | [app/api/search-records/route.ts](../app/api/search-records/route.ts) |
@@ -277,7 +277,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/report-week.ts](../lib/report-week.ts) | `monthEnd`, `reportWeek` | — |
 | [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/db`, `@/lib/sheets-on-db`, `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/manila-date`, `@/lib/person-scope` |
 | [lib/roles.ts](../lib/roles.ts) | `RoleRecord`, `parsePageAccess`, `getRoles`, `createRole`, `updateRole`, `deleteRole` | `@/lib/db`, `@/lib/google-sheets`, `@/lib/encoder-context`, `@/lib/access-control`, `@/lib/page-catalog` |
-| [lib/sale-submissions.ts](../lib/sale-submissions.ts) | `MAX_SUBMISSION_SALES`, `SaleSubmission`, `masProfile`, `listMySubmissions`, `submitSales`, `reviewBranches`, `listForReview`, `reviewableSubmission`, `markSubmissionSaved` | `@/lib/access-control`, `@/lib/auth`, `@/lib/db`, `@/lib/employees`, `@/lib/encoder-context`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/remittance-deadline` |
+| [lib/sale-submissions.ts](../lib/sale-submissions.ts) | `MAX_SUBMISSION_SALES`, `SaleSubmission`, `masProfile`, `listMySubmissions`, `submitSales`, `reviewBranches`, `listForReview`, `reviewableSubmission`, `markSaleSubmissionRemitted`, `markSubmissionSaved`, `rejectSaleSubmission` | `@/lib/access-control`, `@/lib/auth`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/db`, `@/lib/employees`, `@/lib/encoder-context`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/work-calendar` |
 | [lib/save-queue.ts](../lib/save-queue.ts) | `oldestPendingSave`, `onSaveQueueChange`, `installSaveQueue` | — |
 | [lib/scroll-top.ts](../lib/scroll-top.ts) | `scrollPageToTop` | — |
 | [lib/server-environment.ts](../lib/server-environment.ts) | `RequiredServerVariable`, `readServerVariable`, `getMissingServerVariables`, `ServerConfigurationError`, `assertServerConfiguration`, `getAuthSecret` | — |
@@ -450,7 +450,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [app/api/remittances/route.ts](../app/api/remittances/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/admin-delete`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/remittance-workflow`, `@/lib/access-control` |
 | [app/api/reports/route.ts](../app/api/reports/route.ts) | `GET`, `POST` | `@/lib/auth-server`, `@/lib/employees`, `@/lib/access-control`, `@/lib/reports`, `@/lib/encoder-context`, `@/lib/report-remarks` |
 | [app/api/roles/route.ts](../app/api/roles/route.ts) | `GET`, `POST`, `PATCH`, `DELETE` | `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/privilege-guard`, `@/lib/roles` |
-| [app/api/sale-submissions/route.ts](../app/api/sale-submissions/route.ts) | `GET`, `POST` | `@/lib/day-off`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/sale-submissions` |
+| [app/api/sale-submissions/route.ts](../app/api/sale-submissions/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/day-off`, `@/lib/access-control`, `@/lib/auth-server`, `@/lib/clearing`, `@/lib/encoder-context`, `@/lib/sale-submissions` |
 | [app/api/sales/route.ts](../app/api/sales/route.ts) | `POST` | `@/lib/day-off`, `@/lib/clearing`, `@/lib/remittance-workflow`, `@/lib/auth-server`, `@/lib/program-amount-lock`, `@/lib/entry-controls`, `@/lib/date-checks`, `@/lib/work-calendar`, `@/lib/remittance-deadline`, `@/lib/encoder-context`, `@/lib/auth`, `@/lib/sale-submissions`, `@/lib/google-sheets-data`, `@/lib/member-records`, `@/lib/employees`, `@/lib/program-age`, `@/lib/account-rules`, `@/lib/db`, `@/lib/turnover-variance`, `@/lib/remittance`, `@/lib/duplicate-entries` |
 | [app/api/sales/validate/route.ts](../app/api/sales/validate/route.ts) | `POST` | `@/lib/auth-server`, `@/lib/member-records` |
 | [app/api/search-records/route.ts](../app/api/search-records/route.ts) | `GET` | `@/lib/auth-server`, `@/lib/member-scope`, `@/lib/record-search` |

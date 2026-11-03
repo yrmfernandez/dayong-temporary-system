@@ -1,6 +1,6 @@
 "use client";
 
-import { alertDialog, confirmDialog } from "@/components/app-dialog";
+import { alertDialog, confirmDialog, promptDialog } from "@/components/app-dialog";
 import { SALE_CHECK_REMINDER } from "@/lib/entry-check-reminder";
 import {
   useCallback,
@@ -34,7 +34,7 @@ import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { ControlTotalField } from "@/components/control-total-field";
 import { BACKDATE_REASON_MIN, controlTotalDifference, controlTotalProblem, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
-import { manilaNow } from "@/lib/remittance-deadline";
+import { formatDeadline, manilaNow } from "@/lib/remittance-deadline";
 import { scrollPageToTop } from "@/lib/scroll-top";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { RemittanceSummary } from "@/components/remittance-summary";
@@ -248,7 +248,12 @@ function updateAddress(
  * their own, Date Enrolled is the day they submit, and the clerk of the branch adds the batch details when saving.
  */
 /** A MAS submission as /api/sale-submissions returns it (lib/sale-submissions.ts). */
-type SubmissionSummary = { id: string; branch: string; mas: string; status: "Submitted" | "Returned" | "Saved"; sales: NewSale[]; saleCount: number; totalAmount: number; submittedAt: string; returnReason: string; reviewedByName: string };
+type SubmissionSummary = {
+  id: string; branch: string; mas: string; status: "Submitted" | "Remitted" | "Rejected" | "Returned" | "Saved"; sales: NewSale[]; saleCount: number; totalAmount: number;
+  submittedAt: string; returnReason: string; reviewedByName: string;
+  /** 3:00 PM the next working day after the earliest application date; Remitted: the handover recorded (clearingId, "YYYY-MM-DD HH:MM"). */
+  incentiveDeadline: string; clearingId: string; remittedAt: string; remittedByName: string;
+};
 type MasProfile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
 
 export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
@@ -1165,7 +1170,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   };
 
   /** Loads a submission into the form: the clerk to review and save it, the MAS to edit and submit it again. */
-  const openSubmission = async (submission: SubmissionSummary) => {
+  // `asNew`: a MAS submits a rejected batch's sales again, as a new submission.
+  const openSubmission = async (submission: SubmissionSummary, asNew = false) => {
     const hasWork = sales.some((sale) => sale.member.name.surname.trim() || sale.applicationNumber.trim());
     if (hasWork && submission.id !== submissionId && !await confirmDialog("Replace the sales on the form with this submission? Unsaved changes on the form are lost.")) return;
     const cards = submission.sales.length ? submission.sales : [emptyNewSale(submission.branch, submission.mas)];
@@ -1173,11 +1179,50 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     setMas(submission.mas);
     setSales(cards);
     setExpandedSales(Object.fromEntries(cards.map((sale) => [sale.id, true])));
-    setSubmissionId(submission.id);
+    setSubmissionId(asNew ? "" : submission.id);
+    // Marked remitted: saved under the handover recorded then, so its time decides the incentive (as on Collections).
+    if (!masMode) {
+      const clearedOn = submission.clearingId ? submission.remittedAt.slice(0, 10) : "";
+      setClearingId(submission.clearingId); setClearedDate(clearedOn); setDateRemittedReason("");
+      if (clearedOn) setDateRemitted(clearedOn);
+    }
     setShowPreview(false);
-    setSaveMessage("");
+    setSaveMessage(!masMode && submission.clearingId ? `Marked remitted at ${submission.remittedAt.slice(11)} by ${submission.remittedByName || "the clerk"}: it is saved under that handover.` : "");
     setTab("encode");
     scrollPageToTop();
+  };
+
+  /**
+   * Clerk: the MAS hands the cash over. Records a Clearing for the MAS (New Sales) now, whose time decides the incentive;
+   * the details can be typed later. Already cleared today: asks whether it is the same cash or a new handover.
+   */
+  const markRemitted = async (submission: SubmissionSummary) => {
+    if (!await confirmDialog(`Mark ${submission.mas}'s New Sales remitted now (${submission.saleCount} sale${submission.saleCount === 1 ? "" : "s"}, ${peso(submission.totalAmount)} collected)? Only once the cash is in your hands: this time decides the incentive.`)) return;
+    const send = (handover = "") => fetch("/api/sale-submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remit", id: submission.id, handover }) })
+      .then(async (response) => ({ response, result: await response.json() }));
+    let { response, result } = await send();
+    if (response.status === 409 && result.code === "ALREADY_CLEARED") {
+      const handover = await confirmDialog(`${result.message}
+
+Is this cash part of that handover?`) ? "same"
+        : await confirmDialog("Record it as a new handover of cash now?") ? "new" : "";
+      if (!handover) return;
+      ({ response, result } = await send(handover));
+    }
+    if (!response.ok || !result.success) { setSubmissionError(result.message || "Unable to mark it remitted."); return; }
+    setSubmissionError(""); setSaveMessage(result.message);
+    setSubmissionRevision((value) => value + 1);
+  };
+
+  /** Clerk: rejects a batch that should not be saved at all; mistakes are corrected on the form instead. */
+  const rejectSubmission = async (submission: SubmissionSummary) => {
+    const reason = (await promptDialog(`Why reject ${submission.mas}'s New Sales? Only for a batch that should not be saved (for example the cash was not remitted); fix mistakes with Review instead. ${submission.mas} sees the reason and can submit those sales again.`, { required: true }))?.trim();
+    if (!reason) return;
+    const response = await fetch("/api/sale-submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: submission.id, reason }) });
+    const result = await response.json();
+    if (!response.ok || !result.success) { setSubmissionError(result.message || "Unable to reject the submission."); return; }
+    if (submission.id === submissionId) resetForm();
+    setSubmissionRevision((value) => value + 1);
   };
 
   // Any unexpected error must show on screen; otherwise the button appears to do nothing.
@@ -1411,10 +1456,10 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
       {/* MAS: what the last submit did, and the submissions the clerk sent back, first thing on the page. */}
       {masMode && saveMessage && !showPreview && <p role="status" className="rounded-lg border bg-muted/40 p-3 text-sm">{saveMessage}</p>}
-      {masMode && <ReturnedSubmissions submissions={submissionList.filter((item) => item.status === "Returned" && item.id !== submissionId)} onOpen={openSubmission} />}
+      {masMode && <ReturnedSubmissions submissions={submissionList.filter((item) => item.status === "Returned" && item.id !== submissionId)} onOpen={(submission) => void openSubmission(submission)} />}
 
       {!masMode && tab === "submitted" ? (
-        <SubmissionList submissions={submissionList} activeId={submissionId} onOpen={openSubmission} onRefresh={() => setSubmissionRevision((value) => value + 1)} />
+        <SubmissionList submissions={submissionList} activeId={submissionId} onOpen={(submission) => void openSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onReject={(submission) => void rejectSubmission(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} />
       ) : (<>
       {submissionId && (
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -2903,7 +2948,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" optional={allCash} />}
 
       {/* Above the save bar, so the bar stays at the bottom of the screen to the end of the page. */}
-      {masMode && <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={openSubmission} />}
+      {masMode && <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={(submission, asNew) => void openSubmission(submission, asNew)} />}
 
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}
@@ -2946,8 +2991,11 @@ const submittedAt = (value: string) => value ? showDateTime(value) : "";
 const memberNames = (submission: SubmissionSummary) => submission.sales.map((sale) => [sale.member?.name?.firstName, sale.member?.name?.surname].filter(Boolean).join(" ") || "Unnamed member").join(", ");
 
 /** Clerk: MAS submissions waiting in their branches. */
-/** Clerk: MAS submissions are corrected here and saved, never sent back (owner, November 3, 2026). */
-function SubmissionList({ submissions, activeId, onOpen, onRefresh }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary) => void; onRefresh: () => void }) {
+/**
+ * Clerk: New Sales the MAS submitted in their branches, oldest first. As on Collections (owner, November 3, 2026):
+ * Mark remitted when the cash is handed over, Review to correct and save, Reject only a batch that should not be saved.
+ */
+function SubmissionList({ submissions, activeId, onOpen, onRemit, onReject, onRefresh }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary) => void; onRemit: (submission: SubmissionSummary) => void; onReject: (submission: SubmissionSummary) => void; onRefresh: () => void }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -2955,19 +3003,28 @@ function SubmissionList({ submissions, activeId, onOpen, onRefresh }: { submissi
         <Button type="button" variant="outline" size="sm" onClick={onRefresh}>Refresh</Button>
       </CardHeader>
       <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">Only you can change a submission: correct anything wrong with Review, then save; it is not sent back to the MAS. When the MAS hands the cash over, press <strong>Mark remitted</strong> at once: that time decides the incentive (kept if by the deadline shown, 3:00 PM the next working day after the application date), so the details can be typed later. <strong>Reject</strong> only a batch that should not be saved at all, before Mark remitted.</p>
         {!submissions.length && <p className="text-sm text-muted-foreground">No submissions waiting in your branches.</p>}
-        {submissions.map((submission) => (
-          <div key={submission.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
-            <div className="min-w-0 text-sm">
-              <p className="font-semibold">{submission.mas} · {submission.branch}</p>
-              <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {peso(submission.totalAmount)} · submitted {submittedAt(submission.submittedAt)}</p>
-              <p className="truncate">{memberNames(submission)}</p>
+        {submissions.map((submission) => {
+          const late = Boolean(submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline);
+          return (
+            <div key={submission.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
+              <div className="min-w-0 text-sm">
+                <p className="font-semibold">{submission.mas} · {submission.branch}</p>
+                <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {peso(submission.totalAmount)} · submitted {submittedAt(submission.submittedAt)}</p>
+                {submission.status === "Remitted"
+                  ? <p className={`font-medium ${late ? "text-amber-700" : "text-emerald-700"}`}>Remitted {submittedAt(submission.remittedAt)}{submission.remittedByName ? ` (${submission.remittedByName})` : ""}{submission.incentiveDeadline ? (late ? " · after the deadline: incentive forfeited" : " · in time: incentive kept") : ""} · details still to save</p>
+                  : submission.incentiveDeadline && <p className="text-muted-foreground">Not yet remitted · incentive kept if received by {formatDeadline(submission.incentiveDeadline)}</p>}
+                <p className="truncate">{memberNames(submission)}</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {submission.status === "Submitted" && <Button type="button" size="sm" onClick={() => onRemit(submission)}>Mark remitted</Button>}
+                <Button type="button" size="sm" variant={submission.status === "Remitted" ? "default" : "outline"} onClick={() => onOpen(submission)}>{submission.id === activeId ? "Continue review" : submission.status === "Remitted" ? "Review and save" : "Review"}</Button>
+                {submission.status === "Submitted" && <Button type="button" size="sm" variant="outline" className="text-destructive" onClick={() => onReject(submission)}>Reject</Button>}
+              </div>
             </div>
-            <div className="flex shrink-0 gap-2">
-              <Button type="button" size="sm" onClick={() => onOpen(submission)}>{submission.id === activeId ? "Continue review" : "Review"}</Button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
@@ -2993,28 +3050,42 @@ function ReturnedSubmissions({ submissions, onOpen }: { submissions: SubmissionS
   );
 }
 
-/** MAS: their submissions. Once sent only the clerk changes one; one returned before November 3, 2026 can be fixed and sent again. */
-function MySubmissions({ submissions, activeId, onOpen }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary) => void }) {
+/**
+ * MAS: their submissions. Once sent only the clerk changes one (marks it remitted when the cash is handed over, corrects
+ * and saves it, or rejects it with a reason); rejected sales can be submitted again, and one returned before November 3,
+ * 2026 can still be fixed and sent again.
+ */
+function MySubmissions({ submissions, activeId, onOpen }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary, asNew: boolean) => void }) {
   if (!submissions.length) return null;
-  const tone = { Submitted: "secondary", Returned: "destructive", Saved: "default" } as const;
-  const label = { Submitted: "With the clerk", Returned: "Returned", Saved: "Saved" } as const;
+  const now = manilaNow();
+  const tone = { Submitted: "secondary", Remitted: "default", Rejected: "destructive", Returned: "destructive", Saved: "default" } as const;
+  const label = { Submitted: "Not yet remitted", Remitted: "Remitted: being encoded", Rejected: "Rejected", Returned: "Returned", Saved: "Saved by the clerk" } as const;
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">My submissions</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        {submissions.map((submission) => (
-          <div key={submission.id} className={`flex flex-col gap-2 rounded-lg border p-3 text-sm sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
-            <div className="min-w-0">
-              <p className="flex flex-wrap items-center gap-2 font-semibold">{submittedAt(submission.submittedAt)} <Badge variant={tone[submission.status]}>{label[submission.status]}</Badge></p>
-              <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {peso(submission.totalAmount)} · {submission.branch}</p>
-              <p className="truncate">{memberNames(submission)}</p>
-              {submission.status === "Returned" && <p className="mt-1 font-medium text-destructive">To fix: {submission.returnReason}{submission.reviewedByName ? ` (${submission.reviewedByName})` : ""}</p>}
-              {submission.status === "Submitted" && <p className="mt-1 text-muted-foreground">Only the clerk can change it now. Something wrong? Tell the clerk.</p>}
-              {submission.status === "Saved" && submission.reviewedByName && <p className="mt-1 text-muted-foreground">Saved by {submission.reviewedByName}</p>}
+        {submissions.map((submission) => {
+          const pastDeadline = submission.status === "Submitted" && Boolean(submission.incentiveDeadline) && `${now.date} ${now.time}` > submission.incentiveDeadline;
+          const late = Boolean(submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline);
+          return (
+            <div key={submission.id} className={`flex flex-col gap-2 rounded-lg border p-3 text-sm sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-center gap-2 font-semibold">{submittedAt(submission.submittedAt)} <Badge variant={tone[submission.status]}>{label[submission.status]}</Badge></p>
+                <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {peso(submission.totalAmount)} · {submission.branch}</p>
+                <p className="truncate">{memberNames(submission)}</p>
+                {submission.status === "Submitted" && <p className={`mt-1 ${pastDeadline ? "font-medium text-amber-700" : "text-muted-foreground"}`}>
+                  {submission.incentiveDeadline ? (pastDeadline ? `The ${formatDeadline(submission.incentiveDeadline)} deadline has passed: if you have not handed over the cash yet, the whole amount is remitted.` : `Hand the cash to the clerk by ${formatDeadline(submission.incentiveDeadline)} to keep the incentive.`) : "Hand the cash to the clerk."} Only the clerk can change it now.
+                </p>}
+                {submission.status === "Remitted" && submission.remittedAt && <p className={`mt-1 font-medium ${late ? "text-amber-700" : "text-emerald-700"}`}>Received by {submission.remittedByName || "the clerk"} on {submittedAt(submission.remittedAt)}{submission.incentiveDeadline ? (late ? ": after the deadline, the incentive is forfeited." : ": in time, you keep your incentive.") : "."}</p>}
+                {submission.status === "Rejected" && <p className="mt-1 font-medium text-destructive">Rejected{submission.reviewedByName ? ` by ${submission.reviewedByName}` : ""}: {submission.returnReason}. These sales can be submitted again.</p>}
+                {submission.status === "Returned" && <p className="mt-1 font-medium text-destructive">To fix: {submission.returnReason}{submission.reviewedByName ? ` (${submission.reviewedByName})` : ""}</p>}
+                {submission.status === "Saved" && submission.reviewedByName && <p className="mt-1 text-muted-foreground">Checked and saved by {submission.reviewedByName}</p>}
+              </div>
+              {submission.status === "Returned" && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(submission, false)}>{submission.id === activeId ? "Editing" : "Fix"}</Button>}
+              {submission.status === "Rejected" && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(submission, true)}>Submit again</Button>}
             </div>
-            {submission.status === "Returned" && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(submission)}>{submission.id === activeId ? "Editing" : "Fix"}</Button>}
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );

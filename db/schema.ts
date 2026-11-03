@@ -458,6 +458,10 @@ export const sale_submissions = pgTable("sale_submissions", {
   reviewed_by_name: text(),
   reviewed_at: moment("reviewed_at"),
   sale_ids: text(),
+  /** Mark remitted (owner, November 3, 2026), as for collections: the clearing recorded when the clerk received the cash. */
+  clearing_id: text(),
+  remitted_at: moment("remitted_at"),
+  remitted_by_name: text(),
   ...encoder(),
 }, (t) => [
   index("sale_submissions_branch_status_idx").on(t.branch_id, t.status),

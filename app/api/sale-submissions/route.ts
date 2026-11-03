@@ -1,7 +1,9 @@
 import { refuseOnDayOff } from "@/lib/day-off";
+import { canAccessPath } from "@/lib/access-control";
 import { userWithPageAccess } from "@/lib/auth-server";
+import { AlreadyClearedError } from "@/lib/clearing";
 import { withEncoder } from "@/lib/encoder-context";
-import { listForReview, listMySubmissions, masProfile, submitSales } from "@/lib/sale-submissions";
+import { listForReview, listMySubmissions, markSaleSubmissionRemitted, masProfile, rejectSaleSubmission, submitSales } from "@/lib/sale-submissions";
 
 const noStore = { "Cache-Control": "private, no-store" };
 const failure = (error: unknown, fallback: string, status = 400) => Response.json({ success: false, message: error instanceof Error ? error.message : fallback }, { status });
@@ -38,4 +40,30 @@ export const POST = withEncoder(async (request: Request) => {
     const result = await submitSales(user, await request.json());
     return Response.json({ success: true, ...result, message: `${result.saleCount} sale${result.saleCount === 1 ? "" : "s"} submitted to the branch clerk.` }, { status: 201 });
   } catch (error) { return failure(error, "Unable to submit the sales."); }
+});
+
+/**
+ * The clerk, as for collections: { action: "remit", id, handover? } marks a batch remitted now (a Clearing is recorded;
+ * 409 ALREADY_CLEARED when the MAS was already cleared today, to ask whether it is the same cash); { id, reason } rejects one.
+ */
+export const PATCH = withEncoder(async (request: Request) => {
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
+  const user = await userWithPageAccess("/new-sales");
+  if (!user) return Response.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
+  try {
+    const body = await request.json();
+    if (body.action === "remit") {
+      if (!canAccessPath(user, "/clearing")) return Response.json({ success: false, message: "You do not have access to Clearing." }, { status: 403 });
+      const handover = body.handover === "same" || body.handover === "new" ? body.handover : "";
+      try {
+        const done = await markSaleSubmissionRemitted(user, String(body.id ?? ""), handover);
+        return Response.json({ success: true, ...done, message: `${done.mas}'s New Sales marked remitted at ${done.remittedAt.slice(11)}. The details can be typed later; this time decides the incentive.` });
+      } catch (error) {
+        if (error instanceof AlreadyClearedError) return Response.json({ success: false, code: error.code, message: error.message }, { status: 409 });
+        throw error;
+      }
+    }
+    return Response.json({ success: true, ...await rejectSaleSubmission(user, String(body.id ?? ""), String(body.reason ?? "")), message: "Rejected. The MAS sees the reason and can submit those sales again." });
+  } catch (error) { return failure(error, "Unable to update the submission."); }
 });

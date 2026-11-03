@@ -158,7 +158,7 @@ async function saveSales(request: Request, user: SessionUser) {
 
     const submissionId = String(body.submissionId ?? "").trim();
     if (submissionId) {
-      try { await reviewableSubmission(user, submissionId, body.branch, body.mas); }
+      try { await reviewableSubmission(user, submissionId, body.branch, body.mas, String(body.clearingId ?? "")); }
       catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "The MAS submission cannot be saved." }, { status: 400 }); }
     }
 

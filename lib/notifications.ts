@@ -49,7 +49,7 @@ export async function getNotificationCounts(user: SessionUser): Promise<Notifica
       (select count(*) from collections c where c.encoded_by_employee_id = ${me} and c.remittance_status = 'Outstanding' and lower(coalesce(c.status, '')) = 'posted' and ${noPhoto(sql`c.collection_id`)})
     + (select count(*) from sales s where s.encoded_by_employee_id = ${me} and s.remittance_status = 'Outstanding' and ${noPhoto(sql`s.sale_id`)}) as count`)]);
   if (can("/new-sales")) tasks.push(["/new-sales", listForReview(user).then((list) => list.length).catch(() => 0)]);
-  if (can("/mas-sales") && me) tasks.push(["/mas-sales", countOf(sql`select count(*)::int as count from sale_submissions where mas_employee_id = ${me} and status = 'Returned'`)]);
+  if (can("/mas-sales") && me) tasks.push(["/mas-sales", countOf(sql`select count(*)::int as count from sale_submissions where mas_employee_id = ${me} and (status = 'Returned' or (status = 'Rejected' and reviewed_at > now() - interval '2 days'))`)]);
   if (can("/collections")) tasks.push(["/collections", listCollectionsForReview(user).then((list) => list.length).catch(() => 0)]);
   if (can("/mas-collections") && me) tasks.push(["/mas-collections", countOf(sql`select count(*)::int as count from collection_submissions where mas_employee_id = ${me} and status = 'Rejected' and reviewed_at > now() - interval '2 days'`)]);
   if (can("/dropouts")) {
