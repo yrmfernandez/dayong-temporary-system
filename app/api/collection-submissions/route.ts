@@ -11,11 +11,13 @@ const noAccess = (page: string) => Response.json({ success: false, message: `You
 
 /**
  * MAS Collections submissions (lib/collection-submissions.ts).
- * GET ?view=mine: the MAS's branches, their own accounts and their submissions (Submit Collections page).
+ * GET ?view=mine: the MAS's branches, their own accounts and their submissions (Submit Collections page); a Collector
+ *   adds &collectedBy=Collector&mas=<employee ID> for the members of that MAS (lib/collection-submissions.ts).
  * GET ?view=review: submissions waiting in the clerk's branches (Collections → Submitted by MAS).
  */
 export async function GET(request: Request) {
-  const view = new URL(request.url).searchParams.get("view");
+  const params = new URL(request.url).searchParams;
+  const view = params.get("view");
   if (view === "review") {
     const user = await userWithPageAccess("/collections");
     if (!user) return noAccess("Collections");
@@ -25,7 +27,7 @@ export async function GET(request: Request) {
   const user = await userWithPageAccess("/mas-collections");
   if (!user) return noAccess("Submit Collections");
   try {
-    const [mine, submissions] = await Promise.all([myCollectionAccounts(user), listMyCollectionSubmissions(user)]);
+    const [mine, submissions] = await Promise.all([myCollectionAccounts(user, { collectedBy: params.get("collectedBy") ?? "", memberMasEmployeeId: params.get("mas") ?? "" }), listMyCollectionSubmissions(user)]);
     return Response.json({ success: true, ...mine, submissions }, { headers: noStore });
   } catch (error) { return failure(error, "Unable to load your members."); }
 }
@@ -40,9 +42,10 @@ export const POST = withEncoder(async (request: Request) => {
   try {
     const result = await submitCollections(user, await request.json());
     const members = (count: number) => `${count} member${count === 1 ? "" : "s"}`;
-    const message = result.batches.length === 1
+    const whose = result.collectedBy === "Collector" ? ` Members of ${result.memberMas}, collected by you as Collector.` : "";
+    const message = (result.batches.length === 1
       ? `${members(result.entryCount)} submitted to the ${result.batches[0].branch} clerk.`
-      : `Submitted as ${result.batches.length} batches, one per branch: ${result.batches.map((batch) => `${batch.branch} (${members(batch.entryCount)})`).join(", ")}. Remit each at its branch.`;
+      : `Submitted as ${result.batches.length} batches, one per branch: ${result.batches.map((batch) => `${batch.branch} (${members(batch.entryCount)})`).join(", ")}. Remit each at its branch.`) + whose;
     return Response.json({ success: true, ...result, message }, { status: 201 });
   } catch (error) { return failure(error, "Unable to submit the collections."); }
 });

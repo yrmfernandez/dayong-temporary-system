@@ -17,6 +17,16 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Collector: collected by MAS or Collector, whose members, ORC (2026-11-03)
+
+- **Asked (owner):** a Collector can choose Collector or MAS in collections; as Collector they choose whose MAS, so that MAS's members are shown, and ORC or not.
+- **Done:**
+  - **Submit Collections** (`app/mas-collections/page.tsx`, `lib/collection-submissions.ts`): an employee with the Collector operational role sees **Collected by** (MAS: my members / Collector; only Collector if they are not also a MAS), then **Whose members?** (active MAS sharing one of their branches) and **ORC** Yes/No. Only that MAS's members are listed; the quote uses the Collector tier, or half of the MAS incentive with ORC (`masCollectionQuote` takes the role and ORC). Changing the choice with members in the batch asks first and starts a new batch. The Collector is accountable (Mark remitted records the Clearing for the Collector); each payment keeps the member's MAS. A member waiting in anyone's open submission cannot be submitted again (before: only the submitter's own).
+  - **Collections form (clerk):** with Collected by **Collector**, a new **Members of MAS** field (the Collector's own accounts, or any MAS of the branch) lists that MAS's members; the save (`app/api/collections/route.ts`, `memberMas`) checks each account against that MAS, keeps it as the payment's MAS and original MAS, and the Collector stays accountable. A Collector's submission opens with Collector, the MAS and ORC set and locked; the Submitted by MAS list says Collector, for the members of … · ORC.
+  - The **Collector** role gets Submit Collections by default (`lib/access-control.ts`); a Collector role configured in Roles needs it ticked.
+  - Migration **0040_collector_submissions**: `collection_submissions.collected_by` (default MAS), `member_mas_employee_id`, `member_mas`, `orc`. Applied on staging (it has no active Collector, so not tried with one there).
+- **To do (owner):** migrate production **before** pushing (the submission pages read the new columns): `npm run prod -- npm run db:migrate` (also 0039 if not done). Then check with a Collector account: Submit Collections → Collector → pick a MAS → ORC → submit; the clerk marks it remitted and saves.
+
 ### CEO dashboard: choose a month or dates (2026-11-03)
 
 - **Asked (owner):** on the CEO dashboard, also choose months or dates.

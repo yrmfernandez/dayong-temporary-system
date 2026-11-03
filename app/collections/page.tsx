@@ -79,10 +79,12 @@ type CollectionSubmissionSummary = {
   id: string; branchId: string; branch: string; masEmployeeId: string; mas: string; entryCount: number; totalAmount: number; totalIncentive: number; submittedAt: string; incentiveDeadline: string;
   /** Submitted, or Remitted: the clerk marked the cash received; clearingId and remittedAt ("YYYY-MM-DD HH:MM") are set. */
   status: "Submitted" | "Remitted"; clearingId: string; remittedAt: string; remittedByName: string;
+  /** Submitted by a Collector for another MAS's members (owner, November 3, 2026), with ORC or not. */
+  collectedBy: "MAS" | "Collector"; memberMas: string; orc: boolean;
   entries: Array<{ enrollmentId: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; months: number; amount: number; orDate: string; waiver: boolean }>;
 };
 /** The MAS submission open on the form: saving it marks it Saved; its handover must be this MAS's. */
-type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string };
+type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string; collectedBy?: "MAS" | "Collector"; memberMas?: string };
 
 type CollectionMember = Member & {
   programIds: string[];
@@ -327,7 +329,7 @@ export default function CollectionsPage() {
   const [members, setMembers] = useState<CollectionMember[]>([]);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [branches, setBranches] = useState<Array<{ id: string; name: string; territory?: string; status: string }>>([]);
-  const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
+  const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds: string[]; roles?: string[] }>>([]);
   // The Clearing entry the batch was filled from (components/clearing-picker.tsx); its employee is the accountable one.
   const [cleared, setCleared] = useState<{ id: string; employeeId: string; employeeName: string; clearedDate?: string } | null>(null);
   // DTO batch (owner, October 13, 2026): members who paid at the office, e.g. of a resigned or inactive MAS. No clearing,
@@ -354,6 +356,9 @@ export default function CollectionsPage() {
   const [receiptPhotos, setReceiptPhotos] = useState<PickedPhoto[]>([]);
   // Batch-level: who brought these payments in, and how the MAS remitted them to the office.
   const [collectedBy, setCollectedBy] = useState<CollectionChannel>("MAS");
+  // Collected by Collector: whose members (owner, November 3, 2026), a MAS of the branch; "" = the accountable person's own.
+  const [memberMas, setMemberMas] = useState("");
+  const membersOf = !dto && collectedBy === "Collector" && memberMas ? memberMas : mas;
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
@@ -382,7 +387,7 @@ export default function CollectionsPage() {
   useLiveRefresh(["collection_submissions"], () => setSubmissionRevision((value) => value + 1));
 
   // The unsaved batch survives leaving the page and coming back (member search results included, so picks still show).
-  const draftSnapshot = { dto, orc, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, paymentMethod, paymentReference, penalty, penaltyNote, fidelity, reviewing };
+  const draftSnapshot = { dto, orc, branch, mas, dateRemitted, cleared, dateRemittedReason, collections, activeCollectionId, nextCollectionId, members, histories, collectedBy, memberMas, paymentMethod, paymentReference, penalty, penaltyNote, fidelity, reviewing };
   type CollectionsDraft = typeof draftSnapshot;
   const restoreDraft = (draft: Partial<CollectionsDraft>) => {
       setDto(Boolean(draft.dto));
@@ -398,6 +403,7 @@ export default function CollectionsPage() {
       setMembers(draft.members ?? []);
       setHistories(draft.histories ?? {});
       if (draft.collectedBy) setCollectedBy(draft.collectedBy);
+      setMemberMas(draft.memberMas ?? "");
       if (draft.paymentMethod) setPaymentMethod(draft.paymentMethod);
       setPaymentReference(draft.paymentReference ?? "");
       setPenalty(draft.penalty ?? "");
@@ -459,11 +465,11 @@ export default function CollectionsPage() {
   // Every member under the chosen Branch and MAS, so the member field is a full list that typing narrows at once.
   const [membersLoading, setMembersLoading] = useState(false);
   useEffect(() => {
-    if (dto || !branch || !mas) return;
+    if (dto || !branch || !membersOf) return;
     const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- shows loading while this branch and MAS list arrives
     setMembersLoading(true);
-    fetch(`/api/members?all=1&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(mas)}`, { cache: "no-store", signal: controller.signal })
+    fetch(`/api/members?all=1&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(membersOf)}`, { cache: "no-store", signal: controller.signal })
       .then((response) => response.json())
       .then((result) => {
         if (!result.success) return;
@@ -473,7 +479,7 @@ export default function CollectionsPage() {
       .catch(() => undefined)
       .finally(() => { if (!controller.signal.aborted) setMembersLoading(false); });
     return () => controller.abort();
-  }, [dto, branch, mas]);
+  }, [dto, branch, membersOf]);
 
   // DTO: members of the whole branch are searched as the clerk types (a branch can have thousands).
   const dtoSearch = useRef<{ timer?: ReturnType<typeof setTimeout>; controller?: AbortController }>({});
@@ -504,6 +510,7 @@ export default function CollectionsPage() {
     setDateRemitted(next ? manilaNow().date : "");
     setDateRemittedReason("");
     setCollectedBy(next ? "DTO" : "MAS");
+    setMemberMas("");
     setOrc(false);
     setPenalty("");
     setPenaltyNote("");
@@ -666,7 +673,7 @@ export default function CollectionsPage() {
     updateCollection(entryId, { programId, programSearch: program?.code ?? "", accountStatus: "", accountLoading: true, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
     setHistories((current) => ({ ...current, [entryId]: [] }));
     try {
-      const response = await fetch(`/api/collections?memberId=${encodeURIComponent(memberId)}&programId=${encodeURIComponent(programId)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(mas)}${dto ? "&dto=1" : ""}`, { cache: "no-store" });
+      const response = await fetch(`/api/collections?memberId=${encodeURIComponent(memberId)}&programId=${encodeURIComponent(programId)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(membersOf)}${dto ? "&dto=1" : ""}`, { cache: "no-store" });
       const result = await response.json();
       if (selectionVersions.current[entryId] !== version) return;
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load account.");
@@ -970,6 +977,7 @@ export default function CollectionsPage() {
           dto,
           orc: orc && !dto && collectedBy === "Collector",
           collectedBy: dto ? "DTO" : collectedBy,
+          memberMas: !dto && collectedBy === "Collector" ? membersOf : "",
           paymentMethod,
           paymentReference: selectedPaymentMethod && !selectedPaymentMethod.isCash ? paymentReference.trim() : "",
           // Saved first; the approved remittance is created below once the receipt photo is attached.
@@ -1034,6 +1042,7 @@ export default function CollectionsPage() {
     setPenaltyNote("");
     setFidelity("");
     setCollectedBy(dto ? "DTO" : "MAS");
+    setMemberMas("");
     setOrc(false);
     if (dto) setDateRemitted(manilaNow().date);
     setPaymentMethod(paymentMethods.find((method) => method.isCash)?.name || paymentMethods[0]?.name || "");
@@ -1053,8 +1062,12 @@ export default function CollectionsPage() {
     setDateRemitted("");
     setBranch(submission.branch);
     setMas(submission.mas);
-    setCollectedBy("MAS");
-    setReviewing({ id: submission.id, masEmployeeId: submission.masEmployeeId, mas: submission.mas, branch: submission.branch, clearingId: submission.clearingId, remittedAt: submission.remittedAt });
+    // A Collector's batch: the Collector is accountable; the members are the chosen MAS's, with the ORC submitted.
+    const byCollector = submission.collectedBy === "Collector";
+    setCollectedBy(byCollector ? "Collector" : "MAS");
+    setMemberMas(byCollector ? submission.memberMas : "");
+    setOrc(byCollector && submission.orc);
+    setReviewing({ id: submission.id, masEmployeeId: submission.masEmployeeId, mas: submission.mas, branch: submission.branch, clearingId: submission.clearingId, remittedAt: submission.remittedAt, collectedBy: byCollector ? "Collector" : "MAS", memberMas: byCollector ? submission.memberMas : "" });
     // Marked remitted: saved under the clearing recorded then. The Date Remitted starts on that day and can still be
     // changed with a reason (no work, day off, on leave...), as for any batch.
     if (submission.clearingId) {
@@ -1069,7 +1082,7 @@ export default function CollectionsPage() {
       const program = programs.find((candidate) => candidate.id === item.programId);
       const base: CollectionEntry = { ...createEmptyCollection(id), memberId: item.memberId, memberSearch: item.memberName, programId: item.programId, programSearch: program?.code ?? item.programName, orDate: item.orDate, ifSuspended: item.waiver ? "Waiver" : "", isExpanded: index === 0 };
       try {
-        const response = await fetch(`/api/collections?memberId=${encodeURIComponent(item.memberId)}&programId=${encodeURIComponent(item.programId)}&branch=${encodeURIComponent(submission.branch)}&mas=${encodeURIComponent(submission.mas)}`, { cache: "no-store" });
+        const response = await fetch(`/api/collections?memberId=${encodeURIComponent(item.memberId)}&programId=${encodeURIComponent(item.programId)}&branch=${encodeURIComponent(submission.branch)}&mas=${encodeURIComponent(submission.collectedBy === "Collector" ? submission.memberMas : submission.mas)}`, { cache: "no-store" });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || "Unable to load account.");
         const account = result.account;
@@ -1198,7 +1211,7 @@ export default function CollectionsPage() {
               return;
             }
             setCleared({ id: clearing.id, employeeId: clearing.employeeId, employeeName: clearing.employeeName, clearedDate: clearing.clearedDate });
-            setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setDateRemittedReason(""); setOrc(false); clearScopedMemberSelections();
+            setBranch(clearing.branch); setMas(clearing.employeeName); setMemberMas(""); setDateRemitted(clearing.clearedDate); setDateRemittedReason(""); setOrc(false); clearScopedMemberSelections();
             // A Collector (role Collector, not MAS) collects as Collector by default; the clerk can still change it (owner, October 14, 2026).
             const roles = (clearing.employeeRoles ?? []).map((role) => role.trim().toLowerCase());
             setCollectedBy(roles.includes("collector") && !roles.includes("mas") ? "Collector" : "MAS");
@@ -1244,8 +1257,15 @@ export default function CollectionsPage() {
               <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/50 p-1">
                 {collectionChannels.map((channel) => (
                   <button key={channel.value} type="button" role="radio" aria-checked={collectedBy === channel.value} title={channel.hint}
-                    disabled={Boolean(reviewing) && channel.value !== "MAS"}
-                    onClick={() => { if (channel.value !== collectedBy) setOrc(false); setCollectedBy(channel.value); }}
+                    disabled={Boolean(reviewing) && channel.value !== (reviewing?.collectedBy ?? "MAS")}
+                    onClick={() => {
+                      if (channel.value === collectedBy) return;
+                      setOrc(false);
+                      // Back to the accountable person's own members: entries of another MAS's members no longer fit.
+                      if (memberMas && memberMas !== mas) clearScopedMemberSelections();
+                      setMemberMas("");
+                      setCollectedBy(channel.value);
+                    }}
                     className={`rounded-md px-2 py-1.5 text-sm font-semibold transition-colors ${collectedBy === channel.value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
                     {channel.label}
                   </button>
@@ -1254,11 +1274,26 @@ export default function CollectionsPage() {
               <p className="text-xs text-muted-foreground">{collectionChannels.find((channel) => channel.value === collectedBy)?.hint}. Applies to every entry; DTO uses the current MAS incentive.</p>
             </fieldset>}
 
+            {/* WHOSE MEMBERS (owner, November 3, 2026): a Collector collects for a MAS of the branch; their members are listed. */}
+            {!dto && collectedBy === "Collector" && <div className="space-y-2">
+              <Label>Members of MAS *</Label>
+              <SearchSelect aria-label="Members of MAS" value={membersOf} placeholder={mas ? "Search MAS" : "Pick the handover first"} disabled={!mas || Boolean(reviewing)}
+                options={[
+                  ...(mas ? [{ value: mas, label: mas, description: "The Collector's own accounts" }] : []),
+                  ...masStaff.filter((staff) => {
+                    const branchId = branches.find((item) => item.name === branch)?.id;
+                    return staff.fullName !== mas && Boolean(branchId && staff.branchIds.includes(branchId)) && (staff.roles ?? []).includes("mas");
+                  }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId })),
+                ]}
+                onValueChange={(value) => { if (value === membersOf) return; setMemberMas(value === mas ? "" : value); clearScopedMemberSelections(); }} />
+              <p className="text-xs text-muted-foreground">Whose members {mas || "the Collector"} collected. Only that MAS&apos;s members are listed; each payment keeps its MAS on record, and {mas || "the Collector"} remits the cash.</p>
+            </div>}
+
             {!dto && collectedBy === "Collector" && <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">ORC (outright commission)</legend>
               <div role="radiogroup" aria-label="ORC" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1">
                 {([[false, "No"], [true, "Yes"]] as const).map(([value, label]) => (
-                  <button key={label} type="button" role="radio" aria-checked={orc === value} onClick={() => setOrc(value)}
+                  <button key={label} type="button" role="radio" aria-checked={orc === value} disabled={Boolean(reviewing)} onClick={() => setOrc(value)}
                     className={`rounded-md px-2 py-1.5 text-sm font-semibold transition-colors ${orc === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
                 ))}
               </div>
@@ -2168,6 +2203,7 @@ function CollectionSubmissionList({ submissions, activeId, onOpen, onReject, onR
           <div key={submission.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
             <div className="min-w-0 text-sm">
               <p className="font-semibold">{submission.mas} · {submission.branch}</p>
+              {submission.collectedBy === "Collector" && <p className="font-medium text-primary">Collector, for the members of {submission.memberMas} · ORC {submission.orc ? "Yes" : "No"}</p>}
               <p className="text-muted-foreground">{submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · {formatCurrency(submission.totalAmount)} collected · incentive {formatCurrency(submission.totalIncentive)} · submitted {formatDateTime(submission.submittedAt)}</p>
               {submission.status === "Remitted"
                 ? <p className={submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline ? "font-medium text-amber-700" : "font-medium text-emerald-700"}>Remitted {formatDateTime(submission.remittedAt)}{submission.remittedByName ? ` (${submission.remittedByName})` : ""}{submission.incentiveDeadline ? (submission.remittedAt > submission.incentiveDeadline ? " · after the deadline: incentive forfeited" : " · in time: incentive kept") : ""} · OR numbers still to type</p>

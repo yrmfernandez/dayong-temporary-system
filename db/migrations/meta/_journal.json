@@ -281,6 +281,13 @@
       "when": 1793664807019,
       "tag": "0039_sale_submission_remitted",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793671803722,
+      "tag": "0040_collector_submissions",
+      "breakpoints": true
     }
   ]
 }

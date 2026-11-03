@@ -26,6 +26,9 @@ import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
  * numbers and saves it when the cash is received at Clearing, or rejects it (lib/collection-submissions.ts).
  * Members of all the MAS's branches can be added together (owner, November 2, 2026): the batch is shown per branch and
  * sent as one submission per branch. A member just added goes on top and the page scrolls up to it.
+ * Collectors (owner, November 3, 2026): an employee with the Collector role picks Collected by MAS (their own members) or
+ * Collector; as Collector they choose whose members (a MAS of their branches), whose list is then shown, and ORC Yes or
+ * No, which sets the incentive (Collector tier, or half of the MAS incentive with ORC).
  */
 type Account = {
   id: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; branchId: string; branch: string;
@@ -37,8 +40,14 @@ type Entry = { enrollmentId: string; memberName: string; programName: string; mo
 type Submission = {
   id: string; branchId: string; branch: string; status: "Submitted" | "Remitted" | "Rejected" | "Saved"; entries: Entry[]; entryCount: number; totalAmount: number; totalIncentive: number;
   submittedAt: string; returnReason: string; reviewedByName: string; incentiveDeadline: string; remittedAt: string; remittedByName: string;
+  collectedBy: CollectedBy; memberMas: string; orc: boolean;
 };
 type Profile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
+type CollectedBy = "MAS" | "Collector";
+/** What the server says the submitter may do (lib/collection-submissions.ts collectorContext). */
+type CollectorInfo = { isCollector: boolean; isMas: boolean; masOptions: Array<{ employeeId: string; name: string; branchIds: string[] }>; collectedBy: CollectedBy; memberMasEmployeeId: string };
+/** Who collected and whose members, as chosen; "" lets the server decide (a Collector who is not a MAS collects as Collector). */
+type Choice = { collectedBy: CollectedBy | ""; mas: string };
 /** One member in the batch being filled: what the MAS chose. */
 type BatchItem = { enrollmentId: string; months: number; waiver: boolean };
 
@@ -62,27 +71,36 @@ export default function MasCollectionsPage() {
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [justAdded, setJustAdded] = useState("");
+  const [collector, setCollector] = useState<CollectorInfo | null>(null);
+  const [choice, setChoice] = useState<Choice>({ collectedBy: "", mas: "" });
+  const [orc, setOrc] = useState(false);
   const offDays = useDeclaredNonWorkingDays();
   const today = manilaNow().date;
+  // What the list shows: the server's answer for the current choice.
+  const asCollector = collector?.collectedBy === "Collector";
+  const memberMas = asCollector ? collector?.masOptions.find((item) => item.employeeId === collector.memberMasEmployeeId) : undefined;
+  const quoteAs = { role: asCollector ? "Collector" as const : "MAS" as const, orc: asCollector && orc };
 
   // The unfinished batch survives leaving the page (lib/use-form-draft.ts).
-  useFormDraft("mas-collections", { branchId, batch }, (draft) => {
+  useFormDraft("mas-collections", { branchId, batch, choice, orc }, (draft) => {
     setBranchId(draft.branchId ?? "");
+    if (draft.choice) setChoice({ collectedBy: draft.choice.collectedBy === "Collector" || draft.choice.collectedBy === "MAS" ? draft.choice.collectedBy : "", mas: String(draft.choice.mas ?? "") });
+    setOrc(draft.orc === true);
     setBatch(Array.isArray(draft.batch) ? draft.batch.map(({ enrollmentId, months, waiver }) => ({ enrollmentId, months, waiver })) : []);
   });
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/collection-submissions?view=mine", { cache: "no-store", signal: controller.signal })
+    fetch(`/api/collection-submissions?view=mine&collectedBy=${encodeURIComponent(choice.collectedBy)}&mas=${encodeURIComponent(choice.mas)}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || "Unable to load your members.");
-        setProfile(result.profile); setAccounts(result.accounts ?? []); setSubmissions(result.submissions ?? []); setError("");
+        setProfile(result.profile); setCollector(result.collector ?? null); setAccounts(result.accounts ?? []); setSubmissions(result.submissions ?? []); setError("");
       })
       .catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load your members."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [revision]);
+  }, [revision, choice]);
   // A clerk saving or returning a batch shows here without reloading.
   const reload = useCallback(() => setRevision((value) => value + 1), []);
   useLiveRefresh(["collection_submissions", "collections"], reload, 3000);
@@ -112,9 +130,9 @@ export default function MasCollectionsPage() {
   const rows = batch.map((pick) => {
     const account = byId.get(pick.enrollmentId);
     const orDate = today;
-    if (!account) return { pick, account, orDate, quote: null, problem: "This member is no longer in your list. Remove them." };
+    if (!account) return { pick, account, orDate, quote: null, problem: asCollector ? `Not a member of ${memberMas?.name ?? "the MAS chosen"}. Remove them.` : "This member is no longer in your list. Remove them." };
     if (account.blocked) return { pick, account, orDate, quote: null, problem: account.blocked };
-    try { return { pick, account, orDate, quote: masCollectionQuote(account, pick.months), problem: "" }; }
+    try { return { pick, account, orDate, quote: masCollectionQuote(account, pick.months, quoteAs), problem: "" }; }
     catch (failure) { return { pick, account, orDate, quote: null, problem: failure instanceof Error ? failure.message : "Cannot be collected." }; }
   });
   type Row = (typeof rows)[number];
@@ -150,6 +168,14 @@ export default function MasCollectionsPage() {
   const remove = (id: string) => setBatch((current) => current.filter((pick) => pick.enrollmentId !== id));
   // Clears the members shown (one branch, or all of them).
   const reset = () => { const shown = new Set(shownRows.map((row) => row.pick.enrollmentId)); setBatch((current) => current.filter((pick) => !shown.has(pick.enrollmentId))); };
+  // Collected by and whose members apply to the whole batch: changing them starts a new batch.
+  async function choose(next: Choice) {
+    if (next.collectedBy === (collector?.collectedBy ?? choice.collectedBy) && next.mas === (collector?.memberMasEmployeeId ?? choice.mas)) return;
+    if (batch.length && !await confirmDialog(`The batch has ${plural(batch.length, "member")}${asCollector && memberMas ? ` of ${memberMas.name}` : ""}. Start a new batch for this choice? They are removed from the batch.`)) return;
+    setBatch([]); setMessage(""); setSearch(""); setShowAll(false);
+    if (next.collectedBy !== "Collector") setOrc(false);
+    setChoice(next);
+  }
 
   async function submit() {
     if (!shownRows.length || busy) return;
@@ -157,10 +183,14 @@ export default function MasCollectionsPage() {
     if (missingWaiver.length) { setMessage(`${missingWaiver[0].account?.memberName} is suspended. Have the member sign the Waiver, then tick Waiver.`); return; }
     const perBranch = groups.map((group) => `${group.name}: ${plural(group.rows.length, "member")}, collected ${money(cents(group.totals.amount))}; remit ${money(cents(group.totals.remittance))} by ${formatDeadline(group.deadline)} to keep your ${money(cents(group.totals.incentive))} incentive.`);
     const intro = groups.length > 1 ? `Submit ${plural(shownRows.length, "member")} as ${groups.length} batches, one per branch?` : `Submit ${plural(shownRows.length, "member")} to the ${groups[0]?.name ?? ""} clerk?`;
-    if (!await confirmDialog(`${intro} You cannot change it after this; the clerk checks it when you remit the cash.\n\n${perBranch.join("\n")}`)) return;
+    const whose = asCollector ? `\n\nCollected by you as Collector, for the members of ${memberMas?.name ?? ""} · ORC ${quoteAs.orc ? "Yes" : "No"}.` : "";
+    if (!await confirmDialog(`${intro} You cannot change it after this; the clerk checks it when you remit the cash.${whose}\n\n${perBranch.join("\n")}`)) return;
     setBusy(true); setMessage("");
     try {
-      const response = await fetch("/api/collection-submissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entries: shownRows.map(({ pick: { enrollmentId, months, waiver } }) => ({ enrollmentId, months, waiver })) }) });
+      const response = await fetch("/api/collection-submissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        entries: shownRows.map(({ pick: { enrollmentId, months, waiver } }) => ({ enrollmentId, months, waiver })),
+        collectedBy: asCollector ? "Collector" : "MAS", memberMasEmployeeId: asCollector ? memberMas?.employeeId ?? "" : "", orc: quoteAs.orc,
+      }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to submit.");
       reset(); setMessage(result.message); reload();
@@ -179,6 +209,39 @@ export default function MasCollectionsPage() {
       <h1 className="text-2xl font-bold tracking-tight">Submit Collections</h1>
       <p className="text-sm text-muted-foreground">Add each member who paid you and how many months. Today is the OR date. The clerk of each branch types the OR numbers and saves them.</p>
     </div>
+
+    {/* COLLECTED BY (Collector role): their own members as MAS, or a MAS's members as Collector, with ORC. */}
+    {collector?.isCollector && <Card>
+      <CardContent className="space-y-3 p-4">
+        {collector.isMas && <div className="space-y-1">
+          <p className="text-sm font-medium">Collected by</p>
+          <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
+            {(["MAS", "Collector"] as const).map((value) => <button key={value} type="button" role="radio" aria-checked={collector.collectedBy === value} disabled={busy}
+              onClick={() => void choose({ collectedBy: value, mas: value === "Collector" ? collector.memberMasEmployeeId : "" })}
+              className={`min-h-10 rounded-md px-3 font-semibold ${collector.collectedBy === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}>{value === "MAS" ? "MAS: my members" : "Collector"}</button>)}
+          </div>
+        </div>}
+        {asCollector && <>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Whose members? *</span>
+            <select className="h-11 w-full rounded-md border bg-background px-3 text-base" value={collector.memberMasEmployeeId} disabled={busy}
+              onChange={(event) => void choose({ collectedBy: "Collector", mas: event.target.value })}>
+              <option value="">Choose the MAS</option>
+              {collector.masOptions.map((item) => <option key={item.employeeId} value={item.employeeId}>{item.name}{manyBranches ? ` · ${item.branchIds.map((id) => branches.find((branch) => branch.id === id)?.name).filter(Boolean).join(", ")}` : ""}</option>)}
+            </select>
+            <span className="block text-xs text-muted-foreground">{collector.masOptions.length ? "Only that MAS's members are listed. You remit the cash; each payment stays with its MAS." : "No MAS shares your branches. Ask HR."}</span>
+          </label>
+          <div className="space-y-1">
+            <p className="text-sm font-medium">ORC (outright commission)</p>
+            <div role="radiogroup" aria-label="ORC" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
+              {([[false, "No"], [true, "Yes"]] as const).map(([value, label]) => <button key={label} type="button" role="radio" aria-checked={orc === value} disabled={busy} onClick={() => setOrc(value)}
+                className={`min-h-10 rounded-md px-3 font-semibold ${orc === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}>{label}</button>)}
+            </div>
+            <p className="text-xs text-muted-foreground">{orc ? "Yes: you earn half of the MAS incentive; the other half is remitted." : "No: you earn the Collector incentive."} Applies to the whole batch.</p>
+          </div>
+        </>}
+      </CardContent>
+    </Card>}
 
     {message && <p role="status" className="flex items-start justify-between gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
       <span>{message}</span>
@@ -254,10 +317,10 @@ export default function MasCollectionsPage() {
     {/* MEMBERS: the MAS's own accounts, in one branch or all of them; those still owing this month first. */}
     <Card>
       <CardHeader className="space-y-3 pb-3">
-        <CardTitle className="text-lg">Add a member who paid</CardTitle>
+        <CardTitle className="text-lg">{asCollector && memberMas ? `Add a member of ${memberMas.name} who paid` : "Add a member who paid"}</CardTitle>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input type="search" className="h-11 pl-9 text-base" placeholder="Search name, PH number or program" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search your members" />
+          <Input type="search" className="h-11 pl-9 text-base" placeholder="Search name, PH number or program" value={search} onChange={(event) => setSearch(event.target.value)} aria-label={asCollector ? "Search the MAS's members" : "Search your members"} disabled={asCollector && !memberMas} />
         </div>
         {!query && <div role="radiogroup" aria-label="Which members" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
           {([[false, `To collect (${dueCount})`], [true, `All (${branchAccounts.length})`]] as const).map(([value, label]) => <button key={label} type="button" role="radio" aria-checked={showAll === value} onClick={() => setShowAll(value)}
@@ -281,7 +344,7 @@ export default function MasCollectionsPage() {
                 : <Button type="button" className="h-11 shrink-0 px-4" disabled={Boolean(account.blocked) || full} onClick={() => add(account)}><Plus className="mr-1 h-4 w-4" />Add</Button>}
             </li>;
           })}
-        </ul> : <p className="py-6 text-center text-sm text-muted-foreground">{query ? "No member matches your search." : showAll ? (filterBranch ? "You have no members in this branch." : "You have no members.") : "Everyone is paid through this month. Tap All to collect an advance."}</p>}
+        </ul> : <p className="py-6 text-center text-sm text-muted-foreground">{asCollector && !memberMas ? "Choose whose members you collected above." : query ? "No member matches your search." : showAll ? (filterBranch ? "You have no members in this branch." : "You have no members.") : "Everyone is paid through this month. Tap All to collect an advance."}</p>}
         {full && <p className="pt-2 text-center text-xs text-muted-foreground">The batch is full ({MAX_SUBMISSION_ENTRIES} members). Submit it, then add the rest.</p>}
       </CardContent>
     </Card>
@@ -330,6 +393,7 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
         return <div key={submission.id} className="space-y-2 rounded-lg border p-3 text-sm">
           <p className="flex flex-wrap items-center gap-2 font-semibold">{formatDateTime(submission.submittedAt)} <Badge variant={tone[submission.status]}>{label[submission.status]}</Badge></p>
           <p className="text-muted-foreground">{plural(submission.entryCount, "member")} · {money(submission.totalAmount)} collected · incentive {money(submission.totalIncentive)} · {submission.branch}</p>
+          {submission.collectedBy === "Collector" && <p className="text-muted-foreground">As Collector, for the members of {submission.memberMas} · ORC {submission.orc ? "Yes" : "No"}</p>}
           <p className="line-clamp-2">{submission.entries.map((entry) => `${entry.memberName} (${plural(entry.months, "month")})`).join(", ")}</p>
           {submission.status === "Submitted" && submission.incentiveDeadline && <p className={late ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>
             {late ? `The ${formatDeadline(submission.incentiveDeadline)} deadline has passed: if you have not remitted the cash yet, remit the whole ${money(submission.totalAmount)}.` : `Remit ${money(Math.round((submission.totalAmount - submission.totalIncentive) * 100) / 100)} at the office by ${formatDeadline(submission.incentiveDeadline)} to keep the incentive.`}

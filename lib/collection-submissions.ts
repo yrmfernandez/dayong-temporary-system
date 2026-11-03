@@ -6,6 +6,7 @@ import type { SessionUser } from "@/lib/auth";
 import { addClearing } from "@/lib/clearing";
 import { coveredKinds, type ClearingCovers } from "@/lib/clearing-kinds";
 import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
+import { getEmployees } from "@/lib/employees";
 import { getEncoder } from "@/lib/encoder-context";
 import { masCollectionQuote, MAX_SUBMISSION_ENTRIES } from "@/lib/mas-collection-quote";
 import { createReadableId } from "@/lib/readable-id";
@@ -34,6 +35,11 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  *
  * The incentive follows the usual 3:00 PM rule (lib/remittance-deadline.ts): kept when the cash is handed over at
  * Clearing by 3:00 PM the next working day after the OR date, otherwise forfeited and the whole amount handed over.
+ *
+ * Collectors (owner, November 3, 2026): an employee with the Collector role chooses Collected by MAS (their own members,
+ * if they are also a MAS) or Collector. As Collector they pick whose members they collected, any MAS of their branches,
+ * and ORC Yes or No for the batch. The Collector tier applies (ORC: half of the MAS incentive); the Collector is
+ * accountable and remits the cash, and each payment keeps the member's MAS on record, as on the Collections form.
  */
 const submissions = schema.collection_submissions;
 export { MAX_SUBMISSION_ENTRIES };
@@ -47,6 +53,7 @@ export type SubmittedCollection = {
   months: number; monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; amount: number; incentive: number; remittance: number;
   orDate: string; waiver: boolean;
 };
+export type CollectedBy = "MAS" | "Collector";
 export type CollectionSubmission = {
   id: string; branchId: string; branch: string; masEmployeeId: string; mas: string; status: "Submitted" | "Remitted" | "Rejected" | "Saved";
   entries: SubmittedCollection[]; entryCount: number; totalAmount: number; totalIncentive: number; submittedAt: string;
@@ -55,6 +62,8 @@ export type CollectionSubmission = {
   incentiveDeadline: string;
   /** Marked remitted: the clearing recorded for it, when ("YYYY-MM-DD HH:MM", Manila) and by whom. */
   clearingId: string; remittedAt: string; remittedByName: string;
+  /** Collected by the submitter as MAS, or as Collector for the members of memberMas (with ORC or not). */
+  collectedBy: CollectedBy; memberMasEmployeeId: string; memberMas: string; orc: boolean;
 };
 /** Batches still waiting for the clerk's save: just submitted, or marked remitted with the OR numbers still to type. */
 const OPEN = ["Submitted", "Remitted"];
@@ -68,6 +77,8 @@ const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): Coll
   returnReason: text(row.return_reason), reviewedByName: text(row.reviewed_by_name), reviewedAt: row.reviewed_at ?? "",
   collectionIds: text(row.collection_ids).split(",").map(text).filter(Boolean), incentiveDeadline: deadline,
   clearingId: text(row.clearing_id), remittedAt: stamp(row.remitted_at), remittedByName: text(row.remitted_by_name),
+  collectedBy: row.collected_by === "Collector" ? "Collector" : "MAS", memberMasEmployeeId: text(row.member_mas_employee_id) || row.mas_employee_id,
+  memberMas: text(row.member_mas) || row.mas, orc: row.collected_by === "Collector" && row.orc === true,
 });
 
 /** Adds each submission's incentive deadline, from its earliest OR date and its branch's working days. */
@@ -90,19 +101,48 @@ function blockedReason(status: string, today: string) {
 }
 
 /**
- * The MAS's own accounts in their active branches, each with today's standing and the MAS incentive tiers of its
- * program, so the page can show the incentive before submitting. `pendingIn` names an open submission that already
- * has the account.
+ * Who submits and whose members (owner, November 3, 2026). Collected by MAS: the submitter's own members. Collected by
+ * Collector (Collector role only): the members of the chosen MAS, an active employee with the MAS role who shares one of
+ * the Collector's branches. `masOptions` lists those MAS for the page.
  */
-export async function myCollectionAccounts(user: SessionUser) {
-  const profile = await masProfile(user);
-  const today = manilaNow().date;
-  const [data, open] = await Promise.all([
-    loadAccountData({ mas: profile.name }),
-    getDb().select().from(submissions).where(and(eq(submissions.mas_employee_id, profile.employeeId), inArray(submissions.status, OPEN))),
-  ]);
+async function collectorContext(user: SessionUser, collectedBy: unknown, memberMasEmployeeId: unknown) {
+  const [profile, employees] = await Promise.all([masProfile(user), getEmployees()]);
+  const roles = employees.find((item) => item.id === profile.employeeId)?.roles ?? [];
+  const isCollector = roles.includes("collector"), isMas = roles.includes("mas");
+  const branchIds = new Set(profile.branches.map((branch) => branch.id));
+  const masOptions = isCollector ? employees
+    .filter((item) => item.id !== profile.employeeId && item.status.toLowerCase() === "active" && item.roles.includes("mas") && item.branchIds.some((id) => branchIds.has(id)))
+    .map((item) => ({ employeeId: item.id, name: item.name, branchIds: item.branchIds.filter((id) => branchIds.has(id)) }))
+    .sort((a, b) => a.name.localeCompare(b.name)) : [];
+  // A Collector who is not a MAS has no members of their own, so they collect as Collector.
+  const as: CollectedBy = collectedBy === "Collector" || (collectedBy !== "MAS" && isCollector && !isMas) ? "Collector" : "MAS";
+  if (as === "Collector" && !isCollector) throw new Error("Only an employee with the Collector role can collect as Collector. Ask HR.");
+  const memberMas = as === "Collector" ? masOptions.find((item) => item.employeeId === text(memberMasEmployeeId)) ?? null : null;
+  return { profile, isCollector, isMas, masOptions, as, memberMas };
+}
+
+/** enrollment ID -> the open submission (anyone's) that already has it: saving both would pay it twice. */
+async function pendingAccounts() {
+  const open = await getDb().select({ id: submissions.submission_id, entries: submissions.entries }).from(submissions).where(inArray(submissions.status, OPEN));
   const pending = new Map<string, string>();
-  for (const row of open) for (const entry of toSubmission(row).entries) pending.set(entry.enrollmentId, row.submission_id);
+  for (const row of open) for (const entry of Array.isArray(row.entries) ? row.entries as SubmittedCollection[] : []) pending.set(entry.enrollmentId, row.id);
+  return pending;
+}
+
+/**
+ * The accounts the submitter may collect, in their active branches, each with today's standing and the incentive tiers
+ * of its program, so the page can show the incentive before submitting: their own as MAS, or the chosen MAS's as
+ * Collector. `pendingIn` names an open submission that already has the account.
+ */
+export async function myCollectionAccounts(user: SessionUser, options: { collectedBy?: unknown; memberMasEmployeeId?: unknown } = {}) {
+  const context = await collectorContext(user, options.collectedBy, options.memberMasEmployeeId);
+  const { profile } = context;
+  const collector = { isCollector: context.isCollector, isMas: context.isMas, masOptions: context.masOptions, collectedBy: context.as, memberMasEmployeeId: context.memberMas?.employeeId ?? "" };
+  const today = manilaNow().date;
+  const ownerName = context.as === "Collector" ? context.memberMas?.name ?? "" : profile.name;
+  // As Collector with no MAS chosen yet: nothing to list.
+  if (!ownerName) return { profile, collector, today, accounts: [] };
+  const [data, pending] = await Promise.all([loadAccountData({ mas: ownerName }), pendingAccounts()]);
   const accounts = data.accounts.flatMap((account) => {
     const branch = profile.branches.find((item) => sameName(item.name, account.branch));
     if (!branch) return [];
@@ -122,7 +162,7 @@ export async function myCollectionAccounts(user: SessionUser) {
         blocked: error instanceof Error ? `${error.message} Ask the office.` : "The account needs review at the office." }];
     }
   });
-  return { profile, today, accounts: accounts.sort((a, b) => a.memberName.localeCompare(b.memberName) || a.programName.localeCompare(b.programName)) };
+  return { profile, collector, today, accounts: accounts.sort((a, b) => a.memberName.localeCompare(b.memberName) || a.programName.localeCompare(b.programName)) };
 }
 
 /** The MAS's own collection submissions, newest first. */
@@ -137,8 +177,13 @@ export async function listMyCollectionSubmissions(user: SessionUser) {
  * Everything shown to the MAS is worked out again here from the account, with the same money rules as the Collections
  * save. It cannot be changed afterwards.
  */
-export async function submitCollections(user: SessionUser, input: { entries?: unknown }) {
-  const profile = await masProfile(user);
+export async function submitCollections(user: SessionUser, input: { entries?: unknown; collectedBy?: unknown; memberMasEmployeeId?: unknown; orc?: unknown }) {
+  const context = await collectorContext(user, input.collectedBy === "Collector" ? "Collector" : "MAS", input.memberMasEmployeeId);
+  const { profile, memberMas } = context;
+  const asCollector = context.as === "Collector";
+  if (asCollector && !memberMas) throw new Error("Choose whose members you collected: a MAS of your branches.");
+  const ownerName = memberMas?.name ?? profile.name;
+  const orc = asCollector && input.orc === true;
   if (!profile.branches.length) throw new Error("You are not assigned to an active branch. Ask HR to assign you.");
   if (!Array.isArray(input.entries) || !input.entries.length) throw new Error("Add at least one member.");
   if (input.entries.length > MAX_SUBMISSION_ENTRIES) throw new Error(`Submit at most ${MAX_SUBMISSION_ENTRIES} members at a time.`);
@@ -147,12 +192,10 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
   if (ids.some((id) => !id)) throw new Error("A member in the batch is incomplete. Reload the page and try again.");
   if (new Set(ids).size !== ids.length) throw new Error("A member is in the batch twice. Add the months to one card instead.");
 
-  // A member waiting in another submission would be paid twice once both are saved.
-  const open = await getDb().select().from(submissions).where(and(eq(submissions.mas_employee_id, profile.employeeId), inArray(submissions.status, OPEN)));
-  for (const row of open) {
-    const twice = toSubmission(row).entries.find((entry) => ids.includes(entry.enrollmentId));
-    if (twice) throw new Error(`${twice.memberName} (${twice.programName}) is already in a submission waiting for the clerk. Tell the clerk if it needs changing.`);
-  }
+  // A member waiting in another submission (anyone's: the MAS's or a Collector's) would be paid twice once both are saved.
+  const pending = await pendingAccounts();
+  const twice = ids.find((id) => pending.has(id));
+  if (twice) throw new Error(`A member in the batch is already in submission ${pending.get(twice)}, waiting for the clerk. Remove them, or tell the clerk if it needs changing.`);
 
   const today = manilaNow().date;
   const data = await loadAccountData({ enrollmentIds: ids });
@@ -160,7 +203,7 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
     const account = data.accounts.find((candidate) => candidate.id === item.enrollmentId);
     if (!account) throw new Error("A member in the batch no longer has this program. Reload the page.");
     const label = `${account.memberName} (${account.programName})`;
-    if (!sameName(account.mas, profile.name)) throw new Error(`${label} is not your member.`);
+    if (!sameName(account.mas, ownerName)) throw new Error(asCollector ? `${label} is not a member of ${ownerName}.` : `${label} is not your member.`);
     const branch = profile.branches.find((candidate) => sameName(candidate.name, account.branch));
     if (!branch) throw new Error(`${label} belongs to ${account.branch || "no branch"}, which is not one of your branches. Ask HR.`);
     const orDate = today;
@@ -171,9 +214,9 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
     if (accountState(account, data.payments, orDate).temporarilySuspended && !item.waiver) throw new Error(`${label} is suspended. Have the member sign the Waiver, then tick Waiver.`);
     try {
       const tiers = tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branch.id);
-      const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months);
+      const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, { role: context.as, orc });
       // The clerk types the OR number when saving; a stand-in lets the same payment rules run now.
-      validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate, orNumber: "(typed by the clerk)", waiver: item.waiver ? "Waiver" : "", collectedByRole: "MAS", originalMas: "" }, today);
+      validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate, orNumber: "(typed by the clerk)", waiver: item.waiver ? "Waiver" : "", collectedByRole: context.as, originalMas: asCollector ? ownerName : "" }, today);
       const entry: SubmittedCollection = { enrollmentId: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, ...quote, orDate, waiver: item.waiver };
       return { branch, entry };
     } catch (error) {
@@ -192,10 +235,11 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
   const batches = [...byBranch.values()].map(({ branch, entries: group }) => ({
     submission_id: createReadableId("CSUB"), branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted",
     entries: group, entry_count: group.length, total_amount: cents(group.reduce((sum, entry) => sum + entry.amount, 0)),
-    total_incentive: cents(group.reduce((sum, entry) => sum + entry.incentive, 0)), submitted_at: actor.encodedAt, ...encodedBy(),
+    total_incentive: cents(group.reduce((sum, entry) => sum + entry.incentive, 0)), submitted_at: actor.encodedAt,
+    collected_by: context.as, member_mas_employee_id: memberMas?.employeeId ?? null, member_mas: memberMas?.name ?? null, orc, ...encodedBy(),
   }));
   await inTransaction(() => currentDb().insert(submissions).values(batches));
-  return { ids: batches.map((batch) => batch.submission_id), entryCount: entries.length, batches: batches.map((batch) => ({ branch: batch.branch, entryCount: batch.entry_count })) };
+  return { ids: batches.map((batch) => batch.submission_id), entryCount: entries.length, collectedBy: context.as, memberMas: memberMas?.name ?? "", batches: batches.map((batch) => ({ branch: batch.branch, entryCount: batch.entry_count })) };
 }
 
 /** Submissions waiting for the clerk in their branches (submitted, or marked remitted and not yet saved), oldest first. */

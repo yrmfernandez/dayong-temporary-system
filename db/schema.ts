@@ -498,6 +498,14 @@ export const collection_submissions = pgTable("collection_submissions", {
   clearing_id: text(),
   remitted_at: moment("remitted_at"),
   remitted_by_name: text(),
+  /**
+   * Who collected (owner, November 3, 2026): "MAS", their own members; or "Collector", a Collector collecting the members
+   * of another MAS (member_mas), with ORC (outright commission) set for the whole batch. The submitter stays accountable.
+   */
+  collected_by: text().notNull().default("MAS"),
+  member_mas_employee_id: text(),
+  member_mas: text(),
+  orc: boolean().notNull().default(false),
   ...encoder(),
 }, (t) => [
   index("collection_submissions_branch_status_idx").on(t.branch_id, t.status),

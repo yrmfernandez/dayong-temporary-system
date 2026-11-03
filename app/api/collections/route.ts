@@ -80,8 +80,7 @@ async function saveCollections(request: Request, user: SessionUser) {
     // A batch the MAS submitted from the field (lib/collection-submissions.ts): it must be this branch's and MAS's and
     // still waiting; it is marked Saved in the same transaction below.
     const submissionId = dto ? "" : String(body.submissionId ?? "").trim();
-    if (submissionId) await reviewableCollectionSubmission(user, submissionId, selectedBranch.id, accountable.id, String(body.clearingId ?? ""));
-    if (submissionId && String(body.collectedBy ?? "") !== "MAS") throw new Error("A batch the MAS submitted is collected by MAS.");
+    const submission = submissionId ? await reviewableCollectionSubmission(user, submissionId, selectedBranch.id, accountable.id, String(body.clearingId ?? "")) : null;
     let dateRemittedReason = "";
     // The clearing (handover) picked in From Clearing, kept on each row (two handovers a day, October 29, 2026).
     const clearingId = dto ? "" : String(body.clearingId ?? "").trim();
@@ -105,8 +104,19 @@ async function saveCollections(request: Request, user: SessionUser) {
     const orc = !dto && body.orc === true;
     if (orc && collectedBy !== "Collector") throw new Error("ORC (outright commission) applies only when the batch is collected by a Collector.");
     if (!(COLLECTION_CHANNELS as readonly string[]).includes(collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");
-    // A Collector brings in payments for the batch's own MAS, so that MAS is the original MAS on record.
-    const originalMas = collectedBy === "Collector" ? mas : "";
+    /*
+     * Whose members (owner, November 3, 2026): a Collector collects the members of a MAS of the branch, chosen as Members
+     * of MAS (memberMas; the Collector themself for accounts assigned to them). The Collector stays accountable for the
+     * cash; each payment keeps the account's MAS on record and as the original MAS.
+     */
+    const memberMas = collectedBy === "Collector" ? String(body.memberMas ?? "").trim() || mas : mas;
+    const originalMas = collectedBy === "Collector" ? memberMas : "";
+    // A submitted batch is saved as it was submitted: collected by, whose members and ORC (lib/collection-submissions.ts).
+    if (submission) {
+      if (collectedBy !== submission.collectedBy) throw new Error(`This batch was submitted as collected by ${submission.collectedBy}.`);
+      if (collectedBy === "Collector" && !sameName(memberMas, submission.memberMas)) throw new Error(`This batch holds members of ${submission.memberMas}.`);
+      if (orc !== submission.orc) throw new Error(`This batch was submitted with ORC ${submission.orc ? "Yes" : "No"}.`);
+    }
     const paymentMethod = await findActivePaymentMethod(String(body.paymentMethod ?? ""));
     const paymentReference = String(body.paymentReference ?? "").trim();
     // The reference number is optional (October 8, 2026): the receipt photo attached in My Entries is the proof.
@@ -156,9 +166,9 @@ async function saveCollections(request: Request, user: SessionUser) {
         const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
         if (matches.length !== 1) throw new Error("A unique active program enrollment was not found. A program deactivated for this member takes no collections.");
         const account = matches[0];
-        if (!sameName(account.branch, branch) || (!dto && !sameName(account.mas, mas))) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch${dto ? "" : " and MAS"}.`);
-        // The payment keeps the account's MAS on record; in a DTO batch the clerk is only accountable for the cash.
-        const accountMas = dto ? account.mas : mas;
+        if (!sameName(account.branch, branch) || (!dto && !sameName(account.mas, memberMas))) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch${dto ? "" : collectedBy === "Collector" ? ` and be a member of ${memberMas}` : " and MAS"}.`);
+        // The payment keeps the account's MAS on record; in a DTO or Collector batch the cash is someone else's to account for.
+        const accountMas = dto ? account.mas : memberMas;
         const input = {
           monthFrom: String(entry.monthFrom ?? ""), monthTo: String(entry.monthTo ?? ""), nopFrom: Number(entry.nopFrom), nopTo: Number(entry.nopTo), amount: Number(entry.amountCollected),
           orDate: String(entry.orDate ?? ""), orNumber: normalizeOrNumber(String(entry.orNumber ?? "")), waiver: String(entry.ifSuspended ?? ""),
