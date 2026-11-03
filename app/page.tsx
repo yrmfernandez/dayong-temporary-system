@@ -14,7 +14,7 @@ import type { SessionUser } from "@/lib/auth";
 import { getSessionUser } from "@/lib/auth-server";
 import { dashboardKind, getDashboardData, type DashboardData } from "@/lib/dashboard-data";
 import { getEmployees } from "@/lib/employees";
-import { getExecutiveAnalytics, isExecutivePeriod } from "@/lib/executive-analytics";
+import { executiveSelection, getExecutiveAnalytics } from "@/lib/executive-analytics";
 import { getCommissions, getVendorPayables } from "@/lib/finance-operations";
 import { getRemittanceDashboard } from "@/lib/remittance-workflow";
 import { getSystemHealth } from "@/lib/system-health";
@@ -53,7 +53,7 @@ async function employeeName(user: SessionUser) {
   return (await getEmployees()).find((employee) => employee.id === user.employeeId)?.name || user.name;
 }
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ period?: string; month?: string; from?: string; to?: string }> }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   // The dashboard follows the workspace chosen in the sidebar; dashboardKind only honours roles the user holds.
@@ -61,9 +61,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   let preferred = "";
   try { preferred = decodeURIComponent(saved); } catch { /* ignore a malformed cookie */ }
   const kind = dashboardKind(user, preferred);
-  const { period } = await searchParams;
+  const params = await searchParams;
   let loaded: Awaited<ReturnType<typeof load>>;
-  try { loaded = await load(user, kind, period); }
+  try { loaded = await load(user, kind, params); }
   catch (error) { return DashboardError(error instanceof Error ? error.message : "Unable to load dashboard."); }
   const view = (() => {
     switch (loaded.view) {
@@ -80,9 +80,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 }
 
 // Loads only the data the chosen dashboard shows.
-async function load(user: SessionUser, kind: ReturnType<typeof dashboardKind>, period: string | undefined) {
+async function load(user: SessionUser, kind: ReturnType<typeof dashboardKind>, params: { period?: string; month?: string; from?: string; to?: string }) {
   if (kind === "executive") {
-    const [analytics, name] = await Promise.all([getExecutiveAnalytics(isExecutivePeriod(period) ? period : "mtd"), employeeName(user)]);
+    const [analytics, name] = await Promise.all([getExecutiveAnalytics(executiveSelection(params)), employeeName(user)]);
     return { view: "executive" as const, analytics, name };
   }
   if (kind === "it") {

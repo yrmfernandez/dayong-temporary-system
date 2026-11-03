@@ -5,7 +5,7 @@ import { PrintButton } from "@/components/print-button";
 import { Change, Columns, RankBars, RevenueTrend, ShareBar } from "@/components/executive-charts";
 import type { Tone } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { executivePeriods, type ExecutiveAnalytics, type Ranked } from "@/lib/executive-analytics";
+import { executivePeriods, MAX_CUSTOM_DAYS, type ExecutiveAnalytics, type Ranked } from "@/lib/executive-analytics";
 import { GrossSalesDrilldown } from "@/components/gross-sales-drilldown";
 import { formatDate as showDate } from "@/lib/date-format";
 
@@ -25,6 +25,7 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
       <nav aria-label="Reporting period" className="flex flex-wrap gap-1 rounded-xl border bg-card p-1 print:hidden">
         {Object.entries(executivePeriods).map(([key, period]) => <Link key={key} href={key === "mtd" ? "/" : `/?period=${key}`} aria-current={data.period === key ? "page" : undefined} className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${data.period === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>{period.label}</Link>)}
       </nav></div>
+      <PeriodPickers data={data} />
     </div>
     <p className="hidden text-xs print:block">Printed {new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })} by {employeeName}</p>
 
@@ -118,6 +119,32 @@ function Highlights({ data, className = "" }: { data: ExecutiveAnalytics; classN
 
 function KpiGroup({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return <div className="space-y-2"><div><h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2><p className="text-sm text-muted-foreground">{description}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{children}</div></div>;
+}
+
+/**
+ * Any month, or any dates (owner, November 3, 2026), beside the preset periods. Plain forms: the choice goes in the link
+ * (?period=month&month= or ?period=custom&from=&to=), so a view can be bookmarked or shared and works without scripts.
+ */
+function PeriodPickers({ data }: { data: ExecutiveAnalytics }) {
+  const thisMonth = data.today.slice(0, 7);
+  const field = "h-8 rounded-lg border bg-background px-2 text-sm";
+  const button = (active: boolean) => `rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`;
+  return <div className="flex w-full flex-wrap justify-end gap-2 print:hidden">
+    <form method="get" action="/" aria-label="Choose a month" className="flex flex-wrap items-center gap-1 rounded-xl border bg-card p-1">
+      <input type="hidden" name="period" value="month" />
+      <label htmlFor="executive-month" className="px-2 text-sm text-muted-foreground">Month</label>
+      <input id="executive-month" type="month" name="month" required max={thisMonth} defaultValue={data.month || thisMonth} className={field} />
+      <button type="submit" aria-current={data.period === "month" ? "page" : undefined} className={button(data.period === "month")}>Show month</button>
+    </form>
+    <form method="get" action="/" aria-label="Choose dates" className="flex flex-wrap items-center gap-1 rounded-xl border bg-card p-1">
+      <input type="hidden" name="period" value="custom" />
+      <label htmlFor="executive-from" className="px-2 text-sm text-muted-foreground">From</label>
+      <input id="executive-from" type="date" name="from" required max={data.today} defaultValue={data.period === "custom" ? data.from : `${thisMonth}-01`} className={field} />
+      <label htmlFor="executive-to" className="px-1 text-sm text-muted-foreground">to</label>
+      <input id="executive-to" type="date" name="to" required max={data.today} defaultValue={data.period === "custom" ? data.to : data.today} className={field} />
+      <button type="submit" title={`Up to ${MAX_CUSTOM_DAYS} days`} aria-current={data.period === "custom" ? "page" : undefined} className={button(data.period === "custom")}>Show dates</button>
+    </form>
+  </div>;
 }
 
 function Kpi({ label, value, change, note, icon: Icon, tone }: { label: string; value: string; change?: number | null; note: string; icon: LucideIcon; tone: Tone }) {

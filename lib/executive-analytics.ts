@@ -22,6 +22,19 @@ export const executivePeriods = {
 } as const;
 export type ExecutivePeriod = keyof typeof executivePeriods;
 export const isExecutivePeriod = (value: unknown): value is ExecutivePeriod => typeof value === "string" && value in executivePeriods;
+/**
+ * What the dashboard shows (owner, November 3, 2026): a preset period, one chosen month (compared with the month before),
+ * or chosen dates (compared with the same number of days just before). Built from the page's ?period=&month=&from=&to=.
+ */
+export type ExecutiveSelection = { period: ExecutivePeriod } | { period: "month"; month: string } | { period: "custom"; from: string; to: string };
+/** Custom dates cover at most this many days, so the dashboard never reads years of entries at once. */
+export const MAX_CUSTOM_DAYS = 366;
+
+export function executiveSelection(params: { period?: string; month?: string; from?: string; to?: string }): ExecutiveSelection {
+  if (params.period === "month" && /^\d{4}-\d{2}$/.test(params.month ?? "")) return { period: "month", month: params.month as string };
+  if (params.period === "custom" && validDay(params.from ?? "") && validDay(params.to ?? "")) return { period: "custom", from: params.from as string, to: params.to as string };
+  return { period: isExecutivePeriod(params.period) ? params.period : "mtd" };
+}
 
 type Sale = { date: string; branch: string; programId: string; mas: string; amount: number; incentive: number; paymentMode: string; age: number | null; gender: string };
 /**
@@ -34,6 +47,36 @@ type Collection = { date: string; branch: string; programId: string; person: str
 const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
 export type Ranked = { key: string; label: string; accounts: number; amount: number; previous: number; share: number };
 export type TrendPoint = { month: string; label: string; sales: number; collections: number; accounts: number };
+
+const DAY_MS = 86400000;
+const shiftDays = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+const monthEnd = (month: string) => { const [y, m] = month.split("-").map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+const monthName = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+
+/** The dates shown and the ones compared, with their labels. Nothing after today is read. */
+function selectionRange(selection: ExecutiveSelection, today: string) {
+  if (selection.period === "month") {
+    const month = selection.month > today.slice(0, 7) ? today.slice(0, 7) : selection.month;
+    const from = `${month}-01`, running = month === today.slice(0, 7);
+    const to = running ? today : monthEnd(month), before = addMonths(from, -1).slice(0, 7);
+    return {
+      period: "month", month, periodLabel: monthName(month), compareLabel: running ? "vs same days last month" : `vs ${monthName(before)}`,
+      from, to, previousFrom: `${before}-01`, previousTo: running ? addMonths(today, -1) : monthEnd(before),
+    };
+  }
+  if (selection.period === "custom") {
+    let [from, to] = [selection.from, selection.to].sort();
+    if (to > today) to = today;
+    if (from > to) from = to;
+    if ((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS + 1 > MAX_CUSTOM_DAYS) from = shiftDays(to, -(MAX_CUSTOM_DAYS - 1));
+    const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS + 1;
+    return {
+      period: "custom", month: "", periodLabel: "Chosen dates", compareLabel: `vs the ${days === 1 ? "day" : `${days} days`} before`,
+      from, to, previousFrom: shiftDays(from, -days), previousTo: shiftDays(from, -1),
+    };
+  }
+  return { period: selection.period, month: "", periodLabel: executivePeriods[selection.period].label, compareLabel: executivePeriods[selection.period].compare, ...periodRange(selection.period, today) };
+}
 
 function periodRange(period: ExecutivePeriod, today: string) {
   const [year, month] = today.split("-").map(Number);
@@ -78,9 +121,9 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
  * to date for the quarter and year targets. Accounts and members are counted there too, and sales send only the columns
  * used. Same figures (checked against the previous code for every period).
  */
-export async function getExecutiveAnalytics(period: ExecutivePeriod, { financeOnly = false }: { financeOnly?: boolean } = {}) {
+export async function getExecutiveAnalytics(selection: ExecutivePeriod | ExecutiveSelection, { financeOnly = false }: { financeOnly?: boolean } = {}) {
   const today = todayInManila();
-  const range = periodRange(period, today);
+  const { period, month: chosenMonth, periodLabel, compareLabel, ...range } = selectionRange(typeof selection === "string" ? { period: selection } : selection, today);
   const since = financeOnly ? range.from : [range.previousFrom, `${today.slice(0, 4)}-01-01`, addMonths(`${today.slice(0, 7)}-01`, -11)].sort()[0];
   const ledgerRanges = ["'Expenses'!A:Q", REMITTANCES_RANGE, "'Cash Transactions'!A:P", "'Cash Accounts'!A:E", "'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Vendor Payables'!A:O"];
   const catalogRanges = financeOnly ? [] : [PROGRAMS_RANGE, "'Branches'!A:M"];
@@ -217,7 +260,7 @@ export async function getExecutiveAnalytics(period: ExecutivePeriod, { financeOn
   const genders = rank(periodSales.filter((row) => row.gender), [], (row) => row.gender.charAt(0).toUpperCase() + row.gender.slice(1).toLowerCase(), () => 1);
 
   return {
-    period, periodLabel: executivePeriods[period].label, compareLabel: executivePeriods[period].compare, ...range, today,
+    period, month: chosenMonth, periodLabel, compareLabel, ...range, today,
     kpis: {
       grossSales: { value: grossSales, change: change(grossSales, previousSalesGross + previousCollectionGross) },
       netSales: { value: netSales, change: change(netSales, previousSalesGross + previousCollectionGross - agentIncentives(previousSales, previousCollections)) },

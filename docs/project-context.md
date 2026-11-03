@@ -17,6 +17,18 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### CEO dashboard: choose a month or dates (2026-11-03)
+
+- **Asked (owner):** on the CEO dashboard, also choose months or dates.
+- **Done:** beside Month to date, Quarter to date, Year to date and Last 12 months, the period bar has **Month** (any month up to this one → Show month; compared with the month before, or for the running month with the same days last month) and **From … to** (any dates up to today → Show dates; at most 366 days, `MAX_CUSTOM_DAYS`; compared with the same number of days just before). Plain GET forms, so the link (`/?period=month&month=2026-10`, `/?period=custom&from=…&to=…`) can be bookmarked. `executiveSelection` and `selectionRange` in `lib/executive-analytics.ts`; every figure that follows the period (sales, collections, P&L, rankings, demographics, Gross Sales drill-down) uses the chosen dates; the 12-month trend, cash, targets and account health stay as of today. No migration.
+- **To do (owner):** not yet checked in a browser: pick October 2026, then dates such as Oct 1 – Oct 15.
+
+### Test submissions of MD-2026-0054 cleared; notification numbers (2026-11-03)
+
+- **Asked (owner):** clear MD-2026-0054's submissions on Submit New Sales and Submit Collections (testing only) and fix the notifications.
+- **Done:** `scripts/clear-test-submissions.mjs <employee ID> [--apply]` deletes that MAS's unsaved submissions (Submitted, Remitted, Rejected, Returned) in `sale_submissions` and `collection_submissions` in one transaction, takes a Mark remitted clearing off the Clearing list (Removed, with the reason) while still Open, and leaves Saved ones (real entries) listed; the Audit Log keeps the deleted rows. Tested on staging with two throwaway rows (dry run, apply, re-check). The sidebar numbers come from these rows (clerks: Submitted by MAS waiting on New Sales and Collections; the MAS: Rejected in the last 2 days), so clearing them clears the numbers. The `lib/notifications.ts` description now matches what is counted (Remitted included for clerks; Rejected for the MAS on Submit New Sales).
+- **To do (owner):** `npm run prod -- node scripts/clear-test-submissions.mjs MD-2026-0054` (look at the list), then the same with `--apply`. Production was not read from here.
+
 ### New Sales submissions: Review, Reject and Mark remitted, as for collections (2026-11-03)
 
 - **Asked (owner), in two steps:** first, a clerk does not send a MAS New Sales submission back; they edit it instead. Then: just like collections, there is Review, Reject and Mark remitted.

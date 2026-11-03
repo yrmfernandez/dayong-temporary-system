@@ -6,7 +6,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 
 ## Coverage
 
-48 page routes, 79 API handlers, 154 library files, 68 component files; 668 scanned source/configuration/public-text files in total.
+48 page routes, 79 API handlers, 154 library files, 68 component files; 669 scanned source/configuration/public-text files in total.
 
 ## Page routes
 
@@ -206,7 +206,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/entry-finance.mjs](../lib/entry-finance.mjs) | `repriceEntries` | `./remittance.ts` |
 | [lib/entry-search.ts](../lib/entry-search.ts) | `SearchKind`, `isSearchKind`, `FoundEntry`, `SEARCH_LIMIT`, `searchEntries` | `@/lib/db` |
 | [lib/exceptions.ts](../lib/exceptions.ts) | `EXCEPTION_CATEGORIES`, `ExceptionCategory`, `ExceptionItem`, `findExceptions` | `@/lib/db`, `@/lib/sheets-on-db`, `@/components/entry-correction-form`, `@/lib/sheet-ranges`, `@/lib/account-rules`, `@/lib/duplicate-entries`, `@/lib/google-sheets`, `@/lib/program-age`, `@/lib/program-amount-lock`, `@/lib/remittance-deadline`, `@/lib/work-calendar`, `@/lib/date-checks`, `@/lib/date-format`, `@/lib/turnover-variance` |
-| [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/db`, `@/lib/company-targets`, `@/lib/remittance-deadline`, `@/lib/google-sheets` |
+| [lib/executive-analytics.ts](../lib/executive-analytics.ts) | `executivePeriods`, `ExecutivePeriod`, `isExecutivePeriod`, `ExecutiveSelection`, `MAX_CUSTOM_DAYS`, `executiveSelection`, `Ranked`, `TrendPoint`, `getExecutiveAnalytics`, `ExecutiveAnalytics` | `@/lib/account-rules`, `@/lib/sheet-ranges`, `@/lib/sheets-on-db`, `@/lib/db`, `@/lib/company-targets`, `@/lib/remittance-deadline`, `@/lib/google-sheets` |
 | [lib/expense-options.ts](../lib/expense-options.ts) | `EXPENSE_ACCOUNTS`, `BURIAL_ACCOUNT`, `isOtherChoice`, `EXPENSE_ATTACHMENTS`, `EXPENSE_APPROVERS`, `choiceWithOther`, `attachmentList`, `expenseNumbers` | — |
 | [lib/fidelity-cap.ts](../lib/fidelity-cap.ts) | `FIDELITY_CAP`, `fidelityStanding`, `baseWithdrawalAmount` | — |
 | [lib/fidelity.ts](../lib/fidelity.ts) | `FIDELITY_CAP`, `WITHDRAWAL_TYPES`, `OPENING_TYPE`, `OLD_WITHDRAWAL_TYPE`, `getFidelityData`, `withdrawFidelity` | `@/lib/google-sheets`, `@/lib/employees`, `@/lib/readable-id`, `@/lib/db`, `@/lib/finance-data`, `@/lib/finance-operations`, `@/lib/fidelity-cap` |
@@ -524,6 +524,7 @@ These are an inventory, not instructions to run every script. Read each script's
 | [scripts/check-quinones-split-20261019.mjs](../scripts/check-quinones-split-20261019.mjs) | `@next/env`, `postgres`, `node:fs`, `node:assert/strict` | No flag detected; read source before running |
 | [scripts/clear-payroll-runs.mjs](../scripts/clear-payroll-runs.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/clear-rutchelyn-report-20261021.mts](../scripts/clear-rutchelyn-report-20261021.mts) | `@next/env`, `drizzle-orm`, `@/lib/admin-delete`, `@/lib/db`, `@/lib/encoder-context` | Yes; read source for semantics |
+| [scripts/clear-test-submissions.mjs](../scripts/clear-test-submissions.mjs) | `@next/env`, `postgres` | Yes; read source for semantics |
 | [scripts/compare-double-accounts.mjs](../scripts/compare-double-accounts.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/compare-duplicates.mjs](../scripts/compare-duplicates.mjs) | `node:fs`, `@next/env`, `postgres` | No flag detected; read source before running |
 | [scripts/complete-old-site-reports.mjs](../scripts/complete-old-site-reports.mjs) | `node:fs`, `node:path`, `@next/env`, `postgres` | Yes; read source for semantics |

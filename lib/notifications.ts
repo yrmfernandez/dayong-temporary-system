@@ -16,9 +16,9 @@ import { listCollectionsForReview } from "@/lib/collection-submissions";
  *   /remittances        approvers (manage users): remittances Pending Approval or with a Discrepancy;
  *                       everyone else: their own New Sales and collections returned to them (slip rejected)
  *   /my-entries         their own entries still Outstanding without a receipt photo (a photo sends them for approval)
- *   /new-sales          New Sales submitted by MAS waiting to be saved, in the clerk's branches
- *   /mas-sales          the MAS's own submissions returned to them
- *   /collections        Collections submitted by MAS waiting to be saved, in the clerk's branches
+ *   /new-sales          New Sales submitted by MAS waiting to be saved (submitted or marked remitted), in the clerk's branches
+ *   /mas-sales          the MAS's own submissions rejected in the last 2 days, or returned to them before November 3, 2026
+ *   /collections        Collections submitted by MAS waiting to be saved (submitted or marked remitted), in the clerk's branches
  *   /mas-collections    the MAS's own collection submissions the clerk rejected in the last 2 days
  *   /attendance-reviews absences the system recorded in the last 7 days for employees still listed there, not yet marked
  *   /clearing           MAS and employees the user cleared (administrators: anyone's) whose entries are not yet sent for approval
