@@ -92,7 +92,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
   // Everything the report shows (owner, October 23, 2026: any change that the report reflects must update it).
   useLiveRefresh(["sales", "collections", "remittances", "remittance_collections", "expenses", "cash_transactions", "bank_deposits", "daily_audits", "weekly_audits", "monthly_audits", "yearly_audits", "report_remarks", "report_notes",
-    "members", "member_programs", "programs", "program_incentives", "receipt_photos", "employees", "branches", "remittance_methods"], load, 10000);
+    "members", "member_programs", "programs", "program_incentives", "receipt_photos", "employees", "branches", "remittance_methods"], load, 30000);
 
   /** Sends one of the clerk's own report actions, then reloads the report. */
   // Never fails silently (owner, October 24, 2026: Save did nothing): a reply that is not the route's own (a time-out,

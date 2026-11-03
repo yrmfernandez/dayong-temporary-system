@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, inTransaction, schema, type Queryable } from "@/lib/db";
 
 import { readSheetRows } from "@/lib/sheets-on-db";
+import { shortCached } from "@/lib/short-cache";
 import { createReadableId } from "@/lib/readable-id";
 import { getEncoder, isEncodingRequest, runAsSystem } from "@/lib/encoder-context";
 import { INCENTIVE_GRACE_DAYS, incentiveDeadline, keepsIncentive, manilaDateOf, manilaNow, validTime } from "@/lib/remittance-deadline";
@@ -26,6 +27,11 @@ export type SlipType = RemittanceKind | "Fidelity";
 // Incentive forfeited because the cash came in after the deadline: Collections AM, Sales AR. Remittances AA holds the
 // time the cash was received, next to its date in D.
 const FORFEIT_COLUMN = { Collections: 38, "New Sales": 43 } as const;
+/** The Collections and Sales columns the ledger reads (row[n] in readLedger); add a column here when reading a new one. */
+const LEDGER_COLUMNS = {
+  Collections: [0, 1, 4, 5, 6, 7, 8, 9, 10, 19, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, FORFEIT_COLUMN.Collections, 40],
+  Sales: [0, 1, 2, 3, 4, 5, 21, 23, 26, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 41, 42, FORFEIT_COLUMN["New Sales"]],
+};
 const REMITTANCE_TIME_COLUMN = 26;
 // Remittances AB: the bills and coins counted, e.g. "1000x3, 500x1" (lib/cash-count.ts).
 const CASH_COUNT_COLUMN = 27;
@@ -140,8 +146,9 @@ export type CashRemittance = {
  */
 const LEDGER_CACHE_MS = 10_000;
 const ledgerCache = globalThis as typeof globalThis & { dayongLedgerCache?: { at: number; data: ReturnType<typeof readLedger> } };
-async function loadLedger(): ReturnType<typeof readLedger> {
-  if (isEncodingRequest()) return readLedger();
+/** `include`: slips whose entries are needed in full even when older than LEDGER_RECENT_DAYS (opening or undoing one). */
+async function loadLedger(include: string[] = []): ReturnType<typeof readLedger> {
+  if (isEncodingRequest() || include.length) return readLedger(include);
   const cached = ledgerCache.dayongLedgerCache;
   if (cached && Date.now() - cached.at < LEDGER_CACHE_MS) return structuredClone(await cached.data);
   const data = readLedger();
@@ -150,16 +157,39 @@ async function loadLedger(): ReturnType<typeof readLedger> {
   return structuredClone(await data);
 }
 
-async function readLedger() {
-  const active = sql`(coalesce(remittance_status, '') <> 'Remitted' or coalesce(encoded_by_employee_id, '') <> '' or linked_remittance_id is not null)`;
+/**
+ * Which entries the ledger reads in full (November 3, 2026): reading every entry encoded since October, all columns, on
+ * every load was the largest read in production and grew every day. Now in full: entries not yet Remitted (the queues and
+ * totals), and the entries of slips still waiting or decided in the last LEDGER_RECENT_DAYS (approve, reject, undo).
+ * Entries of older slips are read with only the columns their slip's details need (payment method and reference,
+ * penalty, encoder: SLIP_DETAIL_COLUMNS), and in full only when that slip is opened or undone (`include`).
+ */
+const LEDGER_RECENT_DAYS = 30;
+const SLIP_DETAIL_COLUMNS = { Collections: [0, 19, 22, 23, 33, 34, 35, 36], Sales: [0, 23, 32, 33, 38, 39] };
+function ledgerConditions(idColumn: "collection_id" | "sale_id", include: string[]) {
+  const id = sql.raw(idColumn);
+  const included = include.length ? sql` or remittance_id in (${sql.join(include.map((slip) => sql`${slip}`), sql`, `)})` : sql``;
+  const recentSlips = sql`select remittance_id from remittances where status in ('Pending Approval', 'Discrepancy') or coalesce(decision_at, created_at) >= now() - make_interval(days => ${LEDGER_RECENT_DAYS})${included}`;
+  const onRecentSlip = sql`(linked_remittance_id in (${recentSlips}) or ${id} in (select collection_id from remittance_collections where remittance_id in (${recentSlips})))`;
+  const full = sql`(coalesce(remittance_status, '') <> 'Remitted' or ${onRecentSlip})`;
+  const onAnySlip = sql`(linked_remittance_id is not null or ${id} in (select collection_id from remittance_collections))`;
+  return { full, olderSlips: sql`(${onAnySlip} and not ${full})` };
+}
+
+async function readLedger(include: string[] = []) {
+  const collectionRows = ledgerConditions("collection_id", include), saleRows = ledgerConditions("sale_id", include);
   // The receipt-photo index is read alongside, not after: one round trip less on every Remittances and Finance load.
-  const [remittanceRows, linkRows, activeCollections, activeSales, photos, cashNames, offDays, decisions] = await Promise.all([
+  const [remittanceRows, activeCollections, activeSales, linkRows, olderCollectionRows, olderSaleRows, photos, cashNames, offDays, decisions] = await Promise.all([
     readSheetRows("Remittances", sql`true`),
-    readSheetRows("Remittance Collections", sql`true`),
     // Not numbered: numbering every row of Collections before filtering was one of the reads production timed out on
     // (October 31, 2026); saves go by ID, so the row numbers were no longer used.
-    readSheetRows("Collections", active).then((rows) => ({ rows, rowNumbers: [] as number[] })),
-    readSheetRows("Sales", active).then((rows) => ({ rows, rowNumbers: [] as number[] })),
+    // Only the columns read below (LEDGER_COLUMNS): every column of every entry encoded since October was the largest
+    // read in production's pg_stat_statements (November 3, 2026).
+    readSheetRows("Collections", collectionRows.full, { positions: LEDGER_COLUMNS.Collections }).then((rows) => ({ rows, rowNumbers: [] as number[] })),
+    readSheetRows("Sales", saleRows.full, { positions: LEDGER_COLUMNS.Sales }).then((rows) => ({ rows, rowNumbers: [] as number[] })),
+    readSheetRows("Remittance Collections", sql`true`, { positions: [0, 1, 2, 3, 4] }),
+    readSheetRows("Collections", collectionRows.olderSlips, { positions: SLIP_DETAIL_COLUMNS.Collections }),
+    readSheetRows("Sales", saleRows.olderSlips, { positions: SLIP_DETAIL_COLUMNS.Sales }),
     photosByEntry(),
     cashMethodNames(),
     declaredNonWorkingDays(),
@@ -203,9 +233,19 @@ async function readLedger() {
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByName: text(row[20]), decisionAt: text(row[21]),
     remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : text(row[25]) === "Fidelity" ? "Fidelity" : "Collections") as SlipType, collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [], photoIds: [], missingPhotos: [], clerkIds: [], clerkNames: [],
   })).filter((remittance) => remittance.id);
-  const byId = new Map(collections.map((collection) => [collection.id, collection]));
+  // The details older slips need from their entries (only these fields are read for them; see ledgerConditions).
+  type SlipDetail = Pick<CashCollection, "id" | "paymentMethod" | "paymentReference" | "penalty" | "penaltyNote" | "encodedByEmployeeId" | "encodedByName" | "photoId" | "photoIds" | "cash">;
+  const detail = (id: string, paymentMethod: string, paymentReference: string, penalty: number, penaltyNote: string, encodedByEmployeeId: string, encodedByName: string): SlipDetail => ({
+    id, paymentMethod: paymentMethod || "Cash", paymentReference, penalty, penaltyNote, encodedByEmployeeId, encodedByName,
+    photoId: photos.get(id)?.photoId ?? "", photoIds: photos.get(id)?.allPhotoIds ?? [], cash: isCashMethod(paymentMethod || "Cash", cashNames),
+  });
+  const olderSlipEntries: SlipDetail[] = [
+    ...olderCollectionRows.slice(1).filter((row) => text(row[0]) && text(row[19]).toLowerCase() === "posted").map((row) => detail(text(row[0]), text(row[33]), text(row[34]), number(row[35]), text(row[36]), text(row[22]), text(row[23]))),
+    ...olderSaleRows.slice(1).filter((row) => text(row[0])).map((row) => detail(text(row[0]), text(row[23]), "", number(row[38]), text(row[39]), text(row[32]), text(row[33]))),
+  ];
+  const byId = new Map<string, SlipDetail>([...olderSlipEntries.map((item) => [item.id, item] as const), ...collections.map((collection) => [collection.id, collection] as const)]);
   for (const remittance of remittances) {
-    const linked = remittance.collectionIds.map((id) => byId.get(id)).filter((item): item is CashCollection => Boolean(item));
+    const linked = remittance.collectionIds.map((id) => byId.get(id)).filter((item): item is SlipDetail => Boolean(item));
     remittance.paymentMethods = [...new Set(linked.map((item) => item.paymentMethod))];
     remittance.paymentReferences = [...new Set(linked.map((item) => item.paymentReference).filter(Boolean))];
     remittance.penaltyAmount = Math.round(linked.reduce((sum, item) => sum + item.penalty, 0) * 100) / 100;
@@ -215,7 +255,9 @@ async function readLedger() {
     remittance.clerkIds = [...new Set(linked.map((item) => item.encodedByEmployeeId).filter(Boolean))];
     remittance.clerkNames = [...new Set(linked.map((item) => item.encodedByName).filter(Boolean))];
   }
-  return { collections, remittances, mappings };
+  // Encoders of older slips' entries too, for the approvers' clerk filter.
+  const olderSlipClerks = olderSlipEntries.filter((item) => item.encodedByEmployeeId).map((item) => ({ employeeId: item.encodedByEmployeeId, name: item.encodedByName }));
+  return { collections, remittances, mappings, olderSlipClerks };
 }
 
 /** The incentive the accountable person keeps on an item (amount less the company remittance). */
@@ -248,6 +290,12 @@ export const amountDue = (collection: Pick<CashCollection, "amount" | "remittanc
  */
 export async function dateRemittedReasons(ids?: string[]) {
   if (ids && !ids.length) return new Map<string, { date: string; reason: string }>();
+  // Every reason (no ids) reads all of Collections and Sales: shared for 10 s per server, like the ledger.
+  if (!ids) return shortCached("date-remitted-reasons", 10_000, () => readDateRemittedReasons());
+  return readDateRemittedReasons(ids);
+}
+
+async function readDateRemittedReasons(ids?: string[]) {
   const only = (column: string) => ids ? sql` and ${sql.raw(column)} in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})` : sql``;
   const result = await getDb().execute(sql`select collection_id as id, coalesce(date_remitted::text, '') as date, trim(date_remitted_reason) as reason from collections where coalesce(trim(date_remitted_reason), '') <> ''${only("collection_id")}
     union all select sale_id, coalesce(date_remitted::text, ''), trim(date_remitted_reason) from sales where coalesce(trim(date_remitted_reason), '') <> ''${only("sale_id")}`);
@@ -296,7 +344,7 @@ export async function getRemittanceDashboard(clerkId = "") {
   }));
   const due = (item: CashCollection) => amountDue(item, receivedTimes.get(item.id) ?? "") + item.fidelity;
   // Entry Clerks with encoded items, for the approvers' filter.
-  const clerks = [...new Map(all.collections.filter((item) => item.encodedByEmployeeId).map((item) => [item.encodedByEmployeeId, item.encodedByName] as const)).entries()].map(([employeeId, name]) => ({ employeeId, name })).sort((a, b) => a.name.localeCompare(b.name));
+  const clerks = [...new Map([...all.olderSlipClerks.map((clerk) => [clerk.employeeId, clerk.name] as const), ...all.collections.filter((item) => item.encodedByEmployeeId).map((item) => [item.encodedByEmployeeId, item.encodedByName] as const)]).entries()].map(([employeeId, name]) => ({ employeeId, name })).sort((a, b) => a.name.localeCompare(b.name));
   const accountability = [...new Set(accountable.map((collection) => `${collection.accountableEmployeeId}\u0000${collection.accountableName}\u0000${collection.accountableRole}\u0000${collection.branch}`))].map((key) => {
     const [employeeId, name, role, branch] = key.split("\u0000");
     const owned = accountable.filter((collection) => collection.accountableEmployeeId === employeeId && collection.accountableName === name && collection.branch === branch);
@@ -324,7 +372,8 @@ export type RemittanceEntry = Pick<CashCollection, "kind" | "id" | "batchId" | "
  * amount, company share, method and receipt photo. `clerkId` (an Entry Clerk's own view) refuses a slip they did not encode.
  */
 export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
-  const ledger = await loadLedger();
+  // An older slip's entries are read in full only now (ledgerConditions).
+  const ledger = await loadLedger([text(remittanceId)]);
   const remittance = ledger.remittances.find((item) => item.id === text(remittanceId));
   if (!remittance) throw new Error("Remittance not found.");
   if (clerkId && !remittance.clerkIds.includes(clerkId)) throw new Error("You can only view the entries of remittances you encoded.");
@@ -544,7 +593,8 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
 export async function undoRemittanceApproval(remittanceId: string, reason: string) {
   const actor = getEncoder();
   if (text(reason).length < 3) throw new Error("Give the reason for undoing the approval.");
-  const ledger = await loadLedger();
+  // The slip's entries in full, even when it was decided more than LEDGER_RECENT_DAYS ago (ledgerConditions).
+  const ledger = await loadLedger([text(remittanceId)]);
   const remittance = ledger.remittances.find((item) => item.id === remittanceId);
   if (!remittance) throw new Error("Remittance not found.");
   if (remittance.status !== "Approved") throw new Error("Only an approved Remittance can have its approval undone.");

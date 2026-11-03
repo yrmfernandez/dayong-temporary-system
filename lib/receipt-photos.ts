@@ -4,6 +4,7 @@ import { getDb, schema } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
 import { readPhoto, storePhoto } from "@/lib/photo-storage";
 import { createReadableId } from "@/lib/readable-id";
+import { shortCached } from "@/lib/short-cache";
 
 /**
  * Receipt photos for New Sales and Collections. The browser shrinks each photo before upload (grayscale, at most
@@ -20,6 +21,11 @@ export type ReceiptPhotoInfo = { photoId: string; entryIds: string[]; sizeBytes:
 
 /** Every photo's details without the image, oldest first. */
 export async function listReceiptPhotos(): Promise<ReceiptPhotoInfo[]> {
+  // Kept 10 s per server outside saves: Remittances, the dashboards and the entry lists all read it (lib/short-cache.ts).
+  return shortCached("receipt-photos", 10_000, readReceiptPhotos);
+}
+
+async function readReceiptPhotos(): Promise<ReceiptPhotoInfo[]> {
   const rows = await getDb().select({ id: photos.photo_id, entryIds: photos.entry_ids, size: photos.size_bytes, at: photos.uploaded_at, by: photos.uploaded_by_name, byId: photos.uploaded_by_employee_id })
     .from(photos).orderBy(asc(photos.row_seq));
   return rows.map((row) => ({ photoId: row.id, entryIds: text(row.entryIds).split(",").map(text).filter(Boolean), sizeBytes: row.size ?? 0, uploadedAt: row.at ?? "", uploadedByEmployeeId: text(row.byId), uploadedByName: text(row.by) }));

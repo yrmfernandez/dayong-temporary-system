@@ -278,6 +278,7 @@ All routes pass through the authentication proxy except the three public auth en
 | [lib/reports.ts](../lib/reports.ts) | `ReportLine`, `ReportSummary`, `buildOperationalReport` | `@/lib/db`, `@/lib/sheets-on-db`, `@/lib/google-sheets`, `@/lib/sheet-ranges`, `@/lib/manila-date`, `@/lib/person-scope` |
 | [lib/roles.ts](../lib/roles.ts) | `RoleRecord`, `parsePageAccess`, `getRoles`, `createRole`, `updateRole`, `deleteRole` | `@/lib/db`, `@/lib/google-sheets`, `@/lib/encoder-context`, `@/lib/access-control`, `@/lib/page-catalog` |
 | [lib/sale-submissions.ts](../lib/sale-submissions.ts) | `MAX_SUBMISSION_SALES`, `SaleSubmission`, `masProfile`, `listMySubmissions`, `submitSales`, `reviewBranches`, `listForReview`, `reviewableSubmission`, `markSaleSubmissionRemitted`, `markSubmissionSaved`, `rejectSaleSubmission` | `@/lib/access-control`, `@/lib/auth`, `@/lib/clearing`, `@/lib/clearing-kinds`, `@/lib/db`, `@/lib/employees`, `@/lib/encoder-context`, `@/lib/google-sheets-data`, `@/lib/readable-id`, `@/lib/remittance-deadline`, `@/lib/work-calendar` |
+| [lib/short-cache.ts](../lib/short-cache.ts) | `shortCached`, `clearShortCache` | `@/lib/encoder-context` |
 | [lib/save-queue.ts](../lib/save-queue.ts) | `oldestPendingSave`, `onSaveQueueChange`, `installSaveQueue` | — |
 | [lib/scroll-top.ts](../lib/scroll-top.ts) | `scrollPageToTop` | — |
 | [lib/server-environment.ts](../lib/server-environment.ts) | `RequiredServerVariable`, `readServerVariable`, `getMissingServerVariables`, `ServerConfigurationError`, `assertServerConfiguration`, `getAuthSecret` | — |

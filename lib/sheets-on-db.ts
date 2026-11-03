@@ -313,9 +313,11 @@ export const sheetsOnDb = {
  * Rows of a tab that match `where`, laid out like the sheet. `only` reads just those columns (by name) and leaves the
  * others blank in their positions, so position-based code works unchanged while large columns are not transferred.
  */
-export async function readSheetRows(title: string, where: SQL, { unformatted = true, latest = 0, only }: { unformatted?: boolean; latest?: number; only?: string[] } = {}) {
+export async function readSheetRows(title: string, where: SQL, { unformatted = true, latest = 0, only, positions }: { unformatted?: boolean; latest?: number; only?: string[]; positions?: number[] } = {}) {
   const layout = await layoutOf(title);
-  const wanted = only ? layout.columns.filter((column) => only.includes(column.name)) : layout.columns;
+  // `positions`: only these columns (0-based, in sheet order) are read; the others stay blank in their place, so code that
+  // reads row[n] keeps working while far fewer bytes come from the database.
+  const wanted = only ? layout.columns.filter((column) => only.includes(column.name)) : positions ? layout.columns.filter((_column, index) => positions.includes(index)) : layout.columns;
   if (only && wanted.length !== only.length) throw new Error(`${title} has no column ${only.filter((name) => !wanted.some((column) => column.name === name)).join(", ")}.`);
   // latest: only the newest rows (still returned oldest first).
   const order = latest ? sql`order by row_seq desc limit ${latest}` : sql`order by row_seq`;

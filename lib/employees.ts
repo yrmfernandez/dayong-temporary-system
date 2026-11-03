@@ -3,6 +3,7 @@ import { asc, eq } from "drizzle-orm";
 import { currentDb, encodedBy, inTransaction, schema, type Transaction } from "@/lib/db";
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
 import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
+import { shortCached } from "@/lib/short-cache";
 
 // Employees, their branch assignments and sign-in accounts (Users) are all in the database (read through the Sheets-style
 // layer, lib/google-sheets.ts), so Employee ID clashes and linked accounts are checked against Users too.
@@ -45,7 +46,12 @@ async function accountEmployeeIds() {
   return ((await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: "Users!A:B" })).data.values ?? []).slice(1).map((row) => String(row[1] ?? "").trim());
 }
 
+/** Every employee with their branch IDs; kept 30 s per server outside saves (lib/short-cache.ts). */
 export async function getEmployees() {
+  return shortCached("employees", 30_000, readEmployees);
+}
+
+async function readEmployees() {
   const [employees, assignments] = await Promise.all([getEmployeeRows(), getEmployeeBranchAssignments()]);
   return employees.map((employee) => ({
     id: employee.id, name: employee.name, branch: employee.branch, roles: employee.roles,

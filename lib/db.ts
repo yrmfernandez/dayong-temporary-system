@@ -37,10 +37,11 @@ const shared = globalThis as typeof globalThis & { dayongDb?: Database; dayongTx
 function connect(maxPipeline: number, max: number): Database {
   const url = readServerVariable("DATABASE_URL");
   if (!url) throw new ServerConfigurationError(["DATABASE_URL"]);
-  // idle_timeout closes an unused connection: after 5 s on Vercel, so an idle instance gives its connections back to the
-  // pooler soon, and after 20 s elsewhere. A script that keeps the CPU busy for longer (parsing a large workbook) can have
+  // idle_timeout closes an unused connection after 20 s. Not shorter: every new connection first reads the database's
+  // types (pg_type), and with 5 s on Vercel production ran that 26,000 times in a few days (pg_stat_statements, November
+  // 3, 2026), the most-run query of all. A script that keeps the CPU busy for longer (parsing a large workbook) can have
   // it fire just as a query is sent ("CONNECTION_CLOSED"), so scripts may turn it off (0).
-  const fallback = process.env.VERCEL ? 5 : 20;
+  const fallback = 20;
   const idle = Number(process.env.DAYONG_DB_IDLE_TIMEOUT ?? fallback);
   const options = { prepare: false, max, max_pipeline: maxPipeline, idle_timeout: Number.isFinite(idle) ? idle : fallback, connect_timeout: 10 } as postgres.Options<Record<string, never>>;
   return drizzle(postgres(url, options), { schema }) as unknown as Database;
@@ -95,6 +96,8 @@ export function inTransaction<T>(work: (tx: Transaction) => Promise<T>): Promise
     (globalThis as { dayongDirectoryCache?: unknown }).dayongDirectoryCache = undefined;
     // So is the remittance ledger kept for 10 s (lib/remittance-workflow.ts).
     (globalThis as { dayongLedgerCache?: unknown }).dayongLedgerCache = undefined;
+    // And the small shared reads (lib/short-cache.ts: employees, receipt photos, date-remitted reasons).
+    (globalThis as { dayongShortCache?: Map<string, unknown> }).dayongShortCache?.clear();
   });
 }
 

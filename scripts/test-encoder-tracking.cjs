@@ -4979,3 +4979,27 @@ test('Search Records: names typed as shown and contact numbers in any format (Oc
   assert.equal(phoneDigits('PH-12345'), '', 'a PH number is not a phone number');
   assert.equal(phoneDigits('123'), '', 'too short to compare as a number');
 });
+
+test('Remittances: a slip decided long ago keeps its details, clerk and entries while the ledger reads only open and recent entries in full (November 3, 2026)', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Approver', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const longAgo = new Date(Date.now() - 60 * 86400000).toISOString();
+  const collectionsHeader = Array(41).fill(''); collectionsHeader[28] = 'Remittance Status';
+  const old = Array(41).fill(''); old[0] = 'COL-OLD'; old[4] = 'PH-1'; old[5] = 'DP-1'; old[6] = 'BR-1'; old[7] = 'Maria'; old[8] = 'OR-1'; old[9] = '2026-09-01'; old[10] = 350; old[19] = 'Posted';
+  old[22] = 'DPE-5'; old[23] = 'Clerk Ana'; old[25] = 'MAS'; old[26] = 270; old[28] = 'Remitted'; old[29] = 'REM-OLD'; old[30] = 'DPE-2'; old[31] = 'Maria'; old[32] = 'MAS'; old[33] = 'GCash'; old[34] = 'REF-1'; old[35] = 20; old[36] = 'Late';
+  const open = Array(41).fill(''); open[0] = 'COL-NEW'; open[4] = 'PH-2'; open[5] = 'DP-1'; open[6] = 'BR-1'; open[7] = 'Maria'; open[8] = 'OR-2'; open[9] = '2026-09-25'; open[10] = 350; open[19] = 'Posted'; open[22] = 'DPE-6'; open[23] = 'Clerk Ben'; open[25] = 'MAS'; open[26] = 270; open[28] = 'Outstanding'; open[30] = 'DPE-2'; open[31] = 'Maria'; open[32] = 'MAS';
+  const slip = Array(26).fill(''); slip[0] = 'REM-OLD'; slip[1] = 'BR-1'; slip[2] = 'Maria'; slip[3] = '2026-09-02'; slip[4] = 'Approved'; slip[5] = longAgo; slip[10] = 270; slip[11] = 270; slip[21] = longAgo; slip[25] = 'Collections';
+  h.rows.Collections = [collectionsHeader, old, open];
+  h.rows.Sales = [Array(38).fill('')];
+  h.rows.Remittances = [Array(26).fill(''), slip];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID', 'Remittance ID', 'Collection ID', 'Amount', 'Linked At'], ['RC-1', 'REM-OLD', 'COL-OLD', 270, longAgo]];
+  deadlineHeaders(h);
+  const dashboard = await (await h.load('app/api/remittances/route.ts').GET()).json();
+  assert.deepEqual(dashboard.outstanding.map((item) => item.id), ['COL-NEW'], 'only the open entry is in the queue');
+  const record = dashboard.remittances.find((item) => item.id === 'REM-OLD');
+  assert.deepEqual([record.clerkIds, record.clerkNames, record.paymentMethods, record.paymentReferences, record.penaltyAmount], [['DPE-5'], ['Clerk Ana'], ['GCash'], ['REF-1'], 20], 'the old slip keeps the details read from its entries');
+  assert.deepEqual(dashboard.clerks.map((clerk) => clerk.employeeId).sort(), ['DPE-5', 'DPE-6'], 'the clerk of the old slip stays in the filter');
+  const entries = await (await h.load('app/api/remittances/entries/route.ts').GET(new Request('http://localhost/api/remittances/entries?id=REM-OLD'))).json();
+  assert.equal(entries.success, true, JSON.stringify(entries));
+  assert.deepEqual(entries.entries.map((entry) => [entry.id, entry.orNumber, entry.amount, entry.paymentReference, entry.encodedByName]), [['COL-OLD', 'OR-1', 350, 'REF-1', 'Clerk Ana']], 'opening the old slip reads its entries in full');
+  assert.deepEqual(entries.missing, []);
+});
