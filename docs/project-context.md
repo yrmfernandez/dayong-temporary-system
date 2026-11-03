@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Submit Collections: flexible programs take the amount paid (2026-11-03)
+
+- **Asked (owner):** in Submit Collections, for a flexible program, they input the amount.
+- **Done:** a flexible program's card shows **Amount paid** under Months paid (empty = the minimum, which was the only amount before). `masCollectionQuote` takes the typed amount and checks it with the Collections rules (`calculateRemittance`: at least the minimum per month, at most the monthly maximum), so the incentive and hand-over follow it; fixed programs ignore it. `submitCollections` works it out again on the server and stores it in the entry. The clerk's form opens a flexible entry with the submitted amount instead of minimum × months (`app/collections/page.tsx`). No schema change.
+- **Tested:** new test in `scripts/test-encoder-tracking.cjs` (minimum when empty, typed amount and its incentive, below minimum, above maximum, invalid, fixed program).
+- **To do:** nothing.
+
 ### Collector: collected by MAS or Collector, whose members, ORC (2026-11-03)
 
 - **Asked (owner):** a Collector can choose Collector or MAS in collections; as Collector they choose whose MAS, so that MAS's members are shown, and ORC or not.

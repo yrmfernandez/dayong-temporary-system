@@ -5003,3 +5003,16 @@ test('Remittances: a slip decided long ago keeps its details, clerk and entries 
   assert.deepEqual(entries.entries.map((entry) => [entry.id, entry.orNumber, entry.amount, entry.paymentReference, entry.encodedByName]), [['COL-OLD', 'OR-1', 350, 'REF-1', 'Clerk Ana']], 'opening the old slip reads its entries in full');
   assert.deepEqual(entries.missing, []);
 });
+
+test('Submit Collections: a flexible program takes the amount the MAS typed, within the monthly minimum and maximum (November 3, 2026)', () => {
+  const { masCollectionQuote } = harness().load('lib/mas-collection-quote.ts');
+  const tiers = [{ id: 'T1', role: 'MAS', fromMonth: 1, toMonth: 12, incentiveType: 'percentage', markUp: 0, incentiveAmount: 10 }];
+  const account = { basePay: 300, flexible: true, maxMonthlyPayment: 1000, nextMonth: '2026-11', nextNop: 1, tiers };
+  assert.equal(masCollectionQuote(account, 2).amount, 600, 'left empty: the minimum');
+  const typed = masCollectionQuote(account, 2, undefined, 1500);
+  assert.deepEqual([typed.amount, typed.incentive, typed.remittance], [1500, 150, 1350], 'the incentive follows the amount paid');
+  assert.throws(() => masCollectionQuote(account, 2, undefined, 500), /at least the minimum/);
+  assert.throws(() => masCollectionQuote(account, 2, undefined, 2500));
+  assert.throws(() => masCollectionQuote(account, 2, undefined, Number.NaN), /Type the amount/);
+  assert.equal(masCollectionQuote({ ...account, flexible: false }, 2, undefined, 1500).amount, 600, 'a fixed program ignores a typed amount');
+});

@@ -17,7 +17,8 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
 
 /**
  * Collections submitted by a MAS (owner, October 31, 2026), as New Sales already are (lib/sale-submissions.ts). On
- * Submit Collections the MAS picks their own members and how many months each paid; the OR date is the day the member
+ * Submit Collections the MAS picks their own members and how many months each paid (on a flexible program also the
+ * amount paid, owner, November 3, 2026); the OR date is the day the member
  * was added to the batch, and the system works out the months, NOP, amount and their incentive. A suspended account
  * needs Waiver ticked. Members of several branches submitted together become one submission per branch.
  *
@@ -187,7 +188,7 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
   if (!profile.branches.length) throw new Error("You are not assigned to an active branch. Ask HR to assign you.");
   if (!Array.isArray(input.entries) || !input.entries.length) throw new Error("Add at least one member.");
   if (input.entries.length > MAX_SUBMISSION_ENTRIES) throw new Error(`Submit at most ${MAX_SUBMISSION_ENTRIES} members at a time.`);
-  const chosen = (input.entries as Array<Record<string, unknown>>).map((entry) => ({ enrollmentId: text(entry?.enrollmentId), months: Number(entry?.months), waiver: entry?.waiver === true }));
+  const chosen = (input.entries as Array<Record<string, unknown>>).map((entry) => ({ enrollmentId: text(entry?.enrollmentId), months: Number(entry?.months), amount: entry?.amount == null || entry.amount === "" ? null : Number(entry.amount), waiver: entry?.waiver === true }));
   const ids = chosen.map((entry) => entry.enrollmentId);
   if (ids.some((id) => !id)) throw new Error("A member in the batch is incomplete. Reload the page and try again.");
   if (new Set(ids).size !== ids.length) throw new Error("A member is in the batch twice. Add the months to one card instead.");
@@ -214,7 +215,7 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
     if (accountState(account, data.payments, orDate).temporarilySuspended && !item.waiver) throw new Error(`${label} is suspended. Have the member sign the Waiver, then tick Waiver.`);
     try {
       const tiers = tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branch.id);
-      const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, { role: context.as, orc });
+      const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, { role: context.as, orc }, item.amount);
       // The clerk types the OR number when saving; a stand-in lets the same payment rules run now.
       validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate, orNumber: "(typed by the clerk)", waiver: item.waiver ? "Waiver" : "", collectedByRole: context.as, originalMas: asCollector ? ownerName : "" }, today);
       const entry: SubmittedCollection = { enrollmentId: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, ...quote, orDate, waiver: item.waiver };

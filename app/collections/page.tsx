@@ -1088,7 +1088,8 @@ export default function CollectionsPage() {
         const account = result.account;
         return { entry: { ...base, accountStatus: account.status, temporarilySuspended: account.temporarilySuspended, suspendedAt: account.suspendedAt ?? "",
           monthFrom: account.nextMonth, monthTo: lastMonthCovered(account.nextMonth, item.months), nopFrom: account.nextNop, nopTo: account.nextNop + item.months - 1,
-          amountCollected: (Math.round(account.monthlyAmount * 100) * item.months / 100).toFixed(2), accountNextMonth: account.nextMonth, accountNextNop: account.nextNop }, history: result.history ?? [], problem: "" };
+          // A flexible program keeps the amount the MAS typed (owner, November 3, 2026); the clerk can still correct it.
+          amountCollected: program?.flexible && Number(item.amount) > 0 ? Number(item.amount).toFixed(2) : (Math.round(account.monthlyAmount * 100) * item.months / 100).toFixed(2), accountNextMonth: account.nextMonth, accountNextNop: account.nextNop }, history: result.history ?? [], problem: "" };
       } catch (error) {
         return { entry: base, history: [], problem: `${item.memberName}: ${error instanceof Error ? error.message : "Unable to load account."}` };
       }

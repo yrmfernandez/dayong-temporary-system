@@ -48,8 +48,8 @@ type CollectedBy = "MAS" | "Collector";
 type CollectorInfo = { isCollector: boolean; isMas: boolean; masOptions: Array<{ employeeId: string; name: string; branchIds: string[] }>; collectedBy: CollectedBy; memberMasEmployeeId: string };
 /** Who collected and whose members, as chosen; "" lets the server decide (a Collector who is not a MAS collects as Collector). */
 type Choice = { collectedBy: CollectedBy | ""; mas: string };
-/** One member in the batch being filled: what the MAS chose. */
-type BatchItem = { enrollmentId: string; months: number; waiver: boolean };
+/** One member in the batch being filled: what the MAS chose. `amount`: typed on a flexible program; "" is the minimum. */
+type BatchItem = { enrollmentId: string; months: number; amount: string; waiver: boolean };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const cents = (value: number) => Math.round(value * 100) / 100;
@@ -86,7 +86,7 @@ export default function MasCollectionsPage() {
     setBranchId(draft.branchId ?? "");
     if (draft.choice) setChoice({ collectedBy: draft.choice.collectedBy === "Collector" || draft.choice.collectedBy === "MAS" ? draft.choice.collectedBy : "", mas: String(draft.choice.mas ?? "") });
     setOrc(draft.orc === true);
-    setBatch(Array.isArray(draft.batch) ? draft.batch.map(({ enrollmentId, months, waiver }) => ({ enrollmentId, months, waiver })) : []);
+    setBatch(Array.isArray(draft.batch) ? draft.batch.map(({ enrollmentId, months, amount, waiver }) => ({ enrollmentId, months, amount: typeof amount === "string" ? amount : "", waiver })) : []);
   });
 
   useEffect(() => {
@@ -132,7 +132,7 @@ export default function MasCollectionsPage() {
     const orDate = today;
     if (!account) return { pick, account, orDate, quote: null, problem: asCollector ? `Not a member of ${memberMas?.name ?? "the MAS chosen"}. Remove them.` : "This member is no longer in your list. Remove them." };
     if (account.blocked) return { pick, account, orDate, quote: null, problem: account.blocked };
-    try { return { pick, account, orDate, quote: masCollectionQuote(account, pick.months, quoteAs), problem: "" }; }
+    try { return { pick, account, orDate, quote: masCollectionQuote(account, pick.months, quoteAs, account.flexible && pick.amount.trim() ? Number(pick.amount) : null), problem: "" }; }
     catch (failure) { return { pick, account, orDate, quote: null, problem: failure instanceof Error ? failure.message : "Cannot be collected." }; }
   });
   type Row = (typeof rows)[number];
@@ -160,7 +160,7 @@ export default function MasCollectionsPage() {
     setMessage("");
     if (full) { setMessage(`A batch holds at most ${MAX_SUBMISSION_ENTRIES} members. Submit these first.`); return; }
     // Newest on top of its branch; the effect above scrolls to the card so the MAS sees it and sets the months.
-    setBatch((current) => current.some((pick) => pick.enrollmentId === account.id) ? current : [{ enrollmentId: account.id, months: Math.max(1, Math.min(account.unpaidMonths || 1, MAX_SUBMISSION_MONTHS)), waiver: false }, ...current]);
+    setBatch((current) => current.some((pick) => pick.enrollmentId === account.id) ? current : [{ enrollmentId: account.id, months: Math.max(1, Math.min(account.unpaidMonths || 1, MAX_SUBMISSION_MONTHS)), amount: "", waiver: false }, ...current]);
     setJustAdded(account.id);
     setSearch("");
   };
@@ -188,7 +188,7 @@ export default function MasCollectionsPage() {
     setBusy(true); setMessage("");
     try {
       const response = await fetch("/api/collection-submissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        entries: shownRows.map(({ pick: { enrollmentId, months, waiver } }) => ({ enrollmentId, months, waiver })),
+        entries: shownRows.map(({ pick: { enrollmentId, months, amount, waiver }, account }) => ({ enrollmentId, months, amount: account?.flexible && amount.trim() ? Number(amount) : null, waiver })),
         collectedBy: asCollector ? "Collector" : "MAS", memberMasEmployeeId: asCollector ? memberMas?.employeeId ?? "" : "", orc: quoteAs.orc,
       }) });
       const result = await response.json();
@@ -293,6 +293,16 @@ export default function MasCollectionsPage() {
                 All {Math.min(account.unpaidMonths, MAX_SUBMISSION_MONTHS)} months behind
               </button>}
             </div>
+
+            {/* Flexible program (owner, November 3, 2026): the member may pay more than the minimum, so the MAS types what was paid. */}
+            {account?.flexible && <div className="space-y-1">
+              <label className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-medium">Amount paid</span>
+                <Input type="number" inputMode="decimal" min={0} step="0.01" aria-label="Amount paid" className="h-11 w-36 text-right text-lg font-semibold tabular-nums"
+                  placeholder={(account.basePay * Math.max(1, pick.months)).toFixed(2)} value={pick.amount} onChange={(event) => change(pick.enrollmentId, { amount: event.target.value })} />
+              </label>
+              <p className="text-xs text-muted-foreground">Flexible program: at least {money(account.basePay)} a month{account.maxMonthlyPayment != null ? `, at most ${money(account.maxMonthlyPayment)} a month` : ""}. Leave empty for the minimum.</p>
+            </div>}
 
             {quote && <>
               <p className="text-sm text-muted-foreground">Covers <strong className="text-foreground">{monthsText(quote.monthFrom, quote.monthTo)}</strong> · NOP {quote.nopFrom === quote.nopTo ? quote.nopFrom : `${quote.nopFrom}–${quote.nopTo}`}</p>
