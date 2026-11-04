@@ -37,6 +37,7 @@ import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { formatDeadline, manilaNow } from "@/lib/remittance-deadline";
 import { scrollPageToTop } from "@/lib/scroll-top";
 import { useFormDraft } from "@/lib/use-form-draft";
+import { useSeenRejections } from "@/lib/use-seen-rejections";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import { calculateSaleIncentive, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import {
@@ -253,6 +254,8 @@ type SubmissionSummary = {
   submittedAt: string; returnReason: string; reviewedByName: string;
   /** 3:00 PM the next working day after the earliest application date; Remitted: the handover recorded (clearingId, "YYYY-MM-DD HH:MM"). */
   incentiveDeadline: string; clearingId: string; remittedAt: string; remittedByName: string;
+  /** Rejected: the MAS has seen it, so it no longer counts on the sidebar. */
+  rejectionSeen: boolean;
 };
 type MasProfile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
 
@@ -3056,12 +3059,13 @@ function ReturnedSubmissions({ submissions, onOpen }: { submissions: SubmissionS
  * 2026 can still be fixed and sent again.
  */
 function MySubmissions({ submissions, activeId, onOpen }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary, asNew: boolean) => void }) {
+  const seenRef = useSeenRejections("/api/sale-submissions", submissions.filter((submission) => submission.status === "Rejected" && !submission.rejectionSeen).map((submission) => submission.id).join(","));
   if (!submissions.length) return null;
   const now = manilaNow();
   const tone = { Submitted: "secondary", Remitted: "default", Rejected: "destructive", Returned: "destructive", Saved: "default" } as const;
   const label = { Submitted: "Not yet remitted", Remitted: "Remitted: being encoded", Rejected: "Rejected", Returned: "Returned", Saved: "Saved by the clerk" } as const;
   return (
-    <Card>
+    <div ref={seenRef}><Card>
       <CardHeader><CardTitle className="text-base">My submissions</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         {submissions.map((submission) => {
@@ -3087,7 +3091,7 @@ function MySubmissions({ submissions, activeId, onOpen }: { submissions: Submiss
           );
         })}
       </CardContent>
-    </Card>
+    </Card></div>
   );
 }
 

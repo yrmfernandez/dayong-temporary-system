@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import { isAdministratorRole } from "@/lib/access-control";
 import type { SessionUser } from "@/lib/auth";
@@ -44,6 +44,8 @@ export type SaleSubmission = {
   incentiveDeadline: string;
   /** Marked remitted: the clearing recorded for it, when ("YYYY-MM-DD HH:MM", Manila) and by whom. */
   clearingId: string; remittedAt: string; remittedByName: string;
+  /** Rejected: the MAS has seen it, so it no longer counts on the sidebar. */
+  rejectionSeen: boolean;
 };
 
 const statusOf = (value: string): SaleSubmission["status"] =>
@@ -56,6 +58,7 @@ const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): Sale
   submittedAt: row.submitted_at, returnReason: text(row.return_reason), reviewedByName: text(row.reviewed_by_name), reviewedAt: row.reviewed_at ?? "",
   saleIds: text(row.sale_ids).split(",").map(text).filter(Boolean), incentiveDeadline: deadline,
   clearingId: text(row.clearing_id), remittedAt: stamp(row.remitted_at), remittedByName: text(row.remitted_by_name),
+  rejectionSeen: Boolean(row.rejection_seen_at),
 });
 
 /** Adds each submission's incentive deadline, from its earliest application date and its branch's working days. */
@@ -77,6 +80,12 @@ export async function masProfile(user: Pick<SessionUser, "employeeId">) {
   if (!employee) throw new Error("Your sign-in account is not linked to an employee. Ask IT to link it.");
   const assigned = branches.filter((branch) => employee.branchIds.includes(branch.id) && branch.status === "active").map((branch) => ({ id: branch.id, name: branch.name }));
   return { employeeId: employee.id, name: employee.name, branches: assigned };
+}
+
+/** The MAS saw their rejected batches, so the red number for them clears (lib/notifications.ts). */
+export async function markRejectionsSeen(user: SessionUser) {
+  await getDb().update(submissions).set({ rejection_seen_at: new Date().toISOString() })
+    .where(and(eq(submissions.mas_employee_id, user.employeeId), eq(submissions.status, "Rejected"), isNull(submissions.rejection_seen_at)));
 }
 
 /** The MAS's own submissions, newest first. */

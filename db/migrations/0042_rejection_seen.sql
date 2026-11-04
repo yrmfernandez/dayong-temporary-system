@@ -1,0 +1,2 @@
+ALTER TABLE "collection_submissions" ADD COLUMN "rejection_seen_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "sale_submissions" ADD COLUMN "rejection_seen_at" timestamp with time zone;

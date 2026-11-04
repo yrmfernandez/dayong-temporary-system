@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import { accountState, forfeitedPaymentsAllowed, validatePayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
@@ -74,6 +74,8 @@ export type CollectionSubmission = {
   collectedBy: CollectedBy; memberMasEmployeeId: string; memberMas: string; orc: boolean;
   /** Sent by the nightly job because it was never submitted. masContact (clerk's list only): who to call about the cash. */
   autoSubmitted: boolean; masContact: string;
+  /** Rejected: the MAS has seen it, so it no longer counts on the sidebar. */
+  rejectionSeen: boolean;
 };
 /** One member in the batch being filled. `amount`: typed on a flexible program; "" is the minimum. */
 export type DraftItem = { enrollmentId: string; months: number; amount: string; waiver: boolean; addedOn: string };
@@ -91,7 +93,7 @@ const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): Coll
   clearingId: text(row.clearing_id), remittedAt: stamp(row.remitted_at), remittedByName: text(row.remitted_by_name),
   collectedBy: row.collected_by === "Collector" ? "Collector" : "MAS", memberMasEmployeeId: text(row.member_mas_employee_id) || row.mas_employee_id,
   memberMas: text(row.member_mas) || row.mas, orc: row.collected_by === "Collector" && row.orc === true,
-  autoSubmitted: row.auto_submitted === true, masContact: "",
+  autoSubmitted: row.auto_submitted === true, masContact: "", rejectionSeen: Boolean(row.rejection_seen_at),
 });
 
 /** Adds each submission's incentive deadline, from its earliest OR date and its branch's working days. */
@@ -352,6 +354,12 @@ export async function autoSubmitCollectionDrafts() {
     }
   }
   return result;
+}
+
+/** The MAS saw their rejected batches, so the red number for them clears (lib/notifications.ts). */
+export async function markRejectionsSeen(user: SessionUser) {
+  await getDb().update(submissions).set({ rejection_seen_at: new Date().toISOString() })
+    .where(and(eq(submissions.mas_employee_id, user.employeeId), eq(submissions.status, "Rejected"), isNull(submissions.rejection_seen_at)));
 }
 
 /** Submissions waiting for the clerk in their branches (submitted, or marked remitted and not yet saved), oldest first. */

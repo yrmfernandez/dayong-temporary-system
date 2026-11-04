@@ -15,6 +15,7 @@ import { formatDeadline, incentiveDeadline, manilaNow } from "@/lib/remittance-d
 import type { IncentiveTier } from "@/lib/remittance";
 import { scrollPageToTop } from "@/lib/scroll-top";
 import { useFormDraft } from "@/lib/use-form-draft";
+import { useSeenRejections } from "@/lib/use-seen-rejections";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 
@@ -40,7 +41,7 @@ type Entry = { enrollmentId: string; memberName: string; programName: string; mo
 type Submission = {
   id: string; branchId: string; branch: string; status: "Submitted" | "Remitted" | "Rejected" | "Saved"; entries: Entry[]; entryCount: number; totalAmount: number; totalIncentive: number;
   submittedAt: string; returnReason: string; reviewedByName: string; incentiveDeadline: string; remittedAt: string; remittedByName: string;
-  collectedBy: CollectedBy; memberMas: string; orc: boolean; autoSubmitted: boolean;
+  collectedBy: CollectedBy; memberMas: string; orc: boolean; autoSubmitted: boolean; rejectionSeen: boolean;
 };
 type Profile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
 type CollectedBy = "MAS" | "Collector";
@@ -240,6 +241,7 @@ export default function MasCollectionsPage() {
 
   const waitingCount = submissions.filter((submission) => submission.status === "Submitted").length;
   const openCount = submissions.filter((submission) => submission.status === "Submitted" || submission.status === "Remitted").length;
+  const unseenCount = submissions.filter((submission) => submission.status === "Rejected" && !submission.rejectionSeen).length;
   const showView = (next: typeof view) => { setView(next); scrollPageToTop(); };
 
   return <div className="mx-auto max-w-3xl space-y-4">
@@ -252,7 +254,7 @@ export default function MasCollectionsPage() {
     <div role="tablist" aria-label="Submit Collections" className="sticky top-0 z-20 grid grid-cols-2 gap-1 rounded-lg border bg-muted p-1">
       {([["collect", "Collect"], ["submissions", "My submissions"]] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={view === value}
         className={`min-h-10 rounded-md px-3 text-sm font-medium ${view === value ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => showView(value)}>
-        {label}{value === "collect" && rows.length ? <Badge variant="secondary" className="ml-2">{rows.length}</Badge> : null}{value === "submissions" && openCount ? <Badge className="ml-2">{openCount}</Badge> : null}
+        {label}{value === "collect" && rows.length ? <Badge variant="secondary" className="ml-2">{rows.length}</Badge> : null}{value === "submissions" && openCount + unseenCount ? <Badge variant={unseenCount ? "destructive" : "default"} className="ml-2">{openCount + unseenCount}</Badge> : null}
       </button>)}
     </div>
 
@@ -438,6 +440,7 @@ export default function MasCollectionsPage() {
  */
 function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
   const [expanded, setExpanded] = useState(false);
+  const seenRef = useSeenRejections("/api/collection-submissions", all.filter((submission) => submission.status === "Rejected" && !submission.rejectionSeen).map((submission) => submission.id).join(","));
   if (!all.length) return <p className="p-4 text-center text-sm text-muted-foreground">No submissions yet.</p>;
   // Those still waiting for the clerk always show; finished ones beyond the latest few on request.
   const open = all.filter((submission) => submission.status === "Submitted" || submission.status === "Remitted");
@@ -446,7 +449,7 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
   const now = manilaNow();
   const tone = { Submitted: "secondary", Remitted: "default", Rejected: "destructive", Saved: "default" } as const;
   const label = { Submitted: "Not yet remitted", Remitted: "Remitted: being encoded", Rejected: "Rejected", Saved: "Saved by the clerk" } as const;
-  return <Card>
+  return <div ref={seenRef}><Card>
     <CardHeader className="pb-3"><CardTitle className="text-lg">My submissions</CardTitle></CardHeader>
     <CardContent className="space-y-3">
       {submissions.map((submission) => {
@@ -469,5 +472,5 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
       })}
       {(hidden > 0 || expanded) && <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setExpanded((value) => !value)}>{expanded ? "Show fewer" : `Show ${plural(hidden, "older submission")}`}</Button>}
     </CardContent>
-  </Card>;
+  </Card></div>;
 }

@@ -3,7 +3,7 @@ import { canAccessPath } from "@/lib/access-control";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { AlreadyClearedError } from "@/lib/clearing";
 import { withEncoder } from "@/lib/encoder-context";
-import { listForReview, listMySubmissions, markSaleSubmissionRemitted, masProfile, rejectSaleSubmission, submitSales } from "@/lib/sale-submissions";
+import { listForReview, listMySubmissions, markRejectionsSeen, markSaleSubmissionRemitted, masProfile, rejectSaleSubmission, submitSales } from "@/lib/sale-submissions";
 
 const noStore = { "Cache-Control": "private, no-store" };
 const failure = (error: unknown, fallback: string, status = 400) => Response.json({ success: false, message: error instanceof Error ? error.message : fallback }, { status });
@@ -47,12 +47,19 @@ export const POST = withEncoder(async (request: Request) => {
  * 409 ALREADY_CLEARED when the MAS was already cleared today, to ask whether it is the same cash); { id, reason } rejects one.
  */
 export const PATCH = withEncoder(async (request: Request) => {
+  const body = await request.json().catch(() => ({}));
+  // The MAS: their rejected batches came on screen, so the red number clears.
+  if (body.action === "seen") {
+    const mas = await userWithPageAccess("/mas-sales");
+    if (!mas) return Response.json({ success: false, message: "You do not have access to Submit New Sales." }, { status: 403 });
+    try { await markRejectionsSeen(mas); return Response.json({ success: true }); }
+    catch (error) { return failure(error, "Unable to update the submissions."); }
+  }
   const dayOff = await refuseOnDayOff();
   if (dayOff) return dayOff;
   const user = await userWithPageAccess("/new-sales");
   if (!user) return Response.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
   try {
-    const body = await request.json();
     if (body.action === "remit") {
       if (!canAccessPath(user, "/clearing")) return Response.json({ success: false, message: "You do not have access to Clearing." }, { status: 403 });
       const handover = body.handover === "same" || body.handover === "new" ? body.handover : "";

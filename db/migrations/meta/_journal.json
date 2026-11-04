@@ -295,6 +295,13 @@
       "when": 1793752474469,
       "tag": "0041_collection_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793757200415,
+      "tag": "0042_rejection_seen",
+      "breakpoints": true
     }
   ]
 }

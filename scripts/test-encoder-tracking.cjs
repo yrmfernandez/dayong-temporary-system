@@ -5075,6 +5075,32 @@ test('a batch the MAS forgot is sent after midnight, OR date the day added, and 
   assert.equal((await query('select entries from collection_submissions order by row_seq desc limit 1'))[0].entries[0].waiver, false, 'not ticked for the MAS');
 });
 
+test('the red number for a rejected batch clears when the MAS sees it, or after 2 days (November 4, 2026)', async () => {
+  const h = harness({ userId: 'USR-M', employeeId: 'DPE-0002', name: 'different-mas', roleNames: ['MAS'], permissions: {} });
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active'], ['DPE-0009', 'someone else', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-2', 'DPE-0002', 'BR-1']];
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+  await seed('employees', [{ employee_id: 'DPE-0009', full_name: 'someone else' }], { skipExisting: true });
+  const reject = async (table, column, id, employee, when) => query(`insert into ${table} (submission_id, branch_id, branch, mas_employee_id, mas, status, ${column}, ${table === 'sale_submissions' ? 'sale_count' : 'entry_count'}, total_amount, ${table === 'sale_submissions' ? '' : 'total_incentive, '}submitted_at, reviewed_at)
+    values ($1, 'BR-1', 'BR-1', $2, 'mas', 'Rejected', '[]', 1, 350, ${table === 'sale_submissions' ? '' : '0, '}now(), now() - $3::interval)`, [id, employee, when]);
+  await reject('collection_submissions', 'entries', 'CSUB-1', 'DPE-0002', '1 hour');
+  await reject('collection_submissions', 'entries', 'CSUB-OLD', 'DPE-0002', '3 days');
+  await reject('collection_submissions', 'entries', 'CSUB-OTHER', 'DPE-0009', '1 hour');
+  await reject('sale_submissions', 'sales', 'SSUB-1', 'DPE-0002', '1 hour');
+  const counts = async () => {
+    const all = await h.load('lib/notifications.ts').getNotificationCounts({ userId: 'USR-M', employeeId: 'DPE-0002', name: 'different-mas', roleNames: ['MAS'], permissions: {} });
+    return [all['/mas-collections'] ?? 0, all['/mas-sales'] ?? 0];
+  };
+  const seen = async (file) => (await h.load(file).PATCH(new Request('http://localhost/api', { method: 'PATCH', body: JSON.stringify({ action: 'seen' }), headers: { 'Content-Type': 'application/json' } }))).status;
+  assert.deepEqual(await counts(), [1, 1], 'older than 2 days no longer counts');
+  assert.equal(await seen('app/api/collection-submissions/route.ts'), 200);
+  assert.deepEqual(await counts(), [0, 1], 'seeing collections leaves New Sales');
+  assert.equal(await seen('app/api/sale-submissions/route.ts'), 200);
+  assert.deepEqual(await counts(), [0, 0]);
+  assert.equal((await query("select rejection_seen_at from collection_submissions where submission_id = 'CSUB-OTHER'"))[0].rejection_seen_at, null, 'only their own batches');
+});
+
 test('Submit Collections: a flexible program takes the amount the MAS typed, within the monthly minimum and maximum (November 3, 2026)', () => {
   const { masCollectionQuote } = harness().load('lib/mas-collection-quote.ts');
   const tiers = [{ id: 'T1', role: 'MAS', fromMonth: 1, toMonth: 12, incentiveType: 'percentage', markUp: 0, incentiveAmount: 10 }];

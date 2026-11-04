@@ -17,9 +17,9 @@ import { listCollectionsForReview } from "@/lib/collection-submissions";
  *                       everyone else: their own New Sales and collections returned to them (slip rejected)
  *   /my-entries         their own entries still Outstanding without a receipt photo (a photo sends them for approval)
  *   /new-sales          New Sales submitted by MAS waiting to be saved (submitted or marked remitted), in the clerk's branches
- *   /mas-sales          the MAS's own submissions rejected in the last 2 days, or returned to them before November 3, 2026
+ *   /mas-sales          the MAS's own submissions rejected in the last 2 days and not yet seen, or returned to them before November 3, 2026
  *   /collections        Collections submitted by MAS waiting to be saved (submitted or marked remitted), in the clerk's branches
- *   /mas-collections    the MAS's own collection submissions the clerk rejected in the last 2 days
+ *   /mas-collections    the MAS's own collection submissions the clerk rejected in the last 2 days and not yet seen
  *   /attendance-reviews absences the system recorded in the last 7 days for employees still listed there, not yet marked
  *   /clearing           MAS and employees the user cleared (administrators: anyone's) whose entries are not yet sent for approval
  *   /my-notices         the user's own Notices to Explain in force that they have not confirmed or not yet explained
@@ -49,9 +49,9 @@ export async function getNotificationCounts(user: SessionUser): Promise<Notifica
       (select count(*) from collections c where c.encoded_by_employee_id = ${me} and c.remittance_status = 'Outstanding' and lower(coalesce(c.status, '')) = 'posted' and ${noPhoto(sql`c.collection_id`)})
     + (select count(*) from sales s where s.encoded_by_employee_id = ${me} and s.remittance_status = 'Outstanding' and ${noPhoto(sql`s.sale_id`)}) as count`)]);
   if (can("/new-sales")) tasks.push(["/new-sales", listForReview(user).then((list) => list.length).catch(() => 0)]);
-  if (can("/mas-sales") && me) tasks.push(["/mas-sales", countOf(sql`select count(*)::int as count from sale_submissions where mas_employee_id = ${me} and (status = 'Returned' or (status = 'Rejected' and reviewed_at > now() - interval '2 days'))`)]);
+  if (can("/mas-sales") && me) tasks.push(["/mas-sales", countOf(sql`select count(*)::int as count from sale_submissions where mas_employee_id = ${me} and (status = 'Returned' or (status = 'Rejected' and rejection_seen_at is null and reviewed_at > now() - interval '2 days'))`)]);
   if (can("/collections")) tasks.push(["/collections", listCollectionsForReview(user).then((list) => list.length).catch(() => 0)]);
-  if (can("/mas-collections") && me) tasks.push(["/mas-collections", countOf(sql`select count(*)::int as count from collection_submissions where mas_employee_id = ${me} and status = 'Rejected' and reviewed_at > now() - interval '2 days'`)]);
+  if (can("/mas-collections") && me) tasks.push(["/mas-collections", countOf(sql`select count(*)::int as count from collection_submissions where mas_employee_id = ${me} and status = 'Rejected' and rejection_seen_at is null and reviewed_at > now() - interval '2 days'`)]);
   if (can("/dropouts")) {
     const approves = isApprover(user) || hasRole(user, hrRoles) || canCorrectEntriesFor(user);
     tasks.push(["/dropouts", approves ? countOf(sql`select count(*)::int as count from dropout_requests where status = 'Pending'`)

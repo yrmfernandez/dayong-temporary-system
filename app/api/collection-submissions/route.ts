@@ -3,7 +3,7 @@ import { canAccessPath } from "@/lib/access-control";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { AlreadyClearedError } from "@/lib/clearing";
 import { withEncoder } from "@/lib/encoder-context";
-import { listCollectionsForReview, listMyCollectionSubmissions, markCollectionSubmissionRemitted, myCollectionAccounts, myCollectionDraft, rejectCollectionSubmission, saveCollectionDraft, submitCollections } from "@/lib/collection-submissions";
+import { listCollectionsForReview, listMyCollectionSubmissions, markCollectionSubmissionRemitted, markRejectionsSeen, myCollectionAccounts, myCollectionDraft, rejectCollectionSubmission, saveCollectionDraft, submitCollections } from "@/lib/collection-submissions";
 
 const noStore = { "Cache-Control": "private, no-store" };
 const failure = (error: unknown, fallback: string, status = 400) => Response.json({ success: false, message: error instanceof Error ? error.message : fallback }, { status });
@@ -63,16 +63,23 @@ export const PUT = withEncoder(async (request: Request) => {
 });
 
 /**
+ * The MAS: { action: "seen" } when their rejected batches came on screen.
  * The clerk: { action: "remit", id, handover? } marks a batch remitted now (a Clearing is recorded; 409 ALREADY_CLEARED
  * when the MAS was already cleared today, to ask whether it is the same cash); { id, reason } rejects one.
  */
 export const PATCH = withEncoder(async (request: Request) => {
+  const body = await request.json().catch(() => ({}));
+  if (body.action === "seen") {
+    const mas = await userWithPageAccess("/mas-collections");
+    if (!mas) return noAccess("Submit Collections");
+    try { await markRejectionsSeen(mas); return Response.json({ success: true }); }
+    catch (error) { return failure(error, "Unable to update the submissions."); }
+  }
   const dayOff = await refuseOnDayOff();
   if (dayOff) return dayOff;
   const user = await userWithPageAccess("/collections");
   if (!user) return noAccess("Collections");
   try {
-    const body = await request.json();
     if (body.action === "remit") {
       if (!canAccessPath(user, "/clearing")) return noAccess("Clearing");
       const handover = body.handover === "same" || body.handover === "new" ? body.handover : "";

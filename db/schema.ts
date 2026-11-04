@@ -462,6 +462,8 @@ export const sale_submissions = pgTable("sale_submissions", {
   clearing_id: text(),
   remitted_at: moment("remitted_at"),
   remitted_by_name: text(),
+  /** When the MAS saw this batch was rejected: its red number clears (lib/notifications.ts). */
+  rejection_seen_at: moment("rejection_seen_at"),
   ...encoder(),
 }, (t) => [
   index("sale_submissions_branch_status_idx").on(t.branch_id, t.status),
@@ -506,6 +508,8 @@ export const collection_submissions = pgTable("collection_submissions", {
   member_mas_employee_id: text(),
   member_mas: text(),
   orc: boolean().notNull().default(false),
+  /** When the MAS saw this batch was rejected: its red number clears (lib/notifications.ts). */
+  rejection_seen_at: moment("rejection_seen_at"),
   /** Sent by the nightly job because the MAS never pressed Submit (owner, November 4, 2026): the clerk is warned to contact them. */
   auto_submitted: boolean().notNull().default(false),
   ...encoder(),
