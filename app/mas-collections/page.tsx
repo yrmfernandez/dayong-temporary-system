@@ -27,7 +27,7 @@ import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
  * MAS cannot change or withdraw it (owner, October 31, 2026): the Entry Clerk of the branch corrects it, types the OR
  * numbers and saves it when the cash is received at Clearing, or rejects it (lib/collection-submissions.ts).
  * Members of all the MAS's branches can be added together (owner, November 2, 2026): the batch is shown per branch and
- * sent as one submission per branch. A member just added goes on top and the page scrolls up to it.
+ * sent as one submission per branch. A member just added goes last, so the first added stays on top, and the page scrolls to it.
  * Collectors (owner, November 3, 2026): an employee with the Collector role picks Collected by MAS (their own members) or
  * Collector; as Collector they choose whose members (a MAS of their branches), whose list is then shown, and ORC Yes or
  * No, which sets the incentive (Collector tier, or half of the MAS incentive with ORC).
@@ -196,8 +196,8 @@ export default function MasCollectionsPage() {
   const add = (account: Account) => {
     setMessage("");
     if (full) { setMessage(`A batch holds at most ${MAX_SUBMISSION_ENTRIES} members. Submit these first.`); return; }
-    // Newest on top of its branch; the effect above scrolls to the card so the MAS sees it and sets the months.
-    setBatch((current) => current.some((pick) => pick.enrollmentId === account.id) ? current : [{ enrollmentId: account.id, months: Math.max(1, Math.min(account.unpaidMonths || 1, MAX_SUBMISSION_MONTHS)), amount: "", waiver: false }, ...current]);
+    // First added stays on top (owner, November 4, 2026); the effect above scrolls to the card so the MAS sees it and sets the months.
+    setBatch((current) => current.some((pick) => pick.enrollmentId === account.id) ? current : [...current, { enrollmentId: account.id, months: Math.max(1, Math.min(account.unpaidMonths || 1, MAX_SUBMISSION_MONTHS)), amount: "", waiver: false }]);
     setJustAdded(account.id);
     setSearch("");
   };

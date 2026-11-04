@@ -232,6 +232,8 @@ A MAS records the members who paid them on **Submit Collections** (`/mas-collect
 
 **Reviewing a batch (November 4, 2026, owner).** An opened batch looks like the default Encode form: every member is a card, the first one open and the others collapsed, with the OR Number typed on each card. The short-row OR table tried earlier the same day was taken off.
 
+**Order of the batch (November 4, 2026, owner).** On Submit Collections the first member added stays on top and each new one goes below it, with the page scrolling to the new card; before, the newest went on top. The batch reaches the clerk in the same order.
+
 **Fidelity on My submissions (November 4, 2026, owner).** Once the clerk has saved a batch with Fidelity typed on it, My submissions shows the MAS that amount, on Submit Collections and Submit New Sales. Before the save there is nothing to show: the clerk types Fidelity when saving, not at Mark remitted. Fidelity handed in later on its own slip is on My Fidelity, not on the batch.
 
 **Cash after 3:00 PM.** The incentive follows the usual rule (section 6, `lib/remittance-deadline.ts`): the OR date is the day the member was added, so the deadline is 3:00 PM the next working day, judged at the handover time. Mark remitted records that time when the cash comes in, so typing the OR numbers later, even after 3:00 PM, does not forfeit the incentive. Marked later than the deadline, the incentive is forfeited and the whole amount is due.
