@@ -74,6 +74,8 @@ export default function MasCollectionsPage() {
   const [collector, setCollector] = useState<CollectorInfo | null>(null);
   const [choice, setChoice] = useState<Choice>({ collectedBy: "", mas: "" });
   const [orc, setOrc] = useState(false);
+  // Two tabs (owner, November 4, 2026): with many members, My submissions was far below the list.
+  const [view, setView] = useState<"collect" | "submissions">("collect");
   const offDays = useDeclaredNonWorkingDays();
   const today = manilaNow().date;
   // What the list shows: the server's answer for the current choice.
@@ -82,7 +84,8 @@ export default function MasCollectionsPage() {
   const quoteAs = { role: asCollector ? "Collector" as const : "MAS" as const, orc: asCollector && orc };
 
   // The filters survive leaving the page (lib/use-form-draft.ts); the batch itself is kept on the server, below.
-  useFormDraft("mas-collections", { branchId, choice, orc }, (draft) => {
+  useFormDraft("mas-collections", { branchId, choice, orc, view }, (draft) => {
+    setView(draft.view === "submissions" ? "submissions" : "collect");
     setBranchId(draft.branchId ?? "");
     if (draft.choice) setChoice({ collectedBy: draft.choice.collectedBy === "Collector" || draft.choice.collectedBy === "MAS" ? draft.choice.collectedBy : "", mas: String(draft.choice.mas ?? "") });
     setOrc(draft.orc === true);
@@ -236,12 +239,34 @@ export default function MasCollectionsPage() {
   if (error) return <p role="alert" className="p-4 text-destructive">{error}</p>;
 
   const waitingCount = submissions.filter((submission) => submission.status === "Submitted").length;
+  const openCount = submissions.filter((submission) => submission.status === "Submitted" || submission.status === "Remitted").length;
+  const showView = (next: typeof view) => { setView(next); scrollPageToTop(); };
 
   return <div className="mx-auto max-w-3xl space-y-4">
     <div>
       <h1 className="text-2xl font-bold tracking-tight">Submit Collections</h1>
       <p className="text-sm text-muted-foreground">Add each member who paid you and how many months. Today is the OR date. The clerk of each branch types the OR numbers and saves them.</p>
     </div>
+
+    {/* Kept at the top of the screen, so My submissions is one tap away however long the member list is. */}
+    <div role="tablist" aria-label="Submit Collections" className="sticky top-0 z-20 grid grid-cols-2 gap-1 rounded-lg border bg-muted p-1">
+      {([["collect", "Collect"], ["submissions", "My submissions"]] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={view === value}
+        className={`min-h-10 rounded-md px-3 text-sm font-medium ${view === value ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => showView(value)}>
+        {label}{value === "collect" && rows.length ? <Badge variant="secondary" className="ml-2">{rows.length}</Badge> : null}{value === "submissions" && openCount ? <Badge className="ml-2">{openCount}</Badge> : null}
+      </button>)}
+    </div>
+
+    {message && <p role="status" className="flex items-start justify-between gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
+      <span>{message}</span>
+      <button type="button" className="shrink-0 text-muted-foreground" aria-label="Dismiss" onClick={() => setMessage("")}><X className="h-4 w-4" /></button>
+    </p>}
+
+    {view === "submissions" && <MySubmissions submissions={submissions} />}
+
+    {view === "collect" && <>
+    {!rows.length && waitingCount > 0 && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+      {plural(waitingCount, "submission")} not yet remitted. Hand the cash to the clerk; <button type="button" className="font-medium underline underline-offset-2" onClick={() => showView("submissions")}>see My submissions</button> for each deadline.
+    </p>}
 
     {/* COLLECTED BY (Collector role): their own members as MAS, or a MAS's members as Collector, with ORC. */}
     {collector?.isCollector && <Card>
@@ -275,14 +300,6 @@ export default function MasCollectionsPage() {
         </>}
       </CardContent>
     </Card>}
-
-    {message && <p role="status" className="flex items-start justify-between gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
-      <span>{message}</span>
-      <button type="button" className="shrink-0 text-muted-foreground" aria-label="Dismiss" onClick={() => setMessage("")}><X className="h-4 w-4" /></button>
-    </p>}
-    {!rows.length && waitingCount > 0 && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-      {plural(waitingCount, "submission")} not yet remitted. Hand the cash to the clerk; see My submissions below for each deadline.
-    </p>}
 
     {/* BRANCH: one branch shows only its members, in the batch and in the list; All branches shows every branch. */}
     {manyBranches && <div role="radiogroup" aria-label="Branch" className="flex gap-2 overflow-x-auto pb-1">
@@ -394,8 +411,6 @@ export default function MasCollectionsPage() {
       </CardContent>
     </Card>
 
-    <MySubmissions submissions={submissions} />
-
     {/* TOTALS AND SUBMIT: kept at the bottom of the screen while the batch is filled. */}
     {shownRows.length > 0 && <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
       <div className="mx-auto max-w-3xl space-y-2">
@@ -413,6 +428,7 @@ export default function MasCollectionsPage() {
         </div>
       </div>
     </div>}
+    </>}
   </div>;
 }
 
@@ -422,7 +438,7 @@ export default function MasCollectionsPage() {
  */
 function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
   const [expanded, setExpanded] = useState(false);
-  if (!all.length) return null;
+  if (!all.length) return <p className="p-4 text-center text-sm text-muted-foreground">No submissions yet.</p>;
   // Those still waiting for the clerk always show; finished ones beyond the latest few on request.
   const open = all.filter((submission) => submission.status === "Submitted" || submission.status === "Remitted");
   const submissions = expanded ? all : all.filter((submission, index) => open.includes(submission) || index < 5);
