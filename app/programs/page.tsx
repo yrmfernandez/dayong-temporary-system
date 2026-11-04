@@ -32,7 +32,7 @@ SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { describeAgeRestriction } from "@/lib/program-age";
-import { normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
+import { normalizeFlexibleBasePay, normalizeMonthlyMaximum } from "@/lib/program-payment-limit.mjs";
 import { ProgramBulkEdit } from "./program-bulk-edit";
 import { ProgramTransfer } from "./program-transfer";
 import { ProgramCategoriesManager, type ProgramCategory } from "./program-categories";
@@ -100,14 +100,17 @@ newSaleAmountEditable?: boolean;
 collectionAmountEditable?: boolean;
 flexible?: boolean;
 maxMonthlyPayment?: number | null;
+flexibleBasePay?: number | null;
 };
 
 type ProgramForm = {
 categoryId: string;
-/** Flexible payments: Base Pay is the minimum monthly payment; amounts follow what is paid. */
+/** Flexible payments: `basePay` holds the minimum monthly payment; amounts follow what is paid. */
 flexible: boolean;
 hasMonthlyMaximum: boolean;
 maxMonthlyPayment: string;
+/** Flexible payments: the usual monthly payment, used instead of the minimum. Empty = none. */
+flexibleBasePay: string;
 newSaleAmountEditable: boolean;
 collectionAmountEditable: boolean;
 code: string;
@@ -153,6 +156,7 @@ categoryId: "",
 flexible: false,
 hasMonthlyMaximum: false,
 maxMonthlyPayment: "",
+flexibleBasePay: "",
 newSaleAmountEditable: false,
 collectionAmountEditable: false,
 code: "",
@@ -906,6 +910,12 @@ try {
     void alertDialog(error instanceof Error ? error.message : "Enter a valid maximum monthly payment.");
     return;
   }
+  let flexibleBasePay: number | null = null;
+  try { flexibleBasePay = normalizeFlexibleBasePay({ flexible: form.flexible, basePay, flexibleBasePay: form.flexibleBasePay.trim(), maxMonthlyPayment }); }
+  catch (error) {
+    void alertDialog(error instanceof Error ? error.message : "Enter a valid Base Pay.");
+    return;
+  }
 
   const payload = {
     code: form.code.trim(),
@@ -928,6 +938,7 @@ try {
     collectionAmountEditable: form.collectionAmountEditable,
     flexible: form.flexible,
     maxMonthlyPayment,
+    flexibleBasePay,
     registrationAmount: Number(form.registrationAmount) || 0,
     payBalanceTotal: Number(form.payBalanceTotal) || 0,
     saleIncentiveType: form.registrationFeeRequired ? form.saleIncentiveType : "",
@@ -1147,6 +1158,7 @@ setForm({
   flexible: Boolean(program.flexible),
   hasMonthlyMaximum: program.maxMonthlyPayment != null,
   maxMonthlyPayment: program.maxMonthlyPayment == null ? "" : String(program.maxMonthlyPayment),
+  flexibleBasePay: program.flexibleBasePay == null ? "" : String(program.flexibleBasePay),
   newSaleAmountEditable: Boolean(program.newSaleAmountEditable),
   collectionAmountEditable: Boolean(program.collectionAmountEditable),
   registrationAmount: String(program.registrationAmount ?? 0),
@@ -1836,7 +1848,7 @@ return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <p className="text-xs text-muted-foreground">
-            Base Pay
+            {form.flexible ? "Minimum monthly payment" : "Base Pay"}
           </p>
 
           <p className="text-sm font-semibold">
@@ -1985,13 +1997,12 @@ const programForm = (
                 type="number"
                 min="0"
                 step="0.01"
-                disabled={form.flexible}
                 value={
-                  form.basePay
+                  form.flexible ? form.flexibleBasePay : form.basePay
                 }
                 onChange={(event) =>
                   updateForm(
-                    "basePay",
+                    form.flexible ? "flexibleBasePay" : "basePay",
                     event.target.value,
                   )
                 }
@@ -2005,7 +2016,7 @@ const programForm = (
 
             <p className="text-xs text-muted-foreground">
               {form.flexible
-                ? "Flexible payments are on: Base Pay is the minimum monthly payment, set under Flexible payments below."
+                ? "Flexible payments are on: the usual monthly payment, filled in and shown as due instead of the minimum. Leave empty to use the minimum set under Flexible payments below."
                 : "Used for TMD, Balance, and incentive calculations. Once the program has collections, Base Pay, flexible payments and registration fee required cannot change; create a new program for a new price."}
             </p>
           </div>
@@ -2082,7 +2093,7 @@ const programForm = (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
           <div>
             <p className="text-sm font-medium">Flexible payments</p>
-            <p className="text-xs text-muted-foreground">On: members pay at least the minimum each month, with an optional monthly maximum. Base Pay becomes the minimum monthly payment, and incentives and remittances follow the amount actually paid. The total amount payable still applies when set. Off: every month is exactly the base pay.</p>
+            <p className="text-xs text-muted-foreground">On: members pay at least the minimum each month, with an optional monthly maximum. Base Pay is the usual payment, the minimum is the least accepted, and incentives and remittances follow the amount actually paid. The total amount payable still applies when set. Off: every month is exactly the base pay.</p>
           </div>
           <button type="button" role="switch" aria-checked={form.flexible} aria-label="Flexible payments" onClick={() => setForm((current) => ({ ...current, flexible: !current.flexible }))}
             className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${form.flexible ? "bg-primary" : "bg-muted-foreground/30"}`}>
@@ -2094,7 +2105,7 @@ const programForm = (
           <div className="space-y-2">
             <Label htmlFor="program-min-monthly-payment">Minimum monthly payment *</Label>
             <Input id="program-min-monthly-payment" type="number" min="0.01" step="0.01" required value={form.basePay} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => updateForm("basePay", event.target.value)} placeholder="150" />
-            <p className="text-xs text-muted-foreground">The least a member pays for one month. Saved as the program&apos;s Base Pay.</p>
+            <p className="text-xs text-muted-foreground">The least a member pays for one month. The Base Pay above is what is filled in.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="program-monthly-maximum">Maximum monthly payment?</Label>
@@ -2381,7 +2392,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                         </div>
 
                         <p className="text-sm text-muted-foreground">
-                          Base Pay:{" "}
+                          {program.flexible && program.flexibleBasePay ? <>Base Pay: {formatPeso(program.flexibleBasePay)}{" · "}</> : null}
+                          {program.flexible ? "Minimum monthly payment" : "Base Pay"}:{" "}
                           {formatPeso(
                             program.basePay,
                           )}

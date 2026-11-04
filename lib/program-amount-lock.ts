@@ -1,3 +1,5 @@
+import { monthlyPay } from "./program-payment-limit.mjs";
+
 /**
  * Program rule: whether encoders may type the amount on a New Sale or a Collection (Programs T
  * new_sale_amount_editable, U collection_amount_editable). FALSE, the default, locks the amount to what the program
@@ -12,3 +14,7 @@ export const amountEditableCells = (data: { newSaleAmountEditable?: unknown; col
 /** The locked New Sale amount: the registration amount, or the first month's base pay when there is no registration fee. */
 export const fixedNewSaleAmount = (program: { registrationFeeRequired: boolean; registrationAmount: number; basePay: number }) =>
   program.registrationFeeRequired ? program.registrationAmount : program.basePay;
+
+/** The amount a New Sale starts with: as above, but a flexible program's Base Pay instead of its minimum. */
+export const defaultNewSaleAmount = (program: { registrationFeeRequired: boolean; registrationAmount: number; basePay: number; flexible?: boolean; flexibleBasePay?: number | null }) =>
+  program.registrationFeeRequired ? program.registrationAmount : monthlyPay(program);

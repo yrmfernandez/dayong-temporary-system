@@ -31,7 +31,8 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { todayInManila } from "@/lib/account-rules";
 import type { ProgramStanding } from "@/lib/account-data";
-import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { defaultNewSaleAmount, fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { ControlTotalField } from "@/components/control-total-field";
 import { BACKDATE_REASON_MIN, controlTotalDifference, controlTotalProblem, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
@@ -258,6 +259,8 @@ type SubmissionSummary = {
   incentiveDeadline: string; clearingId: string; remittedAt: string; remittedByName: string;
   /** Rejected: the MAS has seen it, so it no longer counts on the sidebar. */
   rejectionSeen: boolean;
+  /** Saved: the Fidelity the clerk recorded with this batch. */
+  fidelity?: number;
 };
 type MasProfile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
 
@@ -1775,7 +1778,7 @@ Is this cash part of that handover?`) ? "same"
                                   programCode: chosen?.code ?? "",
                                   withRegistrationFee: Boolean(chosen?.registrationFeeRequired),
                                   registrationAmount: chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
-                                  amountPaid: chosen && !chosen.newSaleAmountEditable ? fixedNewSaleAmount(chosen) : chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
+                                  amountPaid: chosen && !chosen.newSaleAmountEditable ? defaultNewSaleAmount(chosen) : chosen?.registrationFeeRequired ? chosen.registrationAmount : 0,
                                 },
                               }));
                             }}
@@ -1804,7 +1807,7 @@ Is this cash part of that handover?`) ? "same"
                             )}
                           {selectedProgram && (
                             <p className="text-xs text-muted-foreground">
-                              {selectedProgram.name} · base pay ₱{Number(selectedProgram.basePay).toLocaleString("en-PH", { minimumFractionDigits: 2 })}{String(selectedProgram.status ?? "").trim().toLowerCase() === "active" ? "" : ` · ${String(selectedProgram.status ?? "Unknown")}`}
+                              {selectedProgram.name} · base pay ₱{Number(monthlyPay(selectedProgram)).toLocaleString("en-PH", { minimumFractionDigits: 2 })}{String(selectedProgram.status ?? "").trim().toLowerCase() === "active" ? "" : ` · ${String(selectedProgram.status ?? "Unknown")}`}
                             </p>
                           )}
                         </div>
@@ -3101,6 +3104,7 @@ function MySubmissions({ submissions, activeId, onOpen }: { submissions: Submiss
                 {submission.status === "Rejected" && <p className="mt-1 font-medium text-destructive">Rejected{submission.reviewedByName ? ` by ${submission.reviewedByName}` : ""}: {submission.returnReason}. These sales can be submitted again.</p>}
                 {submission.status === "Returned" && <p className="mt-1 font-medium text-destructive">To fix: {submission.returnReason}{submission.reviewedByName ? ` (${submission.reviewedByName})` : ""}</p>}
                 {submission.status === "Saved" && submission.reviewedByName && <p className="mt-1 text-muted-foreground">Checked and saved by {submission.reviewedByName}</p>}
+                {(submission.fidelity ?? 0) > 0 && <p className="mt-1 font-medium text-emerald-700">Fidelity {peso(submission.fidelity ?? 0)} added with this batch: your own savings.</p>}
               </div>
               {submission.status === "Returned" && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(submission, false)}>{submission.id === activeId ? "Editing" : "Fix"}</Button>}
               {submission.status === "Rejected" && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(submission, true)}>Submit again</Button>}

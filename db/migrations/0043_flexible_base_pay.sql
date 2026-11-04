@@ -1,0 +1,1 @@
+ALTER TABLE "programs" ADD COLUMN "flexible_base_pay" numeric(12, 2);

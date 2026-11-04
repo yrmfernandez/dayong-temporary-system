@@ -4,6 +4,7 @@ import { mamStatusClass } from "@/components/mam-status";
 import { Badge } from "@/components/ui/badge";
 import { formatDate as showDate, formatMonth } from "@/lib/date-format";
 import type { buildMamReport } from "@/lib/mam-report";
+import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 
 type Row = ReturnType<typeof buildMamReport>["rows"][number];
 
@@ -48,7 +49,7 @@ export function MamMemberCard({ row }: { row: Row }) {
     </dl> : <p className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"><span className="font-semibold">Needs review:</span> {row.currentError || "The account could not be worked out."}</p>}
 
     <div className="space-y-2 rounded-lg border p-4 text-sm">
-      {([["MAS", row.mas], ["Branch", row.branch], ["Date of issuance", showDate(row.doi)], ["Application no.", row.applicationNumber || "—"], ["Monthly", money(row.basePay)]] as const).map(([label, value]) => <div key={label} className="flex justify-between gap-2">
+      {([["MAS", row.mas], ["Branch", row.branch], ["Date of issuance", showDate(row.doi)], ["Application no.", row.applicationNumber || "—"], ["Monthly", money(monthlyPay(row))]] as const).map(([label, value]) => <div key={label} className="flex justify-between gap-2">
         <span className="text-muted-foreground">{label}</span><span className="text-right font-medium">{value}</span>
       </div>)}
     </div>

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { formatDate, formatDateTime, formatMonth } from "@/lib/date-format";
+import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 import { masCollectionQuote, MAX_SUBMISSION_ENTRIES, MAX_SUBMISSION_MONTHS } from "@/lib/mas-collection-quote";
 import { formatDeadline, incentiveDeadline, manilaNow } from "@/lib/remittance-deadline";
 import type { IncentiveTier } from "@/lib/remittance";
@@ -33,7 +34,7 @@ import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
  */
 type Account = {
   id: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; branchId: string; branch: string;
-  basePay: number; flexible: boolean; maxMonthlyPayment: number | null; tiers: IncentiveTier[]; pendingIn: string;
+  basePay: number; flexible: boolean; maxMonthlyPayment: number | null; flexibleBasePay: number | null; tiers: IncentiveTier[]; pendingIn: string;
   status: string; temporarilySuspended: boolean; suspendedAt: string; forfeitedAt: string; nextMonth: string; nextNop: number;
   lastCoveredMonth: string; unpaidMonths: number; latestOrDate: string; blocked: string;
 };
@@ -41,7 +42,7 @@ type Entry = { enrollmentId: string; memberName: string; programName: string; mo
 type Submission = {
   id: string; branchId: string; branch: string; status: "Submitted" | "Remitted" | "Rejected" | "Saved"; entries: Entry[]; entryCount: number; totalAmount: number; totalIncentive: number;
   submittedAt: string; returnReason: string; reviewedByName: string; incentiveDeadline: string; remittedAt: string; remittedByName: string;
-  collectedBy: CollectedBy; memberMas: string; orc: boolean; autoSubmitted: boolean; rejectionSeen: boolean;
+  collectedBy: CollectedBy; memberMas: string; orc: boolean; autoSubmitted: boolean; rejectionSeen: boolean; fidelity: number;
 };
 type Profile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
 type CollectedBy = "MAS" | "Collector";
@@ -49,7 +50,7 @@ type CollectedBy = "MAS" | "Collector";
 type CollectorInfo = { isCollector: boolean; isMas: boolean; masOptions: Array<{ employeeId: string; name: string; branchIds: string[] }>; collectedBy: CollectedBy; memberMasEmployeeId: string };
 /** Who collected and whose members, as chosen; "" lets the server decide (a Collector who is not a MAS collects as Collector). */
 type Choice = { collectedBy: CollectedBy | ""; mas: string };
-/** One member in the batch being filled: what the MAS chose. `amount`: typed on a flexible program; "" is the minimum. */
+/** One member in the batch being filled: what the MAS chose. `amount`: typed on a flexible program; "" is its Base Pay, or the minimum if none. */
 type BatchItem = { enrollmentId: string; months: number; amount: string; waiver: boolean };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
@@ -353,9 +354,9 @@ export default function MasCollectionsPage() {
               <label className="flex flex-wrap items-center gap-3">
                 <span className="text-sm font-medium">Amount paid</span>
                 <Input type="number" inputMode="decimal" min={0} step="0.01" aria-label="Amount paid" className="h-11 w-36 text-right text-lg font-semibold tabular-nums"
-                  placeholder={(account.basePay * Math.max(1, pick.months)).toFixed(2)} value={pick.amount} onChange={(event) => change(pick.enrollmentId, { amount: event.target.value })} />
+                  placeholder={(monthlyPay(account) * Math.max(1, pick.months)).toFixed(2)} value={pick.amount} onChange={(event) => change(pick.enrollmentId, { amount: event.target.value })} />
               </label>
-              <p className="text-xs text-muted-foreground">Flexible program: at least {money(account.basePay)} a month{account.maxMonthlyPayment != null ? `, at most ${money(account.maxMonthlyPayment)} a month` : ""}. Leave empty for the minimum.</p>
+              <p className="text-xs text-muted-foreground">Flexible program: {monthlyPay(account) !== account.basePay ? `base pay ${money(monthlyPay(account))}, ` : ""}at least {money(account.basePay)} a month{account.maxMonthlyPayment != null ? `, at most ${money(account.maxMonthlyPayment)} a month` : ""}. Leave empty for the minimum.</p>
             </div>}
 
             {quote && <>
@@ -399,7 +400,7 @@ export default function MasCollectionsPage() {
             return <li key={account.id} className={`flex items-center gap-3 py-3 ${inBatch || waiting ? "opacity-70" : ""}`}>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2"><span className="truncate font-semibold">{account.memberName}</span><Badge className={`shrink-0 border font-mono text-[10px] ${mamStatusClass(account.status)}`}>{account.status}</Badge></p>
-                <p className="truncate text-xs text-muted-foreground">{account.memberNumber} · {account.programName} · {money(account.basePay)}/month{manyBranches && !filterBranch ? ` · ${account.branch}` : ""}</p>
+                <p className="truncate text-xs text-muted-foreground">{account.memberNumber} · {account.programName} · {money(monthlyPay(account))}/month{manyBranches && !filterBranch ? ` · ${account.branch}` : ""}</p>
                 {account.blocked ? <p className="text-xs text-destructive">{account.blocked}</p> : <p className="text-xs text-muted-foreground">Next month due {formatMonth(account.nextMonth)}{account.unpaidMonths > 1 ? ` · ${account.unpaidMonths} months behind` : ""}</p>}
                 {!account.blocked && account.temporarilySuspended && <p className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" /> Suspended: Waiver needed · forfeits {formatDate(account.forfeitedAt)}</p>}
               </div>
@@ -468,6 +469,7 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
           </p>}
           {submission.status === "Rejected" && <p className="font-medium text-destructive">Rejected{submission.reviewedByName ? ` by ${submission.reviewedByName}` : ""}: {submission.returnReason}. These members can be added to a new batch.</p>}
           {submission.status === "Saved" && submission.reviewedByName && <p className="text-muted-foreground">Checked and saved by {submission.reviewedByName}</p>}
+          {submission.fidelity > 0 && <p className="font-medium text-emerald-700 dark:text-emerald-400">Fidelity {money(submission.fidelity)} added with this batch: your own savings.</p>}
         </div>;
       })}
       {(hidden > 0 || expanded) && <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setExpanded((value) => !value)}>{expanded ? "Show fewer" : `Show ${plural(hidden, "older submission")}`}</Button>}

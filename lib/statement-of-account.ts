@@ -66,7 +66,7 @@ export async function getStatementOfAccount(enrollmentId: string) {
     },
     account: {
       id: account.id, programName: account.programName, programId: account.programId, programCategory: text(category?.name), doi: account.doi, branch: account.branch, mas: account.mas,
-      monthlyDue: account.basePay, payBalanceTotal: account.payBalanceTotal, applicationNumber: text(sale?.application_no),
+      monthlyDue: state.monthlyAmount, payBalanceTotal: account.payBalanceTotal, applicationNumber: text(sale?.application_no),
     },
     newSale: sale ? { date: sale.or_date || manilaDateOf(text(sale.date_created)), amount: salePaid, registration: sale.registration_amount ?? 0, paymentMode: text(sale.payment_method) } : null,
     history,

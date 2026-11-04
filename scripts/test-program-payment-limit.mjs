@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeMonthlyMaximum, validateMonthlyMaximum } from "../lib/program-payment-limit.mjs";
+import { monthlyPay, normalizeFlexibleBasePay, normalizeMonthlyMaximum, validateMonthlyMaximum } from "../lib/program-payment-limit.mjs";
 import { validatePayment, accountState } from "../lib/account-rules.ts";
 import { calculateRemittance, calculateSaleIncentive } from "../lib/remittance.ts";
 
@@ -42,4 +42,16 @@ test("remittance and first-month sale previews reject payments above the monthly
   assert.throws(() => calculateSaleIncentive(program, 300.01), /maximum/);
   assert.equal(calculateSaleIncentive({ ...program, maxMonthlyPayment: null }, 1000).remittance, 700);
   assert.equal(calculateSaleIncentive({ ...program, registrationFeeRequired: true }, 1000).remittance, 1000);
+});
+
+test("a flexible program's Base Pay is optional, from the minimum up to the maximum, and replaces the minimum as the usual amount", () => {
+  const flexible = { flexible: true, basePay: 150 };
+  assert.equal(normalizeFlexibleBasePay({ ...flexible, flexibleBasePay: "" }), null);
+  assert.equal(normalizeFlexibleBasePay({ ...flexible, flexibleBasePay: "210" }), 210);
+  assert.equal(normalizeFlexibleBasePay({ flexible: false, basePay: 150, flexibleBasePay: 210 }), null, "fixed programs do not use it");
+  assert.throws(() => normalizeFlexibleBasePay({ ...flexible, flexibleBasePay: 100 }), /at least the minimum/);
+  assert.throws(() => normalizeFlexibleBasePay({ ...flexible, flexibleBasePay: 210, maxMonthlyPayment: 200 }), /more than the maximum/);
+  assert.equal(monthlyPay({ ...flexible, flexibleBasePay: 210 }), 210);
+  assert.equal(monthlyPay({ ...flexible, flexibleBasePay: null }), 150, "none set: the minimum");
+  assert.equal(monthlyPay({ flexible: false, basePay: 350, flexibleBasePay: 210 }), 350, "left over on a fixed program: ignored");
 });

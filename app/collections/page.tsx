@@ -48,6 +48,7 @@ import {
 import type { Member } from "@/lib/types";
 import { calculateRemittance, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive, type IncentiveTier } from "@/lib/remittance";
 import { forfeitedPaymentsAllowed } from "@/lib/account-rules";
+import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 import { isValidOrNumber, nextOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
 import { formatDate as showDate, formatDateTime } from "@/lib/date-format";
 import { formatDeadline } from "@/lib/remittance-deadline";
@@ -70,6 +71,8 @@ type ProgramOption = {
   /** Flexible payments: basePay is the minimum; any amount from the minimum per month. */
   flexible?: boolean;
   maxMonthlyPayment?: number | null;
+  /** The usual monthly payment: the amount starts with it instead of the minimum. */
+  flexibleBasePay?: number | null;
   payBalanceTotal?: number;
   /** Programs U: false (the default) locks the amount to covered months × base pay. */
   collectionAmountEditable?: boolean;
@@ -332,6 +335,8 @@ export default function CollectionsPage() {
   const [scrollTargetId, setScrollTargetId] = useState("");
   const [members, setMembers] = useState<CollectionMember[]>([]);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
+  // The amount a program's entry starts with; what may be paid is still checked against basePay, the minimum.
+  const programPay = (programId: string) => { const program = programs.find((item) => item.id === programId); return program ? monthlyPay(program) : 0; };
   const [branches, setBranches] = useState<Array<{ id: string; name: string; territory?: string; status: string }>>([]);
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds: string[]; roles?: string[] }>>([]);
   // The Clearing entry the batch was filled from (components/clearing-picker.tsx); its employee is the accountable one.
@@ -615,7 +620,7 @@ export default function CollectionsPage() {
           ? (() => {
               const next = { ...entry, ...updates };
               const count = getMonthDifference(next.monthFrom, next.monthTo);
-              const rate = programs.find((p) => p.id === next.programId)?.basePay;
+              const rate = programPay(next.programId);
               const shouldRecalculate = "programId" in updates || "monthFrom" in updates || "monthTo" in updates;
               return { ...next, amountCollected: shouldRecalculate ? (rate && count > 0 ? (Math.round(rate * 100) * count / 100).toFixed(2) : "") : next.amountCollected };
             })()
@@ -711,7 +716,7 @@ export default function CollectionsPage() {
 
     updateCollection(entryId, {
       monthTo: value,
-      amountCollected: monthCount > 0 ? String(monthCount * (programs.find((p) => p.id === entry.programId)?.basePay ?? 0)) : "",
+      amountCollected: monthCount > 0 ? String(monthCount * programPay(entry.programId)) : "",
       nopTo:
         entry.nopFrom !== null && monthCount > 0
           ? entry.nopFrom + monthCount - 1
@@ -1385,8 +1390,6 @@ export default function CollectionsPage() {
 
           {/* overscroll-contain: reaching the end of one panel never scrolls the page or the other panel. */}
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            {reviewing && <SubmissionOrTable entries={collections} activeId={activeCollectionId} onOpen={editCollection} onOr={(id, orNumber) => updateCollection(id, { orNumber })}
-              memberName={(entry) => { const found = members.find((member) => member.id === entry.memberId); return found ? getMemberDisplayName(found) : entry.memberSearch; }} />}
             <CardContent className="space-y-4 p-4">
               {collections.map(
                 (entry, index) => {
@@ -1415,9 +1418,6 @@ export default function CollectionsPage() {
                   const isActive =
                     activeCollectionId ===
                     entry.id;
-
-                  // Reviewing a MAS batch, the table above lists every member; only the card being corrected shows.
-                  if (reviewing && !entry.isExpanded) return null;
 
                   return (
                     <div
@@ -1661,7 +1661,7 @@ export default function CollectionsPage() {
                             // The exact remaining payoff, offered as a button so a locked amount is never typed.
                             const paid = (histories[entry.id] ?? []).reduce((sum, item) => sum + Math.round((Number(item.amountCollected) || 0) * 100), 0);
                             const payoff = program?.payBalanceTotal ? Math.max(0, Math.round(program.payBalanceTotal * 100) - paid) / 100 : 0;
-                            const monthly = Math.round((program?.basePay ?? 0) * 100) * getMonthDifference(entry.monthFrom, entry.monthTo) / 100;
+                            const monthly = Math.round(programPay(entry.programId) * 100) * getMonthDifference(entry.monthFrom, entry.monthTo) / 100;
                             return (
                               <div className="space-y-2">
                                 <div className="grid grid-cols-3 gap-3">
@@ -2222,48 +2222,6 @@ function UnremittedCollectionsWarning({ submissions, onShow }: { submissions: Co
             <strong>{submission.mas}</strong>{submission.masContact ? ` (${submission.masContact})` : " (no contact number on file)"} · {submission.branch} · {submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · {submission.autoSubmitted ? "not submitted, sent automatically" : `submitted ${formatDateTime(submission.submittedAt)}, not remitted`} · remit {formatCurrency(late ? submission.totalAmount : submission.totalAmount - submission.totalIncentive)}{late ? `: the ${formatDeadline(submission.incentiveDeadline)} deadline has passed, the whole amount is due` : submission.incentiveDeadline ? ` by ${formatDeadline(submission.incentiveDeadline)} to keep the incentive` : ""}
           </p>;
         })}
-      </div>
-    </div>
-  );
-}
-
-/**
- * A MAS batch open for review, one short row per member (owner, November 4, 2026): the OR numbers are typed here, Enter
- * going to the next row with the next receipt number filled in, so a long batch needs no opening and scrolling of cards.
- * Open shows that member's full card below, to correct it.
- */
-function SubmissionOrTable({ entries, memberName, activeId, onOr, onOpen }: { entries: CollectionEntry[]; memberName: (entry: CollectionEntry) => string; activeId: string; onOr: (id: string, orNumber: string) => void; onOpen: (id: string) => void }) {
-  const inputs = useRef<Record<string, HTMLInputElement | null>>({});
-  const typed = entries.filter((entry) => isValidOrNumber(entry.orNumber)).length;
-  const next = (index: number) => {
-    const following = entries[index + 1];
-    if (!following) return;
-    if (!following.orNumber.trim()) onOr(following.id, nextOrNumber(entries[index].orNumber));
-    inputs.current[following.id]?.focus();
-  };
-  return (
-    <div className="border-b p-3">
-      <p className="mb-2 text-sm font-semibold">OR numbers · {typed} of {entries.length} typed <span className="font-normal text-muted-foreground">· Enter goes to the next member</span></p>
-      <div className="max-h-[50vh] overflow-y-auto overscroll-contain rounded-lg border">
-        <table className="w-full text-sm">
-          <tbody>
-            {entries.map((entry, index) => {
-              const needsWaiverMark = needsWaiver(entry) && entry.ifSuspended !== "Waiver";
-              return <tr key={entry.id} className={`border-b last:border-0 ${entry.id === activeId && entry.isExpanded ? "bg-primary/5" : ""}`}>
-                <td className="px-2 py-1 text-muted-foreground">{index + 1}</td>
-                <td className="max-w-0 px-2 py-1">
-                  <p className="truncate font-medium">{memberName(entry)}</p>
-                  <p className="truncate text-xs text-muted-foreground">{formatMonth(entry.monthFrom)}{entry.monthTo !== entry.monthFrom ? ` – ${formatMonth(entry.monthTo)}` : ""} · {formatCurrency(Number(entry.amountCollected) || 0)}{needsWaiverMark ? <span className="font-medium text-amber-700"> · needs Waiver</span> : null}</p>
-                </td>
-                <td className="w-36 px-2 py-1">
-                  <Input ref={(element) => { inputs.current[entry.id] = element; }} aria-label={`OR Number of ${memberName(entry)}`} className="h-8" value={entry.orNumber} aria-invalid={entry.orNumber.trim() !== "" && !isValidOrNumber(entry.orNumber)} placeholder={OR_NUMBER_EXAMPLE}
-                    onChange={(event) => onOr(entry.id, event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); next(index); } }} />
-                </td>
-                <td className="px-2 py-1 text-right"><Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => onOpen(entry.id)}>Open</Button></td>
-              </tr>;
-            })}
-          </tbody>
-        </table>
       </div>
     </div>
   );

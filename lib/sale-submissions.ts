@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
 
 import { isAdministratorRole } from "@/lib/access-control";
 import type { SessionUser } from "@/lib/auth";
@@ -46,6 +46,8 @@ export type SaleSubmission = {
   clearingId: string; remittedAt: string; remittedByName: string;
   /** Rejected: the MAS has seen it, so it no longer counts on the sidebar. */
   rejectionSeen: boolean;
+  /** Saved (the MAS's own list only): the Fidelity the clerk recorded with this batch. */
+  fidelity: number;
 };
 
 const statusOf = (value: string): SaleSubmission["status"] =>
@@ -58,7 +60,7 @@ const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): Sale
   submittedAt: row.submitted_at, returnReason: text(row.return_reason), reviewedByName: text(row.reviewed_by_name), reviewedAt: row.reviewed_at ?? "",
   saleIds: text(row.sale_ids).split(",").map(text).filter(Boolean), incentiveDeadline: deadline,
   clearingId: text(row.clearing_id), remittedAt: stamp(row.remitted_at), remittedByName: text(row.remitted_by_name),
-  rejectionSeen: Boolean(row.rejection_seen_at),
+  rejectionSeen: Boolean(row.rejection_seen_at), fidelity: 0,
 });
 
 /** Adds each submission's incentive deadline, from its earliest application date and its branch's working days. */
@@ -91,7 +93,14 @@ export async function markRejectionsSeen(user: SessionUser) {
 /** The MAS's own submissions, newest first. */
 export async function listMySubmissions(user: SessionUser) {
   const rows = await getDb().select().from(submissions).where(eq(submissions.mas_employee_id, user.employeeId)).orderBy(desc(submissions.row_seq)).limit(50);
-  return withDeadlines(rows);
+  const list = await withDeadlines(rows);
+  // Fidelity is typed by the clerk when saving, on the batch's first sale.
+  const ids = list.flatMap((item) => item.saleIds);
+  if (!ids.length) return list;
+  const { sales } = schema;
+  const added = await getDb().select({ id: sales.sale_id, fidelity: sales.fidelity_amount }).from(sales).where(and(inArray(sales.sale_id, ids), gt(sales.fidelity_amount, 0)));
+  const fidelityOf = new Map(added.map((item) => [item.id, item.fidelity ?? 0]));
+  return list.map((item) => ({ ...item, fidelity: Math.round(item.saleIds.reduce((sum, id) => sum + (fidelityOf.get(id) ?? 0), 0) * 100) / 100 }));
 }
 
 /**

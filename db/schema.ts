@@ -177,6 +177,11 @@ export const programs = pgTable("programs", {
   flexible: boolean().notNull().default(false),
   /** Null = no maximum for a flexible monthly payment. */
   max_monthly_payment: money("max_monthly_payment"),
+  /**
+   * Flexible payments (owner, November 4, 2026): the usual monthly payment, filled in and shown as due instead of the
+   * minimum. Null = none, so the minimum (base_pay) is used. A member may still pay down to the minimum.
+   */
+  flexible_base_pay: money("flexible_base_pay"),
 }).enableRLS();
 
 export const program_incentives = pgTable("program_incentives", {

@@ -9,7 +9,7 @@ export type ProgramSnapshotSource = {
   code?: unknown; name?: unknown; basePay?: unknown; status?: unknown; description?: unknown; categoryId?: unknown;
   registrationFeeRequired?: unknown; registrationAmount?: unknown; payBalanceTotal?: unknown;
   saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; ageRestricted?: unknown; minAge?: unknown; maxAge?: unknown;
-  newSaleAmountEditable?: unknown; collectionAmountEditable?: unknown; flexible?: unknown; maxMonthlyPayment?: unknown;
+  newSaleAmountEditable?: unknown; collectionAmountEditable?: unknown; flexible?: unknown; maxMonthlyPayment?: unknown; flexibleBasePay?: unknown;
   incentiveTiers?: Tier[];
 };
 
@@ -25,7 +25,7 @@ export function programSnapshot(program: ProgramSnapshotSource) {
     text(program.code), text(program.name), amount(program.basePay), text(program.status), text(program.description), text(program.categoryId),
     flag(program.registrationFeeRequired), amount(program.registrationAmount), amount(program.payBalanceTotal),
     text(program.saleIncentiveType), amount(program.saleIncentiveAmount), flag(program.ageRestricted), amount(program.minAge), amount(program.maxAge),
-    flag(program.newSaleAmountEditable), flag(program.collectionAmountEditable), flag(program.flexible), amount(program.maxMonthlyPayment),
+    flag(program.newSaleAmountEditable), flag(program.collectionAmountEditable), flag(program.flexible), amount(program.maxMonthlyPayment), amount(program.flexibleBasePay),
     tiers,
   ]);
 }

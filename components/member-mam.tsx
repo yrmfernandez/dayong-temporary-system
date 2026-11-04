@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { paidInMonth } from "@/lib/mam-format";
 import { formatDate as showDate } from "@/lib/date-format";
+import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Receipt = { id: string; orNumber: string; orDate: string; amount: number; monthFrom: string; monthTo: string; nopFrom: number; nopTo: number };
@@ -63,7 +64,7 @@ export function MemberMam({ memberId }: { memberId: string }) {
             <strong>{row.programName}</strong>
             {latest && <StatusBadge status={latest.status} tone={statusTone(latest.status)} />}
             {latest?.temporarilySuspended && <span className="text-xs text-amber-700">Temporarily suspended</span>}
-            <span className="text-xs text-muted-foreground">DOI {showDate(row.doi) || "—"} · Monthly {money(row.basePay)} · Paid up to NOP {latest?.nop ?? "—"} ({monthOf(latest ?? null, row.doi)}) · Balance today {latest ? latest.balance === null ? "—" : money(latest.balance) : "—"} · MAS {row.mas || "—"}</span>
+            <span className="text-xs text-muted-foreground">DOI {showDate(row.doi) || "—"} · Monthly {money(monthlyPay(row))} · Paid up to NOP {latest?.nop ?? "—"} ({monthOf(latest ?? null, row.doi)}) · Balance today {latest ? latest.balance === null ? "—" : money(latest.balance) : "—"} · MAS {row.mas || "—"}</span>
           </div>
           <div className="max-h-80 overflow-auto rounded-md border"><table className="w-full min-w-[820px] text-xs">
             <thead className="sticky top-0 bg-muted text-left"><tr>{["Month", "Status", "OR No.", "OR Date", "NOP paid", "Month of", "Collected", "Covered", "Receipts"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead>

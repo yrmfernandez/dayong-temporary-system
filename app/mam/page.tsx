@@ -31,6 +31,7 @@ import { MamMemberCard } from "@/components/mam-member-card";
 import { mamStatusClass } from "@/components/mam-status";
 import { MasCollectionList } from "@/components/mas-collection-list";
 import { formatMonth } from "@/lib/date-format";
+import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 
 type Report = ReturnType<typeof buildMamReport>;
 type Row = Report["rows"][number];
@@ -594,7 +595,7 @@ export default function MamPage() {
                           APP: <span className="font-mono text-foreground">{row.applicationNumber || "—"}</span>
                         </div>
                         <div>DOI: {showDate(row.doi)}</div>
-                        <div>Monthly: {money(row.basePay)}</div>
+                        <div>Monthly: {money(monthlyPay(row))}</div>
                         <div>Reg Fee: {money(row.registrationFee)}</div>
                       </div>
                     </td>

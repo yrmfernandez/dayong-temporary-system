@@ -1,6 +1,7 @@
 import { BrandLogo } from "@/components/brand-logo";
 import type { buildMamReport } from "@/lib/mam-report";
 import { formatDate as showDate } from "@/lib/date-format";
+import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 
 type Report = ReturnType<typeof buildMamReport>;
 type Row = Report["rows"][number];
@@ -93,7 +94,7 @@ export function MamPrint({ report, groups, printedBy }: { report: Report; groups
                           <td className="mam-print-no">{index + 1}</td>
                           <td><strong>{row.memberName}</strong><div>{row.memberNumber} · {row.programName}</div></td>
                           <td>{row.doi ? showDate(row.doi) : "—"}</td>
-                          <td>{peso(row.basePay)}</td>
+                          <td>{peso(monthlyPay(row))}</td>
                           <td>{last ? showDate(last) : "—"}</td>
                           {months.map((month, i) => <MonthCell key={month} period={row.periods[offset + i]} />)}
                         </tr>

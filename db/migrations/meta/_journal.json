@@ -302,6 +302,13 @@
       "when": 1793757200415,
       "tag": "0042_rejection_seen",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793774289666,
+      "tag": "0043_flexible_base_pay",
+      "breakpoints": true
     }
   ]
 }

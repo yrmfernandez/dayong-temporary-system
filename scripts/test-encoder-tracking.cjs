@@ -2818,6 +2818,8 @@ test('a MAS submits New Sales; only a clerk of that branch reviews them, saves o
   assert.match((await save(clerk, 'APP-2')).body.message, /already saved/);
   assert.equal(await count('sales'), 1, 'a submission is saved once');
   assert.equal((await call(mas, 'POST', '/api/sale-submissions', { submissionId: row.submission_id, sales: [card('Cruz')] })).status, 400, 'a saved submission cannot be edited');
+  await query('update sales set fidelity_amount = 50');
+  assert.equal((await call(mas, 'GET', '/api/sale-submissions')).body.submissions[0].fidelity, 50, 'the MAS sees the Fidelity saved with the batch');
 
   // Returned: the MAS sees why, fixes it, and submits it again.
   const second = await call(mas, 'POST', '/api/sale-submissions', { sales: [card('Reyes')] });
@@ -5073,6 +5075,12 @@ test('a batch the MAS forgot is sent after midnight, OR date the day added, and 
   await query(`update collection_drafts set entries = jsonb_set(entries, '{0,addedOn}', to_jsonb($1::text))`, [daysAgo(1)]);
   assert.deepEqual(await nightly(), { batches: 1, members: 1, held: 0, failed: 0 });
   assert.equal((await query('select entries from collection_submissions order by row_seq desc limit 1'))[0].entries[0].waiver, false, 'not ticked for the MAS');
+
+  // Saved with Fidelity: the MAS sees it on My submissions; an unsaved batch shows none.
+  await query(`update collections set fidelity_amount = 75 where collection_id = 'COL-PAID'`);
+  await query(`update collection_submissions set status = 'Saved', collection_ids = 'COL-PAID' where submission_id = (select submission_id from collection_submissions order by row_seq desc limit 1)`);
+  const [saved, unsaved] = (await call(mas, 'GET', '/api/collection-submissions?view=mine')).body.submissions;
+  assert.deepEqual([saved.status, saved.fidelity, unsaved.fidelity], ['Saved', 75, 0]);
 });
 
 test('the red number for a rejected batch clears when the MAS sees it, or after 2 days (November 4, 2026)', async () => {
@@ -5106,6 +5114,8 @@ test('Submit Collections: a flexible program takes the amount the MAS typed, wit
   const tiers = [{ id: 'T1', role: 'MAS', fromMonth: 1, toMonth: 12, incentiveType: 'percentage', markUp: 0, incentiveAmount: 10 }];
   const account = { basePay: 300, flexible: true, maxMonthlyPayment: 1000, nextMonth: '2026-11', nextNop: 1, tiers };
   assert.equal(masCollectionQuote(account, 2).amount, 600, 'left empty: the minimum');
+  assert.equal(masCollectionQuote({ ...account, flexibleBasePay: 400 }, 2).amount, 800, 'left empty with a Base Pay: the Base Pay');
+  assert.equal(masCollectionQuote({ ...account, flexibleBasePay: 400 }, 2, undefined, 600).amount, 600, 'a member may still pay the minimum');
   const typed = masCollectionQuote(account, 2, undefined, 1500);
   assert.deepEqual([typed.amount, typed.incentive, typed.remittance], [1500, 150, 1350], 'the incentive follows the amount paid');
   assert.throws(() => masCollectionQuote(account, 2, undefined, 500), /at least the minimum/);

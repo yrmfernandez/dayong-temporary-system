@@ -181,6 +181,12 @@ test("Fully Paid: a term program completes at its last month, a recorded full pa
   const recorded = { ...d420, fullyPaidOn: "2025-12-20" };
   assert.equal(accountState(recorded, [], "2025-12-19").status, "Forfeited", "before the recorded date the receipts decide");
   assert.equal(accountState(recorded, [], "2026-03-01").status, "Fully Paid");
+  // Flexible with a Base Pay: shown as the monthly amount and due; the minimum is still what is accepted.
+  const based = { ...account, basePay: 150, payBalanceTotal: 25200, flexible: true, flexibleBasePay: 210 };
+  const basedState = accountState(based, [], "2026-01-20");
+  assert.deepEqual([basedState.monthlyAmount, basedState.balance], [210, 210]);
+  assert.doesNotThrow(() => validatePayment(based, [], input({ amount: 150 }), "2026-01-20"), "a member may still pay the minimum");
+  assert.throws(() => validatePayment(based, [], input({ amount: 149 }), "2026-01-20"), /at least the minimum/);
   // Flexible: the New Sale counts toward the total.
   const flexible = { ...account, basePay: 150, payBalanceTotal: 600, flexible: true, saleCredit: 300 };
   assert.equal(accountState(flexible, [payment({ monthFrom: "2026-02", monthTo: "2026-02", nopFrom: 2, nopTo: 2, amount: 300 })], "2026-02-20").status, "Fully Paid", "300 New Sale + 300 collected = 600");

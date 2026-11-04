@@ -1,4 +1,4 @@
-import { validateMonthlyMaximum } from "./program-payment-limit.mjs";
+import { monthlyPay, validateMonthlyMaximum } from "./program-payment-limit.mjs";
 
 export type AccountStatus = "NS" | "U" | "ADV" | "60D" | "90D" | "120D" | "150D" | "Fully Paid" | "Forfeited";
 /** Every account status, in the order lists and filters show them (Fully Paid was "Paid" until October 27, 2026). */
@@ -18,6 +18,8 @@ export type Account = {
    */
   flexible?: boolean;
   maxMonthlyPayment?: number | null;
+  /** The usual monthly payment, shown and filled in instead of the minimum (monthlyPay). Null = none. */
+  flexibleBasePay?: number | null;
   /** Months without payment before the account is forfeited: 12 for Pay the Balance programs, otherwise 6 (forfeitMonthsFor). */
   forfeitMonths?: number;
   /** The program has a registration fee: its New Sale pays the registration only and is not a NOP (saleNops). */
@@ -178,11 +180,12 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   // Amount due: the missed months (U one, 60D two, 90D three, 120D four, 150D five, as before October 12), or the next
   // month when none is missed yet.
   const dueNow = status === "NS" ? 1 : status === "ADV" || status === "Fully Paid" ? 0 : Math.max(1, Math.min(unpaidMonths, 5));
+  const monthly = monthlyPay(account);
   return {
     status, temporarilySuspended, anchor, paidThrough, suspendedAt, forfeitedAt, nop, nextNop: nop + 1,
     lastCoveredMonth, nextMonth: monthName(monthIndex(lastCoveredMonth || account.doi.slice(0, 7)) + 1),
-    monthlyAmount: account.basePay, tmd: account.basePay * nop,
-    balance: forfeited ? null : account.basePay * dueNow,
+    monthlyAmount: monthly, tmd: monthly * nop,
+    balance: forfeited ? null : monthly * dueNow,
     unpaidMonths, latestOrDate: latest?.orDate ?? "", latestOrNumber: latest?.orNumber ?? "",
     dateRemitted: latest?.dateRemitted ?? "", allocations: [...coverage].map(([month, value]) => ({ month, ...value })),
   };

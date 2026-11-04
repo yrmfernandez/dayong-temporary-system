@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
 
 import { accountState, forfeitedPaymentsAllowed, validatePayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
@@ -76,8 +76,10 @@ export type CollectionSubmission = {
   autoSubmitted: boolean; masContact: string;
   /** Rejected: the MAS has seen it, so it no longer counts on the sidebar. */
   rejectionSeen: boolean;
+  /** Saved (the MAS's own list only): the Fidelity the clerk recorded with this batch. */
+  fidelity: number;
 };
-/** One member in the batch being filled. `amount`: typed on a flexible program; "" is the minimum. */
+/** One member in the batch being filled. `amount`: typed on a flexible program; "" is its Base Pay, or the minimum if none. */
 export type DraftItem = { enrollmentId: string; months: number; amount: string; waiver: boolean; addedOn: string };
 /** Batches still waiting for the clerk's save: just submitted, or marked remitted with the OR numbers still to type. */
 const OPEN = ["Submitted", "Remitted"];
@@ -93,7 +95,7 @@ const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): Coll
   clearingId: text(row.clearing_id), remittedAt: stamp(row.remitted_at), remittedByName: text(row.remitted_by_name),
   collectedBy: row.collected_by === "Collector" ? "Collector" : "MAS", memberMasEmployeeId: text(row.member_mas_employee_id) || row.mas_employee_id,
   memberMas: text(row.member_mas) || row.mas, orc: row.collected_by === "Collector" && row.orc === true,
-  autoSubmitted: row.auto_submitted === true, masContact: "", rejectionSeen: Boolean(row.rejection_seen_at),
+  autoSubmitted: row.auto_submitted === true, masContact: "", rejectionSeen: Boolean(row.rejection_seen_at), fidelity: 0,
 });
 
 /** Adds each submission's incentive deadline, from its earliest OR date and its branch's working days. */
@@ -160,7 +162,7 @@ function batchEntry(context: SubmitContext, data: Awaited<ReturnType<typeof load
   if (state.temporarilySuspended && !item.waiver && !auto) throw new Error(`${label} is suspended. Have the member sign the Waiver, then tick Waiver.`);
   try {
     const tiers = tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branch.id);
-    const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, { role: context.as, orc }, item.amount);
+    const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, flexibleBasePay: account.flexibleBasePay ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, { role: context.as, orc }, item.amount);
     // The clerk types the OR number when saving; a stand-in lets the same payment rules run now.
     validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate: day, orNumber: "(typed by the clerk)", waiver: item.waiver || auto ? "Waiver" : "", collectedByRole: context.as, originalMas: asCollector ? ownerName : "" }, day);
     const entry: SubmittedCollection = { enrollmentId: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, ...quote, orDate: day, waiver: item.waiver };
@@ -216,7 +218,7 @@ export async function myCollectionAccounts(user: SessionUser, options: { collect
     const tiers = tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branch.id);
     const base = {
       id: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName,
-      branchId: branch.id, branch: branch.name, basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, tiers,
+      branchId: branch.id, branch: branch.name, basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, flexibleBasePay: account.flexibleBasePay ?? null, tiers,
       pendingIn: pending.get(account.id) ?? "",
     };
     try {
@@ -235,7 +237,14 @@ export async function myCollectionAccounts(user: SessionUser, options: { collect
 /** The MAS's own collection submissions, newest first. */
 export async function listMyCollectionSubmissions(user: SessionUser) {
   const rows = await getDb().select().from(submissions).where(eq(submissions.mas_employee_id, user.employeeId)).orderBy(desc(submissions.row_seq)).limit(50);
-  return withDeadlines(rows);
+  const list = await withDeadlines(rows);
+  // Fidelity is typed by the clerk when saving, on the batch's first collection (app/api/collections/route.ts).
+  const ids = list.flatMap((item) => item.collectionIds);
+  if (!ids.length) return list;
+  const { collections } = schema;
+  const added = await getDb().select({ id: collections.collection_id, fidelity: collections.fidelity_amount }).from(collections).where(and(inArray(collections.collection_id, ids), gt(collections.fidelity_amount, 0)));
+  const fidelityOf = new Map(added.map((item) => [item.id, item.fidelity ?? 0]));
+  return list.map((item) => ({ ...item, fidelity: cents(item.collectionIds.reduce((sum, id) => sum + (fidelityOf.get(id) ?? 0), 0)) }));
 }
 
 /**
