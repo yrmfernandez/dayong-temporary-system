@@ -1822,6 +1822,11 @@ test('a workspace narrows the session to its role; the MAS workspace is a MAS wi
   const hr = { ...admin, roles: ['ROL-H'], roleNames: ['HR Officer'], permissions: none, rolePermissions: { 'hr officer': none } };
   assert.equal(canAccessPath(sessionForWorkspace(hr, 'MAS'), '/mas-sales'), false);
   assert.equal(canAccessPath(sessionForWorkspace(hr, 'MAS'), '/mam'), true);
+  // A Collector has Submit New Sales, in their own workspace and their MAS workspace, but not the clerk's New Sales.
+  const collector = { ...admin, roles: ['ROL-L', 'ROL-F'], roleNames: ['Collector', 'Finance'], permissions: none, rolePermissions: { collector: none, finance: none } };
+  assert.equal(canAccessPath(sessionForWorkspace(collector, 'Collector'), '/mas-sales'), true);
+  assert.equal(canAccessPath(sessionForWorkspace(collector, 'MAS'), '/mas-sales'), true);
+  assert.equal(canAccessPath(sessionForWorkspace(collector, 'Collector'), '/new-sales'), false);
 
   // Never wider: a role not held, no workspace, a single role, or an executive asking for MAS leave it as it is.
   assert.equal(sessionForWorkspace(admin, 'Finance'), admin);

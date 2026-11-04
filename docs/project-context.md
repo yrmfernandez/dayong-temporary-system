@@ -23,6 +23,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 - **Done:** `SubmissionOrTable` is removed from `app/collections/page.tsx`, so an opened batch shows the usual cards (first open, the rest collapsed) and the OR Number is typed on each card. `listMyCollectionSubmissions` and `listMySubmissions` add `fidelity`, read from the saved rows with Fidelity only; My submissions shows it on both Submit Collections and Submit New Sales. No migration.
 - **To do (owner):** check a saved batch with Fidelity as the MAS, and open a batch as the clerk.
 
+### Collector: Submit New Sales (2026-11-04)
+
+- **Asked (owner):** the Collector role does not have Submit New Sales, also not in their virtual MAS; add it.
+- **Done:** `/mas-sales` added to the Collector defaults (`lib/access-control.ts`). A virtual MAS page opens only if the real role allows it too, so this one change gives it in both workspaces. The clerk's New Sales stays closed.
+- **To do (owner):** if Collector has saved pages in Roles on production, tick Submit New Sales there; saved pages replace the defaults. On staging it has none.
+
 ### Submit Collections: first added on top (2026-11-04)
 
 - **Asked (owner):** revert the list on collections, so what they first add is at the top.

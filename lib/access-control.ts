@@ -27,8 +27,9 @@ const roleRoutes: Record<string, string[]> = {
   "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/dropouts", "/search-records", "/fully-paid", "/settings"],
   it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/dropouts", "/search-records", "/fully-paid", "/settings"],
   mas: ["/", "/mas-sales", "/mas-collections", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
-  // A Collector submits the collections of the MAS whose members they collected (Submit Collections, November 3, 2026).
-  collector: ["/", "/mas-collections", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
+  // A Collector submits the collections of the MAS whose members they collected (Submit Collections, November 3, 2026),
+  // and their own New Sales (owner, November 4, 2026), also from their MAS workspace, which needs the page here too.
+  collector: ["/", "/mas-sales", "/mas-collections", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
 };
 
 // Every signed-in employee's shared workspace, added to roles that still use default access.
