@@ -23,6 +23,19 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 - **Done:** `SubmissionOrTable` is removed from `app/collections/page.tsx`, so an opened batch shows the usual cards (first open, the rest collapsed) and the OR Number is typed on each card. `listMyCollectionSubmissions` and `listMySubmissions` add `fidelity`, read from the saved rows with Fidelity only; My submissions shows it on both Submit Collections and Submit New Sales. No migration.
 - **To do (owner):** check a saved batch with Fidelity as the MAS, and open a batch as the clerk.
 
+### Two MAS batches on one handover (2026-11-04)
+
+- **Seen (owner):** saving was refused with the message that the MAS already has a Collections batch waiting for approval.
+- **Done:** a MAS with two batches the same day, the second marked as the same cash, shares one clearing, and the double-batch check then refused the second. `app/api/collections/route.ts` and `app/api/sales/route.ts` skip `waitingBatchProblem` for a submission, which saves only once. A batch typed by hand is still refused.
+- **To do (owner):** confirm TIZON, EDELYN's case was a MAS batch. If it was typed by hand, the refusal was right, and a new clearing is the way for another handover.
+
+### Returned collections: the program can change (2026-11-04)
+
+- **Asked (owner):** when a collection is rejected, allow changing the program, so the amount and what else is affected follow.
+- **Done:** `lib/batch-edit.ts` and `components/batch-editor.tsx`: a returned collection can move to another account of the member with the same branch and MAS. `getReturnedBatch` lists them (`accounts`); `saveCollections` takes `accountId` and `months`, continues that account's next month and NOP, checks it with `validatePayment`, works the incentive out with the new program, and updates both accounts' statuses. Refused when a later payment sits on the old account. No migration.
+- **Tested:** new test in `scripts/test-encoder-tracking.cjs`.
+- **To do (owner):** try it on a returned batch in My Entries.
+
 ### Collector: Submit New Sales (2026-11-04)
 
 - **Asked (owner):** the Collector role does not have Submit New Sales, also not in their virtual MAS; add it.

@@ -3389,6 +3389,77 @@ test('a returned Collections batch can be edited by its clerk, and only while it
   assert.match((await (await edit({ amount: 700, monthTo: after })).json()).message, /only batches you encoded/);
 });
 
+test('a returned collection can move to another account of the member; months, amount and incentive follow (November 4, 2026)', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1), after = rules.monthName(rules.monthIndex(month) + 2);
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  await seedAccount({ doi: month + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('programs', [{ program_id: 'DP-2', program_name: 'Bigger', base_pay: 500 }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-2', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-2', doi: month + '-01', branch: 'BR-1', mas: 'MAS-2', status: 'Active' }]);
+  await seedAccount({ enrollment: 'ENR-9', member: 'MEM-9', memberNumber: 'PH-9', program: 'DP-9', doi: month + '-01' });
+  await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 },
+    { incentive_id: 'I2', program_id: 'DP-2', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 100, incentive_amount: 50 }]);
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: after, amountCollected: 700, nopFrom: 2, nopTo: 3, orNumber: '1001 C', orDate: today };
+  const saved = await h.load('app/api/collections/route.ts').POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'Cash', controlTotal: 400, collections: [entry] }));
+  assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
+  const [{ collection_id: id }] = await query('select collection_id from collections');
+  await query(`update collections set remittance_status = 'Returned'`);
+  const route = h.load('app/api/my-entries/batch/route.ts');
+  const loaded = await (await route.GET(new Request(`http://localhost/api/my-entries/batch?ids=${id}`))).json();
+  const [choices] = loaded.batch.entries.map((item) => item.accounts);
+  assert.deepEqual(choices.map((item) => [item.id, item.monthly, item.nextNop]), [['ENR-1', 350, 2], ['ENR-2', 500, 2]], 'its own account, then the member\'s other one');
+  const edit = (changes) => route.POST(request({ ids: [id], dateRemitted: today, paymentMethod: 'Cash', collectedBy: 'MAS', entries: [{ id, ...changes }] }));
+
+  assert.match((await (await edit({ accountId: 'ENR-9', months: 2, amount: 700 })).json()).message, /same member/);
+  await seed('programs', [{ program_id: 'DP-3', program_name: 'Elsewhere', base_pay: 200 }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-3', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-3', doi: month + '-01', branch: 'BR-1', mas: 'Another MAS', status: 'Active' }]);
+  assert.match((await (await edit({ accountId: 'ENR-3', months: 2, amount: 400 })).json()).message, /same member, branch and MAS/, 'another MAS\'s account');
+  assert.match((await (await edit({ accountId: 'ENR-2', months: 2, amount: 700 })).json()).message, /1000/, 'the amount must fit the new program');
+  const moved = await edit({ accountId: 'ENR-2', months: 2, amount: 1000 });
+  assert.equal(moved.status, 200, JSON.stringify(await moved.clone().json()));
+  const [row] = await query('select enrollment_id, program_id, month_from, month_to, nop_from, nop_to, amount_collected::float8 as amount, remittance_amount::float8 as remit, remittance_status from collections');
+  // ₱500 a month, ₱100 mark-up, 50% of the rest as incentive: ₱300 a month to the company.
+  assert.deepEqual(row, { enrollment_id: 'ENR-2', program_id: 'DP-2', month_from: next, month_to: after, nop_from: 2, nop_to: 3, amount: 1000, remit: 600, remittance_status: 'Returned' });
+});
+
+test('two MAS batches on the same handover both save; a batch typed by hand there is still refused (November 4, 2026)', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7), next = rules.monthName(rules.monthIndex(month) + 1);
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active'], ['DPE-0001', 'clerk', 'BR-1', 'Entry Clerk', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1'], ['EBA-2', 'DPE-0001', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  await seedAccount({ doi: month + '-01' });
+  await seedAccount({ enrollment: 'ENR-2', member: 'MEM-2', memberNumber: 'PH-2', program: 'DP-2', doi: month + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('program_incentives', ['DP-1', 'DP-2'].map((program, index) => ({ incentive_id: `I${index}`, program_id: program, role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 })));
+  await seed('clearings', [{ clearing_id: 'CLR-1', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'MAS-2', cleared_at: `${today}T01:00:00Z`, cleared_date: today, status: 'Open', covers: 'Both' }]);
+  for (const id of ['CSUB-1', 'CSUB-2']) await query(`insert into collection_submissions (submission_id, branch_id, branch, mas_employee_id, mas, status, entries, entry_count, total_amount, total_incentive, submitted_at, clearing_id, remitted_at)
+    values ($1, 'BR-1', 'BR-1', 'DPE-0002', 'MAS-2', 'Remitted', '[]', 1, 350, 150, now(), 'CLR-1', $2)`, [id, `${today}T01:00:00Z`]);
+  const route = h.load('app/api/collections/route.ts');
+  const save = async (memberNumber, programId, orNumber, submissionId) => {
+    const response = await route.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', clearingId: 'CLR-1', submissionId, dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'Cash', controlTotal: 200,
+      collections: [{ memberNumber, programId, monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber, orDate: today }] }));
+    return { status: response.status, body: await response.json() };
+  };
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    const first = await save('PH-1', 'DP-1', '2001 C', 'CSUB-1');
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    assert.match((await save('PH-2', 'DP-2', '2002 C')).body.message, /already has a Collections batch/, 'typed by hand: the guard stays');
+    const second = await save('PH-2', 'DP-2', '2002 C', 'CSUB-2');
+    assert.equal(second.status, 201, JSON.stringify(second.body));
+    assert.match((await save('PH-2', 'DP-2', '2003 C', 'CSUB-2')).body.message, /already saved/, 'a MAS batch still saves once');
+  } finally { globalThis.dayongClearingNotRequired = true; }
+});
+
 test('a returned New Sales batch: application number, date and amount can be fixed, and an entry removed', async () => {
   const h = harness();
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];

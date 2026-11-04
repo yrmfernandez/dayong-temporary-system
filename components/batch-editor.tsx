@@ -17,6 +17,7 @@ type Method = { name: string; isCash: boolean; status: string };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
 const monthsBetween = (from: string, to: string) => (/^\d{4}-\d{2}$/.test(from) && /^\d{4}-\d{2}$/.test(to) && to >= from ? (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(from.slice(5, 7)) + 1 : 0);
+const monthAfter = (month: string, count: number) => { const index = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + count; return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}`; };
 const field = "h-8 text-sm";
 
 /**
@@ -80,6 +81,17 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
     change(entry.id, { sale, ...(program && !program.flexible && !program.amountEditable ? { amountText: String(program.amount) } : {}) });
   };
 
+  // Another account of the member: the receipt keeps its months there, from that account's next month, and the amount
+  // follows the program (owner, November 4, 2026). Back on its own account it is as encoded.
+  const moveTo = (entry: Entry, accountId: string) => {
+    const account = entry.accounts.find((item) => item.id === accountId);
+    const encoded = batch?.entries.find((item) => item.id === entry.id);
+    if (!account || !encoded) return;
+    if (accountId === encoded.accountId) { change(entry.id, { accountId, program: encoded.program, monthFrom: encoded.monthFrom, monthTo: encoded.monthTo, nopFrom: encoded.nopFrom, basePay: encoded.basePay, flexible: encoded.flexible, amountText: String(encoded.amount) }); return; }
+    const months = monthsBetween(entry.monthFrom, entry.monthTo) || 1;
+    change(entry.id, { accountId, program: account.program, monthFrom: account.nextMonth, monthTo: monthAfter(account.nextMonth, months - 1), nopFrom: account.nextNop, basePay: account.minimum, flexible: account.flexible, amountText: (Math.round(account.monthly * 100) * months / 100).toFixed(2) });
+  };
+
   const save = async () => {
     setError("");
     // Application numbers need their dash (owner, October 17, 2026); the server checks again.
@@ -92,7 +104,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
         entries: entries.map((entry) => ({ id: entry.id, remove: entry.remove, orNumber: entry.orNumber, orDate: entry.orDate, amount: Number(entry.amountText), monthTo: entry.monthTo,
           backdateReason: entry.backdateReason, applicationNumber: entry.applicationNumber, notes: entry.notes, ...(isSale ? { doiTime: entry.doiTime } : {}), ...(entry.sale ? { sale: entry.sale } : {}),
           ...(dtoBatch ? {} : { noIncentive: entry.noIncentive, noIncentiveReason: entry.noIncentive ? entry.noIncentiveReason : "" }),
-          ...(isSale ? {} : { reactivation: entry.reactivation, transferred: entry.transferred, waiver: entry.waiver }) })),
+          ...(isSale ? {} : { reactivation: entry.reactivation, transferred: entry.transferred, waiver: entry.waiver, accountId: entry.accountId, months: monthsBetween(entry.monthFrom, entry.monthTo) }) })),
       }) });
       const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the batch.");
@@ -111,7 +123,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
           <p className="flex items-center gap-2 font-semibold"><Pencil className="size-4" />Edit returned batch</p>
           <p className="text-xs text-muted-foreground">{isSale
             ? "Fix what the approver pointed out, then save. Open Details on a sale to correct the member, claimant, program or beneficiaries. The batch stays Returned until you press Resubmit batch."
-            : "Fix what the approver pointed out, then save. Member and program stay as they are; to change them, remove the entry and encode it again. The batch stays Returned until you press Resubmit batch."}</p>
+            : "Fix what the approver pointed out, then save. A member with another account can have the receipt moved to that program; the months, NOP, amount and incentive follow. To change the member, remove the entry and encode it again. The batch stays Returned until you press Resubmit batch."}</p>
           {batch?.returnReason && <p className="mt-1 text-xs text-red-700">Returned: {batch.returnReason}</p>}
         </div>
         <Button type="button" size="icon" variant="ghost" aria-label="Close editor" onClick={onClose}><X className="size-4" /></Button>
@@ -181,7 +193,10 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
                   return (
                     <Fragment key={entry.id}>
                     <tr className={`border-t align-top ${entry.remove ? "opacity-50" : ""}`}>
-                      <td className="p-2"><span className="block font-medium">{shownName || entry.memberNumber}</span><span className="block text-xs text-muted-foreground">{entry.memberNumber}{entry.sale ? "" : ` · ${shownProgram}`}</span>
+                      <td className="p-2"><span className="block font-medium">{shownName || entry.memberNumber}</span><span className="block text-xs text-muted-foreground">{entry.memberNumber}{entry.sale || entry.accounts.length ? "" : ` · ${shownProgram}`}</span>
+                        {/* The program of a Collection, on its row (owner, November 4, 2026): another account of the same member. */}
+                        {!entry.sale && entry.accounts.length > 0 && <div className="mt-1 w-56"><SearchSelect aria-label="Program" className="h-8" value={entry.accountId} disabled={entry.remove} onValueChange={(accountId) => accountId && moveTo(entry, accountId)}
+                          options={entry.accounts.map((account) => ({ value: account.id, label: account.program, description: account.flexible ? `${money(account.monthly)} a month, at least ${money(account.minimum)}` : `${money(account.monthly)} a month` }))} /></div>}
                         {/* The program of a New Sale, on its row (owner, October 29, 2026); fixed once the account has collections. */}
                         {entry.sale && <div className="mt-1 w-56"><SearchSelect aria-label="Program" className="h-8" value={entry.sale.programId} disabled={entry.remove || entry.sale.hasCollections} onValueChange={(programId) => programId && setSale(entry, { programId })}
                           options={(batch.programs ?? []).map((program) => ({ value: program.id, label: program.name, description: program.flexible ? `at least ₱${program.amount}` : `₱${program.amount}${program.amountEditable ? " (editable)" : ""}` }))} />

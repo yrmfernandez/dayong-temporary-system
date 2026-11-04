@@ -91,7 +91,8 @@ async function saveCollections(request: Request, user: SessionUser) {
       const notCleared = await clearingProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections");
       if (notCleared) throw new Error(notCleared);
       // No second batch while one for the same person and day is waiting for approval (double entries; lib/clearing.ts).
-      const waiting = await waitingBatchProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections", clearingId);
+      // A MAS batch is exempt: it is saved once, and two of them can share a handover (owner, November 4, 2026).
+      const waiting = submission ? "" : await waitingBatchProblem(accountable.id, accountable.name, selectedBranch.name, dateRemitted, "Collections", clearingId);
       if (waiting) throw new Error(waiting);
       // A Date Remitted moved off the clearing day (encoding delayed by meetings and the like) needs a reason, kept on each row.
       dateRemittedReason = String(body.dateRemittedReason ?? "").trim().slice(0, 300);
