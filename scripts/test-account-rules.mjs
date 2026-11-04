@@ -181,6 +181,8 @@ test("Fully Paid: a term program completes at its last month, a recorded full pa
   const recorded = { ...d420, fullyPaidOn: "2025-12-20" };
   assert.equal(accountState(recorded, [], "2025-12-19").status, "Forfeited", "before the recorded date the receipts decide");
   assert.equal(accountState(recorded, [], "2026-03-01").status, "Fully Paid");
+  assert.equal(accountState(recorded, [], "2026-03-01").temporarilySuspended, false, "fully paid: never suspended, however long ago the last payment");
+  assert.equal(accountState(d420, upTo(60), "2027-12-31").temporarilySuspended, false);
   // Flexible with a Base Pay: shown as the monthly amount and due; the minimum is still what is accepted.
   const based = { ...account, basePay: 150, payBalanceTotal: 25200, flexible: true, flexibleBasePay: 210 };
   const basedState = accountState(based, [], "2026-01-20");

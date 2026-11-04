@@ -162,7 +162,8 @@ export function accountState(account: Account, allPayments: AccountPayment[], to
   // it), so holding it kept an account Forfeited after its receipts were corrected (PH-73684484).
   const keepsStoredForfeit = (account.forfeitMonths ?? 6) <= 6;
   const forfeited = !paid && ((keepsStoredForfeit && account.forfeitHeld === true) || today >= forfeitedAt);
-  const temporarilySuspended = !forfeited && today >= suspendedAt;
+  // A fully paid account owes nothing, so it is never suspended (owner, November 4, 2026: PH-07356094).
+  const temporarilySuspended = !paid && !forfeited && today >= suspendedAt;
   const currentMonth = today.slice(0, 7);
   const firstMonth = months[0] ?? account.doi.slice(0, 7);
   if (months.length && monthCount(firstMonth, lastCoveredMonth) !== months.length) throw new Error(`Account ${account.id} has gaps in payment coverage. Review its history.`);
