@@ -17,6 +17,11 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Submitted by MAS: the clerk chooses the branch (2026-11-04)
+
+- **Asked (owner):** on Submitted by MAS, the clerk can choose what branch.
+- **Done:** `useSubmissionBranches` (`components/submission-branches.tsx`) lists All branches and each branch with batches waiting, on Collections and New Sales. It filters what the server already returns, so a clerk still sees only their assigned branches (administrators: every branch). The warning on Collections and the tab counts still cover all branches. No migration.
+
 ### The red number for a rejected batch clears when seen (2026-11-04)
 
 - **Asked (owner):** how the rejected notification disappears; it only expired after 2 days, even after the MAS read it or submitted again. Owner chose to clear it when seen.

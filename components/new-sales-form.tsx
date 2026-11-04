@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ReactNode } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { useSubmissionBranches } from "@/components/submission-branches";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -284,6 +286,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const [masProfile, setMasProfile] = useState<MasProfile | null>(null);
   // Clerk: submissions waiting in their branches. MAS: their own submissions.
   const [submissionList, setSubmissionList] = useState<SubmissionSummary[]>([]);
+  const submissionBranches = useSubmissionBranches(submissionList);
   const [submissionError, setSubmissionError] = useState("");
   const [submissionRevision, setSubmissionRevision] = useState(0);
 
@@ -1478,7 +1481,7 @@ Is this cash part of that handover?`) ? "same"
       {masMode && tab === "submitted" ? (
         <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={(submission, asNew) => void openSubmission(submission, asNew)} />
       ) : tab === "submitted" ? (
-        <SubmissionList submissions={submissionList} activeId={submissionId} onOpen={(submission) => void openSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onReject={(submission) => void rejectSubmission(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} />
+        <SubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={submissionId} onOpen={(submission) => void openSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onReject={(submission) => void rejectSubmission(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} />
       ) : (<>
       {submissionId && (
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -3011,7 +3014,7 @@ const memberNames = (submission: SubmissionSummary) => submission.sales.map((sal
  * Clerk: New Sales the MAS submitted in their branches, oldest first. As on Collections (owner, November 3, 2026):
  * Mark remitted when the cash is handed over, Review to correct and save, Reject only a batch that should not be saved.
  */
-function SubmissionList({ submissions, activeId, onOpen, onRemit, onReject, onRefresh }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary) => void; onRemit: (submission: SubmissionSummary) => void; onReject: (submission: SubmissionSummary) => void; onRefresh: () => void }) {
+function SubmissionList({ submissions, branchPicker, activeId, onOpen, onRemit, onReject, onRefresh }: { submissions: SubmissionSummary[]; branchPicker: ReactNode; activeId: string; onOpen: (submission: SubmissionSummary) => void; onRemit: (submission: SubmissionSummary) => void; onReject: (submission: SubmissionSummary) => void; onRefresh: () => void }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -3020,6 +3023,7 @@ function SubmissionList({ submissions, activeId, onOpen, onRemit, onReject, onRe
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground">Only you can change a submission: correct anything wrong with Review, then save; it is not sent back to the MAS. When the MAS hands the cash over, press <strong>Mark remitted</strong> at once: that time decides the incentive (kept if by the deadline shown, 3:00 PM the next working day after the application date), so the details can be typed later. <strong>Reject</strong> only a batch that should not be saved at all, before Mark remitted.</p>
+        {branchPicker}
         {!submissions.length && <p className="text-sm text-muted-foreground">No submissions waiting in your branches.</p>}
         {submissions.map((submission) => {
           const late = Boolean(submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline);

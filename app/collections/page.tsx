@@ -7,6 +7,7 @@ import { ClearingPicker } from "@/components/clearing-picker";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { enterToNextField } from "@/lib/enter-to-next";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
+import type { ReactNode } from "react";
 import {
   Plus,
   Trash2,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { useSubmissionBranches } from "@/components/submission-branches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -373,6 +375,7 @@ export default function CollectionsPage() {
   const [tab, setTab] = useState<"encode" | "submitted">("encode");
   const [reviewing, setReviewing] = useState<ReviewedSubmission | null>(null);
   const [submissionList, setSubmissionList] = useState<CollectionSubmissionSummary[]>([]);
+  const submissionBranches = useSubmissionBranches(submissionList);
   const [submissionError, setSubmissionError] = useState("");
   const [submissionRevision, setSubmissionRevision] = useState(0);
   useEffect(() => {
@@ -1180,7 +1183,7 @@ export default function CollectionsPage() {
       {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
       <UnremittedCollectionsWarning submissions={submissionList} onShow={() => setTab("submitted")} />
 
-      {tab === "submitted" ? <CollectionSubmissionList submissions={submissionList} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} /> : <>
+      {tab === "submitted" ? <CollectionSubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} /> : <>
       {reviewing && (
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <p>Reviewing a submission from {reviewing.mas} ({reviewing.branch}). Pick their handover in From Clearing (save only once the cash is received), type each OR number, and correct anything wrong here: months, amount, Waiver, or remove a member. The MAS cannot change it.</p>
@@ -2267,7 +2270,7 @@ function SubmissionOrTable({ entries, memberName, activeId, onOr, onOpen }: { en
 }
 
 /** Collections that MAS submitted in the clerk's branches, oldest first (lib/collection-submissions.ts). */
-function CollectionSubmissionList({ submissions, activeId, onOpen, onReject, onRemit, onRefresh }: { submissions: CollectionSubmissionSummary[]; activeId: string; onOpen: (submission: CollectionSubmissionSummary) => void; onReject: (submission: CollectionSubmissionSummary) => void; onRemit: (submission: CollectionSubmissionSummary) => void; onRefresh: () => void }) {
+function CollectionSubmissionList({ submissions, branchPicker, activeId, onOpen, onReject, onRemit, onRefresh }: { submissions: CollectionSubmissionSummary[]; branchPicker: ReactNode; activeId: string; onOpen: (submission: CollectionSubmissionSummary) => void; onReject: (submission: CollectionSubmissionSummary) => void; onRemit: (submission: CollectionSubmissionSummary) => void; onRefresh: () => void }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -2276,6 +2279,7 @@ function CollectionSubmissionList({ submissions, activeId, onOpen, onReject, onR
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground">The MAS chose the members and months; the OR date is the day they added each member. Only you can change a batch. When the MAS hands the cash over, press <strong>Mark remitted</strong> at once: that time decides the incentive (kept if by the deadline shown, 3:00 PM the next working day), so the OR numbers can be typed later with Review, even after 3:00 PM. The Date Remitted can still be changed with a reason.</p>
+        {branchPicker}
         {!submissions.length && <p className="text-sm text-muted-foreground">No submissions waiting in your branches.</p>}
         {submissions.map((submission) => (
           <div key={submission.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
