@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Forgotten MAS collections are sent automatically; the clerk is warned (2026-11-04)
+
+- **Asked (owner):** if a MAS forgets to submit within the day, it should submit automatically, and the clerk should be warned that this MAS has collections and must be contacted to remit.
+- **Done:** the batch moved from the tab's sessionStorage to `collection_drafts` on the server (saved 0.6 s after each change, `PUT /api/collection-submissions`), each member with `addedOn`. The nightly jobs run `autoSubmitCollectionDrafts` first: members from earlier days become submissions with `auto_submitted`, OR date the day added, judged as of that day. Collections shows `ForgottenCollectionsWarning` until Mark remitted, with the MAS's contact number. Submit Collections says members left at midnight are sent, and My submissions marks those batches. Migration `0041`. System guide § 4 has the rules.
+- **Status:** type check and build pass; the changed files lint clean; `scripts/test-encoder-tracking.cjs` runs the nightly send on PGlite. Not yet tried on staging or on a phone.
+- **To do (owner):** `npm run db:migrate` on staging, try it (add a member, do not submit, run the nightly jobs from System Health the next day), then `npm run prod -- npm run db:migrate` **before** pushing.
+- **To decide (owner):** a MAS adding a member before collecting (as a plan) has them sent at midnight if not removed. Only batches sent automatically warn the clerk, not a batch submitted but never remitted.
+
 ### Submit Collections: flexible programs take the amount paid (2026-11-03)
 
 - **Asked (owner):** in Submit Collections, for a flexible program, they input the amount.

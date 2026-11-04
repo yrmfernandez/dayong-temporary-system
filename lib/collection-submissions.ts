@@ -41,12 +41,19 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  * if they are also a MAS) or Collector. As Collector they pick whose members they collected, any MAS of their branches,
  * and ORC Yes or No for the batch. The Collector tier applies (ORC: half of the MAS incentive); the Collector is
  * accountable and remits the cash, and each payment keeps the member's MAS on record, as on the Collections form.
+ *
+ * Forgotten batches (owner, November 4, 2026): the batch being filled is kept on the server (collection_drafts), each
+ * member with the day they were added. After midnight the nightly job sends what is left from earlier days, OR date the
+ * day added, and the clerk is warned to contact the MAS so the cash is remitted. See autoSubmitCollectionDrafts.
  */
 const submissions = schema.collection_submissions;
+const drafts = schema.collection_drafts;
 export { MAX_SUBMISSION_ENTRIES };
 const text = (value: unknown) => String(value ?? "").trim();
 const sameName = (a: unknown, b: unknown) => text(a).replace(/\s+/g, " ").toLowerCase() === text(b).replace(/\s+/g, " ").toLowerCase();
 const cents = (value: number) => Math.round(value * 100) / 100;
+/** A batch may run past what one Submit takes (MAX_SUBMISSION_ENTRIES); the page asks to submit it in parts. */
+const MAX_DRAFT_ENTRIES = 100;
 
 /** One member's payment as the MAS submitted it, with what the system worked out. */
 export type SubmittedCollection = {
@@ -65,7 +72,11 @@ export type CollectionSubmission = {
   clearingId: string; remittedAt: string; remittedByName: string;
   /** Collected by the submitter as MAS, or as Collector for the members of memberMas (with ORC or not). */
   collectedBy: CollectedBy; memberMasEmployeeId: string; memberMas: string; orc: boolean;
+  /** Sent by the nightly job because it was never submitted; masContact (clerk's list only) is who to call. */
+  autoSubmitted: boolean; masContact: string;
 };
+/** One member in the batch being filled. `amount`: typed on a flexible program; "" is the minimum. */
+export type DraftItem = { enrollmentId: string; months: number; amount: string; waiver: boolean; addedOn: string };
 /** Batches still waiting for the clerk's save: just submitted, or marked remitted with the OR numbers still to type. */
 const OPEN = ["Submitted", "Remitted"];
 const stamp = (value: string | null | undefined) => { if (!value) return ""; const at = manilaNow(new Date(value)); return `${at.date} ${at.time}`; };
@@ -80,6 +91,7 @@ const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): Coll
   clearingId: text(row.clearing_id), remittedAt: stamp(row.remitted_at), remittedByName: text(row.remitted_by_name),
   collectedBy: row.collected_by === "Collector" ? "Collector" : "MAS", memberMasEmployeeId: text(row.member_mas_employee_id) || row.mas_employee_id,
   memberMas: text(row.member_mas) || row.mas, orc: row.collected_by === "Collector" && row.orc === true,
+  autoSubmitted: row.auto_submitted === true, masContact: "",
 });
 
 /** Adds each submission's incentive deadline, from its earliest OR date and its branch's working days. */
@@ -106,7 +118,7 @@ function blockedReason(status: string, today: string) {
  * Collector (Collector role only): the members of the chosen MAS, an active employee with the MAS role who shares one of
  * the Collector's branches. `masOptions` lists those MAS for the page.
  */
-async function collectorContext(user: SessionUser, collectedBy: unknown, memberMasEmployeeId: unknown) {
+async function collectorContext(user: Pick<SessionUser, "employeeId">, collectedBy: unknown, memberMasEmployeeId: unknown) {
   const [profile, employees] = await Promise.all([masProfile(user), getEmployees()]);
   const roles = employees.find((item) => item.id === profile.employeeId)?.roles ?? [];
   const isCollector = roles.includes("collector"), isMas = roles.includes("mas");
@@ -120,6 +132,58 @@ async function collectorContext(user: SessionUser, collectedBy: unknown, memberM
   if (as === "Collector" && !isCollector) throw new Error("Only an employee with the Collector role can collect as Collector. Ask HR.");
   const memberMas = as === "Collector" ? masOptions.find((item) => item.employeeId === text(memberMasEmployeeId)) ?? null : null;
   return { profile, isCollector, isMas, masOptions, as, memberMas };
+}
+type SubmitContext = Awaited<ReturnType<typeof collectorContext>>;
+type Choice = { enrollmentId: string; months: number; amount: number | null; waiver: boolean };
+
+/**
+ * One member of a batch, worked out again from the account with the same money rules as the Collections save; `day` is
+ * the OR date, and the account is judged as of that day. Sent automatically (`auto`), a suspended account goes through
+ * without Waiver ticked: the member paid, and the clerk's form still asks for the Waiver before saving.
+ */
+function batchEntry(context: SubmitContext, data: Awaited<ReturnType<typeof loadAccountData>>, item: Choice, day: string, orc: boolean, auto = false) {
+  const { profile, memberMas } = context;
+  const asCollector = context.as === "Collector";
+  const ownerName = memberMas?.name ?? profile.name;
+  const account = data.accounts.find((candidate) => candidate.id === item.enrollmentId);
+  if (!account) throw new Error("A member in the batch no longer has this program. Reload the page.");
+  const label = `${account.memberName} (${account.programName})`;
+  if (!sameName(account.mas, ownerName)) throw new Error(asCollector ? `${label} is not a member of ${ownerName}.` : `${label} is not your member.`);
+  const branch = profile.branches.find((candidate) => sameName(candidate.name, account.branch));
+  if (!branch) throw new Error(`${label} belongs to ${account.branch || "no branch"}, which is not one of your branches. Ask HR.`);
+  const state = accountState(account, data.payments, day);
+  const blocked = blockedReason(state.status, day);
+  if (blocked) throw new Error(`${label}: ${blocked}`);
+  // Suspension is judged on the OR date, as the Collections save does (lib/account-rules.ts validatePayment).
+  if (state.temporarilySuspended && !item.waiver && !auto) throw new Error(`${label} is suspended. Have the member sign the Waiver, then tick Waiver.`);
+  try {
+    const tiers = tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branch.id);
+    const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, { role: context.as, orc }, item.amount);
+    // The clerk types the OR number when saving; a stand-in lets the same payment rules run now.
+    validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate: day, orNumber: "(typed by the clerk)", waiver: item.waiver || auto ? "Waiver" : "", collectedByRole: context.as, originalMas: asCollector ? ownerName : "" }, day);
+    const entry: SubmittedCollection = { enrollmentId: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, ...quote, orDate: day, waiver: item.waiver };
+    return { branch, entry };
+  } catch (error) {
+    throw new Error(`${label}: ${error instanceof Error ? error.message : "cannot be collected."}`);
+  }
+}
+
+/** One submission per branch, in the order the branches first appear. */
+function batchRows(context: SubmitContext, entries: Array<ReturnType<typeof batchEntry>>, orc: boolean, auto = false) {
+  const { profile, memberMas } = context;
+  const byBranch = new Map<string, { branch: { id: string; name: string }; entries: SubmittedCollection[] }>();
+  for (const { branch, entry } of entries) {
+    const group = byBranch.get(branch.id) ?? { branch, entries: [] };
+    group.entries.push(entry);
+    byBranch.set(branch.id, group);
+  }
+  const actor = getEncoder();
+  return [...byBranch.values()].map(({ branch, entries: group }) => ({
+    submission_id: createReadableId("CSUB"), branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted",
+    entries: group, entry_count: group.length, total_amount: cents(group.reduce((sum, entry) => sum + entry.amount, 0)),
+    total_incentive: cents(group.reduce((sum, entry) => sum + entry.incentive, 0)), submitted_at: actor.encodedAt,
+    collected_by: context.as, member_mas_employee_id: memberMas?.employeeId ?? null, member_mas: memberMas?.name ?? null, orc, auto_submitted: auto, ...encodedBy(),
+  }));
 }
 
 /** enrollment ID -> the open submission (anyone's) that already has it: saving both would pay it twice. */
@@ -183,7 +247,6 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
   const { profile, memberMas } = context;
   const asCollector = context.as === "Collector";
   if (asCollector && !memberMas) throw new Error("Choose whose members you collected: a MAS of your branches.");
-  const ownerName = memberMas?.name ?? profile.name;
   const orc = asCollector && input.orc === true;
   if (!profile.branches.length) throw new Error("You are not assigned to an active branch. Ask HR to assign you.");
   if (!Array.isArray(input.entries) || !input.entries.length) throw new Error("Add at least one member.");
@@ -200,47 +263,95 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
 
   const today = manilaNow().date;
   const data = await loadAccountData({ enrollmentIds: ids });
-  const entries = chosen.map((item) => {
-    const account = data.accounts.find((candidate) => candidate.id === item.enrollmentId);
-    if (!account) throw new Error("A member in the batch no longer has this program. Reload the page.");
-    const label = `${account.memberName} (${account.programName})`;
-    if (!sameName(account.mas, ownerName)) throw new Error(asCollector ? `${label} is not a member of ${ownerName}.` : `${label} is not your member.`);
-    const branch = profile.branches.find((candidate) => sameName(candidate.name, account.branch));
-    if (!branch) throw new Error(`${label} belongs to ${account.branch || "no branch"}, which is not one of your branches. Ask HR.`);
-    const orDate = today;
-    const state = accountState(account, data.payments, today);
-    const blocked = blockedReason(state.status, today);
-    if (blocked) throw new Error(`${label}: ${blocked}`);
-    // Suspension is judged on the OR date, as the Collections save does (lib/account-rules.ts validatePayment).
-    if (accountState(account, data.payments, orDate).temporarilySuspended && !item.waiver) throw new Error(`${label} is suspended. Have the member sign the Waiver, then tick Waiver.`);
-    try {
-      const tiers = tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branch.id);
-      const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, { role: context.as, orc }, item.amount);
-      // The clerk types the OR number when saving; a stand-in lets the same payment rules run now.
-      validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate, orNumber: "(typed by the clerk)", waiver: item.waiver ? "Waiver" : "", collectedByRole: context.as, originalMas: asCollector ? ownerName : "" }, today);
-      const entry: SubmittedCollection = { enrollmentId: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, ...quote, orDate, waiver: item.waiver };
-      return { branch, entry };
-    } catch (error) {
-      throw new Error(`${label}: ${error instanceof Error ? error.message : "cannot be collected."}`);
-    }
-  });
+  const entries = chosen.map((item) => batchEntry(context, data, item, today, orc));
 
-  // One submission per branch, in the order the branches first appear; all saved or none.
-  const byBranch = new Map<string, { branch: { id: string; name: string }; entries: SubmittedCollection[] }>();
-  for (const { branch, entry } of entries) {
-    const group = byBranch.get(branch.id) ?? { branch, entries: [] };
-    group.entries.push(entry);
-    byBranch.set(branch.id, group);
-  }
-  const actor = getEncoder();
-  const batches = [...byBranch.values()].map(({ branch, entries: group }) => ({
-    submission_id: createReadableId("CSUB"), branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted",
-    entries: group, entry_count: group.length, total_amount: cents(group.reduce((sum, entry) => sum + entry.amount, 0)),
-    total_incentive: cents(group.reduce((sum, entry) => sum + entry.incentive, 0)), submitted_at: actor.encodedAt,
-    collected_by: context.as, member_mas_employee_id: memberMas?.employeeId ?? null, member_mas: memberMas?.name ?? null, orc, ...encodedBy(),
-  }));
-  await inTransaction(() => currentDb().insert(submissions).values(batches));
+  // All saved or none; the members sent leave the batch kept for the nightly job.
+  const batches = batchRows(context, entries, orc);
+  await inTransaction(async () => {
+    await currentDb().insert(submissions).values(batches);
+    await removeFromDraft(profile.employeeId, ids);
+  });
   return { ids: batches.map((batch) => batch.submission_id), entryCount: entries.length, collectedBy: context.as, memberMas: memberMas?.name ?? "", batches: batches.map((batch) => ({ branch: batch.branch, entryCount: batch.entry_count })) };
+}
+
+const draftItems = (row: { entries: unknown } | undefined) => (Array.isArray(row?.entries) ? row.entries as DraftItem[] : []);
+
+/** Keeps `entries` as the person's batch, or removes the row when nothing is left. */
+async function writeDraft(employeeId: string, entries: DraftItem[]) {
+  if (!entries.length) await currentDb().delete(drafts).where(eq(drafts.employee_id, employeeId));
+  else await currentDb().update(drafts).set({ entries, updated_at: new Date().toISOString() }).where(eq(drafts.employee_id, employeeId));
+}
+
+async function removeFromDraft(employeeId: string, ids: string[]) {
+  const [row] = await currentDb().select({ entries: drafts.entries }).from(drafts).where(eq(drafts.employee_id, employeeId));
+  if (row) await writeDraft(employeeId, draftItems(row).filter((item) => !ids.includes(item.enrollmentId)));
+}
+
+/** The batch the person is still filling, for any of their devices. */
+export async function myCollectionDraft(user: SessionUser) {
+  const [row] = await getDb().select().from(drafts).where(eq(drafts.employee_id, user.employeeId));
+  return row ? { entries: draftItems(row), collectedBy: row.collected_by, memberMasEmployeeId: text(row.member_mas_employee_id), orc: row.orc } : null;
+}
+
+/** Saves the batch as it stands on the page. A member already in it keeps the day they were added; a new one is today's. */
+export async function saveCollectionDraft(user: SessionUser, input: { entries?: unknown; collectedBy?: unknown; memberMasEmployeeId?: unknown; orc?: unknown }) {
+  if (!user.employeeId) throw new Error("Your sign-in account is not linked to an employee. Ask IT to link it.");
+  if (!Array.isArray(input.entries) || input.entries.length > MAX_DRAFT_ENTRIES) throw new Error("The batch has too many members. Submit some first.");
+  const [row] = await getDb().select({ entries: drafts.entries }).from(drafts).where(eq(drafts.employee_id, user.employeeId));
+  const added = new Map(draftItems(row).map((item) => [item.enrollmentId, item.addedOn]));
+  const today = manilaNow().date;
+  const entries: DraftItem[] = (input.entries as Array<Record<string, unknown>>).filter((entry) => text(entry?.enrollmentId)).map((entry) => ({
+    enrollmentId: text(entry.enrollmentId), months: Number(entry.months) || 1, amount: text(entry.amount), waiver: entry.waiver === true, addedOn: added.get(text(entry.enrollmentId)) ?? today,
+  }));
+  if (!entries.length) { await getDb().delete(drafts).where(eq(drafts.employee_id, user.employeeId)); return; }
+  const values = { collected_by: input.collectedBy === "Collector" ? "Collector" : "MAS", member_mas_employee_id: text(input.memberMasEmployeeId) || null, orc: input.orc === true, entries, updated_at: new Date().toISOString() };
+  await getDb().insert(drafts).values({ employee_id: user.employeeId, ...values }).onConflictDoUpdate({ target: drafts.employee_id, set: values });
+}
+
+/**
+ * Nightly (lib/nightly-jobs.ts): members left in a batch from an earlier day are sent to the clerk as if submitted that
+ * day, as of that day, so forgetting neither moves the incentive deadline nor costs the member a Waiver. A member already
+ * waiting in a submission, paid since the day added, or no longer on the program is dropped. One that cannot be sent stays in the batch, where the
+ * MAS sees why, and is tried again the next night; members added today stay too.
+ */
+export async function autoSubmitCollectionDrafts() {
+  const today = manilaNow().date;
+  const rows = (await getDb().select().from(drafts)).filter((row) => draftItems(row).some((item) => item.addedOn < today));
+  const result = { batches: 0, members: 0, held: 0, failed: 0 };
+  if (!rows.length) return result;
+  const ids = rows.flatMap((row) => draftItems(row).map((item) => item.enrollmentId));
+  const [pending, data] = await Promise.all([pendingAccounts(), loadAccountData({ enrollmentIds: ids })]);
+  for (const row of rows) {
+    try {
+      const context = await collectorContext({ employeeId: row.employee_id }, row.collected_by, row.member_mas_employee_id);
+      const orc = context.as === "Collector" && row.orc;
+      const keep: DraftItem[] = [];
+      const entries: Array<ReturnType<typeof batchEntry>> = [];
+      for (const item of draftItems(row)) {
+        if (item.addedOn >= today) { keep.push(item); continue; }
+        if (pending.has(item.enrollmentId)) continue;
+        try {
+          const account = data.accounts.find((candidate) => candidate.id === item.enrollmentId);
+          if (!account || accountState(account, data.payments, today).latestOrDate >= item.addedOn) continue;
+          entries.push(batchEntry(context, data, { ...item, amount: item.amount.trim() ? Number(item.amount) : null }, item.addedOn, orc, true));
+          pending.set(item.enrollmentId, "");
+        } catch (error) {
+          console.error(`Automatic collection submission: kept in the batch of ${row.employee_id}.`, error);
+          keep.push(item); result.held++;
+        }
+      }
+      const batches = entries.length ? batchRows(context, entries, orc, true) : [];
+      await inTransaction(async () => {
+        if (batches.length) await currentDb().insert(submissions).values(batches);
+        await writeDraft(row.employee_id, keep);
+      });
+      result.batches += batches.length; result.members += entries.length;
+    } catch (error) {
+      console.error(`Automatic collection submission failed for ${row.employee_id}.`, error);
+      result.failed++;
+    }
+  }
+  return result;
 }
 
 /** Submissions waiting for the clerk in their branches (submitted, or marked remitted and not yet saved), oldest first. */
@@ -249,7 +360,11 @@ export async function listCollectionsForReview(user: SessionUser) {
   if (scope && !scope.length) return [];
   const waiting = inArray(submissions.status, OPEN);
   const rows = await getDb().select().from(submissions).where(scope ? and(waiting, inArray(submissions.branch_id, scope)) : waiting).orderBy(submissions.row_seq);
-  return withDeadlines(rows);
+  const list = await withDeadlines(rows);
+  if (!list.some((item) => item.autoSubmitted)) return list;
+  // The clerk has to reach whoever forgot to submit.
+  const employees = await getEmployees();
+  return list.map((item) => item.autoSubmitted ? { ...item, masContact: text(employees.find((employee) => employee.id === item.masEmployeeId)?.contact) } : item);
 }
 
 /** A submission the clerk may save now, matching the batch's branch and accountable MAS (by ID); throws otherwise. */

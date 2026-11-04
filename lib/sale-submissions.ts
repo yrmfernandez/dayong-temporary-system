@@ -71,7 +71,7 @@ async function withDeadlines(rows: Array<typeof submissions.$inferSelect>) {
 }
 
 /** The signed-in MAS: their employee record and the active branches they are assigned to. */
-export async function masProfile(user: SessionUser) {
+export async function masProfile(user: Pick<SessionUser, "employeeId">) {
   const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
   const employee = employees.find((item) => item.id === user.employeeId);
   if (!employee) throw new Error("Your sign-in account is not linked to an employee. Ask IT to link it.");

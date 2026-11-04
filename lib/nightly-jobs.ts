@@ -1,5 +1,6 @@
 import { syncAccountStatuses } from "@/lib/account-data";
 import { closeFinishedAttendanceDays } from "@/lib/auto-absence";
+import { autoSubmitCollectionDrafts } from "@/lib/collection-submissions";
 import { databaseAllowance, PLAN_LABEL, recordCapacity } from "@/lib/capacity";
 import { runAsSystem } from "@/lib/encoder-context";
 import { findExceptions } from "@/lib/exceptions";
@@ -16,6 +17,7 @@ import { getSetting, saveSetting } from "@/lib/system-settings";
  * 2. Account statuses: stores each account's current status (Active, 60D, Suspended, Forfeited, ...) where it changed.
  * 3. Exceptions: counts the data problems, so IT sees the number without opening the page (nothing is changed).
  * 4. Database size: records the database and receipt-photo Storage sizes for the growth figures (upgrade #10).
+ * 5. Forgotten collections (run first, since cash depends on it): sends the batches a MAS or Collector did not submit.
  */
 export const NIGHTLY_KEY = "nightly_last_run";
 
@@ -38,6 +40,11 @@ export function runNightlyJobs(trigger: string) {
   return runAsSystem(async () => {
     const startedAt = new Date().toISOString();
     const steps: NightlyStep[] = [];
+    steps.push(await step("Forgotten MAS collections", async () => {
+      const { batches, members, held, failed } = await autoSubmitCollectionDrafts();
+      if (failed) throw new Error(`${failed} batch${failed === 1 ? "" : "es"} could not be sent; ${members} member${members === 1 ? "" : "s"} were.`);
+      return `${members ? `${members} member${members === 1 ? "" : "s"} sent to the clerks in ${batches} batch${batches === 1 ? "" : "es"}.` : "Nothing left unsubmitted."}${held ? ` ${held} kept in the batch: they cannot be sent.` : ""}`;
+    }));
     steps.push(await step("Attendance: system absences", async () => {
       let recorded = 0;
       for (let round = 0; round < MAX_ABSENCE_ROUNDS; round++) {

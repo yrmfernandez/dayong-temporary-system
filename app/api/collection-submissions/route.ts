@@ -3,7 +3,7 @@ import { canAccessPath } from "@/lib/access-control";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { AlreadyClearedError } from "@/lib/clearing";
 import { withEncoder } from "@/lib/encoder-context";
-import { listCollectionsForReview, listMyCollectionSubmissions, markCollectionSubmissionRemitted, myCollectionAccounts, rejectCollectionSubmission, submitCollections } from "@/lib/collection-submissions";
+import { listCollectionsForReview, listMyCollectionSubmissions, markCollectionSubmissionRemitted, myCollectionAccounts, myCollectionDraft, rejectCollectionSubmission, saveCollectionDraft, submitCollections } from "@/lib/collection-submissions";
 
 const noStore = { "Cache-Control": "private, no-store" };
 const failure = (error: unknown, fallback: string, status = 400) => Response.json({ success: false, message: error instanceof Error ? error.message : fallback }, { status });
@@ -27,8 +27,8 @@ export async function GET(request: Request) {
   const user = await userWithPageAccess("/mas-collections");
   if (!user) return noAccess("Submit Collections");
   try {
-    const [mine, submissions] = await Promise.all([myCollectionAccounts(user, { collectedBy: params.get("collectedBy") ?? "", memberMasEmployeeId: params.get("mas") ?? "" }), listMyCollectionSubmissions(user)]);
-    return Response.json({ success: true, ...mine, submissions }, { headers: noStore });
+    const [mine, submissions, draft] = await Promise.all([myCollectionAccounts(user, { collectedBy: params.get("collectedBy") ?? "", memberMasEmployeeId: params.get("mas") ?? "" }), listMyCollectionSubmissions(user), myCollectionDraft(user)]);
+    return Response.json({ success: true, ...mine, submissions, draft }, { headers: noStore });
   } catch (error) { return failure(error, "Unable to load your members."); }
 }
 
@@ -48,6 +48,18 @@ export const POST = withEncoder(async (request: Request) => {
       : `Submitted as ${result.batches.length} batches, one per branch: ${result.batches.map((batch) => `${batch.branch} (${members(batch.entryCount)})`).join(", ")}. Remit each at its branch.`) + whose;
     return Response.json({ success: true, ...result, message }, { status: 201 });
   } catch (error) { return failure(error, "Unable to submit the collections."); }
+});
+
+/** The batch being filled, saved as it changes; what is left of it after midnight is sent automatically. */
+export const PUT = withEncoder(async (request: Request) => {
+  const dayOff = await refuseOnDayOff();
+  if (dayOff) return dayOff;
+  const user = await userWithPageAccess("/mas-collections");
+  if (!user) return noAccess("Submit Collections");
+  try {
+    await saveCollectionDraft(user, await request.json());
+    return Response.json({ success: true });
+  } catch (error) { return failure(error, "Unable to save the batch."); }
 });
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Minus, Plus, Search, Trash2, X } from "lucide-react";
 
 import { confirmDialog } from "@/components/app-dialog";
@@ -40,7 +40,7 @@ type Entry = { enrollmentId: string; memberName: string; programName: string; mo
 type Submission = {
   id: string; branchId: string; branch: string; status: "Submitted" | "Remitted" | "Rejected" | "Saved"; entries: Entry[]; entryCount: number; totalAmount: number; totalIncentive: number;
   submittedAt: string; returnReason: string; reviewedByName: string; incentiveDeadline: string; remittedAt: string; remittedByName: string;
-  collectedBy: CollectedBy; memberMas: string; orc: boolean;
+  collectedBy: CollectedBy; memberMas: string; orc: boolean; autoSubmitted: boolean;
 };
 type Profile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
 type CollectedBy = "MAS" | "Collector";
@@ -81,13 +81,37 @@ export default function MasCollectionsPage() {
   const memberMas = asCollector ? collector?.masOptions.find((item) => item.employeeId === collector.memberMasEmployeeId) : undefined;
   const quoteAs = { role: asCollector ? "Collector" as const : "MAS" as const, orc: asCollector && orc };
 
-  // The unfinished batch survives leaving the page (lib/use-form-draft.ts).
-  useFormDraft("mas-collections", { branchId, batch, choice, orc }, (draft) => {
+  // The filters survive leaving the page (lib/use-form-draft.ts); the batch itself is kept on the server, below.
+  useFormDraft("mas-collections", { branchId, choice, orc }, (draft) => {
     setBranchId(draft.branchId ?? "");
     if (draft.choice) setChoice({ collectedBy: draft.choice.collectedBy === "Collector" || draft.choice.collectedBy === "MAS" ? draft.choice.collectedBy : "", mas: String(draft.choice.mas ?? "") });
     setOrc(draft.orc === true);
-    setBatch(Array.isArray(draft.batch) ? draft.batch.map(({ enrollmentId, months, amount, waiver }) => ({ enrollmentId, months, amount: typeof amount === "string" ? amount : "", waiver })) : []);
   });
+
+  // The batch is saved on the server as it changes, so what is forgotten is sent after midnight (lib/collection-submissions.ts).
+  const [draftProblem, setDraftProblem] = useState("");
+  const draftLoaded = useRef(false);
+  const draftSaved = useRef(false);
+  const unsavedDraft = useRef("");
+  const saveDraft = useCallback(async () => {
+    const body = unsavedDraft.current;
+    if (!body) return;
+    unsavedDraft.current = "";
+    try {
+      const response = await fetch("/api/collection-submissions", { method: "PUT", headers: { "Content-Type": "application/json" }, body, keepalive: true });
+      const result = await response.json();
+      setDraftProblem(response.ok && result.success ? "" : result.message || "Unable to save the batch.");
+    } catch { setDraftProblem("This batch is not saved yet: check your connection, or it will not reach the clerk."); }
+  }, []);
+  const draftBody = JSON.stringify({ entries: batch, collectedBy: choice.collectedBy || collector?.collectedBy || "MAS", memberMasEmployeeId: choice.mas, orc });
+  useEffect(() => {
+    if (!draftLoaded.current || (!batch.length && !draftSaved.current)) return;
+    draftSaved.current = batch.length > 0;
+    unsavedDraft.current = draftBody;
+    const timer = window.setTimeout(() => void saveDraft(), 600);
+    return () => window.clearTimeout(timer);
+  }, [draftBody, batch.length, saveDraft]);
+  useEffect(() => () => void saveDraft(), [saveDraft]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -96,6 +120,14 @@ export default function MasCollectionsPage() {
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || "Unable to load your members.");
         setProfile(result.profile); setCollector(result.collector ?? null); setAccounts(result.accounts ?? []); setSubmissions(result.submissions ?? []); setError("");
+        // Members already waiting for the clerk (sent after midnight, say) leave the batch.
+        const waiting = new Set(((result.accounts ?? []) as Account[]).filter((account) => account.pendingIn).map((account) => account.id));
+        if (draftLoaded.current) { if (waiting.size) setBatch((current) => current.filter((pick) => !waiting.has(pick.enrollmentId))); return; }
+        draftLoaded.current = true;
+        if (!result.draft?.entries?.length) return;
+        setBatch((result.draft.entries as BatchItem[]).filter((item) => !waiting.has(item.enrollmentId)).map(({ enrollmentId, months, amount, waiver }) => ({ enrollmentId, months, amount, waiver })));
+        setChoice({ collectedBy: result.draft.collectedBy === "Collector" ? "Collector" : "MAS", mas: result.draft.memberMasEmployeeId ?? "" });
+        setOrc(result.draft.orc === true);
       })
       .catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load your members."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -187,6 +219,7 @@ export default function MasCollectionsPage() {
     if (!await confirmDialog(`${intro} You cannot change it after this; the clerk checks it when you remit the cash.${whose}\n\n${perBranch.join("\n")}`)) return;
     setBusy(true); setMessage("");
     try {
+      await saveDraft();
       const response = await fetch("/api/collection-submissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
         entries: shownRows.map(({ pick: { enrollmentId, months, amount, waiver }, account }) => ({ enrollmentId, months, amount: account?.flexible && amount.trim() ? Number(amount) : null, waiver })),
         collectedBy: asCollector ? "Collector" : "MAS", memberMasEmployeeId: asCollector ? memberMas?.employeeId ?? "" : "", orc: quoteAs.orc,
@@ -265,6 +298,8 @@ export default function MasCollectionsPage() {
     {/* THE BATCH: grouped by branch, since each branch is submitted as its own batch. */}
     {shownRows.length > 0 && <section aria-label="This batch" className="space-y-4">
       <h2 className="text-lg font-semibold">{filterBranch ? `${filterBranch.name} batch` : "This batch"} · {plural(shownRows.length, "member")}{groups.length > 1 ? ` · ${groups.length} branches` : ""}</h2>
+      <p className="-mt-2 text-xs text-muted-foreground">Not submitted yet. Members still here at midnight are sent to the clerk automatically: remove anyone who did not pay.</p>
+      {draftProblem && <p role="alert" className="text-sm font-medium text-destructive">{draftProblem}</p>}
       {groups.length > 1 && <p className="-mt-2 text-xs text-muted-foreground">Each branch is sent as its own batch, to that branch&apos;s clerk, with its own remittance.</p>}
       {groups.map((group) => <div key={group.id} className="space-y-3">
         {(manyBranches || groups.length > 1) && <div className="flex flex-wrap items-baseline justify-between gap-x-3 border-b pb-1">
@@ -404,6 +439,7 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
           <p className="flex flex-wrap items-center gap-2 font-semibold">{formatDateTime(submission.submittedAt)} <Badge variant={tone[submission.status]}>{label[submission.status]}</Badge></p>
           <p className="text-muted-foreground">{plural(submission.entryCount, "member")} · {money(submission.totalAmount)} collected · incentive {money(submission.totalIncentive)} · {submission.branch}</p>
           {submission.collectedBy === "Collector" && <p className="text-muted-foreground">As Collector, for the members of {submission.memberMas} · ORC {submission.orc ? "Yes" : "No"}</p>}
+          {submission.autoSubmitted && <p className="font-medium text-amber-700 dark:text-amber-400">Sent automatically after midnight: you did not press Submit.</p>}
           <p className="line-clamp-2">{submission.entries.map((entry) => `${entry.memberName} (${plural(entry.months, "month")})`).join(", ")}</p>
           {submission.status === "Submitted" && submission.incentiveDeadline && <p className={late ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>
             {late ? `The ${formatDeadline(submission.incentiveDeadline)} deadline has passed: if you have not remitted the cash yet, remit the whole ${money(submission.totalAmount)}.` : `Remit ${money(Math.round((submission.totalAmount - submission.totalIncentive) * 100) / 100)} at the office by ${formatDeadline(submission.incentiveDeadline)} to keep the incentive.`}

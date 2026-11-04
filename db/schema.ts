@@ -506,11 +506,28 @@ export const collection_submissions = pgTable("collection_submissions", {
   member_mas_employee_id: text(),
   member_mas: text(),
   orc: boolean().notNull().default(false),
+  /** Sent by the nightly job because the MAS never pressed Submit (owner, November 4, 2026): the clerk is warned to contact them. */
+  auto_submitted: boolean().notNull().default(false),
   ...encoder(),
 }, (t) => [
   index("collection_submissions_branch_status_idx").on(t.branch_id, t.status),
   index("collection_submissions_mas_idx").on(t.mas_employee_id),
 ]).enableRLS();
+
+/**
+ * The batch a MAS or Collector is still filling on Submit Collections (owner, November 4, 2026), one row per person, so
+ * the nightly job can send what they forgot to submit (lib/collection-submissions.ts autoSubmitCollectionDrafts).
+ */
+export const collection_drafts = pgTable("collection_drafts", {
+  ...rowSeq(),
+  employee_id: text().primaryKey().references(() => employees.employee_id, employeeRef),
+  collected_by: text().notNull().default("MAS"),
+  member_mas_employee_id: text(),
+  orc: boolean().notNull().default(false),
+  /** [{ enrollmentId, months, amount, waiver, addedOn }]; addedOn is the day the member was added, their OR date if sent automatically. */
+  entries: jsonb().notNull(),
+  updated_at: moment("updated_at").notNull(),
+}).enableRLS();
 
 /**
  * Dropout requests (owner, October 31, 2026; lib/dropouts.ts): an Entry Clerk asks to drop one member's program

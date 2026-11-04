@@ -81,6 +81,8 @@ type CollectionSubmissionSummary = {
   status: "Submitted" | "Remitted"; clearingId: string; remittedAt: string; remittedByName: string;
   /** Submitted by a Collector for another MAS's members (owner, November 3, 2026), with ORC or not. */
   collectedBy: "MAS" | "Collector"; memberMas: string; orc: boolean;
+  /** Sent by the nightly job: the MAS never pressed Submit, so the clerk contacts them (masContact) to remit. */
+  autoSubmitted: boolean; masContact: string;
   entries: Array<{ enrollmentId: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; months: number; amount: number; orDate: string; waiver: boolean }>;
 };
 /** The MAS submission open on the form: saving it marks it Saved; its handover must be this MAS's. */
@@ -1176,6 +1178,7 @@ export default function CollectionsPage() {
         </button>
       </div>
       {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
+      <ForgottenCollectionsWarning submissions={submissionList} onShow={() => setTab("submitted")} />
 
       {tab === "submitted" ? <CollectionSubmissionList submissions={submissionList} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} /> : <>
       {reviewing && (
@@ -2189,6 +2192,28 @@ export default function CollectionsPage() {
   );
 }
 
+/** Batches a MAS forgot to submit, sent by the nightly job, until the cash is marked remitted: the clerk contacts the MAS. */
+function ForgottenCollectionsWarning({ submissions, onShow }: { submissions: CollectionSubmissionSummary[]; onShow: () => void }) {
+  const forgotten = submissions.filter((submission) => submission.autoSubmitted && submission.status === "Submitted");
+  if (!forgotten.length) return null;
+  const now = manilaNow();
+  return (
+    <div role="alert" className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold">Contact {forgotten.length === 1 ? "this MAS" : "these MAS"} to remit: collections not submitted, sent automatically</p>
+        <Button type="button" size="sm" variant="outline" onClick={onShow}>Show batches</Button>
+      </div>
+      {forgotten.map((submission) => {
+        const late = submission.incentiveDeadline && `${now.date} ${now.time}` > submission.incentiveDeadline;
+        const due = late ? submission.totalAmount : submission.totalAmount - submission.totalIncentive;
+        return <p key={submission.id}>
+          <strong>{submission.mas}</strong>{submission.masContact ? ` (${submission.masContact})` : " (no contact number on file)"} · {submission.branch} · {submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · remit {formatCurrency(due)}{submission.incentiveDeadline ? (late ? `: the ${formatDeadline(submission.incentiveDeadline)} deadline has passed, the whole amount is due` : ` by ${formatDeadline(submission.incentiveDeadline)} to keep the incentive`) : ""}
+        </p>;
+      })}
+    </div>
+  );
+}
+
 /** Collections that MAS submitted in the clerk's branches, oldest first (lib/collection-submissions.ts). */
 function CollectionSubmissionList({ submissions, activeId, onOpen, onReject, onRemit, onRefresh }: { submissions: CollectionSubmissionSummary[]; activeId: string; onOpen: (submission: CollectionSubmissionSummary) => void; onReject: (submission: CollectionSubmissionSummary) => void; onRemit: (submission: CollectionSubmissionSummary) => void; onRefresh: () => void }) {
   return (
@@ -2204,6 +2229,7 @@ function CollectionSubmissionList({ submissions, activeId, onOpen, onReject, onR
           <div key={submission.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
             <div className="min-w-0 text-sm">
               <p className="font-semibold">{submission.mas} · {submission.branch}</p>
+              {submission.autoSubmitted && <p className="font-medium text-amber-700">Sent automatically: the MAS did not submit. If a member did not pay, Reject it or remove them on Review.</p>}
               {submission.collectedBy === "Collector" && <p className="font-medium text-primary">Collector, for the members of {submission.memberMas} · ORC {submission.orc ? "Yes" : "No"}</p>}
               <p className="text-muted-foreground">{submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · {formatCurrency(submission.totalAmount)} collected · incentive {formatCurrency(submission.totalIncentive)} · submitted {formatDateTime(submission.submittedAt)}</p>
               {submission.status === "Remitted"

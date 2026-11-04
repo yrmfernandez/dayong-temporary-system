@@ -19,7 +19,7 @@ try {
   const [migrations] = await sql`select count(*)::int as n from drizzle.__drizzle_migrations`.catch(() => [{ n: 0 }]);
   console.log(`Supabase project: ${project}`);
   // Tables in the public schema: 45, clearings (0016, October 8, 2026) and company_targets (0017, October 10, 2026).
-  const expectedTables = 51; // + turnover_variances (0032, October 29, 2026), collection_submissions (0036, October 31, 2026), dropout_requests (0037)
+  const expectedTables = 52; // + collection_drafts (0041, November 4, 2026), + turnover_variances (0032, October 29, 2026), collection_submissions (0036, October 31, 2026), dropout_requests (0037)
   // The latest additions, checked by name: Company Targets (0017), non-commissionable periods (0018) and the
   // employee's reply to a Notice to Explain (0019), what a clearing covers (0020), why a Date Remitted was changed (0022), the clerk's typed Cash Beg (0023), the DOI time (0024).
   const [{ targets }] = await sql`select to_regclass('public.company_targets') is not null as targets`;

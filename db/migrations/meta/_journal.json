@@ -288,6 +288,13 @@
       "when": 1793671803722,
       "tag": "0040_collector_submissions",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793752474469,
+      "tag": "0041_collection_drafts",
+      "breakpoints": true
     }
   ]
 }

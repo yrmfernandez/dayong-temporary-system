@@ -5004,6 +5004,66 @@ test('Remittances: a slip decided long ago keeps its details, clerk and entries 
   assert.deepEqual(entries.missing, []);
 });
 
+test('a batch the MAS forgot is sent after midnight, OR date the day added, and the clerk is warned (November 4, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'clerk', 'BR-1', 'Entry Clerk', 'active'], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active', '0917-000-0000']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50]];
+    return h;
+  };
+  const mas = as({ userId: 'USR-M', employeeId: 'DPE-0002', name: 'different-mas', roleNames: ['MAS'], permissions: {} });
+  const clerk = as({ userId: 'USR-1', employeeId: 'DPE-0001', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+  const today = mas.load('lib/remittance-deadline.ts').manilaNow().date;
+  const daysAgo = (days) => new Date(Date.parse(`${today}T00:00:00Z`) - days * 86400000).toISOString().slice(0, 10);
+  for (const [number, surname] of [[1, 'Santos'], [2, 'Reyes'], [3, 'Cruz']]) {
+    await seed('members', [{ member_id: `MEM-${number}`, member_number: `PH-${number}`, surname, first_name: 'Ana' }]);
+    await seed('member_programs', [{ enrollment_id: `ENR-${number}`, member_id: `MEM-${number}`, member_number: `PH-${number}`, program_id: 'DP-1', doi: daysAgo(3), branch: 'BR-1', mas: 'different-mas', status: 'Active' }]);
+  }
+  const call = async (h, method, url, body) => {
+    const route = h.load('app/api/collection-submissions/route.ts');
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const pick = (id) => ({ enrollmentId: id, months: 1, amount: '', waiver: false });
+  const nightly = () => mas.load('lib/encoder-context.ts').runAsSystem(() => mas.load('lib/collection-submissions.ts').autoSubmitCollectionDrafts());
+  const draft = async () => (await query('select entries from collection_drafts'))[0]?.entries ?? [];
+
+  assert.equal((await call(mas, 'PUT', '/api/collection-submissions', { entries: [pick('ENR-1'), pick('ENR-2')] })).status, 200);
+  assert.deepEqual((await call(mas, 'GET', '/api/collection-submissions?view=mine')).body.draft.entries.map((item) => item.enrollmentId), ['ENR-1', 'ENR-2'], 'the batch comes back from the server');
+  assert.deepEqual(await nightly(), { batches: 0, members: 0, held: 0, failed: 0 }, 'members added today wait for the day to end');
+
+  // ENR-1 was added yesterday and forgotten; ENR-2 today. Saving again keeps the day added.
+  await query(`update collection_drafts set entries = jsonb_set(entries, '{0,addedOn}', to_jsonb($1::text))`, [daysAgo(1)]);
+  await call(mas, 'PUT', '/api/collection-submissions', { entries: [pick('ENR-1'), pick('ENR-2'), pick('ENR-3')] });
+  assert.deepEqual((await draft()).map((item) => item.addedOn), [daysAgo(1), today, today]);
+
+  assert.deepEqual(await nightly(), { batches: 1, members: 1, held: 0, failed: 0 });
+  const [sent] = await query('select status, auto_submitted, mas_employee_id, entries, encoded_by_name from collection_submissions');
+  assert.deepEqual([sent.status, sent.auto_submitted, sent.mas_employee_id, sent.encoded_by_name], ['Submitted', true, 'DPE-0002', 'System']);
+  assert.deepEqual([sent.entries.length, sent.entries[0].enrollmentId, sent.entries[0].orDate], [1, 'ENR-1', daysAgo(1)], 'OR date is the day added, not the day sent');
+  assert.deepEqual((await draft()).map((item) => item.enrollmentId), ['ENR-2', 'ENR-3'], 'members added today stay in the batch');
+
+  const [review] = (await call(clerk, 'GET', '/api/collection-submissions?view=review')).body.submissions;
+  assert.deepEqual([review.autoSubmitted, review.masContact], [true, '0917-000-0000'], 'the clerk sees it was sent automatically, and who to call');
+
+  // Nothing is sent twice, and a member the MAS submits leaves the batch.
+  assert.deepEqual(await nightly(), { batches: 0, members: 0, held: 0, failed: 0 });
+  const submitted = await call(mas, 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-2', months: 1, amount: null, waiver: false }] });
+  assert.equal(submitted.status, 201, JSON.stringify(submitted.body));
+  assert.deepEqual((await draft()).map((item) => item.enrollmentId), ['ENR-3']);
+  assert.equal((await query('select auto_submitted from collection_submissions order by row_seq desc limit 1'))[0].auto_submitted, false);
+
+  // A member in an open batch, or paid since the day added, is dropped rather than sent again.
+  await query(`update collection_drafts set entries = jsonb_set(entries, '{0,addedOn}', to_jsonb($1::text))`, [daysAgo(1)]);
+  await seed('collections', [{ collection_id: 'COL-PAID', collection_batch_id: 'CBT-P', enrollment_id: 'ENR-3', member_id: 'MEM-3', program_id: 'DP-1', or_number: 'OR-9', or_date: today, month_from: `${today.slice(0, 7)}-01`, month_to: `${today.slice(0, 7)}-01`, nop_from: 1, nop_to: 1, amount_collected: 350, status: 'Posted' }]);
+  assert.deepEqual(await nightly(), { batches: 0, members: 0, held: 0, failed: 0 });
+  assert.equal(await count('collection_drafts'), 0, 'paid since it was added: nothing left to send');
+});
+
 test('Submit Collections: a flexible program takes the amount the MAS typed, within the monthly minimum and maximum (November 3, 2026)', () => {
   const { masCollectionQuote } = harness().load('lib/mas-collection-quote.ts');
   const tiers = [{ id: 'T1', role: 'MAS', fromMonth: 1, toMonth: 12, incentiveType: 'percentage', markUp: 0, incentiveAmount: 10 }];
