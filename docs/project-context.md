@@ -23,6 +23,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 - **Done:** `SubmissionOrTable` is removed from `app/collections/page.tsx`, so an opened batch shows the usual cards (first open, the rest collapsed) and the OR Number is typed on each card. `listMyCollectionSubmissions` and `listMySubmissions` add `fidelity`, read from the saved rows with Fidelity only; My submissions shows it on both Submit Collections and Submit New Sales. No migration.
 - **To do (owner):** check a saved batch with Fidelity as the MAS, and open a batch as the clerk.
 
+### Opened MAS batch: automatic OR number back; older batches in order (2026-11-04)
+
+- **Asked (owner):** the automatic OR number is gone; the first member added is still at the bottom when the clerk encodes.
+- **Done:** the automatic number went with `SubmissionOrTable`. On the cards, `editCollection` now fills an empty OR Number from the receipt before it while reviewing, and Enter on an OR Number opens the next member (`openNextMember`). Batches sent before the order change were stored newest first; `entriesOf` in `lib/collection-submissions.ts` turns those around when read, by `submitted_at` before 3:00 PM Manila, November 4. No migration, no data changed.
+- **Limit:** a batch being filled during the change and sent afterwards has its older members newest first, and it is not turned around.
+- **To do:** nothing; `entriesOf` can go once those batches are saved or rejected.
+
 ### Two MAS batches on one handover (2026-11-04)
 
 - **Seen (owner):** saving was refused with the message that the MAS already has a Collections batch waiting for approval.

@@ -3428,6 +3428,19 @@ test('a returned collection can move to another account of the member; months, a
   assert.deepEqual(row, { enrollment_id: 'ENR-2', program_id: 'DP-2', month_from: next, month_to: after, nop_from: 2, nop_to: 3, amount: 1000, remit: 600, remittance_status: 'Returned' });
 });
 
+test('a MAS batch sent while the newest went first is read first added first; a later one stays as sent (November 4, 2026)', async () => {
+  const h = harness();
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  const send = (id, at) => query(`insert into collection_submissions (submission_id, branch_id, branch, mas_employee_id, mas, status, entries, entry_count, total_amount, total_incentive, submitted_at)
+    values ($1, 'BR-1', 'BR-1', 'DPE-0002', 'MAS-2', 'Submitted', $2, 2, 700, 300, $3)`, [id, JSON.stringify([{ memberName: 'Added last', orDate: '' }, { memberName: 'Added first', orDate: '' }]), at]);
+  await send('CSUB-OLD', '2026-11-04T06:30:00Z');
+  await send('CSUB-NEW', '2026-11-04T07:30:00Z');
+  const list = await h.load('lib/collection-submissions.ts').listMyCollectionSubmissions({ employeeId: 'DPE-0002' });
+  const names = (id) => list.find((item) => item.id === id).entries.map((entry) => entry.memberName);
+  assert.deepEqual(names('CSUB-OLD'), ['Added first', 'Added last']);
+  assert.deepEqual(names('CSUB-NEW'), ['Added last', 'Added first']);
+});
+
 test('two MAS batches on the same handover both save; a batch typed by hand there is still refused (November 4, 2026)', async () => {
   const h = harness();
   const rules = h.load('lib/account-rules.ts');

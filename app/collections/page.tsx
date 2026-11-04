@@ -878,15 +878,26 @@ export default function CollectionsPage() {
 
   function editCollection(id: string) {
     setCollections((current) =>
-      current.map((entry) => ({
+      current.map((entry, index) => ({
         ...entry,
         isExpanded: entry.id === id,
+        // A MAS batch has no OR numbers yet: opening a member follows the receipt before it, as adding an entry does.
+        orNumber: reviewing && entry.id === id && !entry.orNumber.trim() ? nextOrNumber(current.slice(0, index).map((item) => item.orNumber.trim()).filter(Boolean).at(-1) ?? "") : entry.orNumber,
       })),
     );
 
     setActiveCollectionId(id);
     setShowMoreDetails(false);
     setSaveMessage("");
+  }
+
+  /** Enter on an OR Number of a MAS batch: the next member's card opens, its OR number filled in and ready to change. */
+  function openNextMember(id: string) {
+    const next = collections[collections.findIndex((entry) => entry.id === id) + 1];
+    if (!next) return;
+    editCollection(next.id);
+    setScrollTargetId(next.id);
+    requestAnimationFrame(() => document.getElementById(`or-number-${next.id}`)?.focus());
   }
 
   async function saveCollections() {
@@ -1671,7 +1682,7 @@ export default function CollectionsPage() {
                                   </div>
                                   <div className="space-y-1">
                                     <Label>OR Number *</Label>
-                                    <Input value={entry.orNumber} onChange={(event) => updateCollection(entry.id, { orNumber: event.target.value })} placeholder={`e.g. ${OR_NUMBER_EXAMPLE}`} aria-invalid={Boolean(entry.orNumber.trim()) && !isValidOrNumber(entry.orNumber)} />
+                                    <Input id={`or-number-${entry.id}`} value={entry.orNumber} onChange={(event) => updateCollection(entry.id, { orNumber: event.target.value })} onKeyDown={(event) => { if (event.key === "Enter" && reviewing) { event.preventDefault(); openNextMember(entry.id); } }} placeholder={`e.g. ${OR_NUMBER_EXAMPLE}`} aria-invalid={Boolean(entry.orNumber.trim()) && !isValidOrNumber(entry.orNumber)} />
                                     {entry.orNumber.trim() !== "" && !isValidOrNumber(entry.orNumber) && <p className="text-xs text-red-700">{orNumberProblem(entry.orNumber)}</p>}
                                   </div>
                                   <div className="space-y-1">

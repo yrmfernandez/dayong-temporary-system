@@ -85,10 +85,20 @@ export type DraftItem = { enrollmentId: string; months: number; amount: string; 
 const OPEN = ["Submitted", "Remitted"];
 const stamp = (value: string | null | undefined) => { if (!value) return ""; const at = manilaNow(new Date(value)); return `${at.date} ${at.time}`; };
 
+/**
+ * Until November 4, 2026 (about 2:55 PM Manila) a batch was kept newest first; since then first added first. Batches
+ * sent before that are turned around when read, so the clerk sees every batch in the order it was collected.
+ */
+const NEWEST_FIRST_UNTIL = Date.parse("2026-11-04T07:00:00Z");
+const entriesOf = (row: typeof submissions.$inferSelect) => {
+  const entries = Array.isArray(row.entries) ? row.entries as SubmittedCollection[] : [];
+  return new Date(row.submitted_at).getTime() < NEWEST_FIRST_UNTIL ? [...entries].reverse() : entries;
+};
+
 const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): CollectionSubmission => ({
   id: row.submission_id, branchId: row.branch_id, branch: row.branch, masEmployeeId: row.mas_employee_id, mas: row.mas,
   status: row.status === "Saved" ? "Saved" : row.status === "Rejected" ? "Rejected" : row.status === "Remitted" ? "Remitted" : "Submitted",
-  entries: Array.isArray(row.entries) ? row.entries as SubmittedCollection[] : [], entryCount: row.entry_count,
+  entries: entriesOf(row), entryCount: row.entry_count,
   totalAmount: row.total_amount, totalIncentive: row.total_incentive, submittedAt: row.submitted_at,
   returnReason: text(row.return_reason), reviewedByName: text(row.reviewed_by_name), reviewedAt: row.reviewed_at ?? "",
   collectionIds: text(row.collection_ids).split(",").map(text).filter(Boolean), incentiveDeadline: deadline,
