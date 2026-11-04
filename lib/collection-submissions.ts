@@ -72,7 +72,7 @@ export type CollectionSubmission = {
   clearingId: string; remittedAt: string; remittedByName: string;
   /** Collected by the submitter as MAS, or as Collector for the members of memberMas (with ORC or not). */
   collectedBy: CollectedBy; memberMasEmployeeId: string; memberMas: string; orc: boolean;
-  /** Sent by the nightly job because it was never submitted; masContact (clerk's list only) is who to call. */
+  /** Sent by the nightly job because it was never submitted. masContact (clerk's list only): who to call about the cash. */
   autoSubmitted: boolean; masContact: string;
 };
 /** One member in the batch being filled. `amount`: typed on a flexible program; "" is the minimum. */
@@ -361,10 +361,10 @@ export async function listCollectionsForReview(user: SessionUser) {
   const waiting = inArray(submissions.status, OPEN);
   const rows = await getDb().select().from(submissions).where(scope ? and(waiting, inArray(submissions.branch_id, scope)) : waiting).orderBy(submissions.row_seq);
   const list = await withDeadlines(rows);
-  if (!list.some((item) => item.autoSubmitted)) return list;
-  // The clerk has to reach whoever forgot to submit.
+  if (!list.length) return list;
+  // The clerk contacts whoever has not handed the cash over.
   const employees = await getEmployees();
-  return list.map((item) => item.autoSubmitted ? { ...item, masContact: text(employees.find((employee) => employee.id === item.masEmployeeId)?.contact) } : item);
+  return list.map((item) => ({ ...item, masContact: text(employees.find((employee) => employee.id === item.masEmployeeId)?.contact) }));
 }
 
 /** A submission the clerk may save now, matching the batch's branch and accountable MAS (by ID); throws otherwise. */

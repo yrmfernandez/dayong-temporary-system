@@ -1178,7 +1178,7 @@ export default function CollectionsPage() {
         </button>
       </div>
       {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
-      <ForgottenCollectionsWarning submissions={submissionList} onShow={() => setTab("submitted")} />
+      <UnremittedCollectionsWarning submissions={submissionList} onShow={() => setTab("submitted")} />
 
       {tab === "submitted" ? <CollectionSubmissionList submissions={submissionList} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} /> : <>
       {reviewing && (
@@ -1382,6 +1382,8 @@ export default function CollectionsPage() {
 
           {/* overscroll-contain: reaching the end of one panel never scrolls the page or the other panel. */}
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {reviewing && <SubmissionOrTable entries={collections} activeId={activeCollectionId} onOpen={editCollection} onOr={(id, orNumber) => updateCollection(id, { orNumber })}
+              memberName={(entry) => { const found = members.find((member) => member.id === entry.memberId); return found ? getMemberDisplayName(found) : entry.memberSearch; }} />}
             <CardContent className="space-y-4 p-4">
               {collections.map(
                 (entry, index) => {
@@ -1410,6 +1412,9 @@ export default function CollectionsPage() {
                   const isActive =
                     activeCollectionId ===
                     entry.id;
+
+                  // Reviewing a MAS batch, the table above lists every member; only the card being corrected shows.
+                  if (reviewing && !entry.isExpanded) return null;
 
                   return (
                     <div
@@ -2192,24 +2197,71 @@ export default function CollectionsPage() {
   );
 }
 
-/** Batches a MAS forgot to submit, sent by the nightly job, until the cash is marked remitted: the clerk contacts the MAS. */
-function ForgottenCollectionsWarning({ submissions, onShow }: { submissions: CollectionSubmissionSummary[]; onShow: () => void }) {
-  const forgotten = submissions.filter((submission) => submission.autoSubmitted && submission.status === "Submitted");
-  if (!forgotten.length) return null;
+/**
+ * Cash the clerk should chase, until Mark remitted: batches the MAS forgot to submit (sent by the nightly job), and
+ * batches submitted but not handed over by the incentive deadline.
+ */
+function UnremittedCollectionsWarning({ submissions, onShow }: { submissions: CollectionSubmissionSummary[]; onShow: () => void }) {
   const now = manilaNow();
+  const overdue = (submission: CollectionSubmissionSummary) => Boolean(submission.incentiveDeadline) && `${now.date} ${now.time}` > submission.incentiveDeadline;
+  const waiting = submissions.filter((submission) => submission.status === "Submitted" && (submission.autoSubmitted || overdue(submission)));
+  if (!waiting.length) return null;
   return (
     <div role="alert" className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
       <div className="flex items-center justify-between gap-2">
-        <p className="font-semibold">Contact {forgotten.length === 1 ? "this MAS" : "these MAS"} to remit: collections not submitted, sent automatically</p>
+        <p className="font-semibold">Contact {waiting.length === 1 ? "this MAS" : "these MAS"} to remit their collections</p>
         <Button type="button" size="sm" variant="outline" onClick={onShow}>Show batches</Button>
       </div>
-      {forgotten.map((submission) => {
-        const late = submission.incentiveDeadline && `${now.date} ${now.time}` > submission.incentiveDeadline;
-        const due = late ? submission.totalAmount : submission.totalAmount - submission.totalIncentive;
-        return <p key={submission.id}>
-          <strong>{submission.mas}</strong>{submission.masContact ? ` (${submission.masContact})` : " (no contact number on file)"} · {submission.branch} · {submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · remit {formatCurrency(due)}{submission.incentiveDeadline ? (late ? `: the ${formatDeadline(submission.incentiveDeadline)} deadline has passed, the whole amount is due` : ` by ${formatDeadline(submission.incentiveDeadline)} to keep the incentive`) : ""}
-        </p>;
-      })}
+      <div className="max-h-40 space-y-1 overflow-y-auto overscroll-contain">
+        {waiting.map((submission) => {
+          const late = overdue(submission);
+          return <p key={submission.id}>
+            <strong>{submission.mas}</strong>{submission.masContact ? ` (${submission.masContact})` : " (no contact number on file)"} · {submission.branch} · {submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · {submission.autoSubmitted ? "not submitted, sent automatically" : `submitted ${formatDateTime(submission.submittedAt)}, not remitted`} · remit {formatCurrency(late ? submission.totalAmount : submission.totalAmount - submission.totalIncentive)}{late ? `: the ${formatDeadline(submission.incentiveDeadline)} deadline has passed, the whole amount is due` : submission.incentiveDeadline ? ` by ${formatDeadline(submission.incentiveDeadline)} to keep the incentive` : ""}
+          </p>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A MAS batch open for review, one short row per member (owner, November 4, 2026): the OR numbers are typed here, Enter
+ * going to the next row with the next receipt number filled in, so a long batch needs no opening and scrolling of cards.
+ * Open shows that member's full card below, to correct it.
+ */
+function SubmissionOrTable({ entries, memberName, activeId, onOr, onOpen }: { entries: CollectionEntry[]; memberName: (entry: CollectionEntry) => string; activeId: string; onOr: (id: string, orNumber: string) => void; onOpen: (id: string) => void }) {
+  const inputs = useRef<Record<string, HTMLInputElement | null>>({});
+  const typed = entries.filter((entry) => isValidOrNumber(entry.orNumber)).length;
+  const next = (index: number) => {
+    const following = entries[index + 1];
+    if (!following) return;
+    if (!following.orNumber.trim()) onOr(following.id, nextOrNumber(entries[index].orNumber));
+    inputs.current[following.id]?.focus();
+  };
+  return (
+    <div className="border-b p-3">
+      <p className="mb-2 text-sm font-semibold">OR numbers · {typed} of {entries.length} typed <span className="font-normal text-muted-foreground">· Enter goes to the next member</span></p>
+      <div className="max-h-[50vh] overflow-y-auto overscroll-contain rounded-lg border">
+        <table className="w-full text-sm">
+          <tbody>
+            {entries.map((entry, index) => {
+              const needsWaiverMark = needsWaiver(entry) && entry.ifSuspended !== "Waiver";
+              return <tr key={entry.id} className={`border-b last:border-0 ${entry.id === activeId && entry.isExpanded ? "bg-primary/5" : ""}`}>
+                <td className="px-2 py-1 text-muted-foreground">{index + 1}</td>
+                <td className="max-w-0 px-2 py-1">
+                  <p className="truncate font-medium">{memberName(entry)}</p>
+                  <p className="truncate text-xs text-muted-foreground">{formatMonth(entry.monthFrom)}{entry.monthTo !== entry.monthFrom ? ` – ${formatMonth(entry.monthTo)}` : ""} · {formatCurrency(Number(entry.amountCollected) || 0)}{needsWaiverMark ? <span className="font-medium text-amber-700"> · needs Waiver</span> : null}</p>
+                </td>
+                <td className="w-36 px-2 py-1">
+                  <Input ref={(element) => { inputs.current[entry.id] = element; }} aria-label={`OR Number of ${memberName(entry)}`} className="h-8" value={entry.orNumber} aria-invalid={entry.orNumber.trim() !== "" && !isValidOrNumber(entry.orNumber)} placeholder={OR_NUMBER_EXAMPLE}
+                    onChange={(event) => onOr(entry.id, event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); next(index); } }} />
+                </td>
+                <td className="px-2 py-1 text-right"><Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => onOpen(entry.id)}>Open</Button></td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -2234,7 +2286,9 @@ function CollectionSubmissionList({ submissions, activeId, onOpen, onReject, onR
               <p className="text-muted-foreground">{submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · {formatCurrency(submission.totalAmount)} collected · incentive {formatCurrency(submission.totalIncentive)} · submitted {formatDateTime(submission.submittedAt)}</p>
               {submission.status === "Remitted"
                 ? <p className={submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline ? "font-medium text-amber-700" : "font-medium text-emerald-700"}>Remitted {formatDateTime(submission.remittedAt)}{submission.remittedByName ? ` (${submission.remittedByName})` : ""}{submission.incentiveDeadline ? (submission.remittedAt > submission.incentiveDeadline ? " · after the deadline: incentive forfeited" : " · in time: incentive kept") : ""} · OR numbers still to type</p>
-                : submission.incentiveDeadline && <p className="text-muted-foreground">Not yet remitted · incentive kept if received by {formatDeadline(submission.incentiveDeadline)}</p>}
+                : submission.incentiveDeadline && (`${manilaNow().date} ${manilaNow().time}` > submission.incentiveDeadline
+                  ? <p className="font-medium text-amber-700">Not yet remitted · the {formatDeadline(submission.incentiveDeadline)} deadline has passed: contact the MAS, the whole amount is due</p>
+                  : <p className="text-muted-foreground">Not yet remitted · incentive kept if received by {formatDeadline(submission.incentiveDeadline)}</p>)}
               <p className="truncate">{submission.entries.map((entry) => `${entry.memberName} (${entry.months} mo${entry.waiver ? ", Waiver" : ""})`).join(", ")}</p>
             </div>
             <div className="flex shrink-0 gap-2">

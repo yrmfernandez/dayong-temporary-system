@@ -5062,6 +5062,17 @@ test('a batch the MAS forgot is sent after midnight, OR date the day added, and 
   await seed('collections', [{ collection_id: 'COL-PAID', collection_batch_id: 'CBT-P', enrollment_id: 'ENR-3', member_id: 'MEM-3', program_id: 'DP-1', or_number: 'OR-9', or_date: today, month_from: `${today.slice(0, 7)}-01`, month_to: `${today.slice(0, 7)}-01`, nop_from: 1, nop_to: 1, amount_collected: 350, status: 'Posted' }]);
   assert.deepEqual(await nightly(), { batches: 0, members: 0, held: 0, failed: 0 });
   assert.equal(await count('collection_drafts'), 0, 'paid since it was added: nothing left to send');
+
+  // A suspended member: Submit refuses without the Waiver; only the automatic send lets it through, for the clerk to set.
+  await seed('members', [{ member_id: 'MEM-4', member_number: 'PH-4', surname: 'Lim', first_name: 'Ana' }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-4', member_id: 'MEM-4', member_number: 'PH-4', program_id: 'DP-1', doi: daysAgo(80), branch: 'BR-1', mas: 'different-mas', status: 'Active' }]);
+  const refused = await call(mas, 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-4', months: 1, amount: null, waiver: false }] });
+  assert.equal(refused.status, 400);
+  assert.match(refused.body.message, /suspended/);
+  await call(mas, 'PUT', '/api/collection-submissions', { entries: [pick('ENR-4')] });
+  await query(`update collection_drafts set entries = jsonb_set(entries, '{0,addedOn}', to_jsonb($1::text))`, [daysAgo(1)]);
+  assert.deepEqual(await nightly(), { batches: 1, members: 1, held: 0, failed: 0 });
+  assert.equal((await query('select entries from collection_submissions order by row_seq desc limit 1'))[0].entries[0].waiver, false, 'not ticked for the MAS');
 });
 
 test('Submit Collections: a flexible program takes the amount the MAS typed, within the monthly minimum and maximum (November 3, 2026)', () => {
