@@ -20,7 +20,7 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 ### The red number for a rejected batch clears when seen (2026-11-04)
 
 - **Asked (owner):** how the rejected notification disappears; it only expired after 2 days, even after the MAS read it or submitted again. Owner chose to clear it when seen.
-- **Done:** `rejection_seen_at` on `collection_submissions` and `sale_submissions`, set when My submissions comes on screen (`lib/use-seen-rejections.ts`, `PATCH { action: "seen" }`); on Submit Collections that is the My submissions tab, whose count turns red. The 2-day limit stays as a fallback. Migration `0042`.
+- **Done:** `rejection_seen_at` on `collection_submissions` and `sale_submissions`, set when My submissions comes on screen (`lib/use-seen-rejections.ts`, `PATCH { action: "seen" }`); on Submit Collections and Submit New Sales that is the My submissions tab, whose count turns red. Submit New Sales got the same two tabs (New sales, My submissions), reusing the form's tab state, so the clerk's page is unchanged. The 2-day limit stays as a fallback. Migration `0042`.
 - **To do (owner):** `npm run db:migrate` on staging, then `npm run prod -- npm run db:migrate` **before** pushing (the notification counts read the new column).
 
 ### Forgotten MAS collections are sent automatically; the clerk is warned (2026-11-04)

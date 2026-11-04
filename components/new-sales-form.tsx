@@ -1428,6 +1428,10 @@ Is this cash part of that handover?`) ? "same"
     }
   };
 
+  // The MAS's tab count: batches still open, and those needing them (rejected and not yet seen, or sent back to fix).
+  const openSubmissions = submissionList.filter((item) => item.status === "Submitted" || item.status === "Remitted").length;
+  const needsAttention = submissionList.filter((item) => item.status === "Returned" || (item.status === "Rejected" && !item.rejectionSeen)).length;
+
   return (
     // Enter moves to the next field (lib/enter-to-next.ts).
     <div className="mx-auto max-w-6xl space-y-5" onKeyDown={enterToNextField}>
@@ -1455,13 +1459,25 @@ Is this cash part of that handover?`) ? "same"
         </div>
       )}
 
+      {/* MAS (owner, November 4, 2026): kept at the top of the screen, so My submissions is one tap away however long the cards run. */}
+      {masMode && (
+        <div role="tablist" aria-label="Submit New Sales" className="sticky top-0 z-20 grid grid-cols-2 gap-1 rounded-lg border bg-muted p-1">
+          {([["encode", "New sales"], ["submitted", "My submissions"]] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value}
+            className={`min-h-10 rounded-md px-3 text-sm font-medium ${tab === value ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => { setTab(value); scrollPageToTop(); }}>
+            {label}{value === "submitted" && openSubmissions + needsAttention ? <Badge variant={needsAttention ? "destructive" : "default"} className="ml-2">{openSubmissions + needsAttention}</Badge> : null}
+          </button>)}
+        </div>
+      )}
+
       {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
 
       {/* MAS: what the last submit did, and the submissions the clerk sent back, first thing on the page. */}
       {masMode && saveMessage && !showPreview && <p role="status" className="rounded-lg border bg-muted/40 p-3 text-sm">{saveMessage}</p>}
       {masMode && <ReturnedSubmissions submissions={submissionList.filter((item) => item.status === "Returned" && item.id !== submissionId)} onOpen={(submission) => void openSubmission(submission)} />}
 
-      {!masMode && tab === "submitted" ? (
+      {masMode && tab === "submitted" ? (
+        <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={(submission, asNew) => void openSubmission(submission, asNew)} />
+      ) : tab === "submitted" ? (
         <SubmissionList submissions={submissionList} activeId={submissionId} onOpen={(submission) => void openSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onReject={(submission) => void rejectSubmission(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} />
       ) : (<>
       {submissionId && (
@@ -2950,9 +2966,6 @@ Is this cash part of that handover?`) ? "same"
       {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
       {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" optional={allCash} />}
 
-      {/* Above the save bar, so the bar stays at the bottom of the screen to the end of the page. */}
-      {masMode && <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={(submission, asNew) => void openSubmission(submission, asNew)} />}
-
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}
       <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
@@ -3060,7 +3073,7 @@ function ReturnedSubmissions({ submissions, onOpen }: { submissions: SubmissionS
  */
 function MySubmissions({ submissions, activeId, onOpen }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary, asNew: boolean) => void }) {
   const seenRef = useSeenRejections("/api/sale-submissions", submissions.filter((submission) => submission.status === "Rejected" && !submission.rejectionSeen).map((submission) => submission.id).join(","));
-  if (!submissions.length) return null;
+  if (!submissions.length) return <p className="p-4 text-center text-sm text-muted-foreground">No submissions yet.</p>;
   const now = manilaNow();
   const tone = { Submitted: "secondary", Remitted: "default", Rejected: "destructive", Returned: "destructive", Saved: "default" } as const;
   const label = { Submitted: "Not yet remitted", Remitted: "Remitted: being encoded", Rejected: "Rejected", Returned: "Returned", Saved: "Saved by the clerk" } as const;
