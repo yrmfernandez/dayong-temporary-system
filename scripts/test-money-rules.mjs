@@ -84,7 +84,9 @@ test("a fixed program credits whole months: a 3-month payment covers 3 months at
 
 test("New Sale incentive: a fixed one never exceeds what was paid; less than a month earns nothing; no setting earns nothing", () => {
   const withFee = (type, amount) => ({ basePay: 350, registrationFeeRequired: true, saleIncentiveType: type, saleIncentiveAmount: amount, incentiveTiers: [] });
-  assert.deepEqual(calculateSaleIncentive(withFee("fixed", 150), 100), { incentive: 100, remittance: 0, rule: "Fixed New Sale incentive" }, "capped at the amount paid");
+  const { basis, ...capped } = calculateSaleIncentive(withFee("fixed", 150), 100);
+  assert.deepEqual(capped, { incentive: 100, remittance: 0, rule: "Fixed New Sale incentive" }, "capped at the amount paid");
+  assert.match(basis[0], /^Fixed New Sale incentive .100.00$/, "the card shows the amount really earned");
   assert.equal(calculateSaleIncentive(withFee("percentage", 12.5), 333).incentive, 41.63, "12.5% of 333 = 41.625, rounded");
   assert.equal(calculateSaleIncentive(withFee("", 0), 500).remittance, 500, "no New Sale incentive set: all remitted");
   const noFee = { basePay: 350, registrationFeeRequired: false, saleIncentiveType: "", saleIncentiveAmount: 0, incentiveTiers: [tier()] };

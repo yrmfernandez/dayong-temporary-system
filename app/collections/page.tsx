@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/select";
 
 import type { Member } from "@/lib/types";
-import { calculateRemittance, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive, type IncentiveTier } from "@/lib/remittance";
+import { calculateRemittance, incentiveBasis, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive, type IncentiveTier } from "@/lib/remittance";
 import { forfeitedPaymentsAllowed, needsWaiver, waiverOnOrDate } from "@/lib/account-rules";
 import { EntryFigures } from "@/components/entry-figures";
 import { monthlyPay } from "@/lib/program-payment-limit.mjs";
@@ -605,6 +605,7 @@ export default function CollectionsPage() {
       account: entry.accountLoading ? "Loading..." : entry.accountStatus || "—",
       nop: `${entry.nopFrom ?? "—"}${entry.nopTo !== null && entry.nopTo !== entry.nopFrom ? `–${entry.nopTo}` : ""}`,
       collected, remittance, incentive: remittance === null ? null : (Math.round(collected * 100) - Math.round(remittance * 100)) / 100,
+      basis: !("breakdown" in quote) ? [] : noIncentiveOn(entry) ? ["No incentive on this collection: the whole amount is remitted"] : incentiveBasis(quote.breakdown),
     };
   };
   const totalCollected = collections.reduce((sum, entry) => sum + Math.round(Number(entry.amountCollected || 0) * 100), 0) / 100;

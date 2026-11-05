@@ -65,20 +65,49 @@ export function normalizeSaleIncentive(input: { registrationFeeRequired?: unknow
  * - Programs without one: the sale pays the first month, using the month-1 MAS incentive tier as a Collection for
  *   NOP 1 would. Flexible programs use the amount paid within the monthly maximum; fixed programs remit excess in full.
  */
+const pesos = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+
+type BreakdownLine = { nop: number; role: string; basePay: number; markUp: number; incentiveType: "fixed" | "percentage"; incentiveAmount: number; incentive: number; masIncentive?: number; orcHalf?: boolean; reactivation?: boolean };
+
+/**
+ * How each NOP's incentive was reached, in words for the clerk's card (owner, November 5, 2026): the percentage and what
+ * it is taken from, or the fixed amount. NOPs worked out alike share one line. Reads calculateRemittance's breakdown, so
+ * it cannot differ from what is saved.
+ */
+export function incentiveBasis(breakdown: BreakdownLine[]) {
+  const describe = (line: BreakdownLine) => {
+    if (line.role === "DTO") return "Direct to Office: no incentive";
+    if (line.orcHalf) return `ORC: half of the MAS incentive ${pesos(line.masIncentive ?? 0)} = ${pesos(line.incentive)}`;
+    if (line.incentive === 0) return "no incentive in this period";
+    if (line.incentiveType === "fixed") return `fixed ${pesos(line.incentive)}`;
+    const base = line.basePay - line.markUp;
+    const from = line.markUp > 0 ? `${pesos(base)} (${pesos(line.basePay)} less ${pesos(line.markUp)} mark-up)` : pesos(base);
+    return `${line.reactivation ? "Reactivation " : ""}${line.incentiveAmount}% of ${from} = ${pesos(line.incentive)}`;
+  };
+  const groups: Array<{ first: number; last: number; text: string }> = [];
+  for (const line of breakdown) {
+    const text = describe(line), group = groups.at(-1);
+    if (group?.text === text && group.last === line.nop - 1) group.last = line.nop;
+    else groups.push({ first: line.nop, last: line.nop, text });
+  }
+  return groups.map(({ first, last, text }) => text.startsWith("Direct") ? text : first === last ? `NOP ${first}: ${text}` : `NOP ${first}–${last}: ${text} each`);
+}
+
 export function calculateSaleIncentive(program: SaleProgram, amountPaid: number) {
   const paidCents = Math.round(amountPaid * 100);
   if (!Number.isFinite(paidCents) || paidCents < 0) throw new Error("Enter a valid amount paid.");
-  const none = (rule: string) => ({ incentive: 0, remittance: paidCents / 100, rule });
+  const none = (rule: string) => ({ incentive: 0, remittance: paidCents / 100, rule, basis: [rule] });
   if (program.registrationFeeRequired) {
     if (!program.saleIncentiveType || !program.saleIncentiveAmount) return none("No New Sale incentive is set for this program.");
     const incentiveCents = program.saleIncentiveType === "percentage"
       ? Math.round(paidCents * program.saleIncentiveAmount / 100)
       : Math.min(paidCents, Math.round(program.saleIncentiveAmount * 100));
-    return { incentive: incentiveCents / 100, remittance: (paidCents - incentiveCents) / 100, rule: program.saleIncentiveType === "percentage" ? `${program.saleIncentiveAmount}% of the registration paid` : `Fixed New Sale incentive` };
+    return { incentive: incentiveCents / 100, remittance: (paidCents - incentiveCents) / 100, rule: program.saleIncentiveType === "percentage" ? `${program.saleIncentiveAmount}% of the registration paid` : `Fixed New Sale incentive`,
+      basis: [program.saleIncentiveType === "percentage" ? `${program.saleIncentiveAmount}% of the ${pesos(paidCents / 100)} registration = ${pesos(incentiveCents / 100)}` : `Fixed New Sale incentive ${pesos(incentiveCents / 100)}`] };
   }
   if (paidCents < Math.round(program.basePay * 100)) return none(program.flexible ? "Less than the minimum monthly payment was paid, so no incentive applies." : "Less than one month's base pay was paid, so no incentive applies.");
   const quote = calculateRemittance(program.basePay, program.incentiveTiers, "MAS", 1, 1, amountPaid, program.flexible, program.maxMonthlyPayment);
-  return { incentive: Math.round((amountPaid - quote.remittance) * 100) / 100, remittance: quote.remittance, rule: program.flexible ? "Month-1 MAS incentive on the amount paid" : "Month-1 MAS incentive on the base pay" };
+  return { incentive: Math.round((amountPaid - quote.remittance) * 100) / 100, remittance: quote.remittance, rule: program.flexible ? "Month-1 MAS incentive on the amount paid" : "Month-1 MAS incentive on the base pay", basis: incentiveBasis(quote.breakdown) };
 }
 
 /**

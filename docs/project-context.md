@@ -17,6 +17,12 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Review cards show the percentage or fixed amount (2026-11-05)
+
+- **Asked (owner):** the calculation on the card means seeing the percentage, or the fixed amount when it is fixed.
+- **Done:** `incentiveBasis` in `lib/remittance.ts` puts `calculateRemittance`'s breakdown into words, and `calculateSaleIncentive` returns `basis`; `components/entry-figures.tsx` shows them, for example NOP 3: 30% of ₱300.00 (₱350.00 less ₱50.00 mark-up) = ₱90.00, or NOP 3: fixed ₱80.00. NOPs worked out alike share a line, and a batch across two tiers shows both. Reactivation, ORC, Direct to Office, non-commissionable periods and No incentive say what was really paid. No money rule changed; no migration.
+- **Tested:** new test in `scripts/test-remittance.mjs`; checked in headless Chrome with mocked data.
+
 ### Review cards show the figures; Waiver follows the OR date back (2026-11-05)
 
 - **Asked (owner):** when reviewing New Sales and Collections submitted by a MAS, show the incentive calculation on the card with Account, NOP and Remittance. MAS who collected the day before they first used the system: a member at 61 days today but not yesterday still had Waiver after the clerk changed the OR date to yesterday.

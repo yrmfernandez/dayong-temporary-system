@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calculateRemittance, calculateSaleIncentive, normalizeSaleIncentive, tiersForBranch } from "../lib/remittance.ts";
+import { calculateRemittance, calculateSaleIncentive, incentiveBasis, normalizeSaleIncentive, tiersForBranch } from "../lib/remittance.ts";
 // Remittance = ((base pay - mark-up) - incentive) + mark-up; incentive = fixed amount or % of (base pay - mark-up).
 const tier = { id: "T1", role: "MAS", fromMonth: 1, toMonth: 6, incentiveType: "percentage", markUp: 50, incentiveAmount: 50 };
 
@@ -148,4 +148,29 @@ test("ORC: a Collector earns half of the MAS incentive; reactivation earns only 
   assert.equal(calculateRemittance(350, tiers, "Collector", 2, 3, 700, false, null, { reactivation: true }).remittance, 640);
   assert.equal(calculateRemittance(350, tiers, "DTO", 2, 2, 350, false, null, { reactivation: true }).remittance, 350, "DTO still earns nothing");
   assert.throws(() => calculateRemittance(350, tiers, "Collector", 2, 2, 350, false, null, { orc: true, reactivation: true }), /cannot be ORC/);
+});
+
+test("the card says how each incentive was reached: the percentage and its base, or the fixed amount", () => {
+  const peso = (text) => text.replace(/\u00a0/g, " ");
+  const basis = (...args) => incentiveBasis(calculateRemittance(...args).breakdown).map(peso);
+  const fixed = { ...tier, incentiveType: "fixed", incentiveAmount: 80 };
+  assert.deepEqual(basis(350, [tier], "MAS", 1, 1), ["NOP 1: 50% of ₱300.00 (₱350.00 less ₱50.00 mark-up) = ₱150.00"]);
+  assert.deepEqual(basis(350, [{ ...tier, markUp: 0 }], "MAS", 1, 1), ["NOP 1: 50% of ₱350.00 = ₱175.00"]);
+  assert.deepEqual(basis(350, [fixed], "MAS", 1, 1), ["NOP 1: fixed ₱80.00"]);
+  assert.deepEqual(basis(350, [tier], "MAS", 2, 4), ["NOP 2–4: 50% of ₱300.00 (₱350.00 less ₱50.00 mark-up) = ₱150.00 each"], "NOPs worked out alike share a line");
+  const split = [{ ...tier, toMonth: 2 }, { ...fixed, fromMonth: 3, toMonth: 6 }];
+  assert.deepEqual(basis(350, split, "MAS", 2, 3), ["NOP 2: 50% of ₱300.00 (₱350.00 less ₱50.00 mark-up) = ₱150.00", "NOP 3: fixed ₱80.00"], "a batch across two tiers shows both");
+
+  // What is paid is what shows, not the tier's own rate.
+  assert.deepEqual(basis(350, [tier], "DTO", 1, 2), ["Direct to Office: no incentive"]);
+  assert.deepEqual(basis(350, [{ ...tier, nonCommissionable: true }], "MAS", 1, 1), ["NOP 1: no incentive in this period"]);
+  assert.deepEqual(basis(350, [tier], "MAS", 1, 1, undefined, false, undefined, { reactivation: true }), ["NOP 1: Reactivation 10% of ₱300.00 (₱350.00 less ₱50.00 mark-up) = ₱30.00"]);
+  assert.deepEqual(basis(350, [tier, { ...tier, id: "T2", role: "Collector" }], "Collector", 1, 1, undefined, false, undefined, { orc: true }), ["NOP 1: ORC: half of the MAS incentive ₱150.00 = ₱75.00"]);
+
+  // New Sale: the registration's own setting, or the month-1 MAS tier.
+  const sale = { basePay: 350, registrationFeeRequired: true, saleIncentiveType: "percentage", saleIncentiveAmount: 20, incentiveTiers: [tier] };
+  assert.deepEqual(calculateSaleIncentive(sale, 200).basis.map(peso), ["20% of the ₱200.00 registration = ₱40.00"]);
+  assert.deepEqual(calculateSaleIncentive({ ...sale, saleIncentiveType: "fixed", saleIncentiveAmount: 60 }, 200).basis.map(peso), ["Fixed New Sale incentive ₱60.00"]);
+  assert.deepEqual(calculateSaleIncentive({ ...sale, registrationFeeRequired: false, saleIncentiveType: "" }, 350).basis.map(peso), ["NOP 1: 50% of ₱300.00 (₱350.00 less ₱50.00 mark-up) = ₱150.00"]);
+  assert.match(calculateSaleIncentive({ ...sale, registrationFeeRequired: false, saleIncentiveType: "" }, 100).basis[0], /Less than one month/);
 });

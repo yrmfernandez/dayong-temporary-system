@@ -401,9 +401,9 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       // No incentive (owner, October 20, 2026): remitted whole, as the server saves it.
       if (!noIncentiveOn(sale)) return quote;
       const kept = withoutIncentive(amountPaidOf(sale), quote.remittance);
-      return { ...quote, incentive: 0, remittance: kept.remittance };
+      return { ...quote, incentive: 0, remittance: kept.remittance, basis: ["No incentive on this sale: the whole amount is remitted"] };
     } catch (error) {
-      return { incentive: 0, remittance: 0, rule: "", error: error instanceof Error ? error.message : "The incentive could not be calculated." };
+      return { incentive: 0, remittance: 0, rule: "", basis: [], error: error instanceof Error ? error.message : "The incentive could not be calculated." };
     }
   });
   const quoteProblem = saleQuotes.find((quote) => quote && "error" in quote) as { error: string } | undefined;
@@ -1868,7 +1868,7 @@ Is this cash part of that handover?`) ? "same"
                         <div><dt className="text-[11px] text-muted-foreground">To remit</dt><dd className="font-semibold tabular-nums">{peso(saleQuotes[index]!.remittance)}</dd></div>
                       </dl>}
                       {/* The clerk checks each sale on its card (owner, November 5, 2026). */}
-                      {!masMode && saleQuotes[index] && !("error" in saleQuotes[index]!) && <div className="rounded-md bg-muted/40 p-2"><EntryFigures account="NS" nop={selectedProgram?.registrationFeeRequired ? "Registration" : "1"} collected={amountPaidOf(sale)} incentive={saleQuotes[index]!.incentive} remittance={saleQuotes[index]!.remittance} incentiveLabel="MAS incentive" /></div>}
+                      {!masMode && saleQuotes[index] && !("error" in saleQuotes[index]!) && <div className="rounded-md bg-muted/40 p-2"><EntryFigures account="NS" nop={selectedProgram?.registrationFeeRequired ? "Registration" : "1"} collected={amountPaidOf(sale)} incentive={saleQuotes[index]!.incentive} remittance={saleQuotes[index]!.remittance} basis={saleQuotes[index]!.basis} incentiveLabel="MAS incentive" /></div>}
                       {/* The clerk sees this in the totals card; a MAS has no totals card, so it shows on the sale. */}
                       {masMode && saleQuotes[index] && "error" in saleQuotes[index]! && <p role="alert" className="text-sm text-destructive">Your incentive cannot be worked out: {(saleQuotes[index] as { error: string }).error} Ask the office.</p>}
                       {/* NO INCENTIVE (owner, October 20, 2026): this one sale earns the MAS nothing; it is remitted whole. */}
