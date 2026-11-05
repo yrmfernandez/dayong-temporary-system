@@ -17,6 +17,17 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Review cards show the figures; Waiver follows the OR date back (2026-11-05)
+
+- **Asked (owner):** when reviewing New Sales and Collections submitted by a MAS, show the incentive calculation on the card with Account, NOP and Remittance. MAS who collected the day before they first used the system: a member at 61 days today but not yesterday still had Waiver after the clerk changed the OR date to yesterday.
+- **Cause:** the rule was right: `needsWaiver` and the save both judge the OR date. But `openSubmission` copied the MAS's tick into `ifSuspended`, nothing cleared it when the date moved, and the second If Suspended list has no blank choice, so the clerk could not remove it. Its only effect is the `suspended` record on the receipt: no amounts were wrong.
+- **Done:**
+  - `needsWaiver` moved to `lib/account-rules.ts` with `waiverOnOrDate`: changing the OR date to before the suspension drops the Waiver, and the save drops it too, so a batch already open is covered. The card says it is suspended now but not on the OR date. A Waiver on a receipt the rule does not call for no longer covers later receipts of that account in the batch.
+  - `components/entry-figures.tsx` shows Account, NOP, Incentive, Remittance and the sum on every Collections card, folded or open, and on the clerk's New Sale cards (in Encode too). A folded New Sale also lists them. New Sale NOP reads 1, or Registration on a program with a registration fee. Same rules as the save.
+- **Tested:** new test in `scripts/test-account-rules.mjs` with this dated case, including the save. Headless Chrome as a clerk with mocked data: the prompt goes, the note shows, only that card loses its Waiver.
+- **Limits:** Account on the card is the status today, not on the OR date. A MAS still has to tick Waiver when submitting such a member, since Submit Collections always dates today; the clerk's date change removes it. No migration.
+- **To do (owner):** receipts already saved with a stray Waiver keep it; the batch editor in My Entries has a Waiver tick where that batch can still be edited. Try a batch on staging.
+
 ### Separate branches as Entry Clerk and as MAS (2026-11-05)
 
 - **Seen (owner):** an Entry Clerk assigned to another branch only because they have members there also sees what is submitted to that branch.

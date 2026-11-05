@@ -35,6 +35,7 @@ import { defaultNewSaleAmount, fixedNewSaleAmount } from "@/lib/program-amount-l
 import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { ControlTotalField } from "@/components/control-total-field";
+import { EntryFigures } from "@/components/entry-figures";
 import { BACKDATE_REASON_MIN, controlTotalDifference, controlTotalProblem, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { formatDeadline, manilaNow } from "@/lib/remittance-deadline";
@@ -1682,7 +1683,7 @@ Is this cash part of that handover?`) ? "same"
                       {!expanded && (
                         <span className="truncate text-sm max-md:w-full max-md:whitespace-normal">
                           <strong>{[sale.member.name.surname, sale.member.name.firstName].filter(Boolean).join(", ") || "No name yet"}</strong>
-                          <span className="text-muted-foreground"> · {programOf(sale)?.name || sale.program.programCode || "no program"} · {peso(amountPaidOf(sale))} · App {sale.applicationNumber || "—"}</span>
+                          <span className="text-muted-foreground"> · {programOf(sale)?.name || sale.program.programCode || "no program"} · {peso(amountPaidOf(sale))} · App {sale.applicationNumber || "—"}{saleQuotes[index] && !("error" in saleQuotes[index]!) ? ` · Incentive ${peso(saleQuotes[index]!.incentive)} · Remittance ${peso(saleQuotes[index]!.remittance)}` : ""}</span>
                         </span>
                       )}
                     </div>
@@ -1866,6 +1867,8 @@ Is this cash part of that handover?`) ? "same"
                         <div><dt className="text-[11px] text-muted-foreground">Your incentive</dt><dd className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{peso(saleQuotes[index]!.incentive)}</dd></div>
                         <div><dt className="text-[11px] text-muted-foreground">To remit</dt><dd className="font-semibold tabular-nums">{peso(saleQuotes[index]!.remittance)}</dd></div>
                       </dl>}
+                      {/* The clerk checks each sale on its card (owner, November 5, 2026). */}
+                      {!masMode && saleQuotes[index] && !("error" in saleQuotes[index]!) && <div className="rounded-md bg-muted/40 p-2"><EntryFigures account="NS" nop={selectedProgram?.registrationFeeRequired ? "Registration" : "1"} collected={amountPaidOf(sale)} incentive={saleQuotes[index]!.incentive} remittance={saleQuotes[index]!.remittance} incentiveLabel="MAS incentive" /></div>}
                       {/* The clerk sees this in the totals card; a MAS has no totals card, so it shows on the sale. */}
                       {masMode && saleQuotes[index] && "error" in saleQuotes[index]! && <p role="alert" className="text-sm text-destructive">Your incentive cannot be worked out: {(saleQuotes[index] as { error: string }).error} Ask the office.</p>}
                       {/* NO INCENTIVE (owner, October 20, 2026): this one sale earns the MAS nothing; it is remitted whole. */}

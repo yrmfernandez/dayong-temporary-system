@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accountState, validatePayment, allocations, addMonths, forfeitMonthsFor, monthIndex, monthName } from "../lib/account-rules.ts";
+import { accountState, validatePayment, allocations, addMonths, forfeitMonthsFor, monthIndex, monthName, needsWaiver, waiverOnOrDate } from "../lib/account-rules.ts";
 
 const account = { id: "E1", memberId: "M1", memberNumber: "PH1", programId: "P1", doi: "2026-01-15", branch: "B1", mas: "MAS1", basePay: 350, storedStatus: "" };
 const payment = (overrides = {}) => ({ id: "C1", enrollmentId: "E1", orDate: "2026-01-15", orNumber: "OR1", monthFrom: "2026-01", monthTo: "2026-01", nopFrom: 1, nopTo: 1, amount: 350, dateRemitted: "2026-02-01", mas: "MAS1", ...overrides });
@@ -192,4 +192,25 @@ test("Fully Paid: a term program completes at its last month, a recorded full pa
   // Flexible: the New Sale counts toward the total.
   const flexible = { ...account, basePay: 150, payBalanceTotal: 600, flexible: true, saleCredit: 300 };
   assert.equal(accountState(flexible, [payment({ monthFrom: "2026-02", monthTo: "2026-02", nopFrom: 2, nopTo: 2, amount: 300 })], "2026-02-20").status, "Fully Paid", "300 New Sale + 300 collected = 600");
+});
+
+test("a member who paid before the suspension needs no Waiver when the clerk moves the OR date back, though the MAS ticked it the day they submitted", () => {
+  // Paid through September 4: suspended from November 5. The MAS submits on November 5; the member paid on November 4.
+  const paidSeptember = { ...account, doi: "2026-09-04" };
+  const today = "2026-11-05", paidOn = "2026-11-04";
+  const { temporarilySuspended, suspendedAt, nextMonth, nextNop } = accountState(paidSeptember, [], today);
+  assert.deepEqual([temporarilySuspended, suspendedAt], [true, today]);
+  const card = { temporarilySuspended, suspendedAt, orDate: today, ifSuspended: "Waiver" };
+
+  assert.equal(needsWaiver(card), true);
+  assert.equal(waiverOnOrDate(card), "Waiver", "paid today, the MAS's Waiver stays");
+  assert.equal(needsWaiver({ ...card, orDate: paidOn }), false);
+  assert.equal(waiverOnOrDate({ ...card, orDate: paidOn }), "", "paid before the suspension, the Waiver goes");
+  assert.equal(waiverOnOrDate({ ...card, orDate: "" }), "Waiver", "a date still being typed decides nothing");
+  assert.equal(waiverOnOrDate({ ...card, orDate: paidOn, ifSuspended: "Visitation Form" }), "Visitation Form", "only a Waiver is dropped");
+
+  // The save agrees: accepted without a Waiver on November 4, refused without one on November 5.
+  const payment = { monthFrom: nextMonth, monthTo: nextMonth, nopFrom: nextNop, nopTo: nextNop, amount: 350, orNumber: "OR2", waiver: "", collectedByRole: "MAS", originalMas: "" };
+  validatePayment(paidSeptember, [], { ...payment, orDate: paidOn }, today);
+  assert.throws(() => validatePayment(paidSeptember, [], { ...payment, orDate: today }, today), /Select Waiver/);
 });

@@ -47,7 +47,8 @@ import {
 
 import type { Member } from "@/lib/types";
 import { calculateRemittance, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive, type IncentiveTier } from "@/lib/remittance";
-import { forfeitedPaymentsAllowed } from "@/lib/account-rules";
+import { forfeitedPaymentsAllowed, needsWaiver, waiverOnOrDate } from "@/lib/account-rules";
+import { EntryFigures } from "@/components/entry-figures";
 import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 import { isValidOrNumber, nextOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
 import { formatDate as showDate, formatDateTime } from "@/lib/date-format";
@@ -262,7 +263,7 @@ function chainSameAccount(list: CollectionEntry[]) {
     if (!original.memberId || !original.programId) return original;
     const key = `${original.memberId}|${original.programId}`;
     const waiverAbove = waived.has(key);
-    if (original.ifSuspended === "Waiver") waived.add(key);
+    if (original.ifSuspended === "Waiver" && needsWaiver(original)) waived.add(key);
     let entry = original;
     if (Boolean(entry.waiverAbove) !== waiverAbove) { changed = true; entry = { ...entry, waiverAbove }; }
     if (entry.accountLoading || !entry.accountNextMonth || entry.accountNextNop == null) return entry;
@@ -302,13 +303,6 @@ function getMonthDifference(from: string, to: string) {
     1
   );
 }
-
-/**
- * A Waiver is needed only when the member paid on or after the day the account became suspended (the OR date, not the
- * day it is encoded; owner, October 14, 2026). Without a suspension date, today's state decides.
- */
-const needsWaiver = (entry: { temporarilySuspended: boolean; suspendedAt?: string; orDate: string }) =>
-  entry.suspendedAt ? Boolean(entry.orDate) && entry.orDate >= entry.suspendedAt : entry.temporarilySuspended;
 
 export default function CollectionsPage() {
   const [branch, setBranch] = useState("");
@@ -603,6 +597,16 @@ export default function CollectionsPage() {
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
   }
   const quotes = collections.map(quoteEntry);
+  /** The figures on a collection's card (components/entry-figures.tsx): what it earns and what is remitted, as the server saves it. */
+  const figuresOf = (entry: CollectionEntry) => {
+    const quote = quoteEntry(entry), collected = Number(entry.amountCollected) || 0;
+    const remittance = "remittance" in quote ? quote.remittance : null;
+    return {
+      account: entry.accountLoading ? "Loading..." : entry.accountStatus || "—",
+      nop: `${entry.nopFrom ?? "—"}${entry.nopTo !== null && entry.nopTo !== entry.nopFrom ? `–${entry.nopTo}` : ""}`,
+      collected, remittance, incentive: remittance === null ? null : (Math.round(collected * 100) - Math.round(remittance * 100)) / 100,
+    };
+  };
   const totalCollected = collections.reduce((sum, entry) => sum + Math.round(Number(entry.amountCollected || 0) * 100), 0) / 100;
   const totalRemittance = quotes.every((q) => "remittance" in q) ? quotes.reduce((sum, q) => sum + Math.round(("remittance" in q ? q.remittance : 0) * 100), 0) / 100 : null;
   const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
@@ -1010,8 +1014,9 @@ export default function CollectionsPage() {
           fidelityAmount,
           collections: collections.map((entry) => ({
             ...entry,
-            // Covered by the Waiver on an earlier receipt for the same account; saved with it on record.
-            ifSuspended: entry.waiverAbove && !entry.ifSuspended ? "Waiver" : entry.ifSuspended,
+            // Covered by the Waiver on an earlier receipt for the same account; saved with it on record. A Waiver the OR
+            // date does not call for is not saved, also on a batch opened before the date rule reached the form.
+            ifSuspended: entry.waiverAbove && !entry.ifSuspended && needsWaiver(entry) ? "Waiver" : waiverOnOrDate(entry),
             memberNumber: members.find(
               (member) => member.id === entry.memberId,
             )?.phMemberNumber,
@@ -1513,6 +1518,7 @@ export default function CollectionsPage() {
                                     "—"}
                                 </span>
                               </div>
+                              <div className="mt-2"><EntryFigures {...figuresOf(entry)} /></div>
                             </div>
 
                             <div className="flex shrink-0 items-center gap-1">
@@ -1687,7 +1693,7 @@ export default function CollectionsPage() {
                                   </div>
                                   <div className="space-y-1">
                                     <Label>OR Date *</Label>
-                                    <Input type="date" value={entry.orDate} onChange={(event) => updateCollection(entry.id, { orDate: event.target.value })} />
+                                    <Input type="date" value={entry.orDate} onChange={(event) => updateCollection(entry.id, { orDate: event.target.value, ifSuspended: waiverOnOrDate({ ...entry, orDate: event.target.value }) })} />
                                   </div>
                                 </div>
                                 {locked && payoff > monthly && monthly > 0 && (
@@ -1709,14 +1715,13 @@ export default function CollectionsPage() {
 
                           {/* WORKED OUT BY THE SYSTEM: account status, NOP and the remittance, on one line. */}
                           <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                            Account <strong className="text-foreground">{entry.accountLoading ? "Loading..." : entry.accountStatus || "—"}</strong>
-                            {" · "}NOP <strong className="text-foreground">{entry.nopFrom ?? "—"}{entry.nopTo !== null && entry.nopTo !== entry.nopFrom ? `–${entry.nopTo}` : ""}</strong>
-                            {" · "}Remittance <strong className="text-foreground">{(() => { const quote = quoteEntry(entry); return "remittance" in quote ? formatCurrency(quote.remittance) : "Pending"; })()}</strong>
+                            <EntryFigures {...figuresOf(entry)} />
                             <span title="NOP is set from the covered months and the account's history (an NS account's New Sale is NOP 1, so its first collection is NOP 2; on a program with a registration fee the New Sale is not a NOP, so the first collection is NOP 1). The remittance uses the MAS or Collector incentive tier and mark-up."> ⓘ</span>
                             {quoteEntry(entry).error && <p className="mt-1 text-amber-700">{quoteEntry(entry).error}</p>}
                             {needsWaiver(entry) && (entry.waiverAbove
                               ? <p className="mt-1 text-foreground">Suspended on the OR date: Waiver selected on the earlier receipt for this account.</p>
                               : <p className="mt-1 text-amber-700">Suspended on the OR date. Select Waiver under If Suspended.</p>)}
+                            {entry.temporarilySuspended && entry.orDate && !needsWaiver(entry) && <p className="mt-1 text-foreground">Suspended now, but not yet on the OR date: no Waiver needed.</p>}
                             {entry.accountStatus === "Forfeited" && <p className={`mt-1 ${forfeitedPaymentsAllowed() ? "text-amber-700" : "text-red-600"}`}>{forfeitedPaymentsAllowed() ? "Forfeited: payments are allowed today only." : "Payments are blocked for this program."}</p>}
                             {needsWaiver(entry) && !entry.waiverAbove && <label className="mt-2 block text-foreground">If Suspended *<select className="ml-2 rounded border p-1" value={entry.ifSuspended} onChange={(e) => updateCollection(entry.id, { ifSuspended: e.target.value })}><option value="">Select</option><option value="Waiver">Waiver</option></select></label>}
                           </div>

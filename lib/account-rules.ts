@@ -205,6 +205,22 @@ export const incentiveRoleFor = (channel: string): "MAS" | "Collector" | "DTO" =
 export const FORFEITED_PAYMENT_DAYS: readonly string[] = ["2026-10-13"];
 export const forfeitedPaymentsAllowed = (today = todayInManila()) => FORFEITED_PAYMENT_DAYS.includes(today);
 
+/**
+ * A Waiver is needed only when the member paid on or after the day the account became suspended (the OR date, not the
+ * day it is encoded; owner, October 14, 2026). Without a suspension date, today's state decides.
+ */
+export const needsWaiver = (entry: { temporarilySuspended: boolean; suspendedAt?: string; orDate: string }) =>
+  entry.suspendedAt ? Boolean(entry.orDate) && entry.orDate >= entry.suspendedAt : entry.temporarilySuspended;
+
+/**
+ * What If Suspended holds for this OR date. A MAS ticks Waiver on the day they submit, as the account stands that day;
+ * when the clerk moves the OR date back to the day the member really paid, before the suspension, that Waiver no longer
+ * applies and goes (owner, November 5, 2026: members who paid the day before the MAS first used the system). Nothing is
+ * decided until the date is whole.
+ */
+export const waiverOnOrDate = (entry: { temporarilySuspended: boolean; suspendedAt?: string; orDate: string; ifSuspended: string }) =>
+  entry.ifSuspended === "Waiver" && entry.suspendedAt && entry.orDate && !needsWaiver(entry) ? "" : entry.ifSuspended;
+
 export type PaymentInput = { monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; amount: number; orDate: string; orNumber: string; waiver: string; collectedByRole: string; originalMas: string };
 export function validatePayment(account: Account, history: AccountPayment[], input: PaymentInput, today = todayInManila()) {
   const state = accountState(account, history, today);
