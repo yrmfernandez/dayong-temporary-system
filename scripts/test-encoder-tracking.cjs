@@ -572,6 +572,47 @@ test('master-data CRUD blocks deleting assigned branches', async () => {
   await assert.rejects(() => crud.deleteBranchRecord('BR-0001'), /assigned/i);
 });
 
+test('member directory filters, counts and pages in the database as the directory rules say', async () => {
+  const h = harness({ userId: 'U1', roleNames: ['Finance'], permissions: {} });
+  const route = h.load('app/api/members/directory/route.ts');
+  const directory = async (query = '') => (await route.GET(new Request(`http://localhost/api/members/directory${query}`))).json();
+  const ids = async (query) => (await directory(query)).members.map((member) => member.id);
+  await seed('members', [
+    { member_id: 'D1', member_number: 'PH-101', surname: 'Alba', first_name: 'Ana', member_contact: '09171234567', address: 'Mintal' },
+    { member_id: 'D2', member_number: 'PH-102', surname: 'Bato', first_name: 'Ben', status: 'Deceased', died_on: '2026-03-10' },
+    { member_id: 'D3', member_number: 'PH-103', surname: 'Cruz', first_name: 'Cy' },
+    { member_id: 'D4', member_number: 'PH-104', surname: 'Diaz', first_name: 'Di' },
+    { member_id: 'D5', member_number: 'PH-105', surname: 'Elio', first_name: 'Ed' },
+  ]);
+  await seed('programs', [{ program_id: 'P1', program_code: 'A', program_name: 'Program A' }]);
+  await seed('member_programs', [
+    { enrollment_id: 'E1', member_id: 'D1', member_number: 'PH-101', program_id: 'P1', doi: '2026-01-15', branch: ' North ', mas: 'MAS1' },
+    { enrollment_id: 'E2', member_id: 'D2', member_number: 'PH-102', program_id: 'P1', doi: '2026-02-15', branch: 'North', mas: 'MAS1' },
+    { enrollment_id: 'E3', member_id: 'D3', member_number: 'PH-103', program_id: 'P1', doi: '2026-03-15', branch: 'South', mas: 'MAS2', status: 'Deactivated', deactivated_on: '2026-04-01' },
+    { enrollment_id: 'E4', member_id: 'D4', member_number: 'PH-104', program_id: 'P1', doi: '2026-04-15', branch: 'South', mas: 'MAS2', fully_paid_on: '2026-05-01' },
+  ]);
+  const all = await directory();
+  assert.deepEqual([all.total, all.matched, all.counts.active, all.counts.inactive, all.counts.deactivated, all.counts.dead, all.counts.alive], [5, 5, 1, 3, 1, 1, 4]);
+  assert.deepEqual(all.members.map((member) => member.status), ['Active', 'Deceased', 'Inactive', 'Inactive', 'Inactive'], 'no program, or every program ended, is Inactive');
+  assert.deepEqual(all.options.branches, ['North', 'South']);
+  assert.deepEqual(all.options.statuses, ['Active', 'Deceased', 'Inactive']);
+  assert.deepEqual(all.options.programs, [['P1', 'Program A']]);
+  assert.deepEqual(await ids('?standing=deactivated'), ['D3']);
+  assert.deepEqual(await ids('?standing=dead'), ['D2']);
+  assert.deepEqual(await ids('?standing=inactive'), ['D3', 'D4', 'D5']);
+  assert.deepEqual(await ids('?status=Active'), ['D1']);
+  assert.deepEqual(await ids('?branch=North'), ['D1', 'D2'], 'spaces around a stored branch do not hide it');
+  assert.deepEqual(await ids('?search=0917'), ['D1']);
+  assert.deepEqual(await ids('?search=alba%20mintal'), ['D1']);
+  assert.deepEqual(await ids('?dateField=doi&dateFrom=2026-02-01&dateTo=2026-03-31'), ['D2', 'D3']);
+  assert.deepEqual(await ids('?dateField=dropped&dateTo=2026-04-01'), ['D3']);
+  assert.deepEqual(await ids('?dateField=fullyPaid&dateFrom=2026-05-01'), ['D4']);
+  assert.deepEqual(await ids('?dateField=died&dateFrom=2026-03-01&dateTo=2026-03-31'), ['D2']);
+  assert.deepEqual(await ids('?dateField=doi&dateFrom=2026-03-01&branch=North'), [], 'the date and the branch must be on the same program');
+  const past = await directory('?page=9');
+  assert.deepEqual([past.page, past.pages, past.members.length], [1, 1, 5], 'a page past the end shows the last page');
+});
+
 test('member directory requires Members page access, joins accounts once, and filters the same enrollment', async () => {
   const h = harness(null);
   const route = h.load('app/api/members/directory/route.ts');

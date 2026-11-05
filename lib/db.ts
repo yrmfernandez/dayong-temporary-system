@@ -92,8 +92,6 @@ export function inTransaction<T>(work: (tx: Transaction) => Promise<T>): Promise
   return attempt(0).finally(() => {
     // Pages that still read through the Sheets layer (lib/google-sheets.ts) see this save at once.
     (globalThis as { dayongSheetsCacheV3?: { invalidate: () => void } }).dayongSheetsCacheV3?.invalidate();
-    // The Members directory kept for 15 s in this server (lib/member-directory-data.ts) is read again after a save.
-    (globalThis as { dayongDirectoryCache?: unknown }).dayongDirectoryCache = undefined;
     // So is the remittance ledger kept for 10 s (lib/remittance-workflow.ts).
     (globalThis as { dayongLedgerCache?: unknown }).dayongLedgerCache = undefined;
     // And the small shared reads (lib/short-cache.ts: employees, receipt photos, date-remitted reasons).
