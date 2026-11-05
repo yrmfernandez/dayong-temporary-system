@@ -13,6 +13,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Chrome on Android shrinks the page to what the keyboard leaves, instead of laying the keyboard over it (lib/keep-field-in-view.ts).
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f4f3f7" },
     { media: "(prefers-color-scheme: dark)", color: "#131118" },

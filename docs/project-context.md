@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Phone keyboard no longer covers the field (2026-11-05)
+
+- **Asked (owner):** on a phone, the keyboard or a pinned tab sometimes blocks the field being typed in.
+- **Cause:** the app is exactly screen height and scrolls inside `main`, and the keyboard was laid over it. With the keyboard up, the top bar, tabs and save bar took 232 px of the 420 px left on a 740 px screen.
+- **Done:** `lib/keep-field-in-view.ts`, one listener installed by the app shell, for touch screens only. `data-keyboard` on `<html>` unpins the bars while the keyboard is open, and the focused field moves to the middle of what is left. `interactiveWidget: "resizes-content"` in `app/layout.tsx` shrinks the page on Android; Safari ignores it, so `--keyboard-room` adds scroll room there. The sign-in page is now `h-dvh` with a row as tall as its content below `lg`, so it can be swiped to Sign In once the page shrinks.
+- **Tested:** `scripts/test-keep-field-in-view.mjs`; both keyboard behaviours simulated in headless Chrome at 360 px.
+- **To do (owner):** try it on a real Android phone and a real iPhone; no real keyboard was available.
+
 ### Typing in capitals (2026-11-05)
 
 - **Asked (owner):** for the typing to be unique, every text field makes each character uppercase.

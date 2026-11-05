@@ -14,6 +14,7 @@ import { executiveRoles, isAdministratorRole, type AccessContext } from "@/lib/a
 import { sessionForWorkspace } from "@/lib/workspace-session";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { installFriendlyApiErrors } from "@/lib/friendly-api-errors";
+import { installKeepFieldInView } from "@/lib/keep-field-in-view";
 import { installSaveQueue } from "@/lib/save-queue";
 import { installUppercaseTyping } from "@/lib/uppercase-typing";
 import type { MaintenanceNotice } from "@/lib/maintenance-notice-text";
@@ -25,6 +26,8 @@ installFriendlyApiErrors();
 installSaveQueue();
 // What is typed into a text field becomes capitals, on every page (lib/uppercase-typing.ts).
 installUppercaseTyping();
+// A phone's keyboard and the pinned bars never cover the field being typed in (lib/keep-field-in-view.ts).
+installKeepFieldInView();
 import { ACTIVE_ROLE_COOKIE, onPreferencesChange, preferenceKeys, readDensity, readPreference, writeActiveRoleCookie, writePreference } from "@/lib/ui-preferences";
 
 const safeDecode = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };

@@ -829,6 +829,10 @@ Untick **Entry Clerk** where they only have members. Clock-in, Clearing and acco
 
 Everything typed into a text field becomes capitals as it is typed, on every page and pop-up (November 5, 2026, [uppercase-typing.ts](../lib/uppercase-typing.ts)), so a word is always spelled the same way. Left as typed: passwords, emails, numbers, dates and contact numbers, search boxes, and the sign-in page. Records already saved stay as they are until someone edits that field.
 
+### Typing on a phone
+
+The keyboard and the pinned bars never cover the field being typed in (November 5, 2026, [keep-field-in-view.ts](../lib/keep-field-in-view.ts)). While the keyboard is open, the top bar, the tabs and the save bar stop being pinned and scroll with the page, and the field moves into the part of the screen the keyboard leaves. They are pinned again when the keyboard closes, so close it to reach Submit without scrolling.
+
 ## 12. Corrections, history, audits, and exceptions
 
 ### Edit / Corrections (October 15, 2026)

@@ -654,6 +654,19 @@ main [data-slot="card-title"] {
   }
 }
 
+/* A phone's keyboard is open (lib/keep-field-in-view.ts): what is pinned scrolls with the page, so the field keeps the room. */
+html[data-keyboard] :is(.app-topbar, .sticky-below-topbar, main .sticky.bottom-0, main div.sticky.top-0) {
+  position: static;
+}
+
+html[data-keyboard] .app-main {
+  scroll-padding-block: 1rem;
+}
+
+html[data-keyboard] .app-content {
+  padding-bottom: calc(2rem + var(--keyboard-room, 0px));
+}
+
 /* iPhones centre the date and time in these fields; every other field starts at the left. */
 main input::-webkit-date-and-time-value {
   text-align: left;
