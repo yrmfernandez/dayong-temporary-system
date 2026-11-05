@@ -2772,7 +2772,7 @@ test('No incentive on one collection of a batch: only that one is remitted whole
   assert.deepEqual([kept.status, kept.share, kept.forfeited], ['Returned', 350, 350 - share], 'no incentive is given back');
 });
 
-test('MAM quota is fixed for the month by status, advances stay out of it, and a range counts a back month once', async () => {
+test('MAM quota is the last month closing total, fixed for the month, advances stay out of it, and a range counts a back month once', async () => {
   const h = harness({ userId: 'USR-1', employeeId: 'DPE-1', name: 'Clerk', roleNames: ['Administrator'], permissions: {} });
   const { buildMamReport, mamQuotaTotals } = h.load('lib/mam-report.ts');
   const account = (id, doi = '2026-01-10') => ({ id, memberId: id, memberNumber: id, memberName: id, programId: 'P', programName: 'Plan', doi, branch: 'B', mas: 'X', basePay: 350, storedStatus: '', payBalanceTotal: 0 });
@@ -2784,16 +2784,18 @@ test('MAM quota is fixed for the month by status, advances stay out of it, and a
   const payments = [...through('A', 10), ...through('B', 9), ...through('D', 8), ...through('E', 9),
     { id: 'E-adv', enrollmentId: 'E', orDate: '2026-10-10', orNumber: 'Eadv', monthFrom: '2026-10', monthTo: '2026-11', nopFrom: 10, nopTo: 11, amount: 700, dateRemitted: '2026-10-10', mas: 'X' }];
   const october = buildMamReport({ accounts, payments, sales: [] }, '2026-10', '2026-10', '2026-11-02');
-  assert.deepEqual(october.rows.map((row) => [row.id, row.periods[0].quota, row.periods[0].quotaCollected]), [['A', 350, 350], ['B', 350, 0], ['D', 700, 0], ['E', 350, 350]], 'by status, and the advance half of E is not counted');
-  assert.deepEqual(mamQuotaTotals(october.rows).last, { quota: 1750, counted: 700, remaining: 1050, collected: 1050 }, 'Collections Received keeps the full amount');
-  assert.equal(mamQuotaTotals(october.rows).quota, 1750);
+  assert.deepEqual(october.rows.map((row) => [row.id, row.periods[0].quota, row.periods[0].quotaCollected]), [['A', 350, 350], ['B', 350, 0], ['D', 350, 0], ['E', 350, 350]], 'as they stood on September 30, and the advance half of E is not counted');
+  assert.deepEqual(mamQuotaTotals(october.rows).last, { quota: 1400, counted: 700, remaining: 700, collected: 1050 }, 'Collections Received keeps the full amount');
+  assert.equal(mamQuotaTotals(october.rows).quota, 1400);
 
   const unpaid = buildMamReport({ accounts, payments: payments.filter((p) => p.orDate < '2026-10-01'), sales: [] }, '2026-10', '2026-10', '2026-11-02');
-  assert.equal(mamQuotaTotals(unpaid.rows).last.quota, 1750, 'fixed: the quota is the same with no payment at all');
+  assert.equal(mamQuotaTotals(unpaid.rows).last.quota, 1400, 'fixed: the quota is the same with no payment at all');
 
-  const range = mamQuotaTotals(buildMamReport({ accounts, payments, sales: [] }, '2026-09', '2026-10', '2026-11-02').rows);
-  assert.deepEqual(range.months.map((month) => month.quota), [1400, 1750]);
-  assert.deepEqual([range.quota, range.counted, range.remaining], [2800, 1750, 1050], "D's unpaid September is in both months' quota, once in the range's");
+  const both = buildMamReport({ accounts, payments, sales: [] }, '2026-09', '2026-10', '2026-11-02');
+  const range = mamQuotaTotals(both.rows);
+  assert.equal(range.months[1].quota, both.rows.reduce((sum, row) => sum + row.periods[0].state.balance, 0), "October's quota is September's closing total");
+  assert.deepEqual(range.months.map((month) => month.quota), [1400, 1400]);
+  assert.deepEqual([range.quota, range.counted, range.remaining], [2450, 1750, 700], "D's unpaid September is in both months' quota, once in the range's");
 
   // Paid ahead, the New Sale's own month and a dropped account owe nothing.
   const ahead = buildMamReport({ accounts: [account('F')], payments: through('F', 10).map((p) => ({ ...p, orDate: '2026-02-10' })), sales: [] }, '2026-10', '2026-10', '2026-11-02');

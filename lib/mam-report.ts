@@ -9,18 +9,14 @@ export function monitoringMonths(from: string, to: string) {
 const cents = (value: number) => Math.round(value * 100);
 
 /**
- * The month's fixed quota for one account (owner, November 5, 2026): what its status would make due by the month's end
- * if no payment came in that month, so payments never change it. Back months follow the status, as Amount Due does: U
- * one month, 60D two, 90D three, 120D four, 150D five. Nothing when the month is already covered (paid ahead, or the
- * New Sale's own month), and nothing once Fully Paid or Forfeited. An account forfeiting during the month still owed it
- * when the month began. `before` is the receipts of earlier months.
+ * The month's fixed quota for one account (owner, November 5, 2026): the last month's closing total, so October's quota
+ * is what was due at the end of September, and nothing paid in October changes it. That is the account's balance on
+ * that day: U one month, 60D two, 90D three, 120D four, 150D five, nothing when paid ahead, Fully Paid or Forfeited. An
+ * account enrolled during the month has no quota yet. `before` is the receipts of earlier months.
  */
 function monthQuota(account: Account, before: AccountPayment[], month: string) {
-  const atEnd = accountState(account, before, dateInMonth(month, 31));
-  if ((atEnd.lastCoveredMonth || account.doi.slice(0, 7)) >= month) return 0;
-  if (atEnd.balance !== null) return atEnd.balance;
-  const atStart = accountState(account, before, dateInMonth(monthName(monthIndex(month) - 1), 31));
-  return atStart.balance === null ? 0 : atStart.monthlyAmount * Math.min(atStart.unpaidMonths + 1, 5);
+  const lastMonthEnd = dateInMonth(monthName(monthIndex(month) - 1), 31);
+  return account.doi > lastMonthEnd ? 0 : accountState(account, before, lastMonthEnd).balance ?? 0;
 }
 
 /** What a receipt paid for this month or earlier; the part paid ahead is left out, shared by months covered. */

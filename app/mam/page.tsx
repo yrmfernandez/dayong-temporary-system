@@ -488,7 +488,7 @@ export default function MamPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{money(quotas.quota)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{oneMonth ? `Fixed for ${report ? formatMonth(report.to) : "the month"}` : `Whole range · ${report ? formatMonth(report.to) : "last month"} ${money(lastMonth?.quota ?? 0)}`}</p>
+            <p className="text-xs text-muted-foreground mt-1">{oneMonth ? `Fixed for ${report ? formatMonth(report.to) : "the month"}: last month's closing total` : `Whole range · ${report ? formatMonth(report.to) : "last month"} ${money(lastMonth?.quota ?? 0)}`}</p>
           </CardContent>
         </Card>
 

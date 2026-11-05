@@ -117,7 +117,7 @@ export function MamPrint({ report, groups, printedBy }: { report: Report; groups
               );
             })}
 
-            <p className="mam-print-key">* Waiver needed (temporarily suspended). Bal = amount due after that month&apos;s payments; Quota = fixed for the month, by status; Rem = quota not yet paid; NOP = number of payments made.</p>
+            <p className="mam-print-key">* Waiver needed (temporarily suspended). Bal = amount due after that month&apos;s payments; Quota = fixed for the month: the last month&apos;s closing total; Rem = quota not yet paid; NOP = number of payments made.</p>
             <div className="mam-print-signatures">
               {["Prepared by", "Checked by", "Noted by"].map((label) => <div key={label}><span className="mam-print-line" /><p>{label}</p></div>)}
             </div>

@@ -19,8 +19,8 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 
 ### MAM: fixed quota; Remaining and the rate corrected (2026-11-05)
 
-- **Asked (owner):** add a fixed or total quota for the month or range; check Quota Remaining, Collections Received and the Final Month Collection Rate. Chose: back months follow the status; advances left out of the rate.
-- **Checked:** Collections Received was right. **Quota Remaining was wrong:** it added each account's `balance` after that month's payments, and a member paid exactly through the month still shows one month there (the next one), so it was never quota less collections. **The rate was wrong:** collected ÷ that leftover, so collecting more could lower the figure it divided by. Example above: Remaining showed ₱1,400 and the rate 75.0%; correct is ₱1,050 and 40.0%. The month totals and the print had the same fault.
+- **Asked (owner):** add a fixed or total quota for the month or range; check Quota Remaining, Collections Received and the Final Month Collection Rate. Chose: back months follow the status; advances left out of the rate; the quota is the last month's closing total (October's is September's).
+- **Checked:** Collections Received was right. **Quota Remaining was wrong:** it added each account's `balance` after that month's payments, and a member paid exactly through the month still shows one month there (the next one), so it was never quota less collections. **The rate was wrong:** collected ÷ that leftover, so collecting more could lower the figure it divided by. Example in the system guide: Remaining showed ₱1,400 and the rate 75.0%; correct is ₱700 and 50.0%. The month totals and the print had the same fault.
 - **Done:** `monthQuota` and `mamQuotaTotals` in `lib/mam-report.ts`, used by the page, its month totals, the print and the CSV (three new columns). New Total Quota card. Bal per member is unchanged. No migration.
 - **Kept:** receipts of accounts dropped before the range, of a Deceased member with no date, and New Sales are not in Collections Received, as before.
 - **Tested:** new test in `scripts/test-encoder-tracking.cjs`.
