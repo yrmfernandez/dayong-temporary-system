@@ -58,7 +58,7 @@ const MASTER_TABS = [
   ['Branches', 'branches', 'branch_id', (r) => ({ branch_id: cell(r, 0), branch_name_code: cell(r, 1) ?? cell(r, 0), territory: cell(r, 2), barangay: cell(r, 3), city_municipality: cell(r, 4), province: cell(r, 5), country: cell(r, 6), postal_code: cell(r, 7), contact_number: cell(r, 8), email: cell(r, 9), status: r.length >= 13 ? (cell(r, 12) ?? 'active') : 'active' })],
   ['Employees', 'employees', 'employee_id', (r) => ({ employee_id: cell(r, 0), full_name: cell(r, 1) ?? cell(r, 0), primary_branch: cell(r, 2), operational_roles: cell(r, 3), employment_status: cell(r, 4), contact_number: cell(r, 5) === null ? null : String(cell(r, 5)), email: cell(r, 6) })],
   ['Programs', 'programs', 'program_id', (r) => ({ program_id: cell(r, 0), program_code: cell(r, 1) === null ? null : String(cell(r, 1)), program_name: cell(r, 2) ?? cell(r, 0), base_pay: number(r[3]), status: cell(r, 4), description: cell(r, 5), registration_fee_required: flag(r[10]), registration_amount: number(r[11]), pay_balance_total: number(r[12]), age_restricted: flag(r[13]), min_age: number(r[14]), max_age: number(r[15]), new_sale_incentive_type: cell(r, 16), new_sale_incentive_amount: number(r[17]), category_id: cell(r, 18), new_sale_amount_editable: flag(r[19]), collection_amount_editable: flag(r[20]) })],
-  ['Employee Branches', 'employee_branches', 'assignment_id', (r) => ({ assignment_id: cell(r, 0), employee_id: cell(r, 1), branch_id: cell(r, 2) })],
+  ['Employee Branches', 'employee_branches', 'assignment_id', (r) => ({ assignment_id: cell(r, 0), employee_id: cell(r, 1), branch_id: cell(r, 2), clerk_duty: r[3] !== 'mas only', mas_duty: r[3] !== 'clerk only' })],
   ['Program Incentives', 'program_incentives', 'incentive_id', (r) => ({ incentive_id: cell(r, 0), program_id: cell(r, 1), role: cell(r, 2), from_month: number(r[3]), to_month: number(r[4]), incentive_type: cell(r, 5), mark_up: number(r[6]), incentive_amount: number(r[7]), branch_id: cell(r, 12) })],
   ['Receipt Photos', 'receipt_photos', 'photo_id', (r) => ({ photo_id: cell(r, 0), entry_ids: cell(r, 1) ?? '', mime_type: 'image/webp', storage_path: `test/${cell(r, 0)}.webp` })],
   ['Remittance Methods', 'remittance_methods', 'remittance_method_id', (r) => ({ remittance_method_id: cell(r, 0), method_name: cell(r, 1), is_cash: flag(r[2]), requires_reference: flag(r[3]), status: cell(r, 4) })],
@@ -2436,6 +2436,7 @@ test('a program enrollment transfers to an active employee of any branch, keepin
   assert.deepEqual(kept.transfer.assigned, ['MATINA']);
   assert.deepEqual(await query("select mas, branch, mas_employee_id from member_programs where enrollment_id = 'ENR-1'"), [{ mas: 'Toril MAS', branch: 'MATINA', mas_employee_id: 'MD-7' }]);
   assert.deepEqual(await query("select branch_id from employee_branches where employee_id = 'MD-7' order by branch_id"), [{ branch_id: 'BR-1' }, { branch_id: 'BR-2' }]);
+  assert.deepEqual(await query("select clerk_duty, mas_duty from employee_branches where employee_id = 'MD-7' and branch_id = 'BR-1'"), [{ clerk_duty: false, mas_duty: true }], 'members in a branch do not make its clerk');
   // Move: the account goes to Toril Two's branch; the history notes the branch change.
   const moved = await (await route.POST(request({ enrollmentId: 'ENR-1', toEmployeeId: 'MD-8', reason: 'Member moved to Toril', branchMode: 'move', moveTo: 'toril' }))).json();
   assert.equal(moved.success, true, JSON.stringify(moved));
@@ -2769,6 +2770,46 @@ test('No incentive on one collection of a batch: only that one is remitted whole
   assert.equal(rejected.status, 200, JSON.stringify(await rejected.clone().json()));
   const kept = await collectionState(id);
   assert.deepEqual([kept.status, kept.share, kept.forfeited], ['Returned', 350, 350 - share], 'no incentive is given back');
+});
+
+test('an Entry Clerk reviews only the branches where they are Entry Clerk, and submits only where they are MAS', async () => {
+  const users = {
+    clerk: { userId: 'USR-1', employeeId: 'DPE-0001', name: 'clerk', roleNames: ['Entry Clerk', 'MAS'], permissions: {} },
+    mas: { userId: 'USR-M', employeeId: 'DPE-0002', name: 'other-mas', roleNames: ['MAS'], permissions: {} },
+  };
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'BR-2', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'clerk', 'BR-1', 'Entry Clerk, MAS', 'active'], ['DPE-0002', 'other-mas', 'BR-1', 'MAS', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1', 'clerk only'], ['EBA-2', 'DPE-0001', 'BR-2', 'mas only'], ['EBA-3', 'DPE-0002', 'BR-1'], ['EBA-4', 'DPE-0002', 'BR-2']];
+    return h;
+  };
+  const clerk = as(users.clerk), mas = as(users.mas);
+  const call = async (h, method, url, body) => {
+    const route = h.load('app/api/sale-submissions/route.ts');
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const card = (surname) => ({ id: `S-${surname}`, member: { name: { firstName: 'Ana', surname } }, program: { programCode: 'CODE', amountPaid: '350', dateEnrolled: '2020-01-01' } });
+
+  const inOwn = await call(mas, 'POST', '/api/sale-submissions', { branchId: 'BR-1', sales: [card('Cruz')] });
+  const inOther = await call(mas, 'POST', '/api/sale-submissions', { branchId: 'BR-2', sales: [card('Reyes')] });
+  assert.deepEqual([inOwn.status, inOther.status], [201, 201], JSON.stringify(inOther.body));
+  const review = await call(clerk, 'GET', '/api/sale-submissions?view=review');
+  assert.deepEqual(review.body.submissions.map((item) => item.branch), ['BR-1'], 'the branch where they only have members stays out of their review');
+  assert.equal((await call(clerk, 'PATCH', '/api/sale-submissions', { id: inOther.body.id, reason: 'Not mine' })).status, 400, 'nor can they act on it');
+  assert.deepEqual((await call(clerk, 'GET', '/api/sale-submissions')).body.profile.branches.map((branch) => branch.id), ['BR-2'], 'as MAS they submit only in their MAS branch');
+
+  // Saving: a clerk keeps at least one clerk branch, and a save without the lists keeps the duties.
+  const { updateEmployee } = clerk.load('lib/employees.ts');
+  const details = { name: 'clerk', status: 'active', roles: ['Entry Clerk', 'MAS'], branchIds: ['BR-1', 'BR-2'], primaryBranchId: 'BR-1' };
+  const branches = [{ id: 'BR-1', name: 'BR-1' }, { id: 'BR-2', name: 'BR-2' }];
+  await assert.rejects(updateEmployee('DPE-0001', { ...details, notClerkBranchIds: ['BR-1', 'BR-2'] }, details.roles, branches), /at least one branch as Entry Clerk/);
+  await assert.rejects(updateEmployee('DPE-0001', { ...details, notMasBranchIds: ['BR-1', 'BR-2'] }, details.roles, branches), /at least one branch as MAS/);
+  await updateEmployee('DPE-0001', details, details.roles, branches);
+  assert.deepEqual(await query("select branch_id, clerk_duty, mas_duty from employee_branches where employee_id = 'DPE-0001' order by branch_id"), [{ branch_id: 'BR-1', clerk_duty: true, mas_duty: false }, { branch_id: 'BR-2', clerk_duty: false, mas_duty: true }]);
+  await updateEmployee('DPE-0001', { ...details, notClerkBranchIds: [], notMasBranchIds: [] }, details.roles, branches);
+  assert.deepEqual(await query("select clerk_duty, mas_duty from employee_branches where employee_id = 'DPE-0001' order by branch_id"), [{ clerk_duty: true, mas_duty: true }, { clerk_duty: true, mas_duty: true }], 'HR can turn the duties back on');
 });
 
 test('a MAS submits New Sales; only a clerk of that branch reviews them, saves once, or returns them', async () => {

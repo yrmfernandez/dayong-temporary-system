@@ -78,10 +78,11 @@ async function applyTransfer(tx: Transaction, rows: AccountRow[], target: Transf
   const assigned: string[] = [];
   if (outside.length && mode === "keep") {
     // Assign the new MAS to each branch first, so the database links the accounts to this employee (link_employee_id).
+    // As MAS only: having members in a branch does not make an Entry Clerk its clerk (lib/employees.ts).
     for (const name of [...new Set(outside.map((row) => text(row.branch)))]) {
       const branch = branches.find((item) => same(item.name, name));
       if (!branch) throw new Error(`Branch ${name} is not in Branches; the accounts cannot keep it.`);
-      await tx.insert(schema.employee_branches).values({ assignment_id: `EBA-${target.employeeId}-${Date.now()}-${assigned.length + 1}`, employee_id: target.employeeId, branch_id: branch.id, ...encodedBy() }).onConflictDoNothing();
+      await tx.insert(schema.employee_branches).values({ assignment_id: `EBA-${target.employeeId}-${Date.now()}-${assigned.length + 1}`, employee_id: target.employeeId, branch_id: branch.id, clerk_duty: false, ...encodedBy() }).onConflictDoNothing();
       assigned.push(branch.name);
     }
   }
@@ -233,7 +234,7 @@ export async function changeEnrollmentsBranch(input: { enrollmentIds: string[]; 
     const assigned: string[] = [];
     for (const mas of new Map(moving.map((row) => masOf(row)).filter((item) => item !== undefined).map((item) => [item.id, item])).values()) {
       if (mas.branchIds.some((id) => same(nameOf.get(id) ?? "", to))) continue;
-      await tx.insert(schema.employee_branches).values({ assignment_id: `EBA-${mas.id}-${Date.now()}-${assigned.length + 1}`, employee_id: mas.id, branch_id: branchId, ...encodedBy() }).onConflictDoNothing();
+      await tx.insert(schema.employee_branches).values({ assignment_id: `EBA-${mas.id}-${Date.now()}-${assigned.length + 1}`, employee_id: mas.id, branch_id: branchId, clerk_duty: false, ...encodedBy() }).onConflictDoNothing();
       assigned.push(mas.name);
     }
     // The database re-links branch_id from the new name (trigger fill_links); the MAS and its link stay.

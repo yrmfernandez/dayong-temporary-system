@@ -22,7 +22,7 @@ const { employees: employeeTable, employee_branches: assignmentTable } = schema;
 
 async function getEmployeeBranchAssignments() {
   const rows = await currentDb().select().from(assignmentTable);
-  return rows.map((row) => ({ id: row.assignment_id, employeeId: row.employee_id, branchId: row.branch_id }));
+  return rows.map((row) => ({ id: row.assignment_id, employeeId: row.employee_id, branchId: row.branch_id, clerkDuty: row.clerk_duty, masDuty: row.mas_duty }));
 }
 
 async function getEmployeeRows(): Promise<EmployeeRow[]> {
@@ -35,10 +35,16 @@ async function getEmployeeRows(): Promise<EmployeeRow[]> {
   }));
 }
 
-/** Replaces an employee's branch assignments (inside the caller's transaction). */
-async function writeAssignments(tx: Transaction, employeeId: string, branchIds: string[]) {
+/**
+ * Replaces an employee's branch assignments (inside the caller's transaction). `duties` holds the branches they are not
+ * Entry Clerk or MAS in; left out, the branches they already had keep their duties.
+ */
+async function writeAssignments(tx: Transaction, employeeId: string, branchIds: string[], duties: Partial<BranchDuties> = {}) {
+  const previous = await tx.select().from(assignmentTable).where(eq(assignmentTable.employee_id, employeeId));
+  const notClerk = duties.notClerkBranchIds ?? previous.filter((row) => !row.clerk_duty).map((row) => row.branch_id);
+  const notMas = duties.notMasBranchIds ?? previous.filter((row) => !row.mas_duty).map((row) => row.branch_id);
   await tx.delete(assignmentTable).where(eq(assignmentTable.employee_id, employeeId));
-  if (branchIds.length) await tx.insert(assignmentTable).values(branchIds.map((branchId, index) => ({ assignment_id: `EBA-${employeeId}-${Date.now()}-${index + 1}`, employee_id: employeeId, branch_id: branchId, ...encodedBy() })));
+  if (branchIds.length) await tx.insert(assignmentTable).values(branchIds.map((branchId, index) => ({ assignment_id: `EBA-${employeeId}-${Date.now()}-${index + 1}`, employee_id: employeeId, branch_id: branchId, clerk_duty: !notClerk.includes(branchId), mas_duty: !notMas.includes(branchId), ...encodedBy() })));
 }
 
 /** Users!B: Employee IDs of sign-in accounts. */
@@ -57,8 +63,23 @@ async function readEmployees() {
     id: employee.id, name: employee.name, branch: employee.branch, roles: employee.roles,
     status: employee.status, contact: employee.contact, email: employee.email,
     dateHired: employee.dateHired, createdAt: employee.createdAt,
-    branchIds: assignments.filter((assignment) => assignment.employeeId === employee.id).map((assignment) => assignment.branchId),
+    ...branchesOf(assignments.filter((assignment) => assignment.employeeId === employee.id)),
   }));
+}
+
+/**
+ * One assignment list, two duties (owner, November 5, 2026). `branchIds` is every branch the employee belongs to: it
+ * decides clock-in, Clearing, and whose accounts can sit there. `clerkBranchIds` is where they work as Entry Clerk: what
+ * is submitted to those branches reaches them (reviewBranches in lib/sale-submissions.ts). `masBranchIds` is where they
+ * can submit (masProfile). A clerk with members in another branch is MAS there, not its clerk. Both duties start on, so
+ * assignments stay as they were until HR unticks one in Employees.
+ */
+function branchesOf(assignments: Array<{ branchId: string; clerkDuty: boolean; masDuty: boolean }>) {
+  const ids = (keep: (assignment: (typeof assignments)[number]) => boolean) => assignments.filter(keep).map((assignment) => assignment.branchId);
+  return {
+    branchIds: ids(() => true), clerkBranchIds: ids((item) => item.clerkDuty), masBranchIds: ids((item) => item.masDuty),
+    notClerkBranchIds: ids((item) => !item.clerkDuty), notMasBranchIds: ids((item) => !item.masDuty),
+  };
 }
 
 /**
@@ -78,8 +99,22 @@ function readRoles(body: Record<string, unknown>) {
   return [...new Set(source.map((role) => typeof role === "string" ? role.trim() : "").filter(Boolean))];
 }
 
+const readIds = (value: unknown) => [...new Set((Array.isArray(value) ? value : []).map((id) => typeof id === "string" ? id.trim() : "").filter(Boolean))];
+
 function readBranchIds(body: Record<string, unknown>) {
-  return [...new Set((Array.isArray(body.branchIds) ? body.branchIds : []).map((id) => typeof id === "string" ? id.trim() : "").filter(Boolean))];
+  return readIds(body.branchIds);
+}
+
+type BranchDuties = { notClerkBranchIds: string[]; notMasBranchIds: string[] };
+
+/** The duties sent with a save; a list left out keeps what is saved. An Entry Clerk or MAS needs a branch for that role. */
+function readDuties(body: Record<string, unknown>, roles: string[], branchIds: string[]) {
+  const list = (key: keyof BranchDuties) => Array.isArray(body[key]) ? readIds(body[key]).filter((id) => branchIds.includes(id)) : undefined;
+  const duties: Partial<BranchDuties> = { notClerkBranchIds: list("notClerkBranchIds"), notMasBranchIds: list("notMasBranchIds") };
+  const holds = (name: string) => roles.some((role) => role.trim().toLowerCase() === name);
+  if (holds("entry clerk") && duties.notClerkBranchIds?.length === branchIds.length) throw new Error("An Entry Clerk needs at least one branch as Entry Clerk.");
+  if (holds("mas") && duties.notMasBranchIds?.length === branchIds.length) throw new Error("A MAS needs at least one branch as MAS.");
+  return duties;
 }
 
 /**
@@ -114,10 +149,11 @@ export async function registerEmployee(body: Record<string, unknown>, validRoles
   const ids = [...employees.map((e) => e.id.toUpperCase()), ...accounts.map((value) => value.toUpperCase())];
   if(ids.includes(id))throw new Error("This Employee ID already exists.");
   const primaryBranch = readPrimaryBranch(body, branchIds, branches);
+  const duties = readDuties(body, roles, branchIds);
   // The employee and their branch assignments are saved together.
   await inTransaction(async (tx) => {
     await tx.insert(employeeTable).values({ employee_id: id, full_name: name, primary_branch: primaryBranch || null, operational_roles: roles.join(", "), employment_status: "active", contact_number: contact || null, email: email || null, date_hired: dateHired || null, created_at: new Date().toISOString(), ...encodedBy() });
-    await writeAssignments(tx, id, branchIds);
+    await writeAssignments(tx, id, branchIds, duties);
   });
   return { id, name, roles, primaryBranch };
 }
@@ -132,13 +168,14 @@ export async function updateEmployee(employeeId: string, body: Record<string, un
   if (!roles.length || roles.some((role) => !validRoles.includes(role))) throw new Error("Select valid operational roles.");
   if (!branchIds.length || branchIds.some((id) => !branches.some((branch) => branch.id === id))) throw new Error("Select valid branch assignments.");
   const primaryBranch = readPrimaryBranch(body, branchIds, branches);
+  const duties = readDuties(body, roles, branchIds);
   const contact = text("contact"), email = text("email"), dateHired = text("dateHired");
   if (contact.length > 50 || email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error("Check the contact number and email.");
   if (dateHired && (!/^\d{4}-\d{2}-\d{2}$/.test(dateHired) || !Number.isFinite(Date.parse(dateHired)))) throw new Error("Enter a valid date hired.");
   // The details and the branch assignments change together.
   await inTransaction(async (tx) => {
     await tx.update(employeeTable).set({ full_name: name, primary_branch: primaryBranch || null, operational_roles: roles.join(", "), employment_status: status, contact_number: contact || null, email: email || null, date_hired: dateHired || null }).where(eq(employeeTable.employee_id, employeeId));
-    await writeAssignments(tx, employeeId, branchIds);
+    await writeAssignments(tx, employeeId, branchIds, duties);
   });
   return { id: employeeId, name, roles };
 }

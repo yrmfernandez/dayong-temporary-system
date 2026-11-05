@@ -99,7 +99,7 @@ async function loadAudits(period: AuditPeriod = "daily", from = "", to = "", db:
 
 /**
  * Active employees with the Entry Clerk role: the only people audited. `branch` is their primary branch (for display);
- * `branches` is every branch they are assigned to, primary first, so a clerk counts for each branch they serve.
+ * `branches` is every branch they work in as Entry Clerk, primary first, so a clerk counts for each branch they serve.
  */
 export async function auditedEmployees() {
   const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
@@ -107,7 +107,7 @@ export async function auditedEmployees() {
   return employees
     .filter((employee) => employee.status.toLowerCase() === "active" && employee.roles.some((role) => role.trim().toLowerCase() === "entry clerk"))
     .map((employee) => {
-      const assigned = employee.branchIds.map((id) => names.get(id)).filter((name): name is string => Boolean(name));
+      const assigned = employee.clerkBranchIds.map((id) => names.get(id)).filter((name): name is string => Boolean(name));
       return { employeeId: employee.id, name: employee.name, branch: employee.branch || assigned[0] || "", branches: [...new Set([employee.branch, ...assigned].filter(Boolean))] };
     })
     .sort((a, b) => a.name.localeCompare(b.name));

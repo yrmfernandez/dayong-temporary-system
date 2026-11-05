@@ -75,12 +75,12 @@ async function withDeadlines(rows: Array<typeof submissions.$inferSelect>) {
   return result;
 }
 
-/** The signed-in MAS: their employee record and the active branches they are assigned to. */
+/** The signed-in MAS: their employee record and the active branches they work in as MAS. */
 export async function masProfile(user: Pick<SessionUser, "employeeId">) {
   const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
   const employee = employees.find((item) => item.id === user.employeeId);
   if (!employee) throw new Error("Your sign-in account is not linked to an employee. Ask IT to link it.");
-  const assigned = branches.filter((branch) => employee.branchIds.includes(branch.id) && branch.status === "active").map((branch) => ({ id: branch.id, name: branch.name }));
+  const assigned = branches.filter((branch) => employee.masBranchIds.includes(branch.id) && branch.status === "active").map((branch) => ({ id: branch.id, name: branch.name }));
   return { employeeId: employee.id, name: employee.name, branches: assigned };
 }
 
@@ -135,11 +135,11 @@ export async function submitSales(user: SessionUser, input: { submissionId?: unk
   return { id: newId, saleCount: sales.length };
 }
 
-/** Branch IDs whose submissions this user reviews; null means every branch (administrators). */
+/** Branch IDs whose submissions this user reviews: where they work as Entry Clerk; null means every branch (administrators). */
 export async function reviewBranches(user: SessionUser) {
   if (user.roleNames.some(isAdministratorRole)) return null;
   const employee = (await getEmployees()).find((item) => item.id === user.employeeId);
-  return employee?.branchIds ?? [];
+  return employee?.clerkBranchIds ?? [];
 }
 
 /** Submissions waiting for the clerk in their branches (submitted, or marked remitted and not yet saved), oldest first. */
@@ -156,7 +156,7 @@ async function clerkRow(user: SessionUser, id: string) {
   const [row] = await getDb().select().from(submissions).where(eq(submissions.submission_id, text(id)));
   if (!row) throw new Error("The MAS submission was not found.");
   const scope = await reviewBranches(user);
-  if (scope && !scope.includes(row.branch_id)) throw new Error("This MAS submission belongs to a branch you are not assigned to.");
+  if (scope && !scope.includes(row.branch_id)) throw new Error("This MAS submission belongs to a branch you are not assigned to as Entry Clerk.");
   return row;
 }
 

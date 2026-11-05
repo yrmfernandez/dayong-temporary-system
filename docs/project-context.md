@@ -17,6 +17,18 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Separate branches as Entry Clerk and as MAS (2026-11-05)
+
+- **Seen (owner):** an Entry Clerk assigned to another branch only because they have members there also sees what is submitted to that branch.
+- **Cause:** `employee_branches` was one list for everything, and `reviewBranches` took every branch on it as a clerk branch. A member transfer could add a branch by itself, so it could happen without HR choosing it.
+- **Done:** migration **0044_branch_duties** adds `clerk_duty` and `mas_duty` to `employee_branches`, both on by default, so nothing changes until HR unticks one. Employees → Edit (and Register) shows **Duty in each branch** for an Entry Clerk with two or more branches (`components/branch-duties.tsx`).
+  - **Entry Clerk tick** (`clerkBranchIds`): Submitted by MAS on Collections and New Sales, their sidebar numbers, dropouts, the branches of the clerk's report, and audits.
+  - **MAS tick** (`masBranchIds`): the branches offered on Submit Collections and Submit New Sales.
+  - **Unchanged** (`branchIds`, every assigned branch): clock-in, Clearing, who can be MAS of an account, MAS pick lists and the checks when a batch is saved.
+  - A branch added by a member transfer is MAS only. An Entry Clerk keeps at least one Entry Clerk branch, and a MAS at least one MAS branch.
+- **Checked:** build passes; changed files lint clean; new test in `scripts/test-encoder-tracking.cjs` (a clerk does not see or act on a MAS-only branch, submits only where MAS, the at-least-one rules, a save without the lists keeps duties) and the transfer test passes. In headless Chrome with mocked data the form shows for an Entry Clerk only and sends the right unticked branches. Migration not run on staging or production. On a phone the Employees edit form is wider than the screen (it sits inside the table row, as before), so the MAS column needs a sideways scroll.
+- **To do (owner):** 1) `npm run prod -- npm run db:migrate`, then `npm run prod -- node scripts/check-database.mjs`, **before** pushing: the new code reads these columns, so Employees and everything that uses them fail until then. Staging needs `npm run db:migrate` too. 2) HR opens each affected clerk in Employees and unticks Entry Clerk on the branches where they only have members; until then they still see those branches.
+
 ### Phone: Submit New Sales optimized (2026-11-05)
 
 - **Asked (owner):** the phone UI/UX is not fully optimized, especially Submit New Sales.

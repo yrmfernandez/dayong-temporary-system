@@ -26,7 +26,7 @@ const same = (a: unknown, b: unknown) => text(a).toLowerCase() === text(b).toLow
 async function clerkBranches(employeeId: string) {
   const [employees, branches] = await Promise.all([getEmployees(), getBranches()]);
   const employee = employees.find((item) => item.id === employeeId);
-  const assigned = branches.filter((branch) => employee?.branchIds.includes(branch.id)).map((branch) => branch.name);
+  const assigned = branches.filter((branch) => employee?.clerkBranchIds.includes(branch.id)).map((branch) => branch.name);
   const names = [...new Map([employee?.branch ?? "", ...assigned].map(text).filter(Boolean).map((name) => [name.toLowerCase(), name])).values()];
   return { primary: employee?.branch ?? "", names, active: branches.filter((branch) => branch.status === "active").map((branch) => branch.name) };
 }

@@ -76,6 +76,9 @@ export const employee_branches = pgTable("employee_branches", {
   assignment_id: text().primaryKey(),
   employee_id: text().notNull().references(() => employees.employee_id, employeeRef),
   branch_id: text().notNull().references(() => branches.branch_id, { onUpdate: "cascade" }),
+  // What the employee does in this branch (owner, November 5, 2026; lib/employees.ts).
+  clerk_duty: boolean().notNull().default(true),
+  mas_duty: boolean().notNull().default(true),
   ...encoder(),
 }, (t) => [
   index("employee_branches_employee_idx").on(t.employee_id),
