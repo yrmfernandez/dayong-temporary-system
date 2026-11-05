@@ -17,6 +17,16 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### System Health shows Supabase usage (2026-11-05)
+
+- **Asked (owner):** System Health should show all the usage: egress, Realtime messages, Logs Query, Cached Egress and the rest.
+- **Found:** Supabase's public API (spec read on 2026-11-05) has no organization usage or billing endpoint, and the project Metrics endpoint has no billing figures. So billed Egress, Cached Egress, billed Realtime Messages, Realtime Peak Connections, Logs Query and Logs Ingest cannot be read with a documented API.
+- **Done:** new **Supabase Usage** panel (`components/supabase-usage-panel.tsx`, `lib/supabase-usage.ts`, `lib/usage-math.ts`): Egress estimate from the server's network counter, Realtime broadcasts sent, CPU, memory, disk, reads from memory, traffic per day, rows read per table, and a link to Supabase's Usage page for the rest. New nightly step **Supabase usage** (System Setting `usage_history`). No migration, no new secret.
+- **Tested:** type check, lint and build pass; 316 of 317 tests pass, 8 of them new (`scripts/test-usage-math.mjs`). The failure is the same `a MAS submits New Sales` test noted below. The real code ran against staging: metrics, SQL, one nightly reading saved, a second one the same day ignored. The panel was rendered with real, near-limit and unreachable data, as text; not yet seen in a browser.
+- **In progress:** the Egress estimate has not been compared with a billed figure, and production's Metrics endpoint has not been tried (only staging's).
+- **To do (owner):** push. In System Health → Nightly Jobs press **Run now** once for the first reading. After a few days compare **Traffic out per day** with Supabase → Usage → Egress per day. The first full cycle measured is the one that starts after the first reading.
+- **Open decision (owner):** exact billing figures would need Supabase's undocumented dashboard API and an account access token kept on Vercel; not built.
+
 ### Members reads one page from the database, not everyone (2026-11-05)
 
 - **Asked (owner):** will egress and compute run out after the November 7 reset; use `pg_stat_statements`; fix the biggest reader.

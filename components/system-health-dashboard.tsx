@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SystemHealth } from "@/lib/system-health";
 import { MaintenanceNoticePanel } from "@/components/maintenance-notice-panel";
 import { NightlyJobsPanel } from "@/components/nightly-jobs-panel";
+import { SupabaseUsagePanel } from "@/components/supabase-usage-panel";
 import { formatDateTime as showDateTime } from "@/lib/date-format";
 
 const count = (value: number) => value.toLocaleString("en-PH");
@@ -36,6 +37,7 @@ export function SystemHealthDashboard({ data, employeeName }: { data: SystemHeal
 
     <MaintenanceNoticePanel notice={data.maintenance} />
     <NightlyJobsPanel run={data.nightly.run} scheduled={data.nightly.scheduled} checkedAt={data.checkedAt} />
+    <SupabaseUsagePanel usage={data.usage} />
 
     <Panel title="Schema, Access & Data Integrity" subtitle="Database columns checked against the code; accounts, roles and employees checked against each other">
       {data.issues.length ? <ul className="space-y-3">{data.issues.map((issue) => <li key={issue.title} className={`tone-${severityTone[issue.severity]} rounded-xl border p-3`}>

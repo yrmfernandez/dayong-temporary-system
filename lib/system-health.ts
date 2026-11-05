@@ -10,6 +10,7 @@ import { capacityHistory, databaseAllowance, growth, measureCapacity, PLAN_LABEL
 import { getMaintenanceNotice } from "@/lib/maintenance-notice";
 import { manilaToday } from "@/lib/manila-date";
 import { lastNightlyRun } from "@/lib/nightly-jobs";
+import { getUsage } from "@/lib/supabase-usage";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const PRODUCTION_REF = "qnugejonwpfvsenxvhxz", STAGING_REF = "nziflfmwqnaqcisssapy";
@@ -40,7 +41,7 @@ export async function getSystemHealth() {
   // Round trip of one tiny query, so the figure reflects the database now.
   const probe = async () => { const started = Date.now(); await db.execute(sql`select 1`); return Date.now() - started; };
   const latencyMs = await probe();
-  const [space, history, tableRows, columnRows, migrationRows, unlinkedRows, connectionRows, auditRows, response, nightly, maintenance] = await Promise.all([
+  const [space, history, tableRows, columnRows, migrationRows, unlinkedRows, connectionRows, auditRows, response, nightly, maintenance, usage] = await Promise.all([
     // Database and receipt-photo space against the plan, and the nightly measurements (lib/capacity.ts, upgrade #10).
     measureCapacity(),
     capacityHistory(),
@@ -69,6 +70,8 @@ export async function getSystemHealth() {
     // The last nightly run (lib/nightly-jobs.ts).
     lastNightlyRun(),
     getMaintenanceNotice(),
+    // Egress estimate, Realtime broadcasts, server load and biggest readers (lib/supabase-usage.ts).
+    getUsage(),
   ]);
   const [userRows, roleRows, linkRows, employeeRows] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
 
@@ -156,7 +159,7 @@ export async function getSystemHealth() {
     audit: auditRows.map((row) => ({ at: text(row.at), action: text(row.action), table: text(row.table), recordId: text(row.recordId), by: text(row.userName) || text(row.userId) })),
     config, runtime: { ...sheetsStats(), uptimeMinutes: Math.round(process.uptime() / 60) },
     nightly: { run: nightly, scheduled: Boolean(process.env.CRON_SECRET?.trim()) },
-    maintenance,
+    maintenance, usage,
   };
 }
 export type SystemHealth = Awaited<ReturnType<typeof getSystemHealth>>;

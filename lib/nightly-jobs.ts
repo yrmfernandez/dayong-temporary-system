@@ -5,6 +5,7 @@ import { databaseAllowance, PLAN_LABEL, recordCapacity } from "@/lib/capacity";
 import { runAsSystem } from "@/lib/encoder-context";
 import { findExceptions } from "@/lib/exceptions";
 import { manilaToday } from "@/lib/manila-date";
+import { recordUsage } from "@/lib/supabase-usage";
 import { getSetting, saveSetting } from "@/lib/system-settings";
 
 /**
@@ -17,7 +18,8 @@ import { getSetting, saveSetting } from "@/lib/system-settings";
  * 2. Account statuses: stores each account's current status (Active, 60D, Suspended, Forfeited, ...) where it changed.
  * 3. Exceptions: counts the data problems, so IT sees the number without opening the page (nothing is changed).
  * 4. Database size: records the database and receipt-photo Storage sizes for the growth figures (upgrade #10).
- * 5. Forgotten collections (run first, since cash depends on it): sends the batches a MAS or Collector did not submit.
+ * 5. Supabase usage: records the server traffic and Realtime broadcasts for the egress estimate (lib/supabase-usage.ts).
+ * 6. Forgotten collections (run first, since cash depends on it): sends the batches a MAS or Collector did not submit.
  */
 export const NIGHTLY_KEY = "nightly_last_run";
 
@@ -68,6 +70,11 @@ export function runNightlyJobs(trigger: string) {
       const now = await recordCapacity(manilaToday());
       const mb = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString("en-PH", { maximumFractionDigits: 1 })} MB`;
       return `Database ${mb(now.database)} of ${mb(databaseAllowance())} (${PLAN_LABEL})${now.storage === null ? "" : ` · receipt photos in Storage ${mb(now.storage)}`}.`;
+    }));
+    steps.push(await step("Supabase usage", async () => {
+      const now = await recordUsage(manilaToday());
+      if (!now) return "Not measured: the server figures could not be read.";
+      return `${now.recorded ? "Recorded" : "Already recorded today"}: ${(now.networkOut / 1024 ** 3).toLocaleString("en-PH", { maximumFractionDigits: 1 })} GB sent since the server started${now.broadcasts === null ? "" : ` · ${now.broadcasts.toLocaleString("en-PH")} broadcasts in 24 hours`}.`;
     }));
     const run: NightlyRun = { startedAt, finishedAt: new Date().toISOString(), trigger, ok: steps.every((item) => item.ok), steps };
     await saveSetting(NIGHTLY_KEY, JSON.stringify(run), "System").catch((error) => console.error("Nightly jobs: could not save the result.", error));
