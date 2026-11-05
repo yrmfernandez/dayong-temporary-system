@@ -499,7 +499,7 @@ export default function MamPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{money(totalCollected)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total within range</p>
+            <p className="text-xs text-muted-foreground mt-1">{money(quotas.counted)} toward quota + {money(quotas.aboveQuota)} above quota (advances, extra months)</p>
           </CardContent>
         </Card>
 
@@ -510,7 +510,7 @@ export default function MamPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{money(quotas.remaining)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{masView ? `As of ${report ? formatMonth(report.to) : "the last month"}` : "Quota less what paid it down"}</p>
+            <p className="text-xs text-muted-foreground mt-1">{masView ? `As of ${report ? formatMonth(report.to) : "the last month"}` : `${money(quotas.quota)} quota − ${money(quotas.counted)} toward quota`}</p>
           </CardContent>
         </Card>
 
@@ -696,6 +696,9 @@ export default function MamPage() {
                       <div>Collected: {money(group.reduce((sum, row) => sum + row.periods[i].collected, 0))}</div>
                       <div className="text-muted-foreground">
                         {masView ? "Due" : "Quota"}: {money(mamQuotaTotals(group).months[i]?.quota ?? 0)}
+                      </div>
+                      <div className="text-muted-foreground">
+                        Toward quota: {money(mamQuotaTotals(group).months[i]?.counted ?? 0)}
                       </div>
                       <div className="text-muted-foreground">
                         Remaining: {money(mamQuotaTotals(group).months[i]?.remaining ?? 0)}

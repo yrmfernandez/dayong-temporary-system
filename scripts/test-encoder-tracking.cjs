@@ -2785,7 +2785,7 @@ test('MAM quota is the last month closing total, fixed for the month, advances s
     { id: 'E-adv', enrollmentId: 'E', orDate: '2026-10-10', orNumber: 'Eadv', monthFrom: '2026-10', monthTo: '2026-11', nopFrom: 10, nopTo: 11, amount: 700, dateRemitted: '2026-10-10', mas: 'X' }];
   const october = buildMamReport({ accounts, payments, sales: [] }, '2026-10', '2026-10', '2026-11-02');
   assert.deepEqual(october.rows.map((row) => [row.id, row.periods[0].quota, row.periods[0].quotaCollected]), [['A', 350, 350], ['B', 350, 0], ['D', 350, 0], ['E', 350, 350]], 'as they stood on September 30, and the advance half of E is not counted');
-  assert.deepEqual(mamQuotaTotals(october.rows).last, { quota: 1400, counted: 700, remaining: 700, collected: 1050 }, 'Collections Received keeps the full amount');
+  assert.deepEqual(mamQuotaTotals(october.rows).last, { quota: 1400, counted: 700, remaining: 700, collected: 1050, aboveQuota: 350 }, 'Collections Received keeps the full amount');
   assert.equal(mamQuotaTotals(october.rows).quota, 1400);
 
   const unpaid = buildMamReport({ accounts, payments: payments.filter((p) => p.orDate < '2026-10-01'), sales: [] }, '2026-10', '2026-10', '2026-11-02');
@@ -2796,6 +2796,10 @@ test('MAM quota is the last month closing total, fixed for the month, advances s
   assert.equal(range.months[1].quota, both.rows.reduce((sum, row) => sum + row.periods[0].state.balance, 0), "October's quota is September's closing total");
   assert.deepEqual(range.months.map((month) => month.quota), [1400, 1400]);
   assert.deepEqual([range.quota, range.counted, range.remaining], [2450, 1750, 700], "D's unpaid September is in both months' quota, once in the range's");
+  for (const totals of [range, ...range.months]) {
+    assert.equal(totals.counted + totals.remaining, totals.quota, 'toward quota + remaining = quota');
+    assert.equal(totals.counted + totals.aboveQuota, totals.collected, 'toward quota + above quota = Collections Received');
+  }
 
   // Paid ahead, the New Sale's own month and a dropped account owe nothing.
   const ahead = buildMamReport({ accounts: [account('F')], payments: through('F', 10).map((p) => ({ ...p, orDate: '2026-02-10' })), sales: [] }, '2026-10', '2026-10', '2026-11-02');

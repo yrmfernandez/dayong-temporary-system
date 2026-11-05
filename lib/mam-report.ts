@@ -31,7 +31,9 @@ type QuotaPeriod = { quota: number; quotaCollected: number; ended: boolean; stat
 /**
  * MAM's quota figures for any set of rows, in one place for the page, the print and the CSV. Per month: `quota` fixed,
  * `counted` the collections that pay it down (never more than an account's quota, so an advance cannot hide someone
- * else's shortfall), `remaining` quota less counted, account by account, and `collected` everything received.
+ * else's shortfall), `remaining` quota less counted, account by account, `collected` everything received, and
+ * `aboveQuota` the rest of it (advances, extra months, members with no quota yet). So counted + remaining = quota, and
+ * counted + aboveQuota = collected.
  * For the range, a month still unpaid is not counted again in the next month's quota: the range's quota is what was
  * counted over its months plus what is still open at each account's last month.
  */
@@ -39,14 +41,16 @@ export function mamQuotaTotals(rows: Array<{ periods: QuotaPeriod[] }>) {
   const months = rows[0]?.periods.map((_, index) => {
     const sum = (pick: (period: QuotaPeriod) => number) => rows.reduce((total, row) => total + cents(pick(row.periods[index])), 0) / 100;
     const quota = sum((period) => period.quota), counted = sum((period) => period.quotaCollected);
-    return { quota, counted, remaining: Math.round((quota - counted) * 100) / 100, collected: sum((period) => period.collected) };
+    const collected = sum((period) => period.collected);
+    return { quota, counted, remaining: Math.round((quota - counted) * 100) / 100, collected, aboveQuota: Math.round((collected - counted) * 100) / 100 };
   }) ?? [];
   const remaining = rows.reduce((total, row) => {
     const last = row.periods.findLast((period) => period.state && !period.ended);
     return total + (last ? cents(last.quota) - cents(last.quotaCollected) : 0);
   }, 0) / 100;
   const counted = months.reduce((total, month) => total + cents(month.counted), 0) / 100;
-  return { months, last: months.at(-1) ?? null, quota: Math.round((counted + remaining) * 100) / 100, counted, remaining };
+  const collected = months.reduce((total, month) => total + cents(month.collected), 0) / 100;
+  return { months, last: months.at(-1) ?? null, quota: Math.round((counted + remaining) * 100) / 100, counted, remaining, collected, aboveQuota: Math.round((collected - counted) * 100) / 100 };
 }
 
 export function buildMamReport(data: { accounts: MamAccount[]; payments: AccountPayment[]; sales: { memberNumber: string; programId: string; applicationNumber: string; registrationFee: number }[] }, from: string, to: string, today: string) {

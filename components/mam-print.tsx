@@ -69,7 +69,7 @@ export function MamPrint({ report, groups, printedBy }: { report: Report; groups
             </header>
             <div className="mam-print-mas">
               <p><strong>MAS: {first.mas || "—"}</strong> · {group.length} {group.length === 1 ? "account" : "accounts"}</p>
-              <p>Summary at {monthLabel(report.to)}: {counts.map(([status, count]) => `${status} ${count}`).join(" · ") || "—"} · Quota {peso(quotas.last?.quota ?? 0)} · Collected {peso(collected)} · Remaining {peso(quotas.last?.remaining ?? 0)}</p>
+              <p>Summary at {monthLabel(report.to)}: {counts.map(([status, count]) => `${status} ${count}`).join(" · ") || "—"} · Quota {peso(quotas.last?.quota ?? 0)} · Collected {peso(collected)} (toward quota {peso(quotas.last?.counted ?? 0)}) · Remaining {peso(quotas.last?.remaining ?? 0)}</p>
             </div>
 
             {blocks.map((months) => {
