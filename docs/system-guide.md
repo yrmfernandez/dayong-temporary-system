@@ -825,6 +825,10 @@ An Entry Clerk can belong to a branch only because they have members there (Nove
 
 Untick **Entry Clerk** where they only have members. Clock-in, Clearing and account assignment still use every assigned branch. A branch added by moving members is MAS only. An Entry Clerk keeps at least one Entry Clerk branch, and a MAS at least one MAS branch. Administrators still review every branch.
 
+### Typing in capitals
+
+Everything typed into a text field becomes capitals as it is typed, on every page and pop-up (November 5, 2026, [uppercase-typing.ts](../lib/uppercase-typing.ts)), so a word is always spelled the same way. Left as typed: passwords, emails, numbers, dates and contact numbers, search boxes, and the sign-in page. Records already saved stay as they are until someone edits that field.
+
 ## 12. Corrections, history, audits, and exceptions
 
 ### Edit / Corrections (October 15, 2026)

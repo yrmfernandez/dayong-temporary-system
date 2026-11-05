@@ -15,6 +15,7 @@ import { sessionForWorkspace } from "@/lib/workspace-session";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { installFriendlyApiErrors } from "@/lib/friendly-api-errors";
 import { installSaveQueue } from "@/lib/save-queue";
+import { installUppercaseTyping } from "@/lib/uppercase-typing";
 import type { MaintenanceNotice } from "@/lib/maintenance-notice-text";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
@@ -22,6 +23,8 @@ import { useLiveRefresh } from "@/lib/use-live-refresh";
 installFriendlyApiErrors();
 // A save still waiting after 2 s shows "Saving, please wait" until it is saved (lib/save-queue.ts).
 installSaveQueue();
+// What is typed into a text field becomes capitals, on every page (lib/uppercase-typing.ts).
+installUppercaseTyping();
 import { ACTIVE_ROLE_COOKIE, onPreferencesChange, preferenceKeys, readDensity, readPreference, writeActiveRoleCookie, writePreference } from "@/lib/ui-preferences";
 
 const safeDecode = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };

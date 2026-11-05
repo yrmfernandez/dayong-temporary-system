@@ -112,9 +112,9 @@ function validContactNumber(value: string | undefined) {
   return /^09\d{9}$/.test(String(value ?? "").replace(/\D/g, ""));
 }
 
-// What a phone's keyboard does on each kind of field (owner, November 5, 2026): capitals for names, digits for numbers,
+// What a phone's keyboard does on each kind of field (owner, November 5, 2026): capitals for text, digits for numbers,
 // Next on the Enter key, and no suggestions from the MAS's own details.
-const nameField = { autoCapitalize: "words", autoComplete: "off", autoCorrect: "off", enterKeyHint: "next" } as const;
+const nameField = { autoCapitalize: "characters", autoComplete: "off", autoCorrect: "off", enterKeyHint: "next" } as const;
 const phoneField = { type: "tel", inputMode: "tel", autoComplete: "off", enterKeyHint: "next" } as const;
 
 /** True when a form value is missing or only spaces; drafts and loaded members may lack a field. */

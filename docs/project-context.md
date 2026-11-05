@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Typing in capitals (2026-11-05)
+
+- **Asked (owner):** for the typing to be unique, every text field makes each character uppercase.
+- **Done:** `lib/uppercase-typing.ts`, one listener installed by the app shell, so every page, pop-up and future field is covered. Left as typed: non-text types, passwords (also under Show password, which makes them plain text), emails, search boxes, `data-keep-case` fields and the sign-in page. Phone keyboards open on capitals; a word still being built by the keyboard turns to capitals when it is finished.
+- **Limit:** it acts in the browser, on what is typed. Old records keep their mixed case; an edited field turns to capitals as a whole. The server does not enforce it.
+- **Tested:** `scripts/test-uppercase-typing.mjs`; typing checked in headless Chrome.
+- **To do (owner):** decide whether to convert old records (needs a backup and a preview; names are compared without regard to case, so nothing depends on it).
+
 ### MAM: fixed quota; Remaining and the rate corrected (2026-11-05)
 
 - **Asked (owner):** add a fixed or total quota for the month or range; check Quota Remaining, Collections Received and the Final Month Collection Rate. Chose: back months follow the status; advances left out of the rate; the quota is the last month's closing total (October's is September's).
