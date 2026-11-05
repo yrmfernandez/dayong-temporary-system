@@ -656,7 +656,7 @@ test('attendance sheet lists every day and totals what payroll counts', async ()
   ];
   const { days, summary } = attendanceSheet({
     employee: { branch: 'MATINA', dateHired: '2026-10-02' }, records,
-    declaredDays: [{ date: '2026-10-05', allBranches: true, branchNames: [] }], from: '2026-10-01', to: '2026-10-10', today: '2026-10-08',
+    declaredDays: [{ date: '2026-10-05', allBranches: true, branchNames: [] }], from: '2026-10-01', to: '2026-10-10', today: '2026-10-08', payLeave: true,
   });
   assert.deepEqual(days.map((item) => item.status), ['Before hire', 'Present', 'Late', 'Present', 'Non-working day', 'Absent (system)', 'No record', 'Not clocked in', 'Leave', 'Upcoming']);
   assert.equal(days[3].restDayWork, true, 'worked on a Sunday');
@@ -2770,6 +2770,31 @@ test('No incentive on one collection of a batch: only that one is remitted whole
   assert.equal(rejected.status, 200, JSON.stringify(await rejected.clone().json()));
   const kept = await collectionState(id);
   assert.deepEqual([kept.status, kept.share, kept.forfeited], ['Returned', 350, 350 - share], 'no incentive is given back');
+});
+
+test('approved leave is paid only when Payroll says so: the payroll covering the dates, else the saved policy, else not', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const { leavePolicyFor, savePayrollPolicy, getPayrollPolicy } = h.load('lib/payroll.ts');
+  const { attendanceSheet } = h.load('lib/attendance-sheet.ts');
+  const { defaultPayrollSettings } = h.load('lib/payroll-calc.ts');
+  assert.equal(defaultPayrollSettings.payApprovedLeave, false, 'not paid by default');
+
+  assert.deepEqual(await leavePolicyFor('2026-10-01', '2026-10-15'), { paid: false, source: 'none', payrollId: '' }, 'no policy saved: not paid, and the sheet asks for one');
+  await savePayrollPolicy({ settings: { payApprovedLeave: true } }, 'Admin');
+  assert.equal((await getPayrollPolicy()).payApprovedLeave, true);
+  assert.deepEqual(await leavePolicyFor('2026-10-01', '2026-10-15'), { paid: true, source: 'policy', payrollId: '' }, 'ticked and saved: paid');
+
+  // A payroll covering the dates decides them, whatever the policy; a void one does not.
+  await seed('payroll_runs', [{ payroll_id: 'PAY-1', period_from: '2026-10-01', period_to: '2026-10-15', status: 'Draft', settings_json: { payApprovedLeave: false } }, { payroll_id: 'PAY-2', period_from: '2026-11-01', period_to: '2026-11-15', status: 'Void', settings_json: { payApprovedLeave: false } }]);
+  assert.deepEqual(await leavePolicyFor('2026-10-01', '2026-10-15'), { paid: false, source: 'payroll', payrollId: 'PAY-1' });
+  assert.deepEqual(await leavePolicyFor('2026-10-05', '2026-10-10'), { paid: false, source: 'payroll', payrollId: 'PAY-1' }, 'part of its period');
+  assert.deepEqual(await leavePolicyFor('2026-10-01', '2026-10-31'), { paid: true, source: 'policy', payrollId: '' }, 'beyond its period the policy decides');
+  assert.equal((await leavePolicyFor('2026-11-01', '2026-11-15')).source, 'policy', 'a void payroll decides nothing');
+
+  // The sheet: 1 present + 1 approved leave.
+  const record = (attendanceDate, fields) => ({ attendanceDate, status: 'Present', timeIn: '08:00', timeOut: '17:00', leaveType: '', leaveApprovalStatus: '', notes: '', branch: 'MATINA', regularHours: 8, totalHours: 8, overtimeHours: 0, lateMinutes: 0, undertimeMinutes: 0, ...fields });
+  const sheet = (payLeave) => attendanceSheet({ employee: { branch: 'MATINA', dateHired: '2026-01-01' }, records: [record('2026-10-05'), record('2026-10-06', { status: 'Leave', leaveType: 'Vacation', leaveApprovalStatus: 'Approved', timeIn: '', timeOut: '' })], declaredDays: [], from: '2026-10-05', to: '2026-10-06', today: '2026-10-07', payLeave }).summary;
+  assert.deepEqual([sheet(false).daysPayable, sheet(true).daysPayable, sheet(false).approvedLeave], [1, 2, 1], 'leave is counted as leave either way; only days payable follows the policy');
 });
 
 test('an Entry Clerk reviews only the branches where they are Entry Clerk, and submits only where they are MAS', async () => {

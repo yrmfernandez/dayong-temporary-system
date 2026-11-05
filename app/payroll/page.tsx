@@ -21,7 +21,7 @@ import { formatDate as showDate } from "@/lib/date-format";
 
 type Run = { id: string; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings; employeeCount: number; grossTotal: number; deductionsTotal: number; netTotal: number; preparedByUserId: string; preparedByName: string; approvedByName: string; approvedAt: string; paidAt: string; cashAccount: string; paymentReference: string; cashTransactionId: string; branch: string; voidReason: string; remarks: string };
 type ProgramDeduction = { id: string; runId: string; periodFrom: string; periodTo: string; paidAt: string; employeeId: string; employeeName: string; programId: string; program: string; amount: number; reason: string; collectionId: string; orNumber: string; linkedAt: string; linkedBy: string };
-type Overview = { programDeductions: ProgramDeduction[]; canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; branch: string; roles: string[] }>; employeeBranches: Record<string, string>; cashAccounts: string[]; branches: string[]; adjustmentCategories: Record<Adjustment["kind"], string[]>; programs: Array<{ id: string; code: string; name: string; basePay: number }> };
+type Overview = { policy: PayrollSettings | null; programDeductions: ProgramDeduction[]; canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; branch: string; roles: string[] }>; employeeBranches: Record<string, string>; cashAccounts: string[]; branches: string[]; adjustmentCategories: Record<Adjustment["kind"], string[]>; programs: Array<{ id: string; code: string; name: string; basePay: number }> };
 type Detail = { canManage: boolean; isAdministrator: boolean; currentUserId: string; run: Run; lines: PayrollLine[]; adjustments: Array<Adjustment & { status: string }>; totals: { gross: number; deductions: number; net: number } };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
@@ -107,7 +107,7 @@ export default function PayrollPage() {
 
     {!overview && !error && <p className="text-sm text-muted-foreground">Loading payroll...</p>}
     {overview && tab === "runs" && !detail && <ProgramDeductions overview={overview} busy={busy} onLink={(adjustmentId, orNumber) => act({ action: "linkDeduction", adjustmentId, orNumber }, orNumber ? `OR ${orNumber} linked; the deduction is settled.` : "Link removed; the deduction is waiting again.")} />}
-    {overview && tab === "runs" && !detail && <RunsList overview={overview} busy={busy} onOpen={(id) => void openRun(id).catch((failure) => setError(failure.message))}
+    {overview && tab === "runs" && !detail && <RunsList overview={overview} busy={busy} onSavePolicy={(settings) => act({ action: "savePolicy", settings }, "Payroll policy saved.")} onOpen={(id) => void openRun(id).catch((failure) => setError(failure.message))}
       onCreate={(body) => act({ action: "create", ...body }, "Payroll draft created.", async (result) => { await openRun(String(result.id)); })} />}
     {overview && tab === "runs" && detail && <RunDetail overview={overview} detail={detail} busy={busy} error={error} onBack={() => setDetail(null)}
       act={(body, success) => act({ runId: detail.run.id, ...body }, success, async () => { if (body.action === "delete") setDetail(null); else await openRun(detail.run.id); })} />}
@@ -179,10 +179,25 @@ function SettingsFields({ settings, onChange, disabled }: { settings: PayrollSet
   </div>;
 }
 
-function RunsList({ overview, busy, onOpen, onCreate }: { overview: Overview; busy: boolean; onOpen: (id: string) => void; onCreate: (body: Record<string, unknown>) => Promise<unknown> }) {
+/** What a new payroll starts from and what the Attendance sheet counts (lib/payroll.ts); a payroll can still differ for its own period. */
+function PayrollPolicy({ overview, busy, onSave }: { overview: Overview; busy: boolean; onSave: (settings: PayrollSettings) => Promise<unknown> }) {
+  const [settings, setSettings] = useState<PayrollSettings>(overview.policy ?? defaultPayrollSettings);
+  return <Card>
+    <CardHeader><CardTitle>Payroll policy</CardTitle></CardHeader>
+    <CardContent className="space-y-4">
+      <p className={overview.policy ? "text-xs text-muted-foreground" : "rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"}>
+        {overview.policy ? "New payrolls start from this, and the Attendance sheet counts leave by it. A payroll can still be changed for its own period." : "No policy saved yet. Until one is saved, approved leave is not paid on the Attendance sheet. Tick what applies and save."}
+      </p>
+      <SettingsFields settings={settings} onChange={setSettings} disabled={!overview.canManage} />
+      {overview.canManage && <Button type="button" disabled={busy} onClick={() => void onSave(settings)}>Save payroll policy</Button>}
+    </CardContent>
+  </Card>;
+}
+
+function RunsList({ overview, busy, onOpen, onCreate, onSavePolicy }: { overview: Overview; busy: boolean; onOpen: (id: string) => void; onCreate: (body: Record<string, unknown>) => Promise<unknown>; onSavePolicy: (settings: PayrollSettings) => Promise<unknown> }) {
   const half = currentHalfMonth();
   const [form, setForm] = useState({ periodFrom: half.from, periodTo: half.to, payDate: "", remarks: "" });
-  const [settings, setSettings] = useState<PayrollSettings>(defaultPayrollSettings);
+  const [settings, setSettings] = useState<PayrollSettings>(overview.policy ?? defaultPayrollSettings);
   const [showForm, setShowForm] = useState(false);
   const unpaid = overview.runs.filter((run) => run.status === "Approved");
   const setupCount = overview.profiles.filter((profile) => profile.status === "active").length;
@@ -197,8 +212,10 @@ function RunsList({ overview, busy, onOpen, onCreate }: { overview: Overview; bu
       <MetricTile tone="success" icon={Banknote} label="Paid this year" value={money(overview.runs.filter((run) => run.status === "Paid" && run.payDate.startsWith(today().slice(0, 4))).reduce((sum, run) => sum + run.netTotal, 0))} detail="Net pay released" />
     </div>
 
+    <PayrollPolicy overview={overview} busy={busy} onSave={onSavePolicy} />
+
     {overview.canManage && <Card>
-      <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>New payroll</CardTitle>{!showForm && <Button type="button" onClick={() => setShowForm(true)}><PlusCircle className="size-4" />Prepare payroll</Button>}</div></CardHeader>
+      <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>New payroll</CardTitle>{!showForm && <Button type="button" onClick={() => { setSettings(overview.policy ?? defaultPayrollSettings); setShowForm(true); }}><PlusCircle className="size-4" />Prepare payroll</Button>}</div></CardHeader>
       {showForm && <CardContent>
         <form onSubmit={(event) => void submit(event)} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-3">

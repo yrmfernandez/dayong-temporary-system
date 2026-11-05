@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Leave is not paid unless Payroll says so (2026-11-05)
+
+- **Asked (owner):** leave is never paid by default; if ticked in Payroll it is paid; the Attendance sheet advises saving a payroll policy first.
+- **Done:** `payApprovedLeave` defaults to off. **Payroll policy** card on Payroll (Finance and Administrators save; `system_settings` key `payroll_policy`, no migration): new payrolls start from it. `leavePolicyFor` in `lib/payroll.ts` decides for a date range: the non-void payroll covering the whole range, else the policy, else not paid. The Attendance sheet's days payable follow it, and a notice says which applies, or to save a policy first. Before, the sheet always added approved leave, even with the tick off. A date range wider than one payroll follows the policy.
+- **Kept:** runs already made keep their tick, including drafts; a stored run without the choice stays paid, as when it was made.
+- **Tested:** new test in `scripts/test-encoder-tracking.cjs`; checked in headless Chrome with mocked data.
+- **To do (owner):** Finance saves the Payroll policy once after deploying.
+
 ### Review cards show the percentage or fixed amount (2026-11-05)
 
 - **Asked (owner):** the calculation on the card means seeing the percentage, or the fixed amount when it is fixed.

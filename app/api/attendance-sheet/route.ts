@@ -6,7 +6,7 @@ import { getAttendanceRecordsForRange } from "@/lib/attendance-data";
 import { attendanceSheet, gridCell, sumSummaries } from "@/lib/attendance-sheet";
 import { closeFinishedAttendanceDaysQuietly } from "@/lib/auto-absence";
 import { getEmployees } from "@/lib/employees";
-import { getPayProfiles } from "@/lib/payroll";
+import { getPayProfiles, leavePolicyFor } from "@/lib/payroll";
 import { declaredNonWorkingDays } from "@/lib/work-calendar";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
@@ -34,7 +34,8 @@ export async function GET(request: Request) {
     // Finished days get their system absences first, as payroll does, so the sheet matches what payroll will count.
     await closeFinishedAttendanceDaysQuietly();
     const today = getPhilippineDate();
-    const [employees, declaredDays] = await Promise.all([getEmployees(), declaredNonWorkingDays()]);
+    const [employees, declaredDays, leavePolicy] = await Promise.all([getEmployees(), declaredNonWorkingDays(), leavePolicyFor(from, to)]);
+    const payLeave = leavePolicy.paid, canOpenPayroll = canAccessPath(user, "/payroll");
     const people = employees.map((employee) => ({ id: employee.id, name: employee.name, branch: employee.branch, roles: employee.roles, status: employee.status, dateHired: employee.dateHired }))
       .sort((first, second) => first.name.localeCompare(second.name));
 
@@ -43,8 +44,8 @@ export async function GET(request: Request) {
     if (employeeId) {
       const employee = people.find((item) => item.id === employeeId);
       if (!employee) throw new Error("Select a registered employee.");
-      const sheet = attendanceSheet({ employee, records: records.filter((record) => record.employeeId === employeeId), declaredDays, from, to, today });
-      return Response.json({ success: true, from, to, today, employees: people, employee, ...sheet }, { headers: { "Cache-Control": "private, no-store" } });
+      const sheet = attendanceSheet({ employee, records: records.filter((record) => record.employeeId === employeeId), declaredDays, from, to, today, payLeave });
+      return Response.json({ success: true, from, to, today, employees: people, employee, ...sheet, leavePolicy, canOpenPayroll }, { headers: { "Cache-Control": "private, no-store" } });
     }
 
     const byEmployee = new Map<string, typeof records>();
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     // Active employees, plus anyone else with attendance in the range (they worked part of it); all with the toggle.
     const listed = people.filter((employee) => includeInactive || employee.status === "active" || byEmployee.has(employee.id));
     const rates = new Map<string, string>();
-    if (canAccessPath(user, "/payroll")) {
+    if (canOpenPayroll) {
       for (const profile of await getPayProfiles()) {
         if (profile.status !== "active" || !profile.baseRate) continue;
         if (profile.baseType === "monthly") rates.set(profile.employeeId, `fixed ${profile.baseRate}`);
@@ -60,10 +61,10 @@ export async function GET(request: Request) {
       }
     }
     const rows = listed.map((employee) => {
-      const sheet = attendanceSheet({ employee, records: byEmployee.get(employee.id) ?? [], declaredDays, from, to, today });
+      const sheet = attendanceSheet({ employee, records: byEmployee.get(employee.id) ?? [], declaredDays, from, to, today, payLeave });
       return { employee, summary: sheet.summary, cells: sheet.days.map(gridCell), rate: rates.get(employee.id) ?? "" };
     });
-    return Response.json({ success: true, from, to, today, employees: people, rows, showRates: rates.size > 0, totals: sumSummaries(rows.map((row) => row.summary)) }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, from, to, today, employees: people, rows, showRates: rates.size > 0, totals: sumSummaries(rows.map((row) => row.summary)), leavePolicy, canOpenPayroll }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load the attendance sheet." }, { status: 400 });
   }

@@ -166,7 +166,8 @@ test("payroll: daily staff paid by attendance with overtime, late, and undertime
   const day = (overrides = {}) => ({ status: "Present", overtimeHours: 0, lateMinutes: 0, undertimeMinutes: 0, leaveApprovalStatus: "", ...overrides });
   const attendance = [day({ overtimeHours: 2 }), day({ lateMinutes: 30 }), day({ undertimeMinutes: 60 }), day({ status: "Leave", leaveApprovalStatus: "Approved" }), day({ status: "Absent" })];
   const base = { employeeId: "E1", employeeName: "Staff", roles: "Entry Clerk", profile, attendance, commissions: [], earnedIncentive: 0, from: "2026-09-01", to: "2026-09-15" };
-  const line = computePayrollLine({ ...base, settings: defaultPayrollSettings });
+  assert.equal(computePayrollLine({ ...base, settings: defaultPayrollSettings }).daysPaid, 3, "leave is not paid unless ticked");
+  const line = computePayrollLine({ ...base, settings: { ...defaultPayrollSettings, payApprovedLeave: true } });
   assert.equal(line.daysPaid, 4); // 3 present + 1 approved leave
   assert.equal(line.basePay, 3200);
   assert.equal(line.overtimePay, 250); // 2h × 100/h × 1.25

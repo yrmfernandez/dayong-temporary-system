@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Download, Printer } from "lucide-react";
 
@@ -15,8 +16,9 @@ import { formatDate as showDate } from "@/lib/date-format";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type AllRow = { employee: SheetEmployee; summary: SheetSummary; cells: GridCell[]; rate: string };
-type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: AllRow[]; showRates: boolean; totals: SheetSummary };
-type OneResult = { success: boolean; message?: string; employees: SheetEmployee[]; employee: SheetEmployee; days: SheetDay[]; summary: SheetSummary };
+type LeavePolicy = { paid: boolean; source: "payroll" | "policy" | "none"; payrollId: string };
+type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: AllRow[]; showRates: boolean; totals: SheetSummary; leavePolicy: LeavePolicy; canOpenPayroll: boolean };
+type OneResult = { success: boolean; message?: string; employees: SheetEmployee[]; employee: SheetEmployee; days: SheetDay[]; summary: SheetSummary; leavePolicy: LeavePolicy; canOpenPayroll: boolean };
 
 const manilaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 const lastDayOf = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
@@ -126,10 +128,12 @@ export function AttendanceSheet() {
 
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</p>}
 
+    {(showingOne ? one : all) && <LeaveNotice result={(showingOne ? one : all)!} />}
+
     {showingOne && one ? <EmployeeSheet result={one} period={period} from={from} to={to} onBack={backToAll} />
       : all && <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-          <div><CardTitle>{view === "sheet" ? "Attendance sheet" : "Attendance summary"} · {period}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{filtered ? `${shownRows.length} of ${all.rows.length}` : all.rows.length} employees{role ? ` · ${role}` : ""}{branch ? ` · ${branch}` : ""}. Click an employee for the day-by-day sheet. {view === "sheet" ? "Total days" : "Days payable"} = present + approved leave, as payroll counts them.</p></div>
+          <div><CardTitle>{view === "sheet" ? "Attendance sheet" : "Attendance summary"} · {period}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{filtered ? `${shownRows.length} of ${all.rows.length}` : all.rows.length} employees{role ? ` · ${role}` : ""}{branch ? ` · ${branch}` : ""}. Click an employee for the day-by-day sheet. {view === "sheet" ? "Total days" : "Days payable"} = present, plus approved leave when Payroll pays it.</p></div>
           <div className="flex flex-wrap gap-2 print:hidden">
             <div className="flex rounded-md border p-0.5">{(["sheet", "summary"] as const).map((option) => <Button key={option} type="button" size="sm" variant={view === option ? "default" : "ghost"} onClick={() => setView(option)}>{option === "sheet" ? "Sheet" : "Summary"}</Button>)}</div>
             {controls}
@@ -194,7 +198,7 @@ const gridKey: Array<[string, string, GridTone]> = [["L", "Leave", "leave"], ["P
 /**
  * All employees in the paper attendance sheet's format (owner, October 15, 2026): the key, the month and year, one
  * column per date with its weekday (Sundays and non-working days in red), the time in for days worked (late in red),
- * the letter codes for the rest, the total days (present + approved leave) and, for Payroll users, the rate.
+ * the letter codes for the rest, the total days (present, plus approved leave when paid) and, for Payroll users, the rate.
  */
 function AttendanceGrid({ rows, from, to, showRates, onOpen }: { rows: AllRow[]; from: string; to: string; showRates: boolean; onOpen: (id: string) => void }) {
   const dates = sheetDates(from, to);
@@ -272,7 +276,7 @@ function EmployeeSheet({ result, period, from, to, onBack }: { result: OneResult
   const isProblem = (day: SheetDay) => ["Late", "Absent", "Absent (system)", "AWOL", "No record"].includes(day.status) || day.missingTimeOut || day.undertimeMinutes > 0 || (day.status === "Leave" && !day.leave.toLowerCase().includes("approved"));
   const shown = problemsOnly ? days.filter(isProblem) : days;
   const cards: Array<[string, string, string?]> = [
-    ["Days payable", String(summary.daysPayable), `${summary.present} present + ${summary.approvedLeave} approved leave`],
+    ["Days payable", String(summary.daysPayable), summary.daysPayable > summary.present ? `${summary.present} present + ${summary.approvedLeave} approved leave` : summary.approvedLeave ? `${summary.present} present; ${summary.approvedLeave} approved leave not paid` : `${summary.present} present`],
     ["Working days", String(summary.scheduledDays), "Mon–Sat, less declared non-working days"],
     ["Attendance", rate(summary.attendanceRate), "Present ÷ days expected"],
     ["Late", summary.lateDays ? minutes(summary.lateMinutes) : "None", summary.lateDays ? `${summary.lateDays} day(s) late` : undefined],
@@ -337,8 +341,17 @@ function EmployeeSheet({ result, period, from, to, onBack }: { result: OneResult
   </Card>;
 }
 
+/** Whether approved leave counts in Total Days, and from what; with no saved policy, to save one first (owner, November 5, 2026). */
+function LeaveNotice({ result: { leavePolicy, canOpenPayroll } }: { result: Pick<AllResult, "leavePolicy" | "canOpenPayroll"> }) {
+  if (leavePolicy.source === "none") return <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+    <strong>Save a payroll policy first.</strong> None is saved yet, so approved leave is not paid and is left out of Total Days. {canOpenPayroll ? <Link href="/payroll" className="font-medium underline">Open Payroll to save it.</Link> : "Ask Finance to save it in Payroll."}
+  </p>;
+  const by = leavePolicy.source === "payroll" ? `payroll ${leavePolicy.payrollId}` : "the payroll policy";
+  return <p className="text-sm text-muted-foreground print:hidden">{leavePolicy.paid ? `Approved leave is paid, by ${by}: it counts in Total Days.` : `Approved leave is not paid, by ${by}: it is left out of Total Days.`}</p>;
+}
+
 function Legend() {
   return <p className="text-xs text-muted-foreground">
-    Days payable = Present + approved leave (payroll&apos;s attendance method). Late, undertime and overtime come from days worked. Absent (system) = no clock-in by 11:59 PM and not marked by management. No record = a past working day with nothing recorded (not deducted by payroll; mark it in Attendance Review). Sundays, declared non-working days, days before the hire date and days still to come are not counted.
+    Days payable = Present, plus approved leave when Payroll pays it (payroll&apos;s attendance method). Late, undertime and overtime come from days worked. Absent (system) = no clock-in by 11:59 PM and not marked by management. No record = a past working day with nothing recorded (not deducted by payroll; mark it in Attendance Review). Sundays, declared non-working days, days before the hire date and days still to come are not counted.
   </p>;
 }

@@ -32,7 +32,8 @@ export type PayrollSettings = {
 
 export const defaultPayrollSettings: PayrollSettings = {
   baseMethod: "attendance", includeOvertime: true, deductLate: true, deductUndertime: true,
-  payApprovedLeave: true, deductAbsences: true, includeCommissions: true,
+  // Leave is not paid unless Payroll says so (owner, November 5, 2026).
+  payApprovedLeave: false, deductAbsences: true, includeCommissions: true,
 };
 
 export type AttendanceDay = { status: string; overtimeHours: number; lateMinutes: number; undertimeMinutes: number; leaveApprovalStatus: string };

@@ -13,6 +13,7 @@ import {
   type Adjustment, type BaseType, type PayProfile, type PayrollLine, type PayrollSettings,
 } from "@/lib/payroll-calc";
 import { createReadableId } from "@/lib/readable-id";
+import { getSetting, saveSetting } from "@/lib/system-settings";
 
 /*
  * Tables, read and written directly (owner, October 24, 2026; upgrade #6 phase 1, replacing the Sheets-style row
@@ -83,7 +84,8 @@ function readRun(row: typeof runsTable.$inferSelect): PayrollRun {
   if (typeof stored === "string") { try { stored = JSON.parse(stored); } catch { stored = {}; } }
   return {
     id: row.payroll_id, periodFrom: text(row.period_from), periodTo: text(row.period_to), payDate: text(row.pay_date), status: text(row.status),
-    settings: { ...defaultPayrollSettings, ...((stored ?? {}) as Partial<PayrollSettings>) },
+    // A run saved without this choice was made when approved leave was paid by default; it stays as it was made.
+    settings: { ...defaultPayrollSettings, payApprovedLeave: true, ...((stored ?? {}) as Partial<PayrollSettings>) },
     employeeCount: num(row.employee_count), grossTotal: num(row.gross_total), deductionsTotal: num(row.deductions_total), netTotal: num(row.net_total),
     preparedByUserId: text(row.prepared_by_user_id), preparedByName: text(row.prepared_by_name), preparedAt: text(row.prepared_at), approvedByName: text(row.approved_by_name), approvedAt: text(row.approved_at),
     paidAt: text(row.paid_at), cashAccount: text(row.cash_account), paymentReference: text(row.payment_reference), cashTransactionId: text(row.cash_transaction_id), branch: text(row.branch), voidReason: text(row.void_reason), remarks: text(row.remarks),
@@ -115,9 +117,37 @@ function readAdjustment(row: typeof adjustmentsTable.$inferSelect) {
   return { id: row.adjustment_id, runId: row.payroll_id, employeeId: row.employee_id, kind: (text(row.kind) === "Deduction" ? "Deduction" : "Addition") as Adjustment["kind"], category: text(row.category), amount: num(row.amount), reason: text(row.reason), status: text(row.status) || "active" };
 }
 
+const POLICY_KEY = "payroll_policy";
+
+/** The saved Payroll policy, or null until someone saves one: what a new payroll starts from (owner, November 5, 2026). */
+export async function getPayrollPolicy(): Promise<PayrollSettings | null> {
+  const saved = await getSetting(POLICY_KEY);
+  if (!saved) return null;
+  try { return { ...defaultPayrollSettings, ...(JSON.parse(saved) as Partial<PayrollSettings>) }; } catch { return null; }
+}
+
+export async function savePayrollPolicy(input: Record<string, unknown>, by: string) {
+  const policy = readSettings(input);
+  await saveSetting(POLICY_KEY, JSON.stringify(policy), by);
+  return { policy };
+}
+
+/**
+ * Whether approved leave is paid for these dates, for the Attendance sheet's days payable: the payroll covering them,
+ * whose tick decides what is paid, else the saved policy. With neither, leave is not paid and the sheet says to save a
+ * policy first.
+ */
+export async function leavePolicyFor(from: string, to: string) {
+  const [row] = await currentDb().select().from(runsTable).where(and(ne(runsTable.status, "Void"), sql`${runsTable.period_from} <= ${from}::date and ${runsTable.period_to} >= ${to}::date`)).limit(1);
+  if (row) { const run = readRun(row); return { paid: run.settings.payApprovedLeave, source: "payroll" as const, payrollId: run.id }; }
+  const policy = await getPayrollPolicy();
+  return { paid: policy?.payApprovedLeave ?? false, source: policy ? "policy" as const : "none" as const, payrollId: "" };
+}
+
 export async function getPayrollOverview() {
-  const [runRows, profiles, employees, accounts, branches, programs, programDeductions] = await Promise.all([currentDb().select().from(runsTable), getPayProfiles(), getEmployees(), getCashAccounts(), getBranches(), getPrograms(), getProgramDeductions()]);
+  const [policy, runRows, profiles, employees, accounts, branches, programs, programDeductions] = await Promise.all([getPayrollPolicy(), currentDb().select().from(runsTable), getPayProfiles(), getEmployees(), getCashAccounts(), getBranches(), getPrograms(), getProgramDeductions()]);
   return {
+    policy,
     programDeductions,
     runs: runRows.map(readRun).sort((a, b) => b.periodFrom.localeCompare(a.periodFrom) || b.id.localeCompare(a.id)),
     profiles,

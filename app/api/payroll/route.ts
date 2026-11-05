@@ -3,7 +3,7 @@ import { canAccessPath } from "@/lib/access-control";
 import { withEncoder } from "@/lib/encoder-context";
 import {
   addPayrollAdjustment, approvePayrollRun, createPayrollRun, getPayrollOverview, getPayrollRun,
-  deletePayrollRun, linkDeductionCollection, payPayrollRun, recalculatePayrollRun, removePayrollAdjustment, savePayProfile, voidPayrollRun,
+  deletePayrollRun, linkDeductionCollection, payPayrollRun, recalculatePayrollRun, removePayrollAdjustment, savePayProfile, savePayrollPolicy, voidPayrollRun,
 } from "@/lib/payroll";
 
 const normalized = (roles: string[]) => roles.map((role) => role.trim().toLowerCase());
@@ -34,6 +34,7 @@ export const POST = withEncoder(async (request: Request) => {
     const runId = String(body.runId ?? "");
     switch (body.action) {
       case "saveProfile": return Response.json({ success: true, ...await savePayProfile(body) });
+      case "savePolicy": return Response.json({ success: true, ...await savePayrollPolicy(body, user.name) });
       case "create": return Response.json({ success: true, ...await createPayrollRun(body) }, { status: 201 });
       case "recalculate": return Response.json({ success: true, ...await recalculatePayrollRun(runId, body) });
       case "addAdjustment": return Response.json({ success: true, ...await addPayrollAdjustment(runId, body) }, { status: 201 });

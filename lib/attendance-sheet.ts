@@ -6,7 +6,7 @@ import { isWorkingDay, type DeclaredDay } from "@/lib/working-days";
 /**
  * Attendance sheet (owner, October 14, 2026): every day of a date range for an employee, including days with no record,
  * and the totals Finance checks before paying salaries. The counts follow payroll (lib/payroll-calc.ts): days payable
- * are Present days plus approved leave; late, undertime and overtime come from Present days only. Days with no record
+ * are Present days, plus approved leave when Payroll pays it (`payLeave`, lib/payroll.ts leavePolicyFor); late, undertime and overtime come from Present days only. Days with no record
  * are listed separately because payroll does not deduct them (the system records them Absent when the day closes).
  *
  * Pure, so it can be tested; app/api/attendance-sheet loads the records, employees and declared non-working days.
@@ -59,7 +59,7 @@ export type SheetSummary = {
   noRecord: number;
   missingTimeOut: number;
   restDayWork: number;
-  /** Present + approved leave: the days paid under payroll's attendance method. */
+  /** Present, plus approved leave when Payroll pays it: the days paid under payroll's attendance method. */
   daysPayable: number;
   /** Present ÷ days expected (scheduled less day off, not required and approved leave); null when none expected. */
   attendanceRate: number | null;
@@ -83,11 +83,13 @@ export function emptySummary(): SheetSummary {
 }
 
 /** Every day from `from` to `to` for one employee, with the period totals. */
-export function attendanceSheet({ employee, records, declaredDays, from, to, today }: {
+export function attendanceSheet({ employee, records, declaredDays, from, to, today, payLeave }: {
   employee: Pick<SheetEmployee, "branch" | "dateHired">;
   records: AttendanceRecord[];
   declaredDays: DeclaredDay[];
   from: string; to: string; today: string;
+  /** Approved leave counts as days payable (lib/payroll.ts leavePolicyFor). */
+  payLeave: boolean;
 }) {
   const byDate = new Map(records.map((record) => [record.attendanceDate, record]));
   const calendar = { days: declaredDays, branch: employee.branch };
@@ -162,7 +164,7 @@ export function attendanceSheet({ employee, records, declaredDays, from, to, tod
     }
   }
 
-  summary.daysPayable = summary.present + summary.approvedLeave;
+  summary.daysPayable = summary.present + (payLeave ? summary.approvedLeave : 0);
   const expected = summary.scheduledDays - summary.dayOff - summary.notRequired - summary.approvedLeave;
   summary.attendanceRate = expected > 0 ? Math.min(100, Math.round(((summary.present - summary.restDayWork) / expected) * 100)) : null;
   return { days, summary };
