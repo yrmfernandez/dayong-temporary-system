@@ -111,6 +111,11 @@ function validContactNumber(value: string | undefined) {
   return /^09\d{9}$/.test(String(value ?? "").replace(/\D/g, ""));
 }
 
+// What a phone's keyboard does on each kind of field (owner, November 5, 2026): capitals for names, digits for numbers,
+// Next on the Enter key, and no suggestions from the MAS's own details.
+const nameField = { autoCapitalize: "words", autoComplete: "off", autoCorrect: "off", enterKeyHint: "next" } as const;
+const phoneField = { type: "tel", inputMode: "tel", autoComplete: "off", enterKeyHint: "next" } as const;
+
 /** True when a form value is missing or only spaces; drafts and loaded members may lack a field. */
 const blank = (value: unknown) => !String(value ?? "").trim();
 
@@ -417,6 +422,11 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
 
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  // The review sits below the cards: without this a tap on Preview Sales seems to do nothing on a phone.
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (showPreview) previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [showPreview]);
   // The batch's receipt photos (clerk save only): at least one, as many as needed (owner, October 14, 2026); none needed
   // when the batch is paid in cash (October 16, 2026).
   const [receiptPhotos, setReceiptPhotos] = useState<PickedPhoto[]>([]);
@@ -1077,27 +1087,28 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
    */
   /** The first problem in the sale cards, or "" (the same checks for a clerk's save and a MAS's submit). */
   const saleCardProblem = (): string => {
-    for (const sale of sales) {
+    for (const [index, sale] of sales.entries()) {
+      const onSale = `Sale #${index + 1}:`;
       if (
         blank(sale.member.name?.surname)
       ) {
-        return "Member surname is required.";
+        return `${onSale} Member surname is required.`;
       }
 
       if (!validContactNumber(sale.member.contactNumber) || !validContactNumber(sale.member.claimant?.contactNumber)) {
-        return "Member and claimant contact numbers must use the Philippine mobile format 09XX XXX XXXX.";
+        return `${onSale} Member and claimant contact numbers must use the Philippine mobile format 09XX XXX XXXX.`;
       }
 
       if (
         blank(sale.program.programCode)
       ) {
-        return "Please select a program.";
+        return `${onSale} Please select a program.`;
       }
 
       if (
         blank(sale.member.address?.houseBlockLot)
       ) {
-        return "Complete Address is required.";
+        return `${onSale} Complete Address is required.`;
       }
 
       if ((sale.beneficiaries ?? []).some((beneficiary) =>
@@ -1105,19 +1116,19 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         blank(beneficiary.firstName) ||
         blank(beneficiary.relationship)
       )) {
-        return "Each beneficiary needs a surname, first name, and relationship.";
+        return `${onSale} Each beneficiary needs a surname, first name, and relationship.`;
       }
 
       if (blank(sale.applicationNumber)) {
-        return "Application Number is required.";
+        return `${onSale} Application Number is required.`;
       }
 
       if (isIncompleteApplicationNumber(sale.applicationNumber)) {
-        return `Application Number: ${INCOMPLETE_APPLICATION_MESSAGE}`;
+        return `${onSale} Application Number: ${INCOMPLETE_APPLICATION_MESSAGE}`;
       }
 
       if (!sale.orDate) {
-        return "Application Date is required.";
+        return `${onSale} Application Date is required.`;
       }
     }
 
@@ -1144,6 +1155,27 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     return "";
   };
 
+  /** Shows a problem from saleCardProblem and opens its sale, so the field to fix is on screen however long the batch is. */
+  const showSaleProblem = (problem: string) => {
+    setSaveMessage(problem);
+    const sale = sales[Number(/^Sale #(\d+):/.exec(problem)?.[1]) - 1];
+    if (!sale) return;
+    setExpandedSales((current) => ({ ...current, [sale.id]: true }));
+    setScrollTargetSaleId(sale.id);
+  };
+
+  /** Preview Sales. A MAS is told what is missing now, on the sale itself, rather than after the review. */
+  const previewSales = async () => {
+    if (masMode) {
+      const problem = saleCardProblem() || quoteProblem?.error || "";
+      if (problem) { showSaleProblem(problem); return; }
+      setSaveMessage("");
+    } else {
+      await alertDialog(SALE_CHECK_REMINDER, { title: "Check every sale before saving", warning: true, confirmLabel: "I have checked every sale" });
+    }
+    setShowPreview(true);
+  };
+
   /** MAS: sends the sale cards to the Entry Clerk of the branch (a new submission, or an update of the one being edited). */
   const submitToClerk = async () => {
     setSaveMessage("");
@@ -1155,7 +1187,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     }
     const problem = saleCardProblem() || quoteProblem?.error || "";
     if (problem) {
-      setSaveMessage(problem);
+      showSaleProblem(problem);
       return;
     }
     setSaving(true);
@@ -1187,7 +1219,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     setBranch(submission.branch);
     setMas(submission.mas);
     setSales(cards);
-    setExpandedSales(Object.fromEntries(cards.map((sale) => [sale.id, true])));
+    // A MAS works on a phone: one card open at a time, not every long card.
+    setExpandedSales(Object.fromEntries(cards.map((sale, index) => [sale.id, !masMode || index === 0])));
     setSubmissionId(asNew ? "" : submission.id);
     // Marked remitted: saved under the handover recorded then, so its time decides the incentive (as on Collections).
     if (!masMode) {
@@ -1275,7 +1308,7 @@ Is this cash part of that handover?`) ? "same"
 
     const cardProblem = saleCardProblem();
     if (cardProblem) {
-      setSaveMessage(cardProblem);
+      showSaleProblem(cardProblem);
       return;
     }
 
@@ -1444,7 +1477,8 @@ Is this cash part of that handover?`) ? "same"
       {/* =====================================================
           HEADER
       ====================================================== */}
-      <div>
+      {/* On a phone the top bar already names a MAS's page, and the form needs the room. */}
+      <div className={masMode ? "hidden md:block" : undefined}>
         <h1 className="text-2xl font-bold tracking-tight">
           {masMode ? "Submit New Sales" : "New Sales"}
         </h1>
@@ -1467,7 +1501,7 @@ Is this cash part of that handover?`) ? "same"
 
       {/* MAS (owner, November 4, 2026): kept at the top of the screen, so My submissions is one tap away however long the cards run. */}
       {masMode && (
-        <div role="tablist" aria-label="Submit New Sales" className="sticky top-0 z-20 grid grid-cols-2 gap-1 rounded-lg border bg-muted p-1">
+        <div role="tablist" aria-label="Submit New Sales" className="sticky-below-topbar sticky z-20 grid grid-cols-2 gap-1 rounded-lg border bg-muted p-1">
           {([["encode", "New sales"], ["submitted", "My submissions"]] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value}
             className={`min-h-10 rounded-md px-3 text-sm font-medium ${tab === value ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => { setTab(value); scrollPageToTop(); }}>
             {label}{value === "submitted" && openSubmissions + needsAttention ? <Badge variant={needsAttention ? "destructive" : "default"} className="ml-2">{openSubmissions + needsAttention}</Badge> : null}
@@ -1477,8 +1511,8 @@ Is this cash part of that handover?`) ? "same"
 
       {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
 
-      {/* MAS: what the last submit did, and the submissions the clerk sent back, first thing on the page. */}
-      {masMode && saveMessage && !showPreview && <p role="status" className="rounded-lg border bg-muted/40 p-3 text-sm">{saveMessage}</p>}
+      {/* MAS: the submissions the clerk sent back first thing on the page; on the form, messages are in the save bar. */}
+      {masMode && saveMessage && tab === "submitted" && <p role="status" className="rounded-lg border bg-muted/40 p-3 text-sm">{saveMessage}</p>}
       {masMode && <ReturnedSubmissions submissions={submissionList.filter((item) => item.status === "Returned" && item.id !== submissionId)} onOpen={(submission) => void openSubmission(submission)} />}
 
       {masMode && tab === "submitted" ? (
@@ -1500,18 +1534,18 @@ Is this cash part of that handover?`) ? "same"
       ====================================================== */}
       {masMode ? (
         <Card>
-          <CardContent className="grid gap-4 pt-6 md:grid-cols-3">
-            <div className="space-y-2">
+          <CardContent className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 md:pt-2">
+            <div className={`space-y-1 md:space-y-2 ${masProfile && masProfile.branches.length > 1 ? "col-span-2 md:col-span-1" : ""}`}>
               <Label>Branch *</Label>
               {masProfile && masProfile.branches.length > 1
                 ? <SearchSelect aria-label="Branch" value={branch} placeholder="Choose your branch" options={masProfile.branches.map((item) => ({ value: item.name, label: item.name }))} onValueChange={setBranch} />
-                : <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{branch || "No branch assigned"}</p>}
+                : <p className="text-sm font-medium md:rounded-md md:border md:bg-muted/30 md:px-3 md:py-2 md:font-normal">{branch || "No branch assigned"}</p>}
             </div>
-            <div className="space-y-2">
-              <Label>Marketing Account Staff</Label>
-              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{mas || "Loading..."}</p>
+            <div className="space-y-1 md:space-y-2">
+              <Label><span className="md:hidden">MAS</span><span className="hidden md:inline">Marketing Account Staff</span></Label>
+              <p className="text-sm font-medium md:rounded-md md:border md:bg-muted/30 md:px-3 md:py-2 md:font-normal">{mas || "Loading..."}</p>
             </div>
-            <div className="space-y-2">
+            <div className="hidden space-y-2 md:block">
               <Label>Submitted on</Label>
               <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{showDate(today)}; each sale&apos;s date enrolled is its application date</p>
             </div>
@@ -1622,11 +1656,13 @@ Is this cash part of that handover?`) ? "same"
                 ref={(element) => {
                   saleRefs.current[sale.id] = element;
                 }}
+                className={masMode ? "scroll-mt-14" : undefined}
               >
               <Card className="receipt-entry-card">
-                <CardHeader className="border-b">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex min-w-0 items-center gap-3">
+                <CardHeader className={expanded ? "border-b" : undefined}>
+                  <div className="flex items-center justify-between gap-2 md:gap-4">
+                    {/* The whole heading folds the sale: the arrow alone is a small target on a phone. */}
+                    <div className="flex min-w-0 flex-1 cursor-pointer items-center gap-x-3 gap-y-1 max-md:flex-wrap" onClick={() => toggleSale(sale.id)}>
                       <Badge variant="secondary">
                         Sale #{index + 1}
                       </Badge>
@@ -1644,7 +1680,7 @@ Is this cash part of that handover?`) ? "same"
 
                       {/* A folded sale shows what was typed, so the clerk can check it without opening it. */}
                       {!expanded && (
-                        <span className="truncate text-sm">
+                        <span className="truncate text-sm max-md:w-full max-md:whitespace-normal">
                           <strong>{[sale.member.name.surname, sale.member.name.firstName].filter(Boolean).join(", ") || "No name yet"}</strong>
                           <span className="text-muted-foreground"> · {programOf(sale)?.name || sale.program.programCode || "no program"} · {peso(amountPaidOf(sale))} · App {sale.applicationNumber || "—"}</span>
                         </span>
@@ -1658,11 +1694,12 @@ Is this cash part of that handover?`) ? "same"
                           type="button"
                           variant="ghost"
                           size="icon"
-                          onClick={() =>
-                            removeSale(
-                              sale.id,
-                            )
-                          }
+                          aria-label={`Remove Sale #${index + 1}`}
+                          onClick={async () => {
+                            // A MAS fills the cards on a phone: one stray tap must not lose a typed sale.
+                            if (masMode && (sale.member.name.surname.trim() || sale.program.programCode) && !await confirmDialog(`Remove Sale #${index + 1}? What was typed on it is lost.`)) return;
+                            removeSale(sale.id);
+                          }}
                         >
                           <Trash2 className="size-4" />
                         </Button>
@@ -1672,6 +1709,8 @@ Is this cash part of that handover?`) ? "same"
                         type="button"
                         variant="ghost"
                         size="icon"
+                        aria-label={`${expanded ? "Fold" : "Open"} Sale #${index + 1}`}
+                        aria-expanded={expanded}
                         onClick={() =>
                           toggleSale(
                             sale.id,
@@ -1716,10 +1755,16 @@ Is this cash part of that handover?`) ? "same"
                                 }),
                               )
                             }
+                            autoCapitalize="characters"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            enterKeyHint="next"
                             placeholder="Application number"
                           />
                         </div>
                         <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2 md:grid-cols-1">
+                          <div className="space-y-2">
                           <Label>
                             Application Date *
                           </Label>
@@ -1743,11 +1788,14 @@ Is this cash part of that handover?`) ? "same"
                               )
                             }
                           />
-                          <p className="text-xs text-muted-foreground">Also the date enrolled (DOI).</p>
+                          </div>
                           {/* The DOI time (owner, October 19, 2026): some programs need it; the encoding time unless changed. */}
+                          <div className="space-y-2">
                           <Label htmlFor={`${sale.id}-doi-time`}>DOI time</Label>
                           <Input id={`${sale.id}-doi-time`} type="time" value={sale.doiTime ?? ""} onChange={(event) => updateSale(sale.id, (current) => ({ ...current, doiTime: event.target.value }))} />
-                          <p className="text-xs text-muted-foreground">The time it is encoded; change it when the member enrolled at another time. Left blank, the time of saving is used.</p>
+                          </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground">The application date is also the date enrolled (DOI). The time is when it is encoded; change it when the member enrolled at another time. Left blank, the time of saving is used.</p>
                           {dateWarnings({ receiptDate: sale.orDate, receiptLabel: "application date", dateRemitted, today: manilaNow().date }).map((warning) => <p key={warning} className="text-xs font-medium text-amber-800">⚠ {warning}</p>)}
                           {isLateDate(sale.orDate) && (
                             <div className="space-y-1">
@@ -1831,14 +1879,16 @@ Is this cash part of that handover?`) ? "same"
                           <Input maxLength={300} value={sale.noIncentiveReason ?? ""} onChange={(event) => updateSale(sale.id, (current) => ({ ...current, noIncentiveReason: event.target.value }))} placeholder="e.g. Walk-in member, not brought in by the MAS" />
                         </div>}
                       </div>}
-                      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-                      <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                      <div className="col-span-2 space-y-2 md:col-span-1">
                         <Label>
                           Amount Paid *
                         </Label>
 
                         <Input
                           type="number"
+                          inputMode="decimal"
+                          enterKeyHint="next"
                           min="0"
                           readOnly={Boolean(lockedProgram(sale))}
                           className={lockedProgram(sale) ? "bg-muted/50" : undefined}
@@ -1952,8 +2002,8 @@ Is this cash part of that handover?`) ? "same"
                         />
                       )}
 
-                      <div className="grid gap-4 md:grid-cols-4">
-                        <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+                        <div className="col-span-2 space-y-2 md:col-span-1">
                           <Label>
                             Surname *
                           </Label>
@@ -2002,11 +2052,12 @@ Is this cash part of that handover?`) ? "same"
                                 150,
                               )
                             }
+                            {...nameField}
                             placeholder="Surname"
                           />
 
                           {showMemberChoices && (
-                            <div className="space-y-1 rounded-md border bg-muted/30 p-2">
+                            <div className="max-h-64 space-y-1 overflow-y-auto overscroll-contain rounded-md border bg-muted/30 p-2">
                               <p className="px-1 text-xs text-muted-foreground">
                                 Select the existing member to load their details.
                               </p>
@@ -2053,7 +2104,7 @@ Is this cash part of that handover?`) ? "same"
                           )}
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="col-span-2 space-y-2 md:col-span-1">
                           <Label>
                             First Name *
                           </Label>
@@ -2087,6 +2138,7 @@ Is this cash part of that handover?`) ? "same"
                                 }),
                               )
                             }
+                            {...nameField}
                             placeholder="First Name"
                           />
                         </div>
@@ -2125,6 +2177,7 @@ Is this cash part of that handover?`) ? "same"
                                 }),
                               )
                             }
+                            {...nameField}
                             placeholder="Middle Name"
                           />
                         </div>
@@ -2163,13 +2216,14 @@ Is this cash part of that handover?`) ? "same"
                                 }),
                               )
                             }
+                            {...nameField}
                             placeholder="Jr., Sr., III"
                           />
                         </div>
                       </div>
 
-                      <div className="grid gap-4 md:grid-cols-4">
-                        <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+                        <div className="col-span-2 space-y-2 md:col-span-1">
                           <Label>
                             Birthdate *
                           </Label>
@@ -2206,7 +2260,7 @@ Is this cash part of that handover?`) ? "same"
                           />
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="col-span-2 space-y-2 md:col-span-1">
                           <Label>
                             Birthplace
                           </Label>
@@ -2233,6 +2287,7 @@ Is this cash part of that handover?`) ? "same"
                                 }),
                               )
                             }
+                            {...nameField}
                             placeholder="Birthplace"
                           />
                         </div>
@@ -2309,6 +2364,8 @@ Is this cash part of that handover?`) ? "same"
                                 },
                               }));
                             }}
+                            inputMode="numeric"
+                            enterKeyHint="next"
                             placeholder="Auto"
                           />
                         </div>
@@ -2401,6 +2458,7 @@ Is this cash part of that handover?`) ? "same"
                                 }),
                               )
                             }
+                            {...phoneField}
                             placeholder="09XXXXXXXXX"
                           />
                         </div>
@@ -2451,6 +2509,7 @@ Is this cash part of that handover?`) ? "same"
                                         .value,
                                     )
                                   }
+                                  {...nameField}
                                   placeholder={
                                     label
                                   }
@@ -2502,7 +2561,7 @@ Is this cash part of that handover?`) ? "same"
                             key={
                               beneficiary.id
                             }
-                            className="rounded-lg border p-4"
+                            className="rounded-lg border p-3 md:p-4"
                           >
                             <div className="mb-4 flex items-center justify-between">
                               <p className="font-medium">
@@ -2515,6 +2574,7 @@ Is this cash part of that handover?`) ? "same"
                                 type="button"
                                 variant="ghost"
                                 size="icon"
+                                aria-label={`Remove Beneficiary ${beneficiaryIndex + 1}`}
                                 onClick={() =>
                                   removeBeneficiary(
                                     sale.id,
@@ -2526,8 +2586,10 @@ Is this cash part of that handover?`) ? "same"
                               </Button>
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
                               <Input
+                                className="col-span-2 md:col-span-1"
+                                {...nameField}
                                 placeholder="Surname"
                                 value={
                                   beneficiary.surname
@@ -2547,6 +2609,8 @@ Is this cash part of that handover?`) ? "same"
                               />
 
                               <Input
+                                className="col-span-2 md:col-span-1"
+                                {...nameField}
                                 placeholder="First Name"
                                 value={
                                   beneficiary.firstName
@@ -2566,6 +2630,7 @@ Is this cash part of that handover?`) ? "same"
                               />
 
                               <Input
+                                {...nameField}
                                 placeholder="Middle Name"
                                 value={
                                   beneficiary.middleName
@@ -2586,6 +2651,8 @@ Is this cash part of that handover?`) ? "same"
 
                               <Input
                                 type="number"
+                                inputMode="numeric"
+                                enterKeyHint="next"
                                 placeholder="Age"
                                 value={
                                   beneficiary.age ??
@@ -2605,7 +2672,11 @@ Is this cash part of that handover?`) ? "same"
                                 }
                               />
 
+                              {/* The other fields show their name inside; an empty date field on a phone shows nothing. */}
+                              <div className="col-span-2 space-y-1 md:col-span-1 md:space-y-0">
+                              <Label htmlFor={`${beneficiary.id}-birthdate`} className="md:sr-only">Birthdate</Label>
                               <Input
+                                id={`${beneficiary.id}-birthdate`}
                                 type="date"
                                 max={today}
                                 value={
@@ -2624,8 +2695,11 @@ Is this cash part of that handover?`) ? "same"
                                   )
                                 }
                               />
+                              </div>
 
                               <Input
+                                className="col-span-2 md:col-span-1"
+                                {...nameField}
                                 placeholder="Relationship"
                                 value={
                                   beneficiary.relationship
@@ -2700,6 +2774,7 @@ Is this cash part of that handover?`) ? "same"
                                 }),
                               )
                             }
+                            {...nameField}
                             placeholder="Complete name of claimant"
                           />
                         </div>
@@ -2736,9 +2811,10 @@ Is this cash part of that handover?`) ? "same"
                                 }),
                               )
                             }
+                            {...phoneField}
                             placeholder="09XXXXXXXXX"
                           />
-                          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium max-md:min-h-11">
                             <input
                               type="checkbox"
                               checked={sale.member.claimant.sameAsMemberContact ?? false}
@@ -2773,7 +2849,7 @@ Is this cash part of that handover?`) ? "same"
                             </Label>
                           </div>
 
-                          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium max-md:min-h-11">
                             <input
                               type="checkbox"
                               checked={
@@ -2859,6 +2935,7 @@ Is this cash part of that handover?`) ? "same"
                                       }),
                                     )
                                   }
+                                  {...nameField}
                                   placeholder={
                                     label
                                   }
@@ -2967,38 +3044,41 @@ Is this cash part of that handover?`) ? "same"
         </CardContent>
       </Card>}
 
-      {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review before saving</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p>{!masMode && (() => { const turnover = controlTotalDifference(controlTotal, saleTotalDue); return turnover ? <p className="font-semibold text-amber-700">Turnover sheet {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
+      {showPreview && <div ref={previewRef} className={`rounded-xl border border-primary/30 bg-primary/5 p-4 ${masMode ? "scroll-mt-14" : ""}`}><p className="font-semibold">{masMode ? "Review before submitting" : "Review before saving"}</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p>{!masMode && (() => { const turnover = controlTotalDifference(controlTotal, saleTotalDue); return turnover ? <p className="font-semibold text-amber-700">Turnover sheet {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
 
       {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
       {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" optional={allCash} />}
 
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}
-      <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
           <div className="min-w-0 flex-1 text-sm">
-            <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            {/* MAS on a phone: three short columns, as on Submit Collections, so the bar leaves the form its room. */}
+            {masMode ? <dl className="grid grid-cols-3 gap-2 text-center md:flex md:flex-wrap md:items-baseline md:gap-x-4 md:gap-y-1 md:text-left">
+              <div><dt className="text-[11px] text-muted-foreground md:inline md:text-sm">Collected ({sales.length} {sales.length === 1 ? "sale" : "sales"})</dt> <dd className="font-bold tabular-nums md:inline md:text-lg">{peso(totalPaid)}</dd></div>
+              <div><dt className="text-[11px] text-muted-foreground md:inline md:text-sm">Your incentive</dt> <dd className="font-bold tabular-nums text-emerald-700 md:inline dark:text-emerald-400">{totalSaleRemittance === null ? "—" : peso(Math.round((totalPaid - totalSaleRemittance) * 100) / 100)}</dd></div>
+              <div><dt className="text-[11px] text-muted-foreground md:inline md:text-sm">To remit</dt> <dd className="font-bold tabular-nums md:inline">{totalSaleRemittance === null ? "—" : peso(totalSaleRemittance)}</dd></div>
+            </dl> : <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
               <span>Total amount collected <strong className="text-lg tabular-nums">{peso(totalPaid)}</strong></span>
-              {!masMode && <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{saleTotalDue === null ? "pending" : peso(saleTotalDue)}</strong></span>}
-              {masMode && totalSaleRemittance !== null && <>
-                <span className="text-muted-foreground">Your incentive <strong className="tabular-nums text-emerald-700 dark:text-emerald-400">{peso(Math.round((totalPaid - totalSaleRemittance) * 100) / 100)}</strong></span>
-                <span className="text-muted-foreground">To remit <strong className="tabular-nums text-foreground">{peso(totalSaleRemittance)}</strong></span>
-              </>}
+              <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{saleTotalDue === null ? "pending" : peso(saleTotalDue)}</strong></span>
               <span className="text-muted-foreground">{sales.length} {sales.length === 1 ? "sale" : "sales"}</span>
-            </p>
-            <p className="truncate text-muted-foreground">{branch || "Branch not selected"} · {mas || "MAS not selected"}</p>
-            {saveMessage && <p className="mt-1 font-medium">{saveMessage}</p>}
+            </p>}
+            <p className={`truncate text-muted-foreground ${masMode ? "hidden md:block" : ""}`}>{branch || "Branch not selected"} · {mas || "MAS not selected"}</p>
+            {saveMessage && <p role="status" className="mt-1 font-medium">{saveMessage}</p>}
           </div>
           {!masMode && (
             <ControlTotalField id="sales-control-total" title="The net total the MAS wrote on the turnover sheet: amount paid less MAS incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={saleTotalDue} />
           )}
           <div className="flex gap-2">
-            <Button type="button" variant="outline" disabled={saving} onClick={async () => {
+            <Button type="button" variant="outline" className="max-md:h-11" disabled={saving} onClick={async () => {
+              // Reviewing, a MAS goes back to the cards; Cancel would clear them.
+              if (masMode && showPreview) { setShowPreview(false); return; }
               // A MAS fills the cards on a phone: one stray tap must not wipe them.
               if (masMode && batchHasWork && !await confirmDialog(submissionId ? "Stop editing this submission? Your changes on the form are lost." : "Clear every sale card on the form?")) return;
               resetForm();
-            }}>Cancel</Button>
-            <Button type="button" onClick={async () => { if (showPreview) { void (masMode ? submitToClerk() : saveSales()); return; } if (!masMode) await alertDialog(SALE_CHECK_REMINDER, { title: "Check every sale before saving", warning: true, confirmLabel: "I have checked every sale" }); setShowPreview(true); }} disabled={saving}>
+            }}>{masMode && showPreview ? "Back to edit" : "Cancel"}</Button>
+            <Button type="button" className="max-md:h-11 max-md:flex-1 max-md:text-base" onClick={() => { if (showPreview) { void (masMode ? submitToClerk() : saveSales()); return; } void previewSales(); }} disabled={saving}>
               {saving ? (masMode ? "Submitting..." : "Saving...") : showPreview ? (masMode ? "Confirm and Submit" : "Confirm and Save") : "Preview Sales"}
             </Button>
           </div>

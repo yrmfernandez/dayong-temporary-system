@@ -17,6 +17,21 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Phone: Submit New Sales optimized (2026-11-05)
+
+- **Asked (owner):** the phone UI/UX is not fully optimized, especially Submit New Sales.
+- **Done, every page on a phone:** fields, dropdowns and search boxes are at least 44 px tall below 768 px, list options and tick boxes are bigger (`app/globals.css`). The top bar clock drops the seconds and the theme switch moves to the drawer only, so the page title fits. Search boxes no longer paint square corners over their rounded frame.
+- **Fixed:** the sticky tabs on Submit New Sales and Submit Collections stuck at `top-0`, behind the top bar; they now stop under it (`.sticky-below-topbar`). Cards scrolled to stop below the top bar, and the bottom bars clear the phone's home bar.
+- **Done, Submit New Sales** (`components/new-sales-form.tsx`, MAS only unless noted):
+  - **Room:** no page heading on a phone (the top bar names the page); Branch and MAS on one short row; bottom bar is three columns (Collected, Your incentive, To remit) above the buttons, as on Submit Collections; short fields sit side by side (both modes).
+  - **Preview Sales** checks the cards first. A problem names its sale (`Sale #2: ...`, also for the clerk), opens that card and scrolls to it. The review scrolls into view (both modes), and the left button becomes **Back to edit** instead of Cancel.
+  - **Safer:** removing a typed sale asks first; a reopened batch opens one card, not all.
+  - **Keyboards (both modes):** capitals for names, phone pad for contact numbers, digits for amount and age, Next on the Enter key, no autofill of the MAS's own details. The whole sale heading folds and opens it; a folded sale shows its details on two lines; a beneficiary's birthdate has a label.
+- **Checked:** build passes; changed TSX files lint clean. Headless Chrome at 360, 320 and 1280 px with mocked data, no database: no sideways scrolling, all fields 44 px or taller on a phone, and the flows above work. Submit Collections opened at 360 px with an empty list only. Not tried on a real phone, or with the keyboard open, or as a clerk.
+- **Limit:** on a 320 px phone the top bar title is still cut short.
+- **Not this change:** `npm test` has 1 failure of 293, `scripts/test-encoder-tracking.cjs:2834` still expects `Returned` where a clerk's reject now gives `Rejected`; no test covers these files.
+- **To do (owner):** try it on a real phone as a MAS: fill a sale with the keyboard open, and Preview with something missing. No migration.
+
 ### Opened MAS batch back to the default form; Fidelity on My submissions (2026-11-04)
 
 - **Asked (owner):** Submitted by MAS on Collections should be just like the default when they started encoding; My submissions lets the MAS see the Fidelity they added when they remitted.
@@ -1073,7 +1088,7 @@ The palette comes from the company seal and is defined once in `app/globals.css`
 - **Navy, teal, red, orange** (the five figures): categorical accents on metric tiles; red also means danger.
 - **Neutrals** carry most of the interface, so accents keep their meaning. Status is shown with `StatusBadge` chips and `MetricTile` accents; color always accompanies text or an icon.
 
-Cards, the sidebar, the floating rounded top bar, and page headers are frosted glass (translucent fill, heavy backdrop blur, a light gradient edge, soft shadow) over a brand gradient mesh: pastel in light mode, glowing on near-black in dark mode. The sidebar follows the theme. Declare only the unprefixed `backdrop-filter` in CSS; the optimizer collapses a var()-based prefixed pair into `-webkit-backdrop-filter`, which Chromium ignores. Glass falls back to solid surfaces when blur is unsupported or the user prefers reduced transparency. Users choose **Light, Dark, or System** in the sidebar, the phone top bar, or Settings → Workspace preferences; the choice is stored per browser and applied before first paint. Every color is a CSS variable redefined under `.dark` (soft dark greys, never pure black), so page-level `violet-*`/`purple-*` utilities adapt automatically. Printed reports always use the light theme. Use `.brand-panel` for a surface that must stay dark in both themes.
+Cards, the sidebar, the floating rounded top bar, and page headers are frosted glass (translucent fill, heavy backdrop blur, a light gradient edge, soft shadow) over a brand gradient mesh: pastel in light mode, glowing on near-black in dark mode. The sidebar follows the theme. Declare only the unprefixed `backdrop-filter` in CSS; the optimizer collapses a var()-based prefixed pair into `-webkit-backdrop-filter`, which Chromium ignores. Glass falls back to solid surfaces when blur is unsupported or the user prefers reduced transparency. Users choose **Light, Dark, or System** in the sidebar (the drawer on a phone), the tablet top bar, or Settings → Workspace preferences; the choice is stored per browser and applied before first paint. Every color is a CSS variable redefined under `.dark` (soft dark greys, never pure black), so page-level `violet-*`/`purple-*` utilities adapt automatically. Printed reports always use the light theme. Use `.brand-panel` for a surface that must stay dark in both themes.
 
 ## Program age restrictions
 

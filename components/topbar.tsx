@@ -18,7 +18,7 @@ export function Topbar({ sections, activeRole, user, waiting, onMenu }: TopbarPr
   return (
     // The sticky wrapper is transparent; the rounded glass bar floats inside the page margins.
     <header className="app-topbar sticky top-0 z-30 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 md:px-6 md:pt-3">
-      <div className="glass-bar mx-auto flex h-14 max-w-[1920px] items-center gap-3 px-3 sm:px-4">
+      <div className="glass-bar mx-auto flex h-14 max-w-[1920px] items-center gap-2 px-3 sm:gap-3 sm:px-4">
         <button type="button" onClick={onMenu} className="relative -ml-1 flex size-10 items-center justify-center rounded-xl text-foreground hover:bg-muted md:hidden" aria-label={waiting > 0 ? `Open navigation, ${waiting} waiting` : "Open navigation"}>
           <Menu className="size-5" />
           {waiting > 0 && <span aria-hidden className="absolute right-0.5 top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-red px-1 text-[10px] font-bold leading-none text-white tabular-nums">{waiting > 99 ? "99+" : waiting}</span>}
@@ -32,8 +32,8 @@ export function Topbar({ sections, activeRole, user, waiting, onMenu }: TopbarPr
         </nav>
         <TopbarClock />
         {activeRole && <span className="tone-chip tone-brand hidden rounded-full px-2.5 py-1 text-xs font-semibold sm:block">{activeRole}</span>}
-        {/* The sidebar holds the labelled switch; phones get this compact one since the drawer is closed. */}
-        <ThemeToggle className="md:hidden" />
+        {/* The sidebar holds the labelled switch; tablets get this compact one. On a phone the page title needs the room. */}
+        <ThemeToggle className="max-sm:hidden md:hidden" />
         {user && <ProfileMenu name={user.name} employeeId={user.employeeId} activeRole={activeRole} side="bottom" triggerClassName="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden">
           <Avatar name={user.name} />
         </ProfileMenu>}

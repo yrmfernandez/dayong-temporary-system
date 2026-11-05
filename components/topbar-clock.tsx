@@ -31,7 +31,7 @@ export function TopbarClock() {
   // Encoding is open all day; 3:00 PM is only the incentive cutoff (the day after the OR date). Clearing records the time.
   const status = "Encoding open · incentive cutoff 3:00 PM the day after the OR date";
   return (
-    <div className="topbar-clock flex shrink-0 items-center gap-2.5 rounded-full py-1 pl-2.5 pr-3 text-xs" title={`Manila time · ${status}`}>
+    <div className="topbar-clock flex shrink-0 items-center gap-2.5 rounded-full py-1 pl-2 pr-2.5 text-xs sm:pl-2.5 sm:pr-3" title={`Manila time · ${status}`}>
       <span className="hidden items-center gap-1.5 text-muted-foreground lg:flex">
         <CalendarDays className="size-3.5 text-brand-gold" aria-hidden />
         <span className="min-w-[6.5rem]">{time?.date}</span>
@@ -39,10 +39,10 @@ export function TopbarClock() {
       <span className="topbar-clock-divider hidden h-4 w-px lg:block" aria-hidden />
       <span className="flex items-center gap-2">
         <span className="topbar-clock-dot" aria-hidden />
-        <time className="flex min-w-[5.6rem] items-baseline gap-0.5 font-semibold tabular-nums text-foreground" dateTime={now?.toISOString()} suppressHydrationWarning>
+        <time className="flex items-baseline sm:min-w-[5.6rem] gap-0.5 font-semibold tabular-nums text-foreground" dateTime={now?.toISOString()} suppressHydrationWarning>
           {time && <>
             <span className="text-sm leading-none">{time.hour}<span className="topbar-clock-colon">:</span>{time.minute}</span>
-            <span className="text-[0.7rem] leading-none text-muted-foreground">:{time.second}</span>
+            <span className="hidden text-[0.7rem] leading-none text-muted-foreground sm:inline">:{time.second}</span>
             <span className="ml-1 text-[0.62rem] font-bold leading-none tracking-wider text-brand-gold">{time.period}</span>
           </>}
         </time>

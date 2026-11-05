@@ -74,6 +74,7 @@ export function SearchSelect({
       autoHighlight
     >
       <Combobox.InputGroup
+        data-slot="search-select"
         className={cn(
           "relative flex h-8 w-full min-w-0 items-center rounded-lg border border-input bg-white/70 shadow-sm transition-all hover:border-violet-70 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:bg-input/50 data-disabled:opacity-50 dark:bg-input/30",
           className

@@ -452,6 +452,14 @@
 
 .app-main {
   scrollbar-gutter: stable;
+  /* The sticky top bar (components/topbar.tsx): what scrolls under it, and where a scrolled-to card must stop. */
+  --app-topbar: calc(max(0.75rem, env(safe-area-inset-top)) + 3.5rem);
+  scroll-padding-top: calc(var(--app-topbar) + 0.75rem);
+}
+
+/* Sticks just under the top bar; at top: 0 it sat hidden behind it. */
+.sticky-below-topbar {
+  top: calc(var(--app-topbar) + 0.25rem);
 }
 
 .app-content > * {
@@ -491,6 +499,13 @@ main select:focus,
 main textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);
+}
+
+/* The search box's own frame is the field; its input must not paint a square box over the rounded corners. */
+main [data-slot="search-select"] input,
+main [data-slot="search-select"] input:focus {
+  background-color: transparent;
+  box-shadow: none;
 }
 
 main input[type="checkbox"],
@@ -613,6 +628,35 @@ main [data-slot="card-title"] {
     min-width: 17rem !important;
     padding: 0.75rem !important;
   }
+}
+
+/* Phones and small tablets (owner, November 5, 2026): fields and list options big enough for a thumb. */
+@media (max-width: 767px) {
+  .app-main {
+    scroll-padding-bottom: 8rem;
+  }
+
+  main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+  main select,
+  main [data-slot="select-trigger"],
+  main [data-slot="search-select"] {
+    min-height: 2.75rem;
+  }
+
+  main input[type="checkbox"],
+  main input[type="radio"] {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  [role="option"] {
+    padding-block: 0.625rem;
+  }
+}
+
+/* iPhones centre the date and time in these fields; every other field starts at the left. */
+main input::-webkit-date-and-time-value {
+  text-align: left;
 }
 
 @keyframes clock-pulse {

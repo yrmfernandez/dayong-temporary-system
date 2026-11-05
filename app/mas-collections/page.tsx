@@ -252,7 +252,7 @@ export default function MasCollectionsPage() {
     </div>
 
     {/* Kept at the top of the screen, so My submissions is one tap away however long the member list is. */}
-    <div role="tablist" aria-label="Submit Collections" className="sticky top-0 z-20 grid grid-cols-2 gap-1 rounded-lg border bg-muted p-1">
+    <div role="tablist" aria-label="Submit Collections" className="sticky-below-topbar sticky z-20 grid grid-cols-2 gap-1 rounded-lg border bg-muted p-1">
       {([["collect", "Collect"], ["submissions", "My submissions"]] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={view === value}
         className={`min-h-10 rounded-md px-3 text-sm font-medium ${view === value ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => showView(value)}>
         {label}{value === "collect" && rows.length ? <Badge variant="secondary" className="ml-2">{rows.length}</Badge> : null}{value === "submissions" && openCount + unseenCount ? <Badge variant={unseenCount ? "destructive" : "default"} className="ml-2">{openCount + unseenCount}</Badge> : null}
@@ -415,7 +415,7 @@ export default function MasCollectionsPage() {
     </Card>
 
     {/* TOTALS AND SUBMIT: kept at the bottom of the screen while the batch is filled. */}
-    {shownRows.length > 0 && <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+    {shownRows.length > 0 && <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
       <div className="mx-auto max-w-3xl space-y-2">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div><p className="text-[11px] text-muted-foreground">Collected</p><p className="font-bold tabular-nums">{money(cents(totals.amount))}</p></div>
