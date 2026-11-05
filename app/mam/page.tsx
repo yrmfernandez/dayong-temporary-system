@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { paidInMonth } from "@/lib/mam-format";
-import type { buildMamReport } from "@/lib/mam-report";
+import { mamQuotaTotals, type buildMamReport } from "@/lib/mam-report";
 import { todayInManila } from "@/lib/account-rules";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import {
   Filter,
   Users,
   Wallet,
+  Target,
   TrendingUp,
   AlertTriangle,
   X,
@@ -202,8 +203,9 @@ export default function MamPage() {
     (sum, row) => sum + row.periods.reduce((subtotal, period) => subtotal + period.collected, 0),
     0
   );
-  const quota = rows.reduce((sum, row) => sum + (row.periods.at(-1)?.state?.balance ?? 0), 0);
-  const lastMonthCollected = rows.reduce((sum, row) => sum + (row.periods.at(-1)?.collected ?? 0), 0);
+  const quotas = mamQuotaTotals(rows);
+  const lastMonth = quotas.last;
+  const oneMonth = report?.from === report?.to;
   const activeCount = rows.filter((row) => {
     const p = row.periods.at(-1);
     return p?.state && p.state.status !== "Forfeited" && !p.state.temporarilySuspended;
@@ -226,6 +228,9 @@ export default function MamPage() {
         "Month Of",
         "TMD",
         "Balance",
+        "Quota",
+        "Paid Toward Quota",
+        "Quota Remaining",
         "Suspended",
         "Error",
       ],
@@ -246,6 +251,9 @@ export default function MamPage() {
           paidInMonth(period.receipts).monthOf,
           period.state?.tmd,
           period.state?.balance,
+          period.quota,
+          period.quotaCollected,
+          Math.round((period.quota - period.quotaCollected) * 100) / 100,
           period.state?.temporarilySuspended ? "Yes" : "No",
           period.error,
         ]);
@@ -461,7 +469,7 @@ export default function MamPage() {
       {masView && report && <MasCollectionList rows={listRows} today={report.today} onOpen={setSelected} />}
 
       {/* Overview Stat Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-xs font-medium text-muted-foreground">Active Accounts</CardTitle>
@@ -470,6 +478,17 @@ export default function MamPage() {
           <CardContent>
             <div className="text-2xl font-bold">{activeCount}</div>
             <p className="text-xs text-muted-foreground mt-1">Range end snapshot</p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-violet-90 shadow-[0_4px_20px_-2px_rgb(45_28_89_/_0.05)]">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs font-medium text-muted-foreground">{masView ? "Total Due" : "Total Quota"}</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{money(quotas.quota)}</div>
+            <p className="text-xs text-muted-foreground mt-1">{oneMonth ? `Fixed for ${report ? formatMonth(report.to) : "the month"}` : `Whole range · ${report ? formatMonth(report.to) : "last month"} ${money(lastMonth?.quota ?? 0)}`}</p>
           </CardContent>
         </Card>
 
@@ -490,8 +509,8 @@ export default function MamPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{money(quota)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{masView ? `As of ${report ? formatMonth(report.to) : "the last month"}` : "At range end"}</p>
+            <div className="text-2xl font-bold">{money(quotas.remaining)}</div>
+            <p className="text-xs text-muted-foreground mt-1">{masView ? `As of ${report ? formatMonth(report.to) : "the last month"}` : "Quota less what paid it down"}</p>
           </CardContent>
         </Card>
 
@@ -502,9 +521,9 @@ export default function MamPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {quota ? `${((lastMonthCollected / quota) * 100).toFixed(1)}%` : "—"}
+              {lastMonth?.quota ? `${((lastMonth.counted / lastMonth.quota) * 100).toFixed(1)}%` : "—"}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">{masView ? `In ${report ? formatMonth(report.to) : "the last month"}` : "Collection / Quota"}</p>
+            <p className="text-xs text-muted-foreground mt-1">{lastMonth ? `${money(lastMonth.counted)} of ${money(lastMonth.quota)}${report ? ` in ${formatMonth(report.to)}` : ""}; advances not counted` : "No month chosen"}</p>
           </CardContent>
         </Card>
       </div>
@@ -676,7 +695,10 @@ export default function MamPage() {
                     <td key={month} className="border-l p-4 text-[11px] space-y-0.5">
                       <div>Collected: {money(group.reduce((sum, row) => sum + row.periods[i].collected, 0))}</div>
                       <div className="text-muted-foreground">
-                        {masView ? "Due" : "Quota"}: {money(group.reduce((sum, row) => sum + (row.periods[i].state?.balance ?? 0), 0))}
+                        {masView ? "Due" : "Quota"}: {money(mamQuotaTotals(group).months[i]?.quota ?? 0)}
+                      </div>
+                      <div className="text-muted-foreground">
+                        Remaining: {money(mamQuotaTotals(group).months[i]?.remaining ?? 0)}
                       </div>
                     </td>
                   ))}

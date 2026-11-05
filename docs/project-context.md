@@ -17,6 +17,15 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### MAM: fixed quota; Remaining and the rate corrected (2026-11-05)
+
+- **Asked (owner):** add a fixed or total quota for the month or range; check Quota Remaining, Collections Received and the Final Month Collection Rate. Chose: back months follow the status; advances left out of the rate.
+- **Checked:** Collections Received was right. **Quota Remaining was wrong:** it added each account's `balance` after that month's payments, and a member paid exactly through the month still shows one month there (the next one), so it was never quota less collections. **The rate was wrong:** collected ÷ that leftover, so collecting more could lower the figure it divided by. Example above: Remaining showed ₱1,400 and the rate 75.0%; correct is ₱1,050 and 40.0%. The month totals and the print had the same fault.
+- **Done:** `monthQuota` and `mamQuotaTotals` in `lib/mam-report.ts`, used by the page, its month totals, the print and the CSV (three new columns). New Total Quota card. Bal per member is unchanged. No migration.
+- **Kept:** receipts of accounts dropped before the range, of a Deceased member with no date, and New Sales are not in Collections Received, as before.
+- **Tested:** new test in `scripts/test-encoder-tracking.cjs`.
+- **To do (owner):** compare one MAS's month with the paper figures; figures already reported from MAM will differ.
+
 ### Leave is not paid unless Payroll says so (2026-11-05)
 
 - **Asked (owner):** leave is never paid by default; if ticked in Payroll it is paid; the Attendance sheet advises saving a payroll policy first.

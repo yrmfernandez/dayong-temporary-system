@@ -1,5 +1,5 @@
 import { BrandLogo } from "@/components/brand-logo";
-import type { buildMamReport } from "@/lib/mam-report";
+import { mamQuotaTotals, type buildMamReport } from "@/lib/mam-report";
 import { formatDate as showDate } from "@/lib/date-format";
 import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 
@@ -52,7 +52,7 @@ export function MamPrint({ report, groups, printedBy }: { report: Report; groups
       {groups.map((group) => {
         const first = group[0];
         const counts = STATUSES.map((status) => [status, group.filter((row) => row.periods.at(-1)?.state?.status === status).length] as const).filter(([, count]) => count);
-        const quota = group.reduce((sum, row) => sum + (row.periods.at(-1)?.state?.balance ?? 0), 0);
+        const quotas = mamQuotaTotals(group);
         const collected = group.reduce((sum, row) => sum + (row.periods.at(-1)?.collected ?? 0), 0);
         return (
           <section key={`${first.branch}\u0000${first.mas}`} className="mam-print-section">
@@ -69,7 +69,7 @@ export function MamPrint({ report, groups, printedBy }: { report: Report; groups
             </header>
             <div className="mam-print-mas">
               <p><strong>MAS: {first.mas || "—"}</strong> · {group.length} {group.length === 1 ? "account" : "accounts"}</p>
-              <p>Summary at {monthLabel(report.to)}: {counts.map(([status, count]) => `${status} ${count}`).join(" · ") || "—"} · Quota {peso(quota)} · Collected {peso(collected)}</p>
+              <p>Summary at {monthLabel(report.to)}: {counts.map(([status, count]) => `${status} ${count}`).join(" · ") || "—"} · Quota {peso(quotas.last?.quota ?? 0)} · Collected {peso(collected)} · Remaining {peso(quotas.last?.remaining ?? 0)}</p>
             </div>
 
             {blocks.map((months) => {
@@ -107,7 +107,8 @@ export function MamPrint({ report, groups, printedBy }: { report: Report; groups
                       {months.map((month, i) => (
                         <td key={month} className="mam-print-month">
                           <div>Coll {peso(group.reduce((sum, row) => sum + row.periods[offset + i].collected, 0))}</div>
-                          <div>Quota {peso(group.reduce((sum, row) => sum + (row.periods[offset + i].state?.balance ?? 0), 0))}</div>
+                          <div>Quota {peso(quotas.months[offset + i]?.quota ?? 0)}</div>
+                          <div>Rem {peso(quotas.months[offset + i]?.remaining ?? 0)}</div>
                         </td>
                       ))}
                     </tr>
@@ -116,7 +117,7 @@ export function MamPrint({ report, groups, printedBy }: { report: Report; groups
               );
             })}
 
-            <p className="mam-print-key">* Waiver needed (temporarily suspended). Bal = amount due that month; Quota = total due; NOP = number of payments made.</p>
+            <p className="mam-print-key">* Waiver needed (temporarily suspended). Bal = amount due after that month&apos;s payments; Quota = fixed for the month, by status; Rem = quota not yet paid; NOP = number of payments made.</p>
             <div className="mam-print-signatures">
               {["Prepared by", "Checked by", "Noted by"].map((label) => <div key={label}><span className="mam-print-line" /><p>{label}</p></div>)}
             </div>
