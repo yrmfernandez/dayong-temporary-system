@@ -851,7 +851,7 @@ One place for IT Clerks and Administrators (and `manage_users`) to change data e
 - **Move between programs.** Choose the program, tick accounts (or all) and any other program (a different monthly pay recounts each receipt's months): the Programs → Transfer members panel ([program-transfer.ts](../lib/program-transfer.ts)). A member whose account in the target program already has payments is merged into it the same way (October 16, 2026; before, accounts that paid the same month were left). The moved New Sales and collections now take the target program's incentives too.
 - **Other corrections.** Links to Members (member details, delete a member), Employees (Employee ID), Exceptions, Remittances and the Audit Log.
 
-The quick number correction (`PATCH`, `correctSaleOrCollection` in [entry-corrections.ts](../lib/entry-corrections.ts)) stays for Today's Entries, Exceptions and the Audit Log. IT may now also use the MAS and program transfers (`canTransferMembers`, `/api/programs/transfer`) through this page.
+The quick number correction (`PATCH`, `correctSaleOrCollection` in [entry-corrections.ts](../lib/entry-corrections.ts)) stays for Today's Entries, the number and date issues of Exceptions, and the Audit Log. IT may now also use the MAS and program transfers (`canTransferMembers`, `/api/programs/transfer`) through this page.
 
 ### Member transfers and master data
 
@@ -954,6 +954,19 @@ An application number followed by **(need edit)**, **(need edit 2)**, … was sa
 ### Exceptions and system health
 
 Exceptions scans source sheets for impossible/future dates, sequencing problems, wrong amounts, duplicates, missing member details, overdue incentive-deadline cash, and late entries. Imported IDs containing `-LEG-` are hidden by default, with an option to include them. Results cap at 300. The scan generates findings without changing data.
+
+**Fix opens what the issue needs (November 6, 2026; [exception-fix.ts](../lib/exception-fix.ts)).** The form shows only the fields the issue is about; **Show all fields** opens the rest, for when a save is refused because of one of them.
+
+| Issue | Form | Fields shown |
+| --- | --- | --- |
+| Amounts that do not match the program | Edit / Corrections editor | Account or program, Amount, Months paid |
+| Dates out of order | Edit / Corrections editor | OR or application date, Date Remitted |
+| Impossible or future dates, late entries | Quick correction | OR or application date |
+| OR numbers without a branch letter | Quick correction | OR number |
+| Application numbers to complete | Quick correction | Application number |
+| Possible duplicates, imported receipts sharing a number | Quick correction | OR number (Collection), application number (New Sale) |
+
+The editor changes remitted entries too: the incentive is worked out again, and the slip's expected amount follows and shows any difference. The rules of Edit / Corrections apply: the whole account must still pass the account rules, and a locked New Sale takes only its fixed amount (or another program). Number and date issues stay on the quick form because it also corrects old records that would not pass those rules. An Administrator without Edit / Corrections in Roles gets the quick form for every issue, with the amount of a remitted entry locked.
 
 The IT System Health dashboard checks the Supabase database: response time and open connections, size against the Supabase Pro allowance (8 GB of database included; since October 26, 2026, upgrade #10), the largest tables, and the **schema**: every table and column the code uses must exist, and every migration file must be recorded as applied. A missing column is listed as critical (pages reading that table fail with "Failed query"); fix it by running `npm run db:migrate` on that database (production: `npm run prod -- npm run db:migrate`). It also shows which Supabase project the deployment uses (Production or Staging), whether receipt photo storage is configured, account and role integrity, the last 10 Audit Log changes, and Sheets-layer request counters. Refresh/inspection is useful after changes; it does not mean every problem is automatically repaired.
 

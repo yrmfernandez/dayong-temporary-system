@@ -1,5 +1,5 @@
 import { refuseOnDayOff } from "@/lib/day-off";
-import { pageTicked } from "@/lib/access-control";
+import { canAccessPath, canCorrectEntriesFor, pageTicked } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { withEncoder } from "@/lib/encoder-context";
 import { correctSaleOrCollection } from "@/lib/entry-corrections";
@@ -13,7 +13,9 @@ export async function GET(request: Request) {
   if (!canFix && !(user && pageTicked(user, "/exceptions"))) return Response.json({ success: false, message: "Administrator access is required." }, { status: 403 });
   try {
     const includeLegacy = new URL(request.url).searchParams.get("legacy") === "1";
-    return Response.json({ success: true, canFix, ...(await findExceptions({ includeLegacy })) }, { headers: { "Cache-Control": "private, no-store" } });
+    // Fix opens the Edit / Corrections editor for amounts and date order (lib/exception-fix.ts), for those who may use it.
+    const canEdit = Boolean(canFix && user && canCorrectEntriesFor(user) && canAccessPath(user, "/entry-corrections"));
+    return Response.json({ success: true, canFix, canEdit, ...(await findExceptions({ includeLegacy })) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to check for exceptions." }, { status: 500 });
   }

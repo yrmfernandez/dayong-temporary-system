@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Exceptions: Fix shows what the issue is about (2026-11-06)
+
+- **Asked (owner):** Fix on Exceptions did not match the issue: on Amounts that do not match the program the amount could not be changed.
+- **Cause:** every issue opened the same quick correction form, which locks the amount once an entry is on a remittance slip, has no months paid, and has no Date Remitted for Dates out of order.
+- **Done:** `lib/exception-fix.ts` decides the form and fields per issue. Amounts open the Edit / Corrections editor (Account or program, Amount, Months paid), remitted entries too; Dates out of order open it with the date and Date Remitted; number and date issues stay on the quick form with only their field. Show all fields opens the rest. Test: `scripts/test-exception-fix.mjs`.
+- **In progress:** nothing.
+- **To do (owner decides):** an account with two or more short payments cannot be fixed one at a time: the account check refuses the first save because of the other payment. Say if a correction should be allowed through when it leaves the account no worse. No migration.
+
 ### Programs: filters on the Program List (2026-11-06)
 
 - **Asked (owner):** add filters to the search on Programs.

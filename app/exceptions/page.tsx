@@ -5,18 +5,20 @@ import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { EntryCorrectionForm } from "@/components/entry-correction-form";
+import { EntryEditor } from "@/components/entry-editor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { parseJsonResponse } from "@/lib/api-response";
+import { exceptionFix } from "@/lib/exception-fix";
 import type { ExceptionCategory, ExceptionItem } from "@/lib/exceptions";
 
 type Category = { category: ExceptionCategory; label: string; total: number; items: ExceptionItem[] };
-type Result = { success: boolean; message?: string; categories: Category[]; limit: number; canFix?: boolean };
+type Result = { success: boolean; message?: string; categories: Category[]; limit: number; canFix?: boolean; canEdit?: boolean };
 
 const HELP: Record<ExceptionCategory, string> = {
   dates: "OR or application dates that are not real dates, are in the future, or are before 2000. Usually a typo in the year.",
   sequence: "Dates that do not fit together: a receipt dated after the entry was recorded, cash remitted before the receipt or more than 7 days after it, entries encoded more than 30 days late, or a remittance slip dated differently from the entry.",
-  amounts: "Collections that are not whole installments (more is allowed only when it pays the program off exactly), and New Sales on locked programs that differ from the fixed amount.",
+  amounts: "Collections that are not whole installments (more is allowed only when it pays the program off exactly), and New Sales on locked programs that differ from the fixed amount. Fix changes the amount, the months paid or the program, also on a remitted entry: the incentive is worked out again and the slip shows any difference.",
   duplicates: "The same OR number or application number on two entries, or two member records with the same name and birthdate.",
   members: "Active members without a birthdate, contact number, or address.",
   overdue: "Cash still with the MAS or Collector after 3:00 PM the day after the OR date. The incentive is forfeited when it is remitted.",
@@ -57,6 +59,7 @@ export default function ExceptionsPage() {
   // of the Supabase egress (October 31, 2026). Refresh reloads it.
 
   const current = data?.categories.find((item) => item.category === category);
+  const saved = (text: string) => { setMessage(text); setFixing(""); void load(includeLegacy); };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -101,9 +104,7 @@ export default function ExceptionsPage() {
                       ? <Button type="button" size="sm" variant="outline" onClick={() => setFixing(fixing === item.key ? "" : item.key)}>{fixing === item.key ? "Close" : "Fix"}</Button>
                       : item.href && <Link href={item.href} className="inline-flex h-8 shrink-0 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted">Open</Link>}
                   </div>
-                  {item.entry && fixing === item.key && (
-                    <EntryCorrectionForm entry={item.entry} endpoint="/api/exceptions" onCancel={() => setFixing("")} onSaved={(text) => { setMessage(text); setFixing(""); void load(includeLegacy); }} />
-                  )}
+                  {item.entry && fixing === item.key && <FixForm item={item} entry={item.entry} canEdit={Boolean(data?.canEdit)} onCancel={() => setFixing("")} onSaved={saved} />}
                 </li>
               ))}
             </ul>
@@ -112,4 +113,12 @@ export default function ExceptionsPage() {
       )}
     </div>
   );
+}
+
+/** The form for this kind of issue, showing the fields it is about (lib/exception-fix.ts). */
+function FixForm({ item, entry, canEdit, onCancel, onSaved }: { item: ExceptionItem; entry: NonNullable<ExceptionItem["entry"]>; canEdit: boolean; onCancel: () => void; onSaved: (message: string) => void }) {
+  const fix = exceptionFix(item.category, entry.kind, canEdit);
+  return fix.fullEdit
+    ? <EntryEditor kind={entry.kind} id={entry.id} fields={fix.fields} onCancel={onCancel} onSaved={onSaved} />
+    : <EntryCorrectionForm entry={entry} endpoint="/api/exceptions" fields={fix.fields} onCancel={onCancel} onSaved={onSaved} />;
 }
