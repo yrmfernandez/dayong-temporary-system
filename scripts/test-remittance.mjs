@@ -83,6 +83,31 @@ test("a branch's own tiers replace the base tiers for that role only", () => {
   assert.deepEqual(tiersForBranch(tiers, ""), base, "no branch means base rates");
 });
 
+test("Different incentives count only when ticked, for the months they cover, and only for the MAS (November 6, 2026)", () => {
+  const rate = (role, amount, more = {}) => ({ role, fromMonth: 1, toMonth: 60, incentiveType: "percentage", markUp: 50, incentiveAmount: amount, branchId: "", ...more });
+  const base = [rate("MAS", 50), rate("Collector", 20)];
+  const different = rate("MAS", 10, { toMonth: 12, different: true });
+  const tiers = [...base, different];
+  const remitted = (list, role, nop) => calculateRemittance(350, list, role, nop, nop).remittance;
+  // Not ticked: exactly as if the program had no Different rate, in every branch.
+  assert.deepEqual(tiersForBranch(tiers, ""), base);
+  assert.deepEqual(tiersForBranch(tiers, "BR-1"), base);
+  assert.equal(remitted(tiersForBranch(tiers, ""), "MAS", 3), 200, "MAS keeps 50% of 300");
+  // Ticked: the Different rate for months 1-12, the usual rate after, and the Collector's rate never moves.
+  const ticked = tiersForBranch(tiers, "", true);
+  assert.equal(remitted(ticked, "MAS", 3), 320, "MAS keeps 10% of 300");
+  assert.equal(remitted(ticked, "MAS", 13), 200, "month 13 keeps the usual rate");
+  assert.equal(calculateRemittance(350, ticked, "MAS", 12, 13).remittance, 520, "a receipt across both: 320 + 200");
+  assert.equal(remitted(ticked, "Collector", 3), remitted(tiersForBranch(tiers, ""), "Collector", 3));
+  // Over a branch's own rate too, which keeps the months the Different rate leaves.
+  const branch = rate("MAS", 40, { branchId: "BR-1" });
+  const inBranch = tiersForBranch([...tiers, branch], "BR-1", true);
+  assert.equal(remitted(inBranch, "MAS", 3), 320);
+  assert.equal(remitted(inBranch, "MAS", 13), 230, "the branch rate, 40% of 300");
+  // A program with no Different rate: a stale tick changes nothing.
+  assert.deepEqual(tiersForBranch(base, "", true), base);
+});
+
 test("a branch's own tiers cover only their months; other months fall back to the base tiers (October 23, 2026)", () => {
   // D-320 on October 23, 2026: base MAS 13-60, Nabunturan MAS 1-6 only; NOP 23 had no tier in Nabunturan.
   const base = { id: "B", role: "MAS", fromMonth: 13, toMonth: 60, branchId: "" };

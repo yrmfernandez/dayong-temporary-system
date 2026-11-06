@@ -1,0 +1,2 @@
+ALTER TABLE "collections" ADD COLUMN "different_incentive" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "program_incentives" ADD COLUMN "different" boolean DEFAULT false NOT NULL;

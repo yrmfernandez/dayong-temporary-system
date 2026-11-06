@@ -70,6 +70,16 @@ Each New Sale and each Collection on the encoding forms has a **No incentive** b
 - **Kept.** Repricing on Edit / Corrections, finance repricing and returned-batch edits keep the entry remitted whole (`lib/entry-edit.ts`, `lib/entry-finance.mjs`, `lib/batch-edit.ts`). A rejected slip gives late-cash forfeits back but not a No incentive one (`noIncentiveReasons` in `lib/remittance-workflow.ts`).
 - **Shown.** Today's Entries shows a *No incentive* badge with the reason, and the entry details (also in My Entries) list it. Remittances → View entries shows *No incentive: reason*.
 
+## Different incentives on one collection (November 6, 2026)
+
+A program may have **Different incentives**: MAS rates kept apart from its overall and branch rates (`program_incentives.different`, migration 0046), for all branches, with no Collector share. They are set on Programs with **Add Different Incentive**.
+
+- **Encoding.** The Entry Clerk sees a **Different incentives** tick on a collection when the batch is collected by MAS and the program has such a rate. Each collection is ticked on its own, also when reviewing a batch a MAS submitted. The form's preview uses the rate.
+- **Saving.** A ticked collection is priced at the Different rate for the months it covers and at the usual overall or branch rate for the others (`tiersForBranch`, third argument), and `collections.different_incentive` is saved. The server refuses a tick on a batch not collected by MAS or on a program with no such rate. The batch's total remittance, and so the control total, follows the rate.
+- **Kept.** Repricing on Edit / Corrections, finance repricing and returned-batch edits keep the rate (`lib/entry-edit.ts`, `lib/entry-finance.mjs`, `lib/batch-edit.ts`). On a returned batch the clerk can tick or untick it. It goes off if the batch stops being collected by MAS or the collection moves to a program without such a rate.
+- **Other rules.** Late cash forfeits it under the 3:00 PM rule, and an Administrator's Keep or Forfeit applies, as both work from the saved company share. No incentive still remits the whole amount. A reactivation stays at 10%. A MAS's own submission is quoted at the usual rate until the clerk ticks it.
+- **Shown.** Today's Entries and Remittances → View entries say *Different incentives*.
+
 ## Fidelity at encoding
 
 The Entry Clerk may enter the MAS Fidelity with a Collections batch (Collections AL `fidelity_amount`, first row of the batch). It is the accountable employee's own money saved for them: incentives are unchanged and the batch's total remittance goes up by that amount. Any batch (MAS, Collector or DTO) may have it, and there is no limit. The remittance for that batch uses the stored amount (Remittances Y), so the Fidelity page counts it.

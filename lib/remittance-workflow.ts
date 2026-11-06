@@ -311,6 +311,12 @@ export async function noIncentiveReasons(ids: string[]) {
   const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; reason: string }>;
   return new Map(rows.map((row) => [row.id, row.reason]));
 }
+/** Which of these collections were priced at Different incentives (owner, November 6, 2026). */
+async function differentIncentiveIds(ids: string[]) {
+  if (!ids.length) return new Set<string>();
+  const rows = await getDb().select({ id: schema.collections.collection_id }).from(schema.collections).where(and(inArray(schema.collections.collection_id, ids), eq(schema.collections.different_incentive, true)));
+  return new Set(rows.map((row) => row.id));
+}
 /** The distinct "date: reason" lines of these entries. */
 const reasonLines = (ids: string[], reasons: Map<string, { date: string; reason: string }>) =>
   [...new Set(ids.map((id) => reasons.get(id)).filter((item): item is { date: string; reason: string } => Boolean(item)).map((item) => `${item.date ? `${showDate(item.date)}: ` : ""}${item.reason}`))];
@@ -365,7 +371,7 @@ export async function getRemittanceDashboard(clerkId = "") {
   };
 }
 
-export type RemittanceEntry = Pick<CashCollection, "kind" | "id" | "batchId" | "memberNumber" | "programId" | "orNumber" | "orDate" | "amount" | "remittanceAmount" | "forfeitedIncentive" | "incentiveDecision" | "remittanceStatus" | "paymentMethod" | "paymentReference" | "photoId" | "cash" | "encodedByName" | "encodedAt" | "penalty" | "fidelity" | "dateRemitted"> & { memberName: string; program: string; dateRemittedReason: string; noIncentiveReason: string; incentiveDecisionNote: string };
+export type RemittanceEntry = Pick<CashCollection, "kind" | "id" | "batchId" | "memberNumber" | "programId" | "orNumber" | "orDate" | "amount" | "remittanceAmount" | "forfeitedIncentive" | "incentiveDecision" | "remittanceStatus" | "paymentMethod" | "paymentReference" | "photoId" | "cash" | "encodedByName" | "encodedAt" | "penalty" | "fidelity" | "dateRemitted"> & { differentIncentive: boolean; memberName: string; program: string; dateRemittedReason: string; noIncentiveReason: string; incentiveDecisionNote: string };
 
 /**
  * Every entry on one remittance slip, for the approver's View entries (owner, October 10, 2026): member, program, OR,
@@ -381,11 +387,12 @@ export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
   const items = remittance.collectionIds.map((id) => byId.get(id)).filter((item): item is CashCollection => Boolean(item));
   const numbers = [...new Set(items.map((item) => item.memberNumber).filter(Boolean))];
   const programIds = [...new Set(items.map((item) => item.programId).filter(Boolean))];
-  const [members, programs, reasons, noIncentive, decisions] = await Promise.all([
+  const [members, programs, reasons, noIncentive, different, decisions] = await Promise.all([
     numbers.length ? getDb().select({ number: schema.members.member_number, surname: schema.members.surname, first: schema.members.first_name }).from(schema.members).where(inArray(schema.members.member_number, numbers)) : [],
     programIds.length ? getDb().select({ id: schema.programs.program_id, code: schema.programs.program_code, name: schema.programs.program_name }).from(schema.programs).where(inArray(schema.programs.program_id, programIds)) : [],
     dateRemittedReasons(items.map((item) => item.id)),
     noIncentiveReasons(items.map((item) => item.id)),
+    differentIncentiveIds(items.map((item) => item.id)),
     incentiveDecisions(),
   ]);
   const names = new Map(members.map((member) => [member.number, `${text(member.first)} ${text(member.surname)}`.trim()]));
@@ -394,7 +401,7 @@ export async function getRemittanceEntries(remittanceId: string, clerkId = "") {
     kind: item.kind, id: item.id, batchId: item.batchId, memberNumber: item.memberNumber, memberName: names.get(item.memberNumber) ?? "", programId: item.programId, program: programNames.get(item.programId) ?? item.programId,
     orNumber: item.orNumber, orDate: item.orDate, amount: item.amount, remittanceAmount: item.remittanceAmount, forfeitedIncentive: item.forfeitedIncentive, remittanceStatus: item.remittanceStatus,
     paymentMethod: item.paymentMethod, paymentReference: item.paymentReference, photoId: item.photoId, cash: item.cash, encodedByName: item.encodedByName, encodedAt: item.encodedAt, penalty: item.penalty, fidelity: item.fidelity,
-    dateRemitted: item.dateRemitted, dateRemittedReason: reasons.get(item.id)?.reason ?? "", noIncentiveReason: noIncentive.get(item.id) ?? "",
+    dateRemitted: item.dateRemitted, dateRemittedReason: reasons.get(item.id)?.reason ?? "", noIncentiveReason: noIncentive.get(item.id) ?? "", differentIncentive: different.has(item.id),
     incentiveDecision: item.incentiveDecision ?? "", incentiveDecisionNote: decisions.get(item.id) ? `${decisions.get(item.id)!.by} ${decisions.get(item.id)!.at}: ${decisions.get(item.id)!.reason}` : "",
   }));
   return { remittanceId: remittance.id, entries, missing: remittance.collectionIds.filter((id) => !byId.has(id)) };

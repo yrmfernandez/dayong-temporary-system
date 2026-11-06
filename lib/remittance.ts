@@ -12,36 +12,48 @@ export type IncentiveTier = {
   branchId?: string;
   /** Non-commissionable period: only the Collector earns; the MAS gets nothing and remits the gross (owner, October 10, 2026). */
   nonCommissionable?: boolean;
+  /** Different incentives: a MAS rate used only on a collection the Entry Clerk ticks (owner, November 6, 2026). */
+  different?: boolean;
 };
+
+/** The parts of the `base` tiers outside the months `own` covers. */
+function outsideMonths<T extends { fromMonth: number; toMonth: number }>(base: T[], own: T[]): T[] {
+  const covered = [...own].sort((a, b) => a.fromMonth - b.fromMonth);
+  return base.flatMap((tier) => {
+    const pieces: T[] = [];
+    let from = tier.fromMonth;
+    for (const item of covered) {
+      if (item.toMonth < from || item.fromMonth > tier.toMonth) continue;
+      if (item.fromMonth > from) pieces.push({ ...tier, fromMonth: from, toMonth: Math.min(tier.toMonth, item.fromMonth - 1) });
+      from = Math.max(from, item.toMonth + 1);
+      if (from > tier.toMonth) break;
+    }
+    if (from <= tier.toMonth) pieces.push(from === tier.fromMonth ? tier : { ...tier, fromMonth: from, toMonth: tier.toMonth });
+    return pieces;
+  });
+}
 
 /**
  * The tiers that apply in one branch, per role (MAS, Collector): the branch's own tiers for the months they cover, and
  * the base (all-branches) tiers for every other month (owner, October 23, 2026; before, a branch's own tiers replaced
  * all the base tiers of that role, so a branch tier for months 1-6 left months 7 onward without any tier). A base tier
  * that partly overlaps the branch's months is cut down to the months the branch does not cover.
+ *
+ * Different incentives (owner, November 6, 2026) never count unless `different` is true, on a collection the Entry Clerk
+ * ticked: then the program's Different MAS rates replace the MAS rates for the months they cover, and every other month
+ * keeps its overall or branch rate. A program without Different rates prices as usual. Pass true only for a MAS batch.
  */
-export function tiersForBranch<T extends { role: string; branchId?: string; fromMonth: number; toMonth: number }>(tiers: T[], branchId: string): T[] {
+export function tiersForBranch<T extends { role: string; branchId?: string; fromMonth: number; toMonth: number; different?: boolean }>(tiers: T[], branchId: string, different = false): T[] {
   const branch = (branchId ?? "").trim();
-  return (["MAS", "Collector"] as const).flatMap((role) => {
-    const forRole = tiers.filter((tier) => tier.role === role);
+  const rates = (["MAS", "Collector"] as const).flatMap((role) => {
+    const forRole = tiers.filter((tier) => tier.role === role && !tier.different);
     const base = forRole.filter((tier) => !(tier.branchId ?? "").trim());
     const own = branch ? forRole.filter((tier) => (tier.branchId ?? "").trim() === branch) : [];
-    if (!own.length) return base;
-    const covered = [...own].sort((a, b) => a.fromMonth - b.fromMonth);
-    const rest = base.flatMap((tier) => {
-      const pieces: T[] = [];
-      let from = tier.fromMonth;
-      for (const item of covered) {
-        if (item.toMonth < from || item.fromMonth > tier.toMonth) continue;
-        if (item.fromMonth > from) pieces.push({ ...tier, fromMonth: from, toMonth: Math.min(tier.toMonth, item.fromMonth - 1) });
-        from = Math.max(from, item.toMonth + 1);
-        if (from > tier.toMonth) break;
-      }
-      if (from <= tier.toMonth) pieces.push(from === tier.fromMonth ? tier : { ...tier, fromMonth: from, toMonth: tier.toMonth });
-      return pieces;
-    });
-    return [...own, ...rest];
+    return own.length ? [...own, ...outsideMonths(base, own)] : base;
   });
+  const special = different ? tiers.filter((tier) => tier.different && tier.role === "MAS") : [];
+  if (!special.length) return rates;
+  return [...special, ...outsideMonths(rates.filter((tier) => tier.role === "MAS"), special), ...rates.filter((tier) => tier.role !== "MAS")];
 }
 
 /** A program's New Sale incentive for registration-fee programs (Programs Q type, R amount). Blank type = none. */

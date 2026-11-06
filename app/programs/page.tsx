@@ -58,6 +58,8 @@ incentiveAmount: number;
 branchId?: string;
 /** Only the Collector earns in this period. */
 nonCommissionable?: boolean;
+/** Different incentives: a MAS rate used only on a collection the Entry Clerk ticks. */
+different?: boolean;
 };
 
 type IncentiveTierForm = {
@@ -77,6 +79,8 @@ masIncentive: string;
 collectorIncentive: string;
 /** Non-commissionable period: only the Collector earns (default 10%, editable); the MAS gets nothing. */
 nonCommissionable: boolean;
+/** Different incentives (owner, November 6, 2026): MAS only, all branches, used when the Entry Clerk ticks it on a collection. */
+different: boolean;
 };
 
 type Program = {
@@ -146,6 +150,7 @@ totalIncentive: "50",
 masIncentive: "30",
 collectorIncentive: "20",
 nonCommissionable: false,
+different: false,
 
 };
 }
@@ -377,7 +382,7 @@ function copyBaseRatesToBranch(branchId: string) {
   if (!branchId) return;
   setForm((current) => {
     if (current.incentiveTiers.some((tier) => tier.branchId === branchId)) { void alertDialog(`${branchName(branchId)} already has its own periods.`); return current; }
-    const base = current.incentiveTiers.filter((tier) => !tier.branchId);
+    const base = current.incentiveTiers.filter((tier) => !tier.branchId && !tier.different);
     return { ...current, incentiveTiers: [...current.incentiveTiers, ...(base.length ? base : [createEmptyTier()]).map((tier) => ({ ...tier, branchId }))] };
   });
 }
@@ -539,6 +544,7 @@ const tiers = [
     ...tiers[index],
     [field]: value,
     ...(tiers[index].nonCommissionable && field === "collectorIncentive" ? { totalIncentive: value, masIncentive: "0" } : {}),
+    ...(tiers[index].different && field === "masIncentive" ? { totalIncentive: value, collectorIncentive: "0" } : {}),
   };
 
   return {
@@ -559,6 +565,10 @@ setForm((current) => ({
   ],
 }));
 
+}
+
+function addDifferentTier() {
+  setForm((current) => ({ ...current, incentiveTiers: [...current.incentiveTiers, { ...createEmptyTier(), different: true, totalIncentive: "30", masIncentive: "30", collectorIncentive: "0" }] }));
 }
 
 function removeTier(index: number) {
@@ -591,7 +601,7 @@ const normalizedPeriods: {
   to: number;
 }[] = [];
 
-if (!form.incentiveTiers.some((tier) => !tier.branchId)) {
+if (!form.incentiveTiers.some((tier) => !tier.branchId && !tier.different)) {
   void alertDialog("Add at least one period for All branches (base rates). Branch periods replace the base rates only for their months in that branch.");
   return false;
 }
@@ -764,7 +774,7 @@ for (
   }
 
   normalizedPeriods.push({
-    branch: tier.branchId,
+    branch: tier.different ? "different" : tier.branchId,
     from: fromMonth,
     to: toMonth,
   });
@@ -941,7 +951,9 @@ try {
 
     // Each form period becomes a MAS and a Collector tier, both for the period\'s branch.
 
-    incentiveTiers: incentiveTiers.map((item, position) => ({ ...item, branchId: form.incentiveTiers[Math.floor(position / 2)]?.branchId ?? "", nonCommissionable: form.incentiveTiers[Math.floor(position / 2)]?.nonCommissionable === true })),
+    incentiveTiers: incentiveTiers.map((item, position) => ({ ...item, branchId: form.incentiveTiers[Math.floor(position / 2)]?.branchId ?? "", nonCommissionable: form.incentiveTiers[Math.floor(position / 2)]?.nonCommissionable === true, different: form.incentiveTiers[Math.floor(position / 2)]?.different === true }))
+      // A Different period is a MAS rate only.
+      .filter((item) => !(item.different && item.role === "Collector")),
 
     categoryId: form.categoryId,
 
@@ -1069,6 +1081,7 @@ existingTiers.forEach(
       tier.markUp,
       tier.branchId ?? "",
       tier.nonCommissionable ? "nc" : "",
+      tier.different ? "different" : "",
     ].join("|");
 
     const existing =
@@ -1112,6 +1125,7 @@ existingTiers.forEach(
     grouped.set(key, {
       branchId: tier.branchId ?? "",
       nonCommissionable: tier.nonCommissionable === true,
+      different: tier.different === true,
       // Shown in years when the months fall on year boundaries (months 13–180 → Year 2 to Year 15).
       // Month 1 reads as Year 1 when the period ends on a whole year (Year 1 to Year 5).
       fromValue: (tier.fromMonth ?? 1) === 1 && monthsToPeriod(tier.toMonth ?? 999999, "to").unit === "year" ? "1" : monthsToPeriod(tier.fromMonth ?? 1, "from").value,
@@ -1317,15 +1331,12 @@ return (
           </span>
 
           <h4 className="font-semibold">
-            Incentive Period
+            {tier.different ? "Different Incentive Period (MAS)" : "Incentive Period"}
           </h4>
         </div>
 
         <p className="mt-1 text-xs text-muted-foreground">
-          Set the payment period,
-          mark up, and split the
-          incentive between MAS and
-          Collector.
+          {tier.different ? "Used only on a collection where the Entry Clerk ticks Different incentives, in a batch collected by MAS. Months not covered here keep the usual rate." : "Set the payment period, mark up, and split the incentive between MAS and Collector."}
         </p>
       </div>
 
@@ -1343,7 +1354,7 @@ return (
     </div>
 
     {/* BRANCH */}
-    <div className="mb-4 space-y-2">
+    <div className={tier.different ? "hidden" : "mb-4 space-y-2"}>
       <Label>Branch</Label>
       <Select value={tier.branchId || "all"} onValueChange={(value) => updateTier(index, "branchId", !value || value === "all" ? "" : value)}>
         <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
@@ -1559,6 +1570,8 @@ return (
             value={
               tier.totalIncentive
             }
+            disabled={tier.different}
+            title={tier.different ? "Follows the MAS amount below." : undefined}
             onChange={(event) =>
               updateTier(
                 index,
@@ -1678,7 +1691,7 @@ return (
         </div>
       </div>
 
-      <label className="flex items-start gap-2 rounded-lg border border-dashed p-3 text-sm">
+      <label className={tier.different ? "hidden" : "flex items-start gap-2 rounded-lg border border-dashed p-3 text-sm"}>
         <input type="checkbox" className="mt-0.5" checked={tier.nonCommissionable} onChange={(event) => setNonCommissionable(index, event.target.checked)} />
         <span><strong>Non-commissionable period</strong><span className="block text-xs text-muted-foreground">Only the Collector earns in this period (default 10%, can be changed). The MAS gets nothing and remits the full amount; a DTO collection never has an incentive.</span></span>
       </label>
@@ -1747,7 +1760,7 @@ return (
         </div>
 
         {/* COLLECTOR */}
-        <div className="rounded-lg border p-4">
+        <div className={tier.different ? "hidden" : "rounded-lg border p-4"}>
           <div className="mb-3">
             <p className="font-semibold">
               Collector
@@ -2207,6 +2220,10 @@ const programForm = (
             <Plus className="mr-2 size-4" />
             Add Period
           </Button>
+          <Button type="button" variant="outline" size="sm" onClick={addDifferentTier}>
+            <Plus className="mr-2 size-4" />
+            Add Different Incentive
+          </Button>
           <Select value="" onValueChange={(value) => copyBaseRatesToBranch(value ?? "")}>
             <SelectTrigger className="h-8 w-56"><SelectValue placeholder="Add rates for a branch" /></SelectTrigger>
             <SelectContent>{branchOptions.filter((item) => item.status !== "inactive").map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.territory ? ` · ${item.territory}` : ""}</SelectItem>)}</SelectContent>
@@ -2367,12 +2384,13 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                           tier.incentiveType,
                           tier.markUp,
                           tier.branchId ?? "",
+                          tier.different ? "different" : "",
                         ].join("|"),
                         tier,
                       ],
                     ),
                   ).values(),
-                ).sort((a, b) => Number(Boolean(a.branchId)) - Number(Boolean(b.branchId)) || (a.branchId ?? "").localeCompare(b.branchId ?? "") || a.fromMonth - b.fromMonth);
+                ).sort((a, b) => Number(Boolean(a.different)) - Number(Boolean(b.different)) || Number(Boolean(a.branchId)) - Number(Boolean(b.branchId)) || (a.branchId ?? "").localeCompare(b.branchId ?? "") || a.fromMonth - b.fromMonth);
 
               return (
                 <div
@@ -2552,7 +2570,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                                     baseTier.incentiveType &&
                                   tier.markUp ===
                                     baseTier.markUp &&
-                                    (tier.branchId ?? "") === (baseTier.branchId ?? ""),
+                                    (tier.branchId ?? "") === (baseTier.branchId ?? "") &&
+                                    Boolean(tier.different) === Boolean(baseTier.different),
                               );
 
                             const collectorTier =
@@ -2570,7 +2589,8 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
                                     baseTier.incentiveType &&
                                   tier.markUp ===
                                     baseTier.markUp &&
-                                    (tier.branchId ?? "") === (baseTier.branchId ?? ""),
+                                    (tier.branchId ?? "") === (baseTier.branchId ?? "") &&
+                                    Boolean(tier.different) === Boolean(baseTier.different),
                               );
 
                             const masAmount =
@@ -2601,7 +2621,7 @@ const collectorRemittance = calculateRemittanceFor(program.basePay, baseTier.mar
                                 key={`${program.id}-${index}`}
                                 className="rounded-lg border bg-muted/20 p-4"
                               >
-                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">{baseTier.branchId ? `Branch rates: ${branchName(baseTier.branchId)}` : "All branches (base rates)"}</p>
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">{baseTier.different ? "Different incentives: MAS, when the Entry Clerk ticks it" : baseTier.branchId ? `Branch rates: ${branchName(baseTier.branchId)}` : "All branches (base rates)"}</p>
                                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                   <div>
                                     <p className="font-semibold">

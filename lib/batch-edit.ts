@@ -79,6 +79,8 @@ export type EditableBatch = {
     noIncentiveReason: string;
     // Collections
     reactivation: boolean; transferred: boolean; waiver: boolean;
+    /** Collections: Different incentives ticked, and whether its program has them (owner, November 6, 2026). */
+    differentIncentive: boolean; differentAvailable: boolean;
     monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; basePay: number; flexible: boolean;
     /** Collections: the account it is on, and the member's accounts it may be on (itself first). */
     accountId: string; accounts: CollectionAccountChoice[];
@@ -143,7 +145,7 @@ async function returnReason(remittanceId: string | null) {
 export async function getReturnedBatch(ids: string[], by: By): Promise<EditableBatch> {
   const batch = await returnedBatch(ids, by);
   const db = currentDb();
-  const blank = { monthFrom: "", monthTo: "", nopFrom: 0, nopTo: 0, basePay: 0, flexible: false, accountId: "", accounts: [] as CollectionAccountChoice[], applicationNumber: "", notes: "", doiTime: "", reactivation: false, transferred: false, waiver: false };
+  const blank = { monthFrom: "", monthTo: "", nopFrom: 0, nopTo: 0, basePay: 0, flexible: false, accountId: "", accounts: [] as CollectionAccountChoice[], applicationNumber: "", notes: "", doiTime: "", reactivation: false, transferred: false, waiver: false, differentIncentive: false, differentAvailable: false };
   if (batch.kind === "New Sale") {
     const rows = batch.sales;
     const programRows = await db.select({ id: programs.program_id, name: programs.program_name, code: programs.program_code }).from(programs).where(inArray(programs.program_id, [...new Set(rows.map((row) => row.program_id))]));
@@ -209,6 +211,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
         ...blank, id: row.collection_id, memberNumber: text(row.member_number), memberName: info ? `${text(info.firstName)} ${text(info.surname)}`.trim() : "",
         program: text(info?.program) || text(info?.programName), orNumber: text(row.or_number), orDate: day(row.or_date), amount: Number(row.amount_collected), backdateReason: text(row.backdate_reason),
         noIncentiveReason: text(row.no_incentive_reason), reactivation: row.reactivation === true, transferred: row.transferred === true, waiver: text(row.suspended) === "Waiver",
+        differentIncentive: row.different_incentive, differentAvailable: choices.incentives.some((tier) => tier.programId === row.program_id && tier.different),
         monthFrom: text(row.month_from).slice(0, 7), monthTo: text(row.month_to).slice(0, 7), nopFrom: row.nop_from ?? 0, nopTo: row.nop_to ?? 0,
         basePay: Number(info?.basePay ?? 0), flexible: Boolean(info?.flexible), accountId: row.enrollment_id, accounts: accountsFor(row),
       };
@@ -222,7 +225,7 @@ const sameAccountOwner = (a: { branch: string; mas: string }, b: { branch: strin
 type EntryInput = {
   id: string; remove?: boolean; orNumber?: string; orDate?: string; amount?: number; monthTo?: string; backdateReason?: string; applicationNumber?: string; notes?: string; doiTime?: string; sale?: Partial<SaleDetails>;
   /** Left out: as encoded. */
-  noIncentive?: boolean; noIncentiveReason?: string; reactivation?: boolean; transferred?: boolean; waiver?: boolean;
+  noIncentive?: boolean; noIncentiveReason?: string; reactivation?: boolean; transferred?: boolean; waiver?: boolean; differentIncentive?: boolean;
   /** Collections: another account of the member, for the `months` the receipt covers there. Left out: where it is. */
   accountId?: string; months?: number;
 };
@@ -602,7 +605,10 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
           { monthFrom, monthTo, nopFrom, nopTo, amount, orDate, orNumber, waiver, collectedByRole: common.collectedBy, originalMas: text(row.original_mas) }, common.today);
       }
     }
-    const quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), common.branchId), incentiveRoleFor(common.collectedBy), nopFrom, nopTo, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation });
+    // Different incentives (owner, November 6, 2026): only on a MAS batch, for a program that has them; otherwise it goes off.
+    const programTiers = data.incentives.filter((tier) => tier.programId === account.programId);
+    const differentIncentive = (change.differentIncentive ?? row.different_incentive) && common.collectedBy === "MAS" && programTiers.some((tier) => tier.different);
+    const quote = calculateRemittance(account.basePay, tiersForBranch(programTiers, common.branchId, differentIncentive), incentiveRoleFor(common.collectedBy), nopFrom, nopTo, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation });
     // No incentive (owner, October 20, 2026): still remitted whole.
     const noIncentive = Boolean(noIncentiveReason), kept = withoutIncentive(amount, quote.remittance);
     payments = [...payments, { id: row.collection_id, enrollmentId: account.id, orDate, orNumber, monthFrom, monthTo, nopFrom, nopTo, amount, dateRemitted: common.dateRemitted, mas: text(row.mas) }];
@@ -613,7 +619,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
       date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), remittance_method: common.method, payment_reference: common.reference || null, collected_by_role: common.collectedBy,
       ...(row.clearing_id && common.dateRemitted !== day(row.date_remitted) ? { clearing_id: null } : {}),
       original_mas: common.collectedBy === "Collector" ? text(row.mas) : null, remittance_amount: noIncentive ? kept.remittance : quote.remittance, remittance_breakdown: quote.breakdown,
-      orc, reactivation, transferred, suspended: waiver || null,
+      orc, reactivation, transferred, suspended: waiver || null, different_incentive: differentIncentive,
       ...(noIncentive ? { forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null } : incentiveMarkChanged ? { forfeited_incentive: null } : {}),
       ...(incentiveMarkChanged ? { no_incentive_reason: noIncentiveReason || null } : {}),
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
@@ -624,7 +630,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
       or_number: row.or_number, or_date: day(row.or_date), amount_collected: Number(row.amount_collected), month_to: text(row.month_to).slice(0, 7), nop_to: row.nop_to, backdate_reason: row.backdate_reason || null,
       date_remitted: day(row.date_remitted), date_remitted_reason: row.date_remitted_reason || null, remittance_method: row.remittance_method, payment_reference: row.payment_reference || null, collected_by_role: row.collected_by_role,
       original_mas: row.original_mas || null, remittance_amount: Number(row.remittance_amount ?? 0), remittance_breakdown: row.remittance_breakdown,
-      orc: text(row.collected_by_role) === "Collector" && orcOf(row), reactivation: row.reactivation === true, transferred: row.transferred === true, suspended: row.suspended || null,
+      orc: text(row.collected_by_role) === "Collector" && orcOf(row), reactivation: row.reactivation === true, transferred: row.transferred === true, suspended: row.suspended || null, different_incentive: row.different_incentive,
       ...(noIncentive || incentiveMarkChanged ? { forfeited_incentive: row.forfeited_incentive === null ? null : Number(row.forfeited_incentive) } : {}),
       ...(incentiveMarkChanged ? { no_incentive_reason: row.no_incentive_reason || null } : {}),
       penalty_amount: row.penalty_amount === null ? null : Number(row.penalty_amount), penalty_note: row.penalty_note || null, fidelity_amount: row.fidelity_amount === null ? null : Number(row.fidelity_amount),

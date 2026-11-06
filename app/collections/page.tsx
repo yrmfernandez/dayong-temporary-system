@@ -137,6 +137,8 @@ type CollectionEntry = {
   /** No incentive for the collector on this one, and why (owner, October 20, 2026): it is remitted whole. */
   noIncentive: boolean;
   noIncentiveReason: string;
+  /** Priced at the program's Different incentives, ticked by the Entry Clerk (owner, November 6, 2026). */
+  differentIncentive: boolean;
 
   status: string;
   accountStatus: string;
@@ -181,6 +183,7 @@ function createEmptyCollection(id: string): CollectionEntry {
     ifSuspended: "",
     noIncentive: false,
     noIncentiveReason: "",
+    differentIncentive: false,
 
     status: "Active",
     accountStatus: "", temporarilySuspended: false, collectedByRole: "MAS", accountLoading: false,
@@ -581,6 +584,9 @@ export default function CollectionsPage() {
       : null;
 
   const noIncentiveOn = (entry: CollectionEntry) => !dto && entry.noIncentive === true;
+  // Different incentives: a batch collected by MAS, on a program that has them set.
+  const differentAvailable = (entry: CollectionEntry) => !dto && collectedBy === "MAS" && (programs.find((p) => p.id === entry.programId)?.incentiveTiers ?? []).some((tier) => tier.different);
+  const differentOn = (entry: CollectionEntry) => entry.differentIncentive === true && differentAvailable(entry);
   function quoteEntry(entry: CollectionEntry) {
     try {
       const selected = programs.find((p) => p.id === entry.programId);
@@ -591,7 +597,7 @@ export default function CollectionsPage() {
       if (!entry.monthFrom || entry.nopFrom == null) return { error: "The program account did not load. Select the program again." };
       if (count < 1) return { error: "Type the months paid." };
       if (entry.nopTo == null || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "The NOP range does not match the months paid. Type the months paid again." };
-      const quote = calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? ""), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto && collectedBy === "Collector", reactivation: entry.reactivation === "Yes" });
+      const quote = calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? "", differentOn(entry)), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto && collectedBy === "Collector", reactivation: entry.reactivation === "Yes" });
       // No incentive (owner, October 20, 2026): remitted whole, as the server saves it.
       return { ...quote, ...(noIncentiveOn(entry) ? { remittance: withoutIncentive(Number(entry.amountCollected), quote.remittance).remittance } : {}), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
@@ -685,7 +691,7 @@ export default function CollectionsPage() {
     const version = (selectionVersions.current[entryId] ?? 0) + 1;
     selectionVersions.current[entryId] = version;
     const program = programs.find((item) => item.id === programId);
-    updateCollection(entryId, { programId, programSearch: program?.code ?? "", accountStatus: "", accountLoading: true, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
+    updateCollection(entryId, { programId, differentIncentive: false, programSearch: program?.code ?? "", accountStatus: "", accountLoading: true, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
     setHistories((current) => ({ ...current, [entryId]: [] }));
     try {
       const response = await fetch(`/api/collections?memberId=${encodeURIComponent(memberId)}&programId=${encodeURIComponent(programId)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(membersOf)}${dto ? "&dto=1" : ""}`, { cache: "no-store" });
@@ -1015,6 +1021,7 @@ export default function CollectionsPage() {
           fidelityAmount,
           collections: collections.map((entry) => ({
             ...entry,
+            differentIncentive: differentOn(entry),
             // Covered by the Waiver on an earlier receipt for the same account; saved with it on record. A Waiver the OR
             // date does not call for is not saved, also on a batch opened before the date rule reached the form.
             ifSuspended: entry.waiverAbove && !entry.ifSuspended && needsWaiver(entry) ? "Waiver" : waiverOnOrDate(entry),
@@ -1607,7 +1614,7 @@ export default function CollectionsPage() {
                               onValueChange={(memberId) => {
                                 if (memberId) { selectMember(entry.id, memberId); return; }
                                 selectionVersions.current[entry.id] = (selectionVersions.current[entry.id] ?? 0) + 1;
-                                updateCollection(entry.id, { memberSearch: "", memberId: "", programId: "", programSearch: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
+                                updateCollection(entry.id, { memberSearch: "", memberId: "", programId: "", differentIncentive: false, programSearch: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
                                 setHistories((current) => ({ ...current, [entry.id]: [] }));
                               }}
                             />
@@ -1658,7 +1665,7 @@ export default function CollectionsPage() {
                                 onValueChange={(programId) => {
                                   if (programId) { void selectProgram(entry.id, programId); return; }
                                   selectionVersions.current[entry.id] = (selectionVersions.current[entry.id] ?? 0) + 1;
-                                  updateCollection(entry.id, { programSearch: "", programId: "", accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" });
+                                  updateCollection(entry.id, { programSearch: "", programId: "", differentIncentive: false, accountStatus: "", temporarilySuspended: false, accountLoading: false, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null, amountCollected: "" });
                                   setHistories((current) => ({ ...current, [entry.id]: [] }));
                                 }}
                               />
@@ -1741,6 +1748,11 @@ export default function CollectionsPage() {
                               <Input maxLength={300} value={entry.noIncentiveReason ?? ""} onChange={(event) => updateCollection(entry.id, { noIncentiveReason: event.target.value })} placeholder="e.g. Receipt issued by the office, not the collector" />
                             </div>}
                           </div>}
+
+                          {differentAvailable(entry) && <label className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${differentOn(entry) ? "border-primary/50 bg-primary/5" : ""}`}>
+                            <input type="checkbox" className="mt-0.5" checked={differentOn(entry)} onChange={(event) => updateCollection(entry.id, { differentIncentive: event.target.checked })} />
+                            <span><strong>Different incentives</strong><span className="block text-xs text-muted-foreground">Use this program&apos;s Different incentive instead of the usual MAS rate, for the months it covers.</span></span>
+                          </label>}
 
                           {/* MORE DETAILS */}
                           <div className="rounded-lg border">

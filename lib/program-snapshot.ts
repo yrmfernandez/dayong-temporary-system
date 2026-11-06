@@ -4,7 +4,7 @@
  * open never writes older values back over someone else's newer edit (the "my edit is gone" bug).
  * Used by the page (app/programs/page.tsx) and the API (app/api/programs/route.ts) on the same program shape.
  */
-type Tier = { role?: unknown; fromMonth?: unknown; toMonth?: unknown; incentiveType?: unknown; markUp?: unknown; incentiveAmount?: unknown; branchId?: unknown; nonCommissionable?: unknown };
+type Tier = { role?: unknown; fromMonth?: unknown; toMonth?: unknown; incentiveType?: unknown; markUp?: unknown; incentiveAmount?: unknown; branchId?: unknown; nonCommissionable?: unknown; different?: unknown };
 export type ProgramSnapshotSource = {
   code?: unknown; name?: unknown; basePay?: unknown; status?: unknown; description?: unknown; categoryId?: unknown;
   registrationFeeRequired?: unknown; registrationAmount?: unknown; payBalanceTotal?: unknown;
@@ -19,7 +19,7 @@ const flag = (value: unknown) => (value === true ? "1" : "0");
 
 export function programSnapshot(program: ProgramSnapshotSource) {
   const tiers = (program.incentiveTiers ?? [])
-    .map((tier) => [text(tier.role), amount(tier.fromMonth), amount(tier.toMonth), text(tier.incentiveType), amount(tier.markUp), amount(tier.incentiveAmount), text(tier.branchId), flag(tier.nonCommissionable)].join("|"))
+    .map((tier) => [text(tier.role), amount(tier.fromMonth), amount(tier.toMonth), text(tier.incentiveType), amount(tier.markUp), amount(tier.incentiveAmount), text(tier.branchId), flag(tier.nonCommissionable), flag(tier.different)].join("|"))
     .sort();
   return JSON.stringify([
     text(program.code), text(program.name), amount(program.basePay), text(program.status), text(program.description), text(program.categoryId),

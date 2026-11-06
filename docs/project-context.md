@@ -17,6 +17,15 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Different incentives on a program, ticked per collection (2026-11-06)
+
+- **Asked (owner):** a program can have different incentives apart from the overall and branch rates, and on a collection of that program the Entry Clerk ticks Different incentives. Batches collected by MAS only; late cash follows the same 3:00 PM rule.
+- **Done:** migration 0046 adds `program_incentives.different` and `collections.different_incentive`. Programs has **Add Different Incentive** (months, type, mark-up, MAS amount; all branches, no Collector share). Collections shows the tick on a MAS batch for a program that has the rate, and the preview and the save price it for the months covered. The server refuses it on any other batch or program. Edit / Corrections, finance repricing and returned batches keep it; the batch editor can tick or untick it. Today's Entries and View entries say *Different incentives*. Unticked, pricing is unchanged (`tiersForBranch` leaves these rates out).
+- **Tested:** type check, lint and build pass; 329 of 330 tests pass, and the 3 new tests in `npm test` are among them; `scripts/test-entry-finance.mjs`, not part of `npm test`, passes with its new test. The one failure is the same `a MAS submits New Sales` test noted below. Not seen in a browser or on staging.
+- **Noticed, not changed:** `loadAccountData` (`lib/account-data.ts`) does not pass `nonCommissionable` to the server's tiers. On an ORC batch in a non-commissionable period the form can show the Collector's own rate while the server prices half of the MAS rate. Not checked against real data.
+- **In progress:** nothing.
+- **To do (owner):** `npm run prod -- npm run db:migrate` **before** pushing, then `npm run prod -- node scripts/check-database.mjs`, then push. Then set the Different rate on the programs that need it.
+
 ### Exceptions: Fix shows what the issue is about (2026-11-06)
 
 - **Asked (owner):** Fix on Exceptions did not match the issue: on Amounts that do not match the program the amount could not be changed.

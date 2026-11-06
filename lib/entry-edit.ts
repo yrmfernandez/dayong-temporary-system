@@ -172,7 +172,7 @@ export async function repriceCollections(tx: Queryable, ids: string[]) {
     const orc = channel === "Collector" && Array.isArray(row.remittance_breakdown) && (row.remittance_breakdown as Array<{ orc?: boolean }>).some((item) => item?.orc === true);
     const amount = Number(row.amount_collected);
     let quote: ReturnType<typeof calculateRemittance>;
-    try { quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), row.branch_id || branchIds.get(text(row.branch).toLowerCase()) || ""), incentiveRoleFor(channel), row.nop_from, row.nop_to, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation: row.reactivation === true }); }
+    try { quote = calculateRemittance(account.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), row.branch_id || branchIds.get(text(row.branch).toLowerCase()) || "", row.different_incentive && channel === "MAS"), incentiveRoleFor(channel), row.nop_from, row.nop_to, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation: row.reactivation === true }); }
     catch (error) {
       // Never priced (old-sheet data with no company share or breakdown saved): nothing can go stale, so the move goes
       // ahead and the receipt stays unpriced, listed for review (owner, October 26, 2026: PH-10212782, 210 → D-250 FG).
@@ -384,7 +384,10 @@ async function editCollection(tx: Transaction, input: EntryEditInput): Promise<O
   const branches = await getBranches();
   const branchId = branches.find((branch) => branch.name.trim().toLowerCase() === text(row.branch).toLowerCase())?.id ?? "";
   const orc = channel === "Collector" && Array.isArray(row.remittance_breakdown) && (row.remittance_breakdown as Array<{ orc?: boolean }>).some((item) => item?.orc === true);
-  const quote = calculateRemittance(to.basePay, tiersForBranch(data.incentives.filter((tier) => tier.programId === to.programId), branchId), incentiveRoleFor(channel), mine.nopFrom, mine.nopTo, amount, to.flexible, to.maxMonthlyPayment, { orc, reactivation: row.reactivation === true });
+  // Different incentives stay ticked on a MAS collection while its program has them.
+  const toTiers = data.incentives.filter((tier) => tier.programId === to.programId);
+  const differentIncentive = row.different_incentive && channel === "MAS" && toTiers.some((tier) => tier.different);
+  const quote = calculateRemittance(to.basePay, tiersForBranch(toTiers, branchId, differentIncentive), incentiveRoleFor(channel), mine.nopFrom, mine.nopTo, amount, to.flexible, to.maxMonthlyPayment, { orc, reactivation: row.reactivation === true });
   const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
   // The share is worked out again only when what it depends on changed; a receipt-number or date fix keeps the share
   // the entry was remitted with (imported entries carry their old system's figures).
@@ -393,11 +396,11 @@ async function editCollection(tx: Transaction, input: EntryEditInput): Promise<O
 
   const after = {
     enrollment_id: to.id, program_id: to.programId, or_number: orNumber, or_date: orDate, amount_collected: amount, date_remitted: dateRemitted || null,
-    month_from: mine.monthFrom, month_to: mine.monthTo, nop_from: mine.nopFrom, nop_to: mine.nopTo, remittance_amount: share, forfeited_incentive: repriced && forfeited ? round(amount - quote.remittance) : row.forfeited_incentive,
+    month_from: mine.monthFrom, month_to: mine.monthTo, nop_from: mine.nopFrom, nop_to: mine.nopTo, remittance_amount: share, forfeited_incentive: repriced && forfeited ? round(amount - quote.remittance) : row.forfeited_incentive, different_incentive: differentIncentive,
   };
   const before = {
     enrollment_id: row.enrollment_id, program_id: row.program_id, or_number: text(row.or_number), or_date: day(row.or_date), amount_collected: Number(row.amount_collected), date_remitted: day(row.date_remitted) || null,
-    month_from: text(row.month_from).slice(0, 7), month_to: text(row.month_to).slice(0, 7), nop_from: row.nop_from, nop_to: row.nop_to, remittance_amount: Number(row.remittance_amount ?? 0), forfeited_incentive: row.forfeited_incentive,
+    month_from: text(row.month_from).slice(0, 7), month_to: text(row.month_to).slice(0, 7), nop_from: row.nop_from, nop_to: row.nop_to, remittance_amount: Number(row.remittance_amount ?? 0), forfeited_incentive: row.forfeited_incentive, different_incentive: row.different_incentive,
   };
   const changedKeys = (Object.keys(after) as Array<keyof typeof after>).filter((key) => JSON.stringify(after[key]) !== JSON.stringify(before[key]));
   if (!changedKeys.length) return { changed: false, summary: "", before, after };

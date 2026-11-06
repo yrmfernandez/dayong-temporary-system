@@ -104,7 +104,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
         entries: entries.map((entry) => ({ id: entry.id, remove: entry.remove, orNumber: entry.orNumber, orDate: entry.orDate, amount: Number(entry.amountText), monthTo: entry.monthTo,
           backdateReason: entry.backdateReason, applicationNumber: entry.applicationNumber, notes: entry.notes, ...(isSale ? { doiTime: entry.doiTime } : {}), ...(entry.sale ? { sale: entry.sale } : {}),
           ...(dtoBatch ? {} : { noIncentive: entry.noIncentive, noIncentiveReason: entry.noIncentive ? entry.noIncentiveReason : "" }),
-          ...(isSale ? {} : { reactivation: entry.reactivation, transferred: entry.transferred, waiver: entry.waiver, accountId: entry.accountId, months: monthsBetween(entry.monthFrom, entry.monthTo) }) })),
+          ...(isSale ? {} : { reactivation: entry.reactivation, transferred: entry.transferred, waiver: entry.waiver, differentIncentive: entry.differentIncentive, accountId: entry.accountId, months: monthsBetween(entry.monthFrom, entry.monthTo) }) })),
       }) });
       const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the batch.");
@@ -227,6 +227,7 @@ export function BatchEditor({ entryIds, onClose, onSaved }: { entryIds: string[]
                             <label className="flex items-center gap-1"><input type="checkbox" disabled={entry.remove} checked={entry.reactivation} onChange={(event) => change(entry.id, { reactivation: event.target.checked })} />Reactivation</label>
                             <label className="flex items-center gap-1"><input type="checkbox" disabled={entry.remove} checked={entry.transferred} onChange={(event) => change(entry.id, { transferred: event.target.checked })} />Transferred</label>
                             <label className="flex items-center gap-1"><input type="checkbox" disabled={entry.remove} checked={entry.waiver} onChange={(event) => change(entry.id, { waiver: event.target.checked })} />Waiver (if suspended)</label>
+                            {entry.differentAvailable && form.collectedBy === "MAS" && <label className="flex items-center gap-1"><input type="checkbox" disabled={entry.remove} checked={entry.differentIncentive} onChange={(event) => change(entry.id, { differentIncentive: event.target.checked })} />Different incentives</label>}
                           </>}
                           {!dtoBatch && <label className="flex items-center gap-1"><input type="checkbox" disabled={entry.remove} checked={entry.noIncentive} onChange={(event) => change(entry.id, { noIncentive: event.target.checked })} />No incentive</label>}
                         </div>

@@ -201,6 +201,8 @@ export const program_incentives = pgTable("program_incentives", {
   branch_id: text().references(() => branches.branch_id, { onUpdate: "cascade" }),
   /** Non-commissionable period (owner, October 10, 2026): only the Collector earns; the MAS gets nothing (lib/remittance.ts). */
   non_commissionable: boolean().notNull().default(false),
+  /** Different incentives (owner, November 6, 2026): a MAS rate apart from the overall and branch rates, used only on a collection the Entry Clerk ticks (lib/remittance.ts tiersForBranch). */
+  different: boolean().notNull().default(false),
 }, (t) => [index("program_incentives_program_idx").on(t.program_id)]).enableRLS();
 
 // ---------------------------------------------------------------- members
@@ -658,6 +660,8 @@ export const collections = pgTable("collections", {
    */
   branch_id: text().references(() => branches.branch_id, employeeRef),
   mas_employee_id: text().references(() => employees.employee_id, employeeRef),
+  /** The Entry Clerk ticked Different incentives (owner, November 6, 2026): priced at the program's Different rate; repricing keeps it. */
+  different_incentive: boolean().notNull().default(false),
 }, (t) => [
   uniqueIndex("collections_or_key_unique").on(t.or_key).where(sql`${t.or_key} <> '' and ${t.status} = 'Posted' and not ${t.legacy_duplicate}`),
   index("collections_enrollment_idx").on(t.enrollment_id),

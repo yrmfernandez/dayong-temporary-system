@@ -171,6 +171,7 @@ function EntryTable({ title, entries, canEdit, canDelete, me, editing, setEditin
                     <td className="p-3"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{showDate(entry.orDate)}</span>{entry.dateRemitted && <span className="block text-xs text-muted-foreground">Remitted {showDate(entry.dateRemitted)}</span>}</td>
                     <td className="p-3 text-right font-medium">{money(entry.amount)}</td>
                     <td className="p-3">
+                      {entry.differentIncentive && <span className="block text-xs font-medium text-primary">Different incentives</span>}
                       {entry.noIncentiveReason
                         ? <><StatusBadge status="No incentive" tone="danger" /><span className="block text-xs text-muted-foreground">{entry.noIncentiveReason}</span></>
                         : entry.forfeitedIncentive > 0

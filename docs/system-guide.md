@@ -177,6 +177,8 @@ The mark-up always goes to the company. `M` must be between zero and `B`, and `I
 
 Branch overrides apply **per role**. A branch's own MAS tiers replace the base MAS tiers **only for the months they cover**; every other month uses the base tiers (October 23, 2026; before, they replaced the whole base set, so a branch tier for months 1-6 left months 7 onward without a tier). Collector tiers work the same way, separately.
 
+**Different incentives (November 6, 2026).** A program can also have a separate MAS rate, apart from the overall and branch rates. On Programs, **Add Different Incentive** adds a period with its months, type, mark-up and MAS amount; it has no branch and no Collector share. It is never used on its own: on Collections, a collection of that program in a batch collected by MAS shows a **Different incentives** tick, and only a ticked collection uses it. The rate replaces the MAS rate, overall or branch, for the months it covers; other months keep the usual rate. A program still needs its overall rates. Collector, ORC and DTO batches never use it, a reactivation stays at 10%, and late cash forfeits it under the usual 3:00 PM rule.
+
 ### New Sale incentives
 
 | Program rule | New Sale incentive |

@@ -8,14 +8,15 @@ import { createReadableId } from "@/lib/readable-id";
  * branch's own tiers replace the base tiers for the months they cover in that branch; other months use the base tiers
  * (lib/remittance.ts tiersForBranch, October 23, 2026).
  */
-export type StoredTier = { role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number; branchId?: string; nonCommissionable?: boolean };
+export type StoredTier = { role: "MAS" | "Collector"; fromMonth: number; toMonth: number; incentiveType: "fixed" | "percentage"; markUp: number; incentiveAmount: number; branchId?: string; nonCommissionable?: boolean; different?: boolean };
 
 const text = (value: unknown) => String(value ?? "").trim();
 
 /** Throws when a tier is invalid, names an unknown branch, or overlaps another tier of the same role and branch. */
 export async function validateIncentiveTiers(tiers: StoredTier[], basePay: number) {
-  if (!tiers.some((tier) => !text(tier.branchId))) throw new Error("Add at least one base incentive tier (All branches).");
+  if (!tiers.some((tier) => !text(tier.branchId) && !tier.different)) throw new Error("Add at least one base incentive tier (All branches).");
   for (const tier of tiers) {
+    if (tier.different && (tier.role !== "MAS" || text(tier.branchId))) throw new Error("Different incentives are MAS rates for all branches.");
     if (!Number.isInteger(tier.fromMonth) || !Number.isInteger(tier.toMonth) || tier.fromMonth < 1 || tier.toMonth < tier.fromMonth) throw new Error("Enter valid whole-month incentive ranges.");
     if (!Number.isFinite(tier.markUp) || tier.markUp < 0 || tier.markUp > basePay || !Number.isFinite(tier.incentiveAmount) || tier.incentiveAmount < 0 || (tier.incentiveType === "percentage" && tier.incentiveAmount > 100)) throw new Error("Enter valid mark-up and incentive amounts.");
   }
@@ -26,8 +27,8 @@ export async function validateIncentiveTiers(tiers: StoredTier[], basePay: numbe
     if (unknown.length) throw new Error(`Unknown branch in the incentive tiers: ${unknown.join(", ")}.`);
   }
   tiers.forEach((tier, index) => tiers.forEach((other, otherIndex) => {
-    if (index < otherIndex && tier.role === other.role && text(tier.branchId) === text(other.branchId) && tier.fromMonth <= other.toMonth && other.fromMonth <= tier.toMonth) {
-      throw new Error(`${tier.role} incentive tiers for ${text(tier.branchId) ? `branch ${text(tier.branchId)}` : "all branches"} cannot overlap.`);
+    if (index < otherIndex && tier.role === other.role && text(tier.branchId) === text(other.branchId) && Boolean(tier.different) === Boolean(other.different) && tier.fromMonth <= other.toMonth && other.fromMonth <= tier.toMonth) {
+      throw new Error(tier.different ? "Different incentive periods cannot overlap." : `${tier.role} incentive tiers for ${text(tier.branchId) ? `branch ${text(tier.branchId)}` : "all branches"} cannot overlap.`);
     }
   }));
 }
@@ -41,7 +42,7 @@ export async function writeProgramIncentives(programId: string, tiers: StoredTie
     await tx.insert(schema.program_incentives).values(tiers.map((tier) => ({
       incentive_id: createReadableId("INC"), program_id: programId, role: tier.role, from_month: tier.fromMonth, to_month: tier.toMonth,
       incentive_type: tier.incentiveType, mark_up: Number(tier.markUp) || 0, incentive_amount: Number(tier.incentiveAmount) || 0,
-      branch_id: text(tier.branchId) || null, non_commissionable: tier.nonCommissionable === true, ...identity,
+      branch_id: text(tier.branchId) || null, non_commissionable: tier.nonCommissionable === true, different: tier.different === true, ...identity,
     })));
   });
 }
