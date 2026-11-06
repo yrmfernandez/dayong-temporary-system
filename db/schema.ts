@@ -257,6 +257,11 @@ export const member_programs = pgTable("member_programs", {
   branch_id: text().references(() => branches.branch_id, employeeRef),
   mas_employee_id: text().references(() => employees.employee_id, employeeRef),
   /**
+   * The Collector assigned to this account (owner, November 6, 2026; migration 0045): who sees it in the Collector workspace
+   * and on My assigned members in Submit Collections. Set by hand (Members, Edit / Corrections), never by a payment.
+   */
+  collector_employee_id: text().references(() => employees.employee_id, employeeRef),
+  /**
    * Forfeited as carried from the old system: holds whatever the receipts say (migration 0029, October 26, 2026). A
    * Forfeited the app worked out is only account_status, so a corrected history can reopen the account.
    */
@@ -287,6 +292,7 @@ export const member_programs = pgTable("member_programs", {
   index("member_programs_member_idx").on(t.member_id),
   index("member_programs_program_idx").on(t.program_id),
   index("member_programs_mas_idx").on(t.mas),
+  index("member_programs_collector_idx").on(t.collector_employee_id),
   index("member_programs_branch_idx").on(t.branch),
 ]).enableRLS();
 

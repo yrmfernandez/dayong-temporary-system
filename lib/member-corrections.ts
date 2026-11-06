@@ -237,7 +237,7 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
       const stamp = Date.now().toString(36).toUpperCase();
       created = `ENR-${Date.now()}-MOVE${stamp.slice(-3)}`;
       await tx.insert(memberPrograms).values({ enrollment_id: created, member_id: memberId, member_number: source.member_number, program_id: program.program_id, doi, branch: source.branch, mas: source.mas,
-        remittance_method: source.remittance_method, registration_fee: program.registration_fee_required, status: source.status, branch_id: source.branch_id, mas_employee_id: source.mas_employee_id, date_created: new Date().toISOString() });
+        remittance_method: source.remittance_method, registration_fee: program.registration_fee_required, status: source.status, branch_id: source.branch_id, mas_employee_id: source.mas_employee_id, collector_employee_id: source.collector_employee_id, date_created: new Date().toISOString() });
       targetId = created;
     }
     if (sourceIds.includes(targetId)) throw new Error("Some receipts are already on the chosen account. Untick them.");
@@ -425,7 +425,7 @@ export function splitMember(input: SplitInput, reason: string, apply: boolean) {
     await tx.insert(members).values({ member_id: newMemberId, member_number: newNumber, surname: text(person.surname).toUpperCase(), first_name: text(person.firstName).toUpperCase(),
       middle_name: text(person.middleName).toUpperCase() || null, name_extension: text(person.nameExtension).toUpperCase() || null, birthdate: text(person.birthdate) || null, claimant_same_address: false, status: member.status });
     await tx.insert(memberPrograms).values({ enrollment_id: newEnrollment, member_id: newMemberId, member_number: newNumber, program_id: account.programId, doi, branch: row.branch, mas: row.mas,
-      remittance_method: row.remittance_method, registration_fee: row.registration_fee, status: row.status, branch_id: row.branch_id, mas_employee_id: row.mas_employee_id, date_created: new Date().toISOString() });
+      remittance_method: row.remittance_method, registration_fee: row.registration_fee, status: row.status, branch_id: row.branch_id, mas_employee_id: row.mas_employee_id, collector_employee_id: row.collector_employee_id, date_created: new Date().toISOString() });
     if (text(input.keepFirstName) && text(input.keepFirstName) !== member.first_name) await tx.update(members).set({ first_name: text(input.keepFirstName).toUpperCase() }).where(eq(members.member_id, member.member_id));
 
     const fresh = { ...account, id: newEnrollment, memberId: newMemberId, memberNumber: newNumber, doi, storedStatus: "NS" };

@@ -1,3 +1,4 @@
+import { accountScope, type MemberScope } from "@/lib/member-scope";
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 
 import { accountState, forfeitMonthsFor, monthIndex, monthName, paymentsByEnrollment, type Account, type AccountPayment, todayInManila } from "@/lib/account-rules";
@@ -11,6 +12,8 @@ const { collections, member_programs: memberPrograms, members, program_incentive
 
 /** Which accounts to load. Empty loads every account (reports); the others load only what a page or save needs. */
 export type AccountScope = {
+  /** The accounts assigned to this Collector. */
+  collectorEmployeeId?: string;
   enrollmentIds?: string[];
   memberId?: string;
   /** Exact MAS name, case-insensitive (lib/member-scope.ts). */
@@ -32,6 +35,8 @@ export type AccountScope = {
 };
 export type LoadedAccount = Account & {
   memberName: string; programName: string;
+  /** The links on the account: its MAS, and the Collector assigned to it. */
+  masEmployeeId?: string; collectorEmployeeId?: string;
   /** Set on a deactivated account (member_programs.deactivated_on): MAM counts it up to that month. */
   deactivatedOn?: string;
   /** The member's status is Deceased. */
@@ -47,6 +52,7 @@ function scopeCondition(scope: AccountScope): SQL | undefined {
   if (scope.enrollmentIds) conditions.push(scope.enrollmentIds.length ? inArray(memberPrograms.enrollment_id, scope.enrollmentIds) : sql`false`);
   if (scope.memberId !== undefined) conditions.push(eq(memberPrograms.member_id, scope.memberId));
   if (scope.mas !== undefined) conditions.push(sql`lower(trim(${memberPrograms.mas})) = ${scope.mas.trim().toLowerCase()}`);
+  if (scope.collectorEmployeeId !== undefined) conditions.push(eq(memberPrograms.collector_employee_id, scope.collectorEmployeeId));
   if (scope.branch !== undefined) conditions.push(sql`lower(trim(${memberPrograms.branch})) = ${scope.branch.trim().toLowerCase()}`);
   if (scope.memberPrograms) {
     const pairs = scope.memberPrograms.filter((pair) => pair.memberNumber && pair.programId);
@@ -72,6 +78,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
     basePay: programs.base_pay, payBalanceTotal: programs.pay_balance_total, programName: programs.program_name, flexible: programs.flexible, maxMonthlyPayment: programs.max_monthly_payment, flexibleBasePay: programs.flexible_base_pay, registrationFee: programs.registration_fee_required,
     categoryId: programs.category_id, surname: members.surname, firstName: members.first_name, middleName: members.middle_name,
     accountActive: memberPrograms.status, deactivatedOn: memberPrograms.deactivated_on, memberStatus: members.status,
+    masEmployeeId: memberPrograms.mas_employee_id, collectorEmployeeId: memberPrograms.collector_employee_id,
   }).from(memberPrograms)
     .innerJoin(programs, eq(programs.program_id, memberPrograms.program_id))
     .innerJoin(members, eq(members.member_id, memberPrograms.member_id))
@@ -84,6 +91,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
     memberName: memberName(row.surname, row.firstName, row.middleName) || text(row.memberNumber), programName: row.programName,
     deactivatedOn: text(row.accountActive).toLowerCase() === "deactivated" ? text(row.deactivatedOn) || "0000-00-00" : undefined,
     memberDeceased: text(row.memberStatus).toLowerCase() === "deceased",
+    masEmployeeId: text(row.masEmployeeId), collectorEmployeeId: text(row.collectorEmployeeId),
   }));
 
   const ids = accounts.map((account) => account.id);
@@ -148,16 +156,16 @@ export async function memberStanding(memberId: string): Promise<ProgramStanding[
 }
 
 /**
- * MAM for the chosen branch, MAS or member: only those accounts and their payments are loaded. `onlyMas` limits it to
- * that MAS's own accounts (lib/member-scope.ts) whatever else is chosen.
+ * MAM for the chosen branch, MAS or member: only those accounts and their payments are loaded. `own` limits it to that
+ * MAS's or Collector's own accounts (lib/member-scope.ts) whatever else is chosen.
  */
-export async function mamReport(from?: string, to?: string, onlyMas: string | null = null, filter: { branch?: string; mas?: string; memberId?: string } = {}) {
+export async function mamReport(from?: string, to?: string, own: MemberScope | null = null, filter: { branch?: string; mas?: string; memberId?: string } = {}) {
   const today = todayInManila();
   const scope: AccountScope = {};
   if (filter.branch) scope.branch = filter.branch;
   if (filter.memberId) scope.memberId = filter.memberId;
-  // A MAS user's own name always wins over a chosen MAS.
-  if (onlyMas !== null) scope.mas = onlyMas; else if (filter.mas) scope.mas = filter.mas;
+  // A MAS's or Collector's own accounts always win over a chosen MAS.
+  if (own !== null) Object.assign(scope, accountScope(own)); else if (filter.mas) scope.mas = filter.mas;
   // Quota (owner, October 31, 2026): an account dropped or deceased counts up to the month of its deactivation and stops
   // from the next, so finished months keep their quota (lib/mam-report.ts). A Deceased member's account not yet
   // deactivated (marked before Dropouts existed) is left out of every month: it has no date to count up to.
@@ -169,9 +177,9 @@ export async function mamReport(from?: string, to?: string, onlyMas: string | nu
 }
 
 /** One member's MAM: each of their program accounts, month by month, from enrollment (at most the last 36 months) to today. */
-export async function memberMam(memberId: string, onlyMas: string | null = null) {
+export async function memberMam(memberId: string, own: MemberScope | null = null) {
   const today = todayInManila();
-  const data = await loadAccountData(onlyMas === null ? { memberId } : { memberId, mas: onlyMas });
+  const data = await loadAccountData(own === null ? { memberId } : { memberId, ...accountScope(own) });
   const current = monthIndex(today.slice(0, 7));
   const earliest = Math.min(current, ...data.accounts.filter((account) => account.doi).map((account) => monthIndex(account.doi.slice(0, 7))));
   const from = monthName(Math.max(earliest, current - 35));

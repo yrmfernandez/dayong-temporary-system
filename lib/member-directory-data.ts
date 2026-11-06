@@ -1,14 +1,15 @@
-import { and, eq, sql, type AnyColumn, type SQL } from "drizzle-orm";
+import { and, sql, type AnyColumn, type SQL } from "drizzle-orm";
 
 import { currentDb, schema } from "@/lib/db";
 import { accountReport } from "@/lib/account-data";
 import { DEACTIVATED, isDeactivated } from "@/lib/account-deactivation";
-import { buildMemberDirectory, DECEASED_STATUS, emptyDirectoryFilters, filterMemberDirectory, type CollectorRecord, type DirectoryFilters, type DirectoryMember, type EnrollmentRecord, type MemberRecord } from "@/lib/member-directory";
+import { buildMemberDirectory, DECEASED_STATUS, emptyDirectoryFilters, filterMemberDirectory, type DirectoryFilters, type DirectoryMember, type EnrollmentRecord, type MemberRecord } from "@/lib/member-directory";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
+import { scopedAccounts, type MemberScope } from "@/lib/member-scope";
 import { shortCached } from "@/lib/short-cache";
 
-const { collections, member_programs: memberPrograms, members, programs } = schema;
+const { member_programs: memberPrograms, members, programs } = schema;
 const text = (value: string | null | undefined) => (value ?? "").trim();
 
 /**
@@ -18,7 +19,7 @@ const text = (value: string | null | undefined) => (value ?? "").trim();
 const enrollmentColumns = {
   enrollment_id: memberPrograms.enrollment_id, member_id: memberPrograms.member_id, member_number: memberPrograms.member_number, program_id: memberPrograms.program_id,
   doi: memberPrograms.doi, doi_time: memberPrograms.doi_time, branch: memberPrograms.branch, mas: memberPrograms.mas, remittance_method: memberPrograms.remittance_method,
-  status: memberPrograms.status, deactivated_on: memberPrograms.deactivated_on, fully_paid_on: memberPrograms.fully_paid_on, account_status: memberPrograms.account_status,
+  status: memberPrograms.status, collector_employee_id: memberPrograms.collector_employee_id, deactivated_on: memberPrograms.deactivated_on, fully_paid_on: memberPrograms.fully_paid_on, account_status: memberPrograms.account_status,
 };
 const memberColumns = {
   member_id: members.member_id, member_number: members.member_number, surname: members.surname, first_name: members.first_name, middle_name: members.middle_name,
@@ -32,21 +33,16 @@ const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (
 const oneOf = (column: AnyColumn, ids: string[]) => sql`${column} in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`;
 
 /**
- * The accounts (with their latest Collector) and members the directory works on, as SQL, so filters, counts and paging
+ * The accounts (with their assigned Collector) and members the directory works on, as SQL, so filters, counts and paging
  * run in the database. Reading every member and account for each load was half of all rows the database sent, about
  * 4.4 MB a load (production pg_stat_statements, November 5, 2026). Matches memberStanding and buildMemberDirectory in
- * lib/member-directory.ts. A MAS's accounts only with `onlyMas`, and only members who have one. `collectors` adds each
- * account's latest Collector, which only the MAS filter and its choices need.
+ * lib/member-directory.ts. A MAS's or Collector's accounts only with `own`, and only members who have one. `collectors`
+ * adds each account's Collector, which only the MAS filter and its choices need.
  */
-function directoryTables(onlyMas: string | null, collectors: boolean) {
+function directoryTables(own: MemberScope | null, collectors: boolean) {
   return sql`
-    with latest_collector as (
-      select distinct on (member_number, program_id) trim(member_number) as member_number, program_id, trim(accountable_name) as person
-      from collections
-      where status = 'Posted' and collected_by_role = 'Collector' and coalesce(trim(accountable_name), '') <> ''
-      order by member_number, program_id, or_date desc nulls last
-    ), accounts as (
-      select mp.member_id, mp.program_id, coalesce(trim(mp.branch), '') as branch, coalesce(trim(mp.mas), '') as mas, ${collectors ? sql`coalesce(lc.person, '')` : sql`''`} as collector,
+    with accounts as (
+      select mp.member_id, mp.program_id, coalesce(trim(mp.branch), '') as branch, coalesce(trim(mp.mas), '') as mas, ${collectors ? sql`coalesce(trim(ce.full_name), '')` : sql`''`} as collector,
         coalesce(nullif(trim(p.program_name), ''), nullif(trim(p.program_code), ''), mp.program_id) as program_name,
         mp.doi::text as doi, mp.deactivated_on::text as dropped, mp.fully_paid_on::text as fully_paid,
         lower(coalesce(trim(mp.status), '')) = 'deactivated' as deactivated,
@@ -54,8 +50,8 @@ function directoryTables(onlyMas: string | null, collectors: boolean) {
       from member_programs mp
       join members m on m.member_id = mp.member_id
       left join programs p on p.program_id = mp.program_id
-      ${collectors ? sql`left join latest_collector lc on lc.member_number = coalesce(nullif(m.member_number, ''), trim(mp.member_number)) and lc.program_id = mp.program_id` : sql``}
-      where ${onlyMas === null ? sql`true` : sql`lower(trim(mp.mas)) = ${onlyMas.toLowerCase()}`}
+      ${collectors ? sql`left join employees ce on ce.employee_id = mp.collector_employee_id` : sql``}
+      where ${own === null ? sql`true` : scopedAccounts(own, sql`mp.mas`, sql`mp.collector_employee_id`)}
     ), account_totals as (
       select member_id, bool_and(ended) as all_ended, bool_or(deactivated) as any_deactivated from accounts group by member_id
     ), named as (
@@ -68,7 +64,7 @@ function directoryTables(onlyMas: string | null, collectors: boolean) {
         lower(concat_ws(' ', n.name, n.member_number, trim(n.member_contact), trim(n.address))) as searchable
       from named n
       left join account_totals t on t.member_id = n.member_id
-      where ${onlyMas === null ? sql`true` : sql`t.member_id is not null`}
+      where ${own === null ? sql`true` : sql`t.member_id is not null`}
     )`;
 }
 
@@ -101,15 +97,15 @@ function directoryCondition(filters: DirectoryFilters) {
  * The totals and filter choices depend only on the records, not on the page or filters, and were most of the database's
  * work for a load (about 300 of 320 ms on staging), so they are kept for 15 s in this server; a save here clears them.
  */
-function directorySummary(onlyMas: string | null) {
-  return shortCached(`member-directory:${onlyMas === null ? "all" : `mas:${onlyMas}`}`, 15_000, async () => {
+function directorySummary(own: MemberScope | null) {
+  return shortCached(`member-directory:${own === null ? "all" : own.collectorId !== undefined ? `collector:${own.collectorId}` : `mas:${own.mas}`}`, 15_000, async () => {
     const db = currentDb();
     const [totalRows, optionRows] = await Promise.all([
-      db.execute(sql`${directoryTables(onlyMas, false)} select count(*)::int as total,
+      db.execute(sql`${directoryTables(own, false)} select count(*)::int as total,
         (count(*) filter (where p.status = 'Active'))::int as active, (count(*) filter (where p.status = 'Inactive'))::int as inactive,
         (count(*) filter (where p.any_deactivated))::int as deactivated, (count(*) filter (where p.deceased))::int as dead, (count(*) filter (where not p.deceased))::int as alive
         from people p`),
-      db.execute(sql`${directoryTables(onlyMas, true)}
+      db.execute(sql`${directoryTables(own, true)}
         select 'branch' as kind, branch as value, '' as label from accounts union select 'mas', mas, '' from accounts union select 'mas', collector, '' from accounts
         union select 'program', program_id, program_name from accounts union select 'status', status, '' from people`),
     ]);
@@ -120,21 +116,16 @@ function directorySummary(onlyMas: string | null) {
   });
 }
 
-/** These members as the directory shows them; a MAS gets only their own programs. Sorted by name. */
-async function readMembers(ids: string[], onlyMas: string | null) {
+/** These members as the directory shows them; a MAS or Collector gets only their own programs. Sorted by name. */
+async function readMembers(ids: string[], own: MemberScope | null) {
   if (!ids.length) return [];
   const db = currentDb();
-  const masCondition = onlyMas === null ? undefined : sql`lower(trim(${memberPrograms.mas})) = ${onlyMas.toLowerCase()}`;
-  const [enrollmentRows, memberRows, programRows, collectorRows] = await Promise.all([
-    db.select(enrollmentColumns).from(memberPrograms).where(and(oneOf(memberPrograms.member_id, ids), masCondition)).orderBy(memberPrograms.row_seq),
+  const ownCondition = own === null ? undefined : scopedAccounts(own, memberPrograms.mas, memberPrograms.collector_employee_id);
+  const [enrollmentRows, memberRows, programRows, employees] = await Promise.all([
+    db.select(enrollmentColumns).from(memberPrograms).where(and(oneOf(memberPrograms.member_id, ids), ownCondition)).orderBy(memberPrograms.row_seq),
     db.select(memberColumns).from(members).where(oneOf(members.member_id, ids)),
     db.select({ id: programs.program_id, name: programs.program_name, code: programs.program_code }).from(programs),
-    // The latest posted Collector collection per member number and program (the directory shows that Collector).
-    db.selectDistinctOn([collections.member_number, collections.program_id], {
-      memberNumber: collections.member_number, programId: collections.program_id, date: collections.or_date, person: collections.accountable_name,
-    }).from(collections)
-      .where(and(eq(collections.status, "Posted"), eq(collections.collected_by_role, "Collector"), sql`coalesce(trim(${collections.accountable_name}), '') <> ''`, oneOf(collections.member_id, ids)))
-      .orderBy(collections.member_number, collections.program_id, sql`${collections.or_date} desc nulls last`),
+    getEmployees(),
   ]);
   const memberRecords: MemberRecord[] = memberRows.map((row) => ({
     id: row.member_id, number: row.member_number, surname: text(row.surname), firstName: text(row.first_name), middleName: text(row.middle_name), nameExtension: text(row.name_extension),
@@ -142,14 +133,14 @@ async function readMembers(ids: string[], onlyMas: string | null) {
     address: text(row.address), status: text(row.status), claimant: text(row.claimant_name), claimantContact: text(row.claimant_contact),
     claimantSameAddress: row.claimant_same_address, claimantAddress: text(row.claimant_address), diedOn: row.died_on ?? "",
   }));
+  const nameOf = new Map(employees.map((employee) => [employee.id, employee.name]));
   const enrollmentRecords: EnrollmentRecord[] = enrollmentRows.map((row) => ({
     id: row.enrollment_id, memberId: row.member_id, memberNumber: text(row.member_number), programId: row.program_id, doi: row.doi ?? "", doiTime: text(row.doi_time).slice(0, 5),
-    branch: text(row.branch), mas: text(row.mas), paymentMethod: text(row.remittance_method), status: text(row.status),
+    branch: text(row.branch), mas: text(row.mas), collector: nameOf.get(text(row.collector_employee_id)) ?? "", paymentMethod: text(row.remittance_method), status: text(row.status),
     deactivatedOn: row.deactivated_on ?? "", fullyPaidOn: row.fully_paid_on ?? "", storedStatus: text(row.account_status),
   }));
   const programNames = Object.fromEntries(programRows.map((row) => [row.id, text(row.name) || text(row.code)]));
-  const collectorRecords: CollectorRecord[] = collectorRows.map((row) => ({ memberNumber: text(row.memberNumber), programId: row.programId, date: row.date ?? "", person: text(row.person) }));
-  return buildMemberDirectory(memberRecords, enrollmentRecords, programNames, collectorRecords);
+  return buildMemberDirectory(memberRecords, enrollmentRecords, programNames);
 }
 
 export type DirectoryQuery = {
@@ -158,7 +149,7 @@ export type DirectoryQuery = {
   descending: boolean;
   page: number;
   pageSize: number;
-  onlyMas: string | null;
+  own: MemberScope | null;
 };
 
 /**
@@ -168,13 +159,13 @@ export type DirectoryQuery = {
  */
 export async function queryMemberDirectory(query: DirectoryQuery) {
   const db = currentDb();
-  const tables = directoryTables(query.onlyMas, Boolean(query.filters.mas));
+  const tables = directoryTables(query.own, Boolean(query.filters.mas));
   const needsStatus = Boolean(query.filters.accountStatus) || query.filters.standing === "forfeited";
   // Every filter except the ones that need today's payment status.
   const filter = directoryCondition({ ...query.filters, accountStatus: "", standing: query.filters.standing === "forfeited" ? "" : query.filters.standing });
   const condition = filter ?? sql`true`;
   const [employees, branchList, { totals, choices }, matchedRows] = await Promise.all([
-    getEmployees(), getBranches(), directorySummary(query.onlyMas),
+    getEmployees(), getBranches(), directorySummary(query.own),
     filter && !needsStatus ? db.execute(sql`${tables} select count(*)::int as matched from people p where ${filter}`) : null,
   ]);
   // Branch first: the MAS / Collector choices are the active employees assigned to each branch.
@@ -195,7 +186,7 @@ export async function queryMemberDirectory(query: DirectoryQuery) {
   const idsOf = async (limit: SQL) => rowsOf<{ member_id: string }>(await db.execute(sql`${tables} select p.member_id from people p where ${condition} order by ${sortKey} ${direction}, p.member_id ${direction} ${limit}`)).map((row) => row.member_id);
 
   if (needsStatus) {
-    const found = await readMembers(await idsOf(sql``), query.onlyMas);
+    const found = await readMembers(await idsOf(sql``), query.own);
     const statusWarning = await applyStatuses(found);
     const matched = filterMemberDirectory(found, { ...emptyDirectoryFilters, branch: query.filters.branch, mas: query.filters.mas, program: query.filters.program, accountStatus: query.filters.accountStatus, standing: query.filters.standing === "forfeited" ? "forfeited" : "" });
     const key = query.sort;
@@ -210,7 +201,7 @@ export async function queryMemberDirectory(query: DirectoryQuery) {
   const page = Math.min(Math.max(1, query.page), pages);
   const ids = await idsOf(sql`limit ${query.pageSize} offset ${(page - 1) * query.pageSize}`);
   const order = new Map(ids.map((id, index) => [id, index]));
-  const visible = (await readMembers(ids, query.onlyMas)).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  const visible = (await readMembers(ids, query.own)).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   const statusWarning = await applyStatuses(visible);
   return { members: visible, total: totals.total, matched, page, pages, counts, options, statusWarning };
 }

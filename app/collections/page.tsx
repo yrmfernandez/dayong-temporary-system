@@ -1309,6 +1309,8 @@ export default function CollectionsPage() {
               <SearchSelect aria-label="Members of MAS" value={membersOf} placeholder={mas ? "Search MAS" : "Pick the handover first"} disabled={!mas || Boolean(reviewing)}
                 options={[
                   ...(mas ? [{ value: mas, label: mas, description: "The Collector's own accounts" }] : []),
+                  // A batch opened for review keeps its MAS, even one no longer listed below.
+                  ...(memberMas && memberMas !== mas && !masStaff.some((staff) => staff.fullName === memberMas) ? [{ value: memberMas, label: memberMas, description: "" }] : []),
                   ...masStaff.filter((staff) => {
                     const branchId = branches.find((item) => item.name === branch)?.id;
                     return staff.fullName !== mas && (staff.fullName === memberMas || Boolean(branchId && staff.branchIds.includes(branchId)));

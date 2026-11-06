@@ -40,8 +40,10 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  * Clearing by 3:00 PM the next working day after the OR date, otherwise forfeited and the whole amount handed over.
  *
  * Collectors (owner, November 3, 2026): an employee with the Collector role chooses Collected by MAS (their own members)
- * or Collector. As Collector they pick whose members they collected, anyone holding accounts in their branches, their
- * own included, and ORC Yes or No for the batch. The Collector tier applies (ORC: half of the MAS incentive); the
+ * or Collector. As Collector they start on the members assigned to them (owner, November 6, 2026; lib/member-transfer.ts
+ * assignCollector), or pick whose members they collected, anyone holding accounts in their branches, their own included,
+ * and ORC Yes or No for the batch. Assigned members can be of several MAS, so a batch is one per branch and MAS: the
+ * clerk saves each as a Collector batch of one MAS. The Collector tier applies (ORC: half of the MAS incentive); the
  * Collector is accountable and remits the cash, and each payment keeps the member's MAS on record, as on the Collections
  * form. Every employee is a virtual MAS (lib/workspace-session.ts), so a Collector needs no MAS role to have the choice
  * (owner, November 6, 2026); it starts on the workspace open, and can be changed on the page.
@@ -146,7 +148,8 @@ function accountHolders() {
  * Collector (Collector role only): the members of the chosen person, an active employee holding accounts in one of the
  * Collector's branches. That is not only the MAS role: every employee is a virtual MAS, so a clerk or another Collector
  * can hold accounts, and so can the Collector themself (`own`, listed first). `masOptions` lists them for the page.
- * With no choice yet it follows the workspace: their MAS workspace is MAS; the Collector workspace is Collector.
+ * As Collector with nobody chosen: the members assigned to them. With no choice yet it follows the workspace: their MAS
+ * workspace is MAS; the Collector workspace is Collector.
  */
 async function collectorContext(user: Pick<SessionUser, "employeeId"> & Partial<Pick<SessionUser, "roleNames">>, collectedBy: unknown, memberMasEmployeeId: unknown) {
   const [profile, employees] = await Promise.all([masProfile(user), getEmployees()]);
@@ -174,12 +177,12 @@ type Choice = { enrollmentId: string; months: number; amount: number | null; wai
  */
 function batchEntry(context: SubmitContext, data: Awaited<ReturnType<typeof loadAccountData>>, item: Choice, day: string, orc: boolean, auto = false) {
   const { profile, memberMas } = context;
-  const asCollector = context.as === "Collector";
+  const asCollector = context.as === "Collector", assigned = asCollector && !memberMas;
   const ownerName = memberMas?.name ?? profile.name;
   const account = data.accounts.find((candidate) => candidate.id === item.enrollmentId);
   if (!account) throw new Error("A member in the batch no longer has this program. Reload the page.");
   const label = `${account.memberName} (${account.programName})`;
-  if (!sameName(account.mas, ownerName)) throw new Error(asCollector ? `${label} is not a member of ${ownerName}.` : `${label} is not your member.`);
+  if (assigned ? account.collectorEmployeeId !== profile.employeeId : !sameName(account.mas, ownerName)) throw new Error(assigned ? `${label} is not assigned to you.` : asCollector ? `${label} is not a member of ${ownerName}.` : `${label} is not your member.`);
   const branch = profile.branches.find((candidate) => sameName(candidate.name, account.branch));
   if (!branch) throw new Error(`${label} belongs to ${account.branch || "no branch"}, which is not one of your branches. Ask HR.`);
   const state = accountState(account, data.payments, day);
@@ -191,29 +194,31 @@ function batchEntry(context: SubmitContext, data: Awaited<ReturnType<typeof load
     const tiers = tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branch.id);
     const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, flexibleBasePay: account.flexibleBasePay ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, { role: context.as, orc }, item.amount);
     // The clerk types the OR number when saving; a stand-in lets the same payment rules run now.
-    validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate: day, orNumber: "(typed by the clerk)", waiver: item.waiver || auto ? "Waiver" : "", collectedByRole: context.as, originalMas: asCollector ? ownerName : "" }, day);
+    validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate: day, orNumber: "(typed by the clerk)", waiver: item.waiver || auto ? "Waiver" : "", collectedByRole: context.as, originalMas: asCollector ? account.mas : "" }, day);
     const entry: SubmittedCollection = { enrollmentId: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, ...quote, orDate: day, waiver: item.waiver };
-    return { branch, entry };
+    return { branch, entry, owner: { employeeId: account.masEmployeeId ?? "", name: account.mas } };
   } catch (error) {
     throw new Error(`${label}: ${error instanceof Error ? error.message : "cannot be collected."}`);
   }
 }
 
-/** One submission per branch, in the order the branches first appear. */
+/** One submission per branch and MAS, in the order they first appear. */
 function batchRows(context: SubmitContext, entries: Array<ReturnType<typeof batchEntry>>, orc: boolean, auto = false) {
   const { profile, memberMas } = context;
-  const byBranch = new Map<string, { branch: { id: string; name: string }; entries: SubmittedCollection[] }>();
-  for (const { branch, entry } of entries) {
-    const group = byBranch.get(branch.id) ?? { branch, entries: [] };
+  const batches = new Map<string, { branch: { id: string; name: string }; owner: { employeeId: string; name: string }; entries: SubmittedCollection[] }>();
+  for (const { branch, entry, owner } of entries) {
+    const key = holderKey(owner.name, branch.id);
+    const group = batches.get(key) ?? { branch, owner, entries: [] };
     group.entries.push(entry);
-    byBranch.set(branch.id, group);
+    batches.set(key, group);
   }
   const actor = getEncoder();
-  return [...byBranch.values()].map(({ branch, entries: group }) => ({
+  const asCollector = context.as === "Collector";
+  return [...batches.values()].map(({ branch, owner, entries: group }) => ({
     submission_id: createReadableId("CSUB"), branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted",
     entries: group, entry_count: group.length, total_amount: cents(group.reduce((sum, entry) => sum + entry.amount, 0)),
     total_incentive: cents(group.reduce((sum, entry) => sum + entry.incentive, 0)), submitted_at: actor.encodedAt,
-    collected_by: context.as, member_mas_employee_id: memberMas?.employeeId ?? null, member_mas: memberMas?.name ?? null, orc, auto_submitted: auto, ...encodedBy(),
+    collected_by: context.as, member_mas_employee_id: asCollector ? memberMas?.employeeId ?? (owner.employeeId || null) : null, member_mas: asCollector ? owner.name : null, orc, auto_submitted: auto, ...encodedBy(),
   }));
 }
 
@@ -227,24 +232,22 @@ async function pendingAccounts() {
 
 /**
  * The accounts the submitter may collect, in their active branches, each with today's standing and the incentive tiers
- * of its program, so the page can show the incentive before submitting: their own as MAS, or the chosen MAS's as
- * Collector. `pendingIn` names an open submission that already has the account.
+ * of its program, so the page can show the incentive before submitting: their own as MAS; as Collector, those assigned to
+ * them or the chosen person's. `pendingIn` names an open submission that already has the account.
  */
 export async function myCollectionAccounts(user: SessionUser, options: { collectedBy?: unknown; memberMasEmployeeId?: unknown } = {}) {
   const context = await collectorContext(user, options.collectedBy, options.memberMasEmployeeId);
   const { profile } = context;
   const collector = { isCollector: context.isCollector, masOptions: context.masOptions, collectedBy: context.as, memberMasEmployeeId: context.memberMas?.employeeId ?? "" };
   const today = manilaNow().date;
-  const ownerName = context.as === "Collector" ? context.memberMas?.name ?? "" : profile.name;
-  // As Collector with no MAS chosen yet: nothing to list.
-  if (!ownerName) return { profile, collector, today, accounts: [] };
-  const [data, pending] = await Promise.all([loadAccountData({ mas: ownerName }), pendingAccounts()]);
+  const assigned = context.as === "Collector" && !context.memberMas;
+  const [data, pending] = await Promise.all([loadAccountData(assigned ? { collectorEmployeeId: profile.employeeId } : { mas: context.memberMas?.name ?? profile.name }), pendingAccounts()]);
   const accounts = data.accounts.flatMap((account) => {
     const branch = profile.branches.find((item) => sameName(item.name, account.branch));
     if (!branch) return [];
     const tiers = tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branch.id);
     const base = {
-      id: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName,
+      id: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, mas: account.mas,
       branchId: branch.id, branch: branch.name, basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, flexibleBasePay: account.flexibleBasePay ?? null, tiers,
       pendingIn: pending.get(account.id) ?? "",
     };
@@ -284,7 +287,6 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
   const context = await collectorContext(user, input.collectedBy === "Collector" ? "Collector" : "MAS", input.memberMasEmployeeId);
   const { profile, memberMas } = context;
   const asCollector = context.as === "Collector";
-  if (asCollector && !memberMas) throw new Error("Choose whose members you collected: someone with accounts in your branches.");
   const orc = asCollector && input.orc === true;
   if (!profile.branches.length) throw new Error("You are not assigned to an active branch. Ask HR to assign you.");
   if (!Array.isArray(input.entries) || !input.entries.length) throw new Error("Add at least one member.");
@@ -309,7 +311,7 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
     await currentDb().insert(submissions).values(batches);
     await removeFromDraft(profile.employeeId, ids);
   });
-  return { ids: batches.map((batch) => batch.submission_id), entryCount: entries.length, collectedBy: context.as, memberMas: memberMas?.name ?? "", batches: batches.map((batch) => ({ branch: batch.branch, entryCount: batch.entry_count })) };
+  return { ids: batches.map((batch) => batch.submission_id), entryCount: entries.length, collectedBy: context.as, memberMas: memberMas?.name ?? "", batches: batches.map((batch) => ({ branch: batch.branch, memberMas: batch.member_mas ?? "", entryCount: batch.entry_count })) };
 }
 
 const draftItems = (row: { entries: unknown } | undefined) => (Array.isArray(row?.entries) ? row.entries as DraftItem[] : []);

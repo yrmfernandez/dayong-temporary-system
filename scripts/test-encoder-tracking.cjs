@@ -2569,17 +2569,14 @@ test('member directory: Collector per program, deceased members, and the standin
   const { buildMemberDirectory, filterMemberDirectory, emptyDirectoryFilters } = harness().load('lib/member-directory.ts');
   const member = (id, number, status) => ({ id, number, surname: id, firstName: '', middleName: '', nameExtension: '', birthdate: '', birthplace: '', gender: '', civilStatus: '', contact: '', address: 'Purok 1, Matina', status, claimant: '', claimantContact: '', claimantSameAddress: false, claimantAddress: '' });
   const enrollment = (id, memberId, memberNumber) => ({ id, memberId, memberNumber, programId: 'DP-1', doi: '2026-01-10', branch: 'BR-1', mas: 'Maria', paymentMethod: 'Cash', status: 'Active' });
-  // Only Collector collections are passed (the database query selects them); the latest one wins.
-  const collector = (memberNumber, date, person) => ({ memberNumber, programId: 'DP-1', date, person });
   const members = buildMemberDirectory(
     [member('M1', 'PH-1', 'Active'), member('M2', 'PH-2', 'Deceased'), member('M3', 'PH-3', 'Inactive')],
     // Inactive is worked out (October 31, 2026): M3's only program is forfeited; a hand-set Inactive alone no longer counts.
-    [enrollment('E1', 'M1', 'PH-1'), enrollment('E2', 'M2', 'PH-2'), { ...enrollment('E3', 'M3', 'PH-3'), storedStatus: 'Forfeited' }],
+    [{ ...enrollment('E1', 'M1', 'PH-1'), collector: 'Jun Collector' }, enrollment('E2', 'M2', 'PH-2'), { ...enrollment('E3', 'M3', 'PH-3'), storedStatus: 'Forfeited' }],
     { 'DP-1': 'Program' },
-    [collector('PH-1', '2026-05-01', 'Jun Collector'), collector('PH-1', '2026-03-01', 'Old Collector')],
   );
   const one = (id) => members.find((item) => item.id === id);
-  assert.equal(one('M1').enrollments[0].collector, 'Jun Collector', 'the latest Collector collection');
+  assert.equal(one('M1').enrollments[0].collector, 'Jun Collector', 'the Collector assigned to the account');
   assert.equal(one('M3').enrollments[0].collector, '');
   assert.equal(one('M2').deceased, true);
   assert.deepEqual([one('M1').status, one('M2').status, one('M3').status], ['Active', 'Deceased', 'Inactive']);
@@ -3074,12 +3071,12 @@ test('a MAS sees only their own members; oversight roles see everyone', async ()
   h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
   await h.sync();
   const { ownMembersScope, isOwnAccount } = h.load('lib/member-scope.ts');
-  assert.equal(await ownMembersScope({ roleNames: ['MAS'], employeeId: 'DPE-0002', name: 'maria' }), 'Maria Santos', 'the name on the employee record, as on enrollments');
+  assert.deepEqual(await ownMembersScope({ roleNames: ['MAS'], employeeId: 'DPE-0002', name: 'maria' }), { mas: 'Maria Santos' }, 'the name on the employee record, as on enrollments');
   assert.equal(await ownMembersScope({ roleNames: ['MAS', 'Administrator'], employeeId: 'DPE-0002', name: 'Maria Santos' }), null);
   assert.equal(await ownMembersScope({ roleNames: ['Finance'], employeeId: 'DPE-9', name: 'Fin' }), null);
   assert.equal(isOwnAccount(' maria santos ', 'Maria Santos'), true);
   assert.equal(isOwnAccount('Jose Cruz', 'Maria Santos'), false);
-  assert.equal(isOwnAccount('', await ownMembersScope({ roleNames: ['MAS'], employeeId: 'NOBODY', name: '' })), false, 'no name matches nothing');
+  assert.equal(isOwnAccount('', (await ownMembersScope({ roleNames: ['MAS'], employeeId: 'NOBODY', name: '' })).mas), false, 'no name matches nothing');
 });
 
 test('an Entry Clerk report counts only what that clerk encoded, grouped like the paper report', async () => {
@@ -5280,7 +5277,7 @@ test('a Collector chooses MAS or Collector on Submit Collections, with no MAS ro
   const start = (await mine(inCollector)).body;
   assert.equal(start.collector.isCollector, true);
   assert.equal(start.collector.collectedBy, 'Collector', 'the Collector workspace starts as Collector');
-  assert.deepEqual(start.accounts, [], 'nothing is listed until they say whose members');
+  assert.deepEqual(start.accounts, [], 'with nobody assigned to them, nothing is listed');
   assert.deepEqual(start.collector.masOptions.map((item) => [item.name, item.own]), [['Col One', true], ['Clerk Four', false], ['Mas Two', false]], 'own accounts first, a virtual MAS too, nobody without accounts');
   const virtual = (await mine(inMasWorkspace)).body;
   assert.equal(virtual.collector.collectedBy, 'MAS', 'the MAS workspace starts as MAS');
@@ -5303,6 +5300,127 @@ test('a Collector chooses MAS or Collector on Submit Collections, with no MAS ro
   assert.match((await call(inCollector, 'POST', '/api/collection-submissions', { entries: [pick('ENR-3')], collectedBy: 'MAS' })).body.message, /is not your member/);
   assert.equal((await mine(realMas)).body.collector.isCollector, false);
   assert.match((await call(realMas, 'POST', '/api/collection-submissions', { entries: [pick('ENR-3')], collectedBy: 'Collector', memberMasEmployeeId: 'DPE-0002' })).body.message, /Only an employee with the Collector role/);
+});
+
+test('a member\'s Collector is an assignment: it lists their members, goes one batch per branch and MAS, and limits what the Collector workspace sees (November 6, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'BR-2', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'Col One', 'BR-1', 'Collector', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Mas Three', 'BR-1', 'MAS', 'active'], ['DPE-0004', 'Admin Four', 'BR-1', 'Administrator', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-1'], ['EBA-4', 'DPE-0003', 'BR-2'], ['EBA-5', 'DPE-0004', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50], ['INC-2', 'DP-1', 'Collector', 1, 12, 'percentage', 0, 20]];
+    return h;
+  };
+  const collector = as({ userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', roleNames: ['Collector'], permissions: {} });
+  const inMasWorkspace = as({ userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', roleNames: ['MAS'], permissions: {} });
+  const admin = as({ userId: 'USR-A', employeeId: 'DPE-0004', name: 'Admin Four', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0001', 'Col One']);
+  const today = collector.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  for (const [number, mas, branch] of [[1, 'Mas Two', 'BR-1'], [2, 'Mas Three', 'BR-1'], [3, 'Mas Two', 'BR-1'], [4, 'Col One', 'BR-1'], [5, 'Mas Three', 'BR-2']]) {
+    await seed('members', [{ member_id: `MEM-${number}`, member_number: `PH-${number}`, surname: `Member${number}`, first_name: 'Ana' }]);
+    await seed('member_programs', [{ enrollment_id: `ENR-${number}`, member_id: `MEM-${number}`, member_number: `PH-${number}`, program_id: 'DP-1', doi, branch, mas, status: 'Active' }]);
+  }
+  const call = async (h, file, method, url, body) => {
+    const route = h.load(file);
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const assign = (toEmployeeId, enrollmentIds, h = admin) => call(h, 'app/api/members/transfer/route.ts', 'POST', '/api/members/transfer', { mode: 'collector', enrollmentIds, toEmployeeId, reason: 'New area' });
+  const mine = (h, query = '') => call(h, 'app/api/collection-submissions/route.ts', 'GET', `/api/collection-submissions?view=mine${query}`);
+  const pick = (id) => ({ enrollmentId: id, months: 1, amount: null, waiver: false });
+
+  // Who can assign, and to whom.
+  assert.equal((await assign('DPE-0001', ['ENR-1'], collector)).status, 403, 'a Collector cannot assign themself');
+  assert.match((await assign('DPE-0002', ['ENR-1'])).body.message, /Collector role/);
+  assert.match((await assign('DPE-0001', ['ENR-5'])).body.message, /not assigned to BR-2/, 'outside their branches they could never submit it');
+  assert.equal((await assign('DPE-0001', ['ENR-1', 'ENR-2', 'ENR-3'])).body.assignment.changed, 3);
+  assert.match((await assign('DPE-0001', ['ENR-1'])).body.message, /already assigned/);
+  const [record] = await query("select from_mas, to_mas, reason from member_transfers where enrollment_id = 'ENR-1'");
+  assert.deepEqual(record, { from_mas: 'Mas Two', to_mas: 'Mas Two', reason: 'Collector none → Col One: New area' });
+  const [kept] = await query("select mas, branch from member_programs where enrollment_id = 'ENR-1'");
+  assert.deepEqual(kept, { mas: 'Mas Two', branch: 'BR-1' }, 'the MAS and branch stay');
+
+  // Submit Collections starts on the assigned members, of any MAS; each batch holds one MAS for the clerk.
+  const start = (await mine(collector)).body;
+  assert.equal(start.collector.collectedBy, 'Collector');
+  assert.deepEqual(start.accounts.map((item) => [item.id, item.mas]).sort(), [['ENR-1', 'Mas Two'], ['ENR-2', 'Mas Three'], ['ENR-3', 'Mas Two']]);
+  const sent = await call(collector, 'app/api/collection-submissions/route.ts', 'POST', '/api/collection-submissions', { entries: [pick('ENR-1'), pick('ENR-2'), pick('ENR-3')], collectedBy: 'Collector' });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  assert.match(sent.body.message, /2 batches, one per branch and MAS: BR-1, Mas Two \(2 members\); BR-1, Mas Three \(1 member\)/);
+  const batches = await query('select mas, collected_by, member_mas, member_mas_employee_id, entry_count, total_incentive::float8 as incentive from collection_submissions order by row_seq');
+  assert.deepEqual(batches, [
+    { mas: 'Col One', collected_by: 'Collector', member_mas: 'Mas Two', member_mas_employee_id: batches[0].member_mas_employee_id, entry_count: 2, incentive: 140 },
+    { mas: 'Col One', collected_by: 'Collector', member_mas: 'Mas Three', member_mas_employee_id: batches[1].member_mas_employee_id, entry_count: 1, incentive: 70 },
+  ]);
+  assert.match((await call(collector, 'app/api/collection-submissions/route.ts', 'POST', '/api/collection-submissions', { entries: [pick('ENR-4')], collectedBy: 'Collector' })).body.message, /is not assigned to you/);
+
+  // The Collector workspace sees only what is assigned to them, not their own accounts as MAS; their MAS workspace is the reverse.
+  const directory = async (h) => (await call(h, 'app/api/members/directory/route.ts', 'GET', '/api/members/directory')).body;
+  const seen = (result) => result.members.flatMap((member) => member.enrollments.map((item) => item.id)).sort();
+  const own = await directory(collector);
+  assert.equal(own.ownOnly, true);
+  assert.deepEqual(seen(own), ['ENR-1', 'ENR-2', 'ENR-3']);
+  assert.equal(own.members[0].enrollments[0].collector, 'Col One', 'the assignment is what Members shows');
+  assert.deepEqual(seen(await directory(inMasWorkspace)), ['ENR-4']);
+  assert.equal((await directory(admin)).total, 5, 'staff who oversee still see everyone');
+  const { ownMembersScope } = collector.load('lib/member-scope.ts');
+  assert.deepEqual(await ownMembersScope({ roleNames: ['Collector'], employeeId: 'DPE-0001', name: 'Col One' }), { collectorId: 'DPE-0001' });
+  assert.equal(await ownMembersScope({ roleNames: ['Collector', 'IT Clerk'], employeeId: 'DPE-0001', name: 'Col One' }), null, 'another role keeps what it sees');
+  const account = collector.load('lib/account-data.ts');
+  assert.deepEqual((await account.mamReport(undefined, undefined, { collectorId: 'DPE-0001' }, { mas: 'Mas Three' })).rows.map((row) => row.id).sort(), ['ENR-1', 'ENR-2', 'ENR-3'], 'MAM: a chosen MAS cannot widen it');
+  assert.deepEqual((await account.memberMam('MEM-4', { collectorId: 'DPE-0001' })).rows, [], 'a member\'s MAM shows nothing unassigned');
+  const search = await collector.load('lib/record-search.ts').searchRecords({ q: 'Member', kind: 'members', branch: '', program: '', mas: '', orNumber: '', dateField: '', dateFrom: '', dateTo: '', remittanceStatus: '' }, { collectorId: 'DPE-0001' });
+  assert.deepEqual(search.members.map((item) => item.number).sort(), ['PH-1', 'PH-2', 'PH-3']);
+
+  // A payment does not move the assignment, and it can be removed.
+  assert.equal((await assign('', ['ENR-1'])).body.assignment.to, '');
+  assert.deepEqual(seen(await directory(collector)), ['ENR-2', 'ENR-3']);
+});
+
+test('a Collector batch of assigned members goes through the clerk: marked remitted, saved, the payment stays with its MAS and the Collector accounts for the cash (November 6, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'Col One', 'BR-1', 'Collector', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Clerk Three', 'BR-1', 'Entry Clerk', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50], ['INC-2', 'DP-1', 'Collector', 1, 12, 'percentage', 0, 20]];
+    h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+    return h;
+  };
+  const collector = as({ userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', roleNames: ['Collector'], permissions: {} });
+  const clerk = as({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk Three', roleNames: ['Entry Clerk'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0001', 'Col One']);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Mas Two' }]);
+  const today = collector.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'Santos', first_name: 'Ana' }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', doi, branch: 'BR-1', mas: 'Mas Two', status: 'Active', collector_employee_id: 'DPE-0001' }]);
+  const call = async (h, file, method, url, body) => {
+    const route = h.load(file);
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const submissions = 'app/api/collection-submissions/route.ts';
+  const sent = await call(collector, submissions, 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-1', months: 1, amount: null, waiver: false }], collectedBy: 'Collector' });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  const [batch] = (await call(clerk, submissions, 'GET', '/api/collection-submissions?view=review')).body.submissions;
+  assert.deepEqual([batch.mas, batch.collectedBy, batch.memberMas], ['Col One', 'Collector', 'Mas Two']);
+  const remitted = await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'remit', id: batch.id });
+  assert.equal(remitted.status, 200, JSON.stringify(remitted.body));
+  const [clearing] = await query('select clearing_id, employee_id, amount::float8 as amount from clearings');
+  assert.equal(clearing.employee_id, 'DPE-0001', 'the Collector is the one cleared');
+  const [entry] = batch.entries;
+  const saved = await call(clerk, 'app/api/collections/route.ts', 'POST', '/api/collections', {
+    branch: 'BR-1', mas: 'Col One', accountableEmployeeId: 'DPE-0001', clearingId: clearing.clearing_id, submissionId: batch.id, dateRemitted: today, collectedBy: 'Collector', memberMas: 'Mas Two', paymentMethod: 'Cash', controlTotal: entry.remittance,
+    collections: [{ memberNumber: 'PH-1', programId: 'DP-1', monthFrom: entry.monthFrom, monthTo: entry.monthTo, amountCollected: entry.amount, nopFrom: entry.nopFrom, nopTo: entry.nopTo, orNumber: '12345 B', orDate: entry.orDate }],
+  });
+  assert.equal(saved.status, 201, JSON.stringify(saved.body));
+  const [payment] = await query('select mas, original_mas, collected_by_role, accountable_employee_id, amount_collected::float8 as amount, remittance_amount::float8 as remit from collections');
+  assert.deepEqual(payment, { mas: 'Mas Two', original_mas: 'Mas Two', collected_by_role: 'Collector', accountable_employee_id: 'DPE-0001', amount: 350, remit: 280 });
+  assert.equal((await query('select status from collection_submissions'))[0].status, 'Saved');
 });
 
 test('a batch the MAS forgot is sent after midnight, OR date the day added, and the clerk is warned (November 4, 2026)', async () => {

@@ -1,3 +1,4 @@
+import { scopedAccounts, type MemberScope } from "@/lib/member-scope";
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
@@ -70,16 +71,16 @@ export const SEARCH_TIMEOUT = "15s";
 export const SEARCH_TOO_SLOW = "This search took too long and was stopped. Add more words or a filter (a branch, a program or a date range) and search again.";
 
 /**
- * Runs the search. `onlyMas` limits it to that MAS's accounts (null: everyone's). It runs in its own transaction with a
+ * Runs the search. `own` limits it to that MAS's or Collector's accounts (null: everyone's). It runs in its own transaction with a
  * statement timeout: on October 31, 2026, searches left running on production held the pooler's connections until no
  * page could reach the database (ECHECKOUTTIMEOUT, every request cut off after 300 s). Now the database stops a search
  * after SEARCH_TIMEOUT, and the transaction pool (2 per instance) caps how many run at once.
  */
-export async function searchRecords(query: RecordQuery, onlyMas: string | null) {
+export async function searchRecords(query: RecordQuery, own: MemberScope | null) {
   try {
     return await inTransaction(async (tx) => {
       await tx.execute(sql.raw(`set local statement_timeout = '${SEARCH_TIMEOUT}'`));
-      return runSearch(query, onlyMas);
+      return runSearch(query, own);
     });
   } catch (error) {
     const failure = ((error as { cause?: unknown })?.cause ?? error) as { code?: string };
@@ -88,13 +89,15 @@ export async function searchRecords(query: RecordQuery, onlyMas: string | null) 
   }
 }
 
-async function runSearch(query: RecordQuery, onlyMas: string | null) {
+async function runSearch(query: RecordQuery, own: MemberScope | null) {
   const dated = query.dateField && (query.dateFrom || query.dateTo) ? query.dateField : "";
   if (!query.q && !query.orNumber && !dated && !query.program && !query.mas && !query.remittanceStatus && !query.branch) throw new Error("Type something to search for, or choose a date range or another filter.");
   if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) throw new Error("The From date is after the To date.");
   const words = searchWords(query.q);
   const want = (kind: string) => query.kind === "all" || query.kind === kind;
-  const masScope = (column: AnyPgColumn) => onlyMas === null ? undefined : sql`lower(trim(${column})) = ${onlyMas.trim().toLowerCase()}`;
+  // A record of the MAS by the name on it; a Collector's, of an account assigned to them.
+  const ownRecords = (mas: AnyPgColumn, memberNumber: AnyPgColumn, programId: AnyPgColumn) => own === null ? undefined : own.collectorId === undefined ? sql`lower(trim(${mas})) = ${own.mas.trim().toLowerCase()}`
+    : sql`exists (select 1 from member_programs mp where mp.collector_employee_id = ${own.collectorId} and mp.member_number = ${memberNumber} and mp.program_id = ${programId})`;
   const masFilter = (column: AnyPgColumn) => query.mas ? ilike(column, like(query.mas)) : undefined;
   const branchFilter = (column: AnyPgColumn) => query.branch ? sql`lower(trim(${column})) = ${query.branch.toLowerCase()}` : undefined;
   const db = currentDb();
@@ -113,7 +116,7 @@ async function runSearch(query: RecordQuery, onlyMas: string | null) {
       collectionDate ? between(collectionDate, query.dateFrom, query.dateTo) : undefined,
       query.program ? eq(collections.program_id, query.program) : undefined,
       query.remittanceStatus ? eq(collections.remittance_status, query.remittanceStatus) : undefined,
-      branchFilter(collections.branch), masFilter(collections.mas), masScope(collections.mas),
+      branchFilter(collections.branch), masFilter(collections.mas), ownRecords(collections.mas, collections.member_number, collections.program_id),
     )).orderBy(desc(collections.or_date), desc(collections.created_at)).limit(LIMIT + 1) : [];
 
   // New Sales. Dates: OR date, date remitted, date encoded, DOI.
@@ -129,13 +132,13 @@ async function runSearch(query: RecordQuery, onlyMas: string | null) {
       saleDate ? between(saleDate, query.dateFrom, query.dateTo) : undefined,
       query.program ? eq(sales.program_id, query.program) : undefined,
       query.remittanceStatus ? eq(sales.remittance_status, query.remittanceStatus) : undefined,
-      branchFilter(sales.branch), masFilter(sales.mas), masScope(sales.mas),
+      branchFilter(sales.branch), masFilter(sales.mas), ownRecords(sales.mas, sales.member_number, sales.program_id),
     )).orderBy(desc(sales.date_created)).limit(LIMIT + 1) : [];
 
   // Members and contacts: name, PH number, contact, claimant contact, address. Date: birthdate. Branch, program and MAS
   // match one of their programs; OR numbers and remittance status do not apply.
   const memberDate = dated === "birthdate" ? sql`${members.birthdate}` : undefined;
-  const accountFilter = query.branch || query.program || query.mas || onlyMas !== null;
+  const accountFilter = query.branch || query.program || query.mas || own !== null;
   const memberRows = want("members") && (!dated || memberDate) && !query.orNumber && !query.remittanceStatus ? await db.select({
     id: members.member_id, number: members.member_number, surname: members.surname, firstName: members.first_name, middleName: members.middle_name, birthdate: members.birthdate,
     contact: members.member_contact, address: members.address, claimant: members.claimant_name, claimantContact: members.claimant_contact, status: members.status,
@@ -150,7 +153,7 @@ async function runSearch(query: RecordQuery, onlyMas: string | null) {
         ${query.branch ? sql`and lower(trim(${memberPrograms.branch})) = ${query.branch.toLowerCase()}` : sql``}
         ${query.program ? sql`and ${memberPrograms.program_id} = ${query.program}` : sql``}
         ${query.mas ? sql`and ${memberPrograms.mas} ilike ${like(query.mas)}` : sql``}
-        ${onlyMas !== null ? sql`and lower(trim(${memberPrograms.mas})) = ${onlyMas.trim().toLowerCase()}` : sql``})` : undefined,
+        ${own !== null ? sql`and ${scopedAccounts(own, memberPrograms.mas, memberPrograms.collector_employee_id)}` : sql``})` : undefined,
     )).orderBy(members.surname, members.first_name).limit(LIMIT + 1) : [];
 
   const more = (rows: unknown[]) => rows.length > LIMIT;

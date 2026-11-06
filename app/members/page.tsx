@@ -136,7 +136,7 @@ export default function MembersPage() {
       {filters.dateField && <div className="grid grid-cols-2 gap-2"><label className="text-sm">From<input type="date" className={fieldClass} value={filters.dateFrom} onChange={(e) => update("dateFrom", e.target.value)} /></label><label className="text-sm">To<input type="date" className={fieldClass} value={filters.dateTo} onChange={(e) => update("dateTo", e.target.value)} /></label></div>}
       <div className="flex items-end"><Button variant="ghost" onClick={() => { setFilters({ ...emptyDirectoryFilters }); setPage(1); setSelected(null); }}>Reset filters</Button></div>
     </div>
-    <p className="hidden text-sm text-muted-foreground md:block">Branch, MAS / Collector, program, and payment status filters match the same enrollment. The Collector is whoever brought in that program&apos;s latest Collector collection. Payment statuses use today&apos;s MAM calculations. View payment history in <Link className="underline" href="/mam">MAM</Link>.</p>
+    <p className="hidden text-sm text-muted-foreground md:block">Branch, MAS / Collector, program, and payment status filters match the same enrollment. The Collector is the one assigned to that program; change it with Transfer on the member. Payment statuses use today&apos;s MAM calculations. View payment history in <Link className="underline" href="/mam">MAM</Link>.</p>
     {statusWarning && <p role="alert" className="text-amber-700">{statusWarning}</p>}
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {message && !savedId && <p role="status" className="text-sm">{message}</p>}
@@ -167,6 +167,7 @@ export default function MembersPage() {
       <EnrollmentTable enrollments={selected.enrollments} canDelete={canDelete} onDeleted={(enrollmentId, text) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.filter((item) => item.id !== enrollmentId) }); setMessage(text); setRevision((value) => value + 1); }} canTransfer={canTransfer} canMoveProgram={canMoveProgram} transfers={transfers} deactivations={deactivations}
         onStatusChanged={(enrollmentId, status) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, status, accountStatus: status === "Deactivated" ? "Deactivated" : item.accountStatus } : item) }); setRevision((value) => value + 1); }}
         onTransferred={(enrollmentId, toMas) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, mas: toMas } : item) }); setRevision((value) => value + 1); }}
+        onCollectorChanged={(enrollmentId, collector) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, collector } : item) }); setRevision((value) => value + 1); }}
         onBranchChanged={(enrollmentId, branch) => { setSelected((current) => current && { ...current, enrollments: current.enrollments.map((item) => item.id === enrollmentId ? { ...item, branch } : item) }); setRevision((value) => value + 1); }}
         onProgramMoved={(enrollmentId, programId, programName, merged) => { setSelected((current) => current && { ...current, enrollments: merged ? current.enrollments.filter((item) => item.id !== enrollmentId) : current.enrollments.map((item) => item.id === enrollmentId ? { ...item, programId, programName } : item) }); setRevision((value) => value + 1); }} />
       <MemberMam memberId={selected.id} />
@@ -178,7 +179,7 @@ export default function MembersPage() {
   </section>;
 }
 
-type Mode = "mas" | "branch" | "program" | "status";
+type Mode = "mas" | "branch" | "collector" | "program" | "status";
 type Deactivation = { reason: string; by: string; at: string };
 const deactivated = (status: string | undefined) => (status ?? "").trim().toLowerCase() === "deactivated";
 type Transfer = { enrollmentId: string; fromMas: string; toMas: string; reason: string; by: string; at: string };
@@ -191,9 +192,9 @@ type Enrollment = DirectoryMember["enrollments"][number];
  * To another branch (October 17, 2026): the same MAS keeps the account in a new branch (lib/member-transfer.ts
  * changeEnrollmentBranch), for those who may transfer.
  */
-function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMoveProgram, transfers, deactivations, onStatusChanged, onTransferred, onBranchChanged, onProgramMoved }: { enrollments: Enrollment[]; canDelete: boolean; onDeleted: (enrollmentId: string, message: string) => void; canTransfer: boolean; canMoveProgram: boolean; transfers: Transfer[];
+function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMoveProgram, transfers, deactivations, onStatusChanged, onTransferred, onBranchChanged, onCollectorChanged, onProgramMoved }: { enrollments: Enrollment[]; canDelete: boolean; onDeleted: (enrollmentId: string, message: string) => void; canTransfer: boolean; canMoveProgram: boolean; transfers: Transfer[];
   deactivations: Record<string, Deactivation>; onStatusChanged: (enrollmentId: string, status: string) => void; onTransferred: (enrollmentId: string, toMas: string) => void;
-  onBranchChanged: (enrollmentId: string, branch: string) => void; onProgramMoved: (enrollmentId: string, programId: string, programName: string, merged: boolean) => void }) {
+  onBranchChanged: (enrollmentId: string, branch: string) => void; onCollectorChanged: (enrollmentId: string, collector: string) => void; onProgramMoved: (enrollmentId: string, programId: string, programName: string, merged: boolean) => void }) {
   const [open, setOpen] = useState("");
   const [mode, setMode] = useState<Mode>("mas");
   const [branchOptions, setBranchOptions] = useState<{ branches: string[]; masBranches: string[] }>({ branches: [], masBranches: [] });
@@ -201,6 +202,7 @@ function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMo
   const [programs, setPrograms] = useState<Array<{ id: string; name: string; code: string; rate: number }>>([]);
   const [targetProgram, setTargetProgram] = useState("");
   const [candidates, setCandidates] = useState<Array<{ employeeId: string; name: string; roles: string[]; branches: string[] }>>([]);
+  const [collectors, setCollectors] = useState<Array<{ employeeId: string; name: string; branches: string[] }>>([]);
   const [target, setTarget] = useState("");
   const [branchChoice, setBranchChoice] = useState<BranchChoice>(noBranchChoice);
   const [reason, setReason] = useState("");
@@ -225,6 +227,16 @@ function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMo
         if (!response.ok || !result.success) throw new Error(result.message || "Unable to load branches.");
         setBranchOptions({ branches: result.branches, masBranches: result.masBranches });
       } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to load branches."); }
+      finally { setBusy(false); }
+      return;
+    }
+    if (which === "collector") {
+      try {
+        const response = await fetch("/api/members/transfer?collectors=1", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to load the Collectors.");
+        setCollectors(result.collectors);
+      } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to load the Collectors."); }
       finally { setBusy(false); }
       return;
     }
@@ -271,6 +283,19 @@ function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMo
     } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to transfer."); }
     finally { setBusy(false); }
   }
+  // The Collector of the account (owner, November 6, 2026): who sees it in the Collector workspace and on My assigned members.
+  async function assign(enrollment: Enrollment) {
+    setBusy(true); setNote("");
+    try {
+      const response = await fetch("/api/members/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "collector", enrollmentId: enrollment.id, toEmployeeId: target === "none" ? "" : target, reason }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to assign the Collector.");
+      const name = result.assignment.to as string;
+      setOpen(""); setNote(name ? `${enrollment.programName} assigned to Collector ${name}.` : `${enrollment.programName} no longer has a Collector.`);
+      onCollectorChanged(enrollment.id, name);
+    } catch (failure) { setNote(failure instanceof Error ? failure.message : "Unable to assign the Collector."); }
+    finally { setBusy(false); }
+  }
   async function changeBranch(enrollment: Enrollment) {
     setBusy(true); setNote("");
     try {
@@ -298,7 +323,7 @@ function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMo
   const canAct = canTransfer || canMoveProgram || canDelete;
   const modesFor = (e: Enrollment) => (deactivated(e.status)
     ? ([["status", "Reactivate", canTransfer]] as const)
-    : ([["mas", "To another MAS", canTransfer], ["branch", "To another branch (same MAS)", canTransfer], ["program", "To another program", canMoveProgram], ["status", "Deactivate this program", canTransfer]] as const)
+    : ([["mas", "To another MAS", canTransfer], ["branch", "To another branch (same MAS)", canTransfer], ["collector", "Assign Collector", canTransfer], ["program", "To another program", canMoveProgram], ["status", "Deactivate this program", canTransfer]] as const)
   ).filter(([, , allowed]) => allowed);
   const masIsIn = (branch: string) => branchOptions.masBranches.some((item) => item.toLowerCase() === branch.toLowerCase());
   const headers = ["Program", "DOI", "Branch", "MAS / Officer", "Collector", "Remittance method", "Enrollment status", "Payment status", ...(canAct ? [""] : [])];
@@ -311,7 +336,7 @@ function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMo
         return <Fragment key={e.id}>
           <tr className={`${stackRow} rounded-lg border md:rounded-none md:border-x-0 md:border-b-0 mb-2 md:mb-0`}>
             <td className={`${stackCell} font-semibold md:p-2 md:font-normal`}>{e.programName || "-"}</td><td data-label="DOI" className={cell}>{showDate(e.doi) || "-"}{e.doiTime ? <span className="text-xs text-muted-foreground md:block"> {e.doiTime}</span> : null}</td><td data-label="Branch" className={cell}>{e.branch || "-"}</td>
-            <td data-label="MAS" className={cell}>{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">Transferred from {last.fromMas}{last.at ? ` on ${showDate(last.at)}` : ""} · {last.reason}</span>}</td>
+            <td data-label="MAS" className={cell}>{e.mas || "-"}{last && <span className="block text-xs text-muted-foreground">{last.fromMas === last.toMas ? "Changed" : `Transferred from ${last.fromMas}`}{last.at ? ` on ${showDate(last.at)}` : ""} · {last.reason}</span>}</td>
             <td data-label="Collector" className={cell}>{e.collector || "-"}</td><td data-label="Remittance" className={cell}>{e.paymentMethod || "-"}</td>
             <td data-label="Enrollment" className={cell}>{deactivated(e.status) ? <><StatusBadge status="Deactivated" tone="danger" />{deactivations[e.id] && <span className="block text-xs text-muted-foreground">{deactivations[e.id].reason}{deactivations[e.id].by ? ` · ${deactivations[e.id].by}` : ""}{deactivations[e.id].at ? ` · ${showDate(deactivations[e.id].at)}` : ""}</span>}</> : e.status || "-"}</td>
             <td data-label="Payment status" className={cell}>{deactivated(e.status) ? "—" : e.accountError || <span className="inline-flex flex-wrap items-center gap-1">{e.accountStatus || "Needs review"}<StandingBadge enrollment={e} /></span>}</td>
@@ -340,6 +365,15 @@ function EnrollmentTable({ enrollments, canDelete, onDeleted, canTransfer, canMo
               </div>
               {newBranch && e.mas && !masIsIn(newBranch) && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{e.mas} is not assigned to {newBranch} yet and will be assigned to it, so collections and clearing work there.</p>}
               <div className="mt-3 flex gap-2"><Button type="button" disabled={busy || !newBranch || reason.trim().length < 3} onClick={() => void changeBranch(e)}>{busy ? "Saving..." : "Change branch"}</Button><Button type="button" variant="ghost" onClick={() => setOpen("")}>Cancel</Button></div>
+            </> : mode === "collector" ? <>
+              <p className="text-sm font-semibold">Assign a Collector to {e.programName}</p>
+              <p className="mb-3 text-xs text-muted-foreground">Now: {e.collector || "no Collector"}. The Collector sees this account in their workspace and on My assigned members in Submit Collections. It stays with {e.mas || "its MAS"} and {e.branch || "its branch"}; only someone who can transfer members changes this, a payment does not.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">Collector *<SearchSelect aria-label="Collector" className="mt-1 h-9" placeholder={busy && !collectors.length ? "Loading..." : "Search Collector"} value={target} onValueChange={setTarget}
+                  options={[...(e.collector ? [{ value: "none", label: "No Collector", description: `Remove ${e.collector}` }] : []), ...collectors.filter((item) => item.branches.some((branch) => branch.toLowerCase() === e.branch.toLowerCase())).map((item) => ({ value: item.employeeId, label: item.name, description: item.branches.join(", ") }))]} /></label>
+                <label className="text-sm">Reason *<Input className="mt-1 h-9" maxLength={300} value={reason} placeholder="e.g. New Collector of this area" onChange={(event) => setReason(event.target.value)} /></label>
+              </div>
+              <div className="mt-3 flex gap-2"><Button type="button" disabled={busy || !target || reason.trim().length < 3} onClick={() => void assign(e)}>{busy ? "Saving..." : "Save"}</Button><Button type="button" variant="outline" onClick={() => setOpen("")}>Cancel</Button></div>
             </> : mode === "program" ? <>
               <p className="text-sm font-semibold">Move {e.programName} to another program</p>
               <p className="mb-3 text-xs text-muted-foreground">Any program. With a different monthly pay, each receipt covers its amount ÷ the new monthly pay (it must work out in whole months) and the payments are numbered again by OR date. The account keeps its New Sale, collections and history; if this member already has an account in that program, the two are merged and their payments numbered in OR-date order. Incentives follow the new program.</p>

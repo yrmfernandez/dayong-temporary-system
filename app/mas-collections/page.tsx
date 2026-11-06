@@ -29,12 +29,13 @@ import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
  * Members of all the MAS's branches can be added together (owner, November 2, 2026): the batch is shown per branch and
  * sent as one submission per branch. A member just added goes last, so the first added stays on top, and the page scrolls to it.
  * Collectors (owner, November 3, 2026): an employee with the Collector role picks Collected by MAS (their own members) or
- * Collector; as Collector they choose whose members (anyone with accounts in their branches, their own first), whose list
- * is then shown, and ORC Yes or No, which sets the incentive (Collector tier, or half of the MAS incentive with ORC).
+ * Collector; as Collector the members assigned to them are listed (owner, November 6, 2026), or they choose whose members
+ * (anyone with accounts in their branches, their own first), and ORC Yes or No, which sets the incentive (Collector tier,
+ * or half of the MAS incentive with ORC). Assigned members of several MAS go as one batch per branch and MAS.
  * Every Collector has the choice, being a virtual MAS too (owner, November 6, 2026); it starts on the workspace open.
  */
 type Account = {
-  id: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; branchId: string; branch: string;
+  id: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; mas: string; branchId: string; branch: string;
   basePay: number; flexible: boolean; maxMonthlyPayment: number | null; flexibleBasePay: number | null; tiers: IncentiveTier[]; pendingIn: string;
   status: string; temporarilySuspended: boolean; suspendedAt: string; forfeitedAt: string; nextMonth: string; nextNop: number;
   lastCoveredMonth: string; unpaidMonths: number; latestOrDate: string; blocked: string;
@@ -84,6 +85,9 @@ export default function MasCollectionsPage() {
   // What the list shows: the server's answer for the current choice.
   const asCollector = collector?.collectedBy === "Collector";
   const memberMas = asCollector ? collector?.masOptions.find((item) => item.employeeId === collector.memberMasEmployeeId) : undefined;
+  // As Collector with nobody chosen: the members assigned to them, who can be of several MAS.
+  const assigned = asCollector && !memberMas;
+  const perBatch = assigned ? "branch and MAS" : "branch";
   const quoteAs = { role: asCollector ? "Collector" as const : "MAS" as const, orc: asCollector && orc };
 
   // The filters survive leaving the page (lib/use-form-draft.ts); the batch itself is kept on the server, below.
@@ -168,7 +172,7 @@ export default function MasCollectionsPage() {
   const rows = batch.map((pick) => {
     const account = byId.get(pick.enrollmentId);
     const orDate = today;
-    if (!account) return { pick, account, orDate, quote: null, problem: asCollector ? `Not a member of ${memberMas?.name ?? "the MAS chosen"}. Remove them.` : "This member is no longer in your list. Remove them." };
+    if (!account) return { pick, account, orDate, quote: null, problem: assigned ? "Not assigned to you. Remove them." : asCollector ? `Not a member of ${memberMas?.name ?? "the MAS chosen"}. Remove them.` : "This member is no longer in your list. Remove them." };
     if (account.blocked) return { pick, account, orDate, quote: null, problem: account.blocked };
     try { return { pick, account, orDate, quote: masCollectionQuote(account, pick.months, quoteAs, account.flexible && pick.amount.trim() ? Number(pick.amount) : null), problem: "" }; }
     catch (failure) { return { pick, account, orDate, quote: null, problem: failure instanceof Error ? failure.message : "Cannot be collected." }; }
@@ -182,13 +186,14 @@ export default function MasCollectionsPage() {
   const totals = sum(shownRows);
   // Each branch is its own batch: its own clerk, its own remittance and deadline (lib/collection-submissions.ts).
   const groups = [...shownRows.reduce((map, row) => {
-    const key = row.account?.branchId ?? "";
+    const key = `${row.account?.branchId ?? ""}|${assigned ? row.account?.mas ?? "" : ""}`;
     map.set(key, [...(map.get(key) ?? []), row]);
     return map;
   }, new Map<string, Row[]>())].map(([id, list]) => {
-    const name = list[0].account?.branch ?? "Unknown branch";
+    const branchName = list[0].account?.branch ?? "Unknown branch";
+    const name = assigned && list[0].account ? `${branchName} · ${list[0].account.mas}` : branchName;
     const firstOrDate = list.map((row) => row.orDate).sort()[0] ?? today;
-    return { id, name, rows: list, totals: sum(list), deadline: id ? incentiveDeadline(firstOrDate, { days: offDays, branch: name }) : "" };
+    return { id, name, rows: list, totals: sum(list), deadline: list[0].account ? incentiveDeadline(firstOrDate, { days: offDays, branch: branchName }) : "" };
   });
   const missingWaiver = shownRows.filter((row) => needsWaiver(row.account, row.orDate) && !row.pick.waiver);
   const problems = shownRows.filter((row) => row.problem);
@@ -220,8 +225,8 @@ export default function MasCollectionsPage() {
     if (problems.length) { setMessage(`${problems[0].account?.memberName ?? "A member"}: ${problems[0].problem}`); return; }
     if (missingWaiver.length) { setMessage(`${missingWaiver[0].account?.memberName} is suspended. Have the member sign the Waiver, then tick Waiver.`); return; }
     const perBranch = groups.map((group) => `${group.name}: ${plural(group.rows.length, "member")}, collected ${money(cents(group.totals.amount))}; remit ${money(cents(group.totals.remittance))} by ${formatDeadline(group.deadline)} to keep your ${money(cents(group.totals.incentive))} incentive.`);
-    const intro = groups.length > 1 ? `Submit ${plural(shownRows.length, "member")} as ${groups.length} batches, one per branch?` : `Submit ${plural(shownRows.length, "member")} to the ${groups[0]?.name ?? ""} clerk?`;
-    const whose = asCollector ? `\n\nCollected by you as Collector, for ${memberMas?.own ? "your own accounts" : `the members of ${memberMas?.name ?? ""}`} · ORC ${quoteAs.orc ? "Yes" : "No"}.`
+    const intro = groups.length > 1 ? `Submit ${plural(shownRows.length, "member")} as ${groups.length} batches, one per ${perBatch}?` : `Submit ${plural(shownRows.length, "member")} to the ${groups[0]?.name ?? ""} clerk?`;
+    const whose = asCollector ? `\n\nCollected by you as Collector, for ${memberMas?.own ? "your own accounts" : memberMas ? `the members of ${memberMas.name}` : "your assigned members"} · ORC ${quoteAs.orc ? "Yes" : "No"}.`
       : collector?.isCollector ? "\n\nCollected by you as MAS: your own members, at the MAS incentive." : "";
     if (!await confirmDialog(`${intro} You cannot change it after this; the clerk checks it when you remit the cash.${whose}\n\n${perBranch.join("\n")}`)) return;
     setBusy(true); setMessage("");
@@ -287,13 +292,13 @@ export default function MasCollectionsPage() {
         </div>
         {asCollector && <>
           <label className="block space-y-1">
-            <span className="text-sm font-medium">Whose members? *</span>
+            <span className="text-sm font-medium">Whose members?</span>
             <select className="h-11 w-full rounded-md border bg-background px-3 text-base" value={collector.memberMasEmployeeId} disabled={busy}
               onChange={(event) => void choose({ collectedBy: "Collector", mas: event.target.value })}>
-              <option value="">Choose whose members</option>
+              <option value="">My assigned members</option>
               {collector.masOptions.map((item) => <option key={item.employeeId} value={item.employeeId}>{item.own ? "My own accounts" : item.name}{manyBranches ? ` · ${item.branchIds.map((id) => branches.find((branch) => branch.id === id)?.name).filter(Boolean).join(", ")}` : ""}</option>)}
             </select>
-            <span className="block text-xs text-muted-foreground">{collector.masOptions.length ? "Only their members are listed. You remit the cash; each payment stays with its MAS." : "Nobody has accounts in your branches. Ask HR."}</span>
+            <span className="block text-xs text-muted-foreground">{assigned ? "The members assigned to you, of any MAS. " : "Only their members are listed. "}You remit the cash; each payment stays with its MAS.</span>
           </label>
           <div className="space-y-1">
             <p className="text-sm font-medium">ORC (outright commission)</p>
@@ -323,7 +328,7 @@ export default function MasCollectionsPage() {
       <h2 className="text-lg font-semibold">{filterBranch ? `${filterBranch.name} batch` : "This batch"} · {plural(shownRows.length, "member")}{groups.length > 1 ? ` · ${groups.length} branches` : ""}</h2>
       <p className="-mt-2 text-xs text-muted-foreground">Not submitted yet. Members still here at midnight are sent to the clerk automatically: remove anyone who did not pay.</p>
       {draftProblem && <p role="alert" className="text-sm font-medium text-destructive">{draftProblem}</p>}
-      {groups.length > 1 && <p className="-mt-2 text-xs text-muted-foreground">Each branch is sent as its own batch, to that branch&apos;s clerk, with its own remittance.</p>}
+      {groups.length > 1 && <p className="-mt-2 text-xs text-muted-foreground">Each {perBatch} is sent as its own batch, to that branch&apos;s clerk, with its own remittance.</p>}
       {groups.map((group) => <div key={group.id} className="space-y-3">
         {(manyBranches || groups.length > 1) && <div className="flex flex-wrap items-baseline justify-between gap-x-3 border-b pb-1">
           <h3 className="font-semibold">{group.name} <span className="text-sm font-normal text-muted-foreground">· {plural(group.rows.length, "member")}</span></h3>
@@ -388,7 +393,7 @@ export default function MasCollectionsPage() {
         <CardTitle className="text-lg">{asCollector && memberMas && !memberMas.own ? `Add a member of ${memberMas.name} who paid` : "Add a member who paid"}</CardTitle>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input type="search" className="h-11 pl-9 text-base" placeholder="Search name, PH number or program" value={search} onChange={(event) => setSearch(event.target.value)} aria-label={asCollector ? "Search the MAS's members" : "Search your members"} disabled={asCollector && !memberMas} />
+          <Input type="search" className="h-11 pl-9 text-base" placeholder="Search name, PH number or program" value={search} onChange={(event) => setSearch(event.target.value)} aria-label={asCollector ? "Search the members" : "Search your members"} />
         </div>
         {!query && <div role="radiogroup" aria-label="Which members" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
           {([[false, `To collect (${dueCount})`], [true, `All (${branchAccounts.length})`]] as const).map(([value, label]) => <button key={label} type="button" role="radio" aria-checked={showAll === value} onClick={() => setShowAll(value)}
@@ -403,7 +408,7 @@ export default function MasCollectionsPage() {
             return <li key={account.id} className={`flex items-center gap-3 py-3 ${inBatch || waiting ? "opacity-70" : ""}`}>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2"><span className="truncate font-semibold">{account.memberName}</span><Badge className={`shrink-0 border font-mono text-[10px] ${mamStatusClass(account.status)}`}>{account.status}</Badge></p>
-                <p className="truncate text-xs text-muted-foreground">{account.memberNumber} · {account.programName} · {money(monthlyPay(account))}/month{manyBranches && !filterBranch ? ` · ${account.branch}` : ""}</p>
+                <p className="truncate text-xs text-muted-foreground">{account.memberNumber} · {account.programName} · {money(monthlyPay(account))}/month{manyBranches && !filterBranch ? ` · ${account.branch}` : ""}{assigned ? ` · ${account.mas}` : ""}</p>
                 {account.blocked ? <p className="text-xs text-destructive">{account.blocked}</p> : <p className="text-xs text-muted-foreground">Next month due {formatMonth(account.nextMonth)}{account.unpaidMonths > 1 ? ` · ${account.unpaidMonths} months behind` : ""}</p>}
                 {!account.blocked && account.temporarilySuspended && <p className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" /> Suspended: Waiver needed · forfeits {formatDate(account.forfeitedAt)}</p>}
               </div>
@@ -412,7 +417,7 @@ export default function MasCollectionsPage() {
                 : <Button type="button" className="h-11 shrink-0 px-4" disabled={Boolean(account.blocked) || full} onClick={() => add(account)}><Plus className="mr-1 h-4 w-4" />Add</Button>}
             </li>;
           })}
-        </ul> : <p className="py-6 text-center text-sm text-muted-foreground">{asCollector && !memberMas ? "Choose whose members you collected above." : query ? "No member matches your search." : showAll ? (filterBranch ? "You have no members in this branch." : "You have no members.") : "Everyone is paid through this month. Tap All to collect an advance."}</p>}
+        </ul> : <p className="py-6 text-center text-sm text-muted-foreground">{assigned && !branchAccounts.length ? "No members are assigned to you. Choose whose members above, or ask HR." : query ? "No member matches your search." : showAll ? (filterBranch ? "You have no members in this branch." : "You have no members.") : "Everyone is paid through this month. Tap All to collect an advance."}</p>}
         {full && <p className="pt-2 text-center text-xs text-muted-foreground">The batch is full ({MAX_SUBMISSION_ENTRIES} members). Submit it, then add the rest.</p>}
       </CardContent>
     </Card>
@@ -426,7 +431,7 @@ export default function MasCollectionsPage() {
           <div><p className="text-[11px] text-muted-foreground">To remit</p><p className="font-bold tabular-nums">{money(cents(totals.remittance))}</p></div>
         </div>
         {groups.length === 1 && groups[0].deadline && <p className="text-center text-xs text-muted-foreground">Remit at the office by <strong className="text-foreground">{formatDeadline(groups[0].deadline)}</strong> to keep the incentive. Later, the whole {money(cents(totals.amount))} is remitted. Check before submitting: only the clerk can change it after.</p>}
-        {groups.length > 1 && <p className="text-center text-xs text-muted-foreground">Sent as {groups.length} batches, one per branch: remit each at its branch by its deadline above to keep the incentive. Check before submitting: only the clerk can change it after.</p>}
+        {groups.length > 1 && <p className="text-center text-xs text-muted-foreground">Sent as {groups.length} batches, one per {perBatch}: remit each at its branch by its deadline above to keep the incentive. Check before submitting: only the clerk can change it after.</p>}
         {(problems.length > 0 || missingWaiver.length > 0) && <p className="text-center text-xs font-medium text-destructive">{problems.length ? `${problems[0].account?.memberName ?? "A member"}: ${problems[0].problem}` : `${missingWaiver[0].account?.memberName}: tick Waiver after the member signs it.`}</p>}
         <div className="flex gap-2">
           <Button type="button" variant="outline" className="h-12" aria-label="Clear the batch" onClick={async () => { if (await confirmDialog(filterBranch ? `Remove every ${filterBranch.name} member from the batch?` : "Remove every member from this batch?")) reset(); }}><X className="h-5 w-5" /></Button>

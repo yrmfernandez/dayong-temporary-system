@@ -1,6 +1,6 @@
 export type DirectoryEnrollment = {
   id: string; programId: string; programName: string; branch: string; mas: string;
-  /** The Collector on this enrollment's most recent posted Collection brought in by a Collector; blank when none. */
+  /** The Collector assigned to this account (member_programs.collector_employee_id); blank when none. */
   collector: string;
   doi: string;
   /** HH:MM, the time of the DOI (New Sales since October 19, 2026); blank before. */
@@ -70,28 +70,17 @@ export type MemberRecord = {
   diedOn?: string;
 };
 export type EnrollmentRecord = {
-  id: string; memberId: string; memberNumber: string; programId: string; doi: string; doiTime?: string; branch: string; mas: string; paymentMethod: string; status: string;
+  id: string; memberId: string; memberNumber: string; programId: string; doi: string; doiTime?: string; branch: string; mas: string; collector?: string; paymentMethod: string; status: string;
   deactivatedOn?: string; fullyPaidOn?: string; storedStatus?: string;
 };
-/** A posted Collection brought in by a Collector: who, for which member number and program, on which OR date. */
-export type CollectorRecord = { memberNumber: string; programId: string; date: string; person: string };
 
-export function buildMemberDirectory(memberRecords: MemberRecord[], enrollmentRecords: EnrollmentRecord[], programNames: Record<string, string>, collectorRecords: CollectorRecord[] = []): DirectoryMember[] {
-  // The Collector shown for an account is the one on its most recent Collector collection.
-  const collectors = new Map<string, { date: string; name: string }>();
-  for (const record of collectorRecords) {
-    if (!record.person) continue;
-    const key = `${record.memberNumber}::${record.programId}`;
-    const current = collectors.get(key);
-    if (!current || record.date >= current.date) collectors.set(key, { date: record.date, name: record.person });
-  }
-  const numbers = new Map(memberRecords.map((member) => [member.id, member.number]));
+export function buildMemberDirectory(memberRecords: MemberRecord[], enrollmentRecords: EnrollmentRecord[], programNames: Record<string, string>): DirectoryMember[] {
   const enrollments = new Map<string, DirectoryEnrollment[]>();
   for (const record of enrollmentRecords) {
     if (!record.id || !record.memberId) continue;
     const list = enrollments.get(record.memberId) ?? [];
     list.push({ id: record.id, programId: record.programId, programName: programNames[record.programId] || record.programId,
-      collector: collectors.get(`${numbers.get(record.memberId) || record.memberNumber}::${record.programId}`)?.name ?? "",
+      collector: record.collector ?? "",
       doi: record.doi, doiTime: record.doiTime ?? "", branch: record.branch, mas: record.mas, paymentMethod: record.paymentMethod, status: record.status,
       deactivatedOn: record.deactivatedOn ?? "", fullyPaidOn: record.fullyPaidOn ?? "", storedStatus: record.storedStatus ?? "" });
     enrollments.set(record.memberId, list);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRightLeft, Building2, Pencil, Search, Shuffle, Trash2, Wrench } from "lucide-react";
+import { ArrowRightLeft, Building2, Pencil, Search, Shuffle, Trash2, Wrench, UserCheck } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 
 import { AdminDeletePanel } from "@/components/admin-delete";
@@ -18,11 +18,11 @@ import { formatDate as showDate } from "@/lib/date-format";
 
 type Result = { success: boolean; message?: string; entries: FoundEntry[]; limit: number; canDelete: boolean };
 type Options = { employees: Array<{ id: string; name: string; branch: string; roles: string[]; status: string }>; programs: Array<{ id: string; name: string; code: string; rate: number; status: string }> };
-type Tab = "entries" | "mas" | "branches" | "programs" | "more";
+type Tab = "entries" | "mas" | "branches" | "collectors" | "programs" | "more";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const KINDS: Array<[SearchKind, string]> = [["all", "New Sales and Collections"], ["New Sale", "New Sales"], ["Collection", "Collections"]];
-const TABS: Array<[Tab, string, typeof Pencil]> = [["entries", "Entries", Pencil], ["mas", "Move between MAS", ArrowRightLeft], ["branches", "Move between branches", Building2], ["programs", "Move between programs", Shuffle], ["more", "Other corrections", Wrench]];
+const TABS: Array<[Tab, string, typeof Pencil]> = [["entries", "Entries", Pencil], ["mas", "Move between MAS", ArrowRightLeft], ["branches", "Move between branches", Building2], ["collectors", "Assign Collector", UserCheck], ["programs", "Move between programs", Shuffle], ["more", "Other corrections", Wrench]];
 
 /**
  * Edit / Corrections (owner, October 15, 2026): one place for IT and Administrators to change data.
@@ -49,6 +49,7 @@ export default function EditCorrectionsPage() {
     {tab === "entries" && <EntriesTab />}
     {tab === "mas" && <MoveBetweenMas onDone={setMessage} />}
     {tab === "branches" && <MoveBetweenMas key="branches" byBranch onDone={setMessage} />}
+    {tab === "collectors" && <MoveBetweenMas key="collectors" byCollector onDone={setMessage} />}
     {tab === "programs" && <MoveBetweenPrograms onDone={setMessage} />}
     {tab === "more" && <OtherCorrections />}
   </section>;
@@ -147,22 +148,24 @@ function useOptions() {
   return { options, error };
 }
 
-function MoveBetweenMas({ byBranch = false, onDone }: { byBranch?: boolean; onDone: (message: string) => void }) {
+function MoveBetweenMas({ byBranch = false, byCollector = false, onDone }: { byBranch?: boolean; byCollector?: boolean; onDone: (message: string) => void }) {
   const { options, error } = useOptions();
   const [employeeId, setEmployeeId] = useState("");
   return <Card>
-    {byBranch ? <CardHeader><CardTitle>Move members to another branch</CardTitle>
+    {byCollector ? <CardHeader><CardTitle>Assign a Collector</CardTitle>
+      <p className="text-sm text-muted-foreground">Choose the MAS, tick their members (or all), then choose the Collector, who must be assigned to those branches. The Collector sees them in their workspace and on My assigned members in Submit Collections. The MAS stays the same, and each account gets a record with the reason.</p></CardHeader>
+    : byBranch ? <CardHeader><CardTitle>Move members to another branch</CardTitle>
       <p className="text-sm text-muted-foreground">Choose the MAS, tick their members (or all), then choose the branch they go to. The MAS stays the same and is assigned to the new branch if needed. Each account gets a transfer record with the reason. Past collections stay under the old branch; future collections are recorded in the new one.</p></CardHeader>
     : <CardHeader><CardTitle>Move members between MAS</CardTitle>
       <p className="text-sm text-muted-foreground">Choose the MAS the members are under now, tick the members (or all), then choose the MAS they go to. Each account gets a transfer record with the reason. Past collections and cash stay with the MAS who handled them.</p></CardHeader>}
     <CardContent className="space-y-4">
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      <div className="max-w-xl space-y-1 text-sm">{byBranch ? "MAS" : "From MAS"}
-        <SearchSelect aria-label={byBranch ? "MAS" : "From MAS"} clearable value={employeeId} placeholder={options ? "Search employee name or ID" : "Loading..."} disabled={!options}
+      <div className="max-w-xl space-y-1 text-sm">{byBranch || byCollector ? "MAS" : "From MAS"}
+        <SearchSelect aria-label={byBranch || byCollector ? "MAS" : "From MAS"} clearable value={employeeId} placeholder={options ? "Search employee name or ID" : "Loading..."} disabled={!options}
           options={(options?.employees ?? []).map((employee) => ({ value: employee.id, label: employee.name, description: `${employee.id}${employee.branch ? ` · ${employee.branch}` : ""}${employee.status !== "active" ? ` · ${employee.status}` : ""}`, keywords: employee.id }))}
           onValueChange={setEmployeeId} />
       </div>
-      {employeeId && <BulkMemberTransfer key={employeeId} employeeId={employeeId} mode={byBranch ? "branch" : "mas"} onClose={() => setEmployeeId("")} onDone={(text) => { setEmployeeId(""); onDone(text); }} />}
+      {employeeId && <BulkMemberTransfer key={employeeId} employeeId={employeeId} mode={byCollector ? "collector" : byBranch ? "branch" : "mas"} onClose={() => setEmployeeId("")} onDone={(text) => { setEmployeeId(""); onDone(text); }} />}
     </CardContent>
   </Card>;
 }

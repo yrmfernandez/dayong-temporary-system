@@ -322,13 +322,13 @@ export async function addSale(
 }
 
 /** Members with an account in this branch (and with this MAS when given), for the MAM member dropdown: ID, number, name. */
-export async function listMembersInBranch(branch: string, mas = "") {
+export async function listMembersInBranch(branch: string, mas = "", collectorId?: string) {
   const normalizedBranch = text(branch).toLowerCase(), normalizedMas = text(mas).toLowerCase();
   if (!normalizedBranch) return [];
   // Explicit alias and table name: see findMembers.
   const rows = await currentDb().select({ id: members.member_id, number: members.member_number, surname: members.surname, firstName: members.first_name, middleName: members.middle_name })
     .from(members)
-    .where(sql`exists (select 1 from member_programs mp where mp.member_id = "members"."member_id" and lower(trim(mp.branch)) = ${normalizedBranch}${normalizedMas ? sql` and lower(trim(mp.mas)) = ${normalizedMas}` : sql``})`)
+    .where(sql`exists (select 1 from member_programs mp where mp.member_id = "members"."member_id" and lower(trim(mp.branch)) = ${normalizedBranch}${normalizedMas ? sql` and lower(trim(mp.mas)) = ${normalizedMas}` : sql``}${collectorId !== undefined ? sql` and mp.collector_employee_id = ${collectorId}` : sql``})`)
     .orderBy(asc(members.surname), asc(members.first_name), asc(members.member_number))
     .limit(5000);
   return rows.map((row) => ({ id: row.id, number: row.number, name: `${row.surname}, ${[row.firstName, row.middleName].filter(Boolean).join(" ")}`.trim() }));

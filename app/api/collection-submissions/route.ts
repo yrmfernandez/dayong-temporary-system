@@ -12,7 +12,7 @@ const noAccess = (page: string) => Response.json({ success: false, message: `You
 /**
  * MAS Collections submissions (lib/collection-submissions.ts).
  * GET ?view=mine: the MAS's branches, their own accounts and their submissions (Submit Collections page); a Collector
- *   adds &collectedBy=Collector&mas=<employee ID> for the members of that MAS (lib/collection-submissions.ts).
+ *   adds &collectedBy=Collector for the members assigned to them, &mas=<employee ID> for that person's members instead.
  * GET ?view=review: submissions waiting in the clerk's branches (Collections → Submitted by MAS).
  */
 export async function GET(request: Request) {
@@ -42,10 +42,11 @@ export const POST = withEncoder(async (request: Request) => {
   try {
     const result = await submitCollections(user, await request.json());
     const members = (count: number) => `${count} member${count === 1 ? "" : "s"}`;
-    const whose = result.collectedBy === "Collector" ? ` Members of ${result.memberMas}, collected by you as Collector.` : "";
+    const assigned = result.collectedBy === "Collector" && !result.memberMas;
+    const whose = result.collectedBy === "Collector" ? ` ${assigned ? "Your assigned members" : `Members of ${result.memberMas}`}, collected by you as Collector.` : "";
     const message = (result.batches.length === 1
       ? `${members(result.entryCount)} submitted to the ${result.batches[0].branch} clerk.`
-      : `Submitted as ${result.batches.length} batches, one per branch: ${result.batches.map((batch) => `${batch.branch} (${members(batch.entryCount)})`).join(", ")}. Remit each at its branch.`) + whose;
+      : `Submitted as ${result.batches.length} batches, one per ${assigned ? "branch and MAS" : "branch"}: ${result.batches.map((batch) => `${assigned ? `${batch.branch}, ${batch.memberMas}` : batch.branch} (${members(batch.entryCount)})`).join("; ")}. Remit each at its branch.`) + whose;
     return Response.json({ success: true, ...result, message }, { status: 201 });
   } catch (error) { return failure(error, "Unable to submit the collections."); }
 });

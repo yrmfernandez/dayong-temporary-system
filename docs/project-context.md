@@ -17,6 +17,20 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Collector: a member's Collector is a real assignment; the Collector workspace shows only those (2026-11-06)
+
+- **Asked (owner):** make a member's Collector a real assignment; the Collector workspace sees only the members assigned to them.
+- **Done:**
+  - Migration **0045_collector_assignment**: `member_programs.collector_employee_id`, filled from the Collector Members showed until now, when that is an active employee (by link, else a name only one active employee has). Staging: 1,394 accounts assigned of 1,394 shown, every name the same, none lost.
+  - **Members** shows the assignment; a payment no longer changes it. The directory lost its query over `collections`.
+  - **Assigning:** Members → Transfer on the account → **Assign Collector**, and Edit / Corrections → **Assign Collector** for many accounts of one MAS (`assignCollector`, `lib/member-transfer.ts`). Those who can transfer members; active employees with the Collector role only, in their own branches; a reason is required and each account gets a `member_transfers` record. **No Collector** removes it. The MAS, branch and money do not change.
+  - **Submit Collections:** Collector mode starts on **My assigned members**, of any MAS. **Whose members?** still offers anyone with accounts in their branches. Batches go one per branch and MAS, so the clerk's form and save are unchanged.
+  - **Collector workspace:** Members, MAM, a member's MAM and Search Records show only what is assigned to them (`MemberScope`, `lib/member-scope.ts`). Accounts they hold as MAS, if not assigned to them, are in their MAS workspace. A Collector with another role keeps what that role sees.
+  - Corrections that create an account (moved receipts, split person) keep its Collector.
+  - Tests: assigning and its refusals, the list, the batch split, every scoped page, and a Collector batch through the clerk's Mark remitted and save.
+- **To do (owner):** migrate production **before** pushing: `npm run prod -- npm run db:migrate`. Then check with a Collector account. Accounts whose latest Collector is not an active employee (production: for example the old name Degamo, N.) stay blank, so those names leave Members; the payments keep them.
+- **Not changed:** 42 employees without the Collector role are also assigned (staging: 944 accounts), because Members showed them; it does nothing for them beyond the label, and **No Collector** clears it. New Sales get no Collector by themselves, also a Collector's own: assign them. **Whose members?** still lists members who are not assigned to the Collector, since a Collector can cover for someone.
+
 ### Collector: the choice of MAS or Collector now works, also for a virtual MAS (2026-11-06)
 
 - **Asked (owner):** a Collector submitting collections should say whether it is as Collector or as MAS. Members show a Collector but it seems only a display. Remember the virtual MAS on every account.
@@ -33,10 +47,9 @@ The owner asked what to upgrade next; these were agreed to be worked through one
   - No migration. The batch, clerk save, Clearing and reports already handled a Collector batch.
 - **To do (owner):**
   1. Check on production what the Collectors submitted since 2026-11-03: they could send only accounts held in their own name, at the MAS tier, while earlier payments on such accounts were recorded as Collector (staging: 2,672 of 4,132 Collector payments). Not read here (production reads were not allowed in this session).
-  2. Decide whether a member's Collector should become a real assignment (below).
-  3. Decide whether the Collector workspace should keep seeing every member on Members and MAM: `ownMembersScope` limits only the MAS role, so today it does, while the same person's MAS workspace shows only their own.
+  2. Done, see above: a member's Collector is a real assignment, and the Collector workspace sees only those members.
 - **Tests:** type check and build pass; 317 of 318 tests pass. The one failure, a MAS submits New Sales, expects Returned where the code says Rejected, and fails the same on the code before this change.
-- **Not changed:** members of a resigned MAS cannot be picked (active employees only; staging: 9 live accounts). A Collector's batch still needs one person's members at a time.
+- **Not changed:** members of a resigned MAS cannot be picked (active employees only; staging: 9 live accounts).
 
 ### System Health shows Supabase usage (2026-11-05)
 

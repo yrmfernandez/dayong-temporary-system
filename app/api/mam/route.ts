@@ -19,24 +19,24 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const value = (key: string) => (params.get(key) ?? "").trim();
   try {
-    const onlyMas = await ownMembersScope(user);
+    const own = await ownMembersScope(user);
     if (params.get("options") === "1") {
       const [branches, employees] = await Promise.all([getBranches(), getEmployees()]);
       return Response.json({
-        success: true, ownMembersOnly: onlyMas !== null,
+        success: true, ownMembersOnly: own !== null,
         branches: branches.filter((branch) => branch.status === "active").map((branch) => ({ id: branch.id, name: branch.name })),
-        staff: onlyMas !== null ? [] : employees.filter((employee) => employee.status === "active").map((employee) => ({ employeeId: employee.id, fullName: employee.name, branchIds: employee.branchIds })),
+        staff: own !== null ? [] : employees.filter((employee) => employee.status === "active").map((employee) => ({ employeeId: employee.id, fullName: employee.name, branchIds: employee.branchIds })),
       });
     }
     if (params.get("members") === "1") {
-      return Response.json({ success: true, members: await listMembersInBranch(value("branch"), onlyMas ?? value("mas")) });
+      return Response.json({ success: true, members: await listMembersInBranch(value("branch"), own ? own.mas ?? "" : value("mas"), own?.collectorId) });
     }
     const from = value("from") || todayInManila().slice(0, 7);
     const to = value("to") || todayInManila().slice(0, 7);
     try { monitoringMonths(from, to); } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Invalid range." }, { status: 400 }); }
     // Everyone except a MAS chooses a branch first, so a report never loads every account in the company.
-    if (onlyMas === null && !value("branch")) return Response.json({ success: false, needsBranch: true, message: "Choose a branch to load MAM." }, { status: 400 });
-    return Response.json({ success: true, ...await mamReport(from, to, onlyMas, { branch: value("branch"), mas: value("mas"), memberId: value("member") }) });
+    if (own === null && !value("branch")) return Response.json({ success: false, needsBranch: true, message: "Choose a branch to load MAM." }, { status: 400 });
+    return Response.json({ success: true, ...await mamReport(from, to, own, { branch: value("branch"), mas: value("mas"), memberId: value("member") }) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load MAM." }, { status: 500 }); }
 }
 /**

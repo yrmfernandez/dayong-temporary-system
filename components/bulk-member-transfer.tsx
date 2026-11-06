@@ -11,7 +11,7 @@ import { branchChoiceReady, branchesOutside, noBranchChoice, TransferBranchChoic
 import type { EmployeeAccount } from "@/lib/member-transfer";
 
 type Candidate = { employeeId: string; name: string; roles: string[]; branches: string[] };
-type Loaded = { employee: { id: string; name: string }; accounts: EmployeeAccount[]; candidates: Candidate[]; branches?: string[]; masBranches?: string[] };
+type Loaded = { employee: { id: string; name: string }; accounts: EmployeeAccount[]; candidates: Candidate[]; branches?: string[]; masBranches?: string[]; collectors?: Array<{ employeeId: string; name: string; branches: string[] }> };
 
 /**
  * Transfer members: all or some of one employee's accounts move to another employee (lib/member-transfer.ts). Shown on
@@ -19,9 +19,11 @@ type Loaded = { employee: { id: string; name: string }; accounts: EmployeeAccoun
  * branches they are not assigned to keep their branch (assigning them) or move to their branch, as chosen.
  * mode "branch" (October 17, 2026, Edit / Corrections → Move between branches): the chosen accounts stay with this
  * employee and move to another branch; the employee is assigned to that branch if needed.
+ * mode "collector" (November 6, 2026, Edit / Corrections → Assign Collector): the chosen accounts stay with this employee
+ * and get a Collector, or lose the one they have.
  */
-export function BulkMemberTransfer({ employeeId, mode = "mas", onClose, onDone }: { employeeId: string; mode?: "mas" | "branch"; onClose: () => void; onDone: (message: string) => void }) {
-  const byBranch = mode === "branch";
+export function BulkMemberTransfer({ employeeId, mode = "mas", onClose, onDone }: { employeeId: string; mode?: "mas" | "branch" | "collector"; onClose: () => void; onDone: (message: string) => void }) {
+  const byBranch = mode === "branch", byCollector = mode === "collector";
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -33,12 +35,12 @@ export function BulkMemberTransfer({ employeeId, mode = "mas", onClose, onDone }
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/members/transfer?employeeId=${encodeURIComponent(employeeId)}${byBranch ? "&branches=1" : ""}`, { cache: "no-store" })
+    fetch(`/api/members/transfer?employeeId=${encodeURIComponent(employeeId)}${byBranch ? "&branches=1" : byCollector ? "&collectors=1" : ""}`, { cache: "no-store" })
       .then(async (response) => { const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to load the members."); return result as Loaded; })
       .then((loaded) => { if (!cancelled) setData(loaded); })
       .catch((failure) => { if (!cancelled) setError(failure instanceof Error ? failure.message : "Unable to load the members."); });
     return () => { cancelled = true; };
-  }, [employeeId, byBranch]);
+  }, [employeeId, byBranch, byCollector]);
 
   const accounts = useMemo(() => data?.accounts ?? [], [data]);
   const shown = useMemo(() => {
@@ -66,6 +68,18 @@ export function BulkMemberTransfer({ employeeId, mode = "mas", onClose, onDone }
     finally { setBusy(false); }
   }
 
+  async function assign() {
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/members/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "collector", enrollmentIds: [...selected], toEmployeeId: target === "none" ? "" : target, reason }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to assign the Collector.");
+      const { to, changed, skipped } = result.assignment as { to: string; changed: number; skipped: number };
+      onDone(`${changed} account${changed === 1 ? "" : "s"} of ${data?.employee.name ?? "the MAS"} ${to ? `assigned to Collector ${to}` : "no longer have a Collector"}.${skipped ? ` ${skipped} already had it.` : ""}`);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to assign the Collector."); }
+    finally { setBusy(false); }
+  }
+
   async function transfer() {
     setBusy(true); setError("");
     try {
@@ -81,13 +95,13 @@ export function BulkMemberTransfer({ employeeId, mode = "mas", onClose, onDone }
   return (
     <div className="space-y-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-2 font-semibold"><ArrowRightLeft className="size-4" />{byBranch ? "Move to another branch" : "Transfer members"}{data ? ` of ${data.employee.name}` : ""}</p>
+        <p className="flex items-center gap-2 font-semibold"><ArrowRightLeft className="size-4" />{byCollector ? "Assign a Collector" : byBranch ? "Move to another branch" : "Transfer members"}{data ? ` of ${data.employee.name}` : ""}</p>
         <Button type="button" size="sm" variant="ghost" onClick={onClose}>Close</Button>
       </div>
       {!data && !error && <p className="text-muted-foreground">Loading their members...</p>}
       {data && !accounts.length && <p className="text-muted-foreground">{data.employee.name} has no member accounts.</p>}
       {data && accounts.length > 0 && <>
-        <p className="text-muted-foreground">{accounts.length} account{accounts.length === 1 ? "" : "s"}. {byBranch ? `Choose all or some, then the branch they go to. They stay with ${data.employee.name}; past collections stay under their old branch, future collections are recorded in the new one.` : `Choose all or some, then the employee they go to. Past collections stay with ${data.employee.name}; future collections belong to the new MAS.`}</p>
+        <p className="text-muted-foreground">{accounts.length} account{accounts.length === 1 ? "" : "s"}. {byCollector ? `Choose all or some, then the Collector. They stay with ${data.employee.name}, in their branch.` : byBranch ? `Choose all or some, then the branch they go to. They stay with ${data.employee.name}; past collections stay under their old branch, future collections are recorded in the new one.` : `Choose all or some, then the employee they go to. Past collections stay with ${data.employee.name}; future collections belong to the new MAS.`}</p>
         <div className="flex flex-wrap items-center gap-3">
           <Input className="h-9 max-w-xs" placeholder="Search member, PH number, program, branch" value={search} onChange={(event) => setSearch(event.target.value)} />
           <label className="flex items-center gap-2"><input type="checkbox" checked={allShown} onChange={toggleAll} />{search ? `Select all shown (${shown.length})` : `Select all (${accounts.length})`}</label>
@@ -101,25 +115,29 @@ export function BulkMemberTransfer({ employeeId, mode = "mas", onClose, onDone }
                 <td className="p-2"><input type="checkbox" aria-label={`Select ${account.memberName}`} checked={selected.has(account.enrollmentId)} onChange={() => toggle(account.enrollmentId)} /></td>
                 <td className="p-2">{account.memberName || "—"}<span className="block text-xs text-muted-foreground">{account.memberNumber}</span></td>
                 <td className="p-2">{account.program}</td>
-                <td className="p-2">{account.branch}</td>
+                <td className="p-2">{account.branch}{byCollector && account.collector && <span className="block text-xs text-muted-foreground">Collector: {account.collector}</span>}</td>
                 <td className="p-2">{account.accountStatus || "—"}{account.status && account.status.toLowerCase() !== "active" ? ` · ${account.status}` : ""}</td>
               </tr>
             ))}</tbody>
           </table>
         </div>
         <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-          {byBranch ? <div className="space-y-1"><Label>New branch *</Label>
+          {byCollector ? <div className="space-y-1"><Label>Collector *</Label>
+            <SearchSelect aria-label="Collector" className="h-9" placeholder="Search Collector" value={target} onValueChange={setTarget}
+              options={[{ value: "none", label: "No Collector", description: "Remove the Collector they have" }, ...(data.collectors ?? []).map((item) => ({ value: item.employeeId, label: item.name, description: item.branches.join(", ") || "No branch" }))]} /></div>
+          : byBranch ? <div className="space-y-1"><Label>New branch *</Label>
             <SearchSelect aria-label="New branch" className="h-9" placeholder="Search branch" value={target} onValueChange={setTarget}
               options={(data.branches ?? []).map((name) => ({ value: name, label: name, description: inMasBranch(name) ? `${data.employee.name} is assigned here` : "" }))} /></div>
           : <div className="space-y-1"><Label>Transfer to *</Label>
             <SearchSelect aria-label="Transfer to" className="h-9" placeholder="Search employee or MAS, any branch" value={target} onValueChange={(value) => { setTarget(value); setBranchChoice(noBranchChoice); }}
               options={data.candidates.map((item) => ({ value: item.employeeId, label: item.name, description: `${item.employeeId} · ${item.roles.join(", ") || "No role"} · ${item.branches.join(", ") || "No branch"}` }))} /></div>}
-          <div className="space-y-1"><Label htmlFor={`transfer-reason-${employeeId}`}>Reason *</Label><Input id={`transfer-reason-${employeeId}`} maxLength={300} placeholder={byBranch ? "e.g. MAS now covers the new branch" : "e.g. MAS resigned; accounts reassigned"} value={reason} onChange={(event) => setReason(event.target.value)} /></div>
-          {byBranch ? <Button type="button" disabled={busy || !selected.size || !target || reason.trim().length < 3} onClick={() => void moveBranch()}>{busy ? "Moving..." : `Move ${chosen.length || ""}`.trim()}</Button>
+          <div className="space-y-1"><Label htmlFor={`transfer-reason-${employeeId}`}>Reason *</Label><Input id={`transfer-reason-${employeeId}`} maxLength={300} placeholder={byCollector ? "e.g. New Collector of this area" : byBranch ? "e.g. MAS now covers the new branch" : "e.g. MAS resigned; accounts reassigned"} value={reason} onChange={(event) => setReason(event.target.value)} /></div>
+          {byCollector ? <Button type="button" disabled={busy || !selected.size || !target || reason.trim().length < 3} onClick={() => void assign()}>{busy ? "Saving..." : `Assign ${chosen.length || ""}`.trim()}</Button>
+            : byBranch ? <Button type="button" disabled={busy || !selected.size || !target || reason.trim().length < 3} onClick={() => void moveBranch()}>{busy ? "Moving..." : `Move ${chosen.length || ""}`.trim()}</Button>
             : <Button type="button" disabled={busy || !selected.size || !target || reason.trim().length < 3 || !branchChoiceReady(outsideBranches, branchChoice)} onClick={() => void transfer()}>{busy ? "Transferring..." : `Transfer ${chosen.length || ""}`.trim()}</Button>}
         </div>
         {byBranch && target && !inMasBranch(target) && <p className="text-xs text-amber-700 dark:text-amber-400">{data.employee.name} is not assigned to {target} yet and will be assigned to it, so collections and clearing work there.</p>}
-        {!byBranch && candidate && <TransferBranchChoice name={candidate.name} outside={outsideBranches} count={outsideCount} targetBranches={candidate.branches} value={branchChoice} onChange={setBranchChoice} />}
+        {mode === "mas" && candidate && <TransferBranchChoice name={candidate.name} outside={outsideBranches} count={outsideCount} targetBranches={candidate.branches} value={branchChoice} onChange={setBranchChoice} />}
       </>}
       {error && <p role="alert" className="text-red-700 dark:text-red-400">{error}</p>}
     </div>

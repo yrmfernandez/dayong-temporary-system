@@ -120,7 +120,7 @@ export async function transferEnrollment(input: { enrollmentId: string; toEmploy
 /** Rows of a raw query: postgres.js returns them as the result itself, PGlite (tests) under .rows. */
 const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
 
-export type EmployeeAccount = { enrollmentId: string; memberNumber: string; memberName: string; program: string; branch: string; status: string; accountStatus: string };
+export type EmployeeAccount = { enrollmentId: string; memberNumber: string; memberName: string; program: string; branch: string; status: string; accountStatus: string; collector: string };
 
 /**
  * Every account (enrollment) an employee is the MAS of, and the active employees they can go to, with their branches.
@@ -131,14 +131,14 @@ export async function employeeAccounts(employeeIdRaw: string) {
   const employees = await getEmployees();
   const employee = employees.find((item) => item.id === employeeId);
   if (!employee) throw new Error("Employee not found.");
-  const rows = rowsOf<{ enrollment_id: string; member_number: string; first_name: string; middle_name: string; surname: string; program: string; branch: string; status: string; account_status: string }>(await currentDb().execute(sql`
-    select mp.enrollment_id, mp.member_number, m.first_name, m.middle_name, m.surname, coalesce(p.program_name, mp.program_id) as program, mp.branch, mp.status, mp.account_status
-    from member_programs mp left join members m on m.member_id = mp.member_id left join programs p on p.program_id = mp.program_id
+  const rows = rowsOf<{ enrollment_id: string; member_number: string; first_name: string; middle_name: string; surname: string; program: string; branch: string; status: string; account_status: string; collector: string | null }>(await currentDb().execute(sql`
+    select mp.enrollment_id, mp.member_number, m.first_name, m.middle_name, m.surname, coalesce(p.program_name, mp.program_id) as program, mp.branch, mp.status, mp.account_status, ce.full_name as collector
+    from member_programs mp left join members m on m.member_id = mp.member_id left join programs p on p.program_id = mp.program_id left join employees ce on ce.employee_id = mp.collector_employee_id
     where mp.mas_employee_id = ${employeeId} or (mp.mas_employee_id is null and lower(trim(mp.mas)) = lower(trim(${employee.name})))
     order by mp.branch, m.surname, m.first_name`));
   const accounts: EmployeeAccount[] = rows.map((row) => ({
     enrollmentId: row.enrollment_id, memberNumber: text(row.member_number), memberName: [row.first_name, row.middle_name, row.surname].map(text).filter(Boolean).join(" "),
-    program: text(row.program), branch: text(row.branch), status: text(row.status), accountStatus: text(row.account_status),
+    program: text(row.program), branch: text(row.branch), status: text(row.status), accountStatus: text(row.account_status), collector: text(row.collector),
   }));
   const { candidates } = await activeCandidates({ id: employeeId });
   return { employee: { id: employee.id, name: employee.name }, accounts, candidates };
@@ -247,5 +247,51 @@ export async function changeEnrollmentsBranch(input: { enrollmentIds: string[]; 
     }));
     for (let i = 0; i < records.length; i += 500) await tx.insert(schema.member_transfers).values(records.slice(i, i + 500));
     return { to, moved: moving.length, skipped: rows.length - moving.length, from: [...new Set(moving.map((row) => text(row.branch) || "none"))], mas: [...new Set(moving.map((row) => text(row.mas)).filter(Boolean))], assigned };
+  });
+}
+
+// ---------------------------------------------------------------- the Collector of an account
+
+/** Active employees with the Collector role, with the branches where they can submit. */
+export async function collectorCandidates() {
+  const [employees, { nameOf }] = await Promise.all([getEmployees(), activeBranchNames()]);
+  return employees
+    .filter((item) => item.status === "active" && item.roles.some((role) => role.trim().toLowerCase() === "collector"))
+    .map((item) => ({ employeeId: item.id, name: item.name, branches: item.masBranchIds.map((id) => nameOf.get(id) ?? "").filter(Boolean) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Assigns a Collector to accounts, or removes the one assigned (`toEmployeeId` empty) (owner, November 6, 2026). It decides
+ * who sees the account in the Collector workspace and on My assigned members. The MAS, the branch and the money stay;
+ * each account changed gets a member_transfers record with the reason. A Collector cannot submit outside their branches,
+ * so an account there is refused rather than left where they would never see it.
+ */
+export async function assignCollector(input: { enrollmentIds: string[]; toEmployeeId: string; reason: string }) {
+  const reason = text(input.reason), toId = text(input.toEmployeeId);
+  if (reason.length < 3 || reason.length > 300) throw new Error("Give the reason (3–300 characters).");
+  const ids = [...new Set(input.enrollmentIds.map(text).filter(Boolean))];
+  if (!ids.length) throw new Error("Choose the accounts.");
+  const candidates = await collectorCandidates();
+  const to = candidates.find((item) => item.employeeId === toId);
+  if (toId && !to) throw new Error("Choose an active employee with the Collector role.");
+  const nameOf = new Map((await getEmployees()).map((item) => [item.id, item.name]));
+  const actor = getEncoder();
+  return inTransaction(async (tx) => {
+    const rows = await tx.select().from(schema.member_programs).where(inArray(schema.member_programs.enrollment_id, ids));
+    if (rows.length !== ids.length) throw new Error("Some of the chosen accounts were not found. Reload and try again.");
+    const changing = rows.filter((row) => text(row.collector_employee_id) !== toId);
+    if (!changing.length) throw new Error(to ? `The chosen account${ids.length === 1 ? " is" : "s are"} already assigned to ${to.name}.` : "The chosen accounts have no Collector.");
+    const outside = to ? [...new Set(changing.map((row) => text(row.branch)).filter((branch) => !to.branches.some((item) => same(item, branch))))] : [];
+    if (to && outside.length) throw new Error(`${to.name} is not assigned to ${outside.join(", ") || "the account's branch"}, so they could not submit there. Ask HR to add the branch first.`);
+    await tx.update(schema.member_programs).set({ collector_employee_id: toId || null }).where(inArray(schema.member_programs.enrollment_id, changing.map((row) => row.enrollment_id)));
+    const records = changing.map((row) => ({
+      transfer_id: createReadableId("MTR"), enrollment_id: row.enrollment_id, member_id: row.member_id, member_number: text(row.member_number), program_id: row.program_id,
+      branch: text(row.branch), from_mas: text(row.mas), to_mas: text(row.mas), to_employee_id: row.mas_employee_id,
+      reason: `Collector ${nameOf.get(text(row.collector_employee_id)) || "none"} → ${to?.name ?? "none"}: ${reason}`.slice(0, 500),
+      encoded_by_user_id: actor.userId, encoded_by_employee_id: actor.employeeId, encoded_by_name: actor.name, encoded_at: actor.encodedAt,
+    }));
+    for (let i = 0; i < records.length; i += 500) await tx.insert(schema.member_transfers).values(records.slice(i, i + 500));
+    return { to: to?.name ?? "", changed: changing.length, skipped: rows.length - changing.length };
   });
 }
