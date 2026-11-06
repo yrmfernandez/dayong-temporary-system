@@ -34,7 +34,7 @@ export function ProgramBulkEdit({ allIds, selected, onSelectedChange, categories
   });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
-  // allIds are the programs the search shows: Select all adds them, Deselect all removes them, others stay selected.
+  // allIds are the programs the search and filters show: Select all adds them, Deselect all removes them, others stay selected.
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.includes(id));
   const set = (key: keyof typeof values, value: string) => setValues((current) => ({ ...current, [key]: value }));
   const toggleField = (field: Field) => setFields((current) => { const next = new Set(current); if (next.has(field)) next.delete(field); else next.add(field); return next; });

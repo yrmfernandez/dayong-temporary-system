@@ -388,7 +388,22 @@ const [selectedIds, setSelectedIds] = useState<string[]>([]);
 // Search box: matches code, name, ID, category, status and description, ignoring case.
 const [search, setSearch] = useState("");
 const searchWords = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-const visiblePrograms = searchWords.length ? programs.filter((program) => { const haystack = [program.code, program.name, program.id, program.status, program.description, program.categoryId ? categoryName(program.categoryId) : "", program.flexible ? "flexible" : ""].join(" ").toLowerCase(); return searchWords.every((word) => haystack.includes(word)); }) : programs;
+// Filters combine with the search box: a program must pass every one chosen.
+const noFilters = { status: "", category: "", payment: "", registration: "" };
+const [filters, setFilters] = useState(noFilters);
+const setFilter = (name: keyof typeof noFilters, value: string) => setFilters((current) => ({ ...current, [name]: value }));
+const filtering = Object.values(filters).some(Boolean);
+const narrowed = searchWords.length > 0 || filtering;
+const clearSearchAndFilters = () => { setSearch(""); setFilters(noFilters); };
+const visiblePrograms = programs.filter((program) => {
+  if (filters.status && program.status !== filters.status) return false;
+  if (filters.category && (program.categoryId || "none") !== filters.category) return false;
+  if (filters.payment && (program.flexible ? "flexible" : "fixed") !== filters.payment) return false;
+  if (filters.registration && (program.registrationFeeRequired ? "yes" : "no") !== filters.registration) return false;
+  if (!searchWords.length) return true;
+  const haystack = [program.code, program.name, program.id, program.status, program.description, program.categoryId ? categoryName(program.categoryId) : "", program.flexible ? "flexible" : ""].join(" ").toLowerCase();
+  return searchWords.every((word) => haystack.includes(word));
+});
 const toggleSelected = (id: string) => setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
 
 async function loadPrograms() {
@@ -2308,7 +2323,13 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
         <Input type="search" aria-label="Search programs" className="pl-9" placeholder="Search code, name, category or status" value={search} onChange={(event) => setSearch(event.target.value)} />
       </div>}
-      {searchWords.length > 0 && <p className="text-xs text-muted-foreground">{visiblePrograms.length} of {programs.length} programs match &ldquo;{search.trim()}&rdquo;</p>}
+      {programs.length > 0 && <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <select aria-label="Filter by status" className="h-9 rounded-md border bg-background px-3 text-sm" value={filters.status} onChange={(event) => setFilter("status", event.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
+        <select aria-label="Filter by category" className="h-9 rounded-md border bg-background px-3 text-sm" value={filters.category} onChange={(event) => setFilter("category", event.target.value)}><option value="">All categories</option><option value="none">No category</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}{item.status === "inactive" ? " (inactive)" : ""}</option>)}</select>
+        <select aria-label="Filter by payment type" className="h-9 rounded-md border bg-background px-3 text-sm" value={filters.payment} onChange={(event) => setFilter("payment", event.target.value)}><option value="">Fixed and flexible</option><option value="fixed">Fixed</option><option value="flexible">Flexible</option></select>
+        <select aria-label="Filter by registration fee" className="h-9 rounded-md border bg-background px-3 text-sm" value={filters.registration} onChange={(event) => setFilter("registration", event.target.value)}><option value="">With or without registration fee</option><option value="yes">Registration fee required</option><option value="no">No registration fee</option></select>
+      </div>}
+      {narrowed && <p className="text-xs text-muted-foreground">{visiblePrograms.length} of {programs.length} programs shown. <button type="button" className="font-medium text-primary hover:underline" onClick={clearSearchAndFilters}>Clear search and filters</button></p>}
     </CardHeader>
 
     <CardContent>
@@ -2332,7 +2353,7 @@ return ( <div className="mx-auto max-w-7xl space-y-6">
       ) : (
         <div className="space-y-4">
           {canManage && <ProgramBulkEdit allIds={visiblePrograms.map((program) => program.id)} selected={selectedIds} onSelectedChange={setSelectedIds} categories={categories} onSaved={loadPrograms} />}
-          {searchWords.length > 0 && !visiblePrograms.length && <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No program matches &ldquo;{search.trim()}&rdquo;. <button type="button" className="font-medium text-primary hover:underline" onClick={() => setSearch("")}>Clear search</button></div>}
+          {narrowed && !visiblePrograms.length && <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No program matches the search and filters. <button type="button" className="font-medium text-primary hover:underline" onClick={clearSearchAndFilters}>Clear search and filters</button></div>}
           {visiblePrograms.map(
             (program) => {
               const periods =

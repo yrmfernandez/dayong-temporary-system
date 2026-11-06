@@ -17,6 +17,13 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Programs: filters on the Program List (2026-11-06)
+
+- **Asked (owner):** add filters to the search on Programs.
+- **Done:** Status, Category (or No category), Fixed or Flexible, and Registration fee, combined with the search box, with a count of programs shown and Clear search and filters. Select all takes what the search and filters show. In the page only: nothing more is read from the database.
+- **In progress:** nothing.
+- **To do:** nothing. No migration.
+
 ### Collector: when the MAS incentive applies (2026-11-06)
 
 - **Asked (owner):** a Collector gets the MAS incentive only when the account they hold has No Collector, like a normal MAS, or when the Entry Clerk ticks Collected by MAS on Collections. Check that the Collector incentive is automatic in Collector mode. **Whose members?** stays open to any member of their branches.
