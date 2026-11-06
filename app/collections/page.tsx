@@ -92,7 +92,7 @@ type CollectionSubmissionSummary = {
   entries: Array<{ enrollmentId: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; months: number; amount: number; orDate: string; waiver: boolean }>;
 };
 /** The MAS submission open on the form: saving it marks it Saved; its handover must be this MAS's. */
-type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string; collectedBy?: "MAS" | "Collector"; memberMas?: string };
+type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string; collectedBy?: "MAS" | "Collector"; memberMas?: string; orc?: boolean };
 
 type CollectionMember = Member & {
   programIds: string[];
@@ -1094,7 +1094,7 @@ export default function CollectionsPage() {
     setCollectedBy(byCollector ? "Collector" : "MAS");
     setMemberMas(byCollector ? submission.memberMas : "");
     setOrc(byCollector && submission.orc);
-    setReviewing({ id: submission.id, masEmployeeId: submission.masEmployeeId, mas: submission.mas, branch: submission.branch, clearingId: submission.clearingId, remittedAt: submission.remittedAt, collectedBy: byCollector ? "Collector" : "MAS", memberMas: byCollector ? submission.memberMas : "" });
+    setReviewing({ id: submission.id, masEmployeeId: submission.masEmployeeId, mas: submission.mas, branch: submission.branch, clearingId: submission.clearingId, remittedAt: submission.remittedAt, collectedBy: byCollector ? "Collector" : "MAS", memberMas: byCollector ? submission.memberMas : "", orc: byCollector && submission.orc });
     // Marked remitted: saved under the clearing recorded then. The Date Remitted starts on that day and can still be
     // changed with a reason (no work, day off, on leave...), as for any batch.
     if (submission.clearingId) {
@@ -1286,10 +1286,11 @@ export default function CollectionsPage() {
               <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/50 p-1">
                 {collectionChannels.map((channel) => (
                   <button key={channel.value} type="button" role="radio" aria-checked={collectedBy === channel.value} title={channel.hint}
-                    disabled={Boolean(reviewing) && channel.value !== (reviewing?.collectedBy ?? "MAS")}
+                    disabled={Boolean(reviewing) && channel.value !== (reviewing?.collectedBy ?? "MAS") && !(channel.value === "MAS" && reviewing?.collectedBy === "Collector" && reviewing.memberMas === reviewing.mas)}
                     onClick={() => {
                       if (channel.value === collectedBy) return;
-                      setOrc(false);
+                      // Back to Collector on a batch opened for review: its ORC as submitted.
+                      setOrc(channel.value === "Collector" && reviewing?.orc === true);
                       // Back to the accountable person's own members: entries of another MAS's members no longer fit.
                       if (memberMas && memberMas !== mas) clearScopedMemberSelections();
                       setMemberMas("");

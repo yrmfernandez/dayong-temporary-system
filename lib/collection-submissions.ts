@@ -44,6 +44,8 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  * assignCollector), or pick whose members they collected, anyone holding accounts in their branches, their own included,
  * and ORC Yes or No for the batch. Assigned members can be of several MAS, so a batch is one per branch and MAS: the
  * clerk saves each as a Collector batch of one MAS. The Collector tier applies (ORC: half of the MAS incentive); the
+ * MAS incentive only on an account they hold with no Collector assigned, like any MAS, or when the clerk ticks Collected
+ * by MAS on the form (owner, November 6, 2026; collectorOnlyAccount below); the
  * Collector is accountable and remits the cash, and each payment keeps the member's MAS on record, as on the Collections
  * form. Every employee is a virtual MAS (lib/workspace-session.ts), so a Collector needs no MAS role to have the choice
  * (owner, November 6, 2026); it starts on the workspace open, and can be changed on the page.
@@ -168,6 +170,13 @@ async function collectorContext(user: Pick<SessionUser, "employeeId"> & Partial<
   return { profile, isCollector, masOptions, as, memberMas };
 }
 type SubmitContext = Awaited<ReturnType<typeof collectorContext>>;
+/**
+ * Why an employee with the Collector role cannot send this account as MAS, or "" (owner, November 6, 2026). An account with
+ * a Collector assigned earns the Collector incentive; the MAS incentive needs No Collector on it, or the clerk ticking
+ * Collected by MAS on the form. A MAS who is not a Collector is not limited: their member stays theirs to collect.
+ */
+const collectorOnlyAccount = (context: Pick<SubmitContext, "as" | "isCollector">, account: { collectorEmployeeId?: string }) =>
+  context.as === "MAS" && context.isCollector && account.collectorEmployeeId ? "It has a Collector assigned: submit it as Collector." : "";
 type Choice = { enrollmentId: string; months: number; amount: number | null; waiver: boolean };
 
 /**
@@ -183,6 +192,8 @@ function batchEntry(context: SubmitContext, data: Awaited<ReturnType<typeof load
   if (!account) throw new Error("A member in the batch no longer has this program. Reload the page.");
   const label = `${account.memberName} (${account.programName})`;
   if (assigned ? account.collectorEmployeeId !== profile.employeeId : !sameName(account.mas, ownerName)) throw new Error(assigned ? `${label} is not assigned to you.` : asCollector ? `${label} is not a member of ${ownerName}.` : `${label} is not your member.`);
+  const onlyAsCollector = collectorOnlyAccount(context, account);
+  if (onlyAsCollector) throw new Error(`${label}: ${onlyAsCollector}`);
   const branch = profile.branches.find((candidate) => sameName(candidate.name, account.branch));
   if (!branch) throw new Error(`${label} belongs to ${account.branch || "no branch"}, which is not one of your branches. Ask HR.`);
   const state = accountState(account, data.payments, day);
@@ -255,7 +266,7 @@ export async function myCollectionAccounts(user: SessionUser, options: { collect
       const state = accountState(account, data.payments, today);
       return [{ ...base, status: state.status as string, temporarilySuspended: state.temporarilySuspended, suspendedAt: state.suspendedAt, forfeitedAt: state.forfeitedAt,
         nextMonth: state.nextMonth, nextNop: state.nextNop, lastCoveredMonth: state.lastCoveredMonth, unpaidMonths: state.unpaidMonths, latestOrDate: state.latestOrDate,
-        blocked: blockedReason(state.status, today) }];
+        blocked: blockedReason(state.status, today) || collectorOnlyAccount(context, account) }];
     } catch (error) {
       return [{ ...base, status: "Needs review", temporarilySuspended: false, suspendedAt: "", forfeitedAt: "", nextMonth: "", nextNop: 0, lastCoveredMonth: "", unpaidMonths: 0, latestOrDate: "",
         blocked: error instanceof Error ? `${error.message} Ask the office.` : "The account needs review at the office." }];

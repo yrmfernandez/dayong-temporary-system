@@ -113,10 +113,13 @@ async function saveCollections(request: Request, user: SessionUser) {
     const memberMas = collectedBy === "Collector" ? String(body.memberMas ?? "").trim() || mas : mas;
     const originalMas = collectedBy === "Collector" ? memberMas : "";
     // A submitted batch is saved as it was submitted: collected by, whose members and ORC (lib/collection-submissions.ts).
+    // One exception (owner, November 6, 2026): on a Collector's batch of their own accounts the clerk may tick Collected
+    // by MAS, the one way those accounts earn the MAS incentive with a Collector assigned.
     if (submission) {
-      if (collectedBy !== submission.collectedBy) throw new Error(`This batch was submitted as collected by ${submission.collectedBy}.`);
+      const clerkChoseMas = submission.collectedBy === "Collector" && collectedBy === "MAS" && sameName(submission.memberMas, submission.mas);
+      if (collectedBy !== submission.collectedBy && !clerkChoseMas) throw new Error(`This batch was submitted as collected by ${submission.collectedBy}.`);
       if (collectedBy === "Collector" && !sameName(memberMas, submission.memberMas)) throw new Error(`This batch holds members of ${submission.memberMas}.`);
-      if (orc !== submission.orc) throw new Error(`This batch was submitted with ORC ${submission.orc ? "Yes" : "No"}.`);
+      if (orc !== submission.orc && !clerkChoseMas) throw new Error(`This batch was submitted with ORC ${submission.orc ? "Yes" : "No"}.`);
     }
     const paymentMethod = await findActivePaymentMethod(String(body.paymentMethod ?? ""));
     const paymentReference = String(body.paymentReference ?? "").trim();

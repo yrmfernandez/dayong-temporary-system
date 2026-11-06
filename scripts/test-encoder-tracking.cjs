@@ -5423,6 +5423,75 @@ test('a Collector batch of assigned members goes through the clerk: marked remit
   assert.equal((await query('select status from collection_submissions'))[0].status, 'Saved');
 });
 
+test('a Collector earns the MAS incentive only with No Collector on their own account, or when the clerk ticks MAS (November 6, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'Col One', 'BR-1', 'Collector', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Clerk Three', 'BR-1', 'Entry Clerk', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50], ['INC-2', 'DP-1', 'Collector', 1, 12, 'percentage', 0, 20]];
+    h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+    return h;
+  };
+  const collector = as({ userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', roleNames: ['Collector'], permissions: {} });
+  const realMas = as({ userId: 'USR-M', employeeId: 'DPE-0002', name: 'Mas Two', roleNames: ['MAS'], permissions: {} });
+  const clerk = as({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk Three', roleNames: ['Entry Clerk'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0001', 'Col One']);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Mas Two' }]);
+  const today = collector.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  for (const [number, mas, assigned] of [[1, 'Col One', 'DPE-0001'], [2, 'Col One', null], [3, 'Mas Two', 'DPE-0001'], [4, 'Mas Two', 'DPE-0001']]) {
+    await seed('members', [{ member_id: `MEM-${number}`, member_number: `PH-${number}`, surname: 'Santos', first_name: 'Ana' }]);
+    await seed('member_programs', [{ enrollment_id: `ENR-${number}`, member_id: `MEM-${number}`, member_number: `PH-${number}`, program_id: 'DP-1', doi, branch: 'BR-1', mas, status: 'Active', collector_employee_id: assigned }]);
+  }
+  const call = async (h, file, method, url, body) => {
+    const route = h.load(file);
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const submissions = 'app/api/collection-submissions/route.ts';
+  const submit = (h, id, extra) => call(h, submissions, 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: id, months: 1, amount: null, waiver: false }], ...extra });
+
+  // As MAS: the account with a Collector assigned is shown blocked and refused, the one with No Collector goes at the MAS tier.
+  const list = (await call(collector, submissions, 'GET', '/api/collection-submissions?view=mine&collectedBy=MAS')).body.accounts;
+  assert.deepEqual(list.map((item) => [item.id, Boolean(item.blocked)]).sort(), [['ENR-1', true], ['ENR-2', false]]);
+  assert.match((await submit(collector, 'ENR-1', { collectedBy: 'MAS' })).body.message, /has a Collector assigned/);
+  assert.equal((await submit(collector, 'ENR-2', { collectedBy: 'MAS' })).status, 201);
+  assert.equal((await query("select total_incentive::float8 as incentive from collection_submissions"))[0].incentive, 175, 'the MAS tier, like any MAS');
+  // A MAS who is not a Collector still collects their member, whoever is assigned.
+  assert.equal((await submit(realMas, 'ENR-4', { collectedBy: 'MAS' })).status, 201);
+  // Back to No Collector, the account takes the MAS incentive again.
+  await query("update member_programs set collector_employee_id = null where enrollment_id = 'ENR-1'");
+  assert.equal((await call(collector, submissions, 'GET', '/api/collection-submissions?view=mine&collectedBy=MAS')).body.accounts.find((item) => item.id === 'ENR-1').blocked, '');
+  await query("update member_programs set collector_employee_id = 'DPE-0001' where enrollment_id = 'ENR-1'");
+
+  // Collector mode is automatic: the Collector tier, on the form too, with nothing to tick.
+  assert.equal((await submit(collector, 'ENR-1', { collectedBy: 'Collector', memberMasEmployeeId: 'DPE-0001' })).status, 201);
+  assert.equal((await submit(collector, 'ENR-3', { collectedBy: 'Collector' })).status, 201);
+  const review = (await call(clerk, submissions, 'GET', '/api/collection-submissions?view=review')).body.submissions;
+  const own = review.find((item) => item.entries[0].enrollmentId === 'ENR-1'), other = review.find((item) => item.entries[0].enrollmentId === 'ENR-3');
+  assert.deepEqual([own.collectedBy, own.totalIncentive, other.collectedBy, other.totalIncentive], ['Collector', 70, 'Collector', 70]);
+
+  // The clerk may tick MAS on the Collector's own accounts, not on another MAS's members.
+  for (const batch of [own, other]) assert.equal((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'remit', id: batch.id, handover: batch === own ? '' : 'same' })).status, 200);
+  const [{ clearing_id: clearingId }] = await query("select clearing_id from clearings where employee_id = 'DPE-0001'");
+  const save = (batch, memberNumber, orNumber, collectedBy, memberMas = '') => {
+    const [entry] = batch.entries;
+    return call(clerk, 'app/api/collections/route.ts', 'POST', '/api/collections', { branch: 'BR-1', mas: 'Col One', accountableEmployeeId: 'DPE-0001', clearingId, submissionId: batch.id, dateRemitted: today, collectedBy, memberMas, paymentMethod: 'Cash', controlTotal: collectedBy === 'MAS' ? 175 : 280,
+      collections: [{ memberNumber, programId: 'DP-1', monthFrom: entry.monthFrom, monthTo: entry.monthTo, amountCollected: entry.amount, nopFrom: entry.nopFrom, nopTo: entry.nopTo, orNumber, orDate: entry.orDate }] });
+  };
+  assert.match((await save(other, 'PH-3', '12346 B', 'MAS')).body.message, /submitted as collected by Collector/);
+  const saved = await save(own, 'PH-1', '12345 B', 'MAS');
+  assert.equal(saved.status, 201, JSON.stringify(saved.body));
+  const [payment] = await query('select collected_by_role, remittance_amount::float8 as remit, accountable_employee_id from collections');
+  assert.deepEqual(payment, { collected_by_role: 'MAS', remit: 175, accountable_employee_id: 'DPE-0001' });
+
+  // A Collector's handover on the clerk's form starts as Collector: the list carries their role.
+  const [open] = await clerk.load('lib/clearing.ts').getEncodableClearings();
+  assert.deepEqual(open.employeeRoles, ['Collector']);
+});
+
 test('a batch the MAS forgot is sent after midnight, OR date the day added, and the clerk is warned (November 4, 2026)', async () => {
   const as = (user) => {
     const h = harness(user);

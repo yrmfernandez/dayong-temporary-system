@@ -288,7 +288,7 @@ export default function MasCollectionsPage() {
               onClick={() => void choose({ collectedBy: value, mas: value === "Collector" ? collector.memberMasEmployeeId : "" })}
               className={`min-h-10 rounded-md px-3 font-semibold ${collector.collectedBy === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}>{value === "MAS" ? "MAS: my members" : "Collector"}</button>)}
           </div>
-          {!asCollector && <p className="text-xs text-muted-foreground">Your own members, at the MAS incentive. Choose Collector for the Collector incentive.</p>}
+          {!asCollector && <p className="text-xs text-muted-foreground">Your own members with no Collector assigned, at the MAS incentive. Those with a Collector assigned go as Collector.</p>}
         </div>
         {asCollector && <>
           <label className="block space-y-1">

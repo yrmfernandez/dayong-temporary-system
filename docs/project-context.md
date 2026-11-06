@@ -17,6 +17,17 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Collector: when the MAS incentive applies (2026-11-06)
+
+- **Asked (owner):** a Collector gets the MAS incentive only when the account they hold has No Collector, like a normal MAS, or when the Entry Clerk ticks Collected by MAS on Collections. Check that the Collector incentive is automatic in Collector mode. **Whose members?** stays open to any member of their branches.
+- **Checked, automatic:** Collector mode on Submit Collections always prices at the Collector tier. A Collector's batch opens on the form as Collector. A Collector's handover picked on the form starts as Collector (the roles are lowercased there, and the Clearing list carries them).
+- **Done:**
+  - Submit Collections: with the Collector role, an account with a Collector assigned cannot go as MAS: it shows blocked with the reason, and the server refuses it (`collectorOnlyAccount`). Also left in a batch at midnight: it stays in the batch with the reason.
+  - The clerk may tick **MAS** on a Collector's batch of their **own accounts**, which was locked before. The save prices it at the MAS tier, ORC off. On a batch of another MAS's members it stays locked, since those are not the Collector's accounts.
+  - A MAS who is not a Collector is not limited: their member stays theirs to collect, whoever is assigned.
+- **Note:** a Collector batch marked remitted recorded its Clearing at the Collector tier, so if the clerk then ticks MAS the cash expected is lower: the control total and its variance show it.
+- **To do:** nothing beyond the production steps above. No migration.
+
 ### Collector: a member's Collector is a real assignment; the Collector workspace shows only those (2026-11-06)
 
 - **Asked (owner):** make a member's Collector a real assignment; the Collector workspace sees only the members assigned to them.
