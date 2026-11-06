@@ -2810,6 +2810,74 @@ test('No incentive on one collection of a batch: only that one is remitted whole
   assert.deepEqual([kept.status, kept.share, kept.forfeited], ['Returned', 350, 350 - share], 'no incentive is given back');
 });
 
+test('a Returned Collections batch on the full form: a collection goes to another member of the MAS, new ones join the batch, and Branch and MAS stay (November 6, 2026)', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1);
+  h.rows.Employees = [[], ['DPE-0002', 'MAS-2', 'BR-1', 'MAS', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, true, 'active']];
+  await seedAccount({ doi: month + '-01' });
+  await seed('members', [{ member_id: 'MEM-2', member_number: 'PH-2', surname: 'Cruz', first_name: 'Ben' }, { member_id: 'MEM-3', member_number: 'PH-3', surname: 'Reyes', first_name: 'Cy' }]);
+  await seed('member_programs', [
+    { enrollment_id: 'ENR-2', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-1', doi: month + '-01', branch: 'BR-1', mas: 'MAS-2', status: 'Active', account_status: 'Active' },
+    { enrollment_id: 'ENR-3', member_id: 'MEM-3', member_number: 'PH-3', program_id: 'DP-1', doi: month + '-01', branch: 'BR-1', mas: 'MAS-9', status: 'Active', account_status: 'Active' },
+  ]);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS-2' }]);
+  await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 },
+    { incentive_id: 'I2', program_id: 'DP-1', role: 'Collector', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 20 }]);
+  const collections = h.load('app/api/collections/route.ts');
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 C', orDate: today };
+  const saved = await collections.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] }));
+  assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
+  const [{ collection_id: id, collection_batch_id: batchId }] = await query('select collection_id, collection_batch_id from collections');
+  await query("update collections set remittance_status = 'Returned', linked_remittance_id = null");
+
+  // The form loads the batch, and an account lookup leaves the batch's own entries out.
+  const route = h.load('app/api/my-entries/batch/route.ts');
+  const loaded = await (await route.GET(new Request(`http://localhost/api/my-entries/batch?ids=${id}`))).json();
+  assert.deepEqual([loaded.batch.entries[0].memberId, loaded.batch.entries[0].programId, loaded.batch.memberMas, loaded.batch.dto], ['MEM-1', 'DP-1', 'MAS-2', false]);
+  const lookup = async (except) => (await (await collections.GET(new Request(`http://localhost/api/collections?memberId=MEM-1&programId=DP-1&branch=BR-1&mas=MAS-2${except}`))).json()).account.nextNop;
+  assert.deepEqual([await lookup(''), await lookup(`&except=${id}`)], [3, 2]);
+
+  const batch = { ids: [id], dateRemitted: today, paymentMethod: 'GCash', collectedBy: 'MAS' };
+  const kept = { id, orNumber: '1001 C', orDate: today, amount: 350, months: 1 };
+  const addition = { accountId: 'ENR-1', orNumber: '1002 C', orDate: today, amount: 350, monthFrom: next, monthTo: next, nopFrom: 2, nopTo: 2 };
+  const post = (body) => route.POST(request({ ...batch, ...body }));
+  const countRows = async () => (await query('select count(*)::int as n from collections'))[0].n;
+
+  // Branch and MAS stay: another MAS's member is refused, moved or added; a repeated OR number too; nothing is saved.
+  assert.match((await (await post({ entries: [{ ...kept, accountId: 'ENR-3' }] })).json()).message, /active account of this batch's branch and MAS/);
+  assert.match((await (await post({ entries: [kept], added: [{ ...addition, accountId: 'ENR-3' }] })).json()).message, /active account of this batch's branch and MAS/);
+  assert.match((await (await post({ entries: [kept], added: [{ ...addition, orNumber: '1001 C' }] })).json()).message, /entered twice in this batch/);
+  assert.equal(await countRows(), 1);
+
+  // To another member of the MAS, keeping its ID; a new collection joins the batch on the first member's account.
+  const done = await post({ entries: [{ ...kept, accountId: 'ENR-2' }], added: [addition] });
+  const result = await done.clone().json();
+  assert.equal(done.status, 200, JSON.stringify(result));
+  assert.equal(result.addedIds.length, 1);
+  assert.match(result.message, /1 entry changed, 1 added/);
+  const rows = await query('select collection_id as id, collection_batch_id as batch, member_id, member_number, enrollment_id, nop_from, remittance_amount::float8 as share, remittance_status, encoded_by_employee_id from collections order by or_number');
+  assert.deepEqual(rows, [
+    { id, batch: batchId, member_id: 'MEM-2', member_number: 'PH-2', enrollment_id: 'ENR-2', nop_from: 2, share: 200, remittance_status: 'Returned', encoded_by_employee_id: 'DPE-0001' },
+    { id: result.addedIds[0], batch: batchId, member_id: 'MEM-1', member_number: 'PH-1', enrollment_id: 'ENR-1', nop_from: 2, share: 200, remittance_status: 'Returned', encoded_by_employee_id: 'DPE-0001' },
+  ]);
+
+  // An administrator's addition stays under the clerk who encoded the batch.
+  const admin = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const ids = [id, result.addedIds[0]];
+  const byAdmin = await admin.load('app/api/my-entries/batch/route.ts').POST(request({ ...batch, ids, entries: [{ id, orNumber: '1001 C', orDate: today, amount: 350 }, { id: ids[1], orNumber: '1002 C', orDate: today, amount: 350 }], added: [{ ...addition, accountId: 'ENR-2', orNumber: '1003 C', monthFrom: rules.monthName(rules.monthIndex(next) + 1), monthTo: rules.monthName(rules.monthIndex(next) + 1), nopFrom: 3, nopTo: 3 }] }));
+  assert.equal(byAdmin.status, 200, JSON.stringify(await byAdmin.clone().json()));
+  assert.deepEqual((await query("select encoded_by_employee_id as by from collections where or_number = '1003 C'"))[0], { by: 'DPE-0001' });
+
+  // Every saved entry of the batch can be removed as long as a new one replaces it.
+  const third = (await query("select collection_id as id from collections where or_number = '1003 C'"))[0].id;
+  assert.match((await (await post({ ids: [...ids, third], entries: [...ids, third].map((item) => ({ id: item, remove: true })) })).json()).message, /Keep at least one entry/);
+});
+
 test('Different incentives: the clerk ticks them on a collection of a MAS batch, saved, repriced and undone at that rate (November 6, 2026)', async () => {
   const h = harness();
   const rules = h.load('lib/account-rules.ts');
@@ -3622,10 +3690,11 @@ test('a returned collection can move to another account of the member; months, a
   assert.deepEqual(choices.map((item) => [item.id, item.monthly, item.nextNop]), [['ENR-1', 350, 2], ['ENR-2', 500, 2]], 'its own account, then the member\'s other one');
   const edit = (changes) => route.POST(request({ ids: [id], dateRemitted: today, paymentMethod: 'Cash', collectedBy: 'MAS', entries: [{ id, ...changes }] }));
 
-  assert.match((await (await edit({ accountId: 'ENR-9', months: 2, amount: 700 })).json()).message, /same member/);
+  // Another member of the MAS is allowed since November 6, 2026 (the form); this account's program simply has no tier.
+  assert.match((await (await edit({ accountId: 'ENR-9', months: 2, amount: 700 })).json()).message, /Configure exactly one MAS incentive tier/);
   await seed('programs', [{ program_id: 'DP-3', program_name: 'Elsewhere', base_pay: 200 }]);
   await seed('member_programs', [{ enrollment_id: 'ENR-3', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-3', doi: month + '-01', branch: 'BR-1', mas: 'Another MAS', status: 'Active' }]);
-  assert.match((await (await edit({ accountId: 'ENR-3', months: 2, amount: 400 })).json()).message, /same member, branch and MAS/, 'another MAS\'s account');
+  assert.match((await (await edit({ accountId: 'ENR-3', months: 2, amount: 400 })).json()).message, /this batch's branch and MAS/, 'another MAS\'s account');
   assert.match((await (await edit({ accountId: 'ENR-2', months: 2, amount: 700 })).json()).message, /1000/, 'the amount must fit the new program');
   const moved = await edit({ accountId: 'ENR-2', months: 2, amount: 1000 });
   assert.equal(moved.status, 200, JSON.stringify(await moved.clone().json()));

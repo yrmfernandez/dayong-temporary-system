@@ -37,7 +37,9 @@ export async function GET(request: Request) {
     const matches = data.accounts.filter((a) => a.programId === searchParams.get("programId") && sameName(a.branch, searchParams.get("branch")) && (dto || sameName(a.mas, searchParams.get("mas"))));
     if (matches.length !== 1) return Response.json({ success: false, message: "A unique active program enrollment was not found. A program deactivated for this member takes no collections." }, { status: 404 });
     const account = matches[0];
-    const history = data.payments.filter((p) => p.enrollmentId === account.id).sort((a, b) => b.nopTo - a.nopTo);
+    // A Returned batch open on the form: its own entries are left out, so the account starts where they start.
+    const except = new Set((searchParams.get("except") ?? "").split(",").filter(Boolean));
+    const history = data.payments.filter((p) => p.enrollmentId === account.id && !except.has(p.id)).sort((a, b) => b.nopTo - a.nopTo);
     return Response.json({ success: true, account: { ...account, ...accountState(account, history) }, history: history.map((p) => ({ ...p, memberId: account.memberId, programId: account.programId, monthOf: p.monthTo, nop: p.nopTo, amountCollected: p.amount })) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load account." }, { status: 500 }); }
 }

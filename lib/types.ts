@@ -119,8 +119,6 @@ export type NewSale = {
   /** No incentive for the MAS on this sale, and why (owner, October 20, 2026): it is remitted whole. */
   noIncentive?: boolean;
   noIncentiveReason?: string;
-  /** The Entry Clerk ticked Different incentives: priced at the program's Different MAS rate. */
-  differentIncentive?: boolean;
 
   dateRemitted: string;
 };

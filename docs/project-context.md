@@ -17,6 +17,16 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Rejected batches are edited on the full Collections and New Sales forms (2026-11-06)
+
+- **Asked (owner):** when a remittance is rejected, the clerk edits the batch on the Collections or New Sales form itself, so everything can be edited. Owner chose: on Collections also the member and adding entries; Branch and MAS stay fixed.
+- **Done:** My Entries → **Edit batch** opens `/collections?returned=…` or `/new-sales?returned=…`; the compact editor `components/batch-editor.tsx` is gone. `saveReturnedBatch` still saves, so IDs, receipt photos, encoder and Record Corrections are kept. New: a collection can go to any active account of the batch's branch and MAS (member_id and member_number follow), and `added` collections join the batch as Returned with every check of encoding. `GET /api/collections` takes `except`, so an account starts where the batch's own entries start. Returned batches skip form drafts (`returnedBatchUrl`). No migration.
+- **Left out:** adding sales to a returned New Sales batch (not asked; it would have to create members and accounts).
+- **Also fixed:** the `differentIncentive` field the last change put on the `NewSale` type, where it did nothing.
+- **Tested:** type check and build pass; 330 of 331 tests pass, including a new one through the real routes: moving a collection to another member, adding one, refusing another MAS's account and a repeated OR number, and an administrator's addition staying under the clerk. The test `a returned collection can move` was changed to the owner's new rule. The one failure is the same `a MAS submits New Sales` test noted below. Both forms' new screens have no automated test and have not been seen in a browser.
+- **In progress:** nothing.
+- **To do (owner):** try it once in a browser on a real rejected batch of each kind, then push (no migration).
+
 ### Different incentives on a program, ticked per collection (2026-11-06)
 
 - **Asked (owner):** a program can have different incentives apart from the overall and branch rates, and on a collection of that program the Entry Clerk ticks Different incentives. Batches collected by MAS only; late cash follows the same 3:00 PM rule.

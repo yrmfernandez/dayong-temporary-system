@@ -30,8 +30,8 @@ export const POST = withEncoder(async (request: Request) => {
   try {
     const body = await request.json() as BatchEditInput;
     if (!Array.isArray(body.ids) || !Array.isArray(body.entries)) throw new Error("Choose the returned batch to edit.");
-    const message = await saveReturnedBatch(body, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
-    return Response.json({ success: true, message });
+    const saved = await saveReturnedBatch(body, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+    return Response.json({ success: true, ...saved });
   } catch (error) {
     if (isUniqueViolation(error, "collections_or_key_unique")) return Response.json({ success: false, message: "One of these OR Numbers was just recorded by another save. Check the receipts and try again." }, { status: 409 });
     if (isUniqueViolation(error, "sales_application_key_unique")) return Response.json({ success: false, message: "One of these Application Numbers was just recorded by another save. Check and try again." }, { status: 409 });

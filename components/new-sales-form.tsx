@@ -40,7 +40,7 @@ import { BACKDATE_REASON_MIN, controlTotalDifference, controlTotalProblem, varia
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { formatDeadline, manilaNow } from "@/lib/remittance-deadline";
 import { scrollPageToTop } from "@/lib/scroll-top";
-import { useFormDraft } from "@/lib/use-form-draft";
+import { returnedBatchUrl, useFormDraft } from "@/lib/use-form-draft";
 import { useSeenRejections } from "@/lib/use-seen-rejections";
 import { RemittanceSummary } from "@/components/remittance-summary";
 import { calculateSaleIncentive, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive } from "@/lib/remittance";
@@ -269,6 +269,8 @@ type SubmissionSummary = {
   fidelity?: number;
 };
 type MasProfile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
+/** A Returned batch open on the form (owner, November 6, 2026): corrected in place, keeping IDs and receipt photos. */
+type ReturnedEdit = { ids: string[]; branch: string; person: string; personEmployeeId: string; returnReason: string; encodedOn: string; paymentReference: string; masChoices: Array<{ id: string; name: string; cleared: boolean }> };
 
 export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const masMode = mode === "mas";
@@ -278,12 +280,13 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // Late dates skip Sundays and the branch's declared non-working days, as the server does (lib/working-days.ts).
   const offDays = useDeclaredNonWorkingDays();
   // Judged from the Date Remitted when it was changed with a reason (that reason covers the late encoding; lib/entry-controls.ts).
-  const isLateDate = (date: string) => needsBackdateReason(date, lateCheckDay(dateRemitted, dateRemittedChanged || submissionId ? dateRemittedReason : ""), { days: offDays, branch });
+  const isLateDate = (date: string) => needsBackdateReason(date, returnedEdit?.encodedOn || lateCheckDay(dateRemitted, dateRemittedChanged || submissionId ? dateRemittedReason : ""), { days: offDays, branch });
   const [mas, setMas] = useState("");
   const [masStaff, setMasStaff] = useState<Array<{ employeeId: string; fullName: string; branchIds:string[] }>>([]);
   const [dateRemitted, setDateRemitted] = useState("");
   // The MAS submission the clerk is reviewing, or the MAS is editing: saving marks it Saved; submitting updates it.
   const [submissionId, setSubmissionId] = useState("");
+  const [returnedEdit, setReturnedEdit] = useState<ReturnedEdit | null>(null);
   // The Clearing entry the batch was filled from (components/clearing-picker.tsx).
   const [clearingId, setClearingId] = useState("");
   // The Date Remitted starts on the clearing day; moved off it (encoding delayed by meetings and the like), it needs a
@@ -369,7 +372,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       setFidelity(draft.fidelity ?? "");
       if (draft.paymentMethod) setPaymentMethod(draft.paymentMethod);
     };
-  useFormDraft(masMode ? "mas-sales" : "new-sales", draftSnapshot, restoreDraft);
+  useFormDraft(masMode ? "mas-sales" : "new-sales", draftSnapshot, restoreDraft, returnedBatchUrl);
   // Batches set aside to finish later (owner, October 14, 2026; lib/use-parked-drafts.ts).
   const parked = useParkedDrafts<SalesDraft>(masMode ? "mas-sales" : "new-sales");
 
@@ -1269,6 +1272,78 @@ Is this cash part of that handover?`) ? "same"
   };
 
   // Any unexpected error must show on screen; otherwise the button appears to do nothing.
+  /** Saves a Returned batch in place (lib/batch-edit.ts) and goes back to My Entries, where it is resubmitted. */
+  const saveReturnedEdit = async (edit: ReturnedEdit) => {
+    const stays = new Set(sales.map((sale) => sale.id));
+    const details = (sale: NewSale) => ({
+      surname: sale.member.name.surname, firstName: sale.member.name.firstName, middleName: sale.member.name.middleName, nameExtension: sale.member.name.nameExtension, birthdate: sale.member.birthdate, birthplace: sale.member.birthplace,
+      gender: sale.member.gender, civilStatus: sale.member.civilStatus, contactNumber: sale.member.contactNumber, address: sale.member.address.houseBlockLot,
+      claimantName: sale.member.claimant.completeName, claimantContact: sale.member.claimant.contactNumber, claimantSameAddress: sale.member.claimant.sameAsMemberAddress, claimantAddress: sale.member.claimant.address.houseBlockLot,
+      programId: programOf(sale)?.id ?? sale.program.programId, beneficiaries: sale.beneficiaries.map((item) => ({ surname: item.surname, firstName: item.firstName, middleName: item.middleName, birthdate: item.birthdate, relationship: item.relationship })),
+    });
+    setSaving(true);
+    try {
+      const masEmployeeId = edit.masChoices.find((item) => item.name === mas)?.id ?? edit.personEmployeeId;
+      const response = await fetch("/api/my-entries/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        ids: edit.ids, masEmployeeId, dateRemitted, dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "", paymentMethod, paymentReference: edit.paymentReference, collectedBy: "MAS",
+        penalty: penaltyAmount, penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "", fidelity: fidelityAmount,
+        entries: [...sales.map((sale) => ({ id: sale.id, applicationNumber: sale.applicationNumber, orDate: sale.orDate, amount: amountPaidOf(sale), backdateReason: sale.backdateReason ?? "", doiTime: sale.doiTime ?? "",
+          noIncentive: noIncentiveOn(sale), noIncentiveReason: noIncentiveOn(sale) ? (sale.noIncentiveReason ?? "").trim() : "", sale: details(sale) })),
+          ...edit.ids.filter((id) => !stays.has(id)).map((id) => ({ id, remove: true }))],
+      }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the batch.");
+      // A new photo also sends the batch back for approval (app/api/receipt-photos/route.ts).
+      const uploaded = receiptPhotos.length ? await uploadBatchPhotos(sales.map((sale) => sale.id), receiptPhotos) : null;
+      window.sessionStorage.setItem("dayong:my-entries-message", uploaded?.problem ? `${result.message} ${uploaded.problem} Add the receipt photo in My Entries.` : uploaded ? `${result.message} Receipt photo added, so the batch went back for approval.` : result.message);
+      window.location.assign("/my-entries");
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : "Unable to save the batch.");
+      setSaving(false);
+    }
+  };
+
+  /** Opens a Returned batch on the form, from Edit batch in My Entries: every sale as saved. */
+  const openReturned = async (ids: string[]) => {
+    setTab("encode");
+    setSaveMessage("Loading the returned batch...");
+    try {
+      const response = await fetch(`/api/my-entries/batch?ids=${encodeURIComponent(ids.join(","))}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to open the batch.");
+      const batch = result.batch;
+      if (batch.kind !== "New Sale") throw new Error("This batch is Collections. Open it from My Entries.");
+      type Saved = { id: string; memberNumber: string; program: string; orDate: string; amount: number; backdateReason: string; noIncentiveReason: string; applicationNumber: string; doiTime: string;
+        sale: { surname: string; firstName: string; middleName: string; nameExtension: string; birthdate: string; birthplace: string; gender: string; civilStatus: string; contactNumber: string; address: string; claimantName: string; claimantContact: string; claimantSameAddress: boolean; claimantAddress: string; programId: string;
+          beneficiaries: Array<{ surname: string; firstName: string; middleName: string; birthdate: string; relationship: string }> } };
+      const cards: NewSale[] = (batch.entries as Saved[]).map((entry) => {
+        const blankSale = emptyNewSale(batch.branch, batch.person), details = entry.sale, program = programs.find((item) => item.id === details.programId);
+        return { ...blankSale, id: entry.id, applicationNumber: entry.applicationNumber, orDate: entry.orDate, doiTime: entry.doiTime, backdateReason: entry.backdateReason, noIncentive: Boolean(entry.noIncentiveReason), noIncentiveReason: entry.noIncentiveReason, dateRemitted: batch.dateRemitted,
+          member: { ...blankSale.member, phMemberNumber: entry.memberNumber, name: { surname: details.surname, firstName: details.firstName, middleName: details.middleName, nameExtension: details.nameExtension }, birthdate: details.birthdate, birthplace: details.birthplace, gender: details.gender, age: calculateAge(details.birthdate), civilStatus: details.civilStatus,
+            contactNumber: details.contactNumber, address: { houseBlockLot: details.address }, claimant: { ...blankSale.member.claimant, completeName: details.claimantName, contactNumber: details.claimantContact, sameAsMemberAddress: details.claimantSameAddress, address: { houseBlockLot: details.claimantAddress } } },
+          beneficiaries: details.beneficiaries.map((item) => ({ ...emptyBeneficiary(), ...item, age: calculateAge(item.birthdate) })),
+          program: { ...blankSale.program, programId: details.programId, programCode: program?.code ?? entry.program, dateEnrolled: entry.orDate, withRegistrationFee: Boolean(program?.registrationFeeRequired), registrationAmount: program?.registrationAmount ?? 0, amountPaid: entry.amount } };
+      });
+      setBranch(batch.branch); setMas(batch.person); setDateRemitted(batch.dateRemitted); setClearedDate(batch.dateRemitted); setClearingId(""); setDateRemittedReason("");
+      setPaymentMethod(batch.paymentMethod); setPenalty(batch.penalty > 0 ? String(batch.penalty) : ""); setPenaltyNote(batch.penaltyNote); setFidelity(batch.fidelity > 0 ? String(batch.fidelity) : "");
+      setSales(cards);
+      setExpandedSales(Object.fromEntries(cards.map((sale, index) => [sale.id, index === 0])));
+      setReturnedEdit({ ids, branch: batch.branch, person: batch.person, personEmployeeId: batch.personEmployeeId, returnReason: batch.returnReason, encodedOn: batch.encodedOn, paymentReference: batch.paymentReference, masChoices: batch.masChoices ?? [] });
+      setSaveMessage("");
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : "Unable to open the batch.");
+    }
+  };
+
+  const returnedOpened = useRef(false);
+  useEffect(() => {
+    const ids = masMode ? "" : new URLSearchParams(window.location.search).get("returned");
+    if (!ids || returnedOpened.current || !programs.length || !paymentMethods.length) return;
+    returnedOpened.current = true;
+    void openReturned(ids.split(",").filter(Boolean));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [programs, paymentMethods]);
+
   const saveSales = async () => {
     try {
       await submitSales();
@@ -1313,7 +1388,8 @@ Is this cash part of that handover?`) ? "same"
       return;
     }
 
-    const controlProblem = controlTotalProblem(controlTotal, saleTotalDue);
+    // The turnover total belongs to the first save: a Returned batch is not compared with it again.
+    const controlProblem = returnedEdit ? "" : controlTotalProblem(controlTotal, saleTotalDue);
     if (controlProblem) {
       setSaveMessage(controlProblem);
       return;
@@ -1343,6 +1419,8 @@ Is this cash part of that handover?`) ? "same"
       setSaveMessage("Remittance method is required.");
       return;
     }
+
+    if (returnedEdit) { await saveReturnedEdit(returnedEdit); return; }
 
     // A batch paid in cash needs no photo (owner, October 16, 2026): it was counted at Clearing.
     if (!receiptPhotos.length && !allCash) {
@@ -1491,12 +1569,23 @@ Is this cash part of that handover?`) ? "same"
         </p>
       </div>
 
-      {!masMode && (
+      {!masMode && !returnedEdit && (
         <div role="tablist" aria-label="New Sales" className="inline-flex rounded-lg border bg-muted/40 p-1">
           <button type="button" role="tab" aria-selected={tab === "encode"} className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "encode" ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => setTab("encode")}>Encode</button>
           <button type="button" role="tab" aria-selected={tab === "submitted"} className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "submitted" ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => setTab("submitted")}>
             Submitted by MAS{submissionList.length ? <Badge className="ml-2">{submissionList.length}</Badge> : null}
           </button>
+        </div>
+      )}
+
+      {returnedEdit && (
+        <div className="flex flex-col gap-2 rounded-xl border border-red-300 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950/30 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium">Editing the returned batch of {returnedEdit.person} ({returnedEdit.branch})</p>
+            {returnedEdit.returnReason && <p className="text-red-700 dark:text-red-300">Returned: {returnedEdit.returnReason}</p>}
+            <p className="text-xs text-muted-foreground">Change anything on these sales here, or remove one. Saved sales keep their receipt photos. New sales are encoded as their own batch.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => window.location.assign("/my-entries")}>Stop editing</Button>
         </div>
       )}
 
@@ -1561,11 +1650,11 @@ Is this cash part of that handover?`) ? "same"
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <ParkedDrafts drafts={parked.drafts} canPark={batchHasWork} onPark={parkBatch} onResume={resumeBatch} onDelete={parked.remove} />
-          <ClearingPicker kind="New Sales" value={clearingId} disabled={Boolean(submissionId)} onPick={(clearing) => {
+          {!returnedEdit && <ParkedDrafts drafts={parked.drafts} canPark={batchHasWork} onPark={parkBatch} onResume={resumeBatch} onDelete={parked.remove} />}
+          {!returnedEdit && <ClearingPicker kind="New Sales" value={clearingId} disabled={Boolean(submissionId)} onPick={(clearing) => {
             setClearingId(clearing.id); setBranch(clearing.branch); setMas(clearing.employeeName); setDateRemitted(clearing.clearedDate); setClearedDate(clearing.clearedDate); setDateRemittedReason("");
             setSales((current) => current.map((sale) => ({ ...sale, program: { ...sale.program, branch: clearing.branch, mas: clearing.employeeName } })));
-          }} />
+          }} />}
           <div className="grid gap-4 md:grid-cols-3">
             {/* Branch */}
             <div className="space-y-2">
@@ -1582,7 +1671,7 @@ Is this cash part of that handover?`) ? "same"
                 Marketing Account Staff *
               </Label>
 
-              <SearchSelect aria-label="Marketing Account Staff" value={mas} placeholder="From Clearing" disabled options={masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(selected) => { setMas(selected); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,mas:selected}}))); }}/>
+              <SearchSelect aria-label="Marketing Account Staff" value={mas} placeholder="From Clearing" disabled={!returnedEdit} options={returnedEdit ? returnedEdit.masChoices.map((item) => ({ value: item.name, label: item.name, description: item.cleared ? "Cleared on the Date Remitted" : "Not cleared on the Date Remitted" })) : masStaff.filter((staff) => { const branchId=branches.find((item) => item.name === branch)?.id; return Boolean(branchId && staff.branchIds.includes(branchId)); }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId }))} onValueChange={(selected) => { setMas(selected); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,mas:selected}}))); }}/>
             </div>
 
             {/* Date Remitted */}
@@ -2995,7 +3084,7 @@ Is this cash part of that handover?`) ? "same"
       </div>
 
       {/* ADD SALE */}
-      <Button
+      {!returnedEdit && <Button
         type="button"
         variant="outline"
         className="w-full border-dashed"
@@ -3003,7 +3092,7 @@ Is this cash part of that handover?`) ? "same"
       >
         <Plus className="mr-2 size-4" />
         Add New Sale
-      </Button>
+      </Button>}
 
       {/* PENALTY AND FIDELITY (optional) and the totals; the control total and Save are in the bar below. */}
       {!masMode && <Card>
@@ -3050,7 +3139,8 @@ Is this cash part of that handover?`) ? "same"
       {showPreview && <div ref={previewRef} className={`rounded-xl border border-primary/30 bg-primary/5 p-4 ${masMode ? "scroll-mt-14" : ""}`}><p className="font-semibold">{masMode ? "Review before submitting" : "Review before saving"}</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p>{!masMode && (() => { const turnover = controlTotalDifference(controlTotal, saleTotalDue); return turnover ? <p className="font-semibold text-amber-700">Turnover sheet {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
 
       {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
-      {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" optional={allCash} />}
+      {returnedEdit && <p className="text-xs text-muted-foreground">The batch keeps its receipt photos. Add one only for a receipt that changed; a new photo sends the batch back for approval.</p>}
+      {!masMode && <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="sale" optional={allCash || Boolean(returnedEdit)} />}
 
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}
@@ -3070,11 +3160,12 @@ Is this cash part of that handover?`) ? "same"
             <p className={`truncate text-muted-foreground ${masMode ? "hidden md:block" : ""}`}>{branch || "Branch not selected"} · {mas || "MAS not selected"}</p>
             {saveMessage && <p role="status" className="mt-1 font-medium">{saveMessage}</p>}
           </div>
-          {!masMode && (
+          {!masMode && !returnedEdit && (
             <ControlTotalField id="sales-control-total" title="The net total the MAS wrote on the turnover sheet: amount paid less MAS incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={saleTotalDue} />
           )}
           <div className="flex gap-2">
             <Button type="button" variant="outline" className="max-md:h-11" disabled={saving} onClick={async () => {
+              if (returnedEdit) { window.location.assign("/my-entries"); return; }
               // Reviewing, a MAS goes back to the cards; Cancel would clear them.
               if (masMode && showPreview) { setShowPreview(false); return; }
               // A MAS fills the cards on a phone: one stray tap must not wipe them.

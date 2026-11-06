@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, monthCount, monthIndex, monthName, paymentsByEnrollment, validatePayment, validMonth, type AccountPayment } from "@/lib/account-rules";
-import { loadAccountData } from "@/lib/account-data";
+import { commitCollections, loadAccountData, type NewCollection } from "@/lib/account-data";
 import { planDeletion } from "@/lib/admin-delete";
 import { clearingProblem, waitingBatchProblem } from "@/lib/clearing";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
@@ -16,6 +16,7 @@ import { addBeneficiaries, memberColumns, type MemberDetails } from "@/lib/membe
 import { ageOn, ageRestrictionError, isoDate } from "@/lib/program-age";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { createReadableId } from "@/lib/readable-id";
 import { recordCorrection } from "@/lib/record-corrections";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import type { WorkCalendar } from "@/lib/working-days";
@@ -39,6 +40,11 @@ import { manilaNow } from "@/lib/remittance-deadline";
  * batch stays Returned until the clerk resubmits it. What else was set when encoding can be fixed too (owner, October 29,
  * 2026): ORC on a Collector batch, and per entry No incentive with its reason; Collections also Reactivation,
  * Transferred and Waiver (If Suspended). The remittance is worked out again with them, as when encoding.
+ *
+ * The clerk now does all this on the Collections and New Sales forms themselves (owner, November 6, 2026). On Collections
+ * a collection can also go to another member of the batch's branch and MAS, and new collections can be added to the
+ * batch; its Branch and MAS stay, since its cash and handover are recorded against them. An added collection joins the
+ * batch as Returned, under the batch's encoder, and goes back with it on resubmitting.
  */
 export type BatchKind = "New Sale" | "Collection";
 const text = (value: unknown) => String(value ?? "").trim();
@@ -55,6 +61,11 @@ export type EditableBatch = {
   person: string;
   /** The accountable person's Employee ID. */
   personEmployeeId: string;
+  /** The Manila day it was first encoded: late dates are judged from it, so fixing it later needs no new reason. */
+  encodedOn: string;
+  /** Collections: whose members they are, and whether it is a DTO batch. */
+  memberMas?: string;
+  dto?: boolean;
   /**
    * New Sales: the MAS the batch can go to (owner, October 21, 2026): active employees of the batch's branch, each with
    * whether they are cleared for New Sales on the batch's Date Remitted (only a cleared one can be saved).
@@ -74,6 +85,8 @@ export type EditableBatch = {
   fidelity: number;
   entries: Array<{
     id: string; memberNumber: string; memberName: string; program: string;
+    /** Collections: the member and program it is on, for the Collections form. */
+    memberId: string; programId: string;
     orNumber: string; orDate: string; amount: number; backdateReason: string;
     /** Why it earns no incentive, when marked No incentive; blank otherwise. */
     noIncentiveReason: string;
@@ -145,7 +158,7 @@ async function returnReason(remittanceId: string | null) {
 export async function getReturnedBatch(ids: string[], by: By): Promise<EditableBatch> {
   const batch = await returnedBatch(ids, by);
   const db = currentDb();
-  const blank = { monthFrom: "", monthTo: "", nopFrom: 0, nopTo: 0, basePay: 0, flexible: false, accountId: "", accounts: [] as CollectionAccountChoice[], applicationNumber: "", notes: "", doiTime: "", reactivation: false, transferred: false, waiver: false, differentIncentive: false, differentAvailable: false };
+  const blank = { memberId: "", programId: "", monthFrom: "", monthTo: "", nopFrom: 0, nopTo: 0, basePay: 0, flexible: false, accountId: "", accounts: [] as CollectionAccountChoice[], applicationNumber: "", notes: "", doiTime: "", reactivation: false, transferred: false, waiver: false, differentIncentive: false, differentAvailable: false };
   if (batch.kind === "New Sale") {
     const rows = batch.sales;
     const programRows = await db.select({ id: programs.program_id, name: programs.program_name, code: programs.program_code }).from(programs).where(inArray(programs.program_id, [...new Set(rows.map((row) => row.program_id))]));
@@ -166,7 +179,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
         .map((program) => ({ id: program.id, name: program.name, rate: Number(program.basePay) || 0, amount: fixedNewSaleAmount(program), flexible: Boolean(program.flexible), amountEditable: Boolean(program.newSaleAmountEditable) }))
         .sort((a, b) => a.name.localeCompare(b.name)),
       masChoices: await masChoices(text(first.branch), day(first.date_remitted), text(first.accountable_employee_id)),
-      kind: "New Sale", branch: text(first.branch), person: text(first.mas), personEmployeeId: text(first.accountable_employee_id), returnReason: await returnReason(first.linked_remittance_id),
+      encodedOn: manilaDate(first.encoded_at), kind: "New Sale", branch: text(first.branch), person: text(first.mas), personEmployeeId: text(first.accountable_employee_id), returnReason: await returnReason(first.linked_remittance_id),
       dateRemitted: day(first.date_remitted), dateRemittedReason: text(first.date_remitted_reason), paymentMethod: text(first.payment_method) || "Cash", paymentReference: "", collectedBy: "", orc: false,
       penalty: rows.reduce((sum, row) => sum + Number(row.penalty_amount ?? 0), 0), penaltyNote: rows.map((row) => text(row.penalty_note)).find(Boolean) ?? "",
       fidelity: rows.reduce((sum, row) => sum + Number(row.fidelity_amount ?? 0), 0),
@@ -201,6 +214,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
   };
   return {
     kind: "Collection", branch: text(first.branch), person: text(first.accountable_name) || text(first.mas), personEmployeeId: text(first.accountable_employee_id), returnReason: await returnReason(first.linked_remittance_id),
+    encodedOn: manilaDate(first.encoded_at), memberMas: text(first.mas), dto: text(first.accountable_role) === "DTO",
     dateRemitted: day(first.date_remitted), dateRemittedReason: text(first.date_remitted_reason), paymentMethod: text(first.remittance_method) || "Cash", paymentReference: text(first.payment_reference), collectedBy: text(first.collected_by_role) || "MAS",
     orc: text(first.collected_by_role) === "Collector" && rows.some(orcOf),
     penalty: rows.reduce((sum, row) => sum + Number(row.penalty_amount ?? 0), 0), penaltyNote: rows.map((row) => text(row.penalty_note)).find(Boolean) ?? "",
@@ -211,6 +225,7 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
         ...blank, id: row.collection_id, memberNumber: text(row.member_number), memberName: info ? `${text(info.firstName)} ${text(info.surname)}`.trim() : "",
         program: text(info?.program) || text(info?.programName), orNumber: text(row.or_number), orDate: day(row.or_date), amount: Number(row.amount_collected), backdateReason: text(row.backdate_reason),
         noIncentiveReason: text(row.no_incentive_reason), reactivation: row.reactivation === true, transferred: row.transferred === true, waiver: text(row.suspended) === "Waiver",
+        memberId: text(row.member_id), programId: text(row.program_id),
         differentIncentive: row.different_incentive, differentAvailable: choices.incentives.some((tier) => tier.programId === row.program_id && tier.different),
         monthFrom: text(row.month_from).slice(0, 7), monthTo: text(row.month_to).slice(0, 7), nopFrom: row.nop_from ?? 0, nopTo: row.nop_to ?? 0,
         basePay: Number(info?.basePay ?? 0), flexible: Boolean(info?.flexible), accountId: row.enrollment_id, accounts: accountsFor(row),
@@ -231,6 +246,11 @@ type EntryInput = {
 };
 /** ORC as saved: the remittance breakdown of a Collector batch's entry says so (it is set per batch). */
 const orcOf = (row: { remittance_breakdown: unknown }) => Array.isArray(row.remittance_breakdown) && (row.remittance_breakdown as Array<{ orc?: boolean }>).some((item) => item?.orc === true);
+/** A collection added to a Returned batch on the Collections form (owner, November 6, 2026). */
+export type AddedCollection = {
+  accountId: string; orNumber: string; orDate: string; amount: number; monthFrom: string; monthTo: string; nopFrom: number; nopTo: number;
+  backdateReason?: string; reactivation?: boolean; transferred?: boolean; waiver?: boolean; noIncentive?: boolean; noIncentiveReason?: string; differentIncentive?: boolean;
+};
 /** The No incentive reason an entry ends up with: the edited one, or as encoded. */
 function noIncentiveAfter(change: EntryInput, saved: unknown, label: string) {
   if (change.noIncentive === undefined) return text(saved);
@@ -245,10 +265,12 @@ export type BatchEditInput = {
   orc?: boolean;
   penalty?: number; penaltyNote?: string; fidelity?: number;
   entries: EntryInput[];
+  /** Collections: new entries for the batch. */
+  added?: AddedCollection[];
   note?: string;
 };
 
-/** Saves the edited Returned batch. Returns what changed, for the message. */
+/** Saves the edited Returned batch. Returns what changed, for the message, and the IDs of any collections added. */
 export async function saveReturnedBatch(input: BatchEditInput, by: By) {
   const batch = await returnedBatch(input.ids, by);
   const today = manilaNow().date;
@@ -265,7 +287,9 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
   const idOf = (row: (typeof rows)[number]) => ("sale_id" in row ? row.sale_id : row.collection_id);
   const kept = rows.filter((row) => !changes.get(idOf(row))?.remove);
   const removed = rows.filter((row) => changes.get(idOf(row))?.remove);
-  if (!kept.length) throw new Error("Keep at least one entry. To drop the whole batch, ask an administrator to delete it.");
+  const added = batch.kind === "Collection" ? input.added ?? [] : [];
+  if (!kept.length && !added.length) throw new Error("Keep at least one entry. To drop the whole batch, ask an administrator to delete it.");
+  const addedIds: string[] = [];
   const reason = `Fixed after the approver returned the batch${text(input.note) ? `: ${text(input.note).slice(0, 250)}` : ""}`;
   // Late dates are judged against the day the batch was first encoded, so fixing it later needs no new reason.
   const encodedOn = manilaDate(rows[0].encoded_at) || today;
@@ -310,12 +334,13 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
       corrections.push({ module: `Delete ${kind}`, id, before: { title: plan.title, deleted: plan.effects }, after: { deleted: true } });
     }
     if (batch.kind === "New Sale") await saveSales(tx, kept as typeof batch.sales, changes, { calendar, dateRemitted, dateRemittedReason, method: method.name, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections, mas: newMas });
-    else await saveCollections(tx, kept as typeof batch.collections, changes, { calendar, dateRemitted, dateRemittedReason, method: method.name, reference: text(input.paymentReference), collectedBy: text(input.collectedBy), orc: input.orc, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
+    else await saveCollections(tx, kept as typeof batch.collections, changes, { calendar, dateRemitted, dateRemittedReason, method: method.name, reference: text(input.paymentReference), collectedBy: text(input.collectedBy), added, addedIds, first: batch.collections[0], orc: input.orc, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
   });
   // The saved batch stands even if the correction log cannot be written; the Audit Log has every change as well.
   for (const change of corrections) await recordCorrection(change.module, change.id, reason, change.before, change.after).catch(() => {});
-  const edited = corrections.filter((change) => !change.module.startsWith("Delete")).length;
-  return `Saved: ${edited} entr${edited === 1 ? "y" : "ies"} changed${removed.length ? `, ${removed.length} removed` : ""}${newMas ? `; the batch now goes to ${newMas.name}` : ""}. The batch stays Returned; press Resubmit batch when it is right.`;
+  const edited = corrections.filter((change) => !change.module.startsWith("Delete")).length - addedIds.length;
+  const message = `Saved: ${edited} entr${edited === 1 ? "y" : "ies"} changed${addedIds.length ? `, ${addedIds.length} added` : ""}${removed.length ? `, ${removed.length} removed` : ""}${newMas ? `; the batch now goes to ${newMas.name}` : ""}. The batch stays Returned; press Resubmit batch when it is right.`;
+  return { message, addedIds };
 }
 
 /** An active employee assigned to the branch, for a New Sales batch moved to another MAS. */
@@ -535,18 +560,21 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
   for (const write of writes) await write();
 }
 
-async function saveCollections(tx: Transaction, rows: Array<typeof collections.$inferSelect>, changes: Map<string, EntryInput>, common: Common & { reference: string; collectedBy: string; orc?: boolean }) {
+async function saveCollections(tx: Transaction, rows: Array<typeof collections.$inferSelect>, changes: Map<string, EntryInput>, common: Common & { reference: string; collectedBy: string; orc?: boolean; added: AddedCollection[]; addedIds: string[]; first: typeof collections.$inferSelect }) {
   if (!(COLLECTION_CHANNELS as readonly string[]).includes(common.collectedBy)) throw new Error("Select whether the batch was collected by MAS, Collector, or DTO (Direct to Office).");
   // ORC is set per batch (as when encoding): only a Collector batch can be ORC; left out, it stays as encoded.
+  const { first, added } = common;
   const orc = common.collectedBy === "Collector" && (common.orc ?? rows.some(orcOf));
   if (common.orc && common.collectedBy !== "Collector") throw new Error("ORC (outright commission) applies only when the batch is collected by a Collector.");
-  const dto = rows.some((row) => text(row.accountable_role) === "DTO");
+  const dto = text(first.accountable_role) === "DTO";
+  // Its Branch and MAS stay: another account must be of the same branch and, unless DTO (any account of the branch), the same MAS.
+  const inThisBatch = (account: { branch: string; mas: string }) => entryKey(account.branch) === entryKey(first.branch) && (dto || entryKey(account.mas) === entryKey(first.mas));
   if (common.reference.length > 100) throw new Error("The payment reference must be 100 characters or fewer.");
   const ids = rows.map((row) => row.collection_id);
   const targetOf = (row: (typeof rows)[number]) => text(changes.get(row.collection_id)?.accountId) || row.enrollment_id;
   const moving = new Set(rows.filter((row) => targetOf(row) !== row.enrollment_id).map((row) => row.collection_id));
-  const data = await loadAccountData({ enrollmentIds: [...new Set(rows.flatMap((row) => [row.enrollment_id, targetOf(row)]))], includeDeactivated: true }, tx, { lock: true });
-  const orNumbers = rows.map((row) => normalizeOrNumber(text(changes.get(row.collection_id)?.orNumber ?? row.or_number)));
+  const data = await loadAccountData({ enrollmentIds: [...new Set([...rows.flatMap((row) => [row.enrollment_id, targetOf(row)]), ...added.map((entry) => text(entry.accountId))])], includeDeactivated: true }, tx, { lock: true });
+  const orNumbers = [...rows.map((row) => normalizeOrNumber(text(changes.get(row.collection_id)?.orNumber ?? row.or_number))), ...added.map((entry) => normalizeOrNumber(text(entry.orNumber)))];
   const recorded = await recordedOrNumbers(orNumbers, tx);
   // The other payments of these accounts; the batch's own are checked again one by one, in NOP order.
   let payments: AccountPayment[] = data.payments.filter((payment) => !ids.includes(payment.id));
@@ -560,7 +588,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
     if (!encoded || !account) throw new Error(`${row.member_number}: the account was not found.`);
     const label = `Collection for ${row.member_number}`;
     const moved = moving.has(row.collection_id);
-    if (moved && (account.memberId !== encoded.memberId || account.deactivatedOn || !sameAccountOwner(account, encoded))) throw new Error(`${label}: it can move only to an active account of the same member, branch and MAS.`);
+    if (moved && (account.deactivatedOn || !inThisBatch(account))) throw new Error(`${label}: it can move only to an active account of this batch's branch${dto ? "" : " and MAS"}.`);
     const orNumber = normalizeOrNumber(text(change.orNumber ?? row.or_number));
     const orDate = day(change.orDate ?? row.or_date);
     const amount = round(Number(change.amount ?? row.amount_collected));
@@ -614,7 +642,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
     payments = [...payments, { id: row.collection_id, enrollmentId: account.id, orDate, orNumber, monthFrom, monthTo, nopFrom, nopTo, amount, dateRemitted: common.dateRemitted, mas: text(row.mas) }];
     const firstRow = row === rows[0];
     const after = {
-      enrollment_id: account.id, program_id: account.programId, month_from: monthFrom, nop_from: nopFrom,
+      enrollment_id: account.id, member_id: account.memberId, member_number: account.memberNumber, mas: moved && dto ? account.mas : row.mas, program_id: account.programId, month_from: monthFrom, nop_from: nopFrom,
       or_number: orNumber, or_date: orDate, amount_collected: amount, month_to: monthTo, nop_to: nopTo, backdate_reason: backdateReason || null,
       date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), remittance_method: common.method, payment_reference: common.reference || null, collected_by_role: common.collectedBy,
       ...(row.clearing_id && common.dateRemitted !== day(row.date_remitted) ? { clearing_id: null } : {}),
@@ -626,7 +654,7 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
     };
     const before = {
-      enrollment_id: row.enrollment_id, program_id: row.program_id, month_from: text(row.month_from).slice(0, 7), nop_from: row.nop_from,
+      enrollment_id: row.enrollment_id, member_id: row.member_id, member_number: row.member_number, mas: row.mas, program_id: row.program_id, month_from: text(row.month_from).slice(0, 7), nop_from: row.nop_from,
       or_number: row.or_number, or_date: day(row.or_date), amount_collected: Number(row.amount_collected), month_to: text(row.month_to).slice(0, 7), nop_to: row.nop_to, backdate_reason: row.backdate_reason || null,
       date_remitted: day(row.date_remitted), date_remitted_reason: row.date_remitted_reason || null, remittance_method: row.remittance_method, payment_reference: row.payment_reference || null, collected_by_role: row.collected_by_role,
       original_mas: row.original_mas || null, remittance_amount: Number(row.remittance_amount ?? 0), remittance_breakdown: row.remittance_breakdown,
@@ -650,6 +678,56 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
     const { remittance_breakdown: _after, ...afterShown } = after;
     void _before; void _after;
     common.corrections.push({ module: "Collections", id: row.collection_id, before: beforeShown, after: afterShown });
+  }
+  // Added collections: every check of encoding, then they join the batch as Returned.
+  const newRows: NewCollection[] = [];
+  const touched = new Map<string, (typeof data.accounts)[number]>();
+  for (const entry of added) {
+    const account = data.accounts.find((item) => item.id === text(entry.accountId));
+    if (!account) throw new Error("Select the member and program of each added collection.");
+    const label = `Collection for ${account.memberNumber}`;
+    if (account.deactivatedOn || !inThisBatch(account)) throw new Error(`${label}: it must be an active account of this batch's branch${dto ? "" : " and MAS"}.`);
+    const orNumber = normalizeOrNumber(text(entry.orNumber)), orDate = day(entry.orDate), amount = round(Number(entry.amount));
+    const problem = orNumberProblem(orNumber);
+    if (problem) throw new Error(`${label}: ${problem}`);
+    const used = recorded.get(entryKey(orNumber));
+    if (used && !ids.includes(used.collectionId)) throw new Error(`OR Number ${orNumber} is already recorded (collection ${used.collectionId}). Each OR Number is used once.`);
+    if (inBatch.has(entryKey(orNumber))) throw new Error(`OR Number ${orNumber} is entered twice in this batch.`);
+    const id = createReadableId("COL");
+    inBatch.set(entryKey(orNumber), id);
+    const backdateReason = text(entry.backdateReason).slice(0, 300);
+    checkBackdate(orDate, backdateReason, label, common.encodedOn, common.calendar);
+    const dateProblem = blockingDateProblem({ receiptDate: orDate, dateRemitted: common.dateRemitted, today: common.today });
+    if (dateProblem) throw new Error(`${label}: ${dateProblem}`);
+    const reactivation = entry.reactivation === true;
+    if (orc && reactivation) throw new Error(`${label}: a reactivation cannot be in an ORC batch.`);
+    const originalMas = common.collectedBy === "Collector" ? text(first.mas) : "";
+    const input = { monthFrom: text(entry.monthFrom).slice(0, 7), monthTo: text(entry.monthTo).slice(0, 7), nopFrom: Number(entry.nopFrom), nopTo: Number(entry.nopTo), amount, orDate, orNumber, waiver: entry.waiver ? "Waiver" : "", collectedByRole: common.collectedBy, originalMas };
+    validatePayment(account, payments, input, common.today);
+    const programTiers = data.incentives.filter((tier) => tier.programId === account.programId);
+    const differentIncentive = entry.differentIncentive === true && common.collectedBy === "MAS" && programTiers.some((tier) => tier.different);
+    const quote = calculateRemittance(account.basePay, tiersForBranch(programTiers, common.branchId, differentIncentive), incentiveRoleFor(common.collectedBy), input.nopFrom, input.nopTo, amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation });
+    const noIncentiveReason = dto ? "" : noIncentiveReasonOf(entry.noIncentive, entry.noIncentiveReason, label);
+    const kept = noIncentiveReason ? withoutIncentive(amount, quote.remittance) : { remittance: quote.remittance, forfeited: 0 };
+    payments = [...payments, { ...input, id, enrollmentId: account.id, dateRemitted: common.dateRemitted, mas: dto ? account.mas : text(first.mas) }];
+    touched.set(account.id, account);
+    newRows.push({
+      collection_id: id, collection_batch_id: first.collection_batch_id, enrollment_id: account.id, member_id: account.memberId, member_number: account.memberNumber, program_id: account.programId,
+      branch: first.branch, mas: dto ? account.mas : first.mas, or_number: orNumber, or_date: orDate, amount_collected: amount, month_from: input.monthFrom, month_to: input.monthTo, nop_from: input.nopFrom, nop_to: input.nopTo,
+      reactivation, transferred: entry.transferred === true, suspended: input.waiver || null, original_mas: originalMas || null, status: "Posted", created_at: first.created_at,
+      collected_by_role: common.collectedBy, remittance_amount: kept.remittance, forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null, no_incentive_reason: noIncentiveReason || null, different_incentive: differentIncentive, remittance_breakdown: quote.breakdown,
+      remittance_status: "Returned", linked_remittance_id: first.linked_remittance_id, accountable_employee_id: first.accountable_employee_id, accountable_name: first.accountable_name, accountable_role: first.accountable_role,
+      remittance_method: common.method, payment_reference: common.reference || null, backdate_reason: backdateReason || null, date_remitted: common.dateRemitted,
+      date_remitted_reason: common.dateRemittedReason ?? first.date_remitted_reason, clearing_id: common.dateRemitted === day(first.date_remitted) ? first.clearing_id : null,
+    });
+  }
+  if (newRows.length) {
+    await commitCollections(tx, newRows, [...touched.values()], payments);
+    // They belong to the batch: under its encoder, on the day it was encoded, whoever added them.
+    const newIds = newRows.map((row) => row.collection_id);
+    await tx.update(collections).set({ encoded_by_user_id: first.encoded_by_user_id, encoded_by_employee_id: first.encoded_by_employee_id, encoded_by_name: first.encoded_by_name, encoded_at: first.encoded_at }).where(inArray(collections.collection_id, newIds));
+    common.addedIds.push(...newIds);
+    for (const row of newRows) common.corrections.push({ module: "Collections", id: row.collection_id, before: null, after: { added: true, member_number: row.member_number, program_id: row.program_id, or_number: row.or_number, amount_collected: row.amount_collected, nop_from: row.nop_from, nop_to: row.nop_to } });
   }
   // Account statuses follow the corrected payments.
   const byEnrollment = paymentsByEnrollment(payments);

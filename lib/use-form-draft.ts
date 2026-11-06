@@ -11,13 +11,16 @@ const PREFIX = "dayong:draft:";
  * The draft lives in this browser tab's sessionStorage: it survives navigation and refresh, not closing the tab,
  * and every draft is cleared on sign-out so the next person on a shared computer starts clean.
  * `snapshot` is what to save; `restore` puts a saved draft back into the page's state once, on arrival.
+ * `skip` leaves the draft alone while it says so: a Returned batch open on the form comes from the database, and must
+ * never come back later as a new batch, nor replace the unfinished one the clerk has.
  */
-export function useFormDraft<T>(key: string, snapshot: T, restore: (draft: T) => void) {
+export function useFormDraft<T>(key: string, snapshot: T, restore: (draft: T) => void, skip?: () => boolean) {
   const storageKey = PREFIX + key;
   const json = JSON.stringify(snapshot);
   const firstPass = useRef(true);
 
   useEffect(() => {
+    if (skip?.()) return;
     try {
       const saved = window.sessionStorage.getItem(storageKey);
       if (saved) restore(JSON.parse(saved) as T);
@@ -29,9 +32,14 @@ export function useFormDraft<T>(key: string, snapshot: T, restore: (draft: T) =>
   useEffect(() => {
     // Skip the first pass (the empty initial form) so it never overwrites the draft being restored.
     if (firstPass.current) { firstPass.current = false; return; }
+    if (skip?.()) return;
     try { window.sessionStorage.setItem(storageKey, json); } catch { /* storage full or blocked: keep working without a draft */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey, json]);
 }
+
+/** The page was opened on a Returned batch from My Entries (?returned=…): pass as `skip`. */
+export const returnedBatchUrl = () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("returned");
 
 /** Forgets every saved form draft and set-aside batch (lib/use-parked-drafts.ts); called on sign-out. */
 export function clearFormDrafts() {

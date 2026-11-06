@@ -13,7 +13,7 @@ Cards turning white, real cause (October 15, 2026): the receipt picker's file in
 1. Saved New Sales and Collections are `Outstanding` and appear in My Entries as *Needs receipt photo*.
 2. Attaching receipt photos (Collections form, My Entries, or Today's Entries) sends ready entries to approval on their own: a Collections batch as one slip once every Collection in it has a photo, New Sales one by one. The slip is created by "System", expects exactly the cash due (company share, or the full amount after the incentive deadline, plus any batch Fidelity), and is dated the batch's Date Remitted.
 3. Approvers approve or reject one, the selected, or all slips in Remittances → Pending Approval. Approval needs every receipt photo.
-4. Rejected entries become `Returned` with the reason, shown in My Entries. The clerk fixes and resubmits them; a new photo also resubmits.
+4. Rejected entries become `Returned` with the reason, shown in My Entries. **Edit batch** opens them on the Collections or New Sales form itself; the clerk fixes them there and resubmits them; a new photo also resubmits.
 
 Remittances shows Dashboard, Pending Approval, and Reports. Entry Clerks see only what they encoded; approvers see everyone, with an Entry Clerk filter and search. The sections below describe the underlying calculations and sheet columns; where they mention choosing items for a slip, the system now does that automatically. Details: [system guide § 6](system-guide.md#6-remittances-and-staff-accountability).
 
@@ -69,6 +69,18 @@ Each New Sale and each Collection on the encoding forms has a **No incentive** b
 - **Saving.** The entry's whole amount is its company share (`remittance_amount`). For New Sales, `mas_incentive` is 0. The incentive it would have earned is stored in `forfeited_incentive`, so reports count it as a forfeited incentive. The reason is saved in `no_incentive_reason` (migration 0025, on `sales` and `collections`). The batch's total remittance, and so the control total from the turnover sheet, includes the whole amount. The server enforces all of this, and the form's preview matches it.
 - **Kept.** Repricing on Edit / Corrections, finance repricing and returned-batch edits keep the entry remitted whole (`lib/entry-edit.ts`, `lib/entry-finance.mjs`, `lib/batch-edit.ts`). A rejected slip gives late-cash forfeits back but not a No incentive one (`noIncentiveReasons` in `lib/remittance-workflow.ts`).
 - **Shown.** Today's Entries shows a *No incentive* badge with the reason, and the entry details (also in My Entries) list it. Remittances → View entries shows *No incentive: reason*.
+
+## Editing a returned batch on the full form (November 6, 2026)
+
+**Edit batch** in My Entries opens a Returned batch on the Collections or New Sales form, with everything as it was saved and a banner giving the reason it was returned. Saving goes through `saveReturnedBatch` (`lib/batch-edit.ts`), not a new encoding: saved entries keep their IDs, receipt photos and encoder, every change goes to Record Corrections, and the batch stays Returned until it is resubmitted. The clerk then comes back to My Entries.
+
+- **Collections.** Everything on the form can change: the member and program of a collection, OR number and date, amount, months, Reactivation, Transferred, Waiver, No incentive, Different incentives, Date Remitted, method, Collected by, ORC, penalty and Fidelity. Collections can be removed and **added**. A collection moved to another member or program continues that account from its next month.
+- **Branch and MAS stay on Collections,** because the cash and handover are recorded against them. A collection can go only to an active account of the batch's branch and MAS (of the branch, on a DTO batch). A batch that belongs to another MAS is deleted by an administrator and encoded again.
+- **An added collection** passes every check of encoding, joins the batch as Returned under the batch's encoder and encoded day, and goes back with it on resubmitting. On a bank or e-wallet batch it needs a receipt photo.
+- **New Sales.** Everything on a sale can change, and a sale can be removed. The batch can go to another MAS of the branch cleared on the Date Remitted. New sales cannot be added to a returned batch: they are encoded as their own batch.
+- **Not asked again.** The turnover control total belongs to the first save. Late dates are judged from the day the batch was first encoded.
+- **Receipt photos.** The batch keeps them, so none is required. Adding a photo on the form sends the batch back for approval, as a new photo in My Entries does.
+- **Drafts.** A returned batch is never kept as a form draft, so it cannot come back as a new batch, and the clerk's unfinished batch is left alone.
 
 ## Different incentives on one collection (November 6, 2026)
 

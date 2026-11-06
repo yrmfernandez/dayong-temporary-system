@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
-import { useFormDraft } from "@/lib/use-form-draft";
+import { returnedBatchUrl, useFormDraft } from "@/lib/use-form-draft";
 import { useParkedDrafts } from "@/lib/use-parked-drafts";
 import { ParkedDrafts } from "@/components/parked-drafts";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -154,8 +154,14 @@ type CollectionEntry = {
   waiverAbove?: boolean;
 
   isExpanded: boolean;
+  /** A Returned batch open on the form: the saved collection this card is, blank on one added now. */
+  savedId?: string;
+  /** The account chosen, when the batch is a Returned one. */
+  accountId?: string;
 };
 
+/** A Returned batch open on the form (owner, November 6, 2026): it is corrected in place, keeping IDs and receipt photos. */
+type ReturnedEdit = { ids: string[]; person: string; branch: string; returnReason: string; encodedOn: string };
 
 function createEmptyCollection(id: string): CollectionEntry {
   return {
@@ -312,7 +318,7 @@ export default function CollectionsPage() {
   // Late dates skip Sundays and the branch's declared non-working days, as the server does (lib/working-days.ts).
   const offDays = useDeclaredNonWorkingDays();
   // Judged from the Date Remitted when it was changed with a reason (that reason covers the late encoding; lib/entry-controls.ts).
-  const isLateDate = (date: string) => needsBackdateReason(date, lateCheckDay(dateRemitted, dateRemittedChanged ? dateRemittedReason : ""), { days: offDays, branch });
+  const isLateDate = (date: string) => needsBackdateReason(date, returnedEdit?.encodedOn || lateCheckDay(dateRemitted, dateRemittedChanged ? dateRemittedReason : ""), { days: offDays, branch });
   const [mas, setMas] = useState("");
   const [dateRemitted, setDateRemitted] = useState("");
 
@@ -341,6 +347,7 @@ export default function CollectionsPage() {
   // DTO batch (owner, October 13, 2026): members who paid at the office, e.g. of a resigned or inactive MAS. No clearing,
   // any account of the branch, and the clerk who received the cash is accountable (app/api/collections/route.ts).
   const [dto, setDto] = useState(false);
+  const [returnedEdit, setReturnedEdit] = useState<ReturnedEdit | null>(null);
   // ORC defaults to No for each batch; Yes must be selected for a Collector batch.
   const [orc, setOrc] = useState(false);
   // A Date Remitted moved off the clearing day needs a reason (encoding delayed by meetings and the like; lib/clearing.ts).
@@ -418,7 +425,7 @@ export default function CollectionsPage() {
       setFidelity(draft.fidelity ?? "");
       setReviewing(draft.reviewing ?? null);
     };
-  useFormDraft("collections", draftSnapshot, restoreDraft);
+  useFormDraft("collections", draftSnapshot, restoreDraft, returnedBatchUrl);
   // Batches set aside to finish later (owner, October 14, 2026; lib/use-parked-drafts.ts).
   const parked = useParkedDrafts<CollectionsDraft>("collections");
   const selectedPaymentMethod = paymentMethods.find((method) => method.name === paymentMethod);
@@ -664,6 +671,7 @@ export default function CollectionsPage() {
       accountStatus: "", temporarilySuspended: false, accountLoading: false,
       memberId: member.id,
       memberSearch: getMemberFullName(member),
+      accountId: "",
       programId: "",
       programSearch: "",
       monthFrom: "",
@@ -694,13 +702,13 @@ export default function CollectionsPage() {
     updateCollection(entryId, { programId, differentIncentive: false, programSearch: program?.code ?? "", accountStatus: "", accountLoading: true, monthFrom: "", monthTo: "", nopFrom: null, nopTo: null });
     setHistories((current) => ({ ...current, [entryId]: [] }));
     try {
-      const response = await fetch(`/api/collections?memberId=${encodeURIComponent(memberId)}&programId=${encodeURIComponent(programId)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(membersOf)}${dto ? "&dto=1" : ""}`, { cache: "no-store" });
+      const response = await fetch(`/api/collections?except=${encodeURIComponent(returnedEdit?.ids.join(",") ?? "")}&memberId=${encodeURIComponent(memberId)}&programId=${encodeURIComponent(programId)}&branch=${encodeURIComponent(branch)}&mas=${encodeURIComponent(membersOf)}${dto ? "&dto=1" : ""}`, { cache: "no-store" });
       const result = await response.json();
       if (selectionVersions.current[entryId] !== version) return;
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load account.");
       const account = result.account;
       setHistories((current) => ({ ...current, [entryId]: result.history ?? [] }));
-      updateCollection(entryId, { accountStatus: account.status, temporarilySuspended: account.temporarilySuspended, suspendedAt: account.suspendedAt ?? "", accountLoading: false,
+      updateCollection(entryId, { accountId: account.id, accountStatus: account.status, temporarilySuspended: account.temporarilySuspended, suspendedAt: account.suspendedAt ?? "", accountLoading: false,
         amountCollected: String(account.monthlyAmount), monthFrom: account.nextMonth, monthTo: account.nextMonth, nopFrom: account.nextNop, nopTo: account.nextNop,
         accountNextMonth: account.nextMonth, accountNextNop: account.nextNop });
     } catch (error) {
@@ -952,8 +960,9 @@ export default function CollectionsPage() {
     }
 
     // Cash needs no photo (owner, October 16, 2026): it was counted at Clearing and goes straight to approval.
-    if (!receiptPhotos.length && !isCashPayment) {
-      setSaveMessage("Add at least one receipt photo for this batch.");
+    // A Returned batch keeps its receipt photos; only a collection added to it needs one.
+    if (!receiptPhotos.length && !isCashPayment && (!returnedEdit || collections.some((entry) => !entry.savedId))) {
+      setSaveMessage(returnedEdit ? "Add a receipt photo for the collections you added." : "Add at least one receipt photo for this batch.");
       return;
     }
 
@@ -982,6 +991,8 @@ export default function CollectionsPage() {
         return;
       }
     }
+
+    if (returnedEdit) { await saveReturnedEdit(returnedEdit); return; }
 
     const controlProblem = controlTotalProblem(controlTotal, totalDue);
     if (controlProblem) {
@@ -1053,6 +1064,88 @@ export default function CollectionsPage() {
       setSaving(false);
     }
   }
+
+  /** Saves a Returned batch in place (lib/batch-edit.ts) and goes back to My Entries, where it is resubmitted. */
+  async function saveReturnedEdit(edit: ReturnedEdit) {
+    const details = (entry: CollectionEntry) => ({
+      orNumber: entry.orNumber, orDate: entry.orDate, amount: Number(entry.amountCollected), backdateReason: entry.backdateReason, reactivation: entry.reactivation === "Yes", transferred: entry.transferred === "Yes",
+      waiver: (entry.waiverAbove && !entry.ifSuspended && needsWaiver(entry) ? "Waiver" : waiverOnOrDate(entry)) === "Waiver",
+      ...(dto ? {} : { noIncentive: noIncentiveOn(entry), noIncentiveReason: entry.noIncentiveReason }), differentIncentive: differentOn(entry),
+    });
+    const kept = collections.filter((entry) => entry.savedId);
+    const stays = new Set(kept.map((entry) => entry.savedId));
+    setSaving(true);
+    try {
+      const response = await fetch("/api/my-entries/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        ids: edit.ids, dateRemitted, dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "", paymentMethod, paymentReference: selectedPaymentMethod && !selectedPaymentMethod.isCash ? paymentReference.trim() : "",
+        collectedBy: dto ? "DTO" : collectedBy, orc: orc && !dto && collectedBy === "Collector", penalty: penaltyAmount, penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "", fidelity: fidelityAmount,
+        entries: [...kept.map((entry) => ({ id: entry.savedId, ...details(entry), monthTo: entry.monthTo, accountId: entry.accountId, months: getMonthDifference(entry.monthFrom, entry.monthTo) })),
+          ...edit.ids.filter((id) => !stays.has(id)).map((id) => ({ id, remove: true }))],
+        added: collections.filter((entry) => !entry.savedId).map((entry) => ({ ...details(entry), accountId: entry.accountId, monthFrom: entry.monthFrom, monthTo: entry.monthTo, nopFrom: entry.nopFrom, nopTo: entry.nopTo })),
+      }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the batch.");
+      // A new photo also sends the batch back for approval (app/api/receipt-photos/route.ts).
+      const ids = [...kept.map((entry) => entry.savedId ?? ""), ...(result.addedIds ?? [])];
+      const uploaded = receiptPhotos.length ? await uploadBatchPhotos(ids, receiptPhotos) : null;
+      window.sessionStorage.setItem("dayong:my-entries-message", uploaded?.problem ? `${result.message} ${uploaded.problem} Add the receipt photo in My Entries.` : uploaded ? `${result.message} Receipt photo added, so the batch went back for approval.` : result.message);
+      window.location.assign("/my-entries");
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : "Unable to save the batch.");
+      setSaving(false);
+    }
+  }
+
+  /** Opens a Returned batch on the form, from Edit batch in My Entries: everything as saved, each account as it stood before this batch. */
+  async function openReturned(ids: string[]) {
+    setTab("encode");
+    setSaveMessage("Loading the returned batch...");
+    try {
+      const response = await fetch(`/api/my-entries/batch?ids=${encodeURIComponent(ids.join(","))}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to open the batch.");
+      const batch = result.batch;
+      if (batch.kind !== "Collection") throw new Error("This batch is New Sales. Open it from My Entries.");
+      const isDto = batch.dto === true, byCollector = batch.collectedBy === "Collector";
+      const memberOwner = String(batch.memberMas ?? "");
+      type Saved = { id: string; memberId: string; memberName: string; programId: string; program: string; monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; amount: number; orNumber: string; orDate: string; backdateReason: string; reactivation: boolean; transferred: boolean; waiver: boolean; noIncentiveReason: string; differentIncentive: boolean };
+      const saved: Saved[] = batch.entries;
+      const start = new Map<string, Saved>();
+      for (const item of saved) { const key = `${item.memberId}|${item.programId}`; const first = start.get(key); if (!first || item.nopFrom < first.nopFrom) start.set(key, item); }
+      const loaded = await Promise.all(saved.map(async (item, index) => {
+        const id = `collection-${index + 1}`;
+        const first = start.get(`${item.memberId}|${item.programId}`) ?? item;
+        const base: CollectionEntry = { ...createEmptyCollection(id), savedId: item.id, memberId: item.memberId, memberSearch: item.memberName, programId: item.programId, programSearch: programs.find((candidate) => candidate.id === item.programId)?.code ?? item.program,
+          monthFrom: item.monthFrom, monthTo: item.monthTo, nopFrom: item.nopFrom, nopTo: item.nopTo, amountCollected: item.amount.toFixed(2), orNumber: item.orNumber, orDate: item.orDate, backdateReason: item.backdateReason,
+          reactivation: item.reactivation ? "Yes" : "No", transferred: item.transferred ? "Yes" : "No", ifSuspended: item.waiver ? "Waiver" : "", noIncentive: Boolean(item.noIncentiveReason), noIncentiveReason: item.noIncentiveReason, differentIncentive: item.differentIncentive,
+          accountNextMonth: first.monthFrom, accountNextNop: first.nopFrom, isExpanded: index === 0 };
+        const lookup = await fetch(`/api/collections?except=${encodeURIComponent(ids.join(","))}&memberId=${encodeURIComponent(item.memberId)}&programId=${encodeURIComponent(item.programId)}&branch=${encodeURIComponent(batch.branch)}&mas=${encodeURIComponent(memberOwner)}${isDto ? "&dto=1" : ""}`, { cache: "no-store" });
+        const account = await lookup.json();
+        if (!lookup.ok || !account.success) return { entry: base, history: [], problem: `${item.memberName}: ${account.message || "Unable to load the account."}` };
+        return { entry: { ...base, accountId: account.account.id, accountStatus: account.account.status, temporarilySuspended: account.account.temporarilySuspended, suspendedAt: account.account.suspendedAt ?? "" }, history: account.history ?? [], problem: "" };
+      }));
+      setDto(isDto); setBranch(batch.branch); setMas(isDto ? "" : batch.person); setCollectedBy(batch.collectedBy); setMemberMas(byCollector && memberOwner !== batch.person ? memberOwner : ""); setOrc(batch.orc === true);
+      setCleared({ id: "", employeeId: batch.personEmployeeId, employeeName: batch.person, clearedDate: batch.dateRemitted }); setDateRemitted(batch.dateRemitted); setDateRemittedReason("");
+      setPaymentMethod(batch.paymentMethod); setPaymentReference(batch.paymentReference); setPenalty(batch.penalty > 0 ? String(batch.penalty) : ""); setPenaltyNote(batch.penaltyNote); setFidelity(batch.fidelity > 0 ? String(batch.fidelity) : "");
+      setCollections(loaded.map((item) => item.entry));
+      setHistories(Object.fromEntries(loaded.map((item) => [item.entry.id, item.history])));
+      setActiveCollectionId("collection-1");
+      setNextCollectionId(loaded.length + 1);
+      setReturnedEdit({ ids, person: batch.person, branch: batch.branch, returnReason: batch.returnReason, encodedOn: batch.encodedOn });
+      setSaveMessage(loaded.map((item) => item.problem).filter(Boolean).join(" "));
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : "Unable to open the batch.");
+    }
+  }
+
+  const returnedOpened = useRef(false);
+  useEffect(() => {
+    const ids = new URLSearchParams(window.location.search).get("returned");
+    if (!ids || returnedOpened.current || !programs.length || !paymentMethods.length) return;
+    returnedOpened.current = true;
+    void openReturned(ids.split(",").filter(Boolean));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [programs, paymentMethods]);
 
   function resetForm() {
     const firstCollection =
@@ -1203,14 +1296,14 @@ export default function CollectionsPage() {
         </p></div><Badge variant="secondary">{collections.length} {collections.length===1?"entry":"entries"}</Badge>
       </div>
 
-      <div role="tablist" aria-label="Collections" className="inline-flex rounded-lg border bg-muted/40 p-1">
+      {!returnedEdit && <div role="tablist" aria-label="Collections" className="inline-flex rounded-lg border bg-muted/40 p-1">
         <button type="button" role="tab" aria-selected={tab === "encode"} className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "encode" ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => setTab("encode")}>Encode</button>
         <button type="button" role="tab" aria-selected={tab === "submitted"} className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "submitted" ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => setTab("submitted")}>
           Submitted by MAS{submissionList.length ? <Badge className="ml-2">{submissionList.length}</Badge> : null}
         </button>
-      </div>
+      </div>}
       {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
-      <UnremittedCollectionsWarning submissions={submissionList} onShow={() => setTab("submitted")} />
+      {!returnedEdit && <UnremittedCollectionsWarning submissions={submissionList} onShow={() => setTab("submitted")} />}
 
       {tab === "submitted" ? <CollectionSubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} /> : <>
       {reviewing && (
@@ -1219,7 +1312,17 @@ export default function CollectionsPage() {
           <Button type="button" variant="outline" size="sm" onClick={resetForm}>Stop reviewing</Button>
         </div>
       )}
-      <ParkedDrafts drafts={parked.drafts} canPark={batchHasWork} onPark={parkBatch} onResume={resumeBatch} onDelete={parked.remove} />
+      {returnedEdit && (
+        <div className="flex flex-col gap-2 rounded-xl border border-red-300 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950/30 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium">Editing the returned batch of {returnedEdit.person} ({returnedEdit.branch})</p>
+            {returnedEdit.returnReason && <p className="text-red-700 dark:text-red-300">Returned: {returnedEdit.returnReason}</p>}
+            <p className="text-xs text-muted-foreground">Change anything here, also the member, and add or remove collections. The Branch and MAS stay, since the cash is recorded against them. Saved collections keep their receipt photos.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => window.location.assign("/my-entries")}>Stop editing</Button>
+        </div>
+      )}
+      {!returnedEdit && <ParkedDrafts drafts={parked.drafts} canPark={batchHasWork} onPark={parkBatch} onResume={resumeBatch} onDelete={parked.remove} />}
 
       {/* COLLECTION BATCH HEADER */}
       <Card><CardContent className="p-4">
@@ -1227,7 +1330,7 @@ export default function CollectionsPage() {
             <p className="text-sm font-semibold">Collection Batch</p>
             <div role="radiogroup" aria-label="Batch type" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
               {([[false, "From Clearing (MAS / Collector)"], [true, "DTO: paid at the office"]] as const).map(([value, label]) => (
-                <button key={label} type="button" role="radio" aria-checked={dto === value} onClick={() => chooseBatchType(value)}
+                <button key={label} type="button" role="radio" aria-checked={dto === value} disabled={Boolean(returnedEdit)} onClick={() => chooseBatchType(value)}
                   className={`rounded-md px-3 py-1.5 font-semibold transition-colors ${dto === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
               ))}
             </div>
@@ -1236,7 +1339,7 @@ export default function CollectionsPage() {
             <p className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
               Members who paid at the office, for example when their MAS resigned or is inactive. No clearing is needed: you received the cash, so you are accountable for it. Any account of the branch can be paid; it keeps its MAS on record. DTO earns no incentive, so the whole payment is remitted.
             </p>
-          ) : (
+          ) : returnedEdit ? null : (
           <div className="mb-4"><ClearingPicker kind="Collections" value={cleared?.id ?? ""} onPick={(clearing) => {
             // Reviewing a MAS submission: only that MAS's handover, and the loaded entries stay.
             if (reviewing) {
@@ -1293,9 +1396,11 @@ export default function CollectionsPage() {
               <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/50 p-1">
                 {collectionChannels.map((channel) => (
                   <button key={channel.value} type="button" role="radio" aria-checked={collectedBy === channel.value} title={channel.hint}
-                    disabled={Boolean(reviewing) && channel.value !== (reviewing?.collectedBy ?? "MAS") && !(channel.value === "MAS" && reviewing?.collectedBy === "Collector" && reviewing.memberMas === reviewing.mas)}
+                    disabled={returnedEdit ? channel.value === "DTO" : Boolean(reviewing) && channel.value !== (reviewing?.collectedBy ?? "MAS") && !(channel.value === "MAS" && reviewing?.collectedBy === "Collector" && reviewing.memberMas === reviewing.mas)}
                     onClick={() => {
                       if (channel.value === collectedBy) return;
+                      // A Returned batch keeps its entries and its members' MAS.
+                      if (returnedEdit) { if (channel.value !== "Collector") setOrc(false); setCollectedBy(channel.value); return; }
                       // Back to Collector on a batch opened for review: its ORC as submitted.
                       setOrc(channel.value === "Collector" && reviewing?.orc === true);
                       // Back to the accountable person's own members: entries of another MAS's members no longer fit.
@@ -1314,7 +1419,7 @@ export default function CollectionsPage() {
             {/* WHOSE MEMBERS (owner, November 3, 2026): a Collector collects for anyone of the branch, MAS by role or virtual MAS (every employee); their members are listed. */}
             {!dto && collectedBy === "Collector" && <div className="space-y-2">
               <Label>Members of MAS *</Label>
-              <SearchSelect aria-label="Members of MAS" value={membersOf} placeholder={mas ? "Search MAS" : "Pick the handover first"} disabled={!mas || Boolean(reviewing)}
+              <SearchSelect aria-label="Members of MAS" value={membersOf} placeholder={mas ? "Search MAS" : "Pick the handover first"} disabled={!mas || Boolean(reviewing) || Boolean(returnedEdit)}
                 options={[
                   ...(mas ? [{ value: mas, label: mas, description: "The Collector's own accounts" }] : []),
                   // A batch opened for review keeps its MAS, even one no longer listed below.
@@ -1928,7 +2033,8 @@ export default function CollectionsPage() {
               <RemittanceSummary collected={totalCollected} remittance={totalRemittance} fidelity={fidelityAmount} penalty={penaltyAmount} penaltyNote={penaltyNote.trim()} />
 
               {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026). */}
-              <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="collection" optional={isCashPayment} />
+              {returnedEdit && <p className="text-xs text-muted-foreground">The batch keeps its receipt photos. Add one here only for collections you added or a receipt that changed; a new photo sends the batch back for approval.</p>}
+              <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="collection" optional={isCashPayment || (Boolean(returnedEdit) && collections.every((entry) => entry.savedId))} />
 
               {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatCurrency(totalCollected)} · Total remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p>{(() => { const turnover = controlTotalDifference(controlTotal, totalDue); return turnover ? <p className="font-semibold text-amber-700">Turnover sheet {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
             </CardContent>
@@ -1941,17 +2047,17 @@ export default function CollectionsPage() {
                 <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{totalDue === null ? "pending" : formatCurrency(totalDue)}</strong></span>
                 <span className="text-muted-foreground">{collections.length} {collections.length === 1 ? "entry" : "entries"}</span>
               </div>
-              <ControlTotalField id="control-total" title="The net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={totalDue} />
+              {!returnedEdit && <ControlTotalField id="control-total" title="The net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={totalDue} />}
               {saveMessage && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">{saveMessage}</div>}
               <div className="flex gap-2">
                 <Button type="button" className="flex-1" onClick={async () => { if (showPreview) { void saveCollections(); return; } await alertDialog(COLLECTION_CHECK_REMINDER, { title: "Check every entry before saving", warning: true, confirmLabel: "I have checked every entry" }); setShowPreview(true); }} disabled={saving}>
                   <Save className="mr-2 size-4" />
                   {saving ? "Saving..." : showPreview ? "Confirm and Save" : "Preview Collections"}
                 </Button>
-                <Button type="button" variant="outline" onClick={resetForm} disabled={saving}>
+                {!returnedEdit && <Button type="button" variant="outline" onClick={resetForm} disabled={saving}>
                   <RotateCcw className="mr-2 size-4" />
                   Reset
-                </Button>
+                </Button>}
               </div>
             </div>
           </div>

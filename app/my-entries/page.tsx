@@ -3,7 +3,6 @@
 import { AlertTriangle, Eye, Pencil, RefreshCw, Send } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
-import { BatchEditor } from "@/components/batch-editor";
 import { EntryDetails } from "@/components/entry-details";
 import { MetricTile } from "@/components/metric-tile";
 import { ReceiptPhotoUpload, ReceiptPhotoView } from "@/components/receipt-photo";
@@ -41,7 +40,6 @@ export default function MyEntriesPage() {
   const [message, setMessage] = useState("");
   const [open, setOpen] = useState("");
   // The returned batch being edited (its key).
-  const [editing, setEditing] = useState("");
   const [tab, setTab] = useState<BatchTab | "">("");
 
   const load = useCallback(async (nextFrom: string, nextTo: string, nextEmployee: string) => {
@@ -91,6 +89,16 @@ export default function MyEntriesPage() {
     saved(result.message ?? (response.ok ? fallback : "Unable to save."));
   };
   const resubmit = (entryIds: string[]) => post({ entryIds }, "Resubmitted.");
+  // A returned batch is corrected on the Collections or New Sales form itself (owner, November 6, 2026).
+  const editOnForm = (batch: Batch) => window.location.assign(`/${batch.kind === "New Sale" ? "new-sales" : "collections"}?returned=${encodeURIComponent(batch.entries.filter((entry) => entry.remittanceStatus === "Returned").map((entry) => entry.id).join(","))}`);
+  // What the form saved, shown on coming back from it.
+  useEffect(() => {
+    const text = window.sessionStorage.getItem("dayong:my-entries-message");
+    if (!text) return;
+    window.sessionStorage.removeItem("dayong:my-entries-message");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the form that sent the clerk here
+    setMessage(text);
+  }, []);
   const send = (entryIds: string[]) => post({ entryIds, action: "submit" }, "Sent for approval.");
 
   return (
@@ -180,11 +188,10 @@ export default function MyEntriesPage() {
                         {batch.canAttach && <ReceiptPhotoUpload entryIds={ids} label="Add receipt photo for this batch" replace={batch.photoIds.length > 0} onSaved={saved} />}
                       </>}
                     {batch.readyToSend && <Button type="button" size="sm" onClick={() => void send(ids)}><Send className="size-3.5" />Send for approval</Button>}
-                    {isReturned && <Button type="button" size="sm" variant={editing === batch.key ? "default" : "outline"} onClick={() => setEditing(editing === batch.key ? "" : batch.key)}><Pencil className="size-3.5" />Edit batch</Button>}
+                    {isReturned && <Button type="button" size="sm" variant="outline" onClick={() => editOnForm(batch)}><Pencil className="size-3.5" />Edit batch</Button>}
                     {isReturned && <Button type="button" size="sm" variant="outline" onClick={() => void resubmit(ids)}>Resubmit batch</Button>}
                   </div>
                 </div>
-                {isReturned && editing === batch.key && <BatchEditor entryIds={batch.entries.filter((entry) => entry.remittanceStatus === "Returned").map((entry) => entry.id)} onClose={() => setEditing("")} onSaved={(text) => { setEditing(""); saved(text); }} />}
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[760px] text-sm">
                     <thead className="text-left text-xs uppercase text-muted-foreground"><tr><th className="p-2 pl-3">Entry</th><th className="p-2">Member</th><th className="p-2">OR / Application</th><th className="p-2">Method</th><th className="p-2 text-right">Amount</th><th className="p-2" /></tr></thead>
