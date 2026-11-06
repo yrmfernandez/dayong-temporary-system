@@ -5246,6 +5246,65 @@ test('Remittances: a slip decided long ago keeps its details, clerk and entries 
   assert.deepEqual(entries.missing, []);
 });
 
+test('a Collector chooses MAS or Collector on Submit Collections, with no MAS role, and each pays its own tier (November 6, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    // Roles as stored: capitals. A clerk holds accounts as a virtual MAS; Mas Three holds none.
+    h.rows.Employees = [[], ['DPE-0001', 'Col One', 'BR-1', 'Collector', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Mas Three', 'BR-1', 'MAS', 'active'], ['DPE-0004', 'Clerk Four', 'BR-1', 'Entry Clerk', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-1'], ['EBA-4', 'DPE-0004', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50], ['INC-2', 'DP-1', 'Collector', 1, 12, 'percentage', 0, 20]];
+    return h;
+  };
+  const person = { userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', permissions: {} };
+  const inCollector = as({ ...person, roleNames: ['Collector'] });
+  const inMasWorkspace = as({ ...person, roleNames: ['MAS'] });
+  const realMas = as({ userId: 'USR-M', employeeId: 'DPE-0002', name: 'Mas Two', roleNames: ['MAS'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0001', 'Col One']);
+  const today = inCollector.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  for (const [number, mas] of [[1, 'Col One'], [2, 'Col One'], [3, 'Mas Two'], [4, 'Clerk Four']]) {
+    await seed('members', [{ member_id: `MEM-${number}`, member_number: `PH-${number}`, surname: 'Santos', first_name: 'Ana' }]);
+    await seed('member_programs', [{ enrollment_id: `ENR-${number}`, member_id: `MEM-${number}`, member_number: `PH-${number}`, program_id: 'DP-1', doi, branch: 'BR-1', mas, status: 'Active' }]);
+  }
+  const call = async (h, method, url, body) => {
+    const route = h.load('app/api/collection-submissions/route.ts');
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const mine = (h, query = '') => call(h, 'GET', `/api/collection-submissions?view=mine${query}`);
+  const pick = (id) => ({ enrollmentId: id, months: 1, amount: null, waiver: false });
+
+  // The choice reaches a Collector who holds no MAS role, and it starts on the workspace open.
+  const start = (await mine(inCollector)).body;
+  assert.equal(start.collector.isCollector, true);
+  assert.equal(start.collector.collectedBy, 'Collector', 'the Collector workspace starts as Collector');
+  assert.deepEqual(start.accounts, [], 'nothing is listed until they say whose members');
+  assert.deepEqual(start.collector.masOptions.map((item) => [item.name, item.own]), [['Col One', true], ['Clerk Four', false], ['Mas Two', false]], 'own accounts first, a virtual MAS too, nobody without accounts');
+  const virtual = (await mine(inMasWorkspace)).body;
+  assert.equal(virtual.collector.collectedBy, 'MAS', 'the MAS workspace starts as MAS');
+  assert.equal(virtual.collector.isCollector, true, 'and can still choose Collector');
+  assert.deepEqual(virtual.accounts.map((item) => item.id).sort(), ['ENR-1', 'ENR-2']);
+
+  // Their own member as MAS earns the MAS tier; another of their own as Collector earns the Collector tier.
+  assert.equal((await call(inCollector, 'POST', '/api/collection-submissions', { entries: [pick('ENR-1')], collectedBy: 'MAS' })).status, 201);
+  assert.equal((await call(inCollector, 'POST', '/api/collection-submissions', { entries: [pick('ENR-2')], collectedBy: 'Collector', memberMasEmployeeId: 'DPE-0001' })).status, 201);
+  assert.equal((await mine(inCollector, '&collectedBy=Collector&mas=DPE-0004')).body.accounts[0].id, 'ENR-4', 'a virtual MAS\'s members are listed');
+  assert.equal((await call(inCollector, 'POST', '/api/collection-submissions', { entries: [pick('ENR-4')], collectedBy: 'Collector', memberMasEmployeeId: 'DPE-0004', orc: true })).status, 201);
+  const sent = await query('select collected_by, member_mas, orc, total_incentive::float8 as incentive, mas from collection_submissions order by row_seq');
+  assert.deepEqual(sent, [
+    { collected_by: 'MAS', member_mas: null, orc: false, incentive: 175, mas: 'Col One' },
+    { collected_by: 'Collector', member_mas: 'Col One', orc: false, incentive: 70, mas: 'Col One' },
+    { collected_by: 'Collector', member_mas: 'Clerk Four', orc: true, incentive: 87.5, mas: 'Col One' },
+  ]);
+
+  // Someone else's member cannot be sent as MAS, and without the Collector role there is no Collector choice.
+  assert.match((await call(inCollector, 'POST', '/api/collection-submissions', { entries: [pick('ENR-3')], collectedBy: 'MAS' })).body.message, /is not your member/);
+  assert.equal((await mine(realMas)).body.collector.isCollector, false);
+  assert.match((await call(realMas, 'POST', '/api/collection-submissions', { entries: [pick('ENR-3')], collectedBy: 'Collector', memberMasEmployeeId: 'DPE-0002' })).body.message, /Only an employee with the Collector role/);
+});
+
 test('a batch the MAS forgot is sent after midnight, OR date the day added, and the clerk is warned (November 4, 2026)', async () => {
   const as = (user) => {
     const h = harness(user);

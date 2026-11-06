@@ -17,6 +17,27 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Collector: the choice of MAS or Collector now works, also for a virtual MAS (2026-11-06)
+
+- **Asked (owner):** a Collector submitting collections should say whether it is as Collector or as MAS. Members show a Collector but it seems only a display. Remember the virtual MAS on every account.
+- **Found:**
+  - The choice built on 2026-11-03 **never worked for anyone**: roles are stored with capitals (`Collector`, `MAS`), and `collectorContext` compared them with `collector` and `mas`. So nobody counted as a Collector: no Collected by box, no Whose members, no ORC, and every batch went as MAS at the **MAS tier**. It was never tried with a real Collector and no test covered it. The clerk's **Members of MAS** list had the same fault and showed only the Collector's own accounts.
+  - Even with the capitals right, the box needed a real MAS role, which the Collectors do not hold, though they hold accounts (staging: Gotual 235, Canciller 222, Loma 0). A Collector's own accounts could not be chosen as Collector at all.
+  - **Whose members** needed a real MAS role too, leaving out accounts held by a virtual MAS (staging: 746 live accounts under 10 active employees without the MAS role).
+  - A member's **Collector is not an assignment**. No column stores it: Members works it out as whoever brought in the latest Collector collection, and it only feeds the display and the MAS / Collector filter. On staging about half of the accounts of the two biggest Collectors belong to another MAS (Canciller: 263 accounts, 142 held by Canciller, across 12 MAS).
+- **Done:**
+  - Roles compared normalized (`holdsRole` in `lib/collection-submissions.ts`).
+  - **Every Collector gets Collected by**, MAS role or not. It starts on the workspace open (Collector workspace: Collector; MAS workspace: MAS) and can be changed on the page. Submit's confirmation says which one and which incentive.
+  - **Whose members?** lists every active employee holding accounts in the Collector's branches, **My own accounts** first (`accountHolders`, a small read kept 60 s, only for Collectors). The clerk's Members of MAS lists anyone of the branch, and always the batch's own.
+  - Test on real submissions: both workspaces, own accounts as MAS and as Collector, a virtual MAS's members, ORC, and refusals. It fails on the old code.
+  - No migration. The batch, clerk save, Clearing and reports already handled a Collector batch.
+- **To do (owner):**
+  1. Check on production what the Collectors submitted since 2026-11-03: they could send only accounts held in their own name, at the MAS tier, while earlier payments on such accounts were recorded as Collector (staging: 2,672 of 4,132 Collector payments). Not read here (production reads were not allowed in this session).
+  2. Decide whether a member's Collector should become a real assignment (below).
+  3. Decide whether the Collector workspace should keep seeing every member on Members and MAM: `ownMembersScope` limits only the MAS role, so today it does, while the same person's MAS workspace shows only their own.
+- **Tests:** type check and build pass; 317 of 318 tests pass. The one failure, a MAS submits New Sales, expects Returned where the code says Rejected, and fails the same on the code before this change.
+- **Not changed:** members of a resigned MAS cannot be picked (active employees only; staging: 9 live accounts). A Collector's batch still needs one person's members at a time.
+
 ### System Health shows Supabase usage (2026-11-05)
 
 - **Asked (owner):** System Health should show all the usage: egress, Realtime messages, Logs Query, Cached Egress and the rest.

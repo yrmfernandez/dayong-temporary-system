@@ -63,7 +63,7 @@ Reports is one sidebar link; Daily, Weekly, Monthly, and Yearly are tabs on that
 
 Branches are by duty (November 5, 2026): an Entry Clerk reviews only the branches ticked Entry Clerk in Employees, and anyone submits only in branches ticked MAS; both are on until HR unticks them (system guide § 11).
 
-A Collector gets Submit New Sales and Submit Collections by default, in their own workspace and their MAS workspace (November 4, 2026).
+A Collector gets Submit New Sales and Submit Collections by default, in their own workspace and their MAS workspace (November 4, 2026). On Submit Collections they choose Collected by MAS or Collector in both; it starts on the workspace open (November 6, 2026). The Collector choice comes from the employee's real Collector role, so a virtual MAS without it never has it.
 
 New Sales, Collections, and Reports (daily to yearly) are the Entry Clerk's daily operations: no other role receives them by default, and their APIs check the same page access. Administrator keeps every page. An administrator can still grant them to another role in Roles → Page access. The Members page shows Add Member (which opens New Sales) only to users who can open New Sales.
 

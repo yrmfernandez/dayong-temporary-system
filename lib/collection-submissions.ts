@@ -1,5 +1,6 @@
 import { and, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
 
+import { normalizeRoleName } from "@/lib/access-control";
 import { accountState, forfeitedPaymentsAllowed, validatePayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
 import type { SessionUser } from "@/lib/auth";
@@ -13,6 +14,7 @@ import { createReadableId } from "@/lib/readable-id";
 import { tiersForBranch } from "@/lib/remittance";
 import { incentiveDeadline, manilaNow } from "@/lib/remittance-deadline";
 import { masProfile, reviewBranches } from "@/lib/sale-submissions";
+import { shortCached } from "@/lib/short-cache";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 
 /**
@@ -37,10 +39,12 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  * The incentive follows the usual 3:00 PM rule (lib/remittance-deadline.ts): kept when the cash is handed over at
  * Clearing by 3:00 PM the next working day after the OR date, otherwise forfeited and the whole amount handed over.
  *
- * Collectors (owner, November 3, 2026): an employee with the Collector role chooses Collected by MAS (their own members,
- * if they are also a MAS) or Collector. As Collector they pick whose members they collected, any MAS of their branches,
- * and ORC Yes or No for the batch. The Collector tier applies (ORC: half of the MAS incentive); the Collector is
- * accountable and remits the cash, and each payment keeps the member's MAS on record, as on the Collections form.
+ * Collectors (owner, November 3, 2026): an employee with the Collector role chooses Collected by MAS (their own members)
+ * or Collector. As Collector they pick whose members they collected, anyone holding accounts in their branches, their
+ * own included, and ORC Yes or No for the batch. The Collector tier applies (ORC: half of the MAS incentive); the
+ * Collector is accountable and remits the cash, and each payment keeps the member's MAS on record, as on the Collections
+ * form. Every employee is a virtual MAS (lib/workspace-session.ts), so a Collector needs no MAS role to have the choice
+ * (owner, November 6, 2026); it starts on the workspace open, and can be changed on the page.
  *
  * Forgotten batches (owner, November 4, 2026): the batch being filled is kept on the server (collection_drafts), each
  * member with the day they were added. After midnight the nightly job sends what is left from earlier days, OR date the
@@ -127,25 +131,38 @@ function blockedReason(status: string, today: string) {
   return "";
 }
 
+/** Role names are stored as written ("Collector"), so they are always compared normalized. */
+const holdsRole = (roles: readonly string[], role: string) => roles.some((item) => normalizeRoleName(item) === role);
+const holderKey = (mas: unknown, branch: unknown) => `${text(mas).replace(/\s+/g, " ").toLowerCase()}|${text(branch).replace(/\s+/g, " ").toLowerCase()}`;
+
+/** Who holds accounts in which branch: a few hundred pairs, read for a minute at a time. */
+function accountHolders() {
+  const accounts = schema.member_programs;
+  return shortCached("account-holders", 60_000, async () => (await getDb().selectDistinct({ mas: accounts.mas, branch: accounts.branch }).from(accounts)).map((row) => holderKey(row.mas, row.branch)));
+}
+
 /**
  * Who submits and whose members (owner, November 3, 2026). Collected by MAS: the submitter's own members. Collected by
- * Collector (Collector role only): the members of the chosen MAS, an active employee with the MAS role who shares one of
- * the Collector's branches. `masOptions` lists those MAS for the page.
+ * Collector (Collector role only): the members of the chosen person, an active employee holding accounts in one of the
+ * Collector's branches. That is not only the MAS role: every employee is a virtual MAS, so a clerk or another Collector
+ * can hold accounts, and so can the Collector themself (`own`, listed first). `masOptions` lists them for the page.
+ * With no choice yet it follows the workspace: their MAS workspace is MAS; the Collector workspace is Collector.
  */
-async function collectorContext(user: Pick<SessionUser, "employeeId">, collectedBy: unknown, memberMasEmployeeId: unknown) {
+async function collectorContext(user: Pick<SessionUser, "employeeId"> & Partial<Pick<SessionUser, "roleNames">>, collectedBy: unknown, memberMasEmployeeId: unknown) {
   const [profile, employees] = await Promise.all([masProfile(user), getEmployees()]);
-  const roles = employees.find((item) => item.id === profile.employeeId)?.roles ?? [];
-  const isCollector = roles.includes("collector"), isMas = roles.includes("mas");
-  const branchIds = new Set(profile.branches.map((branch) => branch.id));
-  const masOptions = isCollector ? employees
-    .filter((item) => item.id !== profile.employeeId && item.status.toLowerCase() === "active" && item.roles.includes("mas") && item.branchIds.some((id) => branchIds.has(id)))
-    .map((item) => ({ employeeId: item.id, name: item.name, branchIds: item.branchIds.filter((id) => branchIds.has(id)) }))
-    .sort((a, b) => a.name.localeCompare(b.name)) : [];
-  // A Collector who is not a MAS has no members of their own, so they collect as Collector.
-  const as: CollectedBy = collectedBy === "Collector" || (collectedBy !== "MAS" && isCollector && !isMas) ? "Collector" : "MAS";
+  const isCollector = holdsRole(employees.find((item) => item.id === profile.employeeId)?.roles ?? [], "collector");
+  const holders = new Set(isCollector ? await accountHolders() : []);
+  const masOptions = !isCollector ? [] : employees
+    .filter((item) => item.status.toLowerCase() === "active")
+    .map((item) => ({ employeeId: item.id, name: item.name, own: item.id === profile.employeeId, branchIds: profile.branches.filter((branch) => holders.has(holderKey(item.name, branch.name))).map((branch) => branch.id) }))
+    .filter((item) => item.branchIds.length)
+    .sort((a, b) => Number(b.own) - Number(a.own) || a.name.localeCompare(b.name));
+  const workspace = user.roleNames ?? [];
+  const startsAsCollector = holdsRole(workspace, "collector") && !holdsRole(workspace, "mas");
+  const as: CollectedBy = collectedBy === "Collector" || (collectedBy !== "MAS" && isCollector && startsAsCollector) ? "Collector" : "MAS";
   if (as === "Collector" && !isCollector) throw new Error("Only an employee with the Collector role can collect as Collector. Ask HR.");
   const memberMas = as === "Collector" ? masOptions.find((item) => item.employeeId === text(memberMasEmployeeId)) ?? null : null;
-  return { profile, isCollector, isMas, masOptions, as, memberMas };
+  return { profile, isCollector, masOptions, as, memberMas };
 }
 type SubmitContext = Awaited<ReturnType<typeof collectorContext>>;
 type Choice = { enrollmentId: string; months: number; amount: number | null; waiver: boolean };
@@ -216,7 +233,7 @@ async function pendingAccounts() {
 export async function myCollectionAccounts(user: SessionUser, options: { collectedBy?: unknown; memberMasEmployeeId?: unknown } = {}) {
   const context = await collectorContext(user, options.collectedBy, options.memberMasEmployeeId);
   const { profile } = context;
-  const collector = { isCollector: context.isCollector, isMas: context.isMas, masOptions: context.masOptions, collectedBy: context.as, memberMasEmployeeId: context.memberMas?.employeeId ?? "" };
+  const collector = { isCollector: context.isCollector, masOptions: context.masOptions, collectedBy: context.as, memberMasEmployeeId: context.memberMas?.employeeId ?? "" };
   const today = manilaNow().date;
   const ownerName = context.as === "Collector" ? context.memberMas?.name ?? "" : profile.name;
   // As Collector with no MAS chosen yet: nothing to list.
@@ -267,7 +284,7 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
   const context = await collectorContext(user, input.collectedBy === "Collector" ? "Collector" : "MAS", input.memberMasEmployeeId);
   const { profile, memberMas } = context;
   const asCollector = context.as === "Collector";
-  if (asCollector && !memberMas) throw new Error("Choose whose members you collected: a MAS of your branches.");
+  if (asCollector && !memberMas) throw new Error("Choose whose members you collected: someone with accounts in your branches.");
   const orc = asCollector && input.orc === true;
   if (!profile.branches.length) throw new Error("You are not assigned to an active branch. Ask HR to assign you.");
   if (!Array.isArray(input.entries) || !input.entries.length) throw new Error("Add at least one member.");

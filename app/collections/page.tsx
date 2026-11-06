@@ -1303,7 +1303,7 @@ export default function CollectionsPage() {
               <p className="text-xs text-muted-foreground">{collectionChannels.find((channel) => channel.value === collectedBy)?.hint}. Applies to every entry; DTO uses the current MAS incentive.</p>
             </fieldset>}
 
-            {/* WHOSE MEMBERS (owner, November 3, 2026): a Collector collects for a MAS of the branch; their members are listed. */}
+            {/* WHOSE MEMBERS (owner, November 3, 2026): a Collector collects for anyone of the branch, MAS by role or virtual MAS (every employee); their members are listed. */}
             {!dto && collectedBy === "Collector" && <div className="space-y-2">
               <Label>Members of MAS *</Label>
               <SearchSelect aria-label="Members of MAS" value={membersOf} placeholder={mas ? "Search MAS" : "Pick the handover first"} disabled={!mas || Boolean(reviewing)}
@@ -1311,7 +1311,7 @@ export default function CollectionsPage() {
                   ...(mas ? [{ value: mas, label: mas, description: "The Collector's own accounts" }] : []),
                   ...masStaff.filter((staff) => {
                     const branchId = branches.find((item) => item.name === branch)?.id;
-                    return staff.fullName !== mas && Boolean(branchId && staff.branchIds.includes(branchId)) && (staff.roles ?? []).includes("mas");
+                    return staff.fullName !== mas && (staff.fullName === memberMas || Boolean(branchId && staff.branchIds.includes(branchId)));
                   }).map((staff) => ({ value: staff.fullName, label: staff.fullName, description: staff.employeeId })),
                 ]}
                 onValueChange={(value) => { if (value === membersOf) return; setMemberMas(value === mas ? "" : value); clearScopedMemberSelections(); }} />
@@ -2261,7 +2261,7 @@ function CollectionSubmissionList({ submissions, branchPicker, activeId, onOpen,
             <div className="min-w-0 text-sm">
               <p className="font-semibold">{submission.mas} · {submission.branch}</p>
               {submission.autoSubmitted && <p className="font-medium text-amber-700">Sent automatically: the MAS did not submit. If a member did not pay, Reject it or remove them on Review.</p>}
-              {submission.collectedBy === "Collector" && <p className="font-medium text-primary">Collector, for the members of {submission.memberMas} · ORC {submission.orc ? "Yes" : "No"}</p>}
+              {submission.collectedBy === "Collector" && <p className="font-medium text-primary">Collector, for {submission.memberMas === submission.mas ? "their own accounts" : `the members of ${submission.memberMas}`} · ORC {submission.orc ? "Yes" : "No"}</p>}
               <p className="text-muted-foreground">{submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · {formatCurrency(submission.totalAmount)} collected · incentive {formatCurrency(submission.totalIncentive)} · submitted {formatDateTime(submission.submittedAt)}</p>
               {submission.status === "Remitted"
                 ? <p className={submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline ? "font-medium text-amber-700" : "font-medium text-emerald-700"}>Remitted {formatDateTime(submission.remittedAt)}{submission.remittedByName ? ` (${submission.remittedByName})` : ""}{submission.incentiveDeadline ? (submission.remittedAt > submission.incentiveDeadline ? " · after the deadline: incentive forfeited" : " · in time: incentive kept") : ""} · OR numbers still to type</p>

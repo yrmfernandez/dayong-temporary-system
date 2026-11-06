@@ -29,8 +29,9 @@ import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
  * Members of all the MAS's branches can be added together (owner, November 2, 2026): the batch is shown per branch and
  * sent as one submission per branch. A member just added goes last, so the first added stays on top, and the page scrolls to it.
  * Collectors (owner, November 3, 2026): an employee with the Collector role picks Collected by MAS (their own members) or
- * Collector; as Collector they choose whose members (a MAS of their branches), whose list is then shown, and ORC Yes or
- * No, which sets the incentive (Collector tier, or half of the MAS incentive with ORC).
+ * Collector; as Collector they choose whose members (anyone with accounts in their branches, their own first), whose list
+ * is then shown, and ORC Yes or No, which sets the incentive (Collector tier, or half of the MAS incentive with ORC).
+ * Every Collector has the choice, being a virtual MAS too (owner, November 6, 2026); it starts on the workspace open.
  */
 type Account = {
   id: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; branchId: string; branch: string;
@@ -42,13 +43,13 @@ type Entry = { enrollmentId: string; memberName: string; programName: string; mo
 type Submission = {
   id: string; branchId: string; branch: string; status: "Submitted" | "Remitted" | "Rejected" | "Saved"; entries: Entry[]; entryCount: number; totalAmount: number; totalIncentive: number;
   submittedAt: string; returnReason: string; reviewedByName: string; incentiveDeadline: string; remittedAt: string; remittedByName: string;
-  collectedBy: CollectedBy; memberMas: string; orc: boolean; autoSubmitted: boolean; rejectionSeen: boolean; fidelity: number;
+  mas: string; collectedBy: CollectedBy; memberMas: string; orc: boolean; autoSubmitted: boolean; rejectionSeen: boolean; fidelity: number;
 };
 type Profile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
 type CollectedBy = "MAS" | "Collector";
 /** What the server says the submitter may do (lib/collection-submissions.ts collectorContext). */
-type CollectorInfo = { isCollector: boolean; isMas: boolean; masOptions: Array<{ employeeId: string; name: string; branchIds: string[] }>; collectedBy: CollectedBy; memberMasEmployeeId: string };
-/** Who collected and whose members, as chosen; "" lets the server decide (a Collector who is not a MAS collects as Collector). */
+type CollectorInfo = { isCollector: boolean; masOptions: Array<{ employeeId: string; name: string; own: boolean; branchIds: string[] }>; collectedBy: CollectedBy; memberMasEmployeeId: string };
+/** Who collected and whose members, as chosen; "" lets the server decide (it follows the workspace open). */
 type Choice = { collectedBy: CollectedBy | ""; mas: string };
 /** One member in the batch being filled: what the MAS chose. `amount`: typed on a flexible program; "" is its Base Pay, or the minimum if none. */
 type BatchItem = { enrollmentId: string; months: number; amount: string; waiver: boolean };
@@ -220,7 +221,8 @@ export default function MasCollectionsPage() {
     if (missingWaiver.length) { setMessage(`${missingWaiver[0].account?.memberName} is suspended. Have the member sign the Waiver, then tick Waiver.`); return; }
     const perBranch = groups.map((group) => `${group.name}: ${plural(group.rows.length, "member")}, collected ${money(cents(group.totals.amount))}; remit ${money(cents(group.totals.remittance))} by ${formatDeadline(group.deadline)} to keep your ${money(cents(group.totals.incentive))} incentive.`);
     const intro = groups.length > 1 ? `Submit ${plural(shownRows.length, "member")} as ${groups.length} batches, one per branch?` : `Submit ${plural(shownRows.length, "member")} to the ${groups[0]?.name ?? ""} clerk?`;
-    const whose = asCollector ? `\n\nCollected by you as Collector, for the members of ${memberMas?.name ?? ""} · ORC ${quoteAs.orc ? "Yes" : "No"}.` : "";
+    const whose = asCollector ? `\n\nCollected by you as Collector, for ${memberMas?.own ? "your own accounts" : `the members of ${memberMas?.name ?? ""}`} · ORC ${quoteAs.orc ? "Yes" : "No"}.`
+      : collector?.isCollector ? "\n\nCollected by you as MAS: your own members, at the MAS incentive." : "";
     if (!await confirmDialog(`${intro} You cannot change it after this; the clerk checks it when you remit the cash.${whose}\n\n${perBranch.join("\n")}`)) return;
     setBusy(true); setMessage("");
     try {
@@ -274,23 +276,24 @@ export default function MasCollectionsPage() {
     {/* COLLECTED BY (Collector role): their own members as MAS, or a MAS's members as Collector, with ORC. */}
     {collector?.isCollector && <Card>
       <CardContent className="space-y-3 p-4">
-        {collector.isMas && <div className="space-y-1">
+        <div className="space-y-1">
           <p className="text-sm font-medium">Collected by</p>
           <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
             {(["MAS", "Collector"] as const).map((value) => <button key={value} type="button" role="radio" aria-checked={collector.collectedBy === value} disabled={busy}
               onClick={() => void choose({ collectedBy: value, mas: value === "Collector" ? collector.memberMasEmployeeId : "" })}
               className={`min-h-10 rounded-md px-3 font-semibold ${collector.collectedBy === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}>{value === "MAS" ? "MAS: my members" : "Collector"}</button>)}
           </div>
-        </div>}
+          {!asCollector && <p className="text-xs text-muted-foreground">Your own members, at the MAS incentive. Choose Collector for the Collector incentive.</p>}
+        </div>
         {asCollector && <>
           <label className="block space-y-1">
             <span className="text-sm font-medium">Whose members? *</span>
             <select className="h-11 w-full rounded-md border bg-background px-3 text-base" value={collector.memberMasEmployeeId} disabled={busy}
               onChange={(event) => void choose({ collectedBy: "Collector", mas: event.target.value })}>
-              <option value="">Choose the MAS</option>
-              {collector.masOptions.map((item) => <option key={item.employeeId} value={item.employeeId}>{item.name}{manyBranches ? ` · ${item.branchIds.map((id) => branches.find((branch) => branch.id === id)?.name).filter(Boolean).join(", ")}` : ""}</option>)}
+              <option value="">Choose whose members</option>
+              {collector.masOptions.map((item) => <option key={item.employeeId} value={item.employeeId}>{item.own ? "My own accounts" : item.name}{manyBranches ? ` · ${item.branchIds.map((id) => branches.find((branch) => branch.id === id)?.name).filter(Boolean).join(", ")}` : ""}</option>)}
             </select>
-            <span className="block text-xs text-muted-foreground">{collector.masOptions.length ? "Only that MAS's members are listed. You remit the cash; each payment stays with its MAS." : "No MAS shares your branches. Ask HR."}</span>
+            <span className="block text-xs text-muted-foreground">{collector.masOptions.length ? "Only their members are listed. You remit the cash; each payment stays with its MAS." : "Nobody has accounts in your branches. Ask HR."}</span>
           </label>
           <div className="space-y-1">
             <p className="text-sm font-medium">ORC (outright commission)</p>
@@ -382,7 +385,7 @@ export default function MasCollectionsPage() {
     {/* MEMBERS: the MAS's own accounts, in one branch or all of them; those still owing this month first. */}
     <Card>
       <CardHeader className="space-y-3 pb-3">
-        <CardTitle className="text-lg">{asCollector && memberMas ? `Add a member of ${memberMas.name} who paid` : "Add a member who paid"}</CardTitle>
+        <CardTitle className="text-lg">{asCollector && memberMas && !memberMas.own ? `Add a member of ${memberMas.name} who paid` : "Add a member who paid"}</CardTitle>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input type="search" className="h-11 pl-9 text-base" placeholder="Search name, PH number or program" value={search} onChange={(event) => setSearch(event.target.value)} aria-label={asCollector ? "Search the MAS's members" : "Search your members"} disabled={asCollector && !memberMas} />
@@ -458,7 +461,7 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
         return <div key={submission.id} className="space-y-2 rounded-lg border p-3 text-sm">
           <p className="flex flex-wrap items-center gap-2 font-semibold">{formatDateTime(submission.submittedAt)} <Badge variant={tone[submission.status]}>{label[submission.status]}</Badge></p>
           <p className="text-muted-foreground">{plural(submission.entryCount, "member")} · {money(submission.totalAmount)} collected · incentive {money(submission.totalIncentive)} · {submission.branch}</p>
-          {submission.collectedBy === "Collector" && <p className="text-muted-foreground">As Collector, for the members of {submission.memberMas} · ORC {submission.orc ? "Yes" : "No"}</p>}
+          {submission.collectedBy === "Collector" && <p className="text-muted-foreground">As Collector, for {submission.memberMas === submission.mas ? "your own accounts" : `the members of ${submission.memberMas}`} · ORC {submission.orc ? "Yes" : "No"}</p>}
           {submission.autoSubmitted && <p className="font-medium text-amber-700 dark:text-amber-400">Sent automatically after midnight: you did not press Submit.</p>}
           <p className="line-clamp-2">{submission.entries.map((entry) => `${entry.memberName} (${plural(entry.months, "month")})`).join(", ")}</p>
           {submission.status === "Submitted" && submission.incentiveDeadline && <p className={late ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>
