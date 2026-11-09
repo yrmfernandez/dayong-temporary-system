@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { carriedNotRequired, clockOutFigures, dayTotals, lateMinutesFor, withDayTotals, workingMinutesBetween } from "../lib/attendance.ts";
-import { checkClockIn, clockInLabel, distanceMeters, needsReview, parseCoordinates, radiusOf } from "../lib/clock-in-location.ts";
+import { checkClockIn, checkClockInAtBranches, clockInLabel, distanceMeters, needsReview, parseCoordinates, radiusOf } from "../lib/clock-in-location.ts";
 
 test("late starts after the 20-minute grace period and counts from 08:20", () => {
   assert.equal(lateMinutesFor("07:45"), 0);
@@ -120,6 +120,29 @@ test("no location from the phone is flagged when the branch is set", () => {
   assert.equal(check.result, "No location");
   assert.equal(clockInLabel(check), "Location off");
   assert.equal(checkClockIn(office, null).result, "No location");
+});
+
+test("a clock-in at another assigned branch instead of the main branch is flagged with its name (November 9, 2026)", () => {
+  const tagum = { name: "TAGUM", latitude: 7.4475, longitude: 125.8078, radiusM: 150 };
+  const main = { latitude: 7.3000, longitude: 125.6000, radiusM: 150 };
+  const atTagum = { latitude: 7.4476, longitude: 125.8079, accuracy: 15 };
+  const other = checkClockInAtBranches(main, [tagum], atTagum);
+  assert.equal(other.result, "Other branch");
+  assert.equal(other.otherBranch, "TAGUM");
+  assert.equal(needsReview(other.result), true);
+  assert.match(clockInLabel(other), /^At TAGUM, not the main branch \(\d+(\.\d)? km from it\)$/);
+  // At the main branch: Inside, the other branches are not looked at.
+  assert.equal(checkClockInAtBranches(tagum, [{ ...main, name: "MAIN" }], atTagum).result, "Inside");
+  // Far from every branch: Outside as before.
+  assert.equal(checkClockInAtBranches(main, [tagum], { latitude: 8, longitude: 126, accuracy: 10 }).result, "Outside");
+  // The main branch has no location yet: at another branch is still found; anywhere else is not checked.
+  const unset = { latitude: null, longitude: null, radiusM: null };
+  const found = checkClockInAtBranches(unset, [tagum], atTagum);
+  assert.deepEqual([found.result, found.otherBranch, found.distanceM], ["Other branch", "TAGUM", null]);
+  assert.equal(clockInLabel(found), "At TAGUM, not the main branch");
+  assert.equal(checkClockInAtBranches(unset, [tagum], { latitude: 8, longitude: 126, accuracy: 10 }).result, "Not set");
+  // Location off stays Location off.
+  assert.equal(checkClockInAtBranches(main, [tagum], { error: "refused" }).result, "No location");
 });
 
 test("allowed distance defaults to 150 m and stays between 50 m and 2 km", () => {

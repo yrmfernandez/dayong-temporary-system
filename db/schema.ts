@@ -942,6 +942,8 @@ export const clock_in_checks = pgTable("clock_in_checks", {
   distance_m: doublePrecision(),
   radius_m: integer(),
   device_note: text(),
+  /** Result "Other branch" (owner, November 9, 2026): the other assigned branch the clock-in was made at. */
+  other_branch: text(),
   checked_at: moment("checked_at").notNull(),
   review_status: text(),
   review_note: text(),

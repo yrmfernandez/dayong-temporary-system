@@ -337,6 +337,13 @@
       "when": 1794182062034,
       "tag": "0047_different_incentive_rate",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794184645689,
+      "tag": "0048_clock_in_other_branch",
+      "breakpoints": true
     }
   ]
 }

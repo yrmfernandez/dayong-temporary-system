@@ -17,6 +17,15 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Clock-in at another assigned branch is flagged (2026-11-09)
+
+- **Asked (owner):** attendance knows the location; when an employee with several branches clocks in at another of them instead of the main branch, flag it.
+- **Before:** the clock-in was compared only with the main branch, so at another branch it showed as a plain *Outside branch (… away)*, without saying where; if the main branch had no location, nothing was checked at all.
+- **Done:** a new result **Other branch**: not inside the main branch (or the main branch has no location) but inside another assigned branch with a saved location. It is flagged for HR as *At TAGUM, not the main branch (12 km from it)*, with Accept / Mark absent as for the other flags, on the Daily board and in Attendance Review. Migration 0048 adds `clock_in_checks.other_branch`. The clock-in page now asks for the location when any assigned branch has one saved. Branches not assigned to the employee are not checked (Outside as before). The clock-in page and Daily board wording mention it.
+- **Tested:** type check and build pass; a new test in `scripts/test-attendance-rules.mjs` (at another branch, at the main branch, far from all, main branch not set, location off).
+- **In progress:** nothing.
+- **To do (owner):** `npm run prod -- npm run db:migrate` **before** pushing (it runs 0047 and 0048 together if 0047 is not in yet), then `npm run prod -- node scripts/check-database.mjs`, then push. Each branch still needs its location saved on Branches for its clock-ins to be found.
+
 ### Different incentives typed on the collection, removed from Programs (2026-11-09)
 
 - **Asked (owner):** the Different incentives tick could not be seen on Collections. Remove it from Programs; it is only on Collections, ticked or not, and when ticked the clerk types the incentive to use, percentage or fixed.

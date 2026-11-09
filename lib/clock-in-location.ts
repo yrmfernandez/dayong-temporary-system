@@ -5,6 +5,8 @@
  * - Outside: farther away. The clock-in is saved but flagged for HR.
  * - No location: the phone refused or could not give its location. Saved and flagged the same way.
  * - Not set: the branch has no saved location yet, so nothing is checked (clock-in works as before).
+ * - Other branch (owner, November 9, 2026): not at the main branch but inside another branch assigned to the employee.
+ *   Saved and flagged for HR with that branch's name. Also found when the main branch has no saved location.
  * HR accepts a flagged clock-in (the day stays Present) or marks the day Absent.
  * This file has no runtime imports, so scripts/test-attendance-rules.mjs loads it directly.
  */
@@ -15,7 +17,7 @@ export const MAX_RADIUS_M = 2000;
 /** The phone's reported uncertainty is forgiven up to this much, so weak GPS indoors does not flag someone at the office. */
 export const MAX_ACCURACY_ALLOWANCE_M = 100;
 
-export type ClockInResult = "Inside" | "Outside" | "No location" | "Not set";
+export type ClockInResult = "Inside" | "Outside" | "No location" | "Not set" | "Other branch";
 export type ReviewStatus = "Accepted" | "Absent";
 export type DevicePosition = { latitude: number; longitude: number; accuracy: number | null } | { error: string };
 export type BranchLocation = { latitude: number | null; longitude: number | null; radiusM: number | null };
@@ -50,13 +52,30 @@ export function checkClockIn(branch: BranchLocation, position: DevicePosition | 
   return { result: (distanceM <= radiusM + allowance ? "Inside" : "Outside") as ClockInResult, distanceM, radiusM };
 }
 
-/** Outside and No location wait for HR until accepted or marked Absent. */
-export const needsReview = (result: string) => result === "Outside" || result === "No location";
+/**
+ * The clock-in against the main branch, then, when it is not inside the main branch (or the main branch has no saved
+ * location), against the employee's other assigned branches: inside one of them is "Other branch", with the nearest such
+ * branch's name. The distance and allowed distance stay those of the main branch (null when it has no location).
+ */
+export function checkClockInAtBranches(main: BranchLocation, others: Array<BranchLocation & { name: string }>, position: DevicePosition | null) {
+  const atMain = { ...checkClockIn(main, position), otherBranch: "" };
+  if ((atMain.result !== "Outside" && atMain.result !== "Not set") || !position || "error" in position) return atMain;
+  const found = others
+    .filter((branch) => hasLocation(branch))
+    .map((branch) => ({ name: branch.name, check: checkClockIn(branch, position) }))
+    .filter((item) => item.check.result === "Inside")
+    .sort((a, b) => (a.check.distanceM ?? 0) - (b.check.distanceM ?? 0))[0];
+  return found ? { ...atMain, result: "Other branch" as ClockInResult, otherBranch: found.name } : atMain;
+}
+
+/** Outside, No location and Other branch wait for HR until accepted or marked Absent. */
+export const needsReview = (result: string) => result === "Outside" || result === "No location" || result === "Other branch";
 
 export const formatDistance = (meters: number) => meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0)} km`;
 
-/** "Outside branch (2.3 km away)", "Location off", "Inside branch (40 m)", "Branch location not set". */
-export function clockInLabel(check: { result: string; distanceM: number | null }) {
+/** "Outside branch (2.3 km away)", "Location off", "Inside branch (40 m)", "At TAGUM, not the main branch", "Branch location not set". */
+export function clockInLabel(check: { result: string; distanceM: number | null; otherBranch?: string }) {
+  if (check.result === "Other branch") return `At ${check.otherBranch || "another branch"}, not the main branch${check.distanceM != null ? ` (${formatDistance(check.distanceM)} from it)` : ""}`;
   if (check.result === "Outside") return `Outside branch${check.distanceM != null ? ` (${formatDistance(check.distanceM)} away)` : ""}`;
   if (check.result === "No location") return "Location off";
   if (check.result === "Inside") return `Inside branch${check.distanceM != null ? ` (${formatDistance(check.distanceM)})` : ""}`;

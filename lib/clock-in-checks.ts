@@ -1,7 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 
 import { currentDb, schema } from "@/lib/db";
-import { checkClockIn, needsReview, type ClockInResult, type DevicePosition, type ReviewStatus } from "@/lib/clock-in-location";
+import { checkClockInAtBranches, needsReview, type ClockInResult, type DevicePosition, type ReviewStatus } from "@/lib/clock-in-location";
 import { getBranches } from "@/lib/google-sheets-data";
 
 const table = schema.clock_in_checks;
@@ -14,6 +14,8 @@ export type ClockInCheck = {
   radiusM: number | null;
   accuracyM: number | null;
   deviceNote: string;
+  /** Result "Other branch": the other assigned branch it was made at. */
+  otherBranch: string;
   needsReview: boolean;
   reviewStatus: ReviewStatus | "";
   reviewNote: string;
@@ -23,7 +25,7 @@ export type ClockInCheck = {
 
 const toCheck = (row: typeof table.$inferSelect): ClockInCheck => ({
   attendanceId: row.attendance_id, result: row.result as ClockInResult, distanceM: row.distance_m, radiusM: row.radius_m, accuracyM: row.accuracy_m,
-  deviceNote: row.device_note ?? "", needsReview: needsReview(row.result) && !row.review_status,
+  deviceNote: row.device_note ?? "", otherBranch: row.other_branch ?? "", needsReview: needsReview(row.result) && !row.review_status,
   reviewStatus: (row.review_status ?? "") as ReviewStatus | "", reviewNote: row.review_note ?? "", reviewedBy: row.reviewed_by_name ?? "", reviewedAt: row.reviewed_at ?? "",
 });
 
@@ -37,17 +39,22 @@ export function readDevicePosition(value: unknown): DevicePosition | null {
 }
 
 /**
- * Compares a clock-in with its branch's saved location and keeps the result (one row per attendance record; a new
- * clock-in for the same record replaces it). Returns the check, or null when it could not be saved.
+ * Compares a clock-in with its main branch's saved location, and with the employee's other assigned branches when it is
+ * not at the main branch (owner, November 9, 2026), and keeps the result (one row per attendance record; a new clock-in
+ * for the same record replaces it). Returns the check, or null when it could not be saved.
  */
-export async function recordClockInCheck(input: { attendanceId: string; employeeId: string; attendanceDate: string; branchName: string; position: DevicePosition | null }) {
-  const branch = (await getBranches()).find((item) => item.name.trim().toLowerCase() === input.branchName.trim().toLowerCase());
-  const outcome = checkClockIn({ latitude: branch?.latitude ?? null, longitude: branch?.longitude ?? null, radiusM: branch?.locationRadiusM ?? null }, input.position);
+export async function recordClockInCheck(input: { attendanceId: string; employeeId: string; attendanceDate: string; branchName: string; otherBranchNames?: string[]; position: DevicePosition | null }) {
+  const branches = await getBranches();
+  const byName = (name: string) => branches.find((item) => item.name.trim().toLowerCase() === name.trim().toLowerCase());
+  const branch = byName(input.branchName);
+  const others = (input.otherBranchNames ?? []).map(byName).filter((item): item is NonNullable<typeof item> => Boolean(item) && item !== branch)
+    .map((item) => ({ name: item.name, latitude: item.latitude ?? null, longitude: item.longitude ?? null, radiusM: item.locationRadiusM ?? null }));
+  const outcome = checkClockInAtBranches({ latitude: branch?.latitude ?? null, longitude: branch?.longitude ?? null, radiusM: branch?.locationRadiusM ?? null }, others, input.position);
   const coordinates = input.position && !("error" in input.position) ? input.position : null;
   const values = {
     employee_id: input.employeeId, attendance_date: input.attendanceDate, branch_id: branch?.id ?? null, branch: input.branchName, result: outcome.result,
     latitude: coordinates?.latitude ?? null, longitude: coordinates?.longitude ?? null, accuracy_m: coordinates?.accuracy ?? null,
-    distance_m: outcome.distanceM, radius_m: outcome.radiusM,
+    distance_m: outcome.distanceM, radius_m: outcome.radiusM, other_branch: outcome.otherBranch || null,
     device_note: input.position && "error" in input.position ? input.position.error : !input.position && outcome.result === "No location" ? "No location was sent." : null,
     checked_at: new Date().toISOString(), review_status: null, review_note: null, reviewed_by_name: null, reviewed_at: null,
   };

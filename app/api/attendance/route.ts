@@ -12,7 +12,7 @@ import { closureForBranch } from "@/lib/attendance-calendar";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { recordClockInCheck, readDevicePosition } from "@/lib/clock-in-checks";
-import { clockInLabel, hasLocation } from "@/lib/clock-in-location";
+import { clockInLabel, hasLocation, needsReview } from "@/lib/clock-in-location";
 
 // Attendance uses the branch on the employee's record (primary branch, else the first assignment); nobody picks one.
 // All assigned branches are returned too, primary first, so the page can show them.
@@ -22,9 +22,11 @@ async function employeeBranches(employeeId: string) {
   if (!employee) return { primary: "", all: [] as string[], locationSet: false };
   const assigned = employee.branchIds.map((id) => branches.find((branch) => branch.id === id)?.name).filter((name): name is string => Boolean(name));
   const primary = employee.branch || assigned[0] || "";
-  // The clock-in page asks the phone for its location only when the branch's location is saved.
-  const primaryBranch = branches.find((branch) => branch.name.trim().toLowerCase() === primary.trim().toLowerCase());
-  return { primary, all: primary ? [primary, ...assigned.filter((name) => name !== primary)] : assigned, locationSet: Boolean(primaryBranch && hasLocation({ latitude: primaryBranch.latitude, longitude: primaryBranch.longitude, radiusM: primaryBranch.locationRadiusM })) };
+  const all = primary ? [primary, ...assigned.filter((name) => name !== primary)] : assigned;
+  // The clock-in page asks the phone for its location only when the main branch's location is saved, or another
+  // assigned branch's is, so a clock-in at another branch is found too (owner, November 9, 2026).
+  const located = (name: string) => { const branch = branches.find((item) => item.name.trim().toLowerCase() === name.trim().toLowerCase()); return Boolean(branch && hasLocation({ latitude: branch.latitude, longitude: branch.longitude, radiusM: branch.locationRadiusM })); };
+  return { primary, all, locationSet: all.some(located) };
 }
 
 async function assignedBranch(employeeId: string) {
@@ -137,7 +139,8 @@ export const POST = withEncoder(async function POST(request: Request) {
       );
 
     if (action === "time-in") {
-      const branch = await assignedBranch(user.employeeId);
+      const assignment = await employeeBranches(user.employeeId);
+      const branch = assignment.primary;
       if (!branch) {
         return NextResponse.json(
           {
@@ -196,15 +199,16 @@ export const POST = withEncoder(async function POST(request: Request) {
       if (replacesMark && rowNumber) await updateAttendanceRecord(rowNumber, newRecord);
       else await addAttendanceRecord(newRecord);
 
-      // Where the clock-in was made, against the branch's saved location. The clock-in stands even if this fails.
-      const check = await recordClockInCheck({ attendanceId: newRecord.id, employeeId: user.employeeId, attendanceDate, branchName: branch, position: readDevicePosition(body.location) })
+      // Where the clock-in was made, against the main branch's saved location and the other assigned branches'. The
+      // clock-in stands even if this fails.
+      const check = await recordClockInCheck({ attendanceId: newRecord.id, employeeId: user.employeeId, attendanceDate, branchName: branch, otherBranchNames: assignment.all.filter((name) => name !== branch), position: readDevicePosition(body.location) })
         .catch((error) => { console.error("Clock-in location check error:", error); return null; });
-      const flagged = check?.result === "Outside" || check?.result === "No location";
+      const flagged = Boolean(check && needsReview(check.result));
 
       return NextResponse.json(
         {
           success: true,
-          message: flagged ? `Clocked in. ${clockInLabel(check)}: HR will review this clock-in.` : "Clocked in successfully.",
+          message: flagged && check ? `Clocked in. ${clockInLabel(check)}: HR will review this clock-in.` : "Clocked in successfully.",
           record: newRecord,
           locationCheck: check,
         },

@@ -352,7 +352,7 @@ export default function AttendancePage() {
               )}
 
               {!record?.timeIn && locationSet && (
-                <p className="text-xs text-violet-40">Your branch checks your location when you clock in. Allow location when your phone asks; a clock-in away from the branch or without location is sent to HR for review.</p>
+                <p className="text-xs text-violet-40">Your branch checks your location when you clock in. Allow location when your phone asks; a clock-in away from your main branch, at another of your branches, or without location is sent to HR for review.</p>
               )}
 
               {message && (

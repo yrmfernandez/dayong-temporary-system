@@ -9,13 +9,13 @@ import { clockInLabel, formatDistance } from "@/lib/clock-in-location";
 
 /** The clock-in location check as the attendance APIs send it (lib/clock-in-checks.ts ClockInCheck). */
 export type LocationCheck = {
-  result: "Inside" | "Outside" | "No location" | "Not set";
-  distanceM: number | null; radiusM: number | null; accuracyM: number | null; deviceNote: string;
+  result: "Inside" | "Outside" | "No location" | "Not set" | "Other branch";
+  distanceM: number | null; radiusM: number | null; accuracyM: number | null; deviceNote: string; otherBranch?: string;
   needsReview: boolean; reviewStatus: "Accepted" | "Absent" | ""; reviewNote: string; reviewedBy: string;
 };
 
 /**
- * The location flag on a clock-in (Daily board, Attendance Review). Outside and Location off wait for HR: Accept keeps
+ * The location flag on a clock-in (Daily board, Attendance Review). Outside, Location off and At another assigned branch wait for HR: Accept keeps
  * the day Present, Mark absent makes it Absent with a reason (app/api/attendance-tracking/location). Inside shows a
  * quiet note; Not set shows nothing.
  */

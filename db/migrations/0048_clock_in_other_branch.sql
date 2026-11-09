@@ -1,0 +1,1 @@
+ALTER TABLE "clock_in_checks" ADD COLUMN "other_branch" text;
