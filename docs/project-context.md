@@ -17,6 +17,15 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Added members on Submit Collections are short rows (2026-11-09)
+
+- **Asked (owner):** a different card for the members added on Collections, so there is not much scrolling when many are added.
+- **Before:** every member added was a full card (months stepper, figures, Waiver), so a batch of many members was very long.
+- **Done (app/mas-collections/page.tsx):** each added member is a one-line row (name, months, months covered, program, amount, remit; amber with the problem or Tick Waiver). Tapping it opens the full card, one at a time, with **Done** to close. The member just added opens; Submit with a problem or a missing Waiver opens that member. No server or database change.
+- **Tested:** type check, lint and build pass.
+- **In progress:** nothing.
+- **To do:** push. No migration.
+
 ### My submissions shows Collected, Incentive and To remit clearly (2026-11-09)
 
 - **Asked (owner):** on My submissions the Collector cannot see how much to remit; improve the layout for MAS and Collector so the totals collected, to remit and incentives are easy to spot.

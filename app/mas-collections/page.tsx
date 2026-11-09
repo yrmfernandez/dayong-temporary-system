@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Minus, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Minus, Plus, Search, Trash2, X } from "lucide-react";
 
 import { confirmDialog } from "@/components/app-dialog";
 import { mamStatusClass } from "@/components/mam-status";
@@ -75,6 +75,9 @@ export default function MasCollectionsPage() {
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [justAdded, setJustAdded] = useState("");
+  // The one member of the batch opened for editing (owner, November 9, 2026); the others are one-line rows, so a long
+  // batch does not need much scrolling. The member just added opens.
+  const [openId, setOpenId] = useState("");
   const [collector, setCollector] = useState<CollectorInfo | null>(null);
   const [choice, setChoice] = useState<Choice>({ collectedBy: "", mas: "" });
   const [orc, setOrc] = useState(false);
@@ -205,6 +208,7 @@ export default function MasCollectionsPage() {
     // First added stays on top (owner, November 4, 2026); the effect above scrolls to the card so the MAS sees it and sets the months.
     setBatch((current) => current.some((pick) => pick.enrollmentId === account.id) ? current : [...current, { enrollmentId: account.id, months: Math.max(1, Math.min(account.unpaidMonths || 1, MAX_SUBMISSION_MONTHS)), amount: "", waiver: false }]);
     setJustAdded(account.id);
+    setOpenId(account.id);
     setSearch("");
   };
   const change = (id: string, update: Partial<BatchItem>) => setBatch((current) => current.map((pick) => pick.enrollmentId === id ? { ...pick, ...update } : pick));
@@ -222,8 +226,8 @@ export default function MasCollectionsPage() {
 
   async function submit() {
     if (!shownRows.length || busy) return;
-    if (problems.length) { setMessage(`${problems[0].account?.memberName ?? "A member"}: ${problems[0].problem}`); return; }
-    if (missingWaiver.length) { setMessage(`${missingWaiver[0].account?.memberName} is suspended. Have the member sign the Waiver, then tick Waiver.`); return; }
+    if (problems.length) { setOpenId(problems[0].pick.enrollmentId); setMessage(`${problems[0].account?.memberName ?? "A member"}: ${problems[0].problem}`); return; }
+    if (missingWaiver.length) { setOpenId(missingWaiver[0].pick.enrollmentId); setMessage(`${missingWaiver[0].account?.memberName} is suspended. Have the member sign the Waiver, then tick Waiver.`); return; }
     const perBranch = groups.map((group) => `${group.name}: ${plural(group.rows.length, "member")}, collected ${money(cents(group.totals.amount))}; remit ${money(cents(group.totals.remittance))} by ${formatDeadline(group.deadline)} to keep your ${money(cents(group.totals.incentive))} incentive.`);
     const intro = groups.length > 1 ? `Submit ${plural(shownRows.length, "member")} as ${groups.length} batches, one per ${perBatch}?` : `Submit ${plural(shownRows.length, "member")} to the ${groups[0]?.name ?? ""} clerk?`;
     const whose = asCollector ? `\n\nCollected by you as Collector, for ${memberMas?.own ? "your own accounts" : memberMas ? `the members of ${memberMas.name}` : "your assigned members"} · ORC ${quoteAs.orc ? "Yes" : "No"}.`
@@ -326,7 +330,7 @@ export default function MasCollectionsPage() {
     {/* THE BATCH: grouped by branch, since each branch is submitted as its own batch. */}
     {shownRows.length > 0 && <section aria-label="This batch" className="space-y-4">
       <h2 className="text-lg font-semibold">{filterBranch ? `${filterBranch.name} batch` : "This batch"} · {plural(shownRows.length, "member")}{groups.length > 1 ? ` · ${groups.length} branches` : ""}</h2>
-      <p className="-mt-2 text-xs text-muted-foreground">Not submitted yet. Members still here at midnight are sent to the clerk automatically: remove anyone who did not pay.</p>
+      <p className="-mt-2 text-xs text-muted-foreground">Not submitted yet. Members still here at midnight are sent to the clerk automatically: remove anyone who did not pay. Tap a member to change the months or remove them.</p>
       {draftProblem && <p role="alert" className="text-sm font-medium text-destructive">{draftProblem}</p>}
       {groups.length > 1 && <p className="-mt-2 text-xs text-muted-foreground">Each {perBatch} is sent as its own batch, to that branch&apos;s clerk, with its own remittance.</p>}
       {groups.map((group) => <div key={group.id} className="space-y-3">
@@ -334,14 +338,34 @@ export default function MasCollectionsPage() {
           <h3 className="font-semibold">{group.name} <span className="text-sm font-normal text-muted-foreground">· {plural(group.rows.length, "member")}</span></h3>
           <p className="text-xs text-muted-foreground">Remit <strong className="text-foreground">{money(cents(group.totals.remittance))}</strong>{group.deadline ? ` by ${formatDeadline(group.deadline)}` : ""}</p>
         </div>}
-        {group.rows.map(({ pick, account, orDate, quote, problem }) => <Card key={pick.enrollmentId} id={`batch-${pick.enrollmentId}`} className={`scroll-mt-4 transition-shadow ${justAdded === pick.enrollmentId ? "ring-2 ring-primary" : ""} ${problem || (needsWaiver(account, orDate) && !pick.waiver) ? "border-amber-400" : ""}`}>
+        <div className="space-y-2">
+        {group.rows.map(({ pick, account, orDate, quote, problem }) => openId !== pick.enrollmentId
+          // Closed: one line with the months, the amount and what to remit; a problem or a missing Waiver shows in amber.
+          ? <button key={pick.enrollmentId} id={`batch-${pick.enrollmentId}`} type="button" onClick={() => setOpenId(pick.enrollmentId)} aria-label={`Edit ${account?.memberName ?? "member"}`}
+              className={`flex min-h-14 w-full scroll-mt-4 items-center gap-3 rounded-lg border bg-card px-3 py-2 text-left transition-shadow hover:bg-muted/40 ${justAdded === pick.enrollmentId ? "ring-2 ring-primary" : ""} ${problem || (needsWaiver(account, orDate) && !pick.waiver) ? "border-amber-400" : ""}`}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold">{account?.memberName ?? "Unknown member"}</span>
+                <span className="block truncate text-xs text-muted-foreground">{plural(pick.months, "month")}{quote ? ` · ${monthsText(quote.monthFrom, quote.monthTo)}` : ""}{account ? ` · ${account.programName}` : ""}</span>
+                {problem ? <span className="block truncate text-xs font-medium text-destructive">{problem}</span>
+                  : needsWaiver(account, orDate) && !pick.waiver ? <span className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" /> Tick Waiver</span> : null}
+              </span>
+              {quote && <span className="shrink-0 text-right">
+                <span className="block text-sm font-semibold tabular-nums">{money(quote.amount)}</span>
+                <span className="block text-[11px] tabular-nums text-muted-foreground">remit {money(quote.remittance)}</span>
+              </span>}
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </button>
+          : <Card key={pick.enrollmentId} id={`batch-${pick.enrollmentId}`} className={`scroll-mt-4 transition-shadow ${justAdded === pick.enrollmentId ? "ring-2 ring-primary" : ""} ${problem || (needsWaiver(account, orDate) && !pick.waiver) ? "border-amber-400" : ""}`}>
           <CardContent className="space-y-3 p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="flex items-center gap-2"><span className="truncate font-semibold">{account?.memberName ?? "Unknown member"}</span>{justAdded === pick.enrollmentId && <Badge className="shrink-0">Added</Badge>}</p>
                 <p className="truncate text-xs text-muted-foreground">{account ? `${account.memberNumber} · ${account.programName}` : ""} · OR date {formatDate(orDate)}</p>
               </div>
-              <Button type="button" variant="ghost" size="icon" className="h-10 w-10 shrink-0" aria-label={`Remove ${account?.memberName ?? "member"}`} onClick={() => remove(pick.enrollmentId)}><Trash2 className="h-5 w-5" /></Button>
+              <div className="flex shrink-0 items-center">
+                <Button type="button" variant="ghost" size="icon" className="h-10 w-10" aria-label={`Remove ${account?.memberName ?? "member"}`} onClick={() => remove(pick.enrollmentId)}><Trash2 className="h-5 w-5" /></Button>
+                <Button type="button" variant="outline" size="sm" className="h-10" aria-label={`Close ${account?.memberName ?? "member"}`} onClick={() => setOpenId("")}><ChevronUp className="mr-1 h-4 w-4" />Done</Button>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -384,6 +408,7 @@ export default function MasCollectionsPage() {
             </label>}
           </CardContent>
         </Card>)}
+        </div>
       </div>)}
     </section>}
 
