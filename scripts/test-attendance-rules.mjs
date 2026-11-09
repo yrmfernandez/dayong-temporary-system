@@ -158,3 +158,14 @@ test("coordinates pasted from Google Maps are read", () => {
   assert.equal(parseCoordinates("Mati City"), null);
   assert.equal(parseCoordinates("0, 0"), null);
 });
+
+test("a branch address is read from the map lookup: barangay, city, province, country, postal code (November 9, 2026)", async () => {
+  const { addressFromNominatim } = await import("../lib/reverse-geocode.ts");
+  assert.deepEqual(addressFromNominatim({ address: { road: "Pioneer Avenue", neighbourhood: "J Village", quarter: "Bayanihan", suburb: "Magugpo Poblacion", city: "Tagum", state: "Davao del Norte", region: "Davao Region", postcode: "8100", country: "Philippines" } }),
+    { barangay: "Magugpo Poblacion", cityMunicipality: "Tagum", province: "Davao del Norte", country: "Philippines", postalCode: "8100" });
+  // A town, no province key: the state stands in; a barangay named like the city is dropped.
+  assert.deepEqual(addressFromNominatim({ address: { suburb: "Nabunturan", town: "Nabunturan", state: "Davao de Oro", country: "Philippines" } }),
+    { barangay: "", cityMunicipality: "Nabunturan", province: "Davao de Oro", country: "Philippines", postalCode: "" });
+  assert.equal(addressFromNominatim({ error: "Unable to geocode" }), null);
+  assert.equal(addressFromNominatim(null), null);
+});

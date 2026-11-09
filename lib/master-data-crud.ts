@@ -156,6 +156,25 @@ export async function setBranchLocation(id: string, location: { latitude: number
   if (!updated.length) throw new Error("Record not found.");
 }
 
+/**
+ * Fills a branch's empty address fields from a looked-up address (lib/reverse-geocode.ts); typed ones are kept.
+ * Returns the names of the fields filled.
+ */
+export async function fillBranchAddress(id: string, address: { barangay: string; cityMunicipality: string; province: string; country: string; postalCode: string }) {
+  const db = currentDb();
+  const [branch] = await db.select().from(schema.branches).where(eq(schema.branches.branch_id, id));
+  if (!branch) return [];
+  const empty = (value: string | null) => !(value ?? "").trim();
+  const fields = [
+    ["barangay", "Barangay", address.barangay], ["city_municipality", "City / Municipality", address.cityMunicipality], ["province", "Province", address.province],
+    ["country", "Country", address.country], ["postal_code", "Postal Code", address.postalCode],
+  ] as const;
+  const fill = fields.filter(([column, , value]) => value && empty(branch[column]));
+  if (!fill.length) return [];
+  await db.update(schema.branches).set(Object.fromEntries(fill.map(([column, , value]) => [column, value]))).where(eq(schema.branches.branch_id, id));
+  return fill.map(([, label]) => label);
+}
+
 export async function deleteBranchRecord(id: string) {
   const db = currentDb();
   const [branch] = await db.select().from(schema.branches).where(eq(schema.branches.branch_id, id));

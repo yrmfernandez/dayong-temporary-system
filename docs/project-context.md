@@ -17,6 +17,14 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Branch locations hidden from other users; View in map and address from the map (2026-11-09)
+
+- **Asked (owner):** other users could see **Branch locations for clock-in** on Branches; they should not. In the branch list, a View in map, and the address, country and postal code filled automatically (owner chose: map link plus auto-fill from OpenStreetMap, typed fields kept).
+- **Done:** the Branch locations card and the *Location not set* badges show only when the user may set locations (`canSetLocation`: IT, administrators, HR). The branch list's expanded details have **View in map** when the location is saved. Saving a location (`PUT /api/branches/location`) looks up the address at that spot (`lib/reverse-geocode.ts`, Nominatim, 8-second limit) and fills only the empty Barangay, City / Municipality, Province, Country and Postal Code (`fillBranchAddress`); the saved message says which. A failed lookup only adds a note. No migration.
+- **Tested:** type check and build pass; a new test reads a real Nominatim answer for Tagum (barangay Magugpo Poblacion, Tagum, Davao del Norte, 8100, Philippines), checked against the live service once.
+- **In progress:** nothing.
+- **To do (owner):** for branches whose location was saved before today, open Branch locations → Change → Save location once to fill their address.
+
 ### Clock-in at another assigned branch is flagged (2026-11-09)
 
 - **Asked (owner):** attendance knows the location; when an employee with several branches clocks in at another of them instead of the main branch, flag it.

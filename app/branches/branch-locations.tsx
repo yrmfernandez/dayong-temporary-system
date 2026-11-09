@@ -19,7 +19,7 @@ export type LocatedBranch = {
 };
 
 export const locationIsSet = (branch: LocatedBranch) => branch.latitude != null && branch.longitude != null;
-const mapLink = (latitude: number, longitude: number) => `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+export const mapLink = (latitude: number, longitude: number) => `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 const savedOn = (iso: string) => iso ? showDate(iso) : "";
 
 /**
@@ -29,6 +29,7 @@ const savedOn = (iso: string) => iso ? showDate(iso) : "";
 export function BranchLocations({ branches, canSet, onSaved }: { branches: LocatedBranch[]; canSet: boolean; onSaved: () => Promise<void> | void }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [notice, setNotice] = useState("");
   const active = branches.filter((branch) => branch.status === "active");
   const missing = active.filter((branch) => !locationIsSet(branch));
   const listed = (showAll ? active : missing).slice().sort((a, b) => Number(locationIsSet(a)) - Number(locationIsSet(b)) || a.name.localeCompare(b.name));
@@ -45,6 +46,7 @@ export function BranchLocations({ branches, canSet, onSaved }: { branches: Locat
         <Button type="button" size="sm" variant={showAll ? "outline" : "default"} onClick={() => setShowAll(false)}>Not set yet ({missing.length})</Button>
         <Button type="button" size="sm" variant={showAll ? "default" : "outline"} onClick={() => setShowAll(true)}>All active branches ({active.length})</Button>
       </div>
+      {notice && <p role="status" className="rounded-lg border bg-muted/40 p-3 text-sm">{notice}</p>}
       {!listed.length ? <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">{showAll ? "No active branches." : "Every active branch has its location set."}</p>
         : <div className="divide-y rounded-lg border">{listed.map((branch) => <div key={branch.id} className="space-y-3 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -57,13 +59,13 @@ export function BranchLocations({ branches, canSet, onSaved }: { branches: Locat
             </div>
           </div>
           {locationIsSet(branch) && branch.locationSetBy && <p className="text-xs text-muted-foreground">Saved by {branch.locationSetBy}{branch.locationSetAt ? ` on ${savedOn(branch.locationSetAt)}` : ""}.</p>}
-          {openId === branch.id && <LocationEditor branch={branch} onDone={async () => { setOpenId(null); await onSaved(); }} />}
+          {openId === branch.id && <LocationEditor branch={branch} onDone={async (message) => { setOpenId(null); setNotice(message); await onSaved(); }} />}
         </div>)}</div>}
     </CardContent>
   </Card>;
 }
 
-function LocationEditor({ branch, onDone }: { branch: LocatedBranch; onDone: () => Promise<void> }) {
+function LocationEditor({ branch, onDone }: { branch: LocatedBranch; onDone: (message: string) => Promise<void> }) {
   const [coordinates, setCoordinates] = useState(locationIsSet(branch) ? `${branch.latitude}, ${branch.longitude}` : "");
   const [radius, setRadius] = useState(String(branch.locationRadiusM ?? DEFAULT_RADIUS_M));
   const [locating, setLocating] = useState(false);
@@ -92,7 +94,7 @@ function LocationEditor({ branch, onDone }: { branch: LocatedBranch; onDone: () 
       const response = await fetch("/api/branches/location", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(clear ? { branchId: branch.id, clear: true } : { branchId: branch.id, latitude: parsed?.latitude, longitude: parsed?.longitude, radiusM: radius }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the location.");
-      await onDone();
+      await onDone(`${branch.name}: ${result.message}`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save the location."); }
     finally { setSaving(false); }
   }

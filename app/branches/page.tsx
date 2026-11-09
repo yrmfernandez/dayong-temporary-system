@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
-import { BranchLocations, locationIsSet, type LocatedBranch } from "./branch-locations";
+import { BranchLocations, locationIsSet, mapLink, type LocatedBranch } from "./branch-locations";
 
 type BranchFields = {
   id: string;
@@ -266,7 +266,8 @@ export default function BranchesPage() {
         </Card>
       )}
 
-      {!loading && branches.length > 0 && <BranchLocations branches={branches} canSet={canSetLocation} onSaved={loadBranches} />}
+      {/* Only those who may set locations see the clock-in locations (owner, November 9, 2026). */}
+      {!loading && branches.length > 0 && canSetLocation && <BranchLocations branches={branches} canSet={canSetLocation} onSaved={loadBranches} />}
 
       <Card>
         <CardHeader>
@@ -299,7 +300,7 @@ export default function BranchesPage() {
                         <Badge variant={branch.status === "active" ? "default" : "secondary"}>
                           {branch.status === "active" ? "Active" : "Inactive"}
                         </Badge>
-                        {branch.status === "active" && !locationIsSet(branch) && <Badge variant="outline" className="border-amber-400 text-amber-800">Location not set</Badge>}
+                        {canSetLocation && branch.status === "active" && !locationIsSet(branch) && <Badge variant="outline" className="border-amber-400 text-amber-800">Location not set</Badge>}
                         <Button
                           type="button"
                           variant="outline"
@@ -327,6 +328,7 @@ export default function BranchesPage() {
                               .filter(Boolean)
                               .join(", ") || "Not provided"}
                           </p>
+                          {locationIsSet(branch) && <a className="text-xs font-medium text-primary hover:underline" href={mapLink(branch.latitude as number, branch.longitude as number)} target="_blank" rel="noreferrer">View in map</a>}
                         </div>
 
                         <div>
