@@ -16,15 +16,17 @@ const MERGE_FIELDS: Array<[string, string]> = [["surname", "Surname"], ["first_n
   ["gender", "Sex"], ["civil_status", "Civil status"], ["member_contact", "Contact"], ["address", "Address"], ["claimant_name", "Claimant"], ["claimant_contact", "Claimant contact"], ["claimant_address", "Claimant address"]];
 type MoveTo = "mine" | "new" | "other";
 type Receipt = { id: string; orNumber: string; orDate: string; amount: number; months: number; nopFrom: number; nopTo: number; monthFrom: string; monthTo: string; remittance: string };
-type Account = { id: string; programId: string; program: string; branch: string; mas: string; doi: string; rate: number; flexible: boolean; status: string; firstNop: number; start: { nop: number; month: string }; receipts: Receipt[] };
+type Account = { id: string; programId: string; program: string; branch: string; mas: string; doi: string; rate: number; flexible: boolean; status: string; firstNop: number; start: { nop: number; month: string }; receipts: Receipt[];
+  newSale: { id: string; applicationNo: string } | null; saleAmount: number | null };
 type Member = { member: { id: string; number: string; surname: string; firstName: string; middleName: string; nameExtension: string; birthdate: string }; details?: Record<string, string>; accounts: Account[] };
 type Result = { applied: boolean; summary: string; receipts: Array<{ id: string; orNumber: string; orDate: string; amount: number; account: string; program: string; before: string; after: string }>; statuses: Array<{ account: string; program: string; before: string; after: string }>; notes: string[] };
-type Tool = "coverage" | "move" | "insert" | "merge" | "split";
+type Tool = "coverage" | "move" | "insert" | "sale" | "merge" | "split";
 
 const TOOLS: Array<[Tool, string, string]> = [
   ["coverage", "Fix coverage", "Set where an account's numbering starts (NOP and Month of) and each receipt's months; the receipts are numbered again in OR-date order."],
   ["move", "Move receipts", "Move several receipts to another account of this member; both accounts are numbered again."],
   ["insert", "Insert missing receipt", "Add a receipt that was never encoded. It is saved as already remitted (no slip), so it does not enter Clearing or Remittances."],
+  ["sale", "Insert New Sale", "An account still NS (no receipts) has no New Sale record: add it. It is saved as already remitted (no slip), like the New Sales from the old system, so it does not enter Clearing, Remittances or a clerk's report."],
   ["merge", "Merge members", "Another member is the same person: everything of theirs moves to this member and the duplicate is removed."],
   ["split", "Split member", "Some receipts, or a whole account (even an NS one with no receipts), belong to a different person: a new member or another existing member takes them."],
 ];
@@ -54,7 +56,7 @@ export default function MemberCorrectionsPage() {
   return <section className="mx-auto max-w-6xl space-y-6">
     <header className="rounded-2xl page-hero p-5">
       <div className="flex items-center gap-3"><div className="rounded-xl bg-violet-95 p-3 text-violet-40"><UserRoundCog className="size-6" /></div>
-        <div><h1 className="text-2xl font-bold">Member Corrections</h1><p className="text-sm text-violet-30/80">Repair a member&apos;s records: coverage and NOPs, receipts on the wrong account, a missing receipt, a duplicate member, or two people under one member. Every tool shows the exact result before anything is saved; saving needs a reason and is kept in the Audit Log and Record Corrections.</p></div></div>
+        <div><h1 className="text-2xl font-bold">Member Corrections</h1><p className="text-sm text-violet-30/80">Repair a member&apos;s records: coverage and NOPs, receipts on the wrong account, a missing receipt or New Sale, a duplicate member, or two people under one member. Every tool shows the exact result before anything is saved; saving needs a reason and is kept in the Audit Log and Record Corrections.</p></div></div>
     </header>
     <Card><CardContent className="space-y-3 pt-5">
       <MemberPicker label="Member" onPick={(found) => void load(found.id)} />
@@ -94,7 +96,7 @@ function MemberSummary({ member }: { member: Member }) {
   const m = member.member;
   return <Card><CardHeader className="pb-2"><CardTitle className="text-base">{m.surname}, {[m.firstName, m.middleName, m.nameExtension].filter(Boolean).join(" ")} · {m.number}{m.birthdate ? ` · born ${showDate(m.birthdate)}` : ""}</CardTitle></CardHeader>
     <CardContent className="space-y-4">{member.accounts.length ? member.accounts.map((account) => <div key={account.id} className="space-y-1">
-      <p className="text-sm font-semibold">{account.program} · {account.id} <span className="font-normal text-muted-foreground">· {peso(account.rate)}{account.flexible ? " minimum" : ""}/month · DOI {showDate(account.doi)} · {account.branch} · {account.mas} · {account.status || "—"}</span></p>
+      <p className="text-sm font-semibold">{account.program} · {account.id} <span className="font-normal text-muted-foreground">· {peso(account.rate)}{account.flexible ? " minimum" : ""}/month · DOI {showDate(account.doi)} · {account.branch} · {account.mas} · {account.status || "—"} · {account.newSale ? `New Sale ${account.newSale.applicationNo ? `app ${account.newSale.applicationNo}` : account.newSale.id}` : "no New Sale record"}</span></p>
       <ReceiptTable receipts={account.receipts} />
     </div>) : <p className="text-sm text-muted-foreground">No accounts.</p>}</CardContent></Card>;
 }
@@ -109,7 +111,9 @@ function ReceiptTable({ receipts, tick }: { receipts: Receipt[]; tick?: { chosen
 /** One tool's form, its preview and the save with a reason. The preview is cleared whenever the form changes. */
 function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSaved: (memberId?: string) => void }) {
   const accounts = member.accounts;
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  // Insert New Sale: only an account still NS (no receipts) without a New Sale record.
+  const saleless = accounts.filter((item) => !item.newSale && !item.receipts.length);
+  const [accountId, setAccountId] = useState((tool === "sale" ? saleless[0]?.id : accounts[0]?.id) ?? "");
   const account = accounts.find((item) => item.id === accountId);
   const [form, setForm] = useState<Record<string, string>>({});
   const [months, setMonths] = useState<Record<string, string>>({});
@@ -162,6 +166,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
     }
     if (tool === "insert") return { enrollmentId: accountId, orNumber: form.orNumber ?? "", orDate: form.orDate ?? "", amount: number(form.amount), months: number(form.months ?? "1"), collectedByRole: form.role || "MAS",
       mas: form.mas || account?.mas, dateRemitted: form.dateRemitted || undefined, startNop: number(form.startNop), startMonth: form.startMonth || undefined, orNoLetter: form.orNoLetter === "yes" };
+    if (tool === "sale") return { enrollmentId: accountId, applicationNo: form.applicationNo ?? "", amountPaid: number(form.saleAmount), dateRemitted: form.saleRemitted || undefined, mas: form.saleMas || undefined };
     if (tool === "merge") {
       // Picks are per member ("this" page's member or the duplicate); the API wants them relative to the kept one.
       const kept = keepOther ? "duplicate" : "this";
@@ -255,6 +260,20 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <ReceiptTable receipts={account.receipts} />
     </>}
 
+    {tool === "sale" && (saleless.length && account ? <>
+      <div className="space-y-1"><Label htmlFor="sale-account">Account</Label>
+        <select id="sale-account" className={field} value={accountId} onChange={(event) => { setAccountId(event.target.value); setPreview(null); }}>
+          {saleless.map((item) => <option key={item.id} value={item.id}>{item.program} · {item.id} ({item.status || "NS"}, DOI {showDate(item.doi)})</option>)}
+        </select></div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1"><Label htmlFor="sale-app">Application number</Label><Input id="sale-app" placeholder="as on the application form" value={form.applicationNo ?? ""} onChange={(event) => set("applicationNo", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="sale-amount">Amount paid</Label><Input id="sale-amount" type="number" min="0.01" step="0.01" placeholder={account.saleAmount !== null ? `${account.saleAmount} (on the account)` : "the program's New Sale amount"} value={form.saleAmount ?? ""} onChange={(event) => set("saleAmount", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="sale-remitted">Date remitted</Label><Input id="sale-remitted" type="date" min={account.doi} max={today()} value={form.saleRemitted ?? ""} onChange={(event) => set("saleRemitted", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="sale-mas">MAS</Label><Input id="sale-mas" placeholder={account.mas} value={form.saleMas ?? ""} onChange={(event) => set("saleMas", event.target.value)} /></div>
+      </div>
+      <p className="text-xs text-muted-foreground">Blank amount: the amount stored on the account, or the program&apos;s New Sale amount. Blank date remitted: the DOI ({showDate(account.doi)}). Blank MAS: the account&apos;s ({account.mas}). The member&apos;s details, branch, DOI and payment method are copied from the member and the account. The amount follows the New Sales rule for the program (fixed unless editing is allowed in Programs).</p>
+    </> : <p className="text-sm text-muted-foreground">Every account of this member already has a New Sale record or has receipts. Insert New Sale is only for an account still NS with no New Sale record.</p>)}
+
     {tool === "merge" && <>
       <p className="text-sm">Kept: <strong>{member.member.number}</strong> {member.member.surname}, {member.member.firstName}{member.member.birthdate ? ` (born ${showDate(member.member.birthdate)})` : ""}</p>
       <MemberPicker label="The duplicate to merge into it (removed afterwards)" exclude={member.member.id} onPick={(found) => { setOther(found); setPreview(null); }} />
@@ -308,7 +327,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <div className="space-y-1 sm:w-80"><Label htmlFor="sp-keep">Correct {member.member.number}&apos;s first name (optional)</Label><Input id="sp-keep" placeholder={member.member.firstName} value={form.keepFirstName ?? ""} onChange={(event) => set("keepFirstName", event.target.value)} /></div>
     </>}
 
-    <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" disabled={busy} onClick={() => void send(false)}>{busy && !preview ? "Working out..." : "Preview"}</Button>{message && <p role="status" className="text-sm">{message}</p>}</div>
+    <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" disabled={busy || (tool === "sale" && !saleless.length)} onClick={() => void send(false)}>{busy && !preview ? "Working out..." : "Preview"}</Button>{message && <p role="status" className="text-sm">{message}</p>}</div>
 
     {preview && <div className="space-y-3 rounded-lg border border-primary/40 bg-primary/5 p-3">
       <p className="text-sm font-semibold">Preview: nothing is saved yet</p>

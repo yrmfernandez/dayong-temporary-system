@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/auth-server";
 import { refuseOnDayOff } from "@/lib/day-off";
 import { withEncoder } from "@/lib/encoder-context";
 import { orNoLetterConfirmed } from "@/lib/or-no-letter";
-import { fixCoverage, getMemberForCorrection, programChoices, insertReceipt, mergeMembers, moveReceipts, searchMembers, sharedPrograms, splitMember } from "@/lib/member-corrections";
+import { fixCoverage, getMemberForCorrection, programChoices, insertNewSale, insertReceipt, mergeMembers, moveReceipts, searchMembers, sharedPrograms, splitMember } from "@/lib/member-corrections";
 
 /** IT and Administrators with the Member Corrections page (Roles → Page access may take it away). */
 async function allowedUser() {
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 }
 
 /**
- * { tool, input, reason, apply }: tool is coverage, move, merge, split or insert. Without apply it is a preview: the
+ * { tool, input, reason, apply }: tool is coverage, move, merge, split, insert or sale (Insert New Sale). Without apply it is a preview: the
  * repair is worked out and rolled back (lib/member-corrections.ts).
  */
 export const POST = withEncoder(async (request: Request) => {
@@ -40,7 +40,7 @@ export const POST = withEncoder(async (request: Request) => {
     // Insert: "This OR number really has no letter" counts only when an Administrator ticked it (lib/or-no-letter.ts).
     if (body.tool === "insert" && body.input) body.input.orNoLetter = await orNoLetterConfirmed(body.input.orNoLetter);
     const input = (body.input ?? {}) as never, reason = String(body.reason ?? ""), apply = body.apply === true;
-    const tools = { coverage: fixCoverage, move: moveReceipts, merge: mergeMembers, split: splitMember, insert: insertReceipt } as const;
+    const tools = { coverage: fixCoverage, move: moveReceipts, merge: mergeMembers, split: splitMember, insert: insertReceipt, sale: insertNewSale } as const;
     const tool = tools[body.tool as keyof typeof tools];
     if (!tool) throw new Error("Choose a correction.");
     return Response.json({ success: true, result: await tool(input, reason, apply) });

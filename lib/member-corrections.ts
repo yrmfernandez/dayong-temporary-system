@@ -3,8 +3,11 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { accountState, COLLECTION_CHANNELS, firstCollectionNop, monthIndex, saleNops, type AccountPayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
 import { currentDb, inTransaction, schema, type Transaction } from "@/lib/db";
-import { mergeAccountInto, numberingStart, receiptMonthsAt, receiptMonthsIn, renumber, repriceCollections, type NumberingStart } from "@/lib/entry-edit";
-import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
+import { mergeAccountInto, numberingStart, receiptMonthsAt, receiptMonthsIn, renumber, repriceCollections, repriceSales, type NumberingStart } from "@/lib/entry-edit";
+import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/duplicate-entries";
+import { INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
+import { getPrograms } from "@/lib/google-sheets-data";
+import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { NO_LETTER_NOTE } from "@/lib/or-no-letter";
 import { recordCorrection } from "@/lib/record-corrections";
@@ -43,7 +46,7 @@ const peso = (value: number) => `₱${value.toLocaleString("en-PH", { maximumFra
 const day = (value: unknown) => text(value).slice(0, 10);
 const validMonth = (value: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
-const { collections, member_programs: memberPrograms, members, programs } = schema;
+const { collections, member_programs: memberPrograms, members, programs, sales } = schema;
 
 export type ReceiptLine = { id: string; orNumber: string; orDate: string; amount: number; account: string; program: string; before: string; after: string };
 export type StatusLine = { account: string; program: string; before: string; after: string };
@@ -128,6 +131,13 @@ export async function getMemberForCorrection(memberId: string) {
   const data = await loadAccountData({ memberId: member.member_id, includeDeactivated: true });
   const statusRows = await db.select({ id: collections.collection_id, status: collections.remittance_status }).from(collections).where(eq(collections.member_id, member.member_id));
   const remitted = new Map(statusRows.map((row) => [row.id, text(row.status) || "Outstanding"]));
+  // Each account's New Sale (by member number and program, as accounts find it) and the amount stored on the account,
+  // for Insert New Sale.
+  const numbers = [...new Set(data.accounts.map((account) => account.memberNumber).filter(Boolean))];
+  const saleRows = numbers.length ? await db.select({ id: sales.sale_id, memberNumber: sales.member_number, programId: sales.program_id, applicationNo: sales.application_no }).from(sales).where(inArray(sales.member_number, numbers)) : [];
+  const saleOf = (account: LoadedAccount) => saleRows.find((row) => text(row.memberNumber) === account.memberNumber && row.programId === account.programId);
+  const paidRows = data.accounts.length ? await db.select({ id: memberPrograms.enrollment_id, amountPaid: memberPrograms.amount_paid }).from(memberPrograms).where(inArray(memberPrograms.enrollment_id, data.accounts.map((account) => account.id))) : [];
+  const paid = new Map(paidRows.map((row) => [row.id, row.amountPaid === null ? null : Number(row.amountPaid)]));
   return {
     member: { id: member.member_id, number: member.member_number, surname: member.surname, firstName: member.first_name, middleName: text(member.middle_name), nameExtension: text(member.name_extension), birthdate: day(member.birthdate) },
     // Every detail a merge can take from either member (Merge members: the owner picks which value stays).
@@ -137,6 +147,8 @@ export async function getMemberForCorrection(memberId: string) {
       return {
         id: account.id, programId: account.programId, program: account.programName, branch: account.branch, mas: account.mas, doi: account.doi, rate: account.basePay, flexible: Boolean(account.flexible), status: account.storedStatus,
         firstNop: firstCollectionNop(account), start,
+        newSale: (() => { const sale = saleOf(account); return sale ? { id: sale.id, applicationNo: text(sale.applicationNo) } : null; })(),
+        saleAmount: paid.get(account.id) ?? null,
         receipts: data.payments.filter((payment) => payment.enrollmentId === account.id).sort((a, b) => a.orDate.localeCompare(b.orDate) || a.nopFrom - b.nopFrom)
           .map((payment) => ({ id: payment.id, orNumber: payment.orNumber, orDate: payment.orDate, amount: payment.amount, months: span(payment), nopFrom: payment.nopFrom, nopTo: payment.nopTo, monthFrom: payment.monthFrom, monthTo: payment.monthTo, remittance: remitted.get(payment.id) ?? "" })),
       };
@@ -589,6 +601,80 @@ export function insertReceipt(input: InsertInput, reason: string, apply: boolean
       recordId: id,
       before: { account: account.id, status: account.storedStatus },
       after: { collection: id, orNumber, ...(confirmedNoLetter ? { orNumberNote: NO_LETTER_NOTE } : {}), orDate, amount, months, channel, mas, dateRemitted, coverage: coverage(mine), renumbered: lines.slice(1).map(({ id: receipt, before, after }) => ({ id: receipt, before, after })), status: status.after },
+    };
+  });
+}
+
+// ---------------------------------------------------------------- 6. insert a missing New Sale
+
+export type InsertSaleInput = { enrollmentId: string; applicationNo: string; amountPaid?: number; dateRemitted?: string; mas?: string };
+
+/**
+ * Adds the New Sale record of an account that is still NS (no receipts) but has none (owner, November 9, 2026: "the
+ * member has an existing account that is still a new sales but don't have any record"). Saved like the New Sales copied
+ * from the old system: Remitted with no slip and no encoder, so it does not enter Clearing, Remittances or a clerk's
+ * report; its incentive and company share are worked out from the program. The member's details, the program, branch,
+ * MAS, DOI and DOI time come from the member and the account; the amount follows the New Sales rule for the program.
+ * Accounts with receipts are left alone: about 8,900 accounts from before the system have receipts and no New Sale.
+ */
+export function insertNewSale(input: InsertSaleInput, reason: string, apply: boolean) {
+  return run("Insert New Sale", reason, apply, async (tx) => {
+    const today = manilaNow().date;
+    const data = await loadAccountData({ enrollmentIds: [text(input.enrollmentId)], includeDeactivated: true }, tx, { lock: true });
+    const account = data.accounts[0];
+    if (!account) throw new Error("Account not found.");
+    if (data.payments.some((payment) => payment.enrollmentId === account.id)) throw new Error(`${account.programName} account ${account.id} has receipts, so it is no longer NS. Insert New Sale is for an account still NS with no New Sale record.`);
+    const [existing] = await tx.select({ id: sales.sale_id, applicationNo: sales.application_no }).from(sales).where(and(eq(sales.member_number, account.memberNumber), eq(sales.program_id, account.programId))).limit(1);
+    if (existing) throw new Error(`${account.programName} account ${account.id} already has New Sale ${existing.id}${text(existing.applicationNo) ? ` (application ${text(existing.applicationNo)})` : ""}.`);
+    const [row] = await tx.select().from(memberPrograms).where(eq(memberPrograms.enrollment_id, account.id));
+    const [person] = await tx.select().from(members).where(eq(members.member_id, account.memberId));
+    if (!row || !person) throw new Error("Account not found.");
+    const program = (await getPrograms()).find((item) => item.id === account.programId);
+    if (!program) throw new Error(`Program ${account.programId} not found.`);
+
+    const applicationNo = text(input.applicationNo);
+    if (!applicationNo) throw new Error("Enter the application number.");
+    if (isIncompleteApplicationNumber(applicationNo)) throw new Error(INCOMPLETE_APPLICATION_MESSAGE);
+    const used = (await recordedApplicationNumbers([applicationNo], tx)).get(entryKey(applicationNo));
+    if (used) throw new Error(`Application number ${applicationNo} is already on New Sale ${used.saleId} (member ${used.memberNumber || "?"}).`);
+    // The amount, as New Sales takes it: a fixed amount unless the program allows editing; a flexible one from its minimum.
+    const fixed = fixedNewSaleAmount(program);
+    const typed = input.amountPaid === undefined || String(input.amountPaid) === "" ? Number(row.amount_paid ?? fixed) : Number(input.amountPaid);
+    const amount = Math.round(typed * 100) / 100;
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter the amount paid.");
+    if (program.flexible && Math.round(amount * 100) < Math.round(fixed * 100)) throw new Error(`${program.name} needs at least ${peso(fixed)} (the minimum monthly payment).`);
+    if (!program.flexible && !program.newSaleAmountEditable && Math.round(amount * 100) !== Math.round(fixed * 100)) throw new Error(`${program.name} has a fixed New Sale amount of ${peso(fixed)}. Allow editing in Programs if the paper shows another amount.`);
+    if (!account.doi || account.doi > today) throw new Error(`The account's DOI (${account.doi || "none"}) must be set and not in the future; fix it with Fix coverage first.`);
+    const dateRemitted = text(input.dateRemitted) || account.doi;
+    if (!validDate(dateRemitted) || dateRemitted < account.doi || dateRemitted > today) throw new Error(`The Date Remitted must be on or after the DOI (${showDate(account.doi)}) and not in the future.`);
+    const mas = text(input.mas) || account.mas;
+
+    const id = `SALE-FIX-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    await tx.insert(sales).values({
+      sale_id: id, date_created: row.date_created ?? `${account.doi}T00:00:00+08:00`, branch: account.branch, mas, date_remitted: dateRemitted,
+      member_number: account.memberNumber, surname: person.surname, first_name: person.first_name, middle_name: person.middle_name, name_extension: person.name_extension,
+      birthdate: person.birthdate, birthplace: person.birthplace, gender: person.gender, age: person.age, civil_status: person.civil_status, member_contact: person.member_contact,
+      address: person.address, claimant_name: person.claimant_name, claimant_contact: person.claimant_contact, claimant_same_address: person.claimant_same_address, claimant_address: person.claimant_address,
+      program_id: account.programId, doi: account.doi, doi_time: row.doi_time, payment_method: text(row.remittance_method) || "Cash",
+      registration_fee: program.registrationFeeRequired, registration_amount: program.registrationFeeRequired ? program.registrationAmount : 0, amount_paid: amount,
+      notes: row.program_terms, application_no: applicationNo, remittance_status: "Remitted", accountable_employee_id: row.mas_employee_id,
+      backdate_reason: `Inserted by Member Corrections: ${text(reason).slice(0, 200)}`,
+    });
+    const priced = await repriceSales(tx, [id]);
+    // The account's status is left as it is: it comes from the DOI and the receipts (the New Sale's month is counted
+    // from the program, saleNops, whether or not its record exists), and the nightly sync keeps it current.
+    const [saved] = await tx.select({ incentive: sales.mas_incentive, share: sales.remittance_amount }).from(sales).where(eq(sales.sale_id, id));
+    return {
+      summary: `New Sale ${id} (application ${applicationNo}, ${peso(amount)}, DOI ${showDate(account.doi)}, remitted ${showDate(dateRemitted)}) inserted on ${account.programName} account ${account.id} of ${account.memberNumber}.`,
+      receipts: [], statuses: [],
+      notes: [
+        "Saved as already remitted (no slip, no encoder), like the New Sales copied from the old system, so it does not enter Clearing, Remittances or a clerk's report. The account's status and NOPs do not change.",
+        priced.repriced ? `MAS incentive ${peso(Number(saved?.incentive ?? 0))}, company share ${peso(Number(saved?.share ?? 0))}, from the program.` : "No incentive was worked out (the program's New Sale incentive gives none).",
+        `Member details are copied from ${account.memberNumber}; the branch, MAS (${mas}), DOI and payment method from the account.`,
+      ],
+      recordId: id,
+      before: { account: account.id, newSale: null },
+      after: { sale: id, applicationNo, amount, dateRemitted, mas },
     };
   });
 }

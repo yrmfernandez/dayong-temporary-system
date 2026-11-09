@@ -54,7 +54,7 @@ const page = {
   // Edit / Corrections: IT and Administrators edit New Sales and Collections (remitted too) and move members between
   // MAS and programs (app/entry-corrections/page.tsx).
   entryCorrections: { name: "Edit / Corrections", href: "/entry-corrections", icon: FilePen },
-  // Member Corrections: IT and Administrators fix coverage, move receipts, merge, split and insert missing receipts (app/member-corrections).
+  // Member Corrections: IT and Administrators fix coverage, move receipts, merge, split and insert missing receipts and New Sales (app/member-corrections).
   memberCorrections: { name: "Member Corrections", href: "/member-corrections", icon: UserRoundCog },
   // A clerk asks to drop a member's program; Administrators, HR and IT approve (lib/dropouts.ts).
   dropouts: { name: "Dropouts", href: "/dropouts", icon: UserMinus },

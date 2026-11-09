@@ -32,6 +32,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | To do (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | To decide (owner) |
 
+### Member Corrections: Insert New Sale (2026-11-09)
+
+- **Asked (owner):** in Member Corrections, add insert New Sales: the member has an existing account that is still NS but has no New Sale record.
+- **Found (production, read-only):** 1 account is NS with no receipts and no New Sale; about 8,900 accounts with receipts have no New Sale (accounts from before New Sales were encoded in the system; expected). 4,996 New Sales copied from the old system are Remitted with no slip and no encoder.
+- **Done:** a new tool **Insert New Sale** (`insertNewSale` in `lib/member-corrections.ts`, tool `sale` in `app/api/member-corrections/route.ts`, a tab on `app/member-corrections/page.tsx`). Only for an account with no receipts and no New Sale (found by member number and program, as accounts find it). Application number required, complete and unique; amount paid defaults to the amount on the account (or the program's New Sale amount) and follows the New Sales rule (fixed unless editable; a flexible program from its minimum); Date Remitted defaults to the DOI and cannot be before it; MAS defaults to the account's. Member details, branch, DOI, DOI time and payment method are copied; it is dated when the account was created. Saved Remitted with no slip and no encoder (like the old-system New Sales), so it stays out of Clearing, Remittances and clerk reports; incentive and company share from the program (`repriceSales`). The account's status and NOPs are not changed. Preview first, reason required, Audit Log and Record Corrections as for the other tools. The member summary shows each account's New Sale or *no New Sale record*. No migration.
+- **Tested:** a new test (only NS accounts, application number taken, fixed amount, date before the DOI, preview saves nothing, saved row: amounts, incentive ₱50 and share ₱450, no slip, no encoder, copied details and date, once only, reason kept). Type check, lint and build pass; tests 334 of 335 (the remaining one is upgrade list 2 item 6). Not tried in a browser.
+- **To do (owner):** push (no migration). Then try it on the NS account without a New Sale.
+
 ### Search Records faster: each collection's text kept and indexed (2026-11-09)
 
 - **Asked (owner):** upgrade list 2, item 3.

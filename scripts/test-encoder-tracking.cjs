@@ -4889,6 +4889,39 @@ test('Member Corrections: fix coverage and insert a missing receipt, previewed f
   assert.equal((await route.POST(request(coverage))).status, 403, 'IT and Administrators only');
 });
 
+test('Member Corrections: insert the missing New Sale of an account still NS, saved like the old-system ones (November 9, 2026)', async () => {
+  const h = harness(correctionAdmin);
+  await seedCorrectionMember();
+  await pglite.query("update members set birthdate = '1980-05-05', member_contact = '09171234567', address = 'Purok 1, Tagum' where member_id = 'MEM-1'");
+  await seed('member_programs', [{ enrollment_id: 'E2', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-500', doi: '2026-05-01', doi_time: '09:30', branch: 'BR-1', mas: 'Maria', status: 'Active', account_status: 'NS', amount_paid: 500, remittance_method: 'Cash', date_created: '2026-05-01T02:00:00.000Z' }]);
+  await seed('sales', [{ sale_id: 'S-OLD', member_number: 'PH-9', program_id: 'DP-350', application_no: 'APP-7', amount_paid: 350 }]);
+  const route = h.load('app/api/member-corrections/route.ts');
+  const post = correctionPost(route);
+  const loaded = await (await route.GET(new Request('http://localhost/api/member-corrections?member=MEM-1'))).json();
+  assert.deepEqual(loaded.accounts.map((account) => [account.id, account.newSale, account.saleAmount]), [['E1', null, null], ['E2', null, 500]]);
+
+  assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E1', applicationNo: 'APP-1' } })).body.message, /has receipts, so it is no longer NS/);
+  assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-7' } })).body.message, /already on New Sale S-OLD/);
+  assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-1', amountPaid: 450 } })).body.message, /fixed New Sale amount of ₱500/);
+  assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-1', dateRemitted: '2026-04-30' } })).body.message, /on or after the DOI/);
+  const preview = await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-1' } });
+  assert.equal(preview.status, 200, JSON.stringify(preview.body));
+  assert.equal(preview.body.result.applied, false);
+  assert.match(preview.body.result.summary, /application APP-1, ₱500.*account E2 of PH-1.$/);
+  assert.deepEqual(preview.body.result.statuses, [], 'the account status is left as it is');
+  assert.equal((await query("select count(*)::int as n from sales where member_number = 'PH-1'"))[0].n, 0, 'a preview saves nothing');
+
+  const saved = await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-1', dateRemitted: '2026-05-02' }, apply: true, reason: 'Application form found, never encoded' });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  const [sale] = await query("select application_no, amount_paid::float8 as paid, mas_incentive::float8 as incentive, remittance_amount::float8 as share, remittance_status, linked_remittance_id, encoded_by_employee_id, date_remitted::text as remitted, doi::text as doi, doi_time::text as doi_time, branch, mas, surname, first_name, birthdate::text as birthdate, member_contact, address, payment_method, date_created from sales where member_number = 'PH-1'");
+  assert.deepEqual([sale.application_no, sale.paid, sale.incentive, sale.share, sale.remittance_status, sale.linked_remittance_id, sale.encoded_by_employee_id, sale.remitted], ['APP-1', 500, 50, 450, 'Remitted', null, null, '2026-05-02'], 'remitted, no slip, no encoder, priced from the program');
+  assert.deepEqual([sale.doi, sale.doi_time.slice(0, 5), sale.branch, sale.mas, sale.surname, sale.first_name, sale.birthdate, sale.member_contact, sale.address, sale.payment_method], ['2026-05-01', '09:30', 'BR-1', 'Maria', 'SANTOS', 'ANA', '1980-05-05', '09171234567', 'Purok 1, Tagum', 'Cash'], 'copied from the account and the member');
+  assert.equal(new Date(sale.date_created).toISOString(), '2026-05-01T02:00:00.000Z', 'dated when the account was created');
+  assert.equal((await (await route.GET(new Request('http://localhost/api/member-corrections?member=MEM-1'))).json()).accounts[1].newSale.applicationNo, 'APP-1');
+  assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-2' } })).body.message, /already has New Sale SALE-FIX-/, 'once only');
+  assert.equal((await query("select count(*)::int as n from record_corrections where record_id like 'SALE-FIX-%'"))[0].n, 1, 'the reason is kept');
+});
+
 test('Member Corrections: move receipts between accounts of a member, and split a member into two people', async () => {
   const h = harness(correctionAdmin);
   await seedCorrectionMember();
