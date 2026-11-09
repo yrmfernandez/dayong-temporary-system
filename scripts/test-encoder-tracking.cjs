@@ -4889,7 +4889,7 @@ test('Member Corrections: fix coverage and insert a missing receipt, previewed f
   assert.equal((await route.POST(request(coverage))).status, 403, 'IT and Administrators only');
 });
 
-test('Member Corrections: insert the missing New Sale of an account, NS or with receipts, saved like the old-system ones (November 9, 2026)', async () => {
+test('Member Corrections: insert a missing New Sale on an account, NS or with receipts, or with a new account in another program, saved like the old-system ones (November 9, 2026)', async () => {
   const h = harness(correctionAdmin);
   await seedCorrectionMember();
   await pglite.query("update members set birthdate = '1980-05-05', member_contact = '09171234567', address = 'Purok 1, Tagum' where member_id = 'MEM-1'");
@@ -4928,6 +4928,24 @@ test('Member Corrections: insert the missing New Sale of an account, NS or with 
   assert.deepEqual(await correctionNumbers(), before, 'the receipts keep their NOPs');
   assert.deepEqual((await query("select application_no, amount_paid::float8 as paid from sales where member_number = 'PH-1' and program_id = 'DP-350'")).map((row) => [row.application_no, row.paid]), [['APP-3', 350]], 'the program amount when the account has none');
   assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E1', applicationNo: 'APP-4' } })).body.message, /already has New Sale/, 'one New Sale per account');
+
+  // A New Sale in another program: a new account, whatever accounts the member has (owner, November 9, 2026).
+  await seed('branches', [{ branch_id: 'B1', branch_name_code: 'BR-1', status: 'active' }]);
+  const fresh = { memberId: 'MEM-1', newProgramId: 'DP-350B', doi: '2026-10-01', doiTime: '10:15', branch: 'BR-1', mas: 'Maria', applicationNo: 'APP-5' };
+  assert.match((await post({ tool: 'sale', input: { ...fresh, newProgramId: 'DP-350' } })).body.message, /already has a D-350 account \(E1\)/);
+  assert.match((await post({ tool: 'sale', input: { ...fresh, branch: 'Nowhere' } })).body.message, /Choose the branch/);
+  assert.match((await post({ tool: 'sale', input: { ...fresh, applicationNo: 'APP-1' } })).body.message, /already on New Sale/);
+  assert.equal((await query("select count(*)::int as n from member_programs where member_id = 'MEM-1'"))[0].n, 2, 'a refused one creates no account');
+  const added = await post({ tool: 'sale', input: fresh, apply: true, reason: 'Second program sold on the same visit, never encoded' });
+  assert.equal(added.status, 200, JSON.stringify(added.body));
+  assert.match(added.body.result.summary, /^New D-350 B account ENR-\S+ of PH-1 \(DOI Oct 1, 2026, BR-1, MAS Maria\) with New Sale SALE-FIX-\S+ \(application APP-5, ₱350/);
+  assert.ok(added.body.result.notes.some((note) => /Maria is not an employee/.test(note)), 'an unknown MAS is said');
+  const [account] = await query("select enrollment_id, doi::text as doi, doi_time::text as doi_time, branch, branch_id, mas, amount_paid::float8 as paid, status, account_status from member_programs where member_id = 'MEM-1' and program_id = 'DP-350B'");
+  assert.deepEqual([account.doi, account.doi_time.slice(0, 5), account.branch, account.branch_id, account.mas, account.paid, account.status], ['2026-10-01', '10:15', 'BR-1', 'B1', 'Maria', 350, 'Active'], 'the branch link is filled from the name');
+  assert.ok(account.account_status, 'the account has a status');
+  const [newSale] = await query("select application_no, amount_paid::float8 as paid, mas_incentive::float8 as incentive, remittance_amount::float8 as share, remittance_status, doi::text as doi from sales where member_number = 'PH-1' and program_id = 'DP-350B'");
+  assert.deepEqual(Object.values(newSale), ['APP-5', 350, 50, 300, 'Remitted', '2026-10-01']);
+  assert.equal((await query("select count(*)::int as n from member_programs where member_id = 'MEM-1'"))[0].n, 3, 'the member keeps the accounts they had');
 });
 
 test('Member Corrections: move receipts between accounts of a member, and split a member into two people', async () => {

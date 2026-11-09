@@ -32,6 +32,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | To do (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | To decide (owner) |
 
+### Insert New Sale: a new account in another program (2026-11-09)
+
+- **Asked (owner):** "even that member have ns or any program we can still add new sales to other programs" (the previous step had read it as accounts with receipts; that stays).
+- **Done:** Insert New Sale has a choice: **an account of this member without a New Sale record**, or **a new account in another program**. The second (`newSaleAccount` in `lib/member-corrections.ts`) creates the account first: a program the member does not already have (active), DOI (today or earlier), optional DOI time, a branch from the list (`branchChoices`, `GET /api/member-corrections?branches=1`) and the MAS (default: the member's first account's); the age rule of an age-restricted program is checked at the DOI; the account is Active, dated at its DOI and time, with the amount paid and registration of the program, and its branch and MAS links are filled by the database from the names (a MAS who is not an employee is said in the notes). Then its New Sale is inserted exactly as for an existing account (Remitted, no slip, no encoder, priced from the program), and the account is stored with the status the account rules give it from its DOI. The member keeps every account they had. Receipts of the new account can be added afterwards with Insert missing receipt. No migration.
+- **Tested:** the test adds a D-350 B account with its New Sale to a member who has D-350 (with receipts) and D-500: refused for a program already held, an unknown branch or a used application number (no account left behind); saved with the DOI, time, branch link, MAS, amount, incentive ₱50 and share ₱300; the member then has 3 accounts. Type check, lint and build pass; tests 334 of 335 (the remaining one is upgrade list 2 item 6). Not tried in a browser.
+- **To do (owner):** push (no migration).
+
 ### Insert New Sale also for accounts with receipts (2026-11-09)
 
 - **Asked (owner):** New Sales should be inserted even when the account already has existing programs (understood as: an account that already has receipts, not only one still NS).

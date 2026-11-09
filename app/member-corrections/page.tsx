@@ -26,7 +26,7 @@ const TOOLS: Array<[Tool, string, string]> = [
   ["coverage", "Fix coverage", "Set where an account's numbering starts (NOP and Month of) and each receipt's months; the receipts are numbered again in OR-date order."],
   ["move", "Move receipts", "Move several receipts to another account of this member; both accounts are numbered again."],
   ["insert", "Insert missing receipt", "Add a receipt that was never encoded. It is saved as already remitted (no slip), so it does not enter Clearing or Remittances."],
-  ["sale", "Insert New Sale", "An account has no New Sale record (still NS, or already with receipts): add it. It is saved as already remitted (no slip), like the New Sales from the old system, so it does not enter Clearing, Remittances or a clerk's report. The receipts and NOPs stay as they are."],
+  ["sale", "Insert New Sale", "Add a New Sale that was never encoded: on an account with no New Sale record (still NS, or already with receipts), or with a new account in another program, whatever accounts the member has. It is saved as already remitted (no slip), like the New Sales from the old system, so it does not enter Clearing, Remittances or a clerk's report. The receipts and NOPs stay as they are."],
   ["merge", "Merge members", "Another member is the same person: everything of theirs moves to this member and the duplicate is removed."],
   ["split", "Split member", "Some receipts, or a whole account (even an NS one with no receipts), belong to a different person: a new member or another existing member takes them."],
 ];
@@ -111,9 +111,11 @@ function ReceiptTable({ receipts, tick }: { receipts: Receipt[]; tick?: { chosen
 /** One tool's form, its preview and the save with a reason. The preview is cleared whenever the form changes. */
 function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSaved: (memberId?: string) => void }) {
   const accounts = member.accounts;
-  // Insert New Sale: any account without a New Sale record, NS or with receipts (one New Sale per account).
+  // Insert New Sale: any account without a New Sale record, NS or with receipts (one New Sale per account), or a new
+  // account in another program (owner, November 9, 2026: the member may have NS or any program already).
   const saleless = accounts.filter((item) => !item.newSale);
   const [accountId, setAccountId] = useState((tool === "sale" ? saleless[0]?.id : accounts[0]?.id) ?? "");
+  const [branchChoices, setBranchChoices] = useState<string[]>([]);
   const account = accounts.find((item) => item.id === accountId);
   const [form, setForm] = useState<Record<string, string>>({});
   const [months, setMonths] = useState<Record<string, string>>({});
@@ -140,9 +142,14 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
   // Split: the whole account goes to the other person; always so for an account with no receipts (e.g. NS).
   const splitWhole = form.splitWhole === "yes" || Boolean(account && !account.receipts.length);
   const splitToExisting = splitWhole && form.splitTo === "other";
+  const saleToNew = form.saleTarget === "new" || !saleless.length;
+  useEffect(() => {
+    if (tool !== "sale" || branchChoices.length) return;
+    fetch("/api/member-corrections?branches=1", { cache: "no-store" }).then((response) => response.json()).then((result) => setBranchChoices(result.branches ?? [])).catch(() => setBranchChoices([]));
+  }, [tool, branchChoices.length]);
 
   useEffect(() => {
-    if (tool !== "move" || programChoices.length) return;
+    if ((tool !== "move" && tool !== "sale") || programChoices.length) return;
     fetch("/api/member-corrections?programs=1", { cache: "no-store" }).then((response) => response.json()).then((result) => setProgramChoices(result.programs ?? [])).catch(() => setProgramChoices([]));
   }, [tool, programChoices.length]);
   const loadMember = (id: string) => fetch(`/api/member-corrections?member=${encodeURIComponent(id)}`, { cache: "no-store" }).then((response) => response.json()).then((result) => (result.success ? result as Member : null)).catch(() => null);
@@ -166,7 +173,12 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
     }
     if (tool === "insert") return { enrollmentId: accountId, orNumber: form.orNumber ?? "", orDate: form.orDate ?? "", amount: number(form.amount), months: number(form.months ?? "1"), collectedByRole: form.role || "MAS",
       mas: form.mas || account?.mas, dateRemitted: form.dateRemitted || undefined, startNop: number(form.startNop), startMonth: form.startMonth || undefined, orNoLetter: form.orNoLetter === "yes" };
-    if (tool === "sale") return { enrollmentId: accountId, applicationNo: form.applicationNo ?? "", amountPaid: number(form.saleAmount), dateRemitted: form.saleRemitted || undefined, mas: form.saleMas || undefined };
+    if (tool === "sale") {
+      const shared = { applicationNo: form.applicationNo ?? "", amountPaid: number(form.saleAmount), dateRemitted: form.saleRemitted || undefined };
+      return saleToNew
+        ? { ...shared, memberId: member.member.id, newProgramId: form.saleProgram ?? "", doi: form.saleDoi ?? "", doiTime: form.saleDoiTime || undefined, branch: form.saleBranch ?? accounts[0]?.branch ?? "", mas: form.saleMas || accounts[0]?.mas || "" }
+        : { ...shared, enrollmentId: accountId, mas: form.saleMas || undefined };
+    }
     if (tool === "merge") {
       // Picks are per member ("this" page's member or the duplicate); the API wants them relative to the kept one.
       const kept = keepOther ? "duplicate" : "this";
@@ -178,7 +190,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       newMember: { surname: form.surname ?? "", firstName: form.firstName ?? "", middleName: form.middleName, nameExtension: form.nameExtension, birthdate: form.birthdate } };
     return { enrollmentId: accountId, collectionIds: [...chosen].filter((id) => account?.receipts.some((receipt) => receipt.id === id)), newDoi: form.newDoi ?? "", newStartNop: number(form.startNop), newStartMonth: form.startMonth || undefined,
       keepFirstName: form.keepFirstName || undefined, newMember: { surname: form.surname ?? "", firstName: form.firstName ?? "", middleName: form.middleName, nameExtension: form.nameExtension, birthdate: form.birthdate } };
-  }, [tool, accountId, account, form, months, chosen, amounts, other, moveTo, keepOther, picks, member.member.id, splitWhole]);
+  }, [tool, accountId, account, form, months, chosen, amounts, other, moveTo, keepOther, picks, member.member.id, splitWhole, saleToNew, accounts]);
 
   async function send(apply: boolean) {
     setBusy(true); setMessage("");
@@ -260,19 +272,34 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <ReceiptTable receipts={account.receipts} />
     </>}
 
-    {tool === "sale" && (saleless.length && account ? <>
-      <div className="space-y-1"><Label htmlFor="sale-account">Account</Label>
+    {tool === "sale" && <>
+      <fieldset className="space-y-2"><legend className="text-sm font-medium">The New Sale is for</legend>
+        <label className="flex items-center gap-2 text-sm"><input type="radio" name="sale-for" checked={!saleToNew} disabled={!saleless.length} onChange={() => set("saleTarget", "account")} />An account of this member without a New Sale record{saleless.length ? "" : " (every account has one)"}</label>
+        <label className="flex items-center gap-2 text-sm"><input type="radio" name="sale-for" checked={saleToNew} onChange={() => set("saleTarget", "new")} />A new account in another program (the member keeps the accounts they have)</label>
+      </fieldset>
+      {saleToNew ? <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1"><Label htmlFor="sale-program">Program</Label>
+          <select id="sale-program" className={field} value={form.saleProgram ?? ""} onChange={(event) => set("saleProgram", event.target.value)}><option value="">Choose the program</option>
+            {programChoices.filter((item) => !accounts.some((existing) => existing.programId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.name} · {peso(item.rate)}</option>)}</select></div>
+        <div className="space-y-1"><Label htmlFor="sale-doi">DOI</Label><Input id="sale-doi" type="date" max={today()} value={form.saleDoi ?? ""} onChange={(event) => set("saleDoi", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="sale-doi-time">DOI time (optional)</Label><Input id="sale-doi-time" type="time" value={form.saleDoiTime ?? ""} onChange={(event) => set("saleDoiTime", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="sale-branch">Branch</Label>
+          <select id="sale-branch" className={field} value={form.saleBranch ?? accounts[0]?.branch ?? ""} onChange={(event) => set("saleBranch", event.target.value)}><option value="">Choose the branch</option>
+            {branchChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select></div>
+      </div> : account && <div className="space-y-1"><Label htmlFor="sale-account">Account</Label>
         <select id="sale-account" className={field} value={accountId} onChange={(event) => { setAccountId(event.target.value); setPreview(null); }}>
           {saleless.map((item) => <option key={item.id} value={item.id}>{item.program} · {item.id} ({item.status || "NS"}, DOI {showDate(item.doi)}, {item.receipts.length} receipts)</option>)}
-        </select></div>
+        </select></div>}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1"><Label htmlFor="sale-app">Application number</Label><Input id="sale-app" placeholder="as on the application form" value={form.applicationNo ?? ""} onChange={(event) => set("applicationNo", event.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="sale-amount">Amount paid</Label><Input id="sale-amount" type="number" min="0.01" step="0.01" placeholder={account.saleAmount !== null ? `${account.saleAmount} (on the account)` : "the program's New Sale amount"} value={form.saleAmount ?? ""} onChange={(event) => set("saleAmount", event.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="sale-remitted">Date remitted</Label><Input id="sale-remitted" type="date" min={account.doi} max={today()} value={form.saleRemitted ?? ""} onChange={(event) => set("saleRemitted", event.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="sale-mas">MAS</Label><Input id="sale-mas" placeholder={account.mas} value={form.saleMas ?? ""} onChange={(event) => set("saleMas", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="sale-amount">Amount paid</Label><Input id="sale-amount" type="number" min="0.01" step="0.01" placeholder={!saleToNew && account?.saleAmount != null ? `${account.saleAmount} (on the account)` : "the program's New Sale amount"} value={form.saleAmount ?? ""} onChange={(event) => set("saleAmount", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="sale-remitted">Date remitted</Label><Input id="sale-remitted" type="date" min={saleToNew ? form.saleDoi : account?.doi} max={today()} value={form.saleRemitted ?? ""} onChange={(event) => set("saleRemitted", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="sale-mas">MAS</Label><Input id="sale-mas" placeholder={(saleToNew ? accounts[0]?.mas : account?.mas) ?? "MAS name"} value={form.saleMas ?? ""} onChange={(event) => set("saleMas", event.target.value)} /></div>
       </div>
-      <p className="text-xs text-muted-foreground">Blank amount: the amount stored on the account, or the program&apos;s New Sale amount. Blank date remitted: the DOI ({showDate(account.doi)}). Blank MAS: the account&apos;s ({account.mas}). The member&apos;s details, branch, DOI and payment method are copied from the member and the account. The amount follows the New Sales rule for the program (fixed unless editing is allowed in Programs). The account&apos;s receipts and NOPs stay as they are; its status changes only if what the New Sale paid changes it (a flexible program&apos;s payoff).</p>
-    </> : <p className="text-sm text-muted-foreground">Every account of this member already has a New Sale record (one per account).</p>)}
+      <p className="text-xs text-muted-foreground">{saleToNew
+        ? "A new account is created in the chosen program with this DOI, branch and MAS (blank MAS: the member's first account's), and its New Sale with it. Blank amount: the program's New Sale amount (fixed unless editing is allowed in Programs). Blank date remitted: the DOI. Its receipts can then be added with Insert missing receipt."
+        : `Blank amount: the amount stored on the account, or the program's New Sale amount. Blank date remitted: the DOI${account ? ` (${showDate(account.doi)})` : ""}. Blank MAS: the account's. The member's details, branch, DOI and payment method are copied from the member and the account. The amount follows the New Sales rule for the program. The account's receipts and NOPs stay as they are; its status changes only if what the New Sale paid changes it (a flexible program's payoff).`}</p>
+    </>}
 
     {tool === "merge" && <>
       <p className="text-sm">Kept: <strong>{member.member.number}</strong> {member.member.surname}, {member.member.firstName}{member.member.birthdate ? ` (born ${showDate(member.member.birthdate)})` : ""}</p>
@@ -327,7 +354,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <div className="space-y-1 sm:w-80"><Label htmlFor="sp-keep">Correct {member.member.number}&apos;s first name (optional)</Label><Input id="sp-keep" placeholder={member.member.firstName} value={form.keepFirstName ?? ""} onChange={(event) => set("keepFirstName", event.target.value)} /></div>
     </>}
 
-    <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" disabled={busy || (tool === "sale" && !saleless.length)} onClick={() => void send(false)}>{busy && !preview ? "Working out..." : "Preview"}</Button>{message && <p role="status" className="text-sm">{message}</p>}</div>
+    <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" disabled={busy} onClick={() => void send(false)}>{busy && !preview ? "Working out..." : "Preview"}</Button>{message && <p role="status" className="text-sm">{message}</p>}</div>
 
     {preview && <div className="space-y-3 rounded-lg border border-primary/40 bg-primary/5 p-3">
       <p className="text-sm font-semibold">Preview: nothing is saved yet</p>

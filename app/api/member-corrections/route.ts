@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/auth-server";
 import { refuseOnDayOff } from "@/lib/day-off";
 import { withEncoder } from "@/lib/encoder-context";
 import { orNoLetterConfirmed } from "@/lib/or-no-letter";
-import { fixCoverage, getMemberForCorrection, programChoices, insertNewSale, insertReceipt, mergeMembers, moveReceipts, searchMembers, sharedPrograms, splitMember } from "@/lib/member-corrections";
+import { branchChoices, fixCoverage, getMemberForCorrection, programChoices, insertNewSale, insertReceipt, mergeMembers, moveReceipts, searchMembers, sharedPrograms, splitMember } from "@/lib/member-corrections";
 
 /** IT and Administrators with the Member Corrections page (Roles → Page access may take it away). */
 async function allowedUser() {
@@ -20,6 +20,8 @@ export async function GET(request: Request) {
     if (params.get("member")) return Response.json({ success: true, ...(await getMemberForCorrection(params.get("member") ?? "")) }, { headers: { "Cache-Control": "private, no-store" } });
     // Programs for Move receipts → a new account in another program.
     if (params.get("programs")) return Response.json({ success: true, programs: await programChoices() });
+    // Branches for Insert New Sale → a new account in another program.
+    if (params.get("branches")) return Response.json({ success: true, branches: await branchChoices() });
     if (params.get("keep") && params.get("other")) return Response.json({ success: true, shared: await sharedPrograms(params.get("keep") ?? "", params.get("other") ?? "") });
     return Response.json({ success: true, members: await searchMembers(params.get("q") ?? "") }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

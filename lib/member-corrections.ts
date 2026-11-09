@@ -5,8 +5,9 @@ import { loadAccountData } from "@/lib/account-data";
 import { currentDb, inTransaction, schema, type Transaction } from "@/lib/db";
 import { mergeAccountInto, numberingStart, receiptMonthsAt, receiptMonthsIn, renumber, repriceCollections, repriceSales, type NumberingStart } from "@/lib/entry-edit";
 import { entryKey, recordedApplicationNumbers, recordedOrNumbers } from "@/lib/duplicate-entries";
-import { INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber } from "@/lib/entry-controls";
-import { getPrograms } from "@/lib/google-sheets-data";
+import { DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber } from "@/lib/entry-controls";
+import { getBranches, getPrograms } from "@/lib/google-sheets-data";
+import { ageRestrictionError } from "@/lib/program-age";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { NO_LETTER_NOTE } from "@/lib/or-no-letter";
@@ -529,6 +530,11 @@ export async function programChoices() {
   return rows.filter((row) => text(row.status).toLowerCase() !== "inactive").map((row) => ({ id: row.id, name: row.name, rate: Number(row.rate ?? 0) }));
 }
 
+/** Active branch names, for a new account's branch (Insert New Sale). */
+export async function branchChoices() {
+  return (await getBranches()).filter((branch) => text(branch.status).toLowerCase() !== "inactive").map((branch) => branch.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+}
+
 /** Which accounts of the member are in which program, to show where merges join accounts. */
 export async function sharedPrograms(keepMemberId: string, otherMemberId: string) {
   const rows = await currentDb().select({ program: programs.program_name }).from(memberPrograms).innerJoin(programs, eq(programs.program_id, memberPrograms.program_id))
@@ -607,7 +613,46 @@ export function insertReceipt(input: InsertInput, reason: string, apply: boolean
 
 // ---------------------------------------------------------------- 6. insert a missing New Sale
 
-export type InsertSaleInput = { enrollmentId: string; applicationNo: string; amountPaid?: number; dateRemitted?: string; mas?: string };
+/**
+ * An existing account (enrollmentId), or a new account in another program of the member (memberId, newProgramId, doi,
+ * optional doiTime, branch and mas): owner, November 9, 2026, "even that member have ns or any program we can still add
+ * new sales to other programs".
+ */
+export type InsertSaleInput = {
+  enrollmentId?: string; applicationNo: string; amountPaid?: number; dateRemitted?: string; mas?: string;
+  memberId?: string; newProgramId?: string; doi?: string; doiTime?: string; branch?: string;
+};
+
+/** Creates the member's new account in another program for Insert New Sale; returns its ID and a note on the MAS link. */
+async function newSaleAccount(tx: Transaction, input: InsertSaleInput, today: string) {
+  const [person] = await tx.select().from(members).where(eq(members.member_id, text(input.memberId)));
+  if (!person) throw new Error("Member not found.");
+  const program = (await getPrograms()).find((item) => item.id === text(input.newProgramId));
+  if (!program) throw new Error("Choose the program of the new account.");
+  if (text(program.status).toLowerCase() === "inactive") throw new Error(`${program.name} is inactive.`);
+  const [existing] = await tx.select({ id: memberPrograms.enrollment_id }).from(memberPrograms).where(and(eq(memberPrograms.member_id, person.member_id), eq(memberPrograms.program_id, program.id)));
+  if (existing) throw new Error(`This member already has a ${program.name} account (${existing.id}): choose it as the account instead.`);
+  const doi = text(input.doi), doiTime = text(input.doiTime);
+  if (!validDate(doi) || doi > today) throw new Error("Enter the new account's DOI (today or earlier).");
+  if (doiTime && !isDoiTime(doiTime)) throw new Error(DOI_TIME_MESSAGE);
+  const ageError = ageRestrictionError(program, day(person.birthdate), doi);
+  if (ageError) throw new Error(`${program.name}: ${ageError}`);
+  const branchName = text(input.branch), mas = text(input.mas);
+  const branch = (await getBranches()).find((item) => item.name.trim().toLowerCase() === branchName.toLowerCase());
+  if (!branch) throw new Error("Choose the branch of the new account.");
+  if (!mas) throw new Error("Enter the MAS of the new account.");
+  const fixed = fixedNewSaleAmount(program);
+  const amount = input.amountPaid === undefined || String(input.amountPaid) === "" ? fixed : Math.round(Number(input.amountPaid) * 100) / 100;
+  const id = `ENR-${Date.now()}-SALE${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+  // Dated at its DOI (and time), as a New Sale encoded that day would be; the branch and MAS links are filled by the database from the names.
+  await tx.insert(memberPrograms).values({
+    enrollment_id: id, member_id: person.member_id, member_number: person.member_number, program_id: program.id, doi, doi_time: doiTime || null, branch: branch.name, mas,
+    remittance_method: "Cash", registration_fee: program.registrationFeeRequired, registration_amount: program.registrationFeeRequired ? program.registrationAmount : 0, amount_paid: amount,
+    status: "Active", account_status: "NS", date_created: `${doi}T${doiTime || "00:00"}:00+08:00`,
+  });
+  const [linked] = await tx.select({ mas: memberPrograms.mas_employee_id }).from(memberPrograms).where(eq(memberPrograms.enrollment_id, id));
+  return { id, note: linked?.mas ? "" : `MAS ${mas} is not an employee in the system, so the account and New Sale are not linked to one.` };
+}
 
 /**
  * Adds the New Sale record of an account that has none (owner, November 9, 2026: "the member has an existing account
@@ -622,9 +667,11 @@ export type InsertSaleInput = { enrollmentId: string; applicationNo: string; amo
 export function insertNewSale(input: InsertSaleInput, reason: string, apply: boolean) {
   return run("Insert New Sale", reason, apply, async (tx) => {
     const today = manilaNow().date;
-    const data = await loadAccountData({ enrollmentIds: [text(input.enrollmentId)], includeDeactivated: true }, tx, { lock: true });
+    // A new account in another program is created first; then it gets its New Sale like any account without one.
+    const created = text(input.newProgramId) ? await newSaleAccount(tx, input, today) : null;
+    const data = await loadAccountData({ enrollmentIds: [created?.id ?? text(input.enrollmentId)], includeDeactivated: true }, tx, { lock: true });
     const account = data.accounts[0];
-    if (!account) throw new Error("Account not found.");
+    if (!account) throw new Error("Choose the account, or a new account in another program.");
     const [existing] = await tx.select({ id: sales.sale_id, applicationNo: sales.application_no }).from(sales).where(and(eq(sales.member_number, account.memberNumber), eq(sales.program_id, account.programId))).limit(1);
     if (existing) throw new Error(`${account.programName} account ${account.id} already has New Sale ${existing.id}${text(existing.applicationNo) ? ` (application ${text(existing.applicationNo)})` : ""}.`);
     const [row] = await tx.select().from(memberPrograms).where(eq(memberPrograms.enrollment_id, account.id));
@@ -669,22 +716,31 @@ export function insertNewSale(input: InsertSaleInput, reason: string, apply: boo
     const stateOf = (item: LoadedAccount) => { try { return accountState(item, payments, today).status; } catch { return ""; } };
     const was = stateOf(account), now = after ? stateOf(after) : "";
     const statuses: StatusLine[] = [];
-    if (was && now && was !== now) {
+    if (created) {
+      // A new account is stored with the status the account rules give it from its DOI (NS until a payment is due).
+      if (now && now !== "NS") await tx.update(memberPrograms).set({ account_status: now }).where(eq(memberPrograms.enrollment_id, account.id));
+      statuses.push({ account: account.id, program: account.programName, before: "(new account)", after: now || "NS" });
+    } else if (was && now && was !== now) {
       await tx.update(memberPrograms).set({ account_status: now }).where(eq(memberPrograms.enrollment_id, account.id));
       statuses.push({ account: account.id, program: account.programName, before: account.storedStatus || was, after: now });
     }
     const [saved] = await tx.select({ incentive: sales.mas_incentive, share: sales.remittance_amount }).from(sales).where(eq(sales.sale_id, id));
     return {
-      summary: `New Sale ${id} (application ${applicationNo}, ${peso(amount)}, DOI ${showDate(account.doi)}, remitted ${showDate(dateRemitted)}) inserted on ${account.programName} account ${account.id} of ${account.memberNumber}${payments.length ? ` (${payments.length} receipt(s), NOPs unchanged)` : ""}${statuses.length ? `; status ${statuses[0].before} → ${statuses[0].after}` : ""}.`,
+      summary: created
+        ? `New ${account.programName} account ${account.id} of ${account.memberNumber} (DOI ${showDate(account.doi)}, ${account.branch}, MAS ${account.mas}) with New Sale ${id} (application ${applicationNo}, ${peso(amount)}, remitted ${showDate(dateRemitted)}); status ${statuses[0].after}.`
+        : `New Sale ${id} (application ${applicationNo}, ${peso(amount)}, DOI ${showDate(account.doi)}, remitted ${showDate(dateRemitted)}) inserted on ${account.programName} account ${account.id} of ${account.memberNumber}${payments.length ? ` (${payments.length} receipt(s), NOPs unchanged)` : ""}${statuses.length ? `; status ${statuses[0].before} → ${statuses[0].after}` : ""}.`,
       receipts: [], statuses,
       notes: [
-        `Saved as already remitted (no slip, no encoder), like the New Sales copied from the old system, so it does not enter Clearing, Remittances or a clerk's report. The account's NOPs do not change${statuses.length ? "; what the New Sale paid changes its status" : ", nor its status"}.`,
+        created
+          ? "The account and its New Sale are saved as already remitted (no slip, no encoder), like the New Sales copied from the old system, so they do not enter Clearing, Remittances or a clerk's report. Its receipts can be added with Insert missing receipt."
+          : `Saved as already remitted (no slip, no encoder), like the New Sales copied from the old system, so it does not enter Clearing, Remittances or a clerk's report. The account's NOPs do not change${statuses.length ? "; what the New Sale paid changes its status" : ", nor its status"}.`,
         priced.repriced ? `MAS incentive ${peso(Number(saved?.incentive ?? 0))}, company share ${peso(Number(saved?.share ?? 0))}, from the program.` : "No incentive was worked out (the program's New Sale incentive gives none).",
         `Member details are copied from ${account.memberNumber}; the branch, MAS (${mas}), DOI and payment method from the account.`,
+        ...(created?.note ? [created.note] : []),
       ],
       recordId: id,
-      before: { account: account.id, newSale: null, ...(statuses.length ? { status: statuses[0].before } : {}) },
-      after: { sale: id, applicationNo, amount, dateRemitted, mas, ...(statuses.length ? { status: statuses[0].after } : {}) },
+      before: { account: created ? null : account.id, newSale: null, ...(statuses.length ? { status: statuses[0].before } : {}) },
+      after: { ...(created ? { account: account.id, program: account.programName, doi: account.doi, branch: account.branch } : {}), sale: id, applicationNo, amount, dateRemitted, mas, ...(statuses.length ? { status: statuses[0].after } : {}) },
     };
   });
 }
