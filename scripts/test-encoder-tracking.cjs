@@ -4889,7 +4889,7 @@ test('Member Corrections: fix coverage and insert a missing receipt, previewed f
   assert.equal((await route.POST(request(coverage))).status, 403, 'IT and Administrators only');
 });
 
-test('Member Corrections: insert the missing New Sale of an account still NS, saved like the old-system ones (November 9, 2026)', async () => {
+test('Member Corrections: insert the missing New Sale of an account, NS or with receipts, saved like the old-system ones (November 9, 2026)', async () => {
   const h = harness(correctionAdmin);
   await seedCorrectionMember();
   await pglite.query("update members set birthdate = '1980-05-05', member_contact = '09171234567', address = 'Purok 1, Tagum' where member_id = 'MEM-1'");
@@ -4900,7 +4900,6 @@ test('Member Corrections: insert the missing New Sale of an account still NS, sa
   const loaded = await (await route.GET(new Request('http://localhost/api/member-corrections?member=MEM-1'))).json();
   assert.deepEqual(loaded.accounts.map((account) => [account.id, account.newSale, account.saleAmount]), [['E1', null, null], ['E2', null, 500]]);
 
-  assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E1', applicationNo: 'APP-1' } })).body.message, /has receipts, so it is no longer NS/);
   assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-7' } })).body.message, /already on New Sale S-OLD/);
   assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-1', amountPaid: 450 } })).body.message, /fixed New Sale amount of ₱500/);
   assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-1', dateRemitted: '2026-04-30' } })).body.message, /on or after the DOI/);
@@ -4920,6 +4919,15 @@ test('Member Corrections: insert the missing New Sale of an account still NS, sa
   assert.equal((await (await route.GET(new Request('http://localhost/api/member-corrections?member=MEM-1'))).json()).accounts[1].newSale.applicationNo, 'APP-1');
   assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E2', applicationNo: 'APP-2' } })).body.message, /already has New Sale SALE-FIX-/, 'once only');
   assert.equal((await query("select count(*)::int as n from record_corrections where record_id like 'SALE-FIX-%'"))[0].n, 1, 'the reason is kept');
+
+  // An account that already has receipts (owner, November 9, 2026: "even the acc already have existing programs").
+  const before = await correctionNumbers();
+  const withReceipts = await post({ tool: 'sale', input: { enrollmentId: 'E1', applicationNo: 'APP-3' }, apply: true, reason: 'Old account, New Sale never encoded' });
+  assert.equal(withReceipts.status, 200, JSON.stringify(withReceipts.body));
+  assert.match(withReceipts.body.result.summary, /account E1 of PH-1 \(3 receipt\(s\), NOPs unchanged\)/);
+  assert.deepEqual(await correctionNumbers(), before, 'the receipts keep their NOPs');
+  assert.deepEqual((await query("select application_no, amount_paid::float8 as paid from sales where member_number = 'PH-1' and program_id = 'DP-350'")).map((row) => [row.application_no, row.paid]), [['APP-3', 350]], 'the program amount when the account has none');
+  assert.match((await post({ tool: 'sale', input: { enrollmentId: 'E1', applicationNo: 'APP-4' } })).body.message, /already has New Sale/, 'one New Sale per account');
 });
 
 test('Member Corrections: move receipts between accounts of a member, and split a member into two people', async () => {

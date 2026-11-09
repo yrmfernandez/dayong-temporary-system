@@ -26,7 +26,7 @@ const TOOLS: Array<[Tool, string, string]> = [
   ["coverage", "Fix coverage", "Set where an account's numbering starts (NOP and Month of) and each receipt's months; the receipts are numbered again in OR-date order."],
   ["move", "Move receipts", "Move several receipts to another account of this member; both accounts are numbered again."],
   ["insert", "Insert missing receipt", "Add a receipt that was never encoded. It is saved as already remitted (no slip), so it does not enter Clearing or Remittances."],
-  ["sale", "Insert New Sale", "An account still NS (no receipts) has no New Sale record: add it. It is saved as already remitted (no slip), like the New Sales from the old system, so it does not enter Clearing, Remittances or a clerk's report."],
+  ["sale", "Insert New Sale", "An account has no New Sale record (still NS, or already with receipts): add it. It is saved as already remitted (no slip), like the New Sales from the old system, so it does not enter Clearing, Remittances or a clerk's report. The receipts and NOPs stay as they are."],
   ["merge", "Merge members", "Another member is the same person: everything of theirs moves to this member and the duplicate is removed."],
   ["split", "Split member", "Some receipts, or a whole account (even an NS one with no receipts), belong to a different person: a new member or another existing member takes them."],
 ];
@@ -111,8 +111,8 @@ function ReceiptTable({ receipts, tick }: { receipts: Receipt[]; tick?: { chosen
 /** One tool's form, its preview and the save with a reason. The preview is cleared whenever the form changes. */
 function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSaved: (memberId?: string) => void }) {
   const accounts = member.accounts;
-  // Insert New Sale: only an account still NS (no receipts) without a New Sale record.
-  const saleless = accounts.filter((item) => !item.newSale && !item.receipts.length);
+  // Insert New Sale: any account without a New Sale record, NS or with receipts (one New Sale per account).
+  const saleless = accounts.filter((item) => !item.newSale);
   const [accountId, setAccountId] = useState((tool === "sale" ? saleless[0]?.id : accounts[0]?.id) ?? "");
   const account = accounts.find((item) => item.id === accountId);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -263,7 +263,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
     {tool === "sale" && (saleless.length && account ? <>
       <div className="space-y-1"><Label htmlFor="sale-account">Account</Label>
         <select id="sale-account" className={field} value={accountId} onChange={(event) => { setAccountId(event.target.value); setPreview(null); }}>
-          {saleless.map((item) => <option key={item.id} value={item.id}>{item.program} · {item.id} ({item.status || "NS"}, DOI {showDate(item.doi)})</option>)}
+          {saleless.map((item) => <option key={item.id} value={item.id}>{item.program} · {item.id} ({item.status || "NS"}, DOI {showDate(item.doi)}, {item.receipts.length} receipts)</option>)}
         </select></div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1"><Label htmlFor="sale-app">Application number</Label><Input id="sale-app" placeholder="as on the application form" value={form.applicationNo ?? ""} onChange={(event) => set("applicationNo", event.target.value)} /></div>
@@ -271,8 +271,8 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
         <div className="space-y-1"><Label htmlFor="sale-remitted">Date remitted</Label><Input id="sale-remitted" type="date" min={account.doi} max={today()} value={form.saleRemitted ?? ""} onChange={(event) => set("saleRemitted", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sale-mas">MAS</Label><Input id="sale-mas" placeholder={account.mas} value={form.saleMas ?? ""} onChange={(event) => set("saleMas", event.target.value)} /></div>
       </div>
-      <p className="text-xs text-muted-foreground">Blank amount: the amount stored on the account, or the program&apos;s New Sale amount. Blank date remitted: the DOI ({showDate(account.doi)}). Blank MAS: the account&apos;s ({account.mas}). The member&apos;s details, branch, DOI and payment method are copied from the member and the account. The amount follows the New Sales rule for the program (fixed unless editing is allowed in Programs).</p>
-    </> : <p className="text-sm text-muted-foreground">Every account of this member already has a New Sale record or has receipts. Insert New Sale is only for an account still NS with no New Sale record.</p>)}
+      <p className="text-xs text-muted-foreground">Blank amount: the amount stored on the account, or the program&apos;s New Sale amount. Blank date remitted: the DOI ({showDate(account.doi)}). Blank MAS: the account&apos;s ({account.mas}). The member&apos;s details, branch, DOI and payment method are copied from the member and the account. The amount follows the New Sales rule for the program (fixed unless editing is allowed in Programs). The account&apos;s receipts and NOPs stay as they are; its status changes only if what the New Sale paid changes it (a flexible program&apos;s payoff).</p>
+    </> : <p className="text-sm text-muted-foreground">Every account of this member already has a New Sale record (one per account).</p>)}
 
     {tool === "merge" && <>
       <p className="text-sm">Kept: <strong>{member.member.number}</strong> {member.member.surname}, {member.member.firstName}{member.member.birthdate ? ` (born ${showDate(member.member.birthdate)})` : ""}</p>

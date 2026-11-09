@@ -610,12 +610,14 @@ export function insertReceipt(input: InsertInput, reason: string, apply: boolean
 export type InsertSaleInput = { enrollmentId: string; applicationNo: string; amountPaid?: number; dateRemitted?: string; mas?: string };
 
 /**
- * Adds the New Sale record of an account that is still NS (no receipts) but has none (owner, November 9, 2026: "the
- * member has an existing account that is still a new sales but don't have any record"). Saved like the New Sales copied
+ * Adds the New Sale record of an account that has none (owner, November 9, 2026: "the member has an existing account
+ * that is still a new sales but don't have any record"; then "even the acc already have existing programs": an account
+ * with receipts too). One New Sale per account. Saved like the New Sales copied
  * from the old system: Remitted with no slip and no encoder, so it does not enter Clearing, Remittances or a clerk's
  * report; its incentive and company share are worked out from the program. The member's details, the program, branch,
  * MAS, DOI and DOI time come from the member and the account; the amount follows the New Sales rule for the program.
- * Accounts with receipts are left alone: about 8,900 accounts from before the system have receipts and no New Sale.
+ * The account's NOPs do not change (the New Sale's month comes from the program, saleNops); its status is stored again
+ * only when the New Sale changes it (what it paid counts toward a flexible program's payoff, Fully Paid).
  */
 export function insertNewSale(input: InsertSaleInput, reason: string, apply: boolean) {
   return run("Insert New Sale", reason, apply, async (tx) => {
@@ -623,7 +625,6 @@ export function insertNewSale(input: InsertSaleInput, reason: string, apply: boo
     const data = await loadAccountData({ enrollmentIds: [text(input.enrollmentId)], includeDeactivated: true }, tx, { lock: true });
     const account = data.accounts[0];
     if (!account) throw new Error("Account not found.");
-    if (data.payments.some((payment) => payment.enrollmentId === account.id)) throw new Error(`${account.programName} account ${account.id} has receipts, so it is no longer NS. Insert New Sale is for an account still NS with no New Sale record.`);
     const [existing] = await tx.select({ id: sales.sale_id, applicationNo: sales.application_no }).from(sales).where(and(eq(sales.member_number, account.memberNumber), eq(sales.program_id, account.programId))).limit(1);
     if (existing) throw new Error(`${account.programName} account ${account.id} already has New Sale ${existing.id}${text(existing.applicationNo) ? ` (application ${text(existing.applicationNo)})` : ""}.`);
     const [row] = await tx.select().from(memberPrograms).where(eq(memberPrograms.enrollment_id, account.id));
@@ -661,20 +662,29 @@ export function insertNewSale(input: InsertSaleInput, reason: string, apply: boo
       backdate_reason: `Inserted by Member Corrections: ${text(reason).slice(0, 200)}`,
     });
     const priced = await repriceSales(tx, [id]);
-    // The account's status is left as it is: it comes from the DOI and the receipts (the New Sale's month is counted
-    // from the program, saleNops, whether or not its record exists), and the nightly sync keeps it current.
+    // The status is stored again only when the New Sale changes it (what it paid counts toward a flexible program's
+    // payoff). Otherwise it is left as it is: it comes from the DOI and the receipts, and the nightly sync keeps it current.
+    const payments = data.payments.filter((payment) => payment.enrollmentId === account.id);
+    const after = (await loadAccountData({ enrollmentIds: [account.id], includeDeactivated: true }, tx)).accounts[0];
+    const stateOf = (item: LoadedAccount) => { try { return accountState(item, payments, today).status; } catch { return ""; } };
+    const was = stateOf(account), now = after ? stateOf(after) : "";
+    const statuses: StatusLine[] = [];
+    if (was && now && was !== now) {
+      await tx.update(memberPrograms).set({ account_status: now }).where(eq(memberPrograms.enrollment_id, account.id));
+      statuses.push({ account: account.id, program: account.programName, before: account.storedStatus || was, after: now });
+    }
     const [saved] = await tx.select({ incentive: sales.mas_incentive, share: sales.remittance_amount }).from(sales).where(eq(sales.sale_id, id));
     return {
-      summary: `New Sale ${id} (application ${applicationNo}, ${peso(amount)}, DOI ${showDate(account.doi)}, remitted ${showDate(dateRemitted)}) inserted on ${account.programName} account ${account.id} of ${account.memberNumber}.`,
-      receipts: [], statuses: [],
+      summary: `New Sale ${id} (application ${applicationNo}, ${peso(amount)}, DOI ${showDate(account.doi)}, remitted ${showDate(dateRemitted)}) inserted on ${account.programName} account ${account.id} of ${account.memberNumber}${payments.length ? ` (${payments.length} receipt(s), NOPs unchanged)` : ""}${statuses.length ? `; status ${statuses[0].before} → ${statuses[0].after}` : ""}.`,
+      receipts: [], statuses,
       notes: [
-        "Saved as already remitted (no slip, no encoder), like the New Sales copied from the old system, so it does not enter Clearing, Remittances or a clerk's report. The account's status and NOPs do not change.",
+        `Saved as already remitted (no slip, no encoder), like the New Sales copied from the old system, so it does not enter Clearing, Remittances or a clerk's report. The account's NOPs do not change${statuses.length ? "; what the New Sale paid changes its status" : ", nor its status"}.`,
         priced.repriced ? `MAS incentive ${peso(Number(saved?.incentive ?? 0))}, company share ${peso(Number(saved?.share ?? 0))}, from the program.` : "No incentive was worked out (the program's New Sale incentive gives none).",
         `Member details are copied from ${account.memberNumber}; the branch, MAS (${mas}), DOI and payment method from the account.`,
       ],
       recordId: id,
-      before: { account: account.id, newSale: null },
-      after: { sale: id, applicationNo, amount, dateRemitted, mas },
+      before: { account: account.id, newSale: null, ...(statuses.length ? { status: statuses[0].before } : {}) },
+      after: { sale: id, applicationNo, amount, dateRemitted, mas, ...(statuses.length ? { status: statuses[0].after } : {}) },
     };
   });
 }
