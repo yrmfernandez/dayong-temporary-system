@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { repriceEntries } from '../lib/entry-finance.mjs';
 
-test('repricing keeps Different incentives on a ticked MAS collection, and only there (November 6, 2026)', async () => {
+test('repricing keeps the typed Different incentive on a ticked MAS collection, and only there; an old Programs Different tier is ignored (November 9, 2026)', async () => {
   const db = new PGlite();
   const query = async (sql, params = []) => (await db.query(sql, params)).rows;
   try {
@@ -11,14 +11,14 @@ test('repricing keeps Different incentives on a ticked MAS collection, and only 
       create table branches (branch_id text, branch_name_code text);
       create table programs (program_id text, base_pay numeric, flexible boolean default false, max_monthly_payment numeric, registration_fee_required boolean default false, new_sale_incentive_type text, new_sale_incentive_amount numeric);
       create table program_incentives (incentive_id text, program_id text, role text, from_month int, to_month int, incentive_type text, mark_up numeric, incentive_amount numeric, branch_id text, non_commissionable boolean default false, different boolean default false);
-      create table collections (collection_id text, program_id text, branch text, branch_id text, amount_collected numeric, nop_from int, nop_to int, collected_by_role text, accountable_role text, reactivation boolean default false, remittance_amount numeric, remittance_breakdown jsonb, forfeited_incentive numeric, different_incentive boolean default false, status text default 'Posted');
+      create table collections (collection_id text, program_id text, branch text, branch_id text, amount_collected numeric, nop_from int, nop_to int, collected_by_role text, accountable_role text, reactivation boolean default false, remittance_amount numeric, remittance_breakdown jsonb, forfeited_incentive numeric, different_incentive boolean default false, different_incentive_type text, different_incentive_amount numeric, status text default 'Posted');
       create table sales (sale_id text, program_id text, branch text, branch_id text, amount_paid numeric, remittance_amount numeric, mas_incentive numeric, forfeited_incentive numeric);
       create table remittance_collections (remittance_id text, collection_id text, amount numeric);
       create table remittances (remittance_id text, gross_collection numeric, total_remittance numeric, difference numeric, fidelity numeric);
       insert into programs (program_id,base_pay) values ('P',350);
-      insert into program_incentives (incentive_id,program_id,role,from_month,to_month,incentive_type,mark_up,incentive_amount,different) values ('M','P','MAS',1,999,'fixed',0,100,false), ('C','P','Collector',1,999,'fixed',0,60,false), ('D','P','MAS',1,999,'fixed',0,30,true);
-      insert into collections (collection_id,program_id,branch,amount_collected,nop_from,nop_to,collected_by_role,remittance_amount,forfeited_incentive,different_incentive) values
-        ('TICKED','P','Branch',350,2,2,'MAS',1,0,true), ('PLAIN','P','Branch',350,2,2,'MAS',1,0,false), ('COLLECTOR','P','Branch',350,2,2,'Collector',1,0,true);
+      insert into program_incentives (incentive_id,program_id,role,from_month,to_month,incentive_type,mark_up,incentive_amount,different) values ('M','P','MAS',1,999,'fixed',0,100,false), ('C','P','Collector',1,999,'fixed',0,60,false), ('D','P','MAS',1,999,'fixed',0,5,true);
+      insert into collections (collection_id,program_id,branch,amount_collected,nop_from,nop_to,collected_by_role,remittance_amount,forfeited_incentive,different_incentive,different_incentive_type,different_incentive_amount) values
+        ('TICKED','P','Branch',350,2,2,'MAS',1,0,true,'fixed',30), ('PLAIN','P','Branch',350,2,2,'MAS',1,0,false,null,null), ('COLLECTOR','P','Branch',350,2,2,'Collector',1,0,true,'fixed',30);
     `);
     await repriceEntries(query, { collectionIds: ['TICKED', 'PLAIN', 'COLLECTOR'] });
     assert.deepEqual(await query('select collection_id, remittance_amount::float8 as share from collections order by collection_id'), [

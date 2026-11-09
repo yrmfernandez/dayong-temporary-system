@@ -201,7 +201,7 @@ export const program_incentives = pgTable("program_incentives", {
   branch_id: text().references(() => branches.branch_id, { onUpdate: "cascade" }),
   /** Non-commissionable period (owner, October 10, 2026): only the Collector earns; the MAS gets nothing (lib/remittance.ts). */
   non_commissionable: boolean().notNull().default(false),
-  /** Different incentives (owner, November 6, 2026): a MAS rate apart from the overall and branch rates, used only on a collection the Entry Clerk ticks (lib/remittance.ts tiersForBranch). */
+  /** No longer used (November 9, 2026): Different incentives are typed on each collection (collections.different_incentive_type), not set on Programs. Kept so older code still reads; always false. */
   different: boolean().notNull().default(false),
 }, (t) => [index("program_incentives_program_idx").on(t.program_id)]).enableRLS();
 
@@ -660,8 +660,14 @@ export const collections = pgTable("collections", {
    */
   branch_id: text().references(() => branches.branch_id, employeeRef),
   mas_employee_id: text().references(() => employees.employee_id, employeeRef),
-  /** The Entry Clerk ticked Different incentives (owner, November 6, 2026): priced at the program's Different rate; repricing keeps it. */
+  /**
+   * Different incentives (owner, November 6, 2026; typed on the collection since November 9, 2026): the Entry Clerk
+   * ticks it and types the MAS incentive, a percentage of (base pay - mark-up) or a fixed amount per NOP, in place of
+   * the program's usual MAS rate (lib/remittance.ts tiersForBranch). Repricing keeps it.
+   */
   different_incentive: boolean().notNull().default(false),
+  different_incentive_type: text(),
+  different_incentive_amount: money("different_incentive_amount"),
 }, (t) => [
   uniqueIndex("collections_or_key_unique").on(t.or_key).where(sql`${t.or_key} <> '' and ${t.status} = 'Posted' and not ${t.legacy_duplicate}`),
   index("collections_enrollment_idx").on(t.enrollment_id),

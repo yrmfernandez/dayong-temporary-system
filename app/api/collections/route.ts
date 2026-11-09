@@ -14,7 +14,7 @@ import { inTransaction, isUniqueViolation } from "@/lib/db";
 import { loadAccountData, commitCollections, type NewCollection } from "@/lib/account-data";
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
 import { findActivePaymentMethod } from "@/lib/remittance-methods";
-import { calculateRemittance, noIncentiveReasonOf, tiersForBranch, withoutIncentive } from "@/lib/remittance";
+import { calculateRemittance, differentRateOf, noIncentiveReasonOf, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
@@ -200,12 +200,12 @@ async function saveCollections(request: Request, user: SessionUser) {
         // Reactivation is per entry: whoever collected earns only 10%; it cannot be in an ORC batch.
         const reactivation = entry.reactivation === "Yes";
         if (orc && reactivation) throw new Error(`Collection for ${account.memberNumber}: a reactivation cannot be in an ORC batch.`);
-        // Different incentives (owner, November 6, 2026): ticked by the Entry Clerk on a MAS batch, for a program that has them.
+        // Different incentives (owner, November 6, 2026): ticked by the Entry Clerk on a MAS batch, with the incentive
+        // typed on the collection (November 9, 2026), used in place of the usual MAS rate.
         const programTiers = data.incentives.filter((tier) => tier.programId === account.programId);
-        const differentIncentive = entry.differentIncentive === true;
-        if (differentIncentive && collectedBy !== "MAS") throw new Error(`Collection for ${account.memberNumber}: Different incentives apply only to a batch collected by MAS.`);
-        if (differentIncentive && !programTiers.some((tier) => tier.different)) throw new Error(`Collection for ${account.memberNumber}: ${account.programName} has no Different incentives set.`);
-        const quote = calculateRemittance(account.basePay, tiersForBranch(programTiers, selectedBranch.id, differentIncentive), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation });
+        const different = differentRateOf(entry.differentIncentive, entry.differentIncentiveType, entry.differentIncentiveAmount, `Collection for ${account.memberNumber}: Different incentives`);
+        if (different && collectedBy !== "MAS") throw new Error(`Collection for ${account.memberNumber}: Different incentives apply only to a batch collected by MAS.`);
+        const quote = calculateRemittance(account.basePay, tiersForBranch(programTiers, selectedBranch.id, different), incentiveRoleFor(collectedBy), input.nopFrom, input.nopTo, input.amount, account.flexible, account.maxMonthlyPayment, { orc, reactivation });
         // No incentive (owner, October 20, 2026): the collector earns nothing on this one; it is remitted whole. A DTO
         // batch earns no incentive anyway.
         const noIncentiveReason = dto ? "" : noIncentiveReasonOf(entry.noIncentive, entry.noIncentiveReason, `Collection for ${account.memberNumber}`);
@@ -226,7 +226,7 @@ async function saveCollections(request: Request, user: SessionUser) {
           branch, mas: accountMas, or_number: input.orNumber, or_date: input.orDate, amount_collected: input.amount, month_from: input.monthFrom, month_to: input.monthTo,
           nop_from: input.nopFrom, nop_to: input.nopTo, reactivation: entry.reactivation === "Yes", transferred: entry.transferred === "Yes",
           suspended: input.waiver || null, original_mas: input.originalMas || null, status: "Posted", created_at: timestamp,
-          collected_by_role: input.collectedByRole, remittance_amount: kept.remittance, forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null, no_incentive_reason: noIncentiveReason || null, different_incentive: differentIncentive, remittance_breakdown: quote.breakdown, remittance_status: "Outstanding",
+          collected_by_role: input.collectedByRole, remittance_amount: kept.remittance, forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null, no_incentive_reason: noIncentiveReason || null, different_incentive: Boolean(different), different_incentive_type: different?.type ?? null, different_incentive_amount: different?.amount ?? null, remittance_breakdown: quote.breakdown, remittance_status: "Outstanding",
           accountable_employee_id: accountableEmployeeId, accountable_name: dto ? accountable.name : mas, accountable_role: dto ? "DTO" : "MAS", remittance_method: paymentMethod.name, payment_reference: paymentReference || null,
           penalty_amount: first && penalty > 0 ? penalty : null, penalty_note: first && penalty > 0 ? penaltyNote : null, fidelity_amount: first && fidelity > 0 ? fidelity : null,
           backdate_reason: backdateReason || null, date_remitted: dateRemitted, date_remitted_reason: dateRemittedReason || null,

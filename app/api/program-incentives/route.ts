@@ -220,7 +220,6 @@ export const POST = withEncoder(async function POST(
       existingIncentives.some(
         (incentive) =>
           incentive.role === role &&
-          !incentive.different &&
           fromMonth <= incentive.toMonth &&
           toMonth >= incentive.fromMonth,
       );

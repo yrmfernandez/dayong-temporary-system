@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calculateRemittance, calculateSaleIncentive, incentiveBasis, normalizeSaleIncentive, tiersForBranch } from "../lib/remittance.ts";
+import { calculateRemittance, calculateSaleIncentive, differentLabel, differentRateOf, incentiveBasis, normalizeSaleIncentive, savedDifferentRate, tiersForBranch } from "../lib/remittance.ts";
 // Remittance = ((base pay - mark-up) - incentive) + mark-up; incentive = fixed amount or % of (base pay - mark-up).
 const tier = { id: "T1", role: "MAS", fromMonth: 1, toMonth: 6, incentiveType: "percentage", markUp: 50, incentiveAmount: 50 };
 
@@ -83,29 +83,42 @@ test("a branch's own tiers replace the base tiers for that role only", () => {
   assert.deepEqual(tiersForBranch(tiers, ""), base, "no branch means base rates");
 });
 
-test("Different incentives count only when ticked, for the months they cover, and only for the MAS (November 6, 2026)", () => {
+test("Different incentives: the typed rate replaces every MAS rate when ticked; Collector rates and mark-up stay (November 9, 2026)", () => {
   const rate = (role, amount, more = {}) => ({ role, fromMonth: 1, toMonth: 60, incentiveType: "percentage", markUp: 50, incentiveAmount: amount, branchId: "", ...more });
-  const base = [rate("MAS", 50), rate("Collector", 20)];
-  const different = rate("MAS", 10, { toMonth: 12, different: true });
-  const tiers = [...base, different];
+  const base = [rate("MAS", 50, { toMonth: 12 }), rate("MAS", 40, { fromMonth: 13 }), rate("Collector", 20)];
+  const old = rate("MAS", 5, { toMonth: 12, different: true });
   const remitted = (list, role, nop) => calculateRemittance(350, list, role, nop, nop).remittance;
-  // Not ticked: exactly as if the program had no Different rate, in every branch.
-  assert.deepEqual(tiersForBranch(tiers, ""), base);
-  assert.deepEqual(tiersForBranch(tiers, "BR-1"), base);
-  assert.equal(remitted(tiersForBranch(tiers, ""), "MAS", 3), 200, "MAS keeps 50% of 300");
-  // Ticked: the Different rate for months 1-12, the usual rate after, and the Collector's rate never moves.
-  const ticked = tiersForBranch(tiers, "", true);
-  assert.equal(remitted(ticked, "MAS", 3), 320, "MAS keeps 10% of 300");
-  assert.equal(remitted(ticked, "MAS", 13), 200, "month 13 keeps the usual rate");
-  assert.equal(calculateRemittance(350, ticked, "MAS", 12, 13).remittance, 520, "a receipt across both: 320 + 200");
-  assert.equal(remitted(ticked, "Collector", 3), remitted(tiersForBranch(tiers, ""), "Collector", 3));
-  // Over a branch's own rate too, which keeps the months the Different rate leaves.
-  const branch = rate("MAS", 40, { branchId: "BR-1" });
-  const inBranch = tiersForBranch([...tiers, branch], "BR-1", true);
-  assert.equal(remitted(inBranch, "MAS", 3), 320);
-  assert.equal(remitted(inBranch, "MAS", 13), 230, "the branch rate, 40% of 300");
-  // A program with no Different rate: a stale tick changes nothing.
-  assert.deepEqual(tiersForBranch(base, "", true), base);
+  // Not ticked: the usual rates; an old Programs Different tier never counts.
+  assert.deepEqual(tiersForBranch([...base, old], ""), base);
+  assert.equal(remitted(tiersForBranch(base, ""), "MAS", 3), 200, "MAS keeps 50% of 300");
+  // Ticked at 10%: 10% of (350 - 50) in every month, the mark-up still remitted.
+  const pct = tiersForBranch([...base, old], "", { type: "percentage", amount: 10 });
+  assert.equal(remitted(pct, "MAS", 3), 320);
+  assert.equal(remitted(pct, "MAS", 13), 320, "later periods take the typed rate too");
+  assert.equal(calculateRemittance(350, pct, "MAS", 12, 13).remittance, 640);
+  assert.equal(remitted(pct, "Collector", 3), remitted(tiersForBranch(base, ""), "Collector", 3));
+  // Fixed: that amount per month.
+  assert.equal(remitted(tiersForBranch(base, "", { type: "fixed", amount: 75 }), "MAS", 3), 275);
+  // Over a branch's own rate too.
+  const branch = rate("MAS", 30, { branchId: "BR-1" });
+  assert.equal(remitted(tiersForBranch([...base, branch], "BR-1", { type: "fixed", amount: 75 }), "MAS", 3), 275);
+  // A non-commissionable month earns the typed incentive, since the clerk set it.
+  assert.equal(remitted(tiersForBranch([rate("MAS", 0, { nonCommissionable: true }), rate("Collector", 10)], "", { type: "percentage", amount: 10 }), "MAS", 3), 320);
+  // More than the installment less mark-up is refused.
+  assert.throws(() => remitted(tiersForBranch(base, "", { type: "fixed", amount: 301 }), "MAS", 3), /more than the installment/);
+});
+
+test("differentRateOf: a ticked collection needs Percentage or Fixed and an amount above 0, a percentage up to 100 (November 9, 2026)", () => {
+  assert.equal(differentRateOf(false, "fixed", 50), null);
+  assert.deepEqual(differentRateOf(true, "percentage", "30"), { type: "percentage", amount: 30 });
+  assert.deepEqual(differentRateOf(true, "fixed", 50.555), { type: "fixed", amount: 50.56 });
+  assert.throws(() => differentRateOf(true, "", 30), /Percentage or Fixed/);
+  assert.throws(() => differentRateOf(true, "fixed", ""), /type the incentive/);
+  assert.throws(() => differentRateOf(true, "fixed", 0), /type the incentive/);
+  assert.throws(() => differentRateOf(true, "percentage", 101), /more than 100%/);
+  assert.equal(savedDifferentRate({ different_incentive: true, different_incentive_type: null }), null);
+  assert.equal(differentLabel("percentage", 30), "Different incentives: 30%");
+  assert.match(differentLabel("fixed", 50), /^Different incentives: .*50\.00 per month$/);
 });
 
 test("a branch's own tiers cover only their months; other months fall back to the base tiers (October 23, 2026)", () => {

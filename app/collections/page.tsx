@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/select";
 
 import type { Member } from "@/lib/types";
-import { calculateRemittance, incentiveBasis, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive, type IncentiveTier } from "@/lib/remittance";
+import { calculateRemittance, differentRateOf, incentiveBasis, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive, type IncentiveTier } from "@/lib/remittance";
 import { forfeitedPaymentsAllowed, needsWaiver, waiverOnOrDate } from "@/lib/account-rules";
 import { EntryFigures } from "@/components/entry-figures";
 import { monthlyPay } from "@/lib/program-payment-limit.mjs";
@@ -137,8 +137,13 @@ type CollectionEntry = {
   /** No incentive for the collector on this one, and why (owner, October 20, 2026): it is remitted whole. */
   noIncentive: boolean;
   noIncentiveReason: string;
-  /** Priced at the program's Different incentives, ticked by the Entry Clerk (owner, November 6, 2026). */
+  /**
+   * Different incentives, ticked by the Entry Clerk (owner, November 6, 2026), with the MAS incentive typed here
+   * (November 9, 2026): a percentage of base pay less mark-up, or a fixed amount per month, in place of the usual rate.
+   */
   differentIncentive: boolean;
+  differentIncentiveType: "percentage" | "fixed";
+  differentIncentiveAmount: string;
 
   status: string;
   accountStatus: string;
@@ -190,6 +195,8 @@ function createEmptyCollection(id: string): CollectionEntry {
     noIncentive: false,
     noIncentiveReason: "",
     differentIncentive: false,
+    differentIncentiveType: "percentage",
+    differentIncentiveAmount: "",
 
     status: "Active",
     accountStatus: "", temporarilySuspended: false, collectedByRole: "MAS", accountLoading: false,
@@ -591,9 +598,11 @@ export default function CollectionsPage() {
       : null;
 
   const noIncentiveOn = (entry: CollectionEntry) => !dto && entry.noIncentive === true;
-  // Different incentives: a batch collected by MAS, on a program that has them set.
-  const differentAvailable = (entry: CollectionEntry) => !dto && collectedBy === "MAS" && (programs.find((p) => p.id === entry.programId)?.incentiveTiers ?? []).some((tier) => tier.different);
+  // Different incentives: on a batch collected by MAS, once the program is picked; the incentive is typed on the collection.
+  const differentAvailable = (entry: CollectionEntry) => !dto && collectedBy === "MAS" && Boolean(entry.programId);
   const differentOn = (entry: CollectionEntry) => entry.differentIncentive === true && differentAvailable(entry);
+  /** What the server is sent for Different incentives. */
+  const differentFields = (entry: CollectionEntry) => ({ differentIncentive: differentOn(entry), differentIncentiveType: entry.differentIncentiveType ?? "percentage", differentIncentiveAmount: differentOn(entry) ? Number(entry.differentIncentiveAmount) : 0 });
   function quoteEntry(entry: CollectionEntry) {
     try {
       const selected = programs.find((p) => p.id === entry.programId);
@@ -604,7 +613,7 @@ export default function CollectionsPage() {
       if (!entry.monthFrom || entry.nopFrom == null) return { error: "The program account did not load. Select the program again." };
       if (count < 1) return { error: "Type the months paid." };
       if (entry.nopTo == null || entry.nopTo - entry.nopFrom + 1 !== count) return { error: "The NOP range does not match the months paid. Type the months paid again." };
-      const quote = calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? "", differentOn(entry)), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto && collectedBy === "Collector", reactivation: entry.reactivation === "Yes" });
+      const quote = calculateRemittance(selected.basePay, tiersForBranch(selected.incentiveTiers ?? [], branches.find((item) => item.name === branch)?.id ?? "", differentOn(entry) ? differentRateOf(true, entry.differentIncentiveType ?? "percentage", entry.differentIncentiveAmount) : null), incentiveRoleFor(collectedBy), entry.nopFrom, entry.nopTo, Number(entry.amountCollected), selected.flexible, selected.maxMonthlyPayment, { orc: orc && !dto && collectedBy === "Collector", reactivation: entry.reactivation === "Yes" });
       // No incentive (owner, October 20, 2026): remitted whole, as the server saves it.
       return { ...quote, ...(noIncentiveOn(entry) ? { remittance: withoutIncentive(Number(entry.amountCollected), quote.remittance).remittance } : {}), error: "" };
     } catch (error) { return { error: error instanceof Error ? error.message : "Unable to calculate remittance." }; }
@@ -1032,7 +1041,7 @@ export default function CollectionsPage() {
           fidelityAmount,
           collections: collections.map((entry) => ({
             ...entry,
-            differentIncentive: differentOn(entry),
+            ...differentFields(entry),
             // Covered by the Waiver on an earlier receipt for the same account; saved with it on record. A Waiver the OR
             // date does not call for is not saved, also on a batch opened before the date rule reached the form.
             ifSuspended: entry.waiverAbove && !entry.ifSuspended && needsWaiver(entry) ? "Waiver" : waiverOnOrDate(entry),
@@ -1070,7 +1079,7 @@ export default function CollectionsPage() {
     const details = (entry: CollectionEntry) => ({
       orNumber: entry.orNumber, orDate: entry.orDate, amount: Number(entry.amountCollected), backdateReason: entry.backdateReason, reactivation: entry.reactivation === "Yes", transferred: entry.transferred === "Yes",
       waiver: (entry.waiverAbove && !entry.ifSuspended && needsWaiver(entry) ? "Waiver" : waiverOnOrDate(entry)) === "Waiver",
-      ...(dto ? {} : { noIncentive: noIncentiveOn(entry), noIncentiveReason: entry.noIncentiveReason }), differentIncentive: differentOn(entry),
+      ...(dto ? {} : { noIncentive: noIncentiveOn(entry), noIncentiveReason: entry.noIncentiveReason }), ...differentFields(entry),
     });
     const kept = collections.filter((entry) => entry.savedId);
     const stays = new Set(kept.map((entry) => entry.savedId));
@@ -1108,7 +1117,7 @@ export default function CollectionsPage() {
       if (batch.kind !== "Collection") throw new Error("This batch is New Sales. Open it from My Entries.");
       const isDto = batch.dto === true, byCollector = batch.collectedBy === "Collector";
       const memberOwner = String(batch.memberMas ?? "");
-      type Saved = { id: string; memberId: string; memberName: string; programId: string; program: string; monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; amount: number; orNumber: string; orDate: string; backdateReason: string; reactivation: boolean; transferred: boolean; waiver: boolean; noIncentiveReason: string; differentIncentive: boolean };
+      type Saved = { id: string; memberId: string; memberName: string; programId: string; program: string; monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; amount: number; orNumber: string; orDate: string; backdateReason: string; reactivation: boolean; transferred: boolean; waiver: boolean; noIncentiveReason: string; differentIncentive: boolean; differentIncentiveType: "" | "fixed" | "percentage"; differentIncentiveAmount: number };
       const saved: Saved[] = batch.entries;
       const start = new Map<string, Saved>();
       for (const item of saved) { const key = `${item.memberId}|${item.programId}`; const first = start.get(key); if (!first || item.nopFrom < first.nopFrom) start.set(key, item); }
@@ -1118,6 +1127,7 @@ export default function CollectionsPage() {
         const base: CollectionEntry = { ...createEmptyCollection(id), savedId: item.id, memberId: item.memberId, memberSearch: item.memberName, programId: item.programId, programSearch: programs.find((candidate) => candidate.id === item.programId)?.code ?? item.program,
           monthFrom: item.monthFrom, monthTo: item.monthTo, nopFrom: item.nopFrom, nopTo: item.nopTo, amountCollected: item.amount.toFixed(2), orNumber: item.orNumber, orDate: item.orDate, backdateReason: item.backdateReason,
           reactivation: item.reactivation ? "Yes" : "No", transferred: item.transferred ? "Yes" : "No", ifSuspended: item.waiver ? "Waiver" : "", noIncentive: Boolean(item.noIncentiveReason), noIncentiveReason: item.noIncentiveReason, differentIncentive: item.differentIncentive,
+          differentIncentiveType: item.differentIncentiveType || "percentage", differentIncentiveAmount: item.differentIncentiveAmount ? String(item.differentIncentiveAmount) : "",
           accountNextMonth: first.monthFrom, accountNextNop: first.nopFrom, isExpanded: index === 0 };
         const lookup = await fetch(`/api/collections?except=${encodeURIComponent(ids.join(","))}&memberId=${encodeURIComponent(item.memberId)}&programId=${encodeURIComponent(item.programId)}&branch=${encodeURIComponent(batch.branch)}&mas=${encodeURIComponent(memberOwner)}${isDto ? "&dto=1" : ""}`, { cache: "no-store" });
         const account = await lookup.json();
@@ -1854,10 +1864,27 @@ export default function CollectionsPage() {
                             </div>}
                           </div>}
 
-                          {differentAvailable(entry) && <label className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${differentOn(entry) ? "border-primary/50 bg-primary/5" : ""}`}>
-                            <input type="checkbox" className="mt-0.5" checked={differentOn(entry)} onChange={(event) => updateCollection(entry.id, { differentIncentive: event.target.checked })} />
-                            <span><strong>Different incentives</strong><span className="block text-xs text-muted-foreground">Use this program&apos;s Different incentive instead of the usual MAS rate, for the months it covers.</span></span>
-                          </label>}
+                          {/* DIFFERENT INCENTIVES (owner, November 9, 2026): ticked here, with the MAS incentive typed for this collection. */}
+                          {differentAvailable(entry) && <div className={`rounded-md border px-3 py-2 text-sm ${differentOn(entry) ? "border-primary/50 bg-primary/5" : ""}`}>
+                            <label className="flex items-start gap-2">
+                              <input type="checkbox" className="mt-0.5" checked={differentOn(entry)} onChange={(event) => updateCollection(entry.id, { differentIncentive: event.target.checked })} />
+                              <span><strong>Different incentives</strong><span className="block text-xs text-muted-foreground">Tick to type the MAS incentive for this collection instead of the program&apos;s usual rate.</span></span>
+                            </label>
+                            {differentOn(entry) && <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Incentive type *</Label>
+                                <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={entry.differentIncentiveType ?? "percentage"} onChange={(event) => updateCollection(entry.id, { differentIncentiveType: event.target.value === "fixed" ? "fixed" : "percentage" })}>
+                                  <option value="percentage">Percentage</option>
+                                  <option value="fixed">Fixed</option>
+                                </select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">{(entry.differentIncentiveType ?? "percentage") === "fixed" ? "Incentive per month (₱) *" : "Incentive (%) *"}</Label>
+                                <Input type="number" inputMode="decimal" min="0" step="0.01" max={(entry.differentIncentiveType ?? "percentage") === "fixed" ? undefined : 100} value={entry.differentIncentiveAmount ?? ""} onChange={(event) => updateCollection(entry.id, { differentIncentiveAmount: event.target.value })} placeholder={(entry.differentIncentiveType ?? "percentage") === "fixed" ? "e.g. 50.00" : "e.g. 30"} />
+                              </div>
+                              <p className="text-xs text-muted-foreground sm:col-span-2">{(entry.differentIncentiveType ?? "percentage") === "fixed" ? "A fixed amount the MAS keeps for each month paid." : "A percentage of base pay less mark-up, for each month paid."} The mark-up still goes to the company.</p>
+                            </div>}
+                          </div>}
 
                           {/* MORE DETAILS */}
                           <div className="rounded-lg border">

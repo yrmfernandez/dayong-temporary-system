@@ -23,8 +23,6 @@ type IncentiveTier = {
   incentiveAmount: number;
   /** Blank = base tier for all branches; otherwise a tier for that branch only. */
   branchId?: string;
-  /** Different incentives: a MAS rate used only on a collection the Entry Clerk ticks. */
-  different?: boolean;
 };
 
 export async function GET() {
@@ -175,7 +173,6 @@ export const POST = withEncoder(async function POST(
           ),
 
           branchId: typeof tier.branchId === "string" ? tier.branchId.trim() : "",
-          different: tier.different === true,
         }),
       );
 
@@ -323,7 +320,6 @@ export const POST = withEncoder(async function POST(
           first.role ===
             second.role &&
           (first.branchId ?? "") === (second.branchId ?? "") &&
-          Boolean(first.different) === Boolean(second.different) &&
           first.fromMonth <=
             second.toMonth &&
           second.fromMonth <=
@@ -441,7 +437,7 @@ function programInput(body: Record<string, unknown>): ProgramInput {
     ageRestricted: body.ageRestricted,
     minAge: body.minAge,
     maxAge: body.maxAge,
-    incentiveTiers: tiers.map((value) => { const tier = value as Record<string, unknown>; return { role: tier.role === "Collector" ? "Collector" : "MAS", fromMonth: Number(tier.fromMonth), toMonth: Number(tier.toMonth), incentiveType: tier.incentiveType === "fixed" ? "fixed" : "percentage", markUp: Number(tier.markUp), incentiveAmount: Number(tier.incentiveAmount), branchId: typeof tier.branchId === "string" ? tier.branchId.trim() : "", nonCommissionable: tier.nonCommissionable === true, different: tier.different === true }; }),
+    incentiveTiers: tiers.map((value) => { const tier = value as Record<string, unknown>; return { role: tier.role === "Collector" ? "Collector" : "MAS", fromMonth: Number(tier.fromMonth), toMonth: Number(tier.toMonth), incentiveType: tier.incentiveType === "fixed" ? "fixed" : "percentage", markUp: Number(tier.markUp), incentiveAmount: Number(tier.incentiveAmount), branchId: typeof tier.branchId === "string" ? tier.branchId.trim() : "", nonCommissionable: tier.nonCommissionable === true }; }),
   };
 }
 

@@ -2878,7 +2878,7 @@ test('a Returned Collections batch on the full form: a collection goes to anothe
   assert.match((await (await post({ ids: [...ids, third], entries: [...ids, third].map((item) => ({ id: item, remove: true })) })).json()).message, /Keep at least one entry/);
 });
 
-test('Different incentives: the clerk ticks them on a collection of a MAS batch, saved, repriced and undone at that rate (November 6, 2026)', async () => {
+test('Different incentives: the clerk ticks them on a collection of a MAS batch and types the rate, saved, repriced and undone at that rate (November 9, 2026)', async () => {
   const h = harness();
   const rules = h.load('lib/account-rules.ts');
   const today = rules.todayInManila(), month = today.slice(0, 7);
@@ -2893,22 +2893,21 @@ test('Different incentives: the clerk ticks them on a collection of a MAS batch,
     { incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 },
     { incentive_id: 'I2', program_id: 'DP-1', role: 'Collector', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 20 },
   ]);
-  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 B', orDate: today, differentIncentive: true };
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 B', orDate: today, differentIncentive: true, differentIncentiveType: 'percentage', differentIncentiveAmount: 10 };
   const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 520,
     collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: '1002 B', differentIncentive: false }] };
   const route = h.load('app/api/collections/route.ts');
 
-  // Refused where it cannot apply: no Different rate on the program yet, then a batch not collected by MAS.
-  assert.match((await (await route.POST(request(batch))).json()).message, /has no Different incentives set/);
-  await query("insert into program_incentives (incentive_id, program_id, role, from_month, to_month, incentive_type, mark_up, incentive_amount, different) values ('I3', 'DP-1', 'MAS', 1, 999, 'percentage', 50, 10, true)");
+  // Refused where it cannot apply: ticked with no rate typed, then a batch not collected by MAS.
+  assert.match((await (await route.POST(request({ ...batch, collections: [{ ...entry, differentIncentiveAmount: '' }, batch.collections[1]] }))).json()).message, /type the incentive/);
   assert.match((await (await route.POST(request({ ...batch, collectedBy: 'Collector' }))).json()).message, /only to a batch collected by MAS/);
   assert.equal((await query('select count(*)::int as n from collections'))[0].n, 0, 'nothing saved');
 
   // Ticked: 10% of 300, so 320 remitted; the one not ticked in the same batch keeps 50%, so 200.
   const saved = await route.POST(request(batch));
   assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
-  const state = () => query('select or_number, remittance_amount::float8 as share, different_incentive from collections order by or_number');
-  assert.deepEqual(await state(), [{ or_number: '1001 B', share: 320, different_incentive: true }, { or_number: '1002 B', share: 200, different_incentive: false }]);
+  const state = () => query('select or_number, remittance_amount::float8 as share, different_incentive, different_incentive_type as type, different_incentive_amount::float8 as rate from collections order by or_number');
+  assert.deepEqual(await state(), [{ or_number: '1001 B', share: 320, different_incentive: true, type: 'percentage', rate: 10 }, { or_number: '1002 B', share: 200, different_incentive: false, type: null, rate: null }]);
 
   // A correction reprices at the rate it was saved with.
   const ids = (await query('select collection_id from collections order by or_number')).map((row) => row.collection_id);
@@ -2916,24 +2915,17 @@ test('Different incentives: the clerk ticks them on a collection of a MAS batch,
   await h.load('lib/db.ts').inTransaction((tx) => h.load('lib/entry-edit.ts').repriceCollections(tx, ids));
   assert.deepEqual((await state()).map((row) => row.share), [320, 200]);
 
-  // A returned batch shows the tick, and unticking it goes back to the usual rate.
+  // A returned batch shows the tick with its rate; changing it to fixed 50 reprices, unticking goes back to the usual rate.
   await query("update collections set remittance_status = 'Returned'");
   const edits = h.load('app/api/my-entries/batch/route.ts');
   const loaded = await (await edits.GET(new Request(`http://localhost/api/my-entries/batch?ids=${ids.join(',')}`))).json();
-  assert.deepEqual(loaded.batch?.entries.map((item) => [item.differentIncentive, item.differentAvailable]), [[true, true], [false, true]], JSON.stringify(loaded).slice(0, 300));
+  assert.deepEqual(loaded.batch?.entries.map((item) => [item.differentIncentive, item.differentIncentiveType, item.differentIncentiveAmount]), [[true, 'percentage', 10], [false, '', 0]], JSON.stringify(loaded).slice(0, 300));
+  const fixed = await edits.POST(request({ ids, dateRemitted: today, paymentMethod: 'GCash', collectedBy: 'MAS', entries: [{ id: ids[0], orNumber: '1001 B', orDate: today, amount: 350, monthTo: next, differentIncentive: true, differentIncentiveType: 'fixed', differentIncentiveAmount: 50 }, { id: ids[1], orNumber: '1002 B', orDate: today, amount: 350, monthTo: afterNext }] }));
+  assert.equal(fixed.status, 200, JSON.stringify(await fixed.clone().json()));
+  assert.deepEqual((await state())[0], { or_number: '1001 B', share: 300, different_incentive: true, type: 'fixed', rate: 50 });
   const undone = await edits.POST(request({ ids, dateRemitted: today, paymentMethod: 'GCash', collectedBy: 'MAS', entries: [{ id: ids[0], orNumber: '1001 B', orDate: today, amount: 350, monthTo: next, differentIncentive: false }, { id: ids[1], orNumber: '1002 B', orDate: today, amount: 350, monthTo: afterNext }] }));
   assert.equal(undone.status, 200, JSON.stringify(await undone.clone().json()));
-  assert.deepEqual((await state())[0], { or_number: '1001 B', share: 200, different_incentive: false });
-});
-
-test('a Different incentive is a MAS rate apart from the base rates: the program still needs its base rate (November 6, 2026)', async () => {
-  const h = harness();
-  const { validateIncentiveTiers } = h.load('lib/program-incentive-store.ts');
-  const tier = (more = {}) => ({ role: 'MAS', fromMonth: 1, toMonth: 12, incentiveType: 'percentage', markUp: 0, incentiveAmount: 10, ...more });
-  await validateIncentiveTiers([tier(), tier({ different: true })], 350);
-  await assert.rejects(validateIncentiveTiers([tier({ different: true })], 350), /at least one base incentive tier/);
-  await assert.rejects(validateIncentiveTiers([tier(), tier({ different: true }), tier({ different: true, fromMonth: 6 })], 350), /Different incentive periods cannot overlap/);
-  await assert.rejects(validateIncentiveTiers([tier(), tier({ different: true, role: 'Collector' })], 350), /MAS rates for all branches/);
+  assert.deepEqual((await state())[0], { or_number: '1001 B', share: 200, different_incentive: false, type: null, rate: null });
 });
 
 test('MAM quota is the last month closing total, fixed for the month, advances stay out of it, and a range counts a back month once', async () => {

@@ -17,6 +17,15 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### Different incentives typed on the collection, removed from Programs (2026-11-09)
+
+- **Asked (owner):** the Different incentives tick could not be seen on Collections. Remove it from Programs; it is only on Collections, ticked or not, and when ticked the clerk types the incentive to use, percentage or fixed.
+- **Why it was hidden:** the tick showed only for a program that had a Different rate saved on Programs, on a batch collected by MAS.
+- **Done:** Programs no longer has **Add Different Incentive** (the Programs side of the 2026-11-06 change is reversed). On Collections, a MAS batch shows the tick on every collection once the program is picked; ticked, the clerk picks **Percentage** or **Fixed** and types the amount. It replaces every MAS rate of that collection (overall, branch, later periods); mark-up and Collector rates stay; a non-commissionable month earns the typed incentive. Save, returned-batch edit, Edit / Corrections and finance repricing use and keep it. Today's Entries and View entries show the rate. Migration 0047 adds `collections.different_incentive_type` / `different_incentive_amount`, gives an already-ticked collection the rate its program's Different period gave it (else unticks it), and deletes the Different rows from `program_incentives`; the `different` column stays so the running code keeps working until the push.
+- **Tested:** type check and build pass; 330 of 331 tests pass. The tests for Different incentives were rewritten for the typed rate (form route, returned batch changed to fixed and unticked, repricing, validation). The one failure is `a MAS submits New Sales…` ('Rejected' vs 'Returned'), which fails the same way on the last commit, before this change.
+- **In progress:** nothing.
+- **To do (owner):** `npm run prod -- npm run db:migrate` **before** pushing, then `npm run prod -- node scripts/check-database.mjs`, then push. Then try a MAS batch on Collections: tick Different incentives, type 30%, check the preview.
+
 ### Rejected batches are edited on the full Collections and New Sales forms (2026-11-06)
 
 - **Asked (owner):** when a remittance is rejected, the clerk edits the batch on the Collections or New Sales form itself, so everything can be edited. Owner chose: on Collections also the member and adding entries; Branch and MAS stay fixed.
@@ -34,7 +43,7 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 - **Tested:** type check, lint and build pass; 329 of 330 tests pass, and the 3 new tests in `npm test` are among them; `scripts/test-entry-finance.mjs`, not part of `npm test`, passes with its new test. The one failure is the same `a MAS submits New Sales` test noted below. Not seen in a browser or on staging.
 - **Noticed, not changed:** `loadAccountData` (`lib/account-data.ts`) does not pass `nonCommissionable` to the server's tiers. On an ORC batch in a non-commissionable period the form can show the Collector's own rate while the server prices half of the MAS rate. Not checked against real data.
 - **In progress:** nothing.
-- **To do (owner):** `npm run prod -- npm run db:migrate` **before** pushing, then `npm run prod -- node scripts/check-database.mjs`, then push. Then set the Different rate on the programs that need it.
+- **Changed 2026-11-09:** the Programs setup was removed; the incentive is typed on each collection (see above).
 
 ### Exceptions: Fix shows what the issue is about (2026-11-06)
 

@@ -120,7 +120,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
   for (const account of accounts) if (!account.registrationFee) account.saleCredit = salePaid.get(`${account.memberNumber}|${account.programId}`) ?? 0;
   const incentives = tierRows.map((row) => ({
     id: row.incentive_id, programId: row.program_id, role: text(row.role) as IncentiveTier["role"], fromMonth: row.from_month ?? 0, toMonth: row.to_month ?? 0,
-    incentiveType: text(row.incentive_type) as IncentiveTier["incentiveType"], markUp: row.mark_up ?? 0, incentiveAmount: row.incentive_amount ?? 0, branchId: text(row.branch_id), different: row.different === true,
+    incentiveType: text(row.incentive_type) as IncentiveTier["incentiveType"], markUp: row.mark_up ?? 0, incentiveAmount: row.incentive_amount ?? 0, branchId: text(row.branch_id),
   }));
   return { accounts, payments, sales: saleList, incentives };
 }

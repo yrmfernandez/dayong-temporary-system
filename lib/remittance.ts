@@ -12,7 +12,7 @@ export type IncentiveTier = {
   branchId?: string;
   /** Non-commissionable period: only the Collector earns; the MAS gets nothing and remits the gross (owner, October 10, 2026). */
   nonCommissionable?: boolean;
-  /** Different incentives: a MAS rate used only on a collection the Entry Clerk ticks (owner, November 6, 2026). */
+  /** The old Programs setup of Different incentives (November 6-9, 2026); never counts now. */
   different?: boolean;
 };
 
@@ -39,11 +39,13 @@ function outsideMonths<T extends { fromMonth: number; toMonth: number }>(base: T
  * all the base tiers of that role, so a branch tier for months 1-6 left months 7 onward without any tier). A base tier
  * that partly overlaps the branch's months is cut down to the months the branch does not cover.
  *
- * Different incentives (owner, November 6, 2026) never count unless `different` is true, on a collection the Entry Clerk
- * ticked: then the program's Different MAS rates replace the MAS rates for the months they cover, and every other month
- * keeps its overall or branch rate. A program without Different rates prices as usual. Pass true only for a MAS batch.
+ * Different incentives (owner, November 6, 2026; typed on the collection since November 9, 2026): when `different` is
+ * given, on a collection the Entry Clerk ticked in a batch collected by MAS, every MAS rate takes the typed incentive
+ * (a percentage of base pay less mark-up, or a fixed amount per NOP) for every month of the collection. The mark-up and
+ * the Collector rates stay as they are; a non-commissionable month earns the typed incentive too, since the clerk set it.
+ * Program tiers marked `different` (the old Programs setup) never count.
  */
-export function tiersForBranch<T extends { role: string; branchId?: string; fromMonth: number; toMonth: number; different?: boolean }>(tiers: T[], branchId: string, different = false): T[] {
+export function tiersForBranch<T extends { role: string; branchId?: string; fromMonth: number; toMonth: number; different?: boolean; incentiveType?: string; incentiveAmount?: number; nonCommissionable?: boolean }>(tiers: T[], branchId: string, different?: DifferentRate | null): T[] {
   const branch = (branchId ?? "").trim();
   const rates = (["MAS", "Collector"] as const).flatMap((role) => {
     const forRole = tiers.filter((tier) => tier.role === role && !tier.different);
@@ -51,9 +53,37 @@ export function tiersForBranch<T extends { role: string; branchId?: string; from
     const own = branch ? forRole.filter((tier) => (tier.branchId ?? "").trim() === branch) : [];
     return own.length ? [...own, ...outsideMonths(base, own)] : base;
   });
-  const special = different ? tiers.filter((tier) => tier.different && tier.role === "MAS") : [];
-  if (!special.length) return rates;
-  return [...special, ...outsideMonths(rates.filter((tier) => tier.role === "MAS"), special), ...rates.filter((tier) => tier.role !== "MAS")];
+  if (!different) return rates;
+  return rates.map((tier) => tier.role === "MAS" ? { ...tier, incentiveType: different.type, incentiveAmount: different.amount, nonCommissionable: false } : tier);
+}
+
+/** The incentive the Entry Clerk typed for Different incentives: a percentage or a fixed amount per NOP. */
+export type DifferentRate = { type: "fixed" | "percentage"; amount: number };
+
+/**
+ * The typed Different incentive of one collection, or null when it is not ticked. A ticked collection needs a type and an
+ * amount above 0; a percentage cannot pass 100. Whether it fits the installment is checked by calculateRemittance.
+ */
+export function differentRateOf(ticked: unknown, type: unknown, amount: unknown, label = "Different incentives"): DifferentRate | null {
+  if (ticked !== true && ticked !== "true") return null;
+  const kind = String(type ?? "").trim();
+  if (kind !== "fixed" && kind !== "percentage") throw new Error(`${label}: choose Percentage or Fixed.`);
+  const value = Math.round(Number(amount) * 100) / 100;
+  if (amount === null || amount === "" || !Number.isFinite(value) || value <= 0) throw new Error(`${label}: type the incentive to use.`);
+  if (kind === "percentage" && value > 100) throw new Error(`${label}: a percentage cannot be more than 100%.`);
+  return { type: kind, amount: value };
+}
+
+/** "Different incentives: 30%" or "Different incentives: ₱50.00 per month"; just the name when no rate was saved. */
+export function differentLabel(type: unknown, amount: unknown) {
+  const value = Number(amount);
+  if (!(value > 0) || (type !== "fixed" && type !== "percentage")) return "Different incentives";
+  return type === "percentage" ? `Different incentives: ${value}%` : `Different incentives: ${pesos(value)} per month`;
+}
+
+/** The Different incentive a saved collection was priced with, or null (a collection saved without one, or not ticked). */
+export function savedDifferentRate(row: { different_incentive?: unknown; different_incentive_type?: unknown; different_incentive_amount?: unknown }) {
+  try { return differentRateOf(row.different_incentive, row.different_incentive_type, row.different_incentive_amount); } catch { return null; }
 }
 
 /** A program's New Sale incentive for registration-fee programs (Programs Q type, R amount). Blank type = none. */

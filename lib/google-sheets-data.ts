@@ -178,8 +178,6 @@ const toIncentive = (row: typeof incentiveTable.$inferSelect) => ({
   branchId: clean(row.branch_id),
   // Only the Collector earns in this period.
   nonCommissionable: row.non_commissionable === true,
-  // Different incentives: used only on a collection the Entry Clerk ticks.
-  different: row.different === true,
 });
 
 /** Incentive tiers of one program, or of every program. */
