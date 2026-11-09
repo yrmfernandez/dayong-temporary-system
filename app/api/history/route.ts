@@ -79,11 +79,13 @@ function auditEntry(row: Row, rowNumber: number) {
   return { key: `${AUDIT_SHEET}!${rowNumber}`, action, id: t(row[4]) || `row ${t(row[5])}`, module: moduleOf(title), detail, encodedBy: t(row[9]), encodedAt: t(row[1]), data: null };
 }
 
-// The Audit Log sheet is created by the first edit or delete; until then there is nothing to add.
+// The Audit Log sheet is created by the first edit or delete; until then there is nothing to add. Like the other tabs,
+// only its newest HISTORY_LIMIT rows can reach the list, so only those are read (it has 188,000+ rows; reading them all
+// took seconds and a disk sort on every open). Index audit_log_row_seq_idx (migration 0049) makes this a short read.
 async function auditEntries() {
   try {
-    const response = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${quotedSheet(AUDIT_SHEET)}!A:J` });
-    return (response.data.values ?? []).slice(1).map((row, index) => ({ row, rowNumber: index + 2 })).filter(({ row }) => t(row[0])).map(({ row, rowNumber }) => auditEntry(row, rowNumber));
+    const values = await readSheetRows(AUDIT_SHEET, sql`true`, { latest: HISTORY_LIMIT, unformatted: false });
+    return values.slice(1).map((row, index) => ({ row, rowNumber: index + 2 })).filter(({ row }) => t(row[0])).map(({ row, rowNumber }) => auditEntry(row, rowNumber));
   } catch (error) {
     // A missing sheet is a 400 "Unable to parse range"; anything else is worth knowing about.
     if (!(typeof error === "object" && error && "code" in error && Number(error.code) === 400)) console.error("History: could not read the Audit Log.", error);

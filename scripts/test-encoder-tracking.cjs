@@ -78,7 +78,7 @@ async function syncMasterData(rows, synced, load) {
   try {
     await copyMasterData(rows, synced);
     // Sales and Collections rows given as sheet rows are loaded through the database-backed Sheets API, positionally.
-    for (const tab of ['Roles', 'Sales', 'Collections', 'Users', 'User Roles', 'Remittances', 'Remittance Collections', 'Attendance']) {
+    for (const tab of ['Roles', 'Sales', 'Collections', 'Users', 'User Roles', 'Remittances', 'Remittance Collections', 'Attendance', 'Audit Log']) {
       const data = (rows[tab] ?? []).slice(1).filter((row) => row && row.length);
       const signature = JSON.stringify(data);
       // Unchanged since the last copy, or never given (and never copied): nothing to do.
@@ -169,7 +169,6 @@ function harness(user = { userId: 'USR-1', employeeId: 'DPE-0001', name: '=encod
       if (/^'?Branches'?!A:M$/.test(range)) return { data: { values: rows.Branches ?? [[]] } };
       if (/^'?Roles'?!A:[GL]$/.test(range)) return { data: { values: rows.Roles ?? [[]] } };
       if (/^'?Users'?!A:(?:B|G|H|Z)$/.test(range)) return { data: { values: rows.Users ?? [[]] } };
-      if (range === "'Audit Log'!A:J") return { data: { values: rows['Audit Log'] ?? [[]] } };
       if (range.startsWith("'Receipt Photos'")) return { data: { values: rows['Receipt Photos'] ?? [[]] } };
       if (range.startsWith("'Bank Deposits'")) return { data: { values: rows['Bank Deposits'] ?? [[]] } };
       if (range.startsWith("'Report Notes'")) return { data: { values: rows['Report Notes'] ?? [[]] } };
@@ -2026,7 +2025,8 @@ test('entry history lists every tracked sheet, including records saved before tr
   for (const moduleName of ['New Sales', 'Collections', 'Remittances', 'Members', 'Expenses', 'Payroll', 'User Roles', 'Branch Assignments']) assert.ok(result.modules.includes(moduleName), moduleName);
   assert.deepEqual(result.entries.map((entry) => [entry.action, entry.module]), [['Deleted', 'Members'], ['Edited', 'Members'], ['Created', 'Collections'], ['Created', 'New Sales'], ['Created', 'User Roles'], ['Created', 'User Roles'], ['Created', 'User Accounts']]);
   const [deleted, edited] = result.entries;
-  assert.equal(edited.detail, 'member contact: 0917 → 0999; status: Active → Inactive');
+  // Read from the database (only the newest rows): jsonb keeps shorter keys first, as production does.
+  assert.equal(edited.detail, 'status: Active → Inactive; member contact: 0917 → 0999');
   assert.equal(edited.encodedBy, 'Clerk One');
   assert.equal(deleted.id, 'MEM-2');
   assert.equal(deleted.detail, 'PH-2 · Ben Cruz');

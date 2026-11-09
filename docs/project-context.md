@@ -17,6 +17,30 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+## Upgrade list 2 (agreed 2026-11-09, done one at a time)
+
+The owner asked again what to improve; the first list is all built. These come from the 2026-11-06 production check (slow pages), the egress work of 2026-11-05 and open items in this file.
+
+| # | Upgrade | Status |
+| --- | --- | --- |
+| 1 | Audit Log page reads only its newest rows | **Built 2026-11-09** (below); migration 0049 |
+| 2 | Exceptions duplicate-number check uses an index | **Built 2026-11-09** (below); migration 0049 |
+| 3 | Search Records with no match (about 1.1 s): an index for its text search | To do |
+| 4 | Egress: the remittance ledger (19% of rows) reads less | To do (re-measure pg_stat_statements first) |
+| 5 | Egress: the clerk report's expected collections (10%) reads less | To do |
+| 6 | Rewrite the test "a MAS submits New Sales…" for the Rejected → submit again flow | To do |
+| 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | To do (owner) |
+| 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | To decide (owner) |
+
+### Audit Log and Exceptions faster: newest rows only, three indexes (2026-11-09)
+
+- **Asked (owner):** upgrade list 2, items 1 and 2.
+- **Found (production, read-only EXPLAIN, 2026-11-09):** the Audit Log has 188,918 rows; Entry History read them all on every open (`auditEntries`, whole-sheet read, then a disk sort of about 49 MB) although only the newest 2,000 of all modules are shown. With no index on `audit_log.row_seq`, even the newest 2,000 took 1.4 s. Exceptions' duplicate-number check took 3.46 s: for each of 117 flagged collections it scanned all 69,687 collections, because `collections_or_key_unique` leaves flagged rows out and so cannot serve that look-up; the sales check took 0.16 s the same way.
+- **Done:** `app/api/history/route.ts` reads only the newest 2,000 Audit Log rows (`readSheetRows` with `latest`), like the other tabs. Migration `0049_read_indexes` adds `audit_log_row_seq_idx`, `collections_or_key_posted_idx` (or_key, row_seq, Posted only) and `sales_application_key_idx`. Nothing shown changes, except that the "showing the latest 2,000 of N" total no longer counts the older Audit Log rows, and an edit's changed fields are listed in the database's order (as production already did).
+- **Tested (staging, after 0049):** the newest 2,000 audit rows 0.75 ms by index; Exceptions collections 39 ms and sales 8 ms, both by the new indexes. Type check, lint and build pass; tests 332 of 333 (the remaining one is item 6 above, failing before this change too). The test harness now loads Audit Log rows into the test database.
+- **Staging:** `npm run db:migrate` run; staging now has all 50 migrations (it was missing 0044 and others).
+- **To do (owner):** `npm run prod -- npm run db:migrate` (0049; creating the indexes takes a few seconds and briefly holds saves on those three tables, so run it outside busy hours), then `npm run prod -- node scripts/check-database.mjs` (50 of 50), then push. The code also works before the migration, only slower.
+
 ### Added members on Submit Collections are short rows (2026-11-09)
 
 - **Asked (owner):** a different card for the members added on Collections, so there is not much scrolling when many are added.

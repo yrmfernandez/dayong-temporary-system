@@ -422,6 +422,7 @@ export const sales = pgTable("sales", {
   mas_employee_id: text().references(() => employees.employee_id, employeeRef),
 }, (t) => [index("sales_branch_id_idx").on(t.branch_id), index("sales_mas_employee_id_idx").on(t.mas_employee_id), 
   uniqueIndex("sales_application_key_unique").on(t.application_key).where(sql`${t.application_key} <> '' and not ${t.legacy_duplicate}`),
+  index("sales_application_key_idx").on(t.application_key, t.row_seq),
   index("sales_encoder_idx").on(t.encoded_by_employee_id, t.encoded_at),
   index("sales_remittance_status_idx").on(t.remittance_status),
   index("sales_member_number_idx").on(t.member_number),
@@ -670,6 +671,8 @@ export const collections = pgTable("collections", {
   different_incentive_amount: money("different_incentive_amount"),
 }, (t) => [
   uniqueIndex("collections_or_key_unique").on(t.or_key).where(sql`${t.or_key} <> '' and ${t.status} = 'Posted' and not ${t.legacy_duplicate}`),
+  // Exceptions finds the entry a flagged duplicate shares its OR number with; the unique index above skips flagged rows.
+  index("collections_or_key_posted_idx").on(t.or_key, t.row_seq).where(sql`${t.status} = 'Posted'`),
   index("collections_enrollment_idx").on(t.enrollment_id),
   index("collections_member_idx").on(t.member_id),
   index("collections_batch_idx").on(t.collection_batch_id),
@@ -1200,6 +1203,8 @@ export const audit_log = pgTable("audit_log", {
 }, (t) => [
   index("audit_log_record_idx").on(t.table_name, t.record_id),
   index("audit_log_logged_at_idx").on(t.logged_at),
+  // The Audit Log page reads only the newest rows (by row_seq).
+  index("audit_log_row_seq_idx").on(t.row_seq),
 ]).enableRLS();
 
 
