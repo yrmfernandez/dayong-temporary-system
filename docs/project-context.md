@@ -25,12 +25,22 @@ The owner asked again what to improve; the first list is all built. These come f
 | --- | --- | --- |
 | 1 | Audit Log page reads only its newest rows | **Built 2026-11-09** (below); migration 0049 |
 | 2 | Exceptions duplicate-number check uses an index | **Built 2026-11-09** (below); migration 0049 |
-| 3 | Search Records with no match (about 1.1 s): an index for its text search | To do |
+| 3 | Search Records with no match (about 1.1 s): an index for its text search | **Built 2026-11-09** (below); migration 0050 |
 | 4 | Egress: the remittance ledger (19% of rows) reads less | To do (re-measure pg_stat_statements first) |
 | 5 | Egress: the clerk report's expected collections (10%) reads less | To do |
 | 6 | Rewrite the test "a MAS submits New Sales…" for the Rejected → submit again flow | To do |
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | To do (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | To decide (owner) |
+
+### Search Records faster: each collection's text kept and indexed (2026-11-09)
+
+- **Asked (owner):** upgrade list 2, item 3.
+- **Found (production, read-only, 2026-11-09):** a search took about 1.4 s in the database, 1.1 s of it on Collections: each typed word was matched against every collection, its member and its program joined as one text (`concat_ws(' ', collections::text, members::text, program_name)`), and turning 70,000 collections into text costs about 0.75 s on its own, match or not. New Sales (0.08 s) and Members (0.18 s) were left as they are.
+- **Done:** migration `0050_record_search_index` keeps each collection's text in `search.collection_text`, written by the trigger `sync_collection_text` on every insert, update and delete, with a trigram index (`pg_trgm`, in the `extensions` schema), plus `collections_program_idx`. The table is in its own `search` schema so the audit and live-update triggers, which attach to every public table, leave it alone, and the Supabase API does not expose it. `lib/record-search.ts` matches each word as the collections whose own text, member or program contains it (`collectionWordMatch`). `scripts/check-database.mjs` checks the table, the trigger and that no collection lacks its text.
+- **Same results:** compared on staging with the old query for 8 words (no match, an OR number, a surname, phone digits, a program, a date, a common word, a two-letter word): the same collections every time.
+- **Tested (staging):** a search with its 200-row limit 0.15-0.3 s from this computer (was 1.0-1.3 s), about 70 ms of it in the database (was 1.1 s), most of that the member names; a two-letter word, which no trigram index can serve, 0.8 s. An edit is found at once and a deleted collection leaves no text (checked in a rolled-back transaction). Type check, lint and build pass; tests 333 of 334 (a new test searches collections by OR number, member, program, phone digits, several words, an edit and a delete; the remaining failure is item 6). The test database loads `pg_trgm`.
+- **To do (owner):** `npm run prod -- npm run db:migrate` outside busy hours (0049 and 0050 together if 0049 is not in yet): filling the text of 70,000 collections and building the index takes about 15-30 s and holds saves of collections until it ends. Then `npm run prod -- node scripts/check-database.mjs` (51 of 51, "Search Records text (0050): present"), then push. The new code needs 0050 (it reads `search.collection_text`), so migrate first.
+- **If a column is added to collections later:** old rows keep their text without it until saved again; the rebuild statement is at the top of the migration.
 
 ### Audit Log and Exceptions faster: newest rows only, three indexes (2026-11-09)
 

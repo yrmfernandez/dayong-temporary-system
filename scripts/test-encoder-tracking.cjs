@@ -15,7 +15,9 @@ before(async () => {
   const { PGlite } = require('@electric-sql/pglite');
   const { drizzle } = require('drizzle-orm/pglite');
   const { migrate } = require('drizzle-orm/pglite/migrator');
-  pglite = new PGlite();
+  // pg_trgm: Search Records keeps each collection's text in search.collection_text with a trigram index (migration 0050).
+  const { pg_trgm } = require('@electric-sql/pglite/contrib/pg_trgm');
+  pglite = new PGlite({ extensions: { pg_trgm } });
   const db = drizzle(pglite);
   await migrate(db, { migrationsFolder: path.resolve('db/migrations') });
   globalThis.dayongTestDb = db;
@@ -27,6 +29,7 @@ before(async () => {
 beforeEach(async () => {
   const { rows } = await pglite.query("select string_agg(format('%I', tablename), ', ') as names from pg_tables where schemaname = 'public'");
   await pglite.exec(`truncate ${rows[0].names} restart identity cascade`);
+  await pglite.exec('truncate search.collection_text');
   globalThis.dayongTestStorage.clear();
 });
 /** Inserts rows (objects keyed by column name) into a database table. */
@@ -91,6 +94,10 @@ async function syncMasterData(rows, synced, load) {
       if (data.length) await load('lib/sheets-on-db.ts').appendSheetRows(tab, data, extras);
       synced.set(`tab|${tab}`, signature);
     }
+    // Collections copied above skip triggers (replica), so their search text (search.collection_text, written by a
+    // trigger in production) is filled here.
+    await pglite.query("delete from search.collection_text t where not exists (select 1 from collections c where c.collection_id = t.collection_id)");
+    await pglite.query("insert into search.collection_text select c.collection_id, c::text from collections c on conflict (collection_id) do update set search_text = excluded.search_text");
     // Slips are saved in the database now (upgrade #6): the accountable employees that test rows name exist, as they do in
     // production (collections and sales already require them there).
     await pglite.query(`insert into employees (employee_id, full_name)
@@ -5324,6 +5331,29 @@ test('lunch break: 12:00–12:59 PM Manila nobody saves except clocking in or ou
     assert.notEqual((await call(['Entry Clerk'], '/api/collections')).status, 423, 'outside the break');
   } finally { Date.now = realNow; }
   delete Response.next;
+});
+
+test('Search Records: collections found by their own text, their member or their program, kept current by the trigger (November 9, 2026)', async () => {
+  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', roleNames: ['Administrator'], permissions: {} });
+  await seed('programs', [{ program_id: 'DP-1', program_name: 'D-210', base_pay: 210 }, { program_id: 'DP-2', program_name: 'DFPP-650', base_pay: 650 }]);
+  await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'Montemor', first_name: 'Ana', member_contact: '0917-123 4567' }, { member_id: 'MEM-2', member_number: 'PH-2', surname: 'Cruz', first_name: 'Ben' }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-1', member_id: 'MEM-1', program_id: 'DP-1' }, { enrollment_id: 'ENR-2', member_id: 'MEM-2', program_id: 'DP-2' }]);
+  await seed('collections', [
+    { collection_id: 'COL-1', collection_batch_id: 'B-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', or_number: '02390 T', or_date: '2026-04-10', amount_collected: 210, status: 'Posted' },
+    { collection_id: 'COL-2', collection_batch_id: 'B-1', enrollment_id: 'ENR-2', member_id: 'MEM-2', member_number: 'PH-2', program_id: 'DP-2', or_number: '5551 B', or_date: '2026-05-02', amount_collected: 650, status: 'Posted' },
+  ]);
+  const { searchRecords } = h.load('lib/record-search.ts');
+  const found = async (q) => (await searchRecords({ q, kind: 'collections', orNumber: '', dateField: '', dateFrom: '', dateTo: '', branch: '', program: '', mas: '', remittanceStatus: '' }, null)).collections.map((row) => row.id).sort();
+  assert.deepEqual(await found('02390'), ['COL-1'], 'the OR number, from the collection text');
+  assert.deepEqual(await found('montemor'), ['COL-1'], 'the member name');
+  assert.deepEqual(await found('DFPP-650'), ['COL-2'], 'the program name');
+  assert.deepEqual(await found('09171234567'), ['COL-1'], 'the member contact by its digits');
+  assert.deepEqual(await found('Cruz 5551'), ['COL-2'], 'every word, each anywhere');
+  assert.deepEqual(await found('zzqxwv'), []);
+  await pglite.query("update collections set remittance_status = 'Remitted zzlater' where collection_id = 'COL-2'");
+  assert.deepEqual(await found('zzlater'), ['COL-2'], 'an edit is found at once');
+  await pglite.query("delete from collections where collection_id = 'COL-2'");
+  assert.deepEqual((await query("select collection_id from search.collection_text order by 1")).map((row) => row.collection_id), ['COL-1'], 'a deleted collection leaves no text');
 });
 
 test('Search Records: names typed as shown and contact numbers in any format (October 31, 2026)', () => {

@@ -351,6 +351,13 @@
       "when": 1794203332021,
       "tag": "0049_read_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794205568704,
+      "tag": "0050_record_search_index",
+      "breakpoints": true
     }
   ]
 }

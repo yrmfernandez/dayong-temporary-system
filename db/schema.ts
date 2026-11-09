@@ -678,6 +678,8 @@ export const collections = pgTable("collections", {
   index("collections_batch_idx").on(t.collection_batch_id),
   index("collections_encoder_idx").on(t.encoded_by_employee_id, t.encoded_at),
   index("collections_or_date_idx").on(t.or_date),
+  // Search Records: a word that matches a program name finds that program's collections (lib/record-search.ts).
+  index("collections_program_idx").on(t.program_id),
   index("collections_created_idx").on(t.created_at),
   index("collections_branch_id_idx").on(t.branch_id),
   index("collections_mas_employee_idx").on(t.mas_employee_id),
