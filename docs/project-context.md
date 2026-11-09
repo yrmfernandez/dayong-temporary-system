@@ -17,6 +17,15 @@ The owner asked what to upgrade next; these were agreed to be worked through one
 | 9 | More automated tests on the money rules (incentives, remittance expected amounts, NOP, forfeiture) | **Built 2026-10-26**: `scripts/test-money-rules.mjs` (centavo invariants over 1,000+ combinations, rounding, ORC, reactivation, flexible splits, New Sale, forfeits, short months, Fidelity base and withdrawals) and deadline-to-the-minute tests |
 | 10 | Watch the Supabase 500 MB Free-plan limit as receipt photos grow; plan Pro or archiving | **Built 2026-10-26** (owner is on Supabase Pro): System Health measures against 8 GB database / 100 GB Storage, shows photos still in the database, and the nightly job records sizes for growth per month and months left (`lib/capacity.ts`) |
 
+### My submissions shows Collected, Incentive and To remit clearly (2026-11-09)
+
+- **Asked (owner):** on My submissions the Collector cannot see how much to remit; improve the layout for MAS and Collector so the totals collected, to remit and incentives are easy to spot.
+- **Before:** each submission was one grey line (members, collected, incentive, branch); the amount to remit was only inside the deadline sentence, and only while the batch was not yet remitted and before the deadline. Once remitted, saved or late, no amount to remit was shown at all.
+- **Done (app/mas-collections/page.tsx, MySubmissions):** a **Cash to hand over to the clerk** card on top (total to remit of all submissions not yet remitted, collected, incentive kept if in time, next deadline, a warning when a deadline has passed). Each submission shows **Collected / Incentive / To remit** as figures (Remitted once received; Incentive lost and the whole amount after a missed deadline; nothing to remit when rejected), the branch, members and Collector details in one line under the date, and **See the members** with each member's program, months, amount, incentive and remit. No server or database change.
+- **Tested:** type check and build pass.
+- **In progress:** nothing.
+- **To do:** push. No migration.
+
 ### Branch locations hidden from other users; View in map and address from the map (2026-11-09)
 
 - **Asked (owner):** other users could see **Branch locations for clock-in** on Branches; they should not. In the branch list, a View in map, and the address, country and postal code filled automatically (owner chose: map link plus auto-fill from OpenStreetMap, typed fields kept).

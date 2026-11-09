@@ -444,43 +444,116 @@ export default function MasCollectionsPage() {
 }
 
 /**
- * The MAS's submissions, read only. Only the clerk changes one: the clerk marks it Remitted when the cash is handed over
- * (a MAS cannot mark it themselves; that time decides the incentive), then types the OR numbers and saves it.
+ * The MAS's or Collector's submissions, read only. Only the clerk changes one: the clerk marks it Remitted when the cash
+ * is handed over (a MAS cannot mark it themselves; that time decides the incentive), then types the OR numbers and saves it.
+ * Laid out around the money (owner, November 9, 2026): a summary of the cash still to hand over on top, and on each
+ * submission Collected, Incentive and To remit (or Remitted) as figures, with the members and their amounts on request.
  */
+type Figures = { remit: number; incentive: number; kept: boolean; late: boolean };
+
+/** What a submission asks to hand over, or what was handed over: the whole amount once the deadline is missed. */
+function figuresOf(submission: Submission, now: string): Figures {
+  const deadline = submission.incentiveDeadline;
+  const late = Boolean(deadline) && (submission.status === "Submitted" ? now > deadline
+    : (submission.status === "Remitted" || submission.status === "Saved") && Boolean(submission.remittedAt) && submission.remittedAt > deadline);
+  const kept = !late && submission.status !== "Rejected";
+  return { remit: cents(kept ? submission.totalAmount - submission.totalIncentive : submission.status === "Rejected" ? 0 : submission.totalAmount), incentive: submission.totalIncentive, kept, late };
+}
+
+function Figure({ label, value, tone = "", note = "" }: { label: string; value: string; tone?: string; note?: string }) {
+  return <div className="min-w-0 rounded-md bg-muted/50 px-2 py-2 text-center">
+    <p className="text-[11px] text-muted-foreground">{label}</p>
+    <p className={`truncate text-base font-bold tabular-nums ${tone}`}>{value}</p>
+    {note && <p className="text-[10px] text-muted-foreground">{note}</p>}
+  </div>;
+}
+
 function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
   const [expanded, setExpanded] = useState(false);
   const seenRef = useSeenRejections("/api/collection-submissions", all.filter((submission) => submission.status === "Rejected" && !submission.rejectionSeen).map((submission) => submission.id).join(","));
   if (!all.length) return <p className="p-4 text-center text-sm text-muted-foreground">No submissions yet.</p>;
+  const clock = manilaNow();
+  const now = `${clock.date} ${clock.time}`;
   // Those still waiting for the clerk always show; finished ones beyond the latest few on request.
   const open = all.filter((submission) => submission.status === "Submitted" || submission.status === "Remitted");
   const submissions = expanded ? all : all.filter((submission, index) => open.includes(submission) || index < 5);
   const hidden = all.length - submissions.length;
-  const now = manilaNow();
+  // The cash still in hand: submitted, not yet received by the clerk.
+  const waiting = all.filter((submission) => submission.status === "Submitted");
+  const toHandOver = cents(waiting.reduce((sum, submission) => sum + figuresOf(submission, now).remit, 0));
+  const waitingCollected = cents(waiting.reduce((sum, submission) => sum + submission.totalAmount, 0));
+  const waitingIncentive = cents(waiting.filter((submission) => figuresOf(submission, now).kept).reduce((sum, submission) => sum + submission.totalIncentive, 0));
+  const nextDeadline = waiting.map((submission) => submission.incentiveDeadline).filter((deadline) => deadline && deadline >= now).sort()[0] ?? "";
+  const anyLate = waiting.some((submission) => figuresOf(submission, now).late);
+  const beingEncoded = all.filter((submission) => submission.status === "Remitted").length;
   const tone = { Submitted: "secondary", Remitted: "default", Rejected: "destructive", Saved: "default" } as const;
   const label = { Submitted: "Not yet remitted", Remitted: "Remitted: being encoded", Rejected: "Rejected", Saved: "Saved by the clerk" } as const;
-  return <div ref={seenRef}><Card>
-    <CardHeader className="pb-3"><CardTitle className="text-lg">My submissions</CardTitle></CardHeader>
-    <CardContent className="space-y-3">
-      {submissions.map((submission) => {
-        const late = submission.status === "Submitted" && submission.incentiveDeadline && `${now.date} ${now.time}` > submission.incentiveDeadline;
-        return <div key={submission.id} className="space-y-2 rounded-lg border p-3 text-sm">
-          <p className="flex flex-wrap items-center gap-2 font-semibold">{formatDateTime(submission.submittedAt)} <Badge variant={tone[submission.status]}>{label[submission.status]}</Badge></p>
-          <p className="text-muted-foreground">{plural(submission.entryCount, "member")} · {money(submission.totalAmount)} collected · incentive {money(submission.totalIncentive)} · {submission.branch}</p>
-          {submission.collectedBy === "Collector" && <p className="text-muted-foreground">As Collector, for {submission.memberMas === submission.mas ? "your own accounts" : `the members of ${submission.memberMas}`} · ORC {submission.orc ? "Yes" : "No"}</p>}
-          {submission.autoSubmitted && <p className="font-medium text-amber-700 dark:text-amber-400">Sent automatically after midnight: you did not press Submit.</p>}
-          <p className="line-clamp-2">{submission.entries.map((entry) => `${entry.memberName} (${plural(entry.months, "month")})`).join(", ")}</p>
-          {submission.status === "Submitted" && submission.incentiveDeadline && <p className={late ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>
-            {late ? `The ${formatDeadline(submission.incentiveDeadline)} deadline has passed: if you have not remitted the cash yet, remit the whole ${money(submission.totalAmount)}.` : `Remit ${money(Math.round((submission.totalAmount - submission.totalIncentive) * 100) / 100)} at the office by ${formatDeadline(submission.incentiveDeadline)} to keep the incentive.`}
-          </p>}
-          {submission.status === "Remitted" && submission.remittedAt && <p className={submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline ? "font-medium text-amber-700 dark:text-amber-400" : "font-medium text-emerald-700 dark:text-emerald-400"}>
-            Received by {submission.remittedByName || "the clerk"} on {formatDateTime(submission.remittedAt)}{submission.incentiveDeadline ? (submission.remittedAt > submission.incentiveDeadline ? ": after the deadline, the incentive is forfeited." : ": in time, you keep your incentive.") : "."}
-          </p>}
-          {submission.status === "Rejected" && <p className="font-medium text-destructive">Rejected{submission.reviewedByName ? ` by ${submission.reviewedByName}` : ""}: {submission.returnReason}. These members can be added to a new batch.</p>}
-          {submission.status === "Saved" && submission.reviewedByName && <p className="text-muted-foreground">Checked and saved by {submission.reviewedByName}</p>}
-          {submission.fidelity > 0 && <p className="font-medium text-emerald-700 dark:text-emerald-400">Fidelity {money(submission.fidelity)} added with this batch: your own savings.</p>}
-        </div>;
-      })}
-      {(hidden > 0 || expanded) && <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setExpanded((value) => !value)}>{expanded ? "Show fewer" : `Show ${plural(hidden, "older submission")}`}</Button>}
-    </CardContent>
-  </Card></div>;
+
+  return <div ref={seenRef} className="space-y-3">
+    {/* WHAT TO HAND OVER: the total of every submission not yet received by the clerk. */}
+    {waiting.length > 0 ? <Card className={anyLate ? "border-amber-400 dark:border-amber-700" : "border-primary/40"}>
+      <CardContent className="space-y-3 p-4">
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground">Cash to hand over to the clerk</p>
+          <p className="text-3xl font-bold tabular-nums">{money(toHandOver)}</p>
+          <p className="text-xs text-muted-foreground">{plural(waiting.length, "submission")} not yet remitted</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Figure label="Collected" value={money(waitingCollected)} />
+          <Figure label="Your incentive" value={money(waitingIncentive)} tone="text-emerald-700 dark:text-emerald-400" note="kept if remitted in time" />
+        </div>
+        {nextDeadline && <p className="text-center text-xs text-muted-foreground">Next deadline: <strong className="text-foreground">{formatDeadline(nextDeadline)}</strong></p>}
+        {anyLate && <p className="text-center text-xs font-medium text-amber-700 dark:text-amber-400">A deadline has passed: for that submission the whole amount collected is remitted, with no incentive.</p>}
+      </CardContent>
+    </Card> : <p className="rounded-lg border bg-muted/40 p-3 text-center text-sm text-muted-foreground">Nothing to hand over: every submission has been received by the clerk.{beingEncoded ? ` ${plural(beingEncoded, "submission")} still being encoded.` : ""}</p>}
+
+    <Card>
+      <CardHeader className="pb-3"><CardTitle className="text-lg">My submissions</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        {submissions.map((submission) => {
+          const figures = figuresOf(submission, now);
+          const rejected = submission.status === "Rejected";
+          const handedOver = submission.status === "Remitted" || submission.status === "Saved";
+          return <div key={submission.id} className={`space-y-3 rounded-lg border p-3 text-sm ${submission.status === "Submitted" ? (figures.late ? "border-amber-400 dark:border-amber-700" : "border-primary/40") : ""}`}>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold">{formatDateTime(submission.submittedAt)}</p>
+                <p className="text-xs text-muted-foreground">{submission.branch} · {plural(submission.entryCount, "member")}{submission.collectedBy === "Collector" ? ` · as Collector for ${submission.memberMas === submission.mas ? "your own accounts" : submission.memberMas} · ORC ${submission.orc ? "Yes" : "No"}` : ""}</p>
+              </div>
+              <Badge variant={tone[submission.status]}>{label[submission.status]}</Badge>
+            </div>
+
+            <div className={`grid grid-cols-3 gap-2 ${rejected ? "opacity-60" : ""}`}>
+              <Figure label="Collected" value={money(submission.totalAmount)} />
+              <Figure label={figures.late ? "Incentive lost" : "Incentive"} value={money(figures.incentive)} tone={figures.late ? "text-amber-700 line-through dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"} />
+              <Figure label={handedOver ? "Remitted" : "To remit"} value={rejected ? "—" : money(figures.remit)} tone={submission.status === "Submitted" ? "text-primary" : ""} />
+            </div>
+
+            {submission.status === "Submitted" && submission.incentiveDeadline && <p className={figures.late ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>
+              {figures.late ? `The ${formatDeadline(submission.incentiveDeadline)} deadline has passed: remit the whole ${money(submission.totalAmount)}.` : <>Remit by <strong className="text-foreground">{formatDeadline(submission.incentiveDeadline)}</strong> to keep the incentive.</>}
+            </p>}
+            {handedOver && submission.remittedAt && <p className={figures.late ? "font-medium text-amber-700 dark:text-amber-400" : "font-medium text-emerald-700 dark:text-emerald-400"}>
+              Received by {submission.remittedByName || "the clerk"} on {formatDateTime(submission.remittedAt)}{submission.incentiveDeadline ? (figures.late ? ": after the deadline, the incentive is forfeited." : ": in time, you keep your incentive.") : "."}
+            </p>}
+            {submission.status === "Saved" && submission.reviewedByName && <p className="text-xs text-muted-foreground">Checked and saved by {submission.reviewedByName}</p>}
+            {rejected && <p className="font-medium text-destructive">Rejected{submission.reviewedByName ? ` by ${submission.reviewedByName}` : ""}: {submission.returnReason}. Nothing to remit; these members can be added to a new batch.</p>}
+            {submission.autoSubmitted && <p className="font-medium text-amber-700 dark:text-amber-400">Sent automatically after midnight: you did not press Submit.</p>}
+            {submission.fidelity > 0 && <p className="font-medium text-emerald-700 dark:text-emerald-400">Fidelity {money(submission.fidelity)} added with this batch: your own savings.</p>}
+
+            <details className="group rounded-md border">
+              <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">See the {plural(submission.entries.length, "member")}</summary>
+              <ul className="divide-y border-t">
+                {submission.entries.map((entry, index) => <li key={`${entry.enrollmentId}-${index}`} className="space-y-1 px-3 py-2">
+                  <p className="flex items-baseline justify-between gap-2"><span className="truncate font-medium">{entry.memberName}</span><span className="shrink-0 font-semibold tabular-nums">{money(entry.amount)}</span></p>
+                  <p className="text-xs text-muted-foreground">{entry.programName} · {plural(entry.months, "month")}{entry.monthFrom ? ` (${monthsText(entry.monthFrom, entry.monthTo)})` : ""}{entry.waiver ? " · Waiver" : ""}</p>
+                  <p className="flex justify-between gap-2 text-xs tabular-nums"><span className="text-emerald-700 dark:text-emerald-400">Incentive {money(entry.incentive)}</span><span>To remit {money(entry.remittance)}</span></p>
+                </li>)}
+              </ul>
+            </details>
+          </div>;
+        })}
+        {(hidden > 0 || expanded) && <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setExpanded((value) => !value)}>{expanded ? "Show fewer" : `Show ${plural(hidden, "older submission")}`}</Button>}
+      </CardContent>
+    </Card>
+  </div>;
 }
