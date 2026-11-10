@@ -17,7 +17,8 @@ const round = (value: number) => Math.round(value * 100) / 100;
  * status from the same rules as MAM (not the last synchronized one), so the picker can be filtered by standing.
  */
 export async function listStatementAccounts() {
-  const report = await accountReport();
+  // A Deceased member's open accounts too: a statement may be needed for the claim.
+  const report = await accountReport({ includeDeceased: true });
   return report.rows.map((account) => ({
     id: account.id, memberName: account.memberName, memberNumber: account.memberNumber, programName: account.programName, branch: account.branch, mas: account.mas, doi: account.doi,
     status: "status" in account ? account.status : "Needs review",

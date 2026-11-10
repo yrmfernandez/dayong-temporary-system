@@ -928,6 +928,38 @@ test('per-MAS report CVE: what each MAS was expected to collect in the period', 
   assert.deepEqual(year.get('intas, bellosa'), { accounts: 2, gross: 300 * (6 + 3) }, 'yearly adds every month due (July–December and October–December)');
 });
 
+test('an open account of a member marked Deceased takes no collections and leaves statuses, CVE and counts; its statement stays', async () => {
+  const h = harness();
+  await seedAccount({ enrollment: 'ENR-DEAD', member: 'MEM-DEAD', memberNumber: 'PH-DEAD', doi: '2026-06-10', branch: 'BR-1', mas: 'MAS-2' });
+  await seed('members', [{ member_id: 'MEM-LIVE', member_number: 'PH-LIVE', surname: 'Cruz', first_name: 'Ben' }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-LIVE', member_id: 'MEM-LIVE', member_number: 'PH-LIVE', program_id: 'DP-1', doi: '2026-06-10', branch: 'BR-1', mas: 'MAS-2', status: 'Active' }]);
+  const lookup = async () => { const response = await h.load('app/api/collections/route.ts').GET(new Request('http://localhost/api/collections?memberId=MEM-DEAD&programId=DP-1&branch=BR-1&mas=MAS-2')); return { status: response.status, body: await response.json() }; };
+  const { accountReport, loadAccountData } = h.load('lib/account-data.ts');
+  const { expectedByMas } = h.load('lib/mas-expected.ts');
+  const ids = async (scope) => (await accountReport(scope)).rows.map((row) => row.id).sort();
+  assert.equal((await lookup()).status, 200, 'alive: the account takes collections');
+  assert.deepEqual((await expectedByMas('2026-10-01', '2026-10-31', ['BR-1'])).get('mas-2'), { accounts: 2, gross: 700 });
+
+  // Marked Deceased by hand, with no Dropout: the account stays open but is left out like a deactivated one.
+  await query("update members set status = 'Deceased' where member_id = 'MEM-DEAD'");
+  const refused = await lookup();
+  assert.equal(refused.status, 404);
+  assert.match(refused.body.message, /member marked Deceased, takes no collections/);
+  assert.deepEqual(await ids(), ['ENR-LIVE'], 'status sync, standing and Follow Up read accountReport');
+  assert.deepEqual(await ids({ includeDeceased: true }), ['ENR-DEAD', 'ENR-LIVE']);
+  assert.deepEqual((await expectedByMas('2026-10-01', '2026-10-31', ['BR-1'])).get('mas-2'), { accounts: 1, gross: 350 }, 'not expected to pay in CVE');
+  assert.ok((await h.load('lib/statement-of-account.ts').listStatementAccounts()).some((row) => row.id === 'ENR-DEAD'), 'the SOA picker still lists it, for a claim');
+  assert.deepEqual((await loadAccountData({ memberId: 'MEM-DEAD', includeDeactivated: true })).accounts.map((account) => account.id), ['ENR-DEAD'], 'corrections still load it');
+
+  // Dropped through Dropouts (deactivated with a date): MAM counts it up to that month, as for any dropped account.
+  await query("update member_programs set status = 'Deactivated', deactivated_on = '2026-10-15' where enrollment_id = 'ENR-DEAD'");
+  assert.deepEqual((await loadAccountData({ includeDeactivatedFrom: '2026-10-01' })).accounts.map((account) => account.id).sort(), ['ENR-DEAD', 'ENR-LIVE']);
+  // Marked Deceased by mistake and corrected: it takes collections again once reactivated.
+  await query("update members set status = 'Active' where member_id = 'MEM-DEAD'");
+  await query("update member_programs set status = 'Active', deactivated_on = null where enrollment_id = 'ENR-DEAD'");
+  assert.equal((await lookup()).status, 200);
+});
+
 test('per-MAS report CVE counted in the database matches the due-date rule for month ends, weeks and years', async () => {
   const h = harness();
   const { duesIn, expectedByMas } = h.load('lib/mas-expected.ts');
@@ -3917,7 +3949,7 @@ test('a program deactivated for a member takes no collections, leaves the accoun
   assert.equal(await count('sales'), 1, 'its New Sale stays');
   const collections = await h.load('app/api/collections/route.ts').GET(new Request(`http://localhost/api/collections?memberId=${memberId}&programId=DP-1&branch=BR-1&mas=different-mas`));
   assert.equal(collections.status, 404);
-  assert.match((await collections.json()).message, /deactivated for this member takes no collections/);
+  assert.match((await collections.json()).message, /deactivated for this member, or any account of a member marked Deceased, takes no collections/);
   assert.match((await post({ enrollmentId: id, active: false, reason: 'again' })).message, /already deactivated/);
   const on = await post({ enrollmentId: id, active: true, reason: 'Member resumed' });
   assert.equal(on.success, true, JSON.stringify(on));

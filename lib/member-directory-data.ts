@@ -216,6 +216,8 @@ async function applyStatuses(members: DirectoryMember[]) {
     for (const member of members) for (const enrollment of member.enrollments) {
       // A program deactivated for the member has no standing (lib/account-deactivation.ts).
       if (isDeactivated(enrollment.status)) { enrollment.accountStatus = DEACTIVATED; enrollment.temporarilySuspended = false; continue; }
+      // A Deceased member's open account takes no collections and has no standing either (openAccountOfDeceased).
+      if (member.deceased) { enrollment.accountStatus = DECEASED_STATUS; enrollment.temporarilySuspended = false; continue; }
       const account = accounts.get(enrollment.id);
       enrollment.accountStatus = account && "status" in account ? account.status : account?.error ? "Needs review" : "Not started";
       enrollment.temporarilySuspended = account && "temporarilySuspended" in account ? account.temporarilySuspended : false;

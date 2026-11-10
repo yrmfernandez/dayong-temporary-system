@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     // A DTO batch takes any account of the branch, whatever its MAS (owner, October 13, 2026).
     const dto = searchParams.get("dto") === "1";
     const matches = data.accounts.filter((a) => a.programId === searchParams.get("programId") && sameName(a.branch, searchParams.get("branch")) && (dto || sameName(a.mas, searchParams.get("mas"))));
-    if (matches.length !== 1) return Response.json({ success: false, message: "A unique active program enrollment was not found. A program deactivated for this member takes no collections." }, { status: 404 });
+    if (matches.length !== 1) return Response.json({ success: false, message: "A unique active program enrollment was not found. A program deactivated for this member, or any account of a member marked Deceased, takes no collections." }, { status: 404 });
     const account = matches[0];
     // A Returned batch open on the form: its own entries are left out, so the account starts where they start.
     const except = new Set((searchParams.get("except") ?? "").split(",").filter(Boolean));
@@ -170,7 +170,7 @@ async function saveCollections(request: Request, user: SessionUser) {
       let grossCents = 0, remittanceCents = 0;
       for (const entry of entries) {
         const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
-        if (matches.length !== 1) throw new Error("A unique active program enrollment was not found. A program deactivated for this member takes no collections.");
+        if (matches.length !== 1) throw new Error("A unique active program enrollment was not found. A program deactivated for this member, or any account of a member marked Deceased, takes no collections.");
         const account = matches[0];
         if (!sameName(account.branch, branch) || (!dto && !sameName(account.mas, memberMas))) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch${dto ? "" : collectedBy === "Collector" ? ` and be a member of ${memberMas}` : " and MAS"}.`);
         // The payment keeps the account's MAS on record; in a DTO or Collector batch the cash is someone else's to account for.

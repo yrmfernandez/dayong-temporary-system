@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 
+import { openAccountOfDeceased } from "@/lib/account-deactivation";
 import { currentDb } from "@/lib/db";
 
 /**
@@ -48,7 +49,7 @@ export async function expectedByMas(from: string, to: string, branches: string[]
       from member_programs mp join programs p on p.program_id = mp.program_id
       where lower(trim(coalesce(mp.branch, ''))) in (${sql.join(names.map((name) => sql`${name}`), sql`, `)})
         and coalesce(mp.account_status, '') not in ('Forfeited', 'Paid', 'Fully Paid') and mp.doi is not null and mp.doi <= ${to}::date
-        and trim(coalesce(mp.mas, '')) <> ''),
+        and trim(coalesce(mp.mas, '')) <> '' and not ${openAccountOfDeceased("mp")}),
     months as (select month::date as month from generate_series(date_trunc('month', ${from}::date), date_trunc('month', ${to}::date), interval '1 month') as month),
     -- A month's first day after the DOI is a month after the DOI's month. Dues per account first: no count(distinct).
     per_account as (

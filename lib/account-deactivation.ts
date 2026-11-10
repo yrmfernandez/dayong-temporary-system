@@ -14,7 +14,16 @@ import { manilaNow } from "@/lib/remittance-deadline";
  */
 export const DEACTIVATED = "Deactivated";
 export const isDeactivated = (status: unknown) => String(status ?? "").trim().toLowerCase() === "deactivated";
-const MODULE = "Program account status";
+
+/**
+ * An account still open (not deactivated) of a member marked Deceased (owner, November 10, 2026, upgrade list 2 item 8):
+ * treated like a deactivated account. It takes no collections and leaves payment statuses, status sync, Follow Up,
+ * MAM, CVE and account counts, until it is dropped through Dropouts (which records the date). Its history,
+ * corrections and statement stay. Production then had 45 members marked Deceased by hand, with 48 open accounts.
+ * `account` is the member_programs table's name or alias in the query.
+ */
+export const openAccountOfDeceased = (account = "member_programs") => sql`(lower(trim(coalesce(${sql.raw(account)}.status, ''))) <> 'deactivated'
+  and exists (select 1 from members deceased_member where deceased_member.member_id = ${sql.raw(account)}.member_id and lower(trim(coalesce(deceased_member.status, ''))) = 'deceased'))`;const MODULE = "Program account status";
 const text = (value: unknown) => String(value ?? "").trim();
 
 /** Entries of the account still waiting on a remittance: they are settled before the account is deactivated. */

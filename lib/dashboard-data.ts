@@ -14,6 +14,7 @@ import { countSheetRows, readSheetRows } from "@/lib/sheets-on-db";
 import { sql } from "drizzle-orm";
 import { manilaDateOf } from "@/lib/manila-date";
 import { accountableScope, masScope, type Person } from "@/lib/person-scope";
+import { openAccountOfDeceased } from "@/lib/account-deactivation";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const date = (value: unknown) => text(value).slice(0, 10);
@@ -50,7 +51,7 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const person: Person | null = kind === "mas" || kind === "collector" ? { employeeId: user.employeeId, name: personName } : null;
   const reportRead = needsSales ? buildOperationalReport(from, today, person ? { person: person.name, personId: person.employeeId } : {}) : Promise.resolve(null);
   const entriesRead = needsSales ? todayModeRead.then((mode) => getEntriesForDay(today, mode, person)) : Promise.resolve(null);
-  const portfolioRead = kind === "mas" && person ? readSheetRows("Member programs", masScope(person)) : Promise.resolve([[]]);
+  const portfolioRead = kind === "mas" && person ? readSheetRows("Member programs", sql`${masScope(person)} and not ${openAccountOfDeceased()}`) : Promise.resolve([[]]);
   portfolioRead.catch(() => undefined);
   const [response, todayMode, monthReport, remittance, todayEntries, enrollments] = await Promise.all([mainRead, todayModeRead, reportRead, remittanceRead, entriesRead, portfolioRead]);
   const byRange = new Map(unique.map((range, index) => [range, response.data.valueRanges?.[index]?.values ?? []]));

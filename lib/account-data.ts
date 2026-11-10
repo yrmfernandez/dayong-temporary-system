@@ -1,6 +1,7 @@
 import { accountScope, type MemberScope } from "@/lib/member-scope";
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 
+import { openAccountOfDeceased } from "@/lib/account-deactivation";
 import { accountState, forfeitMonthsFor, monthIndex, monthName, paymentsByEnrollment, type Account, type AccountPayment, todayInManila } from "@/lib/account-rules";
 import { currentDb, inTransaction, schema, type Queryable, type Transaction } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
@@ -32,6 +33,11 @@ export type AccountScope = {
    * their deactivation still count them. Accounts deactivated with no date (before migration 0037) stay out.
    */
   includeDeactivatedFrom?: string;
+  /**
+   * Open accounts of a member marked Deceased (lib/account-deactivation.ts openAccountOfDeceased) are left out like
+   * deactivated ones unless asked for (here, or with includeDeactivated): the SOA picker still lists them.
+   */
+  includeDeceased?: boolean;
 };
 export type LoadedAccount = Account & {
   memberName: string; programName: string;
@@ -60,6 +66,7 @@ function scopeCondition(scope: AccountScope): SQL | undefined {
   }
   if (scope.includeDeactivatedFrom && !scope.includeDeactivated) conditions.push(sql`(lower(trim(coalesce(${memberPrograms.status}, ''))) <> 'deactivated' or ${memberPrograms.deactivated_on} >= ${scope.includeDeactivatedFrom}::date)`);
   else if (!scope.includeDeactivated) conditions.push(sql`lower(trim(coalesce(${memberPrograms.status}, ''))) <> 'deactivated'`);
+  if (!scope.includeDeactivated && !scope.includeDeceased) conditions.push(sql`not ${openAccountOfDeceased()}`);
   return conditions.length ? and(...conditions) : undefined;
 }
 
@@ -168,11 +175,11 @@ export async function mamReport(from?: string, to?: string, own: MemberScope | n
   if (own !== null) Object.assign(scope, accountScope(own)); else if (filter.mas) scope.mas = filter.mas;
   // Quota (owner, October 31, 2026): an account dropped or deceased counts up to the month of its deactivation and stops
   // from the next, so finished months keep their quota (lib/mam-report.ts). A Deceased member's account not yet
-  // deactivated (marked before Dropouts existed) is left out of every month: it has no date to count up to.
+  // deactivated (marked before Dropouts existed) is left out of every month: it has no date to count up to
+  // (loadAccountData leaves those out).
   const first = from || today.slice(0, 7);
   scope.includeDeactivatedFrom = `${first}-01`;
   const data = await loadAccountData(scope);
-  data.accounts = data.accounts.filter((account) => account.deactivatedOn || !account.memberDeceased);
   return buildMamReport(data, first, to || today.slice(0, 7), today);
 }
 

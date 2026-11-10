@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { PROGRAMS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
 import { readSheetRows } from "@/lib/sheets-on-db";
 import { currentDb } from "@/lib/db";
+import { openAccountOfDeceased } from "@/lib/account-deactivation";
 import { getCompanyTargets } from "@/lib/company-targets";
 import { manilaDateOf } from "@/lib/remittance-deadline";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
@@ -152,7 +153,7 @@ export async function getExecutiveAnalytics(selection: ExecutivePeriod | Executi
     // Accounts counted per program, enrollment status and payment status; members counted (not needed for Finance).
     financeOnly ? Promise.resolve([]) : db.execute(sql`select trim(coalesce(program_id, '')) as program_id, lower(trim(coalesce(status, ''))) as status,
         upper(trim(coalesce(account_status, ''))) as account_status, count(*)::int as count
-      from member_programs where trim(coalesce(enrollment_id, '')) <> '' group by 1, 2, 3`),
+      from member_programs where trim(coalesce(enrollment_id, '')) <> '' and not ${openAccountOfDeceased()} group by 1, 2, 3`),
     financeOnly ? Promise.resolve([]) : db.execute(sql`select count(*)::int as count from members where trim(coalesce(member_id, '')) <> ''`),
     sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [...ledgerRanges, ...catalogRanges], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
     getCompanyTargets(),
