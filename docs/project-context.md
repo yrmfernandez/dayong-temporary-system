@@ -27,10 +27,20 @@ The owner asked again what to improve; the first list is all built. These come f
 | 2 | Exceptions duplicate-number check uses an index | **Built 2026-11-09** (below); migration 0049 |
 | 3 | Search Records with no match (about 1.1 s): an index for its text search | **Built 2026-11-09** (below); migration 0050 |
 | 4 | Egress: the remittance ledger (19% of rows) reads less | **Built 2026-11-10** (below): re-measured; the largest Remittances reader was the entry lists, not the ledger. No migration |
-| 5 | Egress: the clerk report's expected collections (10%) reads less | To do |
+| 5 | Egress: the clerk report's expected collections (10%) reads less | **Built 2026-11-10** (below); no migration |
 | 6 | Rewrite the test "a MAS submits New Sales…" for the Rejected → submit again flow | To do |
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | To do (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | To decide (owner) |
+
+### Clerk report CVE counted in the database (2026-11-10)
+
+- **Asked (owner):** upgrade list 2, item 5.
+- **Found (production, read-only pg_stat_statements since 2026-11-05):** the clerk report's expected collections (CVE columns, `expectedByMas` in `lib/mas-expected.ts`) was about 12% of all rows read (four forms of one query: 7.3 M + 3.1 M + 2.0 M + 1.3 M rows, 13,000 calls). Each clerk report sent every open account of its branches (about 870 rows a call for one branch) only for the server to add them up per MAS.
+- **Done:** the database counts the dues and adds them up, and sends one row per MAS (accounts with a due in the period, and their monthly dues added up). Same rule as before: each month of the period after the DOI's month has a due on the DOI's day, or the month's last day when the month is shorter, counted when it falls in the period. `duesIn` stays as the written rule the tests compare with. No migration.
+- **Compared (production data, read-only):** 25 branches × 5 periods (a day, a week, October, November, the year 2026): all 125 identical. Rows sent 69,958 → 917.
+- **Database time (busiest branch, Mintal):** a day 23 ms, a week 23 ms, a month 29 ms (the old query about 18 ms, but it also sent about 2,000 rows to be added up); the year 88 ms (old 18 ms plus the rows). Most of it is reading the accounts table, which both do.
+- **Tested:** a new test compares the database count with `duesIn` for DOIs on the 29th to the 31st, weeks across a month's end, a leap February, a year, a DOI after the period and a blank MAS. Type check, lint and build pass; tests 336 of 337 (the remaining one is item 6). Not tried in a browser.
+- **To do (owner):** push (no migration).
 
 ### Entry lists read only their own slips and receipt photos (2026-11-10)
 

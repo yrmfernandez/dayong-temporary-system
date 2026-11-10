@@ -17,7 +17,7 @@ const iso = (year: number, month: number, day: number) => {
   return `${year}-${String(month).padStart(2, "0")}-${String(Math.min(day, last)).padStart(2, "0")}`;
 };
 
-/** Due dates of a monthly account from the month after its DOI, within [from, to]. */
+/** Due dates of a monthly account from the month after its DOI, within [from, to]: the rule expectedByMas counts in SQL (the tests compare the two). */
 export function duesIn(doi: string, from: string, to: string) {
   const [dy, dm, dd] = doi.split("-").map(Number);
   const [fy, fm] = from.split("-").map(Number);
@@ -31,23 +31,31 @@ export function duesIn(doi: string, from: string, to: string) {
   return dues;
 }
 
-/** MAS name (lower case) → expected accounts and amount for [from, to] in these branches. */
+/**
+ * MAS name (lower case) → expected accounts and amount for [from, to] in these branches. Counted in the database
+ * (November 10, 2026), the same rule as duesIn: every open account of the branch came to the server on each clerk report,
+ * about 12% of all rows read in production (pg_stat_statements, November 5–10), only to be added up here; now one row per
+ * MAS comes back. Each month of the period after the DOI's month has a due on the DOI's day, or on the month's last day
+ * when the month is shorter; it counts when it falls within [from, to].
+ */
 export async function expectedByMas(from: string, to: string, branches: string[]): Promise<Map<string, Expected>> {
   const result = new Map<string, Expected>();
   const names = branches.map((branch) => text(branch).toLowerCase()).filter(Boolean);
   if (!names.length) return result;
-  const accounts = rowsOf<{ mas: string; doi: string; rate: number }>(await currentDb().execute(sql`
-    select lower(trim(coalesce(mp.mas, ''))) as mas, mp.doi::text as doi, coalesce(p.base_pay, 0)::float8 as rate
-    from member_programs mp join programs p on p.program_id = mp.program_id
-    where lower(trim(coalesce(mp.branch, ''))) in (${sql.join(names.map((name) => sql`${name}`), sql`, `)})
-      and coalesce(mp.account_status, '') not in ('Forfeited', 'Paid', 'Fully Paid') and mp.doi is not null and mp.doi <= ${to}::date`));
-  for (const account of accounts) {
-    const dues = duesIn(account.doi, from, to);
-    if (!dues.length || !account.mas) continue;
-    const entry = result.get(account.mas) ?? { accounts: 0, gross: 0 };
-    entry.accounts += 1;
-    entry.gross = Math.round((entry.gross + dues.length * Number(account.rate)) * 100) / 100;
-    result.set(account.mas, entry);
-  }
+  const rows = rowsOf<{ mas: string; accounts: number; gross: number }>(await currentDb().execute(sql`
+    with accounts as (
+      select mp.enrollment_id, lower(trim(coalesce(mp.mas, ''))) as mas, mp.doi, coalesce(p.base_pay, 0) as rate
+      from member_programs mp join programs p on p.program_id = mp.program_id
+      where lower(trim(coalesce(mp.branch, ''))) in (${sql.join(names.map((name) => sql`${name}`), sql`, `)})
+        and coalesce(mp.account_status, '') not in ('Forfeited', 'Paid', 'Fully Paid') and mp.doi is not null and mp.doi <= ${to}::date
+        and trim(coalesce(mp.mas, '')) <> ''),
+    months as (select month::date as month from generate_series(date_trunc('month', ${from}::date), date_trunc('month', ${to}::date), interval '1 month') as month),
+    -- A month's first day after the DOI is a month after the DOI's month. Dues per account first: no count(distinct).
+    per_account as (
+      select a.mas, a.rate, count(*) as dues from accounts a join months m on m.month > a.doi
+      where m.month + (least(extract(day from a.doi)::int, extract(day from m.month + interval '1 month' - interval '1 day')::int) - 1) between ${from}::date and ${to}::date
+      group by a.enrollment_id, a.mas, a.rate)
+    select mas, count(*)::int as accounts, round(sum(rate * dues), 2)::float8 as gross from per_account group by mas`));
+  for (const row of rows) result.set(row.mas, { accounts: Number(row.accounts), gross: Number(row.gross) });
   return result;
 }

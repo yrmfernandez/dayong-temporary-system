@@ -928,6 +928,29 @@ test('per-MAS report CVE: what each MAS was expected to collect in the period', 
   assert.deepEqual(year.get('intas, bellosa'), { accounts: 2, gross: 300 * (6 + 3) }, 'yearly adds every month due (July–December and October–December)');
 });
 
+test('per-MAS report CVE counted in the database matches the due-date rule for month ends, weeks and years', async () => {
+  const h = harness();
+  const { duesIn, expectedByMas } = h.load('lib/mas-expected.ts');
+  await seed('programs', [{ program_id: 'DP-1', program_name: 'P', base_pay: 350.5 }, { program_id: 'DP-2', program_name: 'Q', base_pay: 210 }]);
+  const dois = ['2027-10-15', '2027-01-29', '2027-01-30', '2027-01-31', '2026-12-31', '2027-02-28', '2027-03-01', '2027-11-20', '2028-01-31', '2025-06-30', '2027-12-31'];
+  await seed('members', dois.map((_, n) => ({ member_id: `M${n}`, member_number: `PH-${n}`, surname: 'S', first_name: 'A' })));
+  await seed('member_programs', dois.map((doi, n) => ({ enrollment_id: `E${n}`, member_id: `M${n}`, member_number: `PH-${n}`, program_id: n % 2 ? 'DP-2' : 'DP-1', doi, branch: 'MATINA', mas: n % 3 ? 'Ana' : ' BEN ', status: 'Active', account_status: 'U' })));
+  await seed('members', [{ member_id: 'M-NOMAS', member_number: 'PH-X', surname: 'S', first_name: 'A' }]);
+  await seed('member_programs', [{ enrollment_id: 'E-NOMAS', member_id: 'M-NOMAS', member_number: 'PH-X', program_id: 'DP-1', doi: '2027-01-15', branch: 'MATINA', mas: '  ', status: 'Active', account_status: 'U' }]);
+  const periods = [['2027-02-01', '2027-02-28'], ['2028-02-01', '2028-02-29'], ['2027-02-24', '2027-03-02'], ['2027-04-26', '2027-05-02'], ['2027-01-01', '2027-12-31'], ['2027-03-01', '2027-03-01'], ['2027-11-29', '2027-12-05'], ['2028-01-01', '2028-03-31']];
+  for (const [from, to] of periods) {
+    const want = new Map();
+    dois.forEach((doi, n) => {
+      if (doi > to) return;
+      const dues = duesIn(doi, from, to).length;
+      if (!dues) return;
+      const mas = n % 3 ? 'ana' : 'ben', entry = want.get(mas) ?? { accounts: 0, gross: 0 };
+      want.set(mas, { accounts: entry.accounts + 1, gross: Math.round((entry.gross + dues * (n % 2 ? 210 : 350.5)) * 100) / 100 });
+    });
+    assert.deepEqual(Object.fromEntries(await expectedByMas(from, to, ['matina'])), Object.fromEntries(want), `${from} to ${to}`);
+  }
+});
+
 test('deleting a remittance keeps its entries for adjustments, or deletes them with it for duplicates', async () => {
   const h = harness();
   const { planDeletion, deleteRecord } = h.load('lib/admin-delete.ts');
