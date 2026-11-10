@@ -28,9 +28,17 @@ The owner asked again what to improve; the first list is all built. These come f
 | 3 | Search Records with no match (about 1.1 s): an index for its text search | **Built 2026-11-09** (below); migration 0050 |
 | 4 | Egress: the remittance ledger (19% of rows) reads less | **Built 2026-11-10** (below): re-measured; the largest Remittances reader was the entry lists, not the ledger. No migration |
 | 5 | Egress: the clerk report's expected collections (10%) reads less | **Built 2026-11-10** (below); no migration |
-| 6 | Rewrite the test "a MAS submits New Sales…" for the Rejected → submit again flow | To do |
+| 6 | Rewrite the test "a MAS submits New Sales…" for the Rejected → submit again flow | **Built 2026-11-10** (below); all tests pass |
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | To do (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | To decide (owner) |
+
+### Test for MAS New Sales rewritten for Rejected and submit again (2026-11-10)
+
+- **Asked (owner):** upgrade list 2, item 6.
+- **Cause:** since commit 99a470e (November 3) a clerk's reject makes a MAS New Sales submission **Rejected** and the MAS submits those sales again as a new batch, but the test still expected **Returned** and an edit of the same submission; it had failed on every commit since.
+- **Done (test only, `scripts/test-encoder-tracking.cjs`):** the end of `a MAS submits New Sales; only a clerk of that branch reviews them, saves once, or rejects them to be submitted again` now checks: a clerk of another branch cannot reject; a reason is required; rejected once only; the MAS sees Rejected, the reason, who rejected it and not yet seen; it leaves the clerk's list; it cannot be edited in place; submitted again it is a new batch, the only one the clerk sees, while the rejected one stays in the MAS's list; Seen clears the sidebar count; a batch Returned before November 3 is still fixed and submitted again under its own ID. No app code changed.
+- **Tested:** type check and build pass; **all 337 tests pass**.
+- **To do (owner):** push.
 
 ### Clerk report CVE counted in the database (2026-11-10)
 

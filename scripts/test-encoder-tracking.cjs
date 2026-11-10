@@ -3103,7 +3103,7 @@ test('an Entry Clerk reviews only the branches where they are Entry Clerk, and s
   assert.deepEqual(await query("select clerk_duty, mas_duty from employee_branches where employee_id = 'DPE-0001' order by branch_id"), [{ clerk_duty: true, mas_duty: true }, { clerk_duty: true, mas_duty: true }], 'HR can turn the duties back on');
 });
 
-test('a MAS submits New Sales; only a clerk of that branch reviews them, saves once, or returns them', async () => {
+test('a MAS submits New Sales; only a clerk of that branch reviews them, saves once, or rejects them to be submitted again', async () => {
   const users = {
     mas: { userId: 'USR-M', employeeId: 'DPE-0002', name: 'different-mas', roleNames: ['MAS'], permissions: {} },
     clerk: { userId: 'USR-1', employeeId: 'DPE-0001', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} },
@@ -3158,15 +3158,32 @@ test('a MAS submits New Sales; only a clerk of that branch reviews them, saves o
   await query('update sales set fidelity_amount = 50');
   assert.equal((await call(mas, 'GET', '/api/sale-submissions')).body.submissions[0].fidelity, 50, 'the MAS sees the Fidelity saved with the batch');
 
-  // Returned: the MAS sees why, fixes it, and submits it again.
+  // Rejected (since November 3, 2026, as for collections): the MAS sees why and submits the sales again as a new batch.
   const second = await call(mas, 'POST', '/api/sale-submissions', { sales: [card('Reyes')] });
-  assert.equal((await call(otherClerk, 'PATCH', '/api/sale-submissions', { id: second.body.id, reason: 'Wrong address' })).status, 400);
+  assert.equal((await call(otherClerk, 'PATCH', '/api/sale-submissions', { id: second.body.id, reason: 'Wrong address' })).status, 400, 'not a clerk of that branch');
+  assert.match((await call(clerk, 'PATCH', '/api/sale-submissions', { id: second.body.id, reason: 'no' })).body.message, /reason/, 'a reason is required');
   assert.equal((await call(clerk, 'PATCH', '/api/sale-submissions', { id: second.body.id, reason: 'Wrong address' })).status, 200);
-  const returned = (await call(mas, 'GET', '/api/sale-submissions')).body.submissions.find((item) => item.id === second.body.id);
-  assert.deepEqual([returned.status, returned.returnReason], ['Returned', 'Wrong address']);
-  assert.equal((await call(clerk, 'GET', '/api/sale-submissions?view=review')).body.submissions.length, 0, 'a returned submission leaves the clerk\'s list');
-  assert.equal((await call(mas, 'POST', '/api/sale-submissions', { submissionId: second.body.id, sales: [card('Reyes')] })).status, 201);
-  assert.equal((await call(clerk, 'GET', '/api/sale-submissions?view=review')).body.submissions.length, 1, 'submitted again');
+  assert.match((await call(clerk, 'PATCH', '/api/sale-submissions', { id: second.body.id, reason: 'Wrong address' })).body.message, /already saved or rejected/, 'rejected once');
+  const rejected = (await call(mas, 'GET', '/api/sale-submissions')).body.submissions.find((item) => item.id === second.body.id);
+  assert.deepEqual([rejected.status, rejected.returnReason, rejected.reviewedByName, rejected.rejectionSeen], ['Rejected', 'Wrong address', 'clerk', false]);
+  assert.equal((await call(clerk, 'GET', '/api/sale-submissions?view=review')).body.submissions.length, 0, 'a rejected submission leaves the clerk\'s list');
+  assert.match((await call(mas, 'POST', '/api/sale-submissions', { submissionId: second.body.id, sales: [card('Reyes')] })).body.message, /only the clerk can change it/, 'a rejected batch is not edited; it is submitted again');
+  const again = await call(mas, 'POST', '/api/sale-submissions', { sales: [card('Reyes')] });
+  assert.equal(again.status, 201, JSON.stringify(again.body));
+  assert.notEqual(again.body.id, second.body.id, 'submitted again as a new batch');
+  assert.deepEqual((await call(clerk, 'GET', '/api/sale-submissions?view=review')).body.submissions.map((item) => item.id), [again.body.id]);
+  const statuses = async () => Object.fromEntries((await call(mas, 'GET', '/api/sale-submissions')).body.submissions.map((item) => [item.id, [item.status, item.rejectionSeen]]));
+  assert.deepEqual((await statuses())[second.body.id], ['Rejected', false], 'the rejected one stays listed for the MAS');
+  // The MAS opened Submit New Sales: their rejected batches no longer count on the sidebar.
+  assert.equal((await call(mas, 'PATCH', '/api/sale-submissions', { action: 'seen' })).status, 200);
+  assert.deepEqual((await statuses())[second.body.id], ['Rejected', true]);
+
+  // A batch returned before November 3, 2026 can still be fixed and submitted again under its own ID.
+  await query("update sale_submissions set status = 'Returned', return_reason = 'Old return' where submission_id = $1", [again.body.id]);
+  const fixed = await call(mas, 'POST', '/api/sale-submissions', { submissionId: again.body.id, sales: [card('Reyes'), card('Santos')] });
+  assert.deepEqual([fixed.status, fixed.body.id, fixed.body.saleCount], [201, again.body.id, 2]);
+  const [reopened] = await query('select status, sale_count, return_reason from sale_submissions where submission_id = $1', [again.body.id]);
+  assert.deepEqual(reopened, { status: 'Submitted', sale_count: 2, return_reason: null });
 });
 
 test('a counted cash remittance must add up to the amount received, and the count is kept on the slip', async () => {
