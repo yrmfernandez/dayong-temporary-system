@@ -1,12 +1,12 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { PROGRAMS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
+import { PROGRAMS_RANGE } from "@/lib/sheet-ranges";
 import { readSheetRows } from "@/lib/sheets-on-db";
 import { incentiveDeadline, manilaDateOf, manilaNow } from "@/lib/remittance-deadline";
 import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { dateWarnings } from "@/lib/date-checks";
-import { photosByEntry } from "@/lib/receipt-photos";
+import { photosForEntries } from "@/lib/receipt-photos";
 import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches";
 import type { TodayMode } from "@/lib/today-mode";
 import { differentLabel } from "@/lib/remittance";
@@ -125,13 +125,21 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
   const [sales, collections, response] = await Promise.all([
     readSheetRows("Sales", prefilter("sales", from, to, mode, person, encodedBy)),
     readSheetRows("Collections", prefilter("collections", from, to, mode, person, encodedBy)),
-    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [REMITTANCES_RANGE, PROGRAMS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [PROGRAMS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
   ]);
-  const [remittances, programs] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
-  // Member names only for the members on these collections.
+  const [programs] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  // Member names only for the members on these collections; slips and receipt photos only for these entries (November
+  // 10, 2026): every slip, all columns, and every photo's details were read on each load and live refresh of Today's
+  // Entries and My Entries, the largest Remittances reader in production's pg_stat_statements.
   const memberIds = [...new Set(collections.slice(1).map((row) => text(row[3])).filter(Boolean))];
-  const members = memberIds.length ? await readSheetRows("Members", sql`member_id in (${sql.join(memberIds.map((id) => sql`${id}`), sql`, `)})`) : [[]];
-  const [photos, cashNames, offDays] = await Promise.all([photosByEntry(), cashMethodNames(), declaredNonWorkingDays()]);
+  const slipIds = [...new Set([...sales.slice(1).map((row) => text(row[36])), ...collections.slice(1).map((row) => text(row[29]))].filter(Boolean))];
+  const entryIds = [...sales.slice(1), ...collections.slice(1)].map((row) => text(row[0]));
+  const [members, remittances, photos, cashNames, offDays] = await Promise.all([
+    memberIds.length ? readSheetRows("Members", sql`member_id in (${sql.join(memberIds.map((id) => sql`${id}`), sql`, `)})`) : [[]],
+    // Only what is read below: the slip's date (D), time received (AA) and rejection reason (X).
+    slipIds.length ? readSheetRows("Remittances", sql`remittance_id in (${sql.join(slipIds.map((id) => sql`${id}`), sql`, `)})`, { positions: [0, 3, 23, 26] }) : [[]],
+    photosForEntries(entryIds), cashMethodNames(), declaredNonWorkingDays(),
+  ]);
   const programNames = new Map(programs.slice(1).map((row) => [text(row[0]), text(row[2]) || text(row[1])]));
   const memberNames = new Map(members.slice(1).map((row) => [text(row[0]), `${text(row[3])} ${text(row[2])}`.trim()]));
   const slipRows = new Map(remittances.slice(1).filter((row) => text(row[0])).map((row) => [text(row[0]), row]));

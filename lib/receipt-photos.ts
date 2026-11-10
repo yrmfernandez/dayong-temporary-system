@@ -1,4 +1,4 @@
-import { asc, eq, like } from "drizzle-orm";
+import { asc, eq, like, sql, type SQL } from "drizzle-orm";
 
 import { getDb, schema } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
@@ -25,10 +25,17 @@ export async function listReceiptPhotos(): Promise<ReceiptPhotoInfo[]> {
   return shortCached("receipt-photos", 10_000, readReceiptPhotos);
 }
 
-async function readReceiptPhotos(): Promise<ReceiptPhotoInfo[]> {
+async function readReceiptPhotos(where?: SQL): Promise<ReceiptPhotoInfo[]> {
   const rows = await getDb().select({ id: photos.photo_id, entryIds: photos.entry_ids, size: photos.size_bytes, at: photos.uploaded_at, by: photos.uploaded_by_name, byId: photos.uploaded_by_employee_id })
-    .from(photos).orderBy(asc(photos.row_seq));
+    .from(photos).where(where).orderBy(asc(photos.row_seq));
   return rows.map((row) => ({ photoId: row.id, entryIds: text(row.entryIds).split(",").map(text).filter(Boolean), sizeBytes: row.size ?? 0, uploadedAt: row.at ?? "", uploadedByEmployeeId: text(row.byId), uploadedByName: text(row.by) }));
+}
+
+/** Entry ID → its latest photo, and every photo of the entry oldest first (`allPhotoIds`). */
+function indexByEntry(list: ReceiptPhotoInfo[]) {
+  const map = new Map<string, ReceiptPhotoInfo & { allPhotoIds: string[] }>();
+  for (const photo of list) for (const id of photo.entryIds) map.set(id, { ...photo, allPhotoIds: [...(map.get(id)?.allPhotoIds ?? []), photo.photoId] });
+  return map;
 }
 
 /**
@@ -36,9 +43,22 @@ async function readReceiptPhotos(): Promise<ReceiptPhotoInfo[]> {
  * receipts; owner, October 14, 2026: at least one required, as many as needed).
  */
 export async function photosByEntry() {
-  const map = new Map<string, ReceiptPhotoInfo & { allPhotoIds: string[] }>();
-  for (const photo of await listReceiptPhotos()) for (const id of photo.entryIds) map.set(id, { ...photo, allPhotoIds: [...(map.get(id)?.allPhotoIds ?? []), photo.photoId] });
-  return map;
+  return indexByEntry(await listReceiptPhotos());
+}
+
+/** Above this many entries photosForEntries uses the shared whole index instead (one parameter per entry). */
+const SCOPED_PHOTO_LIMIT = 5_000;
+
+/**
+ * Like photosByEntry, but only the photos covering these entries (November 10, 2026): Today's Entries, My Entries and the
+ * clerk report read every photo's details on each load, though they show a few dozen entries; the same map for those.
+ */
+export async function photosForEntries(entryIds: string[]) {
+  const ids = [...new Set(entryIds.map(text).filter(Boolean))];
+  if (!ids.length) return indexByEntry([]);
+  if (ids.length > SCOPED_PHOTO_LIMIT) return photosByEntry();
+  const list = sql`array[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::text[]`;
+  return indexByEntry(await readReceiptPhotos(sql`regexp_split_to_array(trim(${photos.entry_ids}), '\\s*,\\s*') && ${list}`));
 }
 
 /** The image as a data URL, for viewing. */

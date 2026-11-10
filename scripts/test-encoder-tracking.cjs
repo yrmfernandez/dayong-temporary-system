@@ -1942,6 +1942,42 @@ test('one person report is picked by Employee ID: a namesake is left out, an old
   assert.equal(collector.summary.gross, 70, 'the unlinked collector keeps their collection');
 });
 
+test("the entry lists read only their own entries' slips and receipt photos, with the same results", async () => {
+  const h = harness();
+  await seedAccount({ programName: 'Program One', basePay: 350, doi: '2026-06-15', branch: 'MATINA', mas: 'Maria', accountStatus: 'U' });
+  const collection = (id, extra) => ({ collection_id: id, collection_batch_id: 'B-1', enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', branch: 'MATINA', or_date: '2026-09-10', amount_collected: 350, status: 'Posted', ...extra });
+  await seed('remittances', [
+    { remittance_id: 'REM-OK', status: 'Approved', date_remitted: '2026-09-11', time_remitted: '14:05' },
+    { remittance_id: 'REM-BACK', status: 'Rejected', date_remitted: '2026-09-11', rejection_reason: 'Wrong amount' },
+    { remittance_id: 'REM-OTHER', status: 'Approved', date_remitted: '2026-09-11' },
+  ]);
+  await seed('collections', [
+    collection('C-1', { remittance_status: 'Remitted', linked_remittance_id: 'REM-OK' }),
+    collection('C-2', { remittance_status: 'Returned', linked_remittance_id: 'REM-BACK' }),
+    collection('C-3', { remittance_status: 'Outstanding' }),
+    collection('C-ELSE', { or_date: '2026-08-01', remittance_status: 'Remitted', linked_remittance_id: 'REM-OTHER' }),
+  ]);
+  await seed('receipt_photos', [
+    { photo_id: 'RCP-BATCH', entry_ids: 'C-1, C-2' },
+    { photo_id: 'RCP-ELSE', entry_ids: 'C-ELSE,C-10' },
+    { photo_id: 'RCP-3A', entry_ids: 'C-3' },
+    { photo_id: 'RCP-3B', entry_ids: 'C-3' },
+  ]);
+  const { photosForEntries } = h.load('lib/receipt-photos.ts');
+  const scoped = await photosForEntries(['C-1', 'C-3', 'C-1']);
+  assert.deepEqual([...scoped.keys()].sort(), ['C-1', 'C-2', 'C-3'], 'a batch photo still names every entry it covers; C-ELSE and C-10 are not read');
+  assert.deepEqual(scoped.get('C-3').allPhotoIds, ['RCP-3A', 'RCP-3B']);
+  assert.equal((await photosForEntries(['C-1'])).get('C-1').photoId, 'RCP-BATCH');
+  assert.equal((await photosForEntries([])).size, 0);
+  const { entries } = await h.load('lib/todays-entries.ts').getEntriesForRange('2026-09-10', '2026-09-10', 'or');
+  const shown = Object.fromEntries(entries.map((entry) => [entry.id, [entry.photoIds.join(' '), entry.remittedAt, entry.returnReason]]));
+  assert.deepEqual(shown, {
+    'C-1': ['RCP-BATCH', '2026-09-11 14:05', ''],
+    'C-2': ['RCP-BATCH', '', 'Wrong amount'],
+    'C-3': ['RCP-3A RCP-3B', '', ''],
+  });
+});
+
 test('a sale saved just after midnight in Manila is in the Manila day of the Company report (upgrade #7)', async () => {
   const h = harness();
   // 00:30 on October 1 in Manila is 16:30 on September 30 in UTC.

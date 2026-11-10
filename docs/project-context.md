@@ -26,11 +26,23 @@ The owner asked again what to improve; the first list is all built. These come f
 | 1 | Audit Log page reads only its newest rows | **Built 2026-11-09** (below); migration 0049 |
 | 2 | Exceptions duplicate-number check uses an index | **Built 2026-11-09** (below); migration 0049 |
 | 3 | Search Records with no match (about 1.1 s): an index for its text search | **Built 2026-11-09** (below); migration 0050 |
-| 4 | Egress: the remittance ledger (19% of rows) reads less | To do (re-measure pg_stat_statements first) |
+| 4 | Egress: the remittance ledger (19% of rows) reads less | **Built 2026-11-10** (below): re-measured; the largest Remittances reader was the entry lists, not the ledger. No migration |
 | 5 | Egress: the clerk report's expected collections (10%) reads less | To do |
 | 6 | Rewrite the test "a MAS submits New Sales…" for the Rejected → submit again flow | To do |
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | To do (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | To decide (owner) |
+
+### Entry lists read only their own slips and receipt photos (2026-11-10)
+
+- **Asked (owner):** upgrade list 2, item 4.
+- **Found (production, read-only pg_stat_statements, totals since 2026-11-05 and 10 minutes on 2026-11-10 from 8:30 AM):** production has all 51 migrations (0049 and 0050 are in). Rows read since November 5: remittance links 9.3% (the ledger, 1,220 loads of about 9,300 links) plus 7.2% (whole-sheet reads, mostly the Company report), every slip read whole 6.7% (4,370 times), the receipt-photo index read whole 4.8% (5,110 times). In the 10 minutes the ledger loaded only 3 times (its 10 s cache works); the largest reader was the full slip read, 31 times (11.8% of the window), with the full photo index, also 31 times (7.3%). Those 31 were `getEntriesForRange` (`lib/todays-entries.ts`): every load and live refresh of Today's Entries and My Entries, and every clerk report, read all 1,869 slips with all 28 columns and all 1,152 photo rows, though it uses only the slips and photos of the entries it shows.
+- **Done:** `getEntriesForRange` reads the Programs list as before, then, with the members, only the slips its entries are on (4 columns: date, time received, rejection reason) and only the photos covering its entries (`photosForEntries` in `lib/receipt-photos.ts`; above 5,000 entries it uses the shared whole index as before). What the lists show does not change. No migration.
+- **Measured (production data, read-only):** Today's Entries for every clerk on November 9 (506 entries) reads 144 slips (4 of 28 columns) and 61 photos instead of 1,869 and 1,152; on November 7, 74 slips and 31 photos. One clerk's My Entries reads fewer.
+- **Left as it is:** the ledger itself still reads every slip and every link, because the Remittances page lists every approved and rejected slip; trimming it would mean showing only recent records (an owner decision). It loads at most once per 10 s per server.
+- **Other whole-slip readers, not changed:** the Company report (`lib/reports.ts`, also every link), Exceptions, Fidelity and the CEO dashboard (`lib/executive-analytics.ts`); each loads far less often.
+- **Also seen:** 16% of rows since November 5 are the database driver's type look-up on each new connection (`pg_type`); those rows are a few bytes each, so they are almost no egress. The account-rate query on `member_programs` (6.4% + 2.7% + 1.7% + 1.2%) is next to look at with item 5.
+- **Tested:** a new test (a batch photo covering two entries, an entry with two photos, another entry's photo and slip not read, the slip's time and rejection reason shown). Type check, lint and build pass; tests 335 of 336 (the remaining one is upgrade list 2 item 6). Not tried in a browser.
+- **To do (owner):** push (no migration). After a working day, read `pg_stat_statements` again; the full slip read should drop from about 30 per 10 minutes to the other readers' few.
 
 ### Insert New Sale: a new account in another program (2026-11-09)
 
