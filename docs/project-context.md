@@ -30,7 +30,7 @@ The owner asked again what to improve; the first list is all built. These come f
 | 5 | Egress: the clerk report's expected collections (10%) reads less | **Built 2026-11-10** (below); no migration |
 | 6 | Rewrite the test "a MAS submits New Sales…" for the Rejected → submit again flow | **Built 2026-11-10** (below); all tests pass |
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | To do (owner) |
-| 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); the 1 held account reopened by the owner; capitals script built, owner runs it |
+| 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); the 1 held account reopened by the owner; capitals converted on production 2026-11-10 |
 
 ### Owner decisions: Deceased accounts, the held Forfeited account, capitals (2026-11-10)
 
@@ -43,7 +43,7 @@ The owner asked again what to improve; the first list is all built. These come f
 - **Done (3), capitals:** `scripts/convert-to-capitals.mjs` turns members' surname, first, middle, extension, birthplace, address, claimant name and claimant address, and beneficiaries' names into capitals with the database's `upper()` (ñ → Ñ, checked first). Gender, civil status, status, relationship and contacts are left; employee names too (saved MAS batches compare the MAS name exactly). Counts only, no names; one transaction; the Audit Log keeps each row's old values (as Data fix (capitals)) and one Record Corrections row keeps the counts. Safe to rerun.
 - **Tried on staging:** dry run 2,863 members, 0 beneficiaries, 60 values with ñ all Ñ; applied: 2,863 converted, 2,863 Audit Log rows, one Record Corrections row; rerun finds nothing left. **Production dry run:** 3,171 members (address 2,899, claimant name 2,888, extension 359, claimant address 220, birthplace 210, middle 206, surname 203, first 202), 4 beneficiaries, 82 values with ñ all Ñ.
 - **Tested (1):** a new test (alive: takes collections and counts in CVE; marked Deceased: Collections refuses with the message, left out of accountReport and CVE, still in the SOA picker and corrections; dropped with a date: counted from the MAM month; corrected and reactivated: takes collections again); the deactivation test now matches the longer Collections message. Type check, lint and build pass; all 338 tests pass. Not tried in a browser.
-- **To do (owner) (3):** outside busy hours, `npm run prod -- node scripts/convert-to-capitals.mjs` (dry run, should match the counts above), then the same with `--apply`.
+- **Done on production (owner, 2026-11-10):** dry run matched (3,171 members, 4 beneficiaries, 82 ñ), then `--apply`. Checked after (read-only): 0 of 14,030 members and 0 of 581 beneficiaries left to change, 3,175 Audit Log rows as Data fix (capitals), Record Corrections COR-CAPITALS-20261110-040111 (members 3,171, beneficiaries 4).
 
 ### Test for MAS New Sales rewritten for Rejected and submit again (2026-11-10)
 
