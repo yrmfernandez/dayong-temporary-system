@@ -2,7 +2,6 @@
 
 import { Eye, EyeOff, ExternalLink, HeartHandshake, LockKeyhole, TriangleAlert, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,9 +55,9 @@ function useKeyboardState() {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [employeeId, setEmployeeId] = useState(""); const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false); const [message, setMessage] = useState(""); const [submitting, setSubmitting] = useState(false);
+  const [opening, setOpening] = useState(false);
   const keyboard = useKeyboardState();
   const typedId = employeeId.trim().toUpperCase();
   // Reminders shown above Log In: warnings first, then notes.
@@ -80,9 +79,16 @@ export default function LoginPage() {
       const responseText = await response.text(); let result: { success?: boolean; message?: string; mustChangePassword?: boolean } = {};
       try { result = JSON.parse(responseText) as typeof result; } catch { throw new Error(response.ok ? "The sign-in server returned an invalid response." : "The sign-in server is unavailable. Check the Vercel Function logs and environment variables."); }
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to sign in.");
-      router.replace(result.mustChangePassword ? "/settings?tab=security&required=1" : "/"); router.refresh();
+      // Some phones accepted the password but dropped the session cookie, so the next page sent them back here with no
+      // message (owner, November 11, 2026). Confirm this browser kept the session before leaving the page.
+      const kept = await fetch("/api/auth/session", { cache: "no-store" }).then((check) => check.ok).catch(() => false);
+      if (!kept) throw new Error("Your Employee ID and password are correct, but this browser did not keep the sign-in. Set the phone's date and time to automatic, allow cookies for this site, turn off private or data-saver browsing, then try again or use another browser.");
+      // A full page load: the browser shows its own loading bar while the dashboard opens, and the button stays busy.
+      setOpening(true);
+      window.location.replace(result.mustChangePassword ? "/settings?tab=security&required=1" : "/");
+      return;
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to sign in."); }
-    finally { setSubmitting(false); }
+    setSubmitting(false);
   }
   return <main className="grid h-dvh overflow-y-auto bg-background max-lg:grid-rows-[max-content] lg:grid-cols-[1.08fr_0.92fr] lg:overflow-hidden">
     <section className="brand-panel relative hidden overflow-y-auto px-10 py-9 text-white lg:flex lg:flex-col xl:px-16">
@@ -102,7 +108,7 @@ export default function LoginPage() {
             {warnings.map((text) => <p key={text} className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900"><TriangleAlert className="mt-0.5 size-4 shrink-0"/>{text}</p>)}
             {notes.map((text) => <p key={text} className="rounded-xl border border-violet-90 bg-violet-95/60 px-3 py-2 text-xs text-violet-40">{text}</p>)}
           </div>}
-          {message&&<p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{message}</p>}<Button type="submit" className="h-12 w-full rounded-xl text-base font-extrabold shadow-[0_10px_25px_-5px_rgb(105_51_255_/_0.35)]" disabled={submitting}>{submitting?"Signing in...":"Log In"}</Button><p className="text-center text-sm text-violet-40">Forgot your password? Ask IT for a one-time password.</p></form>
+          {message&&<p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{message}</p>}<Button type="submit" className="h-12 w-full rounded-xl text-base font-extrabold shadow-[0_10px_25px_-5px_rgb(105_51_255_/_0.35)]" disabled={submitting}>{opening?"Opening your dashboard...":submitting?"Signing in...":"Log In"}</Button><p className="text-center text-sm text-violet-40">Forgot your password? Ask IT for a one-time password.</p></form>
         <div className="mt-8 border-t border-violet-90 pt-6 text-center lg:hidden"><p className="text-xs font-bold uppercase tracking-wider text-accent-moss">Our Vision</p><p className="mt-2 text-sm leading-6 text-violet-40">A fully committed DAYONG provider with high regard for serving and protecting the needs of its members.</p><a href="https://www.facebook.com/dsrdprovidersinc" target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-violet-60">Visit our Facebook page <ExternalLink className="size-3"/></a></div>
       </div><p className="text-center text-xs text-muted-foreground">Authorized personnel only &middot; Credentials are protected by a secure session.</p></section>
   </main>;
