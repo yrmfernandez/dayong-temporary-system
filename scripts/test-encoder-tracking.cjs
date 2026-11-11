@@ -3218,6 +3218,48 @@ test('a MAS submits New Sales; only a clerk of that branch reviews them, saves o
   assert.deepEqual(reopened, { status: 'Submitted', sale_count: 2, return_reason: null });
 });
 
+test('the clerk may save a MAS New Sales batch in another branch of the same MAS, never under another MAS, and not once marked remitted (November 11, 2026)', async () => {
+  const users = {
+    mas: { userId: 'USR-M', employeeId: 'DPE-0002', name: 'different-mas', roleNames: ['MAS'], permissions: {} },
+    clerk: { userId: 'USR-1', employeeId: 'DPE-0001', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} },
+  };
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'BR-2', '', '', '', '', '', '', '', '', '', '', 'active'], ['BR-3', 'BR-3', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'clerk', 'BR-1', 'Entry Clerk', 'active'], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'other-mas', 'BR-1', 'MAS', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0001', 'BR-2'], ['EBA-3', 'DPE-0001', 'BR-3'], ['EBA-4', 'DPE-0002', 'BR-1'], ['EBA-5', 'DPE-0002', 'BR-2'], ['EBA-6', 'DPE-0003', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+    return h;
+  };
+  const mas = as(users.mas), clerk = as(users.clerk);
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+  const call = async (h, method, url, body) => {
+    const route = h.load('app/api/sale-submissions/route.ts');
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const card = (surname) => ({ id: `S-${surname}`, member: { name: { firstName: 'Ana', surname } }, program: { programCode: 'CODE', amountPaid: '350', dateEnrolled: '2020-01-01' } });
+  const submitted = await call(mas, 'POST', '/api/sale-submissions', { branchId: 'BR-1', sales: [card('Cruz')] });
+  assert.equal(submitted.status, 201, JSON.stringify(submitted.body));
+  const save = async (branch, masName, applicationNo, id = submitted.body.id) => {
+    const sale = { existingMember: false, surname: 'Cruz', firstName: 'Ana', programId: 'DP-1', amountPaid: '350', applicationNo, addressHouse: 'Complete Address', beneficiaries: [] };
+    const response = await clerk.load('app/api/sales/route.ts').POST(request({ branch, mas: masName, dateRemitted: '2026-09-25', controlTotal: 200, submissionId: id, sales: [sale] }));
+    return { status: response.status, body: await response.json() };
+  };
+  assert.match((await save('BR-1', 'other-mas', 'APP-1')).body.message, /from different-mas\. Keep that MAS/);
+  assert.match((await save('BR-3', 'different-mas', 'APP-1')).body.message, /does not work as MAS in BR-3/);
+  const moved = await save('BR-2', 'different-mas', 'APP-1');
+  assert.equal(moved.status, 200, JSON.stringify(moved.body));
+  assert.deepEqual(await query('select branch from sales'), [{ branch: 'BR-2' }]);
+  assert.deepEqual(await query('select status, branch_id, branch from sale_submissions'), [{ status: 'Saved', branch_id: 'BR-2', branch: 'BR-2' }]);
+
+  // Marked remitted, it stays on that branch's handover.
+  const again = await call(mas, 'POST', '/api/sale-submissions', { branchId: 'BR-1', sales: [card('Reyes')] });
+  await query("update sale_submissions set status = 'Remitted', clearing_id = 'CLR-X', remitted_at = now() where submission_id = $1", [again.body.id]);
+  assert.match((await save('BR-2', 'different-mas', 'APP-2', again.body.id)).body.message, /marked remitted for BR-1, so it stays in BR-1/);
+});
+
 test('a counted cash remittance must add up to the amount received, and the count is kept on the slip', async () => {
   const h = harness();
   const collection = Array(39).fill(''); collection[0] = 'COL-7'; collection[6] = 'BR-1'; collection[9] = '2026-09-25'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 270; collection[28] = 'Outstanding'; collection[30] = 'DPE-2'; collection[31] = 'Maria'; collection[32] = 'MAS';
@@ -5739,6 +5781,79 @@ test('a Collector batch of assigned members goes through the clerk: marked remit
   assert.equal((await query('select status from collection_submissions'))[0].status, 'Saved');
 });
 
+test('a Collector marks a batch DTO (no incentive), and the clerk changes Collected by, whose members and ORC on review, not the MAS (November 11, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'Col One', 'BR-1', 'Collector', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Clerk Three', 'BR-1', 'Entry Clerk', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50], ['INC-2', 'DP-1', 'Collector', 1, 12, 'percentage', 0, 20]];
+    h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+    return h;
+  };
+  const collector = as({ userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', roleNames: ['Collector'], permissions: {} });
+  const clerk = as({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk Three', roleNames: ['Entry Clerk'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0001', 'Col One']);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Mas Two' }]);
+  const today = collector.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  for (const number of [1, 2]) {
+    await seed('members', [{ member_id: `MEM-${number}`, member_number: `PH-${number}`, surname: 'Santos', first_name: 'Ana' }]);
+    await seed('member_programs', [{ enrollment_id: `ENR-${number}`, member_id: `MEM-${number}`, member_number: `PH-${number}`, program_id: 'DP-1', doi, branch: 'BR-1', mas: 'Mas Two', status: 'Active', collector_employee_id: 'DPE-0001' }]);
+  }
+  const call = async (h, file, method, url, body) => {
+    const route = h.load(file);
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const submissions = 'app/api/collection-submissions/route.ts';
+
+  // The batch being filled keeps DTO; DTO turns ORC off.
+  assert.equal((await call(collector, submissions, 'PUT', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-1', months: 1, amount: '', waiver: false }], collectedBy: 'Collector', orc: true, dto: true })).status, 200);
+  const { draft } = (await call(collector, submissions, 'GET', '/api/collection-submissions?view=mine&collectedBy=Collector')).body;
+  assert.deepEqual([draft.dto, draft.orc], [true, false]);
+
+  // DTO Yes: no incentive, the whole amount to remit, ORC off even when sent.
+  const sent = await call(collector, submissions, 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-1', months: 1, amount: null, waiver: false }], collectedBy: 'Collector', orc: true, dto: true });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  assert.match(sent.body.message, /DTO: no incentive/);
+  // DTO No: the Collector tier as before.
+  assert.equal((await call(collector, submissions, 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-2', months: 1, amount: null, waiver: false }], collectedBy: 'Collector' })).status, 201);
+  const review = (await call(clerk, submissions, 'GET', '/api/collection-submissions?view=review')).body.submissions;
+  const dtoBatch = review.find((item) => item.entries[0].enrollmentId === 'ENR-1'), plain = review.find((item) => item.entries[0].enrollmentId === 'ENR-2');
+  assert.deepEqual([dtoBatch.collectedBy, dtoBatch.dto, dtoBatch.orc, dtoBatch.memberMas, dtoBatch.totalIncentive, dtoBatch.entries[0].remittance], ['Collector', true, false, 'Mas Two', 0, 350]);
+  assert.deepEqual([plain.dto, plain.totalIncentive], [false, 70]);
+  const mine = (await call(collector, submissions, 'GET', '/api/collection-submissions?view=mine&collectedBy=Collector')).body.submissions;
+  assert.equal(mine.find((item) => item.id === dtoBatch.id).dto, true);
+
+  // Marked remitted: the clearing is the whole amount for the DTO batch.
+  assert.equal((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'remit', id: dtoBatch.id })).status, 200);
+  const [first] = await query('select clearing_id, amount::float8 as amount from clearings');
+  assert.equal(first.amount, 350);
+  assert.equal((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'remit', id: plain.id, handover: 'same' })).status, 200);
+
+  const save = (batch, memberNumber, orNumber, details) => {
+    const [entry] = batch.entries;
+    return call(clerk, 'app/api/collections/route.ts', 'POST', '/api/collections', { branch: 'BR-1', accountableEmployeeId: 'DPE-0001', clearingId: first.clearing_id, submissionId: batch.id, dateRemitted: today, paymentMethod: 'Cash', ...details,
+      collections: [{ memberNumber, programId: 'DP-1', monthFrom: entry.monthFrom, monthTo: entry.monthTo, amountCollected: entry.amount, nopFrom: entry.nopFrom, nopTo: entry.nopTo, orNumber, orDate: entry.orDate }] });
+  };
+  // The MAS stays: the batch is the Collector's to account for.
+  assert.match((await save(dtoBatch, 'PH-1', '12345 B', { mas: 'Mas Two', accountableEmployeeId: 'DPE-0002', collectedBy: 'MAS', controlTotal: 175 })).body.message, /This MAS submission is for BR-1, Col One/);
+  // The clerk turns the DTO batch into a Collector batch with ORC Yes: half of the MAS incentive is earned.
+  const asOrc = await save(dtoBatch, 'PH-1', '12345 B', { mas: 'Col One', collectedBy: 'Collector', memberMas: 'Mas Two', orc: true, controlTotal: 262.5 });
+  assert.equal(asOrc.status, 201, JSON.stringify(asOrc.body));
+  // And the plain Collector batch into DTO, still of Mas Two's members: nothing earned, the whole amount remitted.
+  const asDto = await save(plain, 'PH-2', '12346 B', { mas: 'Col One', collectedBy: 'DTO', memberMas: 'Mas Two', controlTotal: 350 });
+  assert.equal(asDto.status, 201, JSON.stringify(asDto.body));
+  const payments = await query('select member_number, mas, original_mas, collected_by_role, accountable_employee_id, remittance_amount::float8 as remit from collections order by member_number');
+  assert.deepEqual(payments, [
+    { member_number: 'PH-1', mas: 'Mas Two', original_mas: 'Mas Two', collected_by_role: 'Collector', accountable_employee_id: 'DPE-0001', remit: 262.5 },
+    { member_number: 'PH-2', mas: 'Mas Two', original_mas: 'Mas Two', collected_by_role: 'DTO', accountable_employee_id: 'DPE-0001', remit: 350 },
+  ]);
+  assert.deepEqual((await query('select status from collection_submissions order by row_seq')).map((row) => row.status), ['Saved', 'Saved']);
+});
+
 test('a Collector earns the MAS incentive only with No Collector on their own account, or when the clerk ticks MAS (November 6, 2026)', async () => {
   const as = (user) => {
     const h = harness(user);
@@ -5797,7 +5912,8 @@ test('a Collector earns the MAS incentive only with No Collector on their own ac
     return call(clerk, 'app/api/collections/route.ts', 'POST', '/api/collections', { branch: 'BR-1', mas: 'Col One', accountableEmployeeId: 'DPE-0001', clearingId, submissionId: batch.id, dateRemitted: today, collectedBy, memberMas, paymentMethod: 'Cash', controlTotal: collectedBy === 'MAS' ? 175 : 280,
       collections: [{ memberNumber, programId: 'DP-1', monthFrom: entry.monthFrom, monthTo: entry.monthTo, amountCollected: entry.amount, nopFrom: entry.nopFrom, nopTo: entry.nopTo, orNumber, orDate: entry.orDate }] });
   };
-  assert.match((await save(other, 'PH-3', '12346 B', 'MAS')).body.message, /submitted as collected by Collector/);
+  // The clerk may change Collected by (November 11, 2026), but another MAS's members still cannot go as MAS.
+  assert.match((await save(other, 'PH-3', '12346 B', 'MAS')).body.message, /must use its assigned Branch and MAS/);
   const saved = await save(own, 'PH-1', '12345 B', 'MAS');
   assert.equal(saved.status, 201, JSON.stringify(saved.body));
   const [payment] = await query('select collected_by_role, remittance_amount::float8 as remit, accountable_employee_id from collections');

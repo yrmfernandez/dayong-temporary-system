@@ -157,8 +157,10 @@ async function saveSales(request: Request, user: SessionUser) {
     }
 
     const submissionId = String(body.submissionId ?? "").trim();
+    // The branch a MAS submission is saved in; the clerk may move it to another branch of the MAS (November 11, 2026).
+    let submissionBranch: { id: string; name: string } | undefined;
     if (submissionId) {
-      try { await reviewableSubmission(user, submissionId, body.branch, body.mas, String(body.clearingId ?? "")); }
+      try { submissionBranch = (await reviewableSubmission(user, submissionId, body.branch, body.mas, String(body.clearingId ?? ""))).savedBranch; }
       catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "The MAS submission cannot be saved." }, { status: 400 }); }
     }
 
@@ -850,7 +852,7 @@ async function saveSales(request: Request, user: SessionUser) {
           saleId,
         });
       }
-      if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId));
+      if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId), submissionBranch);
       variance = await recordTurnoverVariance({ kind: "New Sales", entryIds: savedSales.map((saved) => saved.saleId), branch: body.branch.trim(), mas: body.mas.trim(), accountableEmployeeId: selectedStaff.id, dateRemitted: body.dateRemitted.trim(), controlTotal, systemTotal: totalRemittance, note: controlNote });
     });
 

@@ -1614,7 +1614,7 @@ Is this cash part of that handover?`) ? "same"
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <p>{masMode
             ? "Editing a submission you sent. Submit again when it is fixed."
-            : `Reviewing a submission from ${mas} (${branch}). Check every sale and correct anything wrong (a MAS submission is not sent back), add the Date Remitted and the control total, then save.`}</p>
+            : `Reviewing a submission from ${mas} (${branch}). Check every sale and correct anything wrong (a MAS submission is not sent back), add the Date Remitted and the control total, then save. Everything can be changed except the MAS${clearingId ? "; marked remitted, it stays in this branch" : ", also the branch (one of theirs)"}.`}</p>
           <Button type="button" variant="outline" size="sm" onClick={resetForm}>{masMode ? "Stop editing" : "Stop reviewing"}</Button>
         </div>
       )}
@@ -1662,7 +1662,11 @@ Is this cash part of that handover?`) ? "same"
                 Branch *
               </Label>
 
-              <SearchSelect aria-label="Branch" value={branch} disabled placeholder="From Clearing" options={branches.filter((item) => item.status === "active").map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))} onValueChange={(selected) => { setBranch(selected); setMas(""); setSales((current) => current.map((sale) => ({...sale,program:{...sale.program,branch:selected,mas:""}}))); }}/>
+              {/* A MAS submission not yet marked remitted can move to another branch of the same MAS (owner, November 11, 2026). */}
+              <SearchSelect aria-label="Branch" value={branch} disabled={!submissionId || Boolean(clearingId) || Boolean(returnedEdit)} placeholder="From Clearing"
+                options={branches.filter((item) => item.status === "active" && (!submissionId || item.name === branch || Boolean(masStaff.find((staff) => staff.fullName === mas)?.branchIds.includes(item.id)))).map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))}
+                onValueChange={(selected) => { setBranch(selected); setSales((current) => current.map((sale) => ({ ...sale, program: { ...sale.program, branch: selected } }))); }}/>
+              {submissionId && !clearingId && <p className="text-xs text-muted-foreground">Submitted for this branch; change it if the MAS picked the wrong one of their branches.</p>}
             </div>
 
             {/* MAS */}

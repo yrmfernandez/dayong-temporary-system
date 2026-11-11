@@ -87,12 +87,14 @@ type CollectionSubmissionSummary = {
   status: "Submitted" | "Remitted"; clearingId: string; remittedAt: string; remittedByName: string;
   /** Submitted by a Collector for another MAS's members (owner, November 3, 2026), with ORC or not. */
   collectedBy: "MAS" | "Collector"; memberMas: string; orc: boolean;
+  /** A Collector's batch marked DTO (owner, November 11, 2026): no incentive, the whole amount remitted. */
+  dto?: boolean;
   /** Sent by the nightly job: the MAS never pressed Submit, so the clerk contacts them (masContact) to remit. */
   autoSubmitted: boolean; masContact: string;
   entries: Array<{ enrollmentId: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; months: number; amount: number; orDate: string; waiver: boolean }>;
 };
 /** The MAS submission open on the form: saving it marks it Saved; its handover must be this MAS's. */
-type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string; collectedBy?: "MAS" | "Collector"; memberMas?: string; orc?: boolean };
+type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string; collectedBy?: CollectionChannel; memberMas?: string; orc?: boolean };
 
 type CollectionMember = Member & {
   programIds: string[];
@@ -377,8 +379,10 @@ export default function CollectionsPage() {
   // Batch-level: who brought these payments in, and how the MAS remitted them to the office.
   const [collectedBy, setCollectedBy] = useState<CollectionChannel>("MAS");
   // Collected by Collector: whose members (owner, November 3, 2026), a MAS of the branch; "" = the accountable person's own.
+  // Also Collected by DTO on a From Clearing batch (owner, November 11, 2026): a Collector's DTO batch holds another MAS's members.
   const [memberMas, setMemberMas] = useState("");
-  const membersOf = !dto && collectedBy === "Collector" && memberMas ? memberMas : mas;
+  const choosesMembersOf = !dto && (collectedBy === "Collector" || (collectedBy === "DTO" && !returnedEdit));
+  const membersOf = choosesMembersOf && memberMas ? memberMas : mas;
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
@@ -1029,7 +1033,7 @@ export default function CollectionsPage() {
           dto,
           orc: orc && !dto && collectedBy === "Collector",
           collectedBy: dto ? "DTO" : collectedBy,
-          memberMas: !dto && collectedBy === "Collector" ? membersOf : "",
+          memberMas: choosesMembersOf ? membersOf : "",
           paymentMethod,
           paymentReference: selectedPaymentMethod && !selectedPaymentMethod.isCash ? paymentReference.trim() : "",
           // Saved first; the approved remittance is created below once the receipt photo is attached.
@@ -1199,12 +1203,15 @@ export default function CollectionsPage() {
     setDateRemitted("");
     setBranch(submission.branch);
     setMas(submission.mas);
-    // A Collector's batch: the Collector is accountable; the members are the chosen MAS's, with the ORC submitted.
+    // A Collector's batch: the Collector is accountable; the members are the chosen MAS's, with the ORC (or DTO) submitted.
+    // The clerk can change all of it except the MAS (owner, November 11, 2026).
     const byCollector = submission.collectedBy === "Collector";
-    setCollectedBy(byCollector ? "Collector" : "MAS");
-    setMemberMas(byCollector ? submission.memberMas : "");
-    setOrc(byCollector && submission.orc);
-    setReviewing({ id: submission.id, masEmployeeId: submission.masEmployeeId, mas: submission.mas, branch: submission.branch, clearingId: submission.clearingId, remittedAt: submission.remittedAt, collectedBy: byCollector ? "Collector" : "MAS", memberMas: byCollector ? submission.memberMas : "", orc: byCollector && submission.orc });
+    const channel: CollectionChannel = byCollector ? (submission.dto ? "DTO" : "Collector") : "MAS";
+    const whose = byCollector && submission.memberMas !== submission.mas ? submission.memberMas : "";
+    setCollectedBy(channel);
+    setMemberMas(whose);
+    setOrc(channel === "Collector" && submission.orc);
+    setReviewing({ id: submission.id, masEmployeeId: submission.masEmployeeId, mas: submission.mas, branch: submission.branch, clearingId: submission.clearingId, remittedAt: submission.remittedAt, collectedBy: channel, memberMas: whose, orc: channel === "Collector" && submission.orc });
     // Marked remitted: saved under the clearing recorded then. The Date Remitted starts on that day and can still be
     // changed with a reason (no work, day off, on leave...), as for any batch.
     if (submission.clearingId) {
@@ -1318,7 +1325,7 @@ export default function CollectionsPage() {
       {tab === "submitted" ? <CollectionSubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} /> : <>
       {reviewing && (
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <p>Reviewing a submission from {reviewing.mas} ({reviewing.branch}). Pick their handover in From Clearing (save only once the cash is received), type each OR number, and correct anything wrong here: months, amount, Waiver, or remove a member. The MAS cannot change it.</p>
+          <p>Reviewing a submission from {reviewing.mas} ({reviewing.branch}). Pick their handover in From Clearing (save only once the cash is received), type each OR number, and correct anything wrong here: Collected by (MAS, Collector or DTO), whose members, ORC, months, amount, Waiver, or remove a member. Only the MAS stays. The MAS cannot change it.</p>
           <Button type="button" variant="outline" size="sm" onClick={resetForm}>Stop reviewing</Button>
         </div>
       )}
@@ -1340,7 +1347,7 @@ export default function CollectionsPage() {
             <p className="text-sm font-semibold">Collection Batch</p>
             <div role="radiogroup" aria-label="Batch type" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
               {([[false, "From Clearing (MAS / Collector)"], [true, "DTO: paid at the office"]] as const).map(([value, label]) => (
-                <button key={label} type="button" role="radio" aria-checked={dto === value} disabled={Boolean(returnedEdit)} onClick={() => chooseBatchType(value)}
+                <button key={label} type="button" role="radio" aria-checked={dto === value} disabled={Boolean(returnedEdit) || (Boolean(reviewing) && value)} title={reviewing && value ? "A MAS submission stays on the MAS's handover: set Collected by to DTO instead." : undefined} onClick={() => chooseBatchType(value)}
                   className={`rounded-md px-3 py-1.5 font-semibold transition-colors ${dto === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
               ))}
             </div>
@@ -1406,13 +1413,21 @@ export default function CollectionsPage() {
               <div role="radiogroup" aria-label="Collected by" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/50 p-1">
                 {collectionChannels.map((channel) => (
                   <button key={channel.value} type="button" role="radio" aria-checked={collectedBy === channel.value} title={channel.hint}
-                    disabled={returnedEdit ? channel.value === "DTO" : Boolean(reviewing) && channel.value !== (reviewing?.collectedBy ?? "MAS") && !(channel.value === "MAS" && reviewing?.collectedBy === "Collector" && reviewing.memberMas === reviewing.mas)}
+                    disabled={Boolean(returnedEdit) && channel.value === "DTO"}
                     onClick={() => {
                       if (channel.value === collectedBy) return;
                       // A Returned batch keeps its entries and its members' MAS.
                       if (returnedEdit) { if (channel.value !== "Collector") setOrc(false); setCollectedBy(channel.value); return; }
-                      // Back to Collector on a batch opened for review: its ORC as submitted.
-                      setOrc(channel.value === "Collector" && reviewing?.orc === true);
+                      // A MAS submission under review (owner, November 11, 2026): between Collector and DTO the members and
+                      // entries stay; back to MAS, only the accountable person's own members fit.
+                      if (reviewing) {
+                        // Back to Collector: its ORC as submitted.
+                        setOrc(channel.value === "Collector" && reviewing.orc === true);
+                        if (channel.value === "MAS" && memberMas && memberMas !== mas) { clearScopedMemberSelections(); setMemberMas(""); }
+                        setCollectedBy(channel.value);
+                        return;
+                      }
+                      setOrc(false);
                       // Back to the accountable person's own members: entries of another MAS's members no longer fit.
                       if (memberMas && memberMas !== mas) clearScopedMemberSelections();
                       setMemberMas("");
@@ -1423,13 +1438,13 @@ export default function CollectionsPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">{collectionChannels.find((channel) => channel.value === collectedBy)?.hint}. Applies to every entry; DTO uses the current MAS incentive.</p>
+              <p className="text-xs text-muted-foreground">{collectionChannels.find((channel) => channel.value === collectedBy)?.hint}. Applies to every entry; DTO earns no incentive, so the whole amount is remitted.</p>
             </fieldset>}
 
             {/* WHOSE MEMBERS (owner, November 3, 2026): a Collector collects for anyone of the branch, MAS by role or virtual MAS (every employee); their members are listed. */}
-            {!dto && collectedBy === "Collector" && <div className="space-y-2">
+            {choosesMembersOf && <div className="space-y-2">
               <Label>Members of MAS *</Label>
-              <SearchSelect aria-label="Members of MAS" value={membersOf} placeholder={mas ? "Search MAS" : "Pick the handover first"} disabled={!mas || Boolean(reviewing) || Boolean(returnedEdit)}
+              <SearchSelect aria-label="Members of MAS" value={membersOf} placeholder={mas ? "Search MAS" : "Pick the handover first"} disabled={!mas || Boolean(returnedEdit)}
                 options={[
                   ...(mas ? [{ value: mas, label: mas, description: "The Collector's own accounts" }] : []),
                   // A batch opened for review keeps its MAS, even one no longer listed below.
@@ -1447,7 +1462,7 @@ export default function CollectionsPage() {
               <legend className="mb-2 text-sm font-medium">ORC (outright commission)</legend>
               <div role="radiogroup" aria-label="ORC" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-1">
                 {([[false, "No"], [true, "Yes"]] as const).map(([value, label]) => (
-                  <button key={label} type="button" role="radio" aria-checked={orc === value} disabled={Boolean(reviewing)} onClick={() => setOrc(value)}
+                  <button key={label} type="button" role="radio" aria-checked={orc === value} onClick={() => setOrc(value)}
                     className={`rounded-md px-2 py-1.5 text-sm font-semibold transition-colors ${orc === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
                 ))}
               </div>
@@ -2409,7 +2424,7 @@ function CollectionSubmissionList({ submissions, branchPicker, activeId, onOpen,
             <div className="min-w-0 text-sm">
               <p className="font-semibold">{submission.mas} · {submission.branch}</p>
               {submission.autoSubmitted && <p className="font-medium text-amber-700">Sent automatically: the MAS did not submit. If a member did not pay, Reject it or remove them on Review.</p>}
-              {submission.collectedBy === "Collector" && <p className="font-medium text-primary">Collector, for {submission.memberMas === submission.mas ? "their own accounts" : `the members of ${submission.memberMas}`} · ORC {submission.orc ? "Yes" : "No"}</p>}
+              {submission.collectedBy === "Collector" && <p className="font-medium text-primary">Collector, for {submission.memberMas === submission.mas ? "their own accounts" : `the members of ${submission.memberMas}`} · {submission.dto ? "DTO: no incentive" : `ORC ${submission.orc ? "Yes" : "No"}`}</p>}
               <p className="text-muted-foreground">{submission.entryCount} member{submission.entryCount === 1 ? "" : "s"} · {formatCurrency(submission.totalAmount)} collected · incentive {formatCurrency(submission.totalIncentive)} · submitted {formatDateTime(submission.submittedAt)}</p>
               {submission.status === "Remitted"
                 ? <p className={submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline ? "font-medium text-amber-700" : "font-medium text-emerald-700"}>Remitted {formatDateTime(submission.remittedAt)}{submission.remittedByName ? ` (${submission.remittedByName})` : ""}{submission.incentiveDeadline ? (submission.remittedAt > submission.incentiveDeadline ? " · after the deadline: incentive forfeited" : " · in time: incentive kept") : ""} · OR numbers still to type</p>

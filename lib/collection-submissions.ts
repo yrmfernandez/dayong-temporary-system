@@ -9,7 +9,7 @@ import { coveredKinds, type ClearingCovers } from "@/lib/clearing-kinds";
 import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
 import { getEmployees } from "@/lib/employees";
 import { getEncoder } from "@/lib/encoder-context";
-import { masCollectionQuote, MAX_SUBMISSION_ENTRIES } from "@/lib/mas-collection-quote";
+import { masCollectionQuote, MAX_SUBMISSION_ENTRIES, quoteChannel } from "@/lib/mas-collection-quote";
 import { createReadableId } from "@/lib/readable-id";
 import { tiersForBranch } from "@/lib/remittance";
 import { incentiveDeadline, manilaNow } from "@/lib/remittance-deadline";
@@ -50,6 +50,13 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  * form. Every employee is a virtual MAS (lib/workspace-session.ts), so a Collector needs no MAS role to have the choice
  * (owner, November 6, 2026); it starts on the workspace open, and can be changed on the page.
  *
+ * DTO (owner, November 11, 2026): a Collector also picks DTO Yes or No for the batch. Yes: no incentive, the whole amount
+ * is remitted (and ORC is off); the payments are saved under the DTO channel, with the Collector still accountable.
+ *
+ * The clerk changes the batch details on review (owner, November 11, 2026): Collected by (MAS, Collector or DTO), whose
+ * members and ORC, besides the entries; only the MAS who submitted it stays, as the cash is theirs to account for
+ * (app/api/collections/route.ts).
+ *
  * Forgotten batches (owner, November 4, 2026): the batch being filled is kept on the server (collection_drafts), each
  * member with the day they were added. After midnight the nightly job sends what is left from earlier days, OR date the
  * day added, and the clerk is warned to contact the MAS so the cash is remitted. See autoSubmitCollectionDrafts.
@@ -80,6 +87,8 @@ export type CollectionSubmission = {
   clearingId: string; remittedAt: string; remittedByName: string;
   /** Collected by the submitter as MAS, or as Collector for the members of memberMas (with ORC or not). */
   collectedBy: CollectedBy; memberMasEmployeeId: string; memberMas: string; orc: boolean;
+  /** A Collector's batch marked DTO: no incentive, the whole amount remitted. */
+  dto: boolean;
   /** Sent by the nightly job because it was never submitted. masContact (clerk's list only): who to call about the cash. */
   autoSubmitted: boolean; masContact: string;
   /** Rejected: the MAS has seen it, so it no longer counts on the sidebar. */
@@ -112,7 +121,8 @@ const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): Coll
   collectionIds: text(row.collection_ids).split(",").map(text).filter(Boolean), incentiveDeadline: deadline,
   clearingId: text(row.clearing_id), remittedAt: stamp(row.remitted_at), remittedByName: text(row.remitted_by_name),
   collectedBy: row.collected_by === "Collector" ? "Collector" : "MAS", memberMasEmployeeId: text(row.member_mas_employee_id) || row.mas_employee_id,
-  memberMas: text(row.member_mas) || row.mas, orc: row.collected_by === "Collector" && row.orc === true,
+  memberMas: text(row.member_mas) || row.mas, orc: row.collected_by === "Collector" && row.orc === true && row.dto !== true,
+  dto: row.collected_by === "Collector" && row.dto === true,
   autoSubmitted: row.auto_submitted === true, masContact: "", rejectionSeen: Boolean(row.rejection_seen_at), fidelity: 0,
 });
 
@@ -184,7 +194,7 @@ type Choice = { enrollmentId: string; months: number; amount: number | null; wai
  * the OR date, and the account is judged as of that day. Sent automatically (`auto`), a suspended account goes through
  * without Waiver ticked: the member paid, and the clerk's form still asks for the Waiver before saving.
  */
-function batchEntry(context: SubmitContext, data: Awaited<ReturnType<typeof loadAccountData>>, item: Choice, day: string, orc: boolean, auto = false) {
+function batchEntry(context: SubmitContext, data: Awaited<ReturnType<typeof loadAccountData>>, item: Choice, day: string, orc: boolean, auto = false, dto = false) {
   const { profile, memberMas } = context;
   const asCollector = context.as === "Collector", assigned = asCollector && !memberMas;
   const ownerName = memberMas?.name ?? profile.name;
@@ -203,9 +213,10 @@ function batchEntry(context: SubmitContext, data: Awaited<ReturnType<typeof load
   if (state.temporarilySuspended && !item.waiver && !auto) throw new Error(`${label} is suspended. Have the member sign the Waiver, then tick Waiver.`);
   try {
     const tiers = tiersForBranch(data.incentives.filter((tier) => tier.programId === account.programId), branch.id);
-    const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, flexibleBasePay: account.flexibleBasePay ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, { role: context.as, orc }, item.amount);
+    const collector = { role: context.as, orc, dto: asCollector && dto };
+    const quote = masCollectionQuote({ basePay: account.basePay, flexible: Boolean(account.flexible), maxMonthlyPayment: account.maxMonthlyPayment ?? null, flexibleBasePay: account.flexibleBasePay ?? null, nextMonth: state.nextMonth, nextNop: state.nextNop, tiers }, item.months, collector, item.amount);
     // The clerk types the OR number when saving; a stand-in lets the same payment rules run now.
-    validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate: day, orNumber: "(typed by the clerk)", waiver: item.waiver || auto ? "Waiver" : "", collectedByRole: context.as, originalMas: asCollector ? account.mas : "" }, day);
+    validatePayment(account, data.payments, { monthFrom: quote.monthFrom, monthTo: quote.monthTo, nopFrom: quote.nopFrom, nopTo: quote.nopTo, amount: quote.amount, orDate: day, orNumber: "(typed by the clerk)", waiver: item.waiver || auto ? "Waiver" : "", collectedByRole: quoteChannel(collector), originalMas: asCollector ? account.mas : "" }, day);
     const entry: SubmittedCollection = { enrollmentId: account.id, memberId: account.memberId, memberNumber: account.memberNumber, memberName: account.memberName, programId: account.programId, programName: account.programName, ...quote, orDate: day, waiver: item.waiver };
     return { branch, entry, owner: { employeeId: account.masEmployeeId ?? "", name: account.mas } };
   } catch (error) {
@@ -214,7 +225,7 @@ function batchEntry(context: SubmitContext, data: Awaited<ReturnType<typeof load
 }
 
 /** One submission per branch and MAS, in the order they first appear. */
-function batchRows(context: SubmitContext, entries: Array<ReturnType<typeof batchEntry>>, orc: boolean, auto = false) {
+function batchRows(context: SubmitContext, entries: Array<ReturnType<typeof batchEntry>>, orc: boolean, auto = false, dto = false) {
   const { profile, memberMas } = context;
   const batches = new Map<string, { branch: { id: string; name: string }; owner: { employeeId: string; name: string }; entries: SubmittedCollection[] }>();
   for (const { branch, entry, owner } of entries) {
@@ -229,7 +240,7 @@ function batchRows(context: SubmitContext, entries: Array<ReturnType<typeof batc
     submission_id: createReadableId("CSUB"), branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted",
     entries: group, entry_count: group.length, total_amount: cents(group.reduce((sum, entry) => sum + entry.amount, 0)),
     total_incentive: cents(group.reduce((sum, entry) => sum + entry.incentive, 0)), submitted_at: actor.encodedAt,
-    collected_by: context.as, member_mas_employee_id: asCollector ? memberMas?.employeeId ?? (owner.employeeId || null) : null, member_mas: asCollector ? owner.name : null, orc, auto_submitted: auto, ...encodedBy(),
+    collected_by: context.as, member_mas_employee_id: asCollector ? memberMas?.employeeId ?? (owner.employeeId || null) : null, member_mas: asCollector ? owner.name : null, orc, dto: asCollector && dto, auto_submitted: auto, ...encodedBy(),
   }));
 }
 
@@ -294,11 +305,13 @@ export async function listMyCollectionSubmissions(user: SessionUser) {
  * Everything shown to the MAS is worked out again here from the account, with the same money rules as the Collections
  * save. It cannot be changed afterwards.
  */
-export async function submitCollections(user: SessionUser, input: { entries?: unknown; collectedBy?: unknown; memberMasEmployeeId?: unknown; orc?: unknown }) {
+export async function submitCollections(user: SessionUser, input: { entries?: unknown; collectedBy?: unknown; memberMasEmployeeId?: unknown; orc?: unknown; dto?: unknown }) {
   const context = await collectorContext(user, input.collectedBy === "Collector" ? "Collector" : "MAS", input.memberMasEmployeeId);
   const { profile, memberMas } = context;
   const asCollector = context.as === "Collector";
-  const orc = asCollector && input.orc === true;
+  // DTO: no incentive at all, so no ORC either.
+  const dto = asCollector && input.dto === true;
+  const orc = asCollector && !dto && input.orc === true;
   if (!profile.branches.length) throw new Error("You are not assigned to an active branch. Ask HR to assign you.");
   if (!Array.isArray(input.entries) || !input.entries.length) throw new Error("Add at least one member.");
   if (input.entries.length > MAX_SUBMISSION_ENTRIES) throw new Error(`Submit at most ${MAX_SUBMISSION_ENTRIES} members at a time.`);
@@ -314,15 +327,15 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
 
   const today = manilaNow().date;
   const data = await loadAccountData({ enrollmentIds: ids });
-  const entries = chosen.map((item) => batchEntry(context, data, item, today, orc));
+  const entries = chosen.map((item) => batchEntry(context, data, item, today, orc, false, dto));
 
   // All saved or none; the members sent leave the batch kept for the nightly job.
-  const batches = batchRows(context, entries, orc);
+  const batches = batchRows(context, entries, orc, false, dto);
   await inTransaction(async () => {
     await currentDb().insert(submissions).values(batches);
     await removeFromDraft(profile.employeeId, ids);
   });
-  return { ids: batches.map((batch) => batch.submission_id), entryCount: entries.length, collectedBy: context.as, memberMas: memberMas?.name ?? "", batches: batches.map((batch) => ({ branch: batch.branch, memberMas: batch.member_mas ?? "", entryCount: batch.entry_count })) };
+  return { ids: batches.map((batch) => batch.submission_id), entryCount: entries.length, collectedBy: context.as, dto, memberMas: memberMas?.name ?? "", batches: batches.map((batch) => ({ branch: batch.branch, memberMas: batch.member_mas ?? "", entryCount: batch.entry_count })) };
 }
 
 const draftItems = (row: { entries: unknown } | undefined) => (Array.isArray(row?.entries) ? row.entries as DraftItem[] : []);
@@ -341,11 +354,11 @@ async function removeFromDraft(employeeId: string, ids: string[]) {
 /** The batch the person is still filling, for any of their devices. */
 export async function myCollectionDraft(user: SessionUser) {
   const [row] = await getDb().select().from(drafts).where(eq(drafts.employee_id, user.employeeId));
-  return row ? { entries: draftItems(row), collectedBy: row.collected_by, memberMasEmployeeId: text(row.member_mas_employee_id), orc: row.orc } : null;
+  return row ? { entries: draftItems(row), collectedBy: row.collected_by, memberMasEmployeeId: text(row.member_mas_employee_id), orc: row.orc, dto: row.dto } : null;
 }
 
 /** Saves the batch as it stands on the page. A member already in it keeps the day they were added; a new one is today's. */
-export async function saveCollectionDraft(user: SessionUser, input: { entries?: unknown; collectedBy?: unknown; memberMasEmployeeId?: unknown; orc?: unknown }) {
+export async function saveCollectionDraft(user: SessionUser, input: { entries?: unknown; collectedBy?: unknown; memberMasEmployeeId?: unknown; orc?: unknown; dto?: unknown }) {
   if (!user.employeeId) throw new Error("Your sign-in account is not linked to an employee. Ask IT to link it.");
   if (!Array.isArray(input.entries) || input.entries.length > MAX_DRAFT_ENTRIES) throw new Error("The batch has too many members. Submit some first.");
   const [row] = await getDb().select({ entries: drafts.entries }).from(drafts).where(eq(drafts.employee_id, user.employeeId));
@@ -355,7 +368,7 @@ export async function saveCollectionDraft(user: SessionUser, input: { entries?: 
     enrollmentId: text(entry.enrollmentId), months: Number(entry.months) || 1, amount: text(entry.amount), waiver: entry.waiver === true, addedOn: added.get(text(entry.enrollmentId)) ?? today,
   }));
   if (!entries.length) { await getDb().delete(drafts).where(eq(drafts.employee_id, user.employeeId)); return; }
-  const values = { collected_by: input.collectedBy === "Collector" ? "Collector" : "MAS", member_mas_employee_id: text(input.memberMasEmployeeId) || null, orc: input.orc === true, entries, updated_at: new Date().toISOString() };
+  const values = { collected_by: input.collectedBy === "Collector" ? "Collector" : "MAS", member_mas_employee_id: text(input.memberMasEmployeeId) || null, orc: input.orc === true && input.dto !== true, dto: input.dto === true, entries, updated_at: new Date().toISOString() };
   await getDb().insert(drafts).values({ employee_id: user.employeeId, ...values }).onConflictDoUpdate({ target: drafts.employee_id, set: values });
 }
 
@@ -375,7 +388,8 @@ export async function autoSubmitCollectionDrafts() {
   for (const row of rows) {
     try {
       const context = await collectorContext({ employeeId: row.employee_id }, row.collected_by, row.member_mas_employee_id);
-      const orc = context.as === "Collector" && row.orc;
+      const dto = context.as === "Collector" && row.dto;
+      const orc = context.as === "Collector" && !dto && row.orc;
       const keep: DraftItem[] = [];
       const entries: Array<ReturnType<typeof batchEntry>> = [];
       for (const item of draftItems(row)) {
@@ -384,14 +398,14 @@ export async function autoSubmitCollectionDrafts() {
         try {
           const account = data.accounts.find((candidate) => candidate.id === item.enrollmentId);
           if (!account || accountState(account, data.payments, today).latestOrDate >= item.addedOn) continue;
-          entries.push(batchEntry(context, data, { ...item, amount: item.amount.trim() ? Number(item.amount) : null }, item.addedOn, orc, true));
+          entries.push(batchEntry(context, data, { ...item, amount: item.amount.trim() ? Number(item.amount) : null }, item.addedOn, orc, true, dto));
           pending.set(item.enrollmentId, "");
         } catch (error) {
           console.error(`Automatic collection submission: kept in the batch of ${row.employee_id}.`, error);
           keep.push(item); result.held++;
         }
       }
-      const batches = entries.length ? batchRows(context, entries, orc, true) : [];
+      const batches = entries.length ? batchRows(context, entries, orc, true, dto) : [];
       await inTransaction(async () => {
         if (batches.length) await currentDb().insert(submissions).values(batches);
         await writeDraft(row.employee_id, keep);

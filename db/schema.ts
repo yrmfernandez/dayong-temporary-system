@@ -525,6 +525,8 @@ export const collection_submissions = pgTable("collection_submissions", {
   member_mas_employee_id: text(),
   member_mas: text(),
   orc: boolean().notNull().default(false),
+  /** A Collector's batch marked DTO (owner, November 11, 2026): no incentive, the whole amount remitted. */
+  dto: boolean().notNull().default(false),
   /** When the MAS saw this batch was rejected: its red number clears (lib/notifications.ts). */
   rejection_seen_at: moment("rejection_seen_at"),
   /** Sent by the nightly job because the MAS never pressed Submit (owner, November 4, 2026): the clerk is warned to contact them. */
@@ -545,6 +547,7 @@ export const collection_drafts = pgTable("collection_drafts", {
   collected_by: text().notNull().default("MAS"),
   member_mas_employee_id: text(),
   orc: boolean().notNull().default(false),
+  dto: boolean().notNull().default(false),
   /** [{ enrollmentId, months, amount, waiver, addedOn }]; addedOn is the day the member was added, their OR date if sent automatically. */
   entries: jsonb().notNull(),
   updated_at: moment("updated_at").notNull(),

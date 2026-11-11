@@ -26,6 +26,9 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
  * saved under that clearing, so its time decides the incentive, however late the details are typed. **Reject** (only
  * before Mark remitted) is for a batch that should not be saved at all, with the reason the MAS sees; the MAS can submit
  * those sales again. A submission returned before November 3, 2026 can still be fixed and submitted again by the MAS.
+ *
+ * The clerk may also move a batch not yet marked remitted to another branch of the same MAS (owner, November 11, 2026:
+ * the clerk edits the batch information except the MAS name); once marked remitted it stays on that branch's handover.
  */
 const submissions = schema.sale_submissions;
 export const MAX_SUBMISSION_SALES = 20;
@@ -162,14 +165,27 @@ async function clerkRow(user: SessionUser, id: string) {
 
 const closedMessage = (status: string) => status === "Saved" ? "This MAS submission was already saved." : status === "Rejected" ? "This MAS submission was rejected." : "This MAS submission was returned to the MAS.";
 
-/** A submission the clerk may save now, matching the batch's branch and MAS (and its handover once marked remitted); throws otherwise. */
+/**
+ * A submission the clerk may save now, matching the batch's MAS (and its handover once marked remitted); throws otherwise.
+ * Another branch is allowed when it is one where the MAS works as MAS and the clerk reviews, and the batch is not yet
+ * marked remitted; `branch` is where it is saved.
+ */
 export async function reviewableSubmission(user: SessionUser, id: string, branch: string, mas: string, clearingId = "") {
   const row = await clerkRow(user, id);
   if (!OPEN.includes(row.status)) throw new Error(closedMessage(row.status));
-  if (row.branch !== text(branch) || row.mas !== text(mas)) throw new Error(`This MAS submission is for ${row.branch}, ${row.mas}. Keep that branch and MAS.`);
+  if (row.mas !== text(mas)) throw new Error(`This MAS submission is from ${row.mas}. Keep that MAS.`);
+  let savedBranch = { id: row.branch_id, name: row.branch };
+  if (row.branch !== text(branch)) {
+    if (row.clearing_id) throw new Error(`This batch was marked remitted for ${row.branch}, so it stays in ${row.branch}.`);
+    const moved = (await masProfile({ employeeId: row.mas_employee_id })).branches.find((item) => item.name === text(branch));
+    if (!moved) throw new Error(`${row.mas} does not work as MAS in ${text(branch) || "that branch"}. Pick one of their branches.`);
+    const scope = await reviewBranches(user);
+    if (scope && !scope.includes(moved.id)) throw new Error(`You are not assigned to ${moved.name} as Entry Clerk.`);
+    savedBranch = moved;
+  }
   // Marked remitted: saved under the clearing recorded then, whose time decides the incentive.
   if (row.clearing_id && row.clearing_id !== text(clearingId)) throw new Error(`This batch was marked remitted at ${stamp(row.remitted_at).slice(11)}. Open it again from Submitted by MAS to save it under that handover.`);
-  return toSubmission(row);
+  return { ...toSubmission(row), savedBranch };
 }
 
 /**
@@ -203,9 +219,10 @@ export async function markSaleSubmissionRemitted(user: SessionUser, id: string, 
 }
 
 /** Marks a submission Saved with its sale IDs. Call inside the New Sales transaction: a submission saved twice rolls back. */
-export async function markSubmissionSaved(id: string, saleIds: string[]) {
+/** `branch`: where the clerk saved it, when moved to another branch of the MAS (reviewableSubmission). */
+export async function markSubmissionSaved(id: string, saleIds: string[], branch?: { id: string; name: string }) {
   const actor = getEncoder();
-  const updated = await currentDb().update(submissions).set({ status: "Saved", sale_ids: saleIds.join(","), reviewed_by_employee_id: actor.employeeId, reviewed_by_name: actor.name, reviewed_at: actor.encodedAt })
+  const updated = await currentDb().update(submissions).set({ status: "Saved", sale_ids: saleIds.join(","), reviewed_by_employee_id: actor.employeeId, reviewed_by_name: actor.name, reviewed_at: actor.encodedAt, ...(branch ? { branch_id: branch.id, branch: branch.name } : {}) })
     .where(and(eq(submissions.submission_id, text(id)), inArray(submissions.status, OPEN))).returning({ id: submissions.submission_id });
   if (!updated.length) throw new Error("This MAS submission was just saved or rejected by someone else. Nothing was saved.");
 }

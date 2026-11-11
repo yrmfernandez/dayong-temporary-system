@@ -43,7 +43,7 @@ export const POST = withEncoder(async (request: Request) => {
     const result = await submitCollections(user, await request.json());
     const members = (count: number) => `${count} member${count === 1 ? "" : "s"}`;
     const assigned = result.collectedBy === "Collector" && !result.memberMas;
-    const whose = result.collectedBy === "Collector" ? ` ${assigned ? "Your assigned members" : `Members of ${result.memberMas}`}, collected by you as Collector.` : "";
+    const whose = result.collectedBy === "Collector" ? ` ${assigned ? "Your assigned members" : `Members of ${result.memberMas}`}, collected by you as Collector${result.dto ? ", DTO: no incentive, remit the whole amount" : ""}.` : "";
     const message = (result.batches.length === 1
       ? `${members(result.entryCount)} submitted to the ${result.batches[0].branch} clerk.`
       : `Submitted as ${result.batches.length} batches, one per ${assigned ? "branch and MAS" : "branch"}: ${result.batches.map((batch) => `${assigned ? `${batch.branch}, ${batch.memberMas}` : batch.branch} (${members(batch.entryCount)})`).join("; ")}. Remit each at its branch.`) + whose;

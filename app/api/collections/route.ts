@@ -110,19 +110,14 @@ async function saveCollections(request: Request, user: SessionUser) {
     /*
      * Whose members (owner, November 3, 2026): a Collector collects the members of a MAS of the branch, chosen as Members
      * of MAS (memberMas; the Collector themself for accounts assigned to them). The Collector stays accountable for the
-     * cash; each payment keeps the account's MAS on record and as the original MAS.
+     * cash; each payment keeps the account's MAS on record and as the original MAS. A From Clearing batch collected by
+     * DTO may hold another MAS's members too (owner, November 11, 2026: a Collector's batch marked DTO).
+     *
+     * A batch a MAS submitted (lib/collection-submissions.ts) takes the clerk's choices of Collected by, whose members and
+     * ORC (owner, November 11, 2026); only its MAS (the accountable person, checked above) stays.
      */
-    const memberMas = collectedBy === "Collector" ? String(body.memberMas ?? "").trim() || mas : mas;
-    const originalMas = collectedBy === "Collector" ? memberMas : "";
-    // A submitted batch is saved as it was submitted: collected by, whose members and ORC (lib/collection-submissions.ts).
-    // One exception (owner, November 6, 2026): on a Collector's batch of their own accounts the clerk may tick Collected
-    // by MAS, the one way those accounts earn the MAS incentive with a Collector assigned.
-    if (submission) {
-      const clerkChoseMas = submission.collectedBy === "Collector" && collectedBy === "MAS" && sameName(submission.memberMas, submission.mas);
-      if (collectedBy !== submission.collectedBy && !clerkChoseMas) throw new Error(`This batch was submitted as collected by ${submission.collectedBy}.`);
-      if (collectedBy === "Collector" && !sameName(memberMas, submission.memberMas)) throw new Error(`This batch holds members of ${submission.memberMas}.`);
-      if (orc !== submission.orc && !clerkChoseMas) throw new Error(`This batch was submitted with ORC ${submission.orc ? "Yes" : "No"}.`);
-    }
+    const memberMas = collectedBy === "Collector" || collectedBy === "DTO" ? String(body.memberMas ?? "").trim() || mas : mas;
+    const originalMas = collectedBy === "Collector" || (collectedBy === "DTO" && !sameName(memberMas, mas)) ? memberMas : "";
     const paymentMethod = await findActivePaymentMethod(String(body.paymentMethod ?? ""));
     const paymentReference = String(body.paymentReference ?? "").trim();
     // The reference number is optional (October 8, 2026): the receipt photo attached in My Entries is the proof.
@@ -172,7 +167,7 @@ async function saveCollections(request: Request, user: SessionUser) {
         const matches = data.accounts.filter((a) => a.memberNumber === String(entry.memberNumber ?? "").trim() && a.programId === entry.programId);
         if (matches.length !== 1) throw new Error("A unique active program enrollment was not found. A program deactivated for this member, or any account of a member marked Deceased, takes no collections.");
         const account = matches[0];
-        if (!sameName(account.branch, branch) || (!dto && !sameName(account.mas, memberMas))) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch${dto ? "" : collectedBy === "Collector" ? ` and be a member of ${memberMas}` : " and MAS"}.`);
+        if (!sameName(account.branch, branch) || (!dto && !sameName(account.mas, memberMas))) throw new Error(`Collection for ${account.memberNumber} must use its assigned Branch${dto ? "" : collectedBy === "Collector" || originalMas ? ` and be a member of ${memberMas}` : " and MAS"}.`);
         // The payment keeps the account's MAS on record; in a DTO or Collector batch the cash is someone else's to account for.
         const accountMas = dto ? account.mas : memberMas;
         const input = {
