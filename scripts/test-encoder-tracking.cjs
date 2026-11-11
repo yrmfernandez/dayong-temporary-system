@@ -3958,11 +3958,15 @@ test('a returned New Sales batch can go to another branch where its MAS works an
     assert.match((await (await edit('BR-4')).json()).message, /Choose an active branch/);
     assert.match((await (await edit('BR-3')).json()).message, /Choose an active MAS of BR-3/, 'the MAS does not work there');
     assert.match((await (await edit('BR-2')).json()).message, /not in Clearing/, 'the MAS works there but was not cleared there that day');
+    // br3-mas already has a batch waiting in BR-3 that day: moving existing sales enters no receipt twice, so it goes through.
+    const other = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-3', mas: 'br3-mas', dateRemitted: '2026-09-25', controlTotal: 200,
+      sales: [{ existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-2', surname: 'Dos', firstName: 'Bea', addressHouse: 'Address', beneficiaries: [] }] }));
+    assert.equal(other.status, 200, JSON.stringify(await other.clone().json()));
     const moved = await (await edit('BR-3', 'DPE-0003')).json();
     assert.equal(moved.success, true, JSON.stringify(moved));
     assert.match(moved.message, /now goes to br3-mas; it is now in BR-3/);
-    assert.deepEqual(await query('select branch, branch_id, mas, remittance_status from sales'), [{ branch: 'BR-3', branch_id: 'BR-3', mas: 'br3-mas', remittance_status: 'Returned' }]);
-    assert.deepEqual(await query('select branch, branch_id, mas from member_programs'), [{ branch: 'BR-3', branch_id: 'BR-3', mas: 'br3-mas' }], 'the account moves with it');
+    assert.deepEqual(await query('select branch, branch_id, mas, remittance_status from sales where sale_id = $1', [ids[0]]), [{ branch: 'BR-3', branch_id: 'BR-3', mas: 'br3-mas', remittance_status: 'Returned' }]);
+    assert.deepEqual(await query("select branch, branch_id, mas from member_programs where member_number = (select member_number from sales where sale_id = $1)", [ids[0]]), [{ branch: 'BR-3', branch_id: 'BR-3', mas: 'br3-mas' }], 'the account moves with it');
     assert.equal((await query("select count(*)::int as n from record_corrections where record_id = $1", [ids[0]]))[0].n, 1, 'kept in Record Corrections');
   } finally { globalThis.dayongClearingNotRequired = true; }
 });

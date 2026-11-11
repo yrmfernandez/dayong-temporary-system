@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, monthCount, monthIndex, monthName, paymentsByEnrollment, validatePayment, validMonth, type AccountPayment } from "@/lib/account-rules";
 import { commitCollections, loadAccountData, type NewCollection } from "@/lib/account-data";
 import { planDeletion } from "@/lib/admin-delete";
-import { clearingProblem, waitingBatchProblem } from "@/lib/clearing";
+import { clearingProblem } from "@/lib/clearing";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { currentDb, inTransaction, schema, type Transaction } from "@/lib/db";
@@ -36,7 +36,8 @@ import { manilaNow } from "@/lib/remittance-deadline";
  * NOP, and the amount and incentive follow the program. A New Sales batch can also go to another MAS (owner, October 21, 2026), one cleared
  * for New Sales in the batch's branch on its Date Remitted, as when encoding; the sales, their accounts and the slip
  * made on resubmitting follow that MAS. It can also go to another branch (owner, November 11, 2026): an active branch where
- * its MAS (the same or the one chosen) works and is cleared for New Sales on the Date Remitted; the sales and their
+ * its MAS (the same or the one chosen) works and is cleared for New Sales on the Date Remitted (another batch of theirs
+ * waiting that day does not stop it: no receipt is entered again); the sales and their
  * accounts move with it and are priced with that branch's incentives. Entries keep their IDs,
  * receipt photos and encoder; the same checks as encoding apply, every change is kept in Record Corrections, and the
  * batch stays Returned until the clerk resubmits it. What else was set when encoding can be fixed too (owner, October 29,
@@ -327,11 +328,8 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
     const notCleared = dtoBatch ? "" : await clearingProblem(accountableId, accountableName, branchName, dateRemitted, batch.kind === "New Sale" ? "New Sales" : "Collections");
     if (notCleared) throw new Error(notCleared);
   }
-  // The new MAS must not already have a New Sales batch waiting for approval that day (double entries), as when encoding.
-  if (newMas || movedBranch) {
-    const waiting = await waitingBatchProblem(accountableId, accountableName, branchName, dateRemitted, "New Sales");
-    if (waiting) throw new Error(waiting);
-  }
+  // No double-entry check here (owner, November 11, 2026): moving a returned batch to another MAS or branch enters no
+  // receipt again (each sale keeps its application number), so another batch of that MAS waiting that day is fine.
   if (dateRemitted !== day(first.date_remitted)) {
     dateRemittedReason = text(input.dateRemittedReason).slice(0, 300);
     if (dateRemittedReason.length < DATE_REMITTED_REASON_MIN) throw new Error("Enter the reason the Date Remitted was changed.");
