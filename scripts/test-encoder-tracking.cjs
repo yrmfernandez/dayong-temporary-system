@@ -3927,6 +3927,46 @@ test('a returned New Sales batch: application number, date and amount can be fix
   assert.equal(await count('members'), 1, 'the removed sale\'s new member went with it');
 });
 
+test('a returned New Sales batch can go to another branch where its MAS works and is in Clearing that day (November 11, 2026)', async () => {
+  const h = harness();
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active'], ['BR-2', 'BR-2', '', '', '', '', '', '', '', '', '', '', 'active'], ['BR-3', 'BR-3', '', '', '', '', '', '', '', '', '', '', 'active'], ['BR-4', 'BR-4', '', '', '', '', '', '', '', '', '', '', 'inactive']];
+  h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'br3-mas', 'BR-3', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-2'], ['EBA-3', 'DPE-0003', 'BR-3']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0, '', '', '', '', '', '', 'TRUE', 'FALSE']];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'different-mas']);
+  await seed('branches', [{ branch_id: 'BR-2', branch_name_code: 'BR-2' }, { branch_id: 'BR-3', branch_name_code: 'BR-3' }], { skipExisting: true });
+  await seed('employees', [{ employee_id: 'DPE-0003', full_name: 'br3-mas' }], { skipExisting: true });
+  const saved = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', controlTotal: 200,
+    sales: [{ existingMember: false, programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', surname: 'Uno', firstName: 'Ana', addressHouse: 'Address', beneficiaries: [] }] }));
+  assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
+  await query("update sales set remittance_status = 'Returned'");
+  const ids = (await query('select sale_id from sales')).map((row) => row.sale_id);
+  const route = h.load('app/api/my-entries/batch/route.ts');
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    await seed('clearings', [
+      { clearing_id: 'CLR-A', branch: 'BR-1', employee_id: 'DPE-0002', employee_name: 'different-mas', cleared_at: '2026-09-25T02:00:00Z', cleared_date: '2026-09-25', status: 'Open' },
+      { clearing_id: 'CLR-B', branch: 'BR-3', employee_id: 'DPE-0003', employee_name: 'br3-mas', cleared_at: '2026-09-25T02:10:00Z', cleared_date: '2026-09-25', status: 'Open' },
+    ]);
+    const loaded = await (await route.GET(new Request(`http://localhost/api/my-entries/batch?ids=${ids.join(',')}`))).json();
+    assert.deepEqual(loaded.batch.branchChoices, ['BR-1', 'BR-2', 'BR-3'], 'active branches only');
+    const inBr3 = await (await route.GET(new Request(`http://localhost/api/my-entries/batch?ids=${ids.join(',')}&branch=BR-3`))).json();
+    assert.deepEqual(inBr3.batch.masChoices.map((choice) => [choice.id, choice.cleared]), [['DPE-0003', true]], 'the MAS list follows the branch picked');
+    const edit = (branch, masEmployeeId = 'DPE-0002') => route.POST(request({ ids, masEmployeeId, branch, dateRemitted: '2026-09-25', paymentMethod: 'Cash', entries: [{ id: ids[0] }] }));
+    assert.match((await (await edit('BR-4')).json()).message, /Choose an active branch/);
+    assert.match((await (await edit('BR-3')).json()).message, /Choose an active MAS of BR-3/, 'the MAS does not work there');
+    assert.match((await (await edit('BR-2')).json()).message, /not in Clearing/, 'the MAS works there but was not cleared there that day');
+    const moved = await (await edit('BR-3', 'DPE-0003')).json();
+    assert.equal(moved.success, true, JSON.stringify(moved));
+    assert.match(moved.message, /now goes to br3-mas; it is now in BR-3/);
+    assert.deepEqual(await query('select branch, branch_id, mas, remittance_status from sales'), [{ branch: 'BR-3', branch_id: 'BR-3', mas: 'br3-mas', remittance_status: 'Returned' }]);
+    assert.deepEqual(await query('select branch, branch_id, mas from member_programs'), [{ branch: 'BR-3', branch_id: 'BR-3', mas: 'br3-mas' }], 'the account moves with it');
+    assert.equal((await query("select count(*)::int as n from record_corrections where record_id = $1", [ids[0]]))[0].n, 1, 'kept in Record Corrections');
+  } finally { globalThis.dayongClearingNotRequired = true; }
+});
+
 test('a returned New Sales batch can go to another MAS, only one in Clearing that day (October 21, 2026)', async () => {
   const h = harness();
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];

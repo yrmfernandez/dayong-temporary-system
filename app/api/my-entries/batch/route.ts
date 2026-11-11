@@ -13,8 +13,10 @@ export async function GET(request: Request) {
   const user = await getSessionUser();
   if (!user || !canAccessPath(user, "/my-entries")) return Response.json({ success: false, message: "You do not have access to My Entries." }, { status: 403 });
   try {
-    const ids = (new URL(request.url).searchParams.get("ids") ?? "").split(",");
-    const batch = await getReturnedBatch(ids, { employeeId: user.employeeId, isAdmin: await canManageUsers() });
+    const params = new URL(request.url).searchParams;
+    const ids = (params.get("ids") ?? "").split(",");
+    // &branch=…: a New Sales batch about to move to that branch lists its MAS (November 11, 2026).
+    const batch = await getReturnedBatch(ids, { employeeId: user.employeeId, isAdmin: await canManageUsers() }, params.get("branch") ?? "");
     return Response.json({ success: true, batch }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to open the batch." }, { status: 400 });

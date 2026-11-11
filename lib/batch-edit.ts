@@ -35,7 +35,9 @@ import { manilaNow } from "@/lib/remittance-deadline";
  * of the member's accounts of the same branch and MAS (owner, November 4, 2026): it takes that account's next month and
  * NOP, and the amount and incentive follow the program. A New Sales batch can also go to another MAS (owner, October 21, 2026), one cleared
  * for New Sales in the batch's branch on its Date Remitted, as when encoding; the sales, their accounts and the slip
- * made on resubmitting follow that MAS. Entries keep their IDs,
+ * made on resubmitting follow that MAS. It can also go to another branch (owner, November 11, 2026): an active branch where
+ * its MAS (the same or the one chosen) works and is cleared for New Sales on the Date Remitted; the sales and their
+ * accounts move with it and are priced with that branch's incentives. Entries keep their IDs,
  * receipt photos and encoder; the same checks as encoding apply, every change is kept in Record Corrections, and the
  * batch stays Returned until the clerk resubmits it. What else was set when encoding can be fixed too (owner, October 29,
  * 2026): ORC on a Collector batch, and per entry No incentive with its reason; Collections also Reactivation,
@@ -71,6 +73,8 @@ export type EditableBatch = {
    * whether they are cleared for New Sales on the batch's Date Remitted (only a cleared one can be saved).
    */
   masChoices?: Array<{ id: string; name: string; cleared: boolean }>;
+  /** New Sales: the active branches the batch can move to (owner, November 11, 2026). */
+  branchChoices?: string[];
   returnReason: string;
   dateRemitted: string;
   /** Why the Date Remitted is not the clearing day, when it was changed (owner, October 13, 2026). */
@@ -155,7 +159,8 @@ async function returnReason(remittanceId: string | null) {
 }
 
 /** What the editor shows for a Returned batch. */
-export async function getReturnedBatch(ids: string[], by: By): Promise<EditableBatch> {
+/** `branch` (New Sales): list the MAS choices of that branch instead, when the clerk picks another branch for the batch. */
+export async function getReturnedBatch(ids: string[], by: By, branch = ""): Promise<EditableBatch> {
   const batch = await returnedBatch(ids, by);
   const db = currentDb();
   const blank = { memberId: "", programId: "", monthFrom: "", monthTo: "", nopFrom: 0, nopTo: 0, basePay: 0, flexible: false, accountId: "", accounts: [] as CollectionAccountChoice[], applicationNumber: "", notes: "", doiTime: "", reactivation: false, transferred: false, waiver: false, differentIncentive: false, differentIncentiveType: "" as "" | "fixed" | "percentage", differentIncentiveAmount: 0 };
@@ -178,7 +183,8 @@ export async function getReturnedBatch(ids: string[], by: By): Promise<EditableB
       programs: programList.filter((program) => program.status === "active" || rows.some((row) => row.program_id === program.id))
         .map((program) => ({ id: program.id, name: program.name, rate: Number(program.basePay) || 0, amount: fixedNewSaleAmount(program), flexible: Boolean(program.flexible), amountEditable: Boolean(program.newSaleAmountEditable) }))
         .sort((a, b) => a.name.localeCompare(b.name)),
-      masChoices: await masChoices(text(first.branch), day(first.date_remitted), text(first.accountable_employee_id)),
+      masChoices: await masChoices(text(branch) || text(first.branch), day(first.date_remitted), text(first.accountable_employee_id)),
+      branchChoices: (await getBranches()).filter((item) => item.status === "active" || entryKey(item.name) === entryKey(first.branch)).map((item) => item.name).sort((a, b) => a.localeCompare(b)),
       encodedOn: manilaDate(first.encoded_at), kind: "New Sale", branch: text(first.branch), person: text(first.mas), personEmployeeId: text(first.accountable_employee_id), returnReason: await returnReason(first.linked_remittance_id),
       dateRemitted: day(first.date_remitted), dateRemittedReason: text(first.date_remitted_reason), paymentMethod: text(first.payment_method) || "Cash", paymentReference: "", collectedBy: "", orc: false,
       penalty: rows.reduce((sum, row) => sum + Number(row.penalty_amount ?? 0), 0), penaltyNote: rows.map((row) => text(row.penalty_note)).find(Boolean) ?? "",
@@ -262,6 +268,8 @@ export type BatchEditInput = {
   ids: string[];
   /** New Sales: the MAS the batch goes to; blank or the same keeps it. */
   masEmployeeId?: string;
+  /** New Sales: the branch the batch goes to (November 11, 2026); blank or the same keeps it. */
+  branch?: string;
   dateRemitted: string; dateRemittedReason?: string; paymentMethod: string; paymentReference?: string; collectedBy?: string;
   /** Collections: ORC (a Collector batch only); left out, as encoded. */
   orc?: boolean;
@@ -296,10 +304,17 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
   // Late dates are judged against the day the batch was first encoded, so fixing it later needs no new reason.
   const encodedOn = manilaDate(rows[0].encoded_at) || today;
   const first = rows[0];
-  const branchName = text(first.branch);
+  // Another branch for a New Sales batch (owner, November 11, 2026): an active one, where its MAS works, cleared as below.
+  const allBranches = await getBranches();
+  const requestedBranch = batch.kind === "New Sale" ? text(input.branch) : "";
+  const movedBranch = requestedBranch && entryKey(requestedBranch) !== entryKey(first.branch) ? allBranches.find((item) => item.status === "active" && entryKey(item.name) === entryKey(requestedBranch)) ?? null : null;
+  if (requestedBranch && entryKey(requestedBranch) !== entryKey(first.branch) && !movedBranch) throw new Error(`Choose an active branch; ${requestedBranch} is not one.`);
+  const branchName = movedBranch?.name ?? text(first.branch);
   // Another MAS for a New Sales batch (owner, October 21, 2026): an active employee of the branch, cleared as below.
   const masId = batch.kind === "New Sale" ? text(input.masEmployeeId) : "";
   const newMas = masId && masId !== text(first.accountable_employee_id) ? await branchEmployee(masId, branchName) : null;
+  // Moved with the same MAS: they must work in that branch too.
+  if (movedBranch && !newMas) await branchEmployee(text(first.accountable_employee_id), branchName);
   const accountableId = newMas?.id ?? text(first.accountable_employee_id);
   const accountableName = newMas?.name ?? ("accountable_name" in first ? text(first.accountable_name) || text(first.mas) : text(first.mas));
   // A changed Date Remitted needs a clearing that covers it and the reason it was changed (owner, October 13, 2026);
@@ -307,21 +322,21 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
   let dateRemittedReason: string | null = null;
   // A DTO batch (paid at the office, the receiving clerk accountable) has no clearing to check.
   const dtoBatch = "accountable_role" in first && text(first.accountable_role) === "DTO";
-  if (dateRemitted !== day(first.date_remitted) || newMas) {
+  if (dateRemitted !== day(first.date_remitted) || newMas || movedBranch) {
     if (dtoBatch && dateRemitted > today) throw new Error("The Date Remitted cannot be in the future.");
     const notCleared = dtoBatch ? "" : await clearingProblem(accountableId, accountableName, branchName, dateRemitted, batch.kind === "New Sale" ? "New Sales" : "Collections");
     if (notCleared) throw new Error(notCleared);
   }
   // The new MAS must not already have a New Sales batch waiting for approval that day (double entries), as when encoding.
-  if (newMas) {
-    const waiting = await waitingBatchProblem(newMas.id, newMas.name, branchName, dateRemitted, "New Sales");
+  if (newMas || movedBranch) {
+    const waiting = await waitingBatchProblem(accountableId, accountableName, branchName, dateRemitted, "New Sales");
     if (waiting) throw new Error(waiting);
   }
   if (dateRemitted !== day(first.date_remitted)) {
     dateRemittedReason = text(input.dateRemittedReason).slice(0, 300);
     if (dateRemittedReason.length < DATE_REMITTED_REASON_MIN) throw new Error("Enter the reason the Date Remitted was changed.");
   }
-  const branch = (await getBranches()).find((item) => item.name.trim().toLowerCase() === branchName.toLowerCase());
+  const branch = allBranches.find((item) => item.name.trim().toLowerCase() === branchName.toLowerCase());
   const corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> = [];
   const calendar = await loadWorkCalendar(branchName);
 
@@ -335,13 +350,13 @@ export async function saveReturnedBatch(input: BatchEditInput, by: By) {
       await removeEntry(tx, kind, id, plan);
       corrections.push({ module: `Delete ${kind}`, id, before: { title: plan.title, deleted: plan.effects }, after: { deleted: true } });
     }
-    if (batch.kind === "New Sale") await saveSales(tx, kept as typeof batch.sales, changes, { calendar, dateRemitted, dateRemittedReason, method: method.name, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections, mas: newMas });
+    if (batch.kind === "New Sale") await saveSales(tx, kept as typeof batch.sales, changes, { calendar, dateRemitted, dateRemittedReason, method: method.name, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections, mas: newMas, branch: movedBranch?.name ?? null });
     else await saveCollections(tx, kept as typeof batch.collections, changes, { calendar, dateRemitted, dateRemittedReason, method: method.name, reference: text(input.paymentReference), collectedBy: text(input.collectedBy), added, addedIds, first: batch.collections[0], orc: input.orc, penalty, penaltyNote, fidelity, encodedOn, today, branchId: branch?.id ?? "", corrections });
   });
   // The saved batch stands even if the correction log cannot be written; the Audit Log has every change as well.
   for (const change of corrections) await recordCorrection(change.module, change.id, reason, change.before, change.after).catch(() => {});
   const edited = corrections.filter((change) => !change.module.startsWith("Delete")).length - addedIds.length;
-  const message = `Saved: ${edited} entr${edited === 1 ? "y" : "ies"} changed${addedIds.length ? `, ${addedIds.length} added` : ""}${removed.length ? `, ${removed.length} removed` : ""}${newMas ? `; the batch now goes to ${newMas.name}` : ""}. The batch stays Returned; press Resubmit batch when it is right.`;
+  const message = `Saved: ${edited} entr${edited === 1 ? "y" : "ies"} changed${addedIds.length ? `, ${addedIds.length} added` : ""}${removed.length ? `, ${removed.length} removed` : ""}${newMas ? `; the batch now goes to ${newMas.name}` : ""}${movedBranch ? `; it is now in ${movedBranch.name}` : ""}. The batch stays Returned; press Resubmit batch when it is right.`;
   return { message, addedIds };
 }
 
@@ -388,7 +403,7 @@ async function removeEntry(tx: Transaction, kind: "sale" | "collection", id: str
   }
 }
 
-type Common = { mas?: { id: string; name: string } | null; calendar: WorkCalendar; dateRemitted: string; dateRemittedReason: string | null; method: string; penalty: number; penaltyNote: string; fidelity: number; encodedOn: string; today: string; branchId: string; corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> };
+type Common = { mas?: { id: string; name: string } | null; branch?: string | null; calendar: WorkCalendar; dateRemitted: string; dateRemittedReason: string | null; method: string; penalty: number; penaltyNote: string; fidelity: number; encodedOn: string; today: string; branchId: string; corrections: Array<{ module: string; id: string; before: unknown; after: unknown }> };
 
 type SaleRow = typeof sales.$inferSelect;
 const beneficiaryOf = (item: typeof beneficiaries.$inferSelect): SaleBeneficiary => ({ surname: text(item.surname), firstName: text(item.first_name), middleName: text(item.middle_name), birthdate: isoDate(item.birthdate), relationship: text(item.relationship) });
@@ -528,13 +543,14 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
       application_no: applicationNumber, or_date: orDate || null, doi: doi || null, doi_time: doiTime || null, amount_paid: amount, notes: notes || null, backdate_reason: backdateReason || null,
       date_remitted: common.dateRemitted, date_remitted_reason: common.dateRemittedReason ?? (row.date_remitted_reason || null), payment_method: common.method, mas_incentive: quote.incentive, remittance_amount: quote.remittance,
       // Another MAS or Date Remitted no longer matches the handover picked when encoding: the time rule decides (lib/clearing.ts).
-      ...(row.clearing_id && (common.mas || common.dateRemitted !== day(row.date_remitted)) ? { clearing_id: null } : {}),
+      ...(row.clearing_id && (common.mas || common.branch || common.dateRemitted !== day(row.date_remitted)) ? { clearing_id: null } : {}),
       ...(noIncentive ? { forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null } : incentiveMarkChanged ? { forfeited_incentive: null } : {}),
       ...(incentiveMarkChanged ? { no_incentive_reason: noIncentiveReason || null } : {}),
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
       program_id: details.programId, ...(programChanged ? registration : {}), ...memberAfter,
       ...(common.mas ? { mas: common.mas.name, accountable_employee_id: common.mas.id, mas_employee_id: common.mas.id } : {}),
+      ...(common.branch ? { branch: common.branch } : {}),
     };
     const before = {
       application_no: row.application_no, or_date: day(row.or_date) || null, doi: day(row.doi) || null, doi_time: text(row.doi_time).slice(0, 5) || null, amount_paid: Number(row.amount_paid ?? 0), notes: row.notes || null, backdate_reason: row.backdate_reason || null,
@@ -544,11 +560,12 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
       penalty_amount: row.penalty_amount === null ? null : Number(row.penalty_amount), penalty_note: row.penalty_note || null, fidelity_amount: row.fidelity_amount === null ? null : Number(row.fidelity_amount),
       program_id: row.program_id, ...(programChanged ? { registration_fee: row.registration_fee, registration_amount: row.registration_amount === null ? null : Number(row.registration_amount) } : {}), ...memberBefore,
       ...(common.mas ? { mas: row.mas, accountable_employee_id: row.accountable_employee_id, mas_employee_id: row.mas_employee_id } : {}),
+      ...(common.branch ? { branch: row.branch } : {}),
     };
     const beneficiariesChanged = JSON.stringify(details.beneficiaries) !== JSON.stringify(current.beneficiaries);
     if (JSON.stringify(before) === JSON.stringify(after) && !beneficiariesChanged) continue;
     writes.push(() => tx.update(sales).set(after).where(eq(sales.sale_id, row.sale_id)));
-    writes.push(() => tx.update(memberPrograms).set({ amount_paid: amount, remittance_method: common.method, doi_time: doiTime || null, ...(programChanged ? { program_id: details.programId, ...registration } : {}), ...(common.mas ? { mas: common.mas.name } : {}) })
+    writes.push(() => tx.update(memberPrograms).set({ amount_paid: amount, remittance_method: common.method, doi_time: doiTime || null, ...(programChanged ? { program_id: details.programId, ...registration } : {}), ...(common.mas ? { mas: common.mas.name } : {}), ...(common.branch ? { branch: common.branch } : {}) })
       .where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))));
     // The member's record follows the details the clerk changed on this sale; others on the record stay.
     const memberChanges = Object.fromEntries(Object.entries(memberAfter).filter(([column, value]) => value !== memberBefore[column as keyof typeof memberBefore]));

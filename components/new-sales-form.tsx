@@ -270,7 +270,7 @@ type SubmissionSummary = {
 };
 type MasProfile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
 /** A Returned batch open on the form (owner, November 6, 2026): corrected in place, keeping IDs and receipt photos. */
-type ReturnedEdit = { ids: string[]; branch: string; person: string; personEmployeeId: string; returnReason: string; encodedOn: string; paymentReference: string; masChoices: Array<{ id: string; name: string; cleared: boolean }> };
+type ReturnedEdit = { ids: string[]; branch: string; person: string; personEmployeeId: string; returnReason: string; encodedOn: string; paymentReference: string; masChoices: Array<{ id: string; name: string; cleared: boolean }>; branchChoices: string[] };
 
 export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const masMode = mode === "mas";
@@ -1285,7 +1285,7 @@ Is this cash part of that handover?`) ? "same"
     try {
       const masEmployeeId = edit.masChoices.find((item) => item.name === mas)?.id ?? edit.personEmployeeId;
       const response = await fetch("/api/my-entries/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        ids: edit.ids, masEmployeeId, dateRemitted, dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "", paymentMethod, paymentReference: edit.paymentReference, collectedBy: "MAS",
+        ids: edit.ids, masEmployeeId, branch, dateRemitted, dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "", paymentMethod, paymentReference: edit.paymentReference, collectedBy: "MAS",
         penalty: penaltyAmount, penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "", fidelity: fidelityAmount,
         entries: [...sales.map((sale) => ({ id: sale.id, applicationNumber: sale.applicationNumber, orDate: sale.orDate, amount: amountPaidOf(sale), backdateReason: sale.backdateReason ?? "", doiTime: sale.doiTime ?? "",
           noIncentive: noIncentiveOn(sale), noIncentiveReason: noIncentiveOn(sale) ? (sale.noIncentiveReason ?? "").trim() : "", sale: details(sale) })),
@@ -1300,6 +1300,23 @@ Is this cash part of that handover?`) ? "same"
     } catch (error) {
       setSaveMessage(error instanceof Error ? error.message : "Unable to save the batch.");
       setSaving(false);
+    }
+  };
+
+  /** A returned batch moved to another branch: the MAS it can go to there. The MAS stays when they work there too. */
+  const loadReturnedMasChoices = async (edit: ReturnedEdit, branchName: string) => {
+    try {
+      const response = await fetch(`/api/my-entries/batch?ids=${encodeURIComponent(edit.ids.join(","))}&branch=${encodeURIComponent(branchName)}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to list the MAS of that branch.");
+      const choices: ReturnedEdit["masChoices"] = result.batch.masChoices ?? [];
+      setReturnedEdit((current) => current ? { ...current, masChoices: choices } : current);
+      if (!choices.some((item) => item.name === mas)) {
+        setMas("");
+        setSales((cards) => cards.map((sale) => ({ ...sale, program: { ...sale.program, mas: "" } })));
+      }
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : "Unable to list the MAS of that branch.");
     }
   };
 
@@ -1328,7 +1345,7 @@ Is this cash part of that handover?`) ? "same"
       setPaymentMethod(batch.paymentMethod); setPenalty(batch.penalty > 0 ? String(batch.penalty) : ""); setPenaltyNote(batch.penaltyNote); setFidelity(batch.fidelity > 0 ? String(batch.fidelity) : "");
       setSales(cards);
       setExpandedSales(Object.fromEntries(cards.map((sale, index) => [sale.id, index === 0])));
-      setReturnedEdit({ ids, branch: batch.branch, person: batch.person, personEmployeeId: batch.personEmployeeId, returnReason: batch.returnReason, encodedOn: batch.encodedOn, paymentReference: batch.paymentReference, masChoices: batch.masChoices ?? [] });
+      setReturnedEdit({ ids, branch: batch.branch, person: batch.person, personEmployeeId: batch.personEmployeeId, returnReason: batch.returnReason, encodedOn: batch.encodedOn, paymentReference: batch.paymentReference, masChoices: batch.masChoices ?? [], branchChoices: batch.branchChoices ?? [] });
       setSaveMessage("");
     } catch (error) {
       setSaveMessage(error instanceof Error ? error.message : "Unable to open the batch.");
@@ -1663,9 +1680,13 @@ Is this cash part of that handover?`) ? "same"
               </Label>
 
               {/* A MAS submission not yet marked remitted can move to another branch of the same MAS (owner, November 11, 2026). */}
-              <SearchSelect aria-label="Branch" value={branch} disabled={!submissionId || Boolean(clearingId) || Boolean(returnedEdit)} placeholder="From Clearing"
-                options={branches.filter((item) => item.status === "active" && (!submissionId || item.name === branch || Boolean(masStaff.find((staff) => staff.fullName === mas)?.branchIds.includes(item.id)))).map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))}
-                onValueChange={(selected) => { setBranch(selected); setSales((current) => current.map((sale) => ({ ...sale, program: { ...sale.program, branch: selected } }))); }}/>
+              {/* A returned batch can also move to another branch (owner, November 11, 2026); its MAS list follows the branch. */}
+              <SearchSelect aria-label="Branch" value={branch} disabled={returnedEdit ? false : !submissionId || Boolean(clearingId)} placeholder="From Clearing"
+                options={returnedEdit
+                  ? returnedEdit.branchChoices.map((name) => ({ value: name, label: name, description: branches.find((item) => item.name === name)?.territory || "Unassigned territory" }))
+                  : branches.filter((item) => item.status === "active" && (!submissionId || item.name === branch || Boolean(masStaff.find((staff) => staff.fullName === mas)?.branchIds.includes(item.id)))).map((item) => ({ value: item.name, label: item.name, description: item.territory || "Unassigned territory" }))}
+                onValueChange={(selected) => { if (selected === branch) return; setBranch(selected); setSales((current) => current.map((sale) => ({ ...sale, program: { ...sale.program, branch: selected } }))); if (returnedEdit) void loadReturnedMasChoices(returnedEdit, selected); }}/>
+              {returnedEdit && branch !== returnedEdit.branch && <p className="text-xs text-amber-800">Moving the batch from {returnedEdit.branch} to {branch}: its MAS must work there and be cleared for New Sales on the Date Remitted.</p>}
               {submissionId && !clearingId && <p className="text-xs text-muted-foreground">Submitted for this branch; change it if the MAS picked the wrong one of their branches.</p>}
             </div>
 

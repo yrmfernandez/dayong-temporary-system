@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Returned New Sales batch: change the branch (2026-11-11)
+
+- **Asked (owner):** in New Sales returned entries, allow changing the branch.
+- **Done:** the returned-batch editor on New Sales (opened from My Entries) unlocks **Branch**, listing the active branches (`branchChoices` from `getReturnedBatch` in `lib/batch-edit.ts`). Picking a branch reloads the **MAS** list for it (`GET /api/my-entries/batch?ids=…&branch=…`); the MAS stays if they work there, otherwise it is cleared to be picked. `saveReturnedBatch` takes `branch`: it must be active; the MAS (same or new) must work in it and be in Clearing for New Sales there on the Date Remitted, with no other New Sales batch of theirs waiting that day (as for another MAS). The sales and their accounts get the new branch (branch IDs follow by the existing link trigger), the incentive is priced with that branch's tiers, the picked handover is cleared off the sales as for a new MAS, and each change is in Record Corrections. Collections batches keep their branch. No migration.
+- **Tested:** a new test (active branches listed, the MAS list follows the branch, an inactive branch refused, a branch where the MAS does not work refused, one where they work but were not cleared refused, moved to BR-3 with its MAS: sales and account in BR-3, still Returned, Record Corrections kept). Type check and build pass; all 341 tests pass. Not tried in a browser.
+- **To do (owner):** push (no migration; 0051 from the change below still needs to be migrated first).
+
 ### Clerk edits a MAS batch except the MAS; Collector DTO choice (2026-11-11)
 
 - **Asked (owner):** when a MAS submits Collections or New Sales, let the Entry Clerk edit the batch information except the MAS name; and give a Collector the choice of DTO or not. Asked which: the owner chose DTO on the Collector's Submit Collections page, changeable by the clerk on review.
