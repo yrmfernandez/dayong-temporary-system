@@ -2534,6 +2534,10 @@ Is this cash part of that handover?`) ? "same"
                                 Widow
                               </SelectItem>
 
+                              <SelectItem value="separated">
+                                Separated
+                              </SelectItem>
+
                               <SelectItem value="live-in">
                                 Live in
                               </SelectItem>
