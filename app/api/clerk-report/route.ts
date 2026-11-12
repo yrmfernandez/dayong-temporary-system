@@ -13,7 +13,7 @@ import { createExpense, deleteExpense, editExpense } from "@/lib/finance-data";
 import { getBranches } from "@/lib/google-sheets-data";
 import { expensePhotoIds, expensePhotosFrom, saveExpensePhotos } from "@/lib/receipt-photos";
 import { createFidelitySlip, editFidelitySlip, voidFidelitySlip } from "@/lib/remittance-workflow";
-import { changeReturnedWeekly, isPeriodKind, periodView, resubmitPeriod, submitPeriod } from "@/lib/report-periods";
+import { changeReturnedWeekly, clerkPeriods, isPeriodKind, periodView, resubmitPeriod, submitPeriod } from "@/lib/report-periods";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const same = (a: unknown, b: unknown) => text(a).toLowerCase() === text(b).toLowerCase();
@@ -202,8 +202,15 @@ export const POST = withEncoder(async (request: Request) => {
       case "resubmit-period": {
         const kind = asAuditPeriod(body.kind);
         if (!isPeriodKind(kind)) throw new Error("Only weekly and monthly reports are submitted.");
-        await resubmitPeriod(kind, user.employeeId, text(body.date));
-        return Response.json({ success: true, message: "Report submitted again." });
+        // A returned weekly is submitted with the days in its boxes: changed ones are saved first (November 12, 2026).
+        let start = text(body.date);
+        const from = text(body.from), to = text(body.to);
+        if (kind === "weekly" && from && to) {
+          const week = (await clerkPeriods(user.employeeId, "weekly")).find((item) => item.start === start);
+          if (week && (week.start !== from || week.end !== to)) { await changeReturnedWeekly(user.employeeId, start, { from, to }); start = from; }
+        }
+        await resubmitPeriod(kind, user.employeeId, start);
+        return Response.json({ success: true, message: start === text(body.date) ? "Report submitted again." : `Days changed and the report submitted again.` });
       }
       default:
         return Response.json({ success: false, message: "Unknown report action." }, { status: 400 });

@@ -164,7 +164,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       {data && submitted && data.period && <PeriodNotice kind={kind} view={data.period} own={own} saving={saving}
         onChangeDates={async (from, to) => { if (await act({ action: "change-period-dates", from, to })) { setDate(from); setTo(to); } }}
         onSubmit={async () => { const draft = data.period?.draft; if (!draft) return; if (await act({ action: "submit-period", from: draft.start, to: draft.end })) { setDate(draft.start); setTo(draft.end); } }}
-        onResubmit={() => void act({ action: "resubmit-period" })} />}
+        onResubmit={async (from, to) => { if (await act({ action: "resubmit-period", from, to }) && from && to) { setDate(from); setTo(to); } }} />}
       {data && own && <AuditNotice audit={data.audit} />}
 
       {report && (
@@ -367,7 +367,7 @@ function PeriodPicker({ kind, view, fixed, onPick }: { kind: Kind; view: PeriodV
 }
 
 /** Where the weekly or monthly report stands: not submitted (with Submit), submitted, returned (with Submit again), approved. */
-function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit, onChangeDates }: { kind: Kind; view: PeriodView; own: boolean; saving: boolean; onSubmit: () => void; onResubmit: () => void; onChangeDates: (from: string, to: string) => void }) {
+function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit, onChangeDates }: { kind: Kind; view: PeriodView; own: boolean; saving: boolean; onSubmit: () => void; onResubmit: (from?: string, to?: string) => void; onChangeDates: (from: string, to: string) => void }) {
   const name = kind === "weekly" ? "weekly report" : "monthly report";
   const current = view.current, draft = view.draft;
   if (current) {
@@ -378,8 +378,9 @@ function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit, onChangeD
         <span className="text-xs">submitted by {current.submittedBy} on {showDateTime(current.submittedAt)}</span></p>
       {returned ? <>
         <p><span className="font-semibold">Returned by {current.returnedBy}</span> on {showDateTime(current.returnedAt)}: {current.returnReason}</p>
-        {own && view.dates && (view.dates.canFrom || view.dates.canTo) && <ReturnedDates key={`${current.start}|${current.end}`} start={current.start} end={current.end} dates={view.dates} saving={saving} onSave={onChangeDates} />}
-        {own && <p className="flex flex-wrap items-center gap-2 text-xs">Fix it, then submit it again; it is locked again once submitted.<Button type="button" size="sm" disabled={saving} onClick={onResubmit}>Submit again</Button></p>}
+        {own && (view.dates && (view.dates.canFrom || view.dates.canTo)
+          ? <ReturnedDates key={`${current.start}|${current.end}`} start={current.start} end={current.end} dates={view.dates} saving={saving} onSave={onChangeDates} onResubmit={onResubmit} />
+          : <p className="flex flex-wrap items-center gap-2 text-xs">Fix it, then submit it again; it is locked again once submitted.<Button type="button" size="sm" disabled={saving} onClick={() => onResubmit()}>Submit again</Button></p>)}
       </> : current.auditStatus !== "Approved" && <p className="text-xs">Submitted: locked until the audit approves it or returns it to {own ? "you" : "the clerk"}.</p>}
     </div>;
   }
@@ -395,11 +396,13 @@ function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit, onChangeD
 
 /**
  * A returned weekly's From and To (November 12, 2026; lib/report-periods.ts changeReturnedWeekly): From only on the
- * clerk's first weekly, To only on their latest, so no day is left out or counted twice.
+ * clerk's first weekly, To only on their latest, so no day is left out or counted twice. Show these days reloads the
+ * report for them; Submit again submits the days in the boxes, changed or not (a clerk typed new days and submitted
+ * without saving them, owner, November 12, 2026).
  */
-function ReturnedDates({ start, end, dates, saving, onSave }: { start: string; end: string; dates: NonNullable<PeriodView["dates"]>; saving: boolean; onSave: (from: string, to: string) => void }) {
+function ReturnedDates({ start, end, dates, saving, onSave, onResubmit }: { start: string; end: string; dates: NonNullable<PeriodView["dates"]>; saving: boolean; onSave: (from: string, to: string) => void; onResubmit: (from?: string, to?: string) => void }) {
   const [from, setFrom] = useState(start), [to, setTo] = useState(end);
-  const today = todayInManila();
+  const today = todayInManila(), changed = from !== start || to !== end;
   return <div className="flex flex-wrap items-end gap-2 rounded-md border border-amber-300/70 bg-background/60 p-2 text-xs dark:border-amber-800">
     <label>From
       {dates.canFrom ? <Input className="mt-1 h-8 w-40" type="date" max={to || today} value={from} onChange={(event) => event.target.value && setFrom(event.target.value)} />
@@ -409,8 +412,9 @@ function ReturnedDates({ start, end, dates, saving, onSave }: { start: string; e
       {dates.canTo ? <Input className="mt-1 h-8 w-40" type="date" min={from} max={dates.toLimit || today} value={to} onChange={(event) => event.target.value && setTo(event.target.value)} />
         : <span className="mt-1 flex h-8 items-center rounded-md border bg-muted/40 px-2" title={`The day before your next weekly report (it starts ${showDate(dates.toLimit)})`}>{showDate(end)}</span>}
     </label>
-    <Button type="button" size="sm" variant="outline" disabled={saving || (from === start && to === end) || to < from} onClick={() => onSave(from, to)}>Change days</Button>
-    <span className="basis-full text-muted-foreground">{!dates.canFrom ? "The first day stays the day after your previous weekly report. " : ""}{!dates.canTo ? "The last day stays the day before your next weekly report. " : ""}So no day is left out or counted twice.</span>
+    <Button type="button" size="sm" variant="outline" disabled={saving || !changed || to < from} onClick={() => onSave(from, to)}>Show these days</Button>
+    <Button type="button" size="sm" disabled={saving || to < from} onClick={() => onResubmit(from, to)}>{changed ? `Submit again for ${spanLabel(from, to)}` : "Submit again"}</Button>
+    <span className="basis-full text-muted-foreground">{changed ? `The report below still shows ${spanLabel(start, end)}; Show these days to check the new days first. ` : ""}{!dates.canFrom ? "The first day stays the day after your previous weekly report. " : ""}{!dates.canTo ? "The last day stays the day before your next weekly report. " : ""}So no day is left out or counted twice. It is locked again once submitted.</span>
   </div>;
 }
 

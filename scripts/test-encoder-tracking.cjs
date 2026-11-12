@@ -2552,8 +2552,14 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
   assert.deepEqual([changed.period.current.start, changed.period.current.end, changed.period.current.submission, changed.report.from], ['2026-10-03', '2026-10-11', 'Returned', '2026-10-03']);
   // The second weekly is not returned: its days stay.
   assert.match((await post({ action: 'change-period-dates', kind: 'weekly', date: '2026-10-12', from: '2026-10-12', to: '2026-10-17' })).message, /returned to you/);
-  assert.equal((await post({ action: 'resubmit-period', kind: 'weekly', date: '2026-10-03' })).success, true);
-  assert.match((await post({ action: 'change-period-dates', kind: 'weekly', date: '2026-10-03', from: '2026-10-04', to: '2026-10-11' })).message, /returned to you/, 'submitted again: its days are locked');
+  // Submit again takes the days typed in the boxes, without Change days first (owner, November 12, 2026).
+  assert.match((await post({ action: 'resubmit-period', kind: 'weekly', date: '2026-10-03', from: '2026-10-03', to: '2026-10-13' })).message, /last day stays/, 'the same limits');
+  assert.equal((await get('kind=weekly&date=2026-10-03')).period.current.submission, 'Returned', 'refused: not submitted');
+  const again = await post({ action: 'resubmit-period', kind: 'weekly', date: '2026-10-03', from: '2026-10-02', to: '2026-10-11' });
+  assert.deepEqual([again.success, again.message], [true, 'Days changed and the report submitted again.']);
+  const resent = await get('kind=weekly&date=2026-10-02');
+  assert.deepEqual([resent.period.current.start, resent.period.current.end, resent.period.current.submission], ['2026-10-02', '2026-10-11', 'Submitted']);
+  assert.match((await post({ action: 'change-period-dates', kind: 'weekly', date: '2026-10-02', from: '2026-10-04', to: '2026-10-11' })).message, /returned to you/, 'submitted again: its days are locked');
   assert.match((await post({ action: 'save-notes', kind: 'daily', date: '2026-10-07', specificRemarks: 'Again' })).message, /submitted and locked/, 'locked again');
 
   // HR prepares, only an Administrator approves; then the monthly can be submitted.
@@ -2565,9 +2571,9 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
   asClerk();
   assert.match((await get('kind=weekly&date=2026-10-07')).audit.lock, /approved in the audit and locked/);
   const month = await post({ action: 'submit-period', kind: 'monthly', to: '2026-11-01' });
-  assert.deepEqual([month.success, month.start, month.end, month.monthLabel], [true, '2026-10-03', '2026-11-01', '2026-10']);
+  assert.deepEqual([month.success, month.start, month.end, month.monthLabel], [true, '2026-10-02', '2026-11-01', '2026-10']);
   const monthly = await get('kind=monthly&date=2026-10-10');
-  assert.deepEqual([monthly.period.current.monthLabel, monthly.report.from, monthly.report.to, monthly.report.weeks.length, monthly.report.dateLine], ['2026-10', '2026-10-03', '2026-11-01', 3, 'OCTOBER 2026 · OCTOBER 3 - NOVEMBER 1, 2026']);
+  assert.deepEqual([monthly.period.current.monthLabel, monthly.report.from, monthly.report.to, monthly.report.weeks.length, monthly.report.dateLine], ['2026-10', '2026-10-02', '2026-11-01', 3, 'OCTOBER 2026 · OCTOBER 2 - NOVEMBER 1, 2026']);
   // The next weekly is Week 1 of November.
   assert.deepEqual([(await get('kind=weekly&date=2026-11-05&to=new')).period.draft.week, (await get('kind=weekly&date=2026-11-05&to=new')).period.draft.monthLabel], [1, '2026-11']);
   asHr();
