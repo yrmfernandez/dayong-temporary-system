@@ -365,6 +365,13 @@
       "when": 1794378060662,
       "tag": "0051_collector_dto",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794466756651,
+      "tag": "0052_system_updates",
+      "breakpoints": true
     }
   ]
 }

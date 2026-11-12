@@ -64,6 +64,8 @@ test("Company Reports is for administrators, CEO and President by default, not E
 
 test("every role opens My Notices, even when its page access was configured without it", () => {
   for (const role of ["MAS", "Entry Clerk", "Finance", "HR Officer", "IT Clerk", "CEO", "President"]) assert.equal(access([role], "/my-notices"), true, role);
+  // System Updates (November 12, 2026): every role reads them.
+  for (const role of ["MAS", "Collector", "Entry Clerk", "Finance", "HR Officer", "IT Clerk", "CEO", "President"]) assert.equal(access([role], "/updates"), true, role);
   assert.equal(canAccessPath({ roleNames: ["MAS"], permissions: { manageUsers: false, manageAttendance: false, viewAttendanceReports: false }, rolePages: { mas: ["/mas-sales"] } }, "/my-notices"), true);
 });
 

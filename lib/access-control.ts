@@ -37,7 +37,7 @@ const employeeRoutes = ["/programs", "/branches", "/master-data", "/members", "/
 export const executiveRoles = ["ceo", "president"];
 // Always reachable so nobody is locked out of their dashboard or password change, nor kept from seeing a Notice to
 // Explain issued to them (My Notices shows only their own).
-const alwaysAllowed = ["/", "/settings", "/my-notices"];
+const alwaysAllowed = ["/", "/settings", "/my-notices", "/updates"];
 
 export const normalizeRoleName = (role: string) => role.trim().toLowerCase();
 export const isAdministratorRole = (role: string) => ["administrator", "admin"].includes(normalizeRoleName(role));

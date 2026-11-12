@@ -52,13 +52,17 @@ export function weekOfMonth(date: string) {
   return Math.floor((parts(date).day - 1 + firstWeekday) / 7) + 1;
 }
 
-function headings(kind: AuditPeriod, start: string, end: string, monthLabel = "", ownDates = false) {
+function headings(kind: AuditPeriod, start: string, end: string, monthLabel = "", ownDates = false, weekNumber = 0) {
   const month = MONTHS[parts(start).month - 1];
   // Submitted weeklies and monthlies (lib/report-periods.ts) run over the clerk's own dates, which may cross months.
   const span = parts(start).year !== parts(end).year ? `${longDate(start).toUpperCase()} - ${longDate(end).toUpperCase()}`
     : parts(start).month === parts(end).month ? `${month.toUpperCase()} ${parts(start).day}-${parts(end).day}, ${parts(end).year}`
     : `${MONTHS[parts(start).month - 1].toUpperCase()} ${parts(start).day} - ${MONTHS[parts(end).month - 1].toUpperCase()} ${parts(end).day}, ${parts(end).year}`;
-  if (kind === "weekly" && ownDates) return { reportName: "WEEKLY REPORT", dateLine: span, weekLine: "", summaryLabel: "WEEKLY REPORT", summaryWeek: span };
+  if (kind === "weekly" && ownDates) {
+    // Week N of the month the weekly belongs to (lib/report-periods.ts numberWeeks, November 12, 2026).
+    const named = weekNumber && monthLabel ? `WEEK ${weekNumber} OF ${MONTHS[Number(monthLabel.slice(5, 7)) - 1].toUpperCase()} ${monthLabel.slice(0, 4)}` : "";
+    return { reportName: "WEEKLY REPORT", dateLine: named ? `${named} · ${span}` : span, weekLine: named ? `${ORDINALS[weekNumber - 1] ?? `${weekNumber}TH`} WEEK` : "", summaryLabel: named ? `${ORDINALS[weekNumber - 1] ?? `${weekNumber}TH`} WEEKLY REPORT` : "WEEKLY REPORT", summaryWeek: named || span };
+  }
   if (kind === "monthly" && monthLabel) {
     const named = `${MONTHS[Number(monthLabel.slice(5, 7)) - 1].toUpperCase()} ${monthLabel.slice(0, 4)}`;
     return { reportName: "MONTHLY REPORT", dateLine: `${named} · ${span}`, weekLine: "WHOLE MONTH", summaryLabel: `WHOLE MONTH - ${named}`, summaryWeek: span };
@@ -227,7 +231,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const cveTotal = masRows.reduce((total, row) => ({ accounts: total.accounts + row.cve.accounts, gross: round(total.gross + row.cve.gross) }), { accounts: 0, gross: 0 });
 
   return {
-    company: COMPANY, kind, from: start, to: end, ...headings(kind, start, end, span?.monthLabel, Boolean(span)), monthLabel: span?.monthLabel ?? "",
+    company: COMPANY, kind, from: start, to: end, ...headings(kind, start, end, span?.monthLabel, Boolean(span), span?.week ?? 0), monthLabel: span?.monthLabel ?? "",
     weeks: weeks ?? [],
     branch: branch || branches.join(", ") || clerk.branch || "", encodedBranches, activeBranches, encoder: { employeeId: clerk.employeeId, name: clerk.name },
     groupLabel: kind === "daily" ? "MAS" : kind === "weekly" ? "DATE" : kind === "monthly" ? "WEEK" : "MONTH",

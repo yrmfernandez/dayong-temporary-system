@@ -5,6 +5,7 @@ import { getEncoder } from "@/lib/encoder-context";
 import { formatDate } from "@/lib/date-format";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
+import { monthEnd } from "@/lib/report-week";
 
 /**
  * Weekly and monthly reports the clerk submits (owner, October 30, 2026):
@@ -12,8 +13,11 @@ import { manilaNow } from "@/lib/remittance-deadline";
  * - Weekly: the clerk chooses up to which day (today at the latest); it starts the day after their last weekly ended,
  *   so no day is left out or counted twice (the first one starts on a day they choose). They submit it; once submitted
  *   it is locked for them, unless the audit returns it with a reason, and they submit it again after fixing it.
- * - Monthly: the weeklies not yet in a monthly, up to the weekly the clerk chooses; every one of them must be approved.
- *   It is for the month most of its days fall in (Sep 28 - Nov 1 is October).
+ * - Week number (owner, November 12, 2026): each weekly belongs to the month most of its days fall in (Sep 28 - Oct 4
+ *   is October) and is Week 1, 2, 3... of that month in the order submitted. A weekly already in a monthly keeps that
+ *   monthly's month; one after the last monthly is never put in that month or before it.
+ * - Monthly: exactly one month's weeklies, Week 1 to the last (owner, November 12, 2026). It can be submitted once the
+ *   weeklies reach the month's last day (or a weekly of a later month exists) and every one of them is approved.
  *
  * Each submitted period is a row of weekly_audits / monthly_audits (report_date its first day, end_date its last), so
  * the audit of it (lib/daily-audit.ts) is the same row: HR and Finance prepare and may return it; an Administrator approves.
@@ -21,6 +25,8 @@ import { manilaNow } from "@/lib/remittance-deadline";
 export type PeriodKind = "weekly" | "monthly";
 export type ClerkPeriod = {
   id: string; kind: PeriodKind; start: string; end: string; monthLabel: string;
+  /** A weekly's place (November 12, 2026): Week `week` of `monthLabel`; 0 on a monthly. */
+  week: number;
   submission: "Submitted" | "Returned"; auditStatus: "Not started" | "Draft" | "Approved";
   submittedAt: string; submittedBy: string; returnedAt: string; returnedBy: string; returnReason: string; editAllowedAt: string;
 };
@@ -49,7 +55,7 @@ export function monthOfMost(start: string, end: string) {
 function readPeriod(kind: PeriodKind, row: PeriodTable["$inferSelect"]): ClerkPeriod {
   const status = text(row.status);
   return {
-    id: row.audit_id, kind, start: text(row.report_date), end: text(row.end_date), monthLabel: text(row.month_label),
+    id: row.audit_id, kind, start: text(row.report_date), end: text(row.end_date), monthLabel: text(row.month_label), week: 0,
     submission: text(row.submission) === "Returned" ? "Returned" : "Submitted",
     auditStatus: status === "Approved" ? "Approved" : status === "Draft" ? "Draft" : "Not started",
     submittedAt: text(row.submitted_at), submittedBy: text(row.submitted_by_name), returnedAt: text(row.returned_at), returnedBy: text(row.returned_by_name),
@@ -57,12 +63,46 @@ function readPeriod(kind: PeriodKind, row: PeriodTable["$inferSelect"]): ClerkPe
   };
 }
 
-/** The clerk's submitted weeklies or monthlies, oldest first. */
-export async function clerkPeriods(employeeId: string, kind: PeriodKind, db: Queryable = currentDb()) {
+async function loadPeriods(employeeId: string, kind: PeriodKind, db: Queryable) {
   const table = TABLE[kind];
   const rows = await db.select().from(table).where(and(eq(table.employee_id, text(employeeId)), sql`${table.end_date} is not null`)).orderBy(asc(table.report_date));
   return rows.map((row) => readPeriod(kind, row));
 }
+
+const nextMonth = (label: string) => { const [year, month] = label.split("-").map(Number); return month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`; };
+const monthOfWeek = (week: { start: string; end: string }, monthlies: ClerkPeriod[]) => {
+  const inMonthly = monthlies.find((monthly) => monthly.start <= week.start && week.end <= monthly.end && monthly.monthLabel);
+  if (inMonthly) return inMonthly.monthLabel;
+  const most = monthOfMost(week.start, week.end), lastMonthly = monthlies.filter((monthly) => monthly.end < week.start && monthly.monthLabel).pop();
+  // Never in or before the month of a monthly already submitted before it.
+  return lastMonthly && most <= lastMonthly.monthLabel ? nextMonth(lastMonthly.monthLabel) : most;
+};
+
+/** Gives each weekly its month and week number (Week 1, 2... of the month, in order); `monthlies` oldest first. */
+export function numberWeeks(weeklies: ClerkPeriod[], monthlies: ClerkPeriod[]) {
+  const counts = new Map<string, number>();
+  return weeklies.map((week) => {
+    const month = monthOfWeek(week, monthlies), number = (counts.get(month) ?? 0) + 1;
+    counts.set(month, number);
+    return { ...week, monthLabel: month, week: number };
+  });
+}
+
+/** Where a weekly from `start` to `end` not submitted yet would fall: its month and week number. */
+export function nextWeekPlace(weeklies: ClerkPeriod[], monthlies: ClerkPeriod[], start: string, end: string) {
+  const month = monthOfWeek({ start, end }, monthlies);
+  return { monthLabel: month, week: weeklies.filter((week) => week.monthLabel === month).length + 1 };
+}
+
+/** The clerk's submitted weeklies (each with its month and week number) or monthlies, oldest first. */
+export async function clerkPeriods(employeeId: string, kind: PeriodKind, db: Queryable = currentDb()) {
+  if (kind === "monthly") return loadPeriods(employeeId, "monthly", db);
+  const [weeklies, monthlies] = await Promise.all([loadPeriods(employeeId, "weekly", db), loadPeriods(employeeId, "monthly", db)]);
+  return numberWeeks(weeklies, monthlies);
+}
+
+/** "Week 2 of October 2026". */
+export const weekName = (period: { week: number; monthLabel: string }) => (period.week ? `Week ${period.week} of ${monthName(period.monthLabel)}` : "");
 
 export const periodContaining = (periods: ClerkPeriod[], date: string) => periods.find((period) => period.start <= date && date <= period.end) ?? null;
 
@@ -75,52 +115,64 @@ export const weeksAfterLastMonthly = (weeklies: ClerkPeriod[], monthlies: ClerkP
   return weeklies.filter((week) => week.start > after);
 };
 
-/** Why the weeklies cannot make a monthly yet, or "": every one of them must be approved. */
-export function monthlyProblem(weeks: ClerkPeriod[]) {
-  if (!weeks.length) return "There is no submitted weekly report after your last monthly report.";
-  const open = weeks.filter((week) => week.auditStatus !== "Approved");
-  return open.length ? `Every weekly report in the month must be approved first: ${open.map((week) => `${spanText(week.start, week.end)} (${week.submission === "Returned" ? "returned" : "not approved yet"})`).join("; ")}.` : "";
+/**
+ * The weeklies the next monthly gathers (November 12, 2026): every weekly after the last monthly that belongs to the
+ * month of the first of them, Week 1 to the last; `later` says whether a weekly of a later month exists.
+ */
+export function nextMonthWeeks(weeklies: ClerkPeriod[], monthlies: ClerkPeriod[]) {
+  const open = weeksAfterLastMonthly(weeklies, monthlies);
+  const month = open[0]?.monthLabel ?? "";
+  return { month, weeks: open.filter((week) => week.monthLabel === month), later: open.some((week) => week.monthLabel > month) };
 }
 
-export type ReportSpan = { start: string; end: string; weeks?: Array<{ start: string; end: string }>; monthLabel?: string };
+/** Why the weeklies cannot make the month's monthly yet, or "": the month is covered and every weekly is approved. */
+export function monthlyProblem(weeks: ClerkPeriod[], month = "", later = false) {
+  if (!weeks.length) return "There is no submitted weekly report after your last monthly report.";
+  const last = weeks[weeks.length - 1], lastDay = month ? monthEnd(`${month}-01`) : "";
+  if (month && !later && last.end < lastDay) return `${monthName(month)} is not finished: your weekly reports reach ${formatDate(last.end)}. Submit the weekly reports up to ${formatDate(lastDay)} first.`;
+  const open = weeks.filter((week) => week.auditStatus !== "Approved");
+  return open.length ? `Every weekly report in the month must be approved first: ${open.map((week) => `Week ${week.week}, ${spanText(week.start, week.end)} (${week.submission === "Returned" ? "returned" : "not approved yet"})`).join("; ")}.` : "";
+}
+
+export type ReportSpan = { start: string; end: string; weeks?: Array<{ start: string; end: string; week?: number }>; monthLabel?: string; week?: number };
 export type PeriodView = {
   kind: PeriodKind; periods: ClerkPeriod[]; current: ClerkPeriod | null;
   /** The report not submitted yet: its first day (fixed after the first weekly), the weeklies a monthly would gather, and why it cannot be submitted. */
-  draft: { start: string; end: string; chooseStart: boolean; weeks: ClerkPeriod[]; choices: ClerkPeriod[]; monthLabel: string; problem: string } | null;
+  draft: { start: string; end: string; chooseStart: boolean; weeks: ClerkPeriod[]; monthLabel: string; week: number; problem: string } | null;
   span: ReportSpan;
 };
 
 /**
  * The weekly or monthly report to show for `date` (and `to`): the submitted one containing `date` (or starting on it and
  * ending on `to`), else the one not submitted yet. A new weekly runs from the day after the last weekly to `to` (today
- * by default); a new monthly gathers the weeklies after the last monthly, up to the one ending on `to` (the last by default).
+ * by default); a new monthly gathers the weeklies of the next month (nextMonthWeeks).
  */
 export async function periodView(kind: PeriodKind, employeeId: string, date: string, to = ""): Promise<PeriodView> {
   const today = manilaNow().date;
   // to=new: the report not submitted yet, even when `date` falls in a submitted one (the picker's New report).
   const day = validDate(date) ? date : today, until = validDate(to) ? to : "", fresh = to === "new";
-  const [weeklies, monthlies] = await Promise.all([clerkPeriods(employeeId, "weekly"), kind === "monthly" ? clerkPeriods(employeeId, "monthly") : Promise.resolve([])]);
+  const [rawWeeklies, monthlies] = await Promise.all([loadPeriods(employeeId, "weekly", currentDb()), loadPeriods(employeeId, "monthly", currentDb())]);
+  const weeklies = numberWeeks(rawWeeklies, monthlies);
   const periods = kind === "weekly" ? weeklies : monthlies;
   const exact = until ? periods.find((period) => period.start === day && period.end === until) : null;
   const current = exact ?? (until || fresh ? null : periodContaining(periods, day));
-  const weeksOf = (start: string, end: string) => weeklies.filter((week) => week.start >= start && week.end <= end).map((week) => ({ start: week.start, end: week.end }));
-  if (current) return { kind, periods, current, draft: null, span: { start: current.start, end: current.end, ...(kind === "monthly" ? { weeks: weeksOf(current.start, current.end), monthLabel: current.monthLabel } : {}) } };
+  const weeksOf = (start: string, end: string) => weeklies.filter((week) => week.start >= start && week.end <= end).map((week) => ({ start: week.start, end: week.end, week: week.week }));
+  if (current) return { kind, periods, current, draft: null, span: { start: current.start, end: current.end, monthLabel: current.monthLabel, ...(kind === "monthly" ? { weeks: weeksOf(current.start, current.end) } : { week: current.week }) } };
   if (kind === "weekly") {
     const next = nextWeekStart(weeklies);
     const start = next || day;
     const end = until || (today >= start ? today : start);
     const problem = end < start ? "The last day cannot be before the first." : end > today ? "The last day cannot be after today." : "";
-    return { kind, periods, current: null, draft: { start, end, chooseStart: !next, weeks: [], choices: [], monthLabel: "", problem }, span: { start, end: end < start ? start : end } };
+    const place = nextWeekPlace(weeklies, monthlies, start, end < start ? start : end);
+    return { kind, periods, current: null, draft: { start, end, chooseStart: !next, weeks: [], ...place, problem }, span: { start, end: end < start ? start : end, ...place } };
   }
-  const open = weeksAfterLastMonthly(weeklies, monthlies);
-  const last = (until ? open.find((week) => week.end === until) : null) ?? open[open.length - 1];
-  const weeks = last ? open.filter((week) => week.end <= last.end) : [];
-  if (!weeks.length) return { kind, periods, current: null, draft: { start: day, end: day, chooseStart: false, weeks: [], choices: [], monthLabel: "", problem: monthlyProblem([]) }, span: { start: day, end: day, weeks: [] } };
-  const start = weeks[0].start, end = weeks[weeks.length - 1].end, monthLabel = monthOfMost(start, end);
-  return { kind, periods, current: null, draft: { start, end, chooseStart: false, weeks, choices: open, monthLabel, problem: monthlyProblem(weeks) }, span: { start, end, weeks: weeksOf(start, end), monthLabel } };
+  const { month, weeks, later } = nextMonthWeeks(weeklies, monthlies);
+  if (!weeks.length) return { kind, periods, current: null, draft: { start: day, end: day, chooseStart: false, weeks: [], monthLabel: "", week: 0, problem: monthlyProblem([]) }, span: { start: day, end: day, weeks: [] } };
+  const start = weeks[0].start, end = weeks[weeks.length - 1].end;
+  return { kind, periods, current: null, draft: { start, end, chooseStart: false, weeks, monthLabel: month, week: 0, problem: monthlyProblem(weeks, month, later) }, span: { start, end, weeks: weeksOf(start, end), monthLabel: month } };
 }
 
-/** The clerk submits a new weekly (from the day after their last, or `from` for their first, to `to`) or monthly (the weeklies up to the one ending on `to`). */
+/** The clerk submits a new weekly (from the day after their last, or `from` for their first, to `to`) or monthly (the next month's weeklies, the last ending on `to`). */
 export async function submitPeriod(kind: PeriodKind, clerk: { employeeId: string; name: string }, input: { from?: string; to?: string }) {
   const actor = getEncoder();
   const employeeId = text(clerk.employeeId), to = text(input.to), from = text(input.from);
@@ -141,13 +193,12 @@ export async function submitPeriod(kind: PeriodKind, clerk: { employeeId: string
       return { id, start, end: to };
     }
     const monthlies = await clerkPeriods(employeeId, "monthly", tx);
-    const open = weeksAfterLastMonthly(weeklies, monthlies);
-    const last = open.find((week) => week.end === to);
-    if (!last) throw new Error("Choose the last weekly report the monthly report covers.");
-    const weeks = open.filter((week) => week.end <= last.end);
-    const problem = monthlyProblem(weeks);
+    const { month: monthLabel, weeks, later } = nextMonthWeeks(weeklies, monthlies);
+    const problem = monthlyProblem(weeks, monthLabel, later);
     if (problem) throw new Error(problem);
-    const start = weeks[0].start, monthLabel = monthOfMost(start, last.end), id = createReadableId("MNR");
+    const last = weeks[weeks.length - 1];
+    if (to && to !== last.end) throw new Error("Your weekly reports changed. Reload the page and submit the monthly report again.");
+    const start = weeks[0].start, id = createReadableId("MNR");
     await tx.insert(TABLE.monthly).values({ audit_id: id, report_date: start, end_date: last.end, month_label: monthLabel, ...base });
     return { id, start, end: last.end, monthLabel };
   });

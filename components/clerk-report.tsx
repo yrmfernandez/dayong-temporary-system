@@ -136,7 +136,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3 print:hidden">
-        {submitted ? <PeriodPicker kind={kind} view={data?.period ?? null} date={date} fixed={Boolean(fixedDate)} onPick={(start, end) => { setDate(start); setTo(end); }} /> : <label className="text-sm">Period
+        {submitted ? <PeriodPicker kind={kind} view={data?.period ?? null} fixed={Boolean(fixedDate)} onPick={(start, end) => { setDate(start); setTo(end); }} /> : <label className="text-sm">Period
           <Input className="mt-1 w-44" type={inputType(kind)} min={kind === "yearly" ? 2000 : undefined} max={kind === "yearly" ? 2100 : undefined} value={toInput(kind, date)} disabled={Boolean(fixedDate)} onChange={(event) => event.target.value && setDate(fromInput(kind, event.target.value))} />
         </label>}
         {data?.canChoose && !fixedEmployee && (
@@ -329,13 +329,15 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 const PERIOD_STATUS = (period: ClerkPeriod) => period.auditStatus === "Approved" ? "Approved" : period.submission === "Returned" ? "Returned" : "Submitted";
 const spanLabel = (start: string, end: string) => (start === end ? showDate(start) : `${showDate(start)} – ${showDate(end)}`);
 const monthLabelName = (label: string) => (/^\d{4}-\d{2}$/.test(label) ? new Date(`${label}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }) : label);
+// A weekly's place in its month (November 12, 2026): "Week 2 of October 2026".
+const weekLabel = (period: { week: number; monthLabel: string }) => (period.week ? `Week ${period.week} of ${monthLabelName(period.monthLabel)}` : "");
 
 /**
  * Which weekly or monthly report to show (owner, October 30, 2026): one the clerk submitted, or the new one. A new
- * weekly starts the day after the last (the first one on a day chosen) and ends on the day chosen; a new monthly gathers
- * the weeklies after the last monthly, up to the weekly chosen.
+ * weekly starts the day after the last (the first one on a day chosen) and ends on the day chosen, and is shown as the
+ * Week N of its month it will be; a new monthly gathers the next month's weeklies, Week 1 to the last (November 12, 2026).
  */
-function PeriodPicker({ kind, view, date, fixed, onPick }: { kind: Kind; view: PeriodView | null; date: string; fixed: boolean; onPick: (start: string, end: string) => void }) {
+function PeriodPicker({ kind, view, fixed, onPick }: { kind: Kind; view: PeriodView | null; fixed: boolean; onPick: (start: string, end: string) => void }) {
   const today = todayInManila();
   const selected = view?.current ? `${view.current.start}|${view.current.end}` : "new";
   const draft = view?.draft;
@@ -345,7 +347,7 @@ function PeriodPicker({ kind, view, date, fixed, onPick }: { kind: Kind; view: P
         onChange={(event) => { const [start, end] = event.target.value.split("|"); if (event.target.value === "new") onPick(today, "new"); else onPick(start, end); }}>
         <option value="new">{kind === "weekly" ? "New weekly report (not submitted)" : "New monthly report (not submitted)"}</option>
         {[...(view?.periods ?? [])].reverse().map((period) => <option key={period.id} value={`${period.start}|${period.end}`}>
-          {kind === "monthly" && period.monthLabel ? `${monthLabelName(period.monthLabel)} · ` : ""}{spanLabel(period.start, period.end)} · {PERIOD_STATUS(period)}
+          {kind === "monthly" && period.monthLabel ? `${monthLabelName(period.monthLabel)} · ` : ""}{kind === "weekly" && period.week ? `${weekLabel(period)} · ` : ""}{spanLabel(period.start, period.end)} · {PERIOD_STATUS(period)}
         </option>)}
       </select>
     </label>
@@ -358,12 +360,8 @@ function PeriodPicker({ kind, view, date, fixed, onPick }: { kind: Kind; view: P
       <label className="text-sm">To
         <Input className="mt-1 w-40" type="date" min={draft.start} max={today} value={draft.end} onChange={(event) => event.target.value && onPick(draft.start, event.target.value)} />
       </label>
+      {draft.week > 0 && <span className="text-sm"><span className="block">This will be</span><span className="mt-1 flex h-9 items-center rounded-md border bg-muted/40 px-3 font-semibold">{weekLabel(draft)}</span></span>}
     </>}
-    {draft && !fixed && kind === "monthly" && draft.choices.length > 0 && <label className="text-sm">Up to the weekly report
-      <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={draft.end} onChange={(event) => onPick(date, event.target.value)}>
-        {draft.choices.map((week) => <option key={week.id} value={week.end}>{spanLabel(week.start, week.end)} · {PERIOD_STATUS(week)}</option>)}
-      </select>
-    </label>}
   </>;
 }
 
@@ -374,7 +372,7 @@ function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit }: { kind:
   if (current) {
     const returned = current.submission === "Returned" && current.auditStatus !== "Approved";
     return <div className={`space-y-1 rounded-lg border px-4 py-3 text-sm print:hidden ${returned ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100" : "bg-muted/40"}`}>
-      <p className="flex flex-wrap items-center gap-2"><span className="font-semibold">{kind === "monthly" && current.monthLabel ? `${monthLabelName(current.monthLabel)}: ` : ""}{spanLabel(current.start, current.end)}</span>
+      <p className="flex flex-wrap items-center gap-2"><span className="font-semibold">{kind === "monthly" && current.monthLabel ? `${monthLabelName(current.monthLabel)}: ` : ""}{kind === "weekly" && current.week ? `${weekLabel(current)}: ` : ""}{spanLabel(current.start, current.end)}</span>
         <StatusBadge status={PERIOD_STATUS(current)} tone={current.auditStatus === "Approved" ? "success" : returned ? "warning" : "info"} />
         <span className="text-xs">submitted by {current.submittedBy} on {showDateTime(current.submittedAt)}</span></p>
       {returned ? <>
@@ -385,8 +383,8 @@ function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit }: { kind:
   }
   if (!draft) return null;
   return <div className="space-y-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">
-    <p><span className="font-semibold">New {name}{draft.monthLabel ? ` for ${monthLabelName(draft.monthLabel)}` : ""}:</span> {draft.weeks.length || kind === "weekly" ? spanLabel(draft.start, draft.end) : ""} · not submitted yet.</p>
-    {kind === "monthly" && draft.weeks.length > 0 && <ul className="list-inside list-disc text-xs">{draft.weeks.map((week) => <li key={week.id}>{spanLabel(week.start, week.end)}: {PERIOD_STATUS(week)}</li>)}</ul>}
+    <p><span className="font-semibold">New {name}{kind === "weekly" && draft.week ? ` (${weekLabel(draft)})` : draft.monthLabel ? ` for ${monthLabelName(draft.monthLabel)}` : ""}:</span> {draft.weeks.length || kind === "weekly" ? spanLabel(draft.start, draft.end) : ""} · not submitted yet.</p>
+    {kind === "monthly" && draft.weeks.length > 0 && <ul className="list-inside list-disc text-xs">{draft.weeks.map((week) => <li key={week.id}><span className="font-semibold">Week {week.week}</span>: {spanLabel(week.start, week.end)} · {PERIOD_STATUS(week)}</li>)}</ul>}
     {draft.problem ? <p className="text-xs font-medium text-amber-800 dark:text-amber-300">{draft.problem}</p>
       : own && <p className="flex flex-wrap items-center gap-2 text-xs">{kind === "weekly" ? "Check the report, then submit it. Once submitted you cannot change anything in these days unless the audit returns it." : "Every weekly report in it is approved; submit the monthly report."}
         <Button type="button" size="sm" disabled={saving} onClick={onSubmit}>Submit {name}</Button></p>}

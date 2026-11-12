@@ -25,9 +25,13 @@ type Period = "daily" | "weekly" | "monthly" | "yearly";
 const PERIODS: Array<[Period, string, string]> = [["daily", "Daily", "day"], ["weekly", "Weekly", "week"], ["monthly", "Monthly", "month"], ["yearly", "Yearly", "year"]];
 type Audit = { id: string; status: string; findings: string; result: string; approvedByName: string; approvedAt: string; reopenReason: string; updatedAt: string; preparedBy: string; editAllowedByName: string; editAllowedAt: string; editReason: string };
 // A weekly or monthly the clerk submitted (owner, October 30, 2026; lib/report-periods.ts): its own dates, Submitted or Returned.
-type SubmittedPeriod = { start: string; end: string; monthLabel: string; submission: "Submitted" | "Returned"; submittedBy: string; submittedAt: string; returnedBy: string; returnedAt: string; returnReason: string };
+type SubmittedPeriod = { start: string; end: string; monthLabel: string; week?: number; submission: "Submitted" | "Returned"; submittedBy: string; submittedAt: string; returnedBy: string; returnedAt: string; returnReason: string };
 type Row = { employeeId: string; employeeName: string; branch: string; status: "Not started" | "Draft" | "Approved"; audit: Audit | null; figures: Figures; period: SubmittedPeriod | null };
-const periodDates = (period: SubmittedPeriod) => `${period.monthLabel ? `${new Date(`${period.monthLabel}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}: ` : ""}${showDate(period.start)} – ${showDate(period.end)}`;
+const monthName = (label: string) => new Date(`${label}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+const periodDates = (period: SubmittedPeriod) => `${period.week && period.monthLabel ? `Week ${period.week} of ${monthName(period.monthLabel)}: ` : period.monthLabel ? `${monthName(period.monthLabel)}: ` : ""}${showDate(period.start)} – ${showDate(period.end)}`;
+// The week of the month a day is in, as the default week to audit (Week 1 runs from the 1st to the first Sunday).
+const weekOfMonth = (date: string) => Math.floor((Number(date.slice(8, 10)) - 1 + (new Date(`${date.slice(0, 7)}-01T00:00:00Z`).getUTCDay() + 6) % 7) / 7) + 1;
+const WEEKS = [1, 2, 3, 4, 5, 6];
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
 const when = (value: string) => (value ? showDateTime(value) : "");
@@ -38,6 +42,8 @@ export default function DailyAuditPage() {
   const period: Period = tab === "summary" ? "daily" : tab;
   const unit = PERIODS.find(([id]) => id === period)?.[2] ?? "day";
   const [date, setDate] = useState(todayInManila());
+  // Weekly audits pick a month and its Week 1, 2... (November 12, 2026; lib/report-periods.ts numberWeeks).
+  const [week, setWeek] = useState(() => weekOfMonth(todayInManila()));
   const [span, setSpan] = useState({ from: "", to: "" });
   const [rows, setRows] = useState<Row[]>([]);
   const [notSubmitted, setNotSubmitted] = useState<string[]>([]);
@@ -50,10 +56,10 @@ export default function DailyAuditPage() {
   const [draft, setDraft] = useState({ findings: "", result: "Balanced", reason: "", editReason: "", returnReason: "" });
   const [message, setMessage] = useState("");
 
-  const load = useCallback(async (day: string, which: Period) => {
+  const load = useCallback(async (day: string, which: Period, weekNumber: number) => {
     setBusy(true); setError("");
     try {
-      const response = await fetch(`/api/audit?date=${encodeURIComponent(day)}&period=${which}`, { cache: "no-store" });
+      const response = await fetch(`/api/audit?date=${encodeURIComponent(day)}&period=${which}${which === "weekly" ? `&week=${weekNumber}` : ""}`, { cache: "no-store" });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load audits.");
       setRows(result.audits); setNotSubmitted(result.notSubmitted ?? []); setCanApprove(Boolean(result.canApprove)); setSpan({ from: result.from, to: result.to });
@@ -64,10 +70,10 @@ export default function DailyAuditPage() {
   useEffect(() => {
     // Loading the chosen period's audits owns the busy state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (tab !== "summary") void load(date, period);
-  }, [date, period, tab, load]);
+    if (tab !== "summary") void load(date, period, week);
+  }, [date, period, week, tab, load]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["daily_audits", "weekly_audits", "monthly_audits", "yearly_audits", "sales", "collections", "remittances", "expenses"], () => { if (tab !== "summary") void load(date, period); }, 15000);
+  useLiveRefresh(["daily_audits", "weekly_audits", "monthly_audits", "yearly_audits", "sales", "collections", "remittances", "expenses"], () => { if (tab !== "summary") void load(date, period, week); }, 15000);
 
   function toggle(row: Row) {
     setMessage("");
@@ -80,10 +86,10 @@ export default function DailyAuditPage() {
   async function send(method: "POST" | "PATCH", body: Record<string, unknown>, done: string) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch("/api/audit", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, period, ...body }) });
+      const response = await fetch("/api/audit", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, period, week, ...body }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to update the audit.");
-      setMessage(done); await load(date, period);
+      setMessage(done); await load(date, period, week);
     } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to update the audit."); setBusy(false); }
   }
 
@@ -99,7 +105,12 @@ export default function DailyAuditPage() {
           </div>
         </div>
         {tab === "daily" && <label className="text-sm">Report date<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(event.target.value); } }} /></label>}
-        {tab === "weekly" && <label className="text-sm">Any day in the weekly report<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(event.target.value); } }} /></label>}
+        {tab === "weekly" && <div className="flex flex-wrap items-end gap-2">
+          <label className="text-sm">Month<Input type="month" className="mt-1 h-9" max={todayInManila().slice(0, 7)} value={date.slice(0, 7)} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(`${event.target.value}-01`); setWeek(1); } }} /></label>
+          <label className="text-sm">Week<select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={week} onChange={(event) => { setOpen(""); setWeek(Number(event.target.value)); }}>
+            {WEEKS.map((number) => <option key={number} value={number}>Week {number}</option>)}
+          </select></label>
+        </div>}
         {tab === "monthly" && <label className="text-sm">Month<Input type="month" className="mt-1 h-9" max={todayInManila().slice(0, 7)} value={date.slice(0, 7)} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(`${event.target.value}-01`); } }} /></label>}
         {tab === "yearly" && <label className="text-sm">Year<Input type="number" className="mt-1 h-9 w-28" min={2019} max={Number(todayInManila().slice(0, 4))} value={date.slice(0, 4)} onChange={(event) => { const year = event.target.value; if (/^\d{4}$/.test(year)) { setOpen(""); setDate(`${year}-01-01`); } }} /></label>}
       </div>
@@ -114,7 +125,7 @@ export default function DailyAuditPage() {
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {span.from && period !== "daily" && <p className="text-sm text-muted-foreground">Auditing the {unit} from <strong>{span.from}</strong> to <strong>{span.to}</strong>: each Entry Clerk&apos;s report totals for the whole {unit}, with how their daily audits stand.</p>}
     {(period === "weekly" || period === "monthly") && <p className="text-sm text-muted-foreground">
-      {period === "weekly" ? "Each Entry Clerk's submitted weekly report containing this day, over the dates they chose." : "Each Entry Clerk's submitted monthly report for this month: the weekly reports it gathers."} Only submitted reports are audited; return one to the clerk with a reason for them to fix it.
+      {period === "weekly" ? `Each Entry Clerk's Week ${week} of ${monthName(date.slice(0, 7))}: their ${["first", "second", "third", "fourth", "fifth", "sixth"][week - 1]} weekly report of the month, over the dates they chose.` : "Each Entry Clerk's submitted monthly report for this month: the weekly reports it gathers."} Only submitted reports are audited; return one to the clerk with a reason for them to fix it.
       {notSubmitted.length > 0 && <span className="mt-1 block text-amber-700 dark:text-amber-400">Not submitted: {notSubmitted.join(", ")}.</span>}
     </p>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

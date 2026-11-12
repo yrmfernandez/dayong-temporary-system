@@ -1,6 +1,6 @@
 import { canAccessPath } from "@/lib/access-control";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
-import { AUDIT_DECISIONS, AUDIT_RESULTS, asAuditPeriod, auditedEmployees, type AuditDecision, decideDailyAudit, getDailyAudits, periodSpan, saveDailyAudit, submittedPeriodFor } from "@/lib/daily-audit";
+import { AUDIT_DECISIONS, AUDIT_RESULTS, asAuditPeriod, asWeek, auditedEmployees, type AuditDecision, decideDailyAudit, getDailyAudits, periodSpan, saveDailyAudit, submittedPeriodFor } from "@/lib/daily-audit";
 import { isPeriodKind, returnPeriod } from "@/lib/report-periods";
 import { withEncoder } from "@/lib/encoder-context";
 
@@ -18,12 +18,13 @@ export async function GET(request: Request) {
   if (!canView) return Response.json({ success: false, message: "You do not have access to Daily Audit." }, { status: 403 });
   try {
     const params = new URL(request.url).searchParams;
-    const date = params.get("date") ?? "", period = asAuditPeriod(params.get("period"));
+    // Weekly: the month (date) and week number (week) picked on the Audits page (November 12, 2026).
+    const date = params.get("date") ?? "", period = asAuditPeriod(params.get("period")), week = period === "weekly" ? asWeek(params.get("week")) : 0;
     // Weekly and monthly reports run over each clerk's own submitted dates (lib/report-periods.ts): no common span.
     const span = isPeriodKind(period) ? { start: "", end: "" } : periodSpan(period, date);
-    const audits = await getDailyAudits(date, period);
+    const audits = await getDailyAudits(date, period, week);
     const notSubmitted = isPeriodKind(period) ? (await auditedEmployees()).filter((clerk) => !audits.some((row) => row.employeeId === clerk.employeeId)).map((clerk) => clerk.name) : [];
-    return Response.json({ success: true, date, period, from: span.start, to: span.end, audits, notSubmitted, results: AUDIT_RESULTS, canApprove }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, date, period, week, from: span.start, to: span.end, audits, notSubmitted, results: AUDIT_RESULTS, canApprove }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load audits." }, { status: 400 }); }
 }
 
@@ -32,7 +33,7 @@ export const POST = withEncoder(async (request: Request) => {
   if (!canView) return Response.json({ success: false, message: "You do not have access to Daily Audit." }, { status: 403 });
   try {
     const body = await request.json();
-    return Response.json({ success: true, audit: await saveDailyAudit({ date: String(body.date ?? ""), employeeId: String(body.employeeId ?? ""), findings: String(body.findings ?? ""), result: String(body.result ?? ""), period: asAuditPeriod(body.period) }) });
+    return Response.json({ success: true, audit: await saveDailyAudit({ date: String(body.date ?? ""), employeeId: String(body.employeeId ?? ""), findings: String(body.findings ?? ""), result: String(body.result ?? ""), period: asAuditPeriod(body.period), week: asWeek(body.week) }) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to save the audit." }, { status: 400 }); }
 });
 
@@ -45,7 +46,7 @@ export const PATCH = withEncoder(async (request: Request) => {
     try {
       const period = asAuditPeriod(peek.period), employeeId = String(peek.employeeId ?? "");
       if (!isPeriodKind(period)) throw new Error("Only a submitted weekly or monthly report is returned to the clerk.");
-      const found = await submittedPeriodFor(period, employeeId, String(peek.date ?? ""));
+      const found = await submittedPeriodFor(period, employeeId, String(peek.date ?? ""), period === "weekly" ? asWeek(peek.week) : 0);
       if (!found) throw new Error("The clerk has not submitted this report.");
       return Response.json({ success: true, audit: await returnPeriod(period, employeeId, found.start, String(peek.reason ?? "")) });
     } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to return the report." }, { status: 400 }); }
@@ -55,6 +56,6 @@ export const PATCH = withEncoder(async (request: Request) => {
     const body = await request.json();
     const decision = (AUDIT_DECISIONS as readonly string[]).includes(String(body.decision)) ? body.decision as AuditDecision : null;
     if (!decision) throw new Error("Choose approve, reopen, allow editing or lock.");
-    return Response.json({ success: true, audit: await decideDailyAudit({ date: String(body.date ?? ""), employeeId: String(body.employeeId ?? ""), decision, reason: String(body.reason ?? ""), period: asAuditPeriod(body.period) }) });
+    return Response.json({ success: true, audit: await decideDailyAudit({ date: String(body.date ?? ""), employeeId: String(body.employeeId ?? ""), decision, reason: String(body.reason ?? ""), period: asAuditPeriod(body.period), week: asWeek(body.week) }) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to update the audit." }, { status: 400 }); }
 });

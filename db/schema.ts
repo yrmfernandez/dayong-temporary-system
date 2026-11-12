@@ -1237,3 +1237,31 @@ export const notices_to_explain = pgTable("notices_to_explain", {
   reviewed_by_name: text(),
   ...encoder(),
 }, (t) => [index("notices_to_explain_employee_idx").on(t.employee_id, t.expires_on)]).enableRLS();
+
+// System Updates (owner, November 12, 2026; lib/system-updates.ts): IT writes what changed, with steps that each open a
+// page, and announces it; everyone it is for gets a pop-up once (closable after 5 seconds) and can read it on /updates.
+export const system_updates = pgTable("system_updates", {
+  ...rowSeq(),
+  update_id: text().primaryKey(),
+  title: text().notNull(),
+  // The short text of the pop-up.
+  summary: text(),
+  // [{ text, path }]: what to do, and the page it happens on ("" when none).
+  steps: jsonb("steps"),
+  // Role names it is for (lowercase); empty or null: everyone.
+  audience: jsonb("audience"),
+  status: text().notNull().default("Draft"),
+  announced_at: moment("announced_at"),
+  announced_by_name: text(),
+  created_at: moment("created_at"),
+  updated_at: moment("updated_at"),
+  ...encoder(),
+}, (t) => [index("system_updates_status_idx").on(t.status, t.announced_at)]).enableRLS();
+
+// Who has seen each announced update (closed its pop-up or opened it on /updates).
+export const system_update_views = pgTable("system_update_views", {
+  update_id: text().notNull().references(() => system_updates.update_id, { onDelete: "cascade" }),
+  user_id: text().notNull().references(() => users.user_id, { onDelete: "cascade" }),
+  seen_at: moment("seen_at"),
+  opened_at: moment("opened_at"),
+}, (t) => [primaryKey({ columns: [t.update_id, t.user_id] })]).enableRLS();

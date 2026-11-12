@@ -139,10 +139,10 @@ async function presentEmployees(from: string, to: string) {
   return new Set(((Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ employee_id: string }>).map((row) => row.employee_id));
 }
 
-/** A submitted weekly's or monthly's dates, with a monthly's weeklies, for its report. */
+/** A submitted weekly's or monthly's dates (a weekly's week number, a monthly's weeklies), for its report. */
 async function spanOf(kind: PeriodKind, period: ClerkPeriod): Promise<ReportSpan> {
-  if (kind === "weekly") return { start: period.start, end: period.end };
-  const weeks = (await clerkPeriods((await periodOwner(kind, period.id)) ?? "", "weekly")).filter((week) => week.start >= period.start && week.end <= period.end).map((week) => ({ start: week.start, end: week.end }));
+  if (kind === "weekly") return { start: period.start, end: period.end, monthLabel: period.monthLabel, week: period.week };
+  const weeks = (await clerkPeriods((await periodOwner(kind, period.id)) ?? "", "weekly")).filter((week) => week.start >= period.start && week.end <= period.end).map((week) => ({ start: week.start, end: week.end, week: week.week }));
   return { start: period.start, end: period.end, weeks, monthLabel: period.monthLabel };
 }
 async function periodOwner(kind: PeriodKind, id: string) {
@@ -151,19 +151,25 @@ async function periodOwner(kind: PeriodKind, id: string) {
   return row?.employeeId ?? null;
 }
 
-/** The clerk's submitted weekly containing `day`, or their monthly for the month of `day`. */
-export async function submittedPeriodFor(kind: PeriodKind, employeeId: string, day: string) {
+/**
+ * The clerk's monthly for the month of `day`, or their weekly: Week `week` of the month of `day` when `week` is given
+ * (the Audits page picks a month and week, November 12, 2026), else the one containing `day`.
+ */
+export async function submittedPeriodFor(kind: PeriodKind, employeeId: string, day: string, week = 0) {
   const periods = await clerkPeriods(employeeId, kind);
-  return kind === "monthly" ? periods.find((period) => period.monthLabel === day.slice(0, 7)) ?? null : periodContaining(periods, day);
+  if (kind === "monthly") return periods.find((period) => period.monthLabel === day.slice(0, 7)) ?? null;
+  return week > 0 ? periods.find((period) => period.monthLabel === day.slice(0, 7) && period.week === week) ?? null : periodContaining(periods, day);
 }
+/** The week number sent by the Audits page (0 when none). */
+export const asWeek = (value: unknown) => { const week = Number(value); return Number.isInteger(week) && week > 0 && week < 10 ? week : 0; };
 
 /**
  * The Audits page for a submitted weekly or monthly: each Entry Clerk's report containing the day (weekly) or for the
  * month (monthly), with `notSubmitted` the clerks who have none.
  */
-async function getSubmittedAudits(kind: PeriodKind, day: string) {
+async function getSubmittedAudits(kind: PeriodKind, day: string, week = 0) {
   const employees = await auditedEmployees();
-  const found = await Promise.all(employees.map(async (employee) => ({ employee, period: await submittedPeriodFor(kind, employee.employeeId, day) })));
+  const found = await Promise.all(employees.map(async (employee) => ({ employee, period: await submittedPeriodFor(kind, employee.employeeId, day, week) })));
   const rows = await Promise.all(found.filter((item) => item.period).map(async ({ employee, period }) => {
     const [audit] = (await loadAudits(kind, period!.start, period!.start)).filter((item) => item.employeeId === employee.employeeId);
     const figures = audit?.status === "Approved" && audit.figures ? audit.figures : await figuresFor(kind, period!.start, employee, await spanOf(kind, period!));
@@ -172,8 +178,8 @@ async function getSubmittedAudits(kind: PeriodKind, day: string) {
   return { rows, notSubmitted: found.filter((item) => !item.period).map((item) => item.employee.name) };
 }
 
-export async function getDailyAudits(day: string, period: AuditPeriod = "daily") {
-  if (isPeriodKind(period)) return (await getSubmittedAudits(period, day)).rows;
+export async function getDailyAudits(day: string, period: AuditPeriod = "daily", week = 0) {
+  if (isPeriodKind(period)) return (await getSubmittedAudits(period, day, week)).rows;
   const { start: date, end } = periodSpan(period, day);
   const [employees, saved, present] = await Promise.all([auditedEmployees(), loadAudits(period, date, date), presentEmployees(date, end)]);
   const all = await Promise.all(employees.map(async (employee) => {
@@ -199,19 +205,19 @@ async function lockedAudit(tx: Queryable, period: AuditPeriod, date: string, emp
  * The audit's first day: the period's (daily, yearly), or the clerk's submitted weekly or monthly for the day, which must
  * be submitted and not returned to be audited.
  */
-async function auditDate(period: AuditPeriod, employeeId: string, day: string, decision = "") {
+async function auditDate(period: AuditPeriod, employeeId: string, day: string, decision = "", week = 0) {
   if (!isPeriodKind(period)) return { date: periodSpan(period, day).start, span: undefined };
-  const found = await submittedPeriodFor(period, employeeId, day);
-  if (!found) throw new Error(`The clerk has not submitted a ${SUBMITTED_PERIOD_NAMES[period]} for this ${period === "weekly" ? "day" : "month"}.`);
+  const found = await submittedPeriodFor(period, employeeId, day, week);
+  if (!found) throw new Error(`The clerk has not submitted a ${SUBMITTED_PERIOD_NAMES[period]} for this ${period === "weekly" ? (week ? "week" : "day") : "month"}.`);
   // A returned report waits for the clerk; reopening or unlocking an approved one is still possible.
   if (found.submission === "Returned" && !["reopen", "allow-edit", "lock"].includes(decision)) throw new Error(`This ${SUBMITTED_PERIOD_NAMES[period]} was returned to the clerk (${found.returnReason}). It is audited again once they submit it.`);
   return { date: found.start, span: await spanOf(period, found) };
 }
 
-export async function saveDailyAudit(input: { date: string; employeeId: string; findings: string; result: string; period?: AuditPeriod }) {
+export async function saveDailyAudit(input: { date: string; employeeId: string; findings: string; result: string; period?: AuditPeriod; week?: number }) {
   const period = input.period ?? "daily";
   const employeeId = text(input.employeeId), findings = text(input.findings), result = text(input.result);
-  const { date, span } = await auditDate(period, employeeId, text(input.date));
+  const { date, span } = await auditDate(period, employeeId, text(input.date), "", input.week ?? 0);
   if (!(AUDIT_RESULTS as readonly string[]).includes(result)) throw new Error("Choose Balanced or With findings.");
   if (result === "With findings" && findings.length < 3) throw new Error("Describe the findings.");
   if (findings.length > 2000) throw new Error("Findings must be 2,000 characters or fewer.");
@@ -243,11 +249,11 @@ const noEditAllowed = { clerk_edit_allowed_by_name: null, clerk_edit_allowed_at:
  * Only an Administrator approves (locks the figures) or reopens (with a reason) an audit, and allows the clerk to edit
  * an approved report again (with a reason) or locks it again. Approving or reopening ends an allowance.
  */
-export async function decideDailyAudit(input: { date: string; employeeId: string; decision: AuditDecision; reason?: string; period?: AuditPeriod }) {
+export async function decideDailyAudit(input: { date: string; employeeId: string; decision: AuditDecision; reason?: string; period?: AuditPeriod; week?: number }) {
   const actor = getEncoder();
   const period = input.period ?? "daily";
   const employeeId = text(input.employeeId);
-  const { date, span } = await auditDate(period, employeeId, text(input.date), input.decision);
+  const { date, span } = await auditDate(period, employeeId, text(input.date), input.decision, input.week ?? 0);
   const table = TABLES[period];
   const reason = text(input.reason);
   // The figures to lock in are worked out before the transaction; the status is checked again inside it.

@@ -10,6 +10,7 @@ import { LunchBreakScreen } from "@/components/lunch-break-screen";
 import { SaveQueueNotice } from "@/components/save-queue-notice";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
+import { UpdatePopup, type PopupUpdate } from "@/components/update-popup";
 import { executiveRoles, isAdministratorRole, type AccessContext } from "@/lib/access-control";
 import { sessionForWorkspace } from "@/lib/workspace-session";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
@@ -48,12 +49,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [counts, setCounts] = useState<Record<string, number>>({});
   // The maintenance notice IT turned on (lib/maintenance-notice.ts), delivered with the numbers.
   const [maintenance, setMaintenance] = useState<MaintenanceNotice | null>(null);
+  // A System Update IT announced that this user has not seen yet (lib/system-updates.ts), delivered with the numbers.
+  const [update, setUpdate] = useState<PopupUpdate | null>(null);
   const loadCounts = useCallback(async () => {
     if (isLoginPath()) return;
     try {
       const response = await fetch("/api/notifications", { cache: "no-store" });
       const result = await response.json();
-      if (response.ok && result.success) { setCounts(result.counts ?? {}); setMaintenance(result.maintenance?.on ? result.maintenance : null); }
+      if (response.ok && result.success) { setCounts(result.counts ?? {}); setMaintenance(result.maintenance?.on ? result.maintenance : null); setUpdate(result.update ?? null); }
     } catch { /* the numbers are a convenience; the pages themselves are unaffected */ }
   }, []);
   // On sign-in and every page change, at most every 30 s while the tables behind the numbers change (every open tab of
@@ -61,7 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the numbers for the page just opened
   useEffect(() => { void loadCounts(); }, [loadCounts, pathname]);
   useEffect(() => { const timer = window.setInterval(() => { if (!document.hidden) void loadCounts(); }, 120000); return () => window.clearInterval(timer); }, [loadCounts]);
-  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "collection_submissions", "dropout_requests", "attendance", "receipt_photos", "clearings", "notices_to_explain", "system_settings"], loadCounts, 30000);
+  useLiveRefresh(["leave_requests", "remittances", "collections", "sales", "sale_submissions", "collection_submissions", "dropout_requests", "attendance", "receipt_photos", "clearings", "notices_to_explain", "system_settings", "system_updates"], loadCounts, 30000);
   // A page that just cleared something (e.g. My Notices) asks for the numbers at once.
   useEffect(() => { const refresh = () => void loadCounts(); window.addEventListener("notifications:refresh", refresh); return () => window.removeEventListener("notifications:refresh", refresh); }, [loadCounts]);
   // True while the dashboard of a newly chosen workspace is loading, so the old one is not mistaken for it.
@@ -152,6 +155,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Day-end Clearing review for the Entry Clerk (components/clearing-day-end.tsx). */}
       {user && <ClearingDayEndPrompt />}
       <SaveQueueNotice />
+      {/* A System Update not seen yet: closable after 5 seconds; Go to updates opens its guide (components/update-popup.tsx). */}
+      {user && update && <UpdatePopup update={update} onDone={() => { setUpdate(null); void loadCounts(); }} onGuide={(id) => { setUpdate(null); router.push(`/updates?guide=${encodeURIComponent(id)}`); }} />}
       {/* 12:00–12:59 PM: nobody can use the system except Attendance (components/lunch-break-screen.tsx). */}
       <LunchBreakScreen pathname={pathname} administrator={access.roleNames.some(isAdministratorRole)} />
     </div>

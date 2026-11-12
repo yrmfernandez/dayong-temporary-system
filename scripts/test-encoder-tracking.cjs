@@ -1710,7 +1710,7 @@ test('Finance-Auditor sees every ticked page in the Finance layout; other custom
   assert.equal(sections.some((section) => section.title === 'My Portfolio'), false, 'not the MAS layout');
   assert.equal(sections[0].title, 'Overview');
   const custom = visibleNavigation('Auditor', { roleNames: ['Auditor'], permissions, rolePages: { auditor: ['/audit', '/history', '/expenses'] } });
-  assert.deepEqual(custom.flatMap((section) => section.items.map((item) => item.href)).sort(), ['/', '/audit', '/expenses', '/history']);
+  assert.deepEqual(custom.flatMap((section) => section.items.map((item) => item.href)).sort(), ['/', '/audit', '/expenses', '/history', '/updates'], 'System Updates shows for every role (November 12, 2026)');
   assert.equal(custom.some((section) => section.title === 'My Portfolio'), false);
 });
 
@@ -2494,11 +2494,12 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
   asClerk();
   // The first weekly: the clerk chooses its first day too.
   const first = await get('kind=weekly&date=2026-10-05&to=2026-10-11');
-  assert.deepEqual([first.period.current, first.period.draft.start, first.period.draft.end, first.period.draft.chooseStart, first.report.from, first.report.to, first.report.dateLine], [null, '2026-10-05', '2026-10-11', true, '2026-10-05', '2026-10-11', 'OCTOBER 5-11, 2026']);
+  assert.deepEqual([first.period.current, first.period.draft.start, first.period.draft.end, first.period.draft.chooseStart, first.report.from, first.report.to, first.report.dateLine], [null, '2026-10-05', '2026-10-11', true, '2026-10-05', '2026-10-11', 'WEEK 1 OF OCTOBER 2026 · OCTOBER 5-11, 2026']);
+  assert.deepEqual([first.period.draft.monthLabel, first.period.draft.week], ['2026-10', 1], 'shown as the week of the month it will be (November 12, 2026)');
   assert.equal((await post({ action: 'submit-period', kind: 'weekly', from: '2026-10-05', to: '2026-10-11' })).success, true);
   // The next one starts the day after: the day chosen as its first is ignored.
   const second = await get('kind=weekly&date=2026-10-20&to=new');
-  assert.deepEqual([second.period.draft.start, second.period.draft.chooseStart], ['2026-10-12', false]);
+  assert.deepEqual([second.period.draft.start, second.period.draft.chooseStart, second.period.draft.week], ['2026-10-12', false, 2]);
   assert.match((await post({ action: 'submit-period', kind: 'weekly', to: '2026-10-11' })).message, /cannot be before/);
   assert.match((await post({ action: 'submit-period', kind: 'weekly', to: '2099-01-01' })).message, /after today/);
   const saved = await post({ action: 'submit-period', kind: 'weekly', from: '2026-10-01', to: '2026-10-18' });
@@ -2506,21 +2507,32 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
 
   // Submitted: the days are locked for the clerk; the report shows the submitted weekly containing the day.
   const shown = await get('kind=weekly&date=2026-10-07');
-  assert.deepEqual([shown.period.current.start, shown.period.current.end, shown.period.current.submission, shown.report.from, shown.report.to], ['2026-10-05', '2026-10-11', 'Submitted', '2026-10-05', '2026-10-11']);
+  assert.deepEqual([shown.period.current.start, shown.period.current.end, shown.period.current.submission, shown.report.from, shown.report.to, shown.period.current.week, shown.period.periods.map((week) => week.week)], ['2026-10-05', '2026-10-11', 'Submitted', '2026-10-05', '2026-10-11', 1, [1, 2]]);
   assert.match(shown.audit.lock, /weekly report for Oct 5, 2026 – Oct 11, 2026 is submitted and locked/);
   assert.match((await post({ action: 'save-notes', kind: 'daily', date: '2026-10-07', specificRemarks: 'Late' })).message, /submitted and locked/, 'a day inside the submitted weekly');
   assert.match((await post({ action: 'save-notes', kind: 'weekly', date: '2026-10-05', specificRemarks: 'Late' })).message, /submitted and locked/);
 
-  // The monthly needs every weekly approved.
+  // The monthly is one whole month (November 12, 2026): not before the weeklies reach October 31.
   const monthDraft = await get('kind=monthly&date=2026-10-30');
-  assert.deepEqual([monthDraft.period.draft.start, monthDraft.period.draft.end, monthDraft.period.draft.monthLabel, monthDraft.period.draft.weeks.length], ['2026-10-05', '2026-10-18', '2026-10', 2]);
-  assert.match(monthDraft.period.draft.problem, /must be approved first/);
-  assert.match((await post({ action: 'submit-period', kind: 'monthly', to: '2026-10-18' })).message, /must be approved first/);
+  assert.deepEqual([monthDraft.period.draft.start, monthDraft.period.draft.end, monthDraft.period.draft.monthLabel, monthDraft.period.draft.weeks.map((week) => week.week)], ['2026-10-05', '2026-10-18', '2026-10', [1, 2]]);
+  assert.match(monthDraft.period.draft.problem, /October 2026 is not finished: your weekly reports reach Oct 18, 2026/);
+  assert.match((await post({ action: 'submit-period', kind: 'monthly', to: '2026-10-18' })).message, /not finished/);
+  // Week 3 runs to November 1: most of its days are October's.
+  const third = await post({ action: 'submit-period', kind: 'weekly', to: '2026-11-01' });
+  assert.deepEqual([third.success, third.start, third.end], [true, '2026-10-19', '2026-11-01']);
+  // The month is covered; every weekly must still be approved.
+  assert.match((await get('kind=monthly&date=2026-10-30')).period.draft.problem, /must be approved first: Week 1/);
+  assert.match((await post({ action: 'submit-period', kind: 'monthly', to: '2026-11-01' })).message, /must be approved first/);
 
   // HR returns the first weekly with the reason; the clerk fixes it and submits it again.
   asHr();
-  const listed = await (await audit.GET(new Request('http://localhost/api/audit?period=weekly&date=2026-10-07'))).json();
-  assert.deepEqual(listed.audits.map((row) => [row.employeeId, row.status, row.period.start, row.period.end]), [['MD-3', 'Not started', '2026-10-05', '2026-10-11']]);
+  // The Audits page picks the month and the week (November 12, 2026).
+  const listed = await (await audit.GET(new Request('http://localhost/api/audit?period=weekly&date=2026-10-01&week=1'))).json();
+  assert.deepEqual(listed.audits.map((row) => [row.employeeId, row.status, row.period.start, row.period.end, row.period.week]), [['MD-3', 'Not started', '2026-10-05', '2026-10-11', 1]]);
+  const weekThree = await (await audit.GET(new Request('http://localhost/api/audit?period=weekly&date=2026-10-01&week=3'))).json();
+  assert.deepEqual(weekThree.audits.map((row) => [row.period.start, row.period.end]), [['2026-10-19', '2026-11-01']]);
+  const weekFour = await (await audit.GET(new Request('http://localhost/api/audit?period=weekly&date=2026-10-01&week=4'))).json();
+  assert.deepEqual([weekFour.audits, weekFour.notSubmitted], [[], ['Clerk One']], 'no Week 4 of October');
   assert.match((await (await audit.PATCH(request({ period: 'weekly', date: '2026-10-07', employeeId: 'MD-3', decision: 'return', reason: '' }))).json()).message, /reason/);
   assert.equal((await audit.PATCH(request({ period: 'weekly', date: '2026-10-07', employeeId: 'MD-3', decision: 'return', reason: 'Deposit slip missing' }))).status, 200);
   assert.match((await (await audit.POST(request({ period: 'weekly', date: '2026-10-07', employeeId: 'MD-3', findings: '', result: 'Balanced' }))).json()).message, /returned to the clerk/);
@@ -2533,16 +2545,18 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
 
   // HR prepares, only an Administrator approves; then the monthly can be submitted.
   asHr();
-  for (const day of ['2026-10-07', '2026-10-15']) assert.equal((await audit.POST(request({ period: 'weekly', date: day, employeeId: 'MD-3', findings: 'Checked', result: 'Balanced' }))).status, 200);
+  for (const week of [1, 2, 3]) assert.equal((await audit.POST(request({ period: 'weekly', date: '2026-10-01', week, employeeId: 'MD-3', findings: 'Checked', result: 'Balanced' }))).status, 200);
   asAdmin();
-  for (const day of ['2026-10-07', '2026-10-15']) { const approved = await audit.PATCH(request({ period: 'weekly', date: day, employeeId: 'MD-3', decision: 'approve' })); assert.equal(approved.status, 200, JSON.stringify(await approved.clone().json())); }
+  for (const week of [1, 2, 3]) { const approved = await audit.PATCH(request({ period: 'weekly', date: '2026-10-01', week, employeeId: 'MD-3', decision: 'approve' })); assert.equal(approved.status, 200, JSON.stringify(await approved.clone().json())); }
   assert.match((await (await audit.PATCH(request({ period: 'weekly', date: '2026-10-07', employeeId: 'MD-3', decision: 'return', reason: 'Too late' }))).json()).message, /approved/, 'an approved weekly is not returned');
   asClerk();
   assert.match((await get('kind=weekly&date=2026-10-07')).audit.lock, /approved in the audit and locked/);
-  const month = await post({ action: 'submit-period', kind: 'monthly', to: '2026-10-18' });
-  assert.deepEqual([month.success, month.start, month.end, month.monthLabel], [true, '2026-10-05', '2026-10-18', '2026-10']);
+  const month = await post({ action: 'submit-period', kind: 'monthly', to: '2026-11-01' });
+  assert.deepEqual([month.success, month.start, month.end, month.monthLabel], [true, '2026-10-05', '2026-11-01', '2026-10']);
   const monthly = await get('kind=monthly&date=2026-10-10');
-  assert.deepEqual([monthly.period.current.monthLabel, monthly.report.from, monthly.report.to, monthly.report.weeks.length, monthly.report.dateLine], ['2026-10', '2026-10-05', '2026-10-18', 2, 'OCTOBER 2026 · OCTOBER 5-18, 2026']);
+  assert.deepEqual([monthly.period.current.monthLabel, monthly.report.from, monthly.report.to, monthly.report.weeks.length, monthly.report.dateLine], ['2026-10', '2026-10-05', '2026-11-01', 3, 'OCTOBER 2026 · OCTOBER 5 - NOVEMBER 1, 2026']);
+  // The next weekly is Week 1 of November.
+  assert.deepEqual([(await get('kind=weekly&date=2026-11-05&to=new')).period.draft.week, (await get('kind=weekly&date=2026-11-05&to=new')).period.draft.monthLabel], [1, '2026-11']);
   asHr();
   const monthAudits = await (await audit.GET(new Request('http://localhost/api/audit?period=monthly&date=2026-10-01'))).json();
   assert.deepEqual([monthAudits.audits.map((row) => row.period.monthLabel), monthAudits.notSubmitted], [['2026-10'], []]);
@@ -6084,4 +6098,63 @@ test('Submit Collections: a flexible program takes the amount the MAS typed, wit
   assert.throws(() => masCollectionQuote(account, 2, undefined, 2500));
   assert.throws(() => masCollectionQuote(account, 2, undefined, Number.NaN), /Type the amount/);
   assert.equal(masCollectionQuote({ ...account, flexible: false }, 2, undefined, 1500).amount, 600, 'a fixed program ignores a typed amount');
+});
+
+test('IT writes a System Update, announces it to everyone or chosen roles; each user gets its pop-up once and its guide (November 12, 2026)', async () => {
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Clerk' }, { employee_id: 'DPE-0003', full_name: 'Mas Person' }, { employee_id: 'DPE-0009', full_name: 'IT Person' }]);
+  await seed('users', [{ user_id: 'U2', employee_id: 'DPE-0002', password_hash: 'x', status: 'active' }, { user_id: 'U3', employee_id: 'DPE-0003', password_hash: 'x', status: 'active' }, { user_id: 'U9', employee_id: 'DPE-0009', password_hash: 'x', status: 'active' }]);
+  const clerk = { userId: 'U2', employeeId: 'DPE-0002', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} };
+  const mas = { userId: 'U3', employeeId: 'DPE-0003', name: 'Mas Person', roleNames: ['MAS'], permissions: {} };
+  const it = { userId: 'U9', employeeId: 'DPE-0009', name: 'IT Person', roleNames: ['IT'], permissions: {} };
+  const h = harness(clerk);
+  const route = h.load('app/api/updates/route.ts'), notifications = h.load('app/api/notifications/route.ts');
+  const popup = async () => (await (await notifications.GET()).json()).update;
+  const list = async () => (await route.GET()).json();
+  const patch = async (body) => (await route.PATCH(request(body))).json();
+
+  assert.equal((await route.POST(request({ title: 'New', summary: 'Changed' }))).status, 403, 'an Entry Clerk cannot write one');
+  assert.equal((await list()).canManage, false);
+  h.setUser(it);
+  assert.match((await (await route.POST(request({ title: 'x', summary: 'Changed' }))).json()).message, /title/);
+  assert.match((await (await route.POST(request({ title: 'Weekly weeks', summary: '' }))).json()).message, /pop-up/);
+  const saved = await (await route.POST(request({ title: 'Weekly weeks', summary: 'Weekly reports are now Week 1, 2...', steps: [{ text: 'Open Reports, then Weekly', path: '/reports' }, { text: '', path: '' }, { text: 'Audits pick a month and week', path: '/audit' }], audience: ['Entry Clerk'] }))).json();
+  assert.deepEqual([saved.update.status, saved.update.steps.length, saved.update.audience], ['Draft', 2, ['entry clerk']], 'blank steps dropped; roles kept in lowercase');
+  const managed = await list();
+  assert.equal(managed.canManage, true);
+  assert.ok(managed.pages.some((page) => page.href === '/reports') && managed.roles !== undefined);
+  h.setUser(clerk);
+  assert.equal(await popup(), null, 'a draft shows to nobody');
+
+  h.setUser(it);
+  assert.equal((await patch({ action: 'announce', id: saved.update.id })).success, true);
+  assert.match((await patch({ action: 'delete', id: saved.update.id })).message, /back to a draft/, 'an announced update is not deleted');
+  h.setUser(mas);
+  assert.equal(await popup(), null, 'only the roles it is for');
+  assert.deepEqual((await list()).updates, []);
+  h.setUser(clerk);
+  const shown = await popup();
+  assert.deepEqual([shown.id, shown.title, shown.steps, shown.announcedBy], [saved.update.id, 'Weekly weeks', 2, 'IT Person']);
+  const mine = await list();
+  assert.deepEqual(mine.updates.map((update) => [update.seen, update.steps.map((step) => step.canOpen)]), [[false, [true, false]]], 'an Entry Clerk opens Reports, not Audits');
+  assert.equal((await patch({ action: 'announce', id: saved.update.id })).success, false, 'only IT announces');
+  assert.equal((await patch({ action: 'seen', id: saved.update.id })).success, true);
+  assert.equal(await popup(), null, 'closed once: not shown again');
+  assert.equal((await list()).updates[0].seen, true);
+
+  // For everyone: the MAS gets it too; taking it back hides it.
+  h.setUser(it);
+  const everyone = await (await route.POST(request({ title: 'Separated civil status', summary: 'New Sales has Separated.', audience: [] }))).json();
+  await patch({ action: 'announce', id: everyone.update.id });
+  h.setUser(mas);
+  assert.equal((await popup()).id, everyone.update.id);
+  assert.equal((await patch({ action: 'opened', id: everyone.update.id })).success, true, 'Go to updates counts as seen');
+  assert.equal(await popup(), null);
+  h.setUser(it);
+  assert.deepEqual((await list()).all.map((update) => [update.title, update.seenCount]), [['Separated civil status', 1], ['Weekly weeks', 1]]);
+  await patch({ action: 'withdraw', id: everyone.update.id });
+  h.setUser(clerk);
+  assert.deepEqual((await list()).updates.map((update) => update.title), ['Weekly weeks'], 'taken back: no longer listed');
+  h.setUser(it);
+  assert.equal((await patch({ action: 'delete', id: everyone.update.id })).success, true);
+  assert.deepEqual(await query("select count(*)::int as n from system_update_views where update_id = $1", [everyone.update.id]), [{ n: 0 }], 'its views go with it');
 });

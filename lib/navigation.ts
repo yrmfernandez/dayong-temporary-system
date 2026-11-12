@@ -1,7 +1,7 @@
 import {
   Award, BadgeCheck, BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
   ClipboardList, CreditCard, FilePen, UserRoundCog, FileWarning, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
-  LayoutDashboard, Banknote, SearchCheck, UserMinus, Camera, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
+  LayoutDashboard, Banknote, Megaphone, SearchCheck, UserMinus, Camera, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -66,11 +66,20 @@ const page = {
   exceptions: { name: "Exceptions", href: "/exceptions", icon: TriangleAlert },
   myEntries: { name: "My Entries", href: "/my-entries", icon: Camera },
   clearing: { name: "Clearing", href: "/clearing", icon: BadgeCheck },
+  // What changed in the system, announced by IT, with a guide per update (lib/system-updates.ts, November 12, 2026).
+  updates: { name: "System Updates", href: "/updates", icon: Megaphone },
 } satisfies Record<string, NavItem>;
 
+/** The pages a System Update step can open: every page once, by name (lib/system-updates.ts). */
+export function navPageChoices() {
+  const seen = new Set<string>();
+  return Object.values(page).filter((item) => !seen.has(item.href) && seen.add(item.href)).map((item) => ({ name: item.name, href: item.href }))
+    .concat([{ name: "Settings", href: "/settings" }]).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // Personal self-service. MAS lists My Fidelity under My Portfolio instead.
-const myHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests, page.myFidelity, page.myNotices] };
-const masHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests, page.myNotices] };
+const myHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests, page.myFidelity, page.myNotices, page.updates] };
+const masHr: NavSection = { title: "My HR", items: [page.attendance, page.leaveRequests, page.myNotices, page.updates] };
 
 /**
  * Sidebar workspace per role. Sections follow each role's daily workflow:
@@ -93,7 +102,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Reports", items: [page.companyReports, page.userReports, page.mam, page.soa] },
     { title: "Directory", items: [page.members, page.searchRecords] },
     { title: "People", items: [page.attendanceTracking] },
-    { title: "My HR", items: [page.attendance, page.myNotices] },
+    { title: "My HR", items: [page.attendance, page.myNotices, page.updates] },
   ],
   finance: [
     { title: "Overview", items: [page.dashboard] },
@@ -120,11 +129,12 @@ const workspaces: Record<string, NavSection[]> = {
   ],
   // IT runs the system: its dashboard is system health, then access control, configuration, and the audit trail.
   it: [
-    { title: "System", items: [{ ...page.dashboard, name: "System Health" }] },
+    // IT writes and announces System Updates (lib/system-updates.ts).
+    { title: "System", items: [{ ...page.dashboard, name: "System Health" }, page.updates] },
     { title: "Access Control", items: [page.userAccounts, page.roles, page.employees] },
     { title: "Configuration", items: [page.branches, page.programs, page.masterData] },
     { title: "Monitoring", items: [page.auditLog, page.entryCorrections, page.memberCorrections, page.dropouts, page.searchRecords, page.fullyPaid] },
-    myHr,
+    { ...myHr, items: myHr.items.filter((item) => item.href !== "/updates") },
   ],
   mas: [
     { title: "Overview", items: [page.dashboard] },
@@ -189,7 +199,7 @@ function placeGrantedPage(sections: NavSection[], item: NavItem) {
  */
 export function visibleNavigation(role: string, access: AccessContext): NavSection[] {
   const configured = isAdministratorRole(role) ? undefined : access.rolePages?.[normalizeRole(role)];
-  const inRole = (href: string) => !configured || href === "/" || configured.some((route) => routeMatches(href, route));
+  const inRole = (href: string) => !configured || href === "/" || href === "/updates" || configured.some((route) => routeMatches(href, route));
   const allowed = (item: NavItem) => canAccessPath(access, item.href) && inRole(item.href);
   // A custom role with its pages ticked in Roles (e.g. an auditor role) gets them grouped as in the administrator
   // workspace, not squeezed into the MAS layout (owner, October 15, 2026).
