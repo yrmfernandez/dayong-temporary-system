@@ -2540,7 +2540,20 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
   const returned = await get('kind=weekly&date=2026-10-07');
   assert.deepEqual([returned.period.current.submission, returned.period.current.returnReason, returned.audit.lock], ['Returned', 'Deposit slip missing', '']);
   assert.equal((await post({ action: 'save-notes', kind: 'daily', date: '2026-10-07', specificRemarks: 'Slip added' })).success, true, 'returned: the clerk can fix it');
-  assert.equal((await post({ action: 'resubmit-period', kind: 'weekly', date: '2026-10-05' })).success, true);
+  // Returned: the clerk changes its days (November 12, 2026). Their first weekly: From changes; the next one fixes To.
+  assert.deepEqual(returned.period.dates, { canFrom: true, canTo: false, fromLimit: '', toLimit: '2026-10-12' });
+  assert.equal((await post({ action: 'save-notes', kind: 'weekly', date: '2026-10-05', specificRemarks: 'Week notes' })).success, true);
+  assert.match((await post({ action: 'change-period-dates', kind: 'weekly', date: '2026-10-05', from: '2026-10-05', to: '2026-10-12' })).message, /last day stays Oct 11, 2026.*next weekly report/);
+  assert.match((await post({ action: 'change-period-dates', kind: 'weekly', date: '2026-10-05', from: '2026-10-12', to: '2026-10-11' })).message, /cannot be before/);
+  const moved = await post({ action: 'change-period-dates', kind: 'weekly', date: '2026-10-05', from: '2026-10-03', to: '2026-10-11' });
+  assert.deepEqual([moved.success, moved.start, moved.end], [true, '2026-10-03', '2026-10-11']);
+  assert.deepEqual(await query("select period_start::text as period_start, specific_remarks from report_notes where note_key like 'MD-3|weekly|%'"), [{ period_start: '2026-10-03', specific_remarks: 'Week notes' }], 'its notes follow the first day');
+  const changed = await get('kind=weekly&date=2026-10-03');
+  assert.deepEqual([changed.period.current.start, changed.period.current.end, changed.period.current.submission, changed.report.from], ['2026-10-03', '2026-10-11', 'Returned', '2026-10-03']);
+  // The second weekly is not returned: its days stay.
+  assert.match((await post({ action: 'change-period-dates', kind: 'weekly', date: '2026-10-12', from: '2026-10-12', to: '2026-10-17' })).message, /returned to you/);
+  assert.equal((await post({ action: 'resubmit-period', kind: 'weekly', date: '2026-10-03' })).success, true);
+  assert.match((await post({ action: 'change-period-dates', kind: 'weekly', date: '2026-10-03', from: '2026-10-04', to: '2026-10-11' })).message, /returned to you/, 'submitted again: its days are locked');
   assert.match((await post({ action: 'save-notes', kind: 'daily', date: '2026-10-07', specificRemarks: 'Again' })).message, /submitted and locked/, 'locked again');
 
   // HR prepares, only an Administrator approves; then the monthly can be submitted.
@@ -2552,9 +2565,9 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
   asClerk();
   assert.match((await get('kind=weekly&date=2026-10-07')).audit.lock, /approved in the audit and locked/);
   const month = await post({ action: 'submit-period', kind: 'monthly', to: '2026-11-01' });
-  assert.deepEqual([month.success, month.start, month.end, month.monthLabel], [true, '2026-10-05', '2026-11-01', '2026-10']);
+  assert.deepEqual([month.success, month.start, month.end, month.monthLabel], [true, '2026-10-03', '2026-11-01', '2026-10']);
   const monthly = await get('kind=monthly&date=2026-10-10');
-  assert.deepEqual([monthly.period.current.monthLabel, monthly.report.from, monthly.report.to, monthly.report.weeks.length, monthly.report.dateLine], ['2026-10', '2026-10-05', '2026-11-01', 3, 'OCTOBER 2026 · OCTOBER 5 - NOVEMBER 1, 2026']);
+  assert.deepEqual([monthly.period.current.monthLabel, monthly.report.from, monthly.report.to, monthly.report.weeks.length, monthly.report.dateLine], ['2026-10', '2026-10-03', '2026-11-01', 3, 'OCTOBER 2026 · OCTOBER 3 - NOVEMBER 1, 2026']);
   // The next weekly is Week 1 of November.
   assert.deepEqual([(await get('kind=weekly&date=2026-11-05&to=new')).period.draft.week, (await get('kind=weekly&date=2026-11-05&to=new')).period.draft.monthLabel], [1, '2026-11']);
   asHr();

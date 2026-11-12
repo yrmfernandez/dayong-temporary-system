@@ -162,6 +162,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
       {message && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">{message}</p>}
       {data && submitted && data.period && <PeriodNotice kind={kind} view={data.period} own={own} saving={saving}
+        onChangeDates={async (from, to) => { if (await act({ action: "change-period-dates", from, to })) { setDate(from); setTo(to); } }}
         onSubmit={async () => { const draft = data.period?.draft; if (!draft) return; if (await act({ action: "submit-period", from: draft.start, to: draft.end })) { setDate(draft.start); setTo(draft.end); } }}
         onResubmit={() => void act({ action: "resubmit-period" })} />}
       {data && own && <AuditNotice audit={data.audit} />}
@@ -366,7 +367,7 @@ function PeriodPicker({ kind, view, fixed, onPick }: { kind: Kind; view: PeriodV
 }
 
 /** Where the weekly or monthly report stands: not submitted (with Submit), submitted, returned (with Submit again), approved. */
-function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit }: { kind: Kind; view: PeriodView; own: boolean; saving: boolean; onSubmit: () => void; onResubmit: () => void }) {
+function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit, onChangeDates }: { kind: Kind; view: PeriodView; own: boolean; saving: boolean; onSubmit: () => void; onResubmit: () => void; onChangeDates: (from: string, to: string) => void }) {
   const name = kind === "weekly" ? "weekly report" : "monthly report";
   const current = view.current, draft = view.draft;
   if (current) {
@@ -377,6 +378,7 @@ function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit }: { kind:
         <span className="text-xs">submitted by {current.submittedBy} on {showDateTime(current.submittedAt)}</span></p>
       {returned ? <>
         <p><span className="font-semibold">Returned by {current.returnedBy}</span> on {showDateTime(current.returnedAt)}: {current.returnReason}</p>
+        {own && view.dates && (view.dates.canFrom || view.dates.canTo) && <ReturnedDates key={`${current.start}|${current.end}`} start={current.start} end={current.end} dates={view.dates} saving={saving} onSave={onChangeDates} />}
         {own && <p className="flex flex-wrap items-center gap-2 text-xs">Fix it, then submit it again; it is locked again once submitted.<Button type="button" size="sm" disabled={saving} onClick={onResubmit}>Submit again</Button></p>}
       </> : current.auditStatus !== "Approved" && <p className="text-xs">Submitted: locked until the audit approves it or returns it to {own ? "you" : "the clerk"}.</p>}
     </div>;
@@ -388,6 +390,27 @@ function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit }: { kind:
     {draft.problem ? <p className="text-xs font-medium text-amber-800 dark:text-amber-300">{draft.problem}</p>
       : own && <p className="flex flex-wrap items-center gap-2 text-xs">{kind === "weekly" ? "Check the report, then submit it. Once submitted you cannot change anything in these days unless the audit returns it." : "Every weekly report in it is approved; submit the monthly report."}
         <Button type="button" size="sm" disabled={saving} onClick={onSubmit}>Submit {name}</Button></p>}
+  </div>;
+}
+
+/**
+ * A returned weekly's From and To (November 12, 2026; lib/report-periods.ts changeReturnedWeekly): From only on the
+ * clerk's first weekly, To only on their latest, so no day is left out or counted twice.
+ */
+function ReturnedDates({ start, end, dates, saving, onSave }: { start: string; end: string; dates: NonNullable<PeriodView["dates"]>; saving: boolean; onSave: (from: string, to: string) => void }) {
+  const [from, setFrom] = useState(start), [to, setTo] = useState(end);
+  const today = todayInManila();
+  return <div className="flex flex-wrap items-end gap-2 rounded-md border border-amber-300/70 bg-background/60 p-2 text-xs dark:border-amber-800">
+    <label>From
+      {dates.canFrom ? <Input className="mt-1 h-8 w-40" type="date" max={to || today} value={from} onChange={(event) => event.target.value && setFrom(event.target.value)} />
+        : <span className="mt-1 flex h-8 items-center rounded-md border bg-muted/40 px-2" title={`The day after your previous weekly report (it ended ${showDate(dates.fromLimit)})`}>{showDate(start)}</span>}
+    </label>
+    <label>To
+      {dates.canTo ? <Input className="mt-1 h-8 w-40" type="date" min={from} max={dates.toLimit || today} value={to} onChange={(event) => event.target.value && setTo(event.target.value)} />
+        : <span className="mt-1 flex h-8 items-center rounded-md border bg-muted/40 px-2" title={`The day before your next weekly report (it starts ${showDate(dates.toLimit)})`}>{showDate(end)}</span>}
+    </label>
+    <Button type="button" size="sm" variant="outline" disabled={saving || (from === start && to === end) || to < from} onClick={() => onSave(from, to)}>Change days</Button>
+    <span className="basis-full text-muted-foreground">{!dates.canFrom ? "The first day stays the day after your previous weekly report. " : ""}{!dates.canTo ? "The last day stays the day before your next weekly report. " : ""}So no day is left out or counted twice.</span>
   </div>;
 }
 

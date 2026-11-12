@@ -13,7 +13,7 @@ import { createExpense, deleteExpense, editExpense } from "@/lib/finance-data";
 import { getBranches } from "@/lib/google-sheets-data";
 import { expensePhotoIds, expensePhotosFrom, saveExpensePhotos } from "@/lib/receipt-photos";
 import { createFidelitySlip, editFidelitySlip, voidFidelitySlip } from "@/lib/remittance-workflow";
-import { isPeriodKind, periodView, resubmitPeriod, submitPeriod } from "@/lib/report-periods";
+import { changeReturnedWeekly, isPeriodKind, periodView, resubmitPeriod, submitPeriod } from "@/lib/report-periods";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const same = (a: unknown, b: unknown) => text(a).toLowerCase() === text(b).toLowerCase();
@@ -192,6 +192,12 @@ export const POST = withEncoder(async (request: Request) => {
         if (!isPeriodKind(kind)) throw new Error("Only weekly and monthly reports are submitted.");
         const saved = await submitPeriod(kind, clerk, { from: text(body.from), to: text(body.to) });
         return Response.json({ success: true, ...saved, message: `${kind === "weekly" ? "Weekly" : "Monthly"} report submitted. It is locked until the audit approves it or returns it to you.` });
+      }
+      // A returned weekly: the clerk changes its From and To before submitting it again (November 12, 2026).
+      case "change-period-dates": {
+        if (asAuditPeriod(body.kind) !== "weekly") throw new Error("Only a returned weekly report has its days changed.");
+        const saved = await changeReturnedWeekly(user.employeeId, text(body.date), { from: text(body.from), to: text(body.to) });
+        return Response.json({ success: true, ...saved, message: "Days changed. Check the report, then submit it again." });
       }
       case "resubmit-period": {
         const kind = asAuditPeriod(body.kind);

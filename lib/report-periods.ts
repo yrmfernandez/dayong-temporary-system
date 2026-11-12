@@ -139,6 +139,8 @@ export type PeriodView = {
   kind: PeriodKind; periods: ClerkPeriod[]; current: ClerkPeriod | null;
   /** The report not submitted yet: its first day (fixed after the first weekly), the weeklies a monthly would gather, and why it cannot be submitted. */
   draft: { start: string; end: string; chooseStart: boolean; weeks: ClerkPeriod[]; monthLabel: string; week: number; problem: string } | null;
+  /** A returned weekly: which of its days the clerk may change (changeReturnedWeekly); null otherwise. */
+  dates?: { canFrom: boolean; canTo: boolean; fromLimit: string; toLimit: string } | null;
   span: ReportSpan;
 };
 
@@ -157,7 +159,7 @@ export async function periodView(kind: PeriodKind, employeeId: string, date: str
   const exact = until ? periods.find((period) => period.start === day && period.end === until) : null;
   const current = exact ?? (until || fresh ? null : periodContaining(periods, day));
   const weeksOf = (start: string, end: string) => weeklies.filter((week) => week.start >= start && week.end <= end).map((week) => ({ start: week.start, end: week.end, week: week.week }));
-  if (current) return { kind, periods, current, draft: null, span: { start: current.start, end: current.end, monthLabel: current.monthLabel, ...(kind === "monthly" ? { weeks: weeksOf(current.start, current.end) } : { week: current.week }) } };
+  if (current) return { kind, periods, current, draft: null, dates: kind === "weekly" ? dateLimits(weeklies, current, today) : null, span: { start: current.start, end: current.end, monthLabel: current.monthLabel, ...(kind === "monthly" ? { weeks: weeksOf(current.start, current.end) } : { week: current.week }) } };
   if (kind === "weekly") {
     const next = nextWeekStart(weeklies);
     const start = next || day;
@@ -201,6 +203,54 @@ export async function submitPeriod(kind: PeriodKind, clerk: { employeeId: string
     const start = weeks[0].start, id = createReadableId("MNR");
     await tx.insert(TABLE.monthly).values({ audit_id: id, report_date: start, end_date: last.end, month_label: monthLabel, ...base });
     return { id, start, end: last.end, monthLabel };
+  });
+}
+
+/**
+ * Which days of a returned weekly the clerk may change (owner, November 12, 2026), keeping the rule that no day is left
+ * out or counted twice: From only on their first weekly (otherwise it is the day after the one before), To only on their
+ * latest (otherwise it is the day before the next one). `fromLimit`/`toLimit` say what fixes a date that cannot change.
+ */
+function dateLimits(weeklies: ClerkPeriod[], week: ClerkPeriod, today: string) {
+  if (week.submission !== "Returned" || week.auditStatus === "Approved") return null;
+  const index = weeklies.findIndex((item) => item.id === week.id), before = weeklies[index - 1], after = weeklies[index + 1];
+  return { canFrom: !before, canTo: !after, fromLimit: before ? before.end : "", toLimit: after ? after.start : today };
+}
+
+/**
+ * The clerk changes the days of their returned weekly (starting on `start`) to `from` – `to` (dateLimits). Its notes and
+ * Cash Beg follow its first day; the audit is the same row, so its figures are worked out again when HR saves it.
+ */
+export async function changeReturnedWeekly(employeeId: string, start: string, input: { from?: string; to?: string }) {
+  const from = text(input.from), to = text(input.to), id = text(employeeId);
+  if (!validDate(from) || !validDate(to)) throw new Error("Choose the first and last day of the weekly report.");
+  if (to < from) throw new Error("The last day cannot be before the first.");
+  if (to > manilaNow().date) throw new Error("The last day cannot be after today.");
+  return inTransaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`report-period:${id}`}))`);
+    const weeklies = await clerkPeriods(id, "weekly", tx);
+    const week = weeklies.find((item) => item.start === text(start));
+    if (!week) throw new Error("This weekly report has not been submitted.");
+    const limits = dateLimits(weeklies, week, manilaNow().date);
+    if (!limits) throw new Error(week.auditStatus === "Approved" ? "This weekly report is approved: its days cannot change." : "Only a weekly report returned to you can have its days changed.");
+    if (from === week.start && to === week.end) throw new Error("The days are the same as before.");
+    if (from !== week.start && !limits.canFrom) throw new Error(`The first day stays ${formatDate(week.start)}, the day after your previous weekly report (it ended ${formatDate(limits.fromLimit)}), so no day is left out or counted twice.`);
+    if (to !== week.end && !limits.canTo) throw new Error(`The last day stays ${formatDate(week.end)}, the day before your next weekly report (it starts ${formatDate(limits.toLimit)}), so no day is left out or counted twice.`);
+    const now = new Date().toISOString(), table = TABLE.weekly;
+    if (from !== week.start) {
+      // The weekly's notes and Cash Beg are kept under its first day ("employee|weekly|start" or "...|start|branch").
+      const notes = schema.report_notes, oldBase = `${id}|weekly|${week.start}`.toLowerCase();
+      const rows = await tx.select({ key: notes.note_key }).from(notes).where(sql`lower(${notes.note_key}) = ${oldBase} or lower(${notes.note_key}) like ${`${oldBase}|%`}`);
+      for (const row of rows) {
+        // Same key with the new first day: "employee|weekly|" + from + the branch part, if any.
+        const key = text(row.key), moved = key.slice(0, oldBase.length - week.start.length) + from + key.slice(oldBase.length);
+        const [taken] = await tx.select({ key: notes.note_key }).from(notes).where(sql`lower(${notes.note_key}) = ${moved.toLowerCase()}`).limit(1);
+        if (taken) throw new Error(`There are already weekly notes saved for ${formatDate(from)}. Ask IT to merge them before moving the first day.`);
+        await tx.update(notes).set({ note_key: moved, period_start: from, updated_at: now }).where(eq(notes.note_key, key));
+      }
+    }
+    await tx.update(table).set({ report_date: from, end_date: to, updated_at: now }).where(eq(table.audit_id, week.id));
+    return { id: week.id, start: from, end: to };
   });
 }
 

@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Returned weekly: the clerk changes From and To (2026-11-12)
+
+- **Asked (owner):** for a returned weekly report, allow clerks to change the from and to date.
+- **Done:** on a returned weekly the notice shows **From** / **To** and **Change days** (`ReturnedDates` in `components/clerk-report.tsx`; action `change-period-dates` in `app/api/clerk-report/route.ts`; `changeReturnedWeekly` and `dateLimits` in `lib/report-periods.ts`). To keep no day left out or counted twice, From changes only on the clerk's first weekly and To only on their latest; a weekly between two others keeps its days (the boxes show why). Only while Returned (not approved, not submitted again). The row's `report_date` / `end_date` change (the audit is the same row; HR saves it again for the new days); the weekly's notes and Cash Beg rows (`report_notes`, keyed by the first day, per branch) move to the new first day, refused if notes already exist there. Week numbers follow on their own. No migration.
+- **Tested:** the weekly test: limits shown, To refused while a next weekly exists, To before From refused, From moved Oct 5 → Oct 3 with its notes, a weekly not returned refused, refused again once submitted again; the monthly now starts Oct 3. Type check, lint and build pass; all 342 tests pass. Not tried in a browser.
+- **To do (owner):** push (no migration).
+
 ### System Updates: IT announces changes with a pop-up and a guide (2026-11-12)
 
 - **Asked (owner):** in IT clerk accounts, a section for updates where IT can announce a new update; when announced the system pops up a window that cannot be closed for 5 seconds, with **Go to updates** that teaches them the update and takes them to those sections.
