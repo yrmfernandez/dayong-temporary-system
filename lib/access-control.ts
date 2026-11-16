@@ -30,7 +30,10 @@ const roleRoutes: Record<string, string[]> = {
   // A Collector submits the collections of the MAS whose members they collected (Submit Collections, November 3, 2026),
   // and their own New Sales (owner, November 4, 2026), also from their MAS workspace, which needs the page here too.
   collector: ["/", "/mas-sales", "/mas-collections", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/settings"],
+  // MAS-Officer (owner, November 16, 2026): a MAS who also heads the MAS of a branch; the MAS pages plus MAS Report.
+  "mas-officer": ["/", "/mas-sales", "/mas-collections", "/members", "/remittances", "/mam", "/fidelity", "/attendance", "/leave-requests", "/master-data", "/mas-report", "/settings"],
 };
+roleRoutes["mas officer"] = roleRoutes["mas-officer"];
 
 // Every signed-in employee's shared workspace, added to roles that still use default access.
 const employeeRoutes = ["/programs", "/branches", "/master-data", "/members", "/mam", "/fidelity", "/attendance", "/leave-requests"];
@@ -48,6 +51,22 @@ export const hrRoles = ["hr officer", "hr"];
  * dashboard and may read what Finance reads; changing money (payroll, Fidelity payouts) stays with Finance itself.
  */
 export const isFinanceFamilyRole = (role: string) => { const name = normalizeRoleName(role); return name === "finance" || /^finance[\s-]/.test(name); };
+/** MAS-Officer, written "MAS-Officer" or "MAS Officer" (owner, November 16, 2026). */
+export const isMasOfficerRole = (role: string) => /^mas[\s-]+officer$/.test(normalizeRoleName(role));
+/** A MAS, including a MAS-Officer: sells, collects and has members like any MAS. */
+export const isMasFamilyRole = (role: string) => normalizeRoleName(role) === "mas" || isMasOfficerRole(role);
+/**
+ * MAS Report branches (owner, November 16, 2026): a MAS-Officer is kept to the branches where they are officer unless
+ * they also hold a role that oversees every branch; someone without MAS-Officer reached the page through such a role or
+ * a page grant in Roles, and sees every branch (lib/mas-report.ts).
+ */
+export function masReportSeesEveryBranch(roleNames: string[]) {
+  const oversees = roleNames.some((role) => {
+    const name = normalizeRoleName(role);
+    return isAdministratorRole(name) || executiveRoles.includes(name) || isFinanceFamilyRole(name) || hrRoles.includes(name) || itRoles.includes(name);
+  });
+  return oversees || !roleNames.some(isMasOfficerRole);
+}
 export const hasRole = (context: Pick<AccessContext, "roleNames">, names: string[]) => context.roleNames.some((role) => names.includes(normalizeRoleName(role)) || isAdministratorRole(role));
 
 /**
@@ -123,7 +142,8 @@ function kindOfRole(role: string): DashboardKind | null {
   if (itRoles.includes(name)) return "it";
   if (name === "entry clerk") return "entry";
   if (name === "collector") return "collector";
-  if (name === "mas") return "mas";
+  // A MAS-Officer's dashboard is the MAS dashboard (their own members); MAS Report is its own page.
+  if (isMasFamilyRole(name)) return "mas";
   return null;
 }
 

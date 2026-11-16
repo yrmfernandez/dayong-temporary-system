@@ -9,6 +9,7 @@ import { InlineRow } from "@/components/inline-panel";
 import { MetricTile } from "@/components/metric-tile";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { isMasFamilyRole } from "@/lib/access-control";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -496,7 +497,7 @@ function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolea
   function edit(employee: Overview["employees"][number]) {
     setSavedId("");
     if (editing?.employeeId === employee.id) { setEditing(null); return; }
-    const isMas = employee.roles.some((role) => role.trim().toLowerCase() === "mas");
+    const isMas = employee.roles.some(isMasFamilyRole);
     setEditing({ employeeName: employee.name, ...(profiles.get(employee.id) ?? { employeeId: employee.id, baseType: isMas ? "none" : "daily", baseRate: 0, commissionEligible: isMas, hoursPerDay: 8, overtimeMultiplier: 1.25, status: "active", notes: "" }) });
   }
 

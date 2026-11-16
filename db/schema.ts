@@ -79,6 +79,8 @@ export const employee_branches = pgTable("employee_branches", {
   // What the employee does in this branch (owner, November 5, 2026; lib/employees.ts).
   clerk_duty: boolean().notNull().default(true),
   mas_duty: boolean().notNull().default(true),
+  // MAS-Officer (owner, November 16, 2026): their MAS Report covers the branches where this is on.
+  officer_duty: boolean().notNull().default(true),
   ...encoder(),
 }, (t) => [
   index("employee_branches_employee_idx").on(t.employee_id),

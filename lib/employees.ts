@@ -4,6 +4,7 @@ import { currentDb, encodedBy, inTransaction, schema, type Transaction } from "@
 import { sheets, GOOGLE_SHEET_ID } from "@/lib/google-sheets";
 import { EMPLOYEE_ID_FORMAT_MESSAGE, isEmployeeIdFormat } from "@/lib/employee-id";
 import { shortCached } from "@/lib/short-cache";
+import { isMasOfficerRole } from "@/lib/access-control";
 
 // Employees, their branch assignments and sign-in accounts (Users) are all in the database (read through the Sheets-style
 // layer, lib/google-sheets.ts), so Employee ID clashes and linked accounts are checked against Users too.
@@ -22,7 +23,7 @@ const { employees: employeeTable, employee_branches: assignmentTable } = schema;
 
 async function getEmployeeBranchAssignments() {
   const rows = await currentDb().select().from(assignmentTable);
-  return rows.map((row) => ({ id: row.assignment_id, employeeId: row.employee_id, branchId: row.branch_id, clerkDuty: row.clerk_duty, masDuty: row.mas_duty }));
+  return rows.map((row) => ({ id: row.assignment_id, employeeId: row.employee_id, branchId: row.branch_id, clerkDuty: row.clerk_duty, masDuty: row.mas_duty, officerDuty: row.officer_duty }));
 }
 
 async function getEmployeeRows(): Promise<EmployeeRow[]> {
@@ -43,8 +44,9 @@ async function writeAssignments(tx: Transaction, employeeId: string, branchIds: 
   const previous = await tx.select().from(assignmentTable).where(eq(assignmentTable.employee_id, employeeId));
   const notClerk = duties.notClerkBranchIds ?? previous.filter((row) => !row.clerk_duty).map((row) => row.branch_id);
   const notMas = duties.notMasBranchIds ?? previous.filter((row) => !row.mas_duty).map((row) => row.branch_id);
+  const notOfficer = duties.notOfficerBranchIds ?? previous.filter((row) => !row.officer_duty).map((row) => row.branch_id);
   await tx.delete(assignmentTable).where(eq(assignmentTable.employee_id, employeeId));
-  if (branchIds.length) await tx.insert(assignmentTable).values(branchIds.map((branchId, index) => ({ assignment_id: `EBA-${employeeId}-${Date.now()}-${index + 1}`, employee_id: employeeId, branch_id: branchId, clerk_duty: !notClerk.includes(branchId), mas_duty: !notMas.includes(branchId), ...encodedBy() })));
+  if (branchIds.length) await tx.insert(assignmentTable).values(branchIds.map((branchId, index) => ({ assignment_id: `EBA-${employeeId}-${Date.now()}-${index + 1}`, employee_id: employeeId, branch_id: branchId, clerk_duty: !notClerk.includes(branchId), mas_duty: !notMas.includes(branchId), officer_duty: !notOfficer.includes(branchId), ...encodedBy() })));
 }
 
 /** Users!B: Employee IDs of sign-in accounts. */
@@ -74,11 +76,13 @@ async function readEmployees() {
  * can submit (masProfile). A clerk with members in another branch is MAS there, not its clerk. Both duties start on, so
  * assignments stay as they were until HR unticks one in Employees.
  */
-function branchesOf(assignments: Array<{ branchId: string; clerkDuty: boolean; masDuty: boolean }>) {
+function branchesOf(assignments: Array<{ branchId: string; clerkDuty: boolean; masDuty: boolean; officerDuty: boolean }>) {
   const ids = (keep: (assignment: (typeof assignments)[number]) => boolean) => assignments.filter(keep).map((assignment) => assignment.branchId);
   return {
     branchIds: ids(() => true), clerkBranchIds: ids((item) => item.clerkDuty), masBranchIds: ids((item) => item.masDuty),
     notClerkBranchIds: ids((item) => !item.clerkDuty), notMasBranchIds: ids((item) => !item.masDuty),
+    // MAS-Officer (owner, November 16, 2026): the branches whose MAS they report on (lib/mas-report.ts).
+    officerBranchIds: ids((item) => item.officerDuty), notOfficerBranchIds: ids((item) => !item.officerDuty),
   };
 }
 
@@ -105,15 +109,17 @@ function readBranchIds(body: Record<string, unknown>) {
   return readIds(body.branchIds);
 }
 
-type BranchDuties = { notClerkBranchIds: string[]; notMasBranchIds: string[] };
+type BranchDuties = { notClerkBranchIds: string[]; notMasBranchIds: string[]; notOfficerBranchIds: string[] };
 
 /** The duties sent with a save; a list left out keeps what is saved. An Entry Clerk or MAS needs a branch for that role. */
 function readDuties(body: Record<string, unknown>, roles: string[], branchIds: string[]) {
   const list = (key: keyof BranchDuties) => Array.isArray(body[key]) ? readIds(body[key]).filter((id) => branchIds.includes(id)) : undefined;
-  const duties: Partial<BranchDuties> = { notClerkBranchIds: list("notClerkBranchIds"), notMasBranchIds: list("notMasBranchIds") };
+  const duties: Partial<BranchDuties> = { notClerkBranchIds: list("notClerkBranchIds"), notMasBranchIds: list("notMasBranchIds"), notOfficerBranchIds: list("notOfficerBranchIds") };
   const holds = (name: string) => roles.some((role) => role.trim().toLowerCase() === name);
+  const officer = roles.some(isMasOfficerRole);
   if (holds("entry clerk") && duties.notClerkBranchIds?.length === branchIds.length) throw new Error("An Entry Clerk needs at least one branch as Entry Clerk.");
-  if (holds("mas") && duties.notMasBranchIds?.length === branchIds.length) throw new Error("A MAS needs at least one branch as MAS.");
+  if ((holds("mas") || officer) && duties.notMasBranchIds?.length === branchIds.length) throw new Error("A MAS needs at least one branch as MAS.");
+  if (officer && duties.notOfficerBranchIds?.length === branchIds.length) throw new Error("A MAS-Officer needs at least one branch as officer.");
   return duties;
 }
 

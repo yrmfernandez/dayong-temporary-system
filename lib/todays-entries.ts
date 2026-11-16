@@ -103,8 +103,10 @@ export async function getEntriesForDay(date: string, mode: TodayMode, person: Pe
  * the person accountable, and the date the mode uses (one day of margin each side for the Manila day). The exact
  * filters below still decide, so this only has to keep every row that could match.
  */
-function prefilter(kind: "sales" | "collections", from: string, to: string, mode: TodayMode, person: Person | null, encodedBy: string) {
+function prefilter(kind: "sales" | "collections", from: string, to: string, mode: TodayMode, person: Person | null, encodedBy: string, branches: string[] = []) {
   const conditions: SQL[] = [];
+  // Only these branches (MAS Report, November 16, 2026), compared without spaces or capitals.
+  if (branches.length) conditions.push(sql`lower(trim(coalesce(branch, ''))) in (${sql.join(branches.map((name) => sql`${name.trim().toLowerCase()}`), sql`, `)})`);
   const low = sql`(${from}::date - 1)`, high = sql`(${to}::date + 1)`;
   if (encodedBy) conditions.push(sql`encoded_by_employee_id = ${encodedBy}`);
   if (person) conditions.push(kind === "sales" ? masScope(person) : accountableScope(person));
@@ -121,10 +123,10 @@ function prefilter(kind: "sales" | "collections", from: string, to: string, mode
   return conditions.length ? sql.join(conditions, sql` and `) : sql`true`;
 }
 
-export async function getEntriesForRange(from: string, to: string, mode: TodayMode, { person = null, encodedBy = "" }: { person?: Person | null; encodedBy?: string } = {}) {
+export async function getEntriesForRange(from: string, to: string, mode: TodayMode, { person = null, encodedBy = "", branches = [] }: { person?: Person | null; encodedBy?: string; branches?: string[] } = {}) {
   const [sales, collections, response] = await Promise.all([
-    readSheetRows("Sales", prefilter("sales", from, to, mode, person, encodedBy)),
-    readSheetRows("Collections", prefilter("collections", from, to, mode, person, encodedBy)),
+    readSheetRows("Sales", prefilter("sales", from, to, mode, person, encodedBy, branches)),
+    readSheetRows("Collections", prefilter("collections", from, to, mode, person, encodedBy, branches)),
     sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [PROGRAMS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
   ]);
   const [programs] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];

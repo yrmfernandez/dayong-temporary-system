@@ -231,3 +231,46 @@ test("Finance-Auditor reads Attendance Tracking; Finance-named roles are recogni
   assert.equal(canViewAttendanceTracking({ roleNames: ["Auditor"], permissions, rolePages: { auditor: ["/attendance-tracking"] } }), true, "ticked in Roles");
   assert.equal(canViewAttendanceTracking({ roleNames: ["Auditor"], permissions, rolePages: { auditor: ["/history"] } }), false);
 });
+
+test("MAS-Officer has the MAS pages plus MAS Report, for the branches where they are officer (November 16, 2026)", async () => {
+  const { dashboardKind, isMasFamilyRole, isMasOfficerRole, masReportSeesEveryBranch } = await import("../lib/access-control.ts");
+  const { masReportRows } = await import("../lib/mas-report-rows.ts");
+  for (const name of ["MAS-Officer", "MAS Officer", "mas-officer"]) {
+    assert.equal(isMasOfficerRole(name), true, name);
+    assert.equal(isMasFamilyRole(name), true, name);
+    assert.equal(access([name], "/mas-report"), true, name);
+    for (const path of ["/mas-sales", "/mas-collections", "/members", "/mam", "/attendance"]) assert.equal(access([name], path), true, `${name} ${path}`);
+    for (const path of ["/new-sales", "/collections", "/reports", "/payroll"]) assert.equal(access([name], path), false, `${name} ${path}`);
+    assert.equal(dashboardKind({ roleNames: [name], permissions }), "mas");
+  }
+  assert.equal(isMasOfficerRole("MAS"), false);
+  for (const role of ["MAS", "Collector", "Entry Clerk", "HR Officer"]) assert.equal(access([role], "/mas-report"), false, role);
+  assert.equal(access(["Administrator"], "/mas-report"), true);
+  // Branches: a MAS-Officer only their own; with a role that oversees every branch, all of them.
+  assert.equal(masReportSeesEveryBranch(["MAS-Officer"]), false);
+  assert.equal(masReportSeesEveryBranch(["MAS-Officer", "Entry Clerk"]), false, "Entry Clerk does not widen it");
+  assert.equal(masReportSeesEveryBranch(["MAS-Officer", "Finance"]), true);
+  assert.equal(masReportSeesEveryBranch(["Administrator"]), true);
+  assert.equal(masReportSeesEveryBranch(["Auditor"]), true, "a role given the page in Roles");
+
+  // The paper report's rows: every assigned MAS listed (empty cells when nothing), Net = Gross - Inc., totals.
+  const staff = [{ employeeId: "E1", name: "Roldan, Emely" }, { employeeId: "E2", name: "Solon, Ana" }, { employeeId: "E3", name: "Garcia, Ben" }];
+  const entries = [
+    { kind: "New Sale", person: "Roldan, Emely", amount: 4000, incentive: 1400 },
+    { kind: "New Sale", person: "ROLDAN,  EMELY", amount: 880, incentive: 300 },
+    { kind: "Collection", person: "Roldan, Emely", amount: 4370, incentive: 1520 },
+    { kind: "Collection", person: "Solon, Ana", amount: 940, incentive: 320 },
+    { kind: "New Sale", person: "Garcia, Ben", amount: 320, incentive: 100 },
+    { kind: "Collection", person: "DTO", amount: 500, incentive: 0 },
+  ];
+  const { rows, total } = masReportRows(entries, staff);
+  assert.deepEqual(rows.map((row) => row.name), ["Garcia, Ben", "Roldan, Emely", "Solon, Ana", "DTO"], "the branch's MAS first, then others");
+  const roldan = rows.find((row) => row.employeeId === "E1");
+  assert.deepEqual(roldan.sales, { accounts: 2, gross: 4880, incentives: 1700, net: 3180 }, "names match ignoring spaces and capitals");
+  assert.deepEqual(roldan.collections, { accounts: 1, gross: 4370, incentives: 1520, net: 2850 });
+  assert.deepEqual(rows.find((row) => row.name === "Solon, Ana").sales, { accounts: 0, gross: 0, incentives: 0, net: 0 }, "listed with nothing sold");
+  assert.equal(rows.find((row) => row.name === "DTO").assigned, false);
+  assert.deepEqual(total.sales, { accounts: 3, gross: 5200, incentives: 1800, net: 3400 });
+  assert.deepEqual(total.collections, { accounts: 3, gross: 5810, incentives: 1840, net: 3970 });
+  assert.deepEqual(masReportRows([], []).rows, []);
+});

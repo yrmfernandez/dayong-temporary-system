@@ -68,6 +68,8 @@ const page = {
   clearing: { name: "Clearing", href: "/clearing", icon: BadgeCheck },
   // What changed in the system, announced by IT, with a guide per update (lib/system-updates.ts, November 12, 2026).
   updates: { name: "System Updates", href: "/updates", icon: Megaphone },
+  // A MAS-Officer's report of the MAS of their branch (owner, November 16, 2026; lib/mas-report.ts).
+  masReport: { name: "MAS Report", href: "/mas-report", icon: ClipboardCheck },
 } satisfies Record<string, NavItem>;
 
 /** The pages a System Update step can open: every page once, by name (lib/system-updates.ts). */
@@ -91,7 +93,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Overview", items: [page.dashboard, page.todaysEntries, page.exceptions] },
     { title: "Operations", items: [page.clearing, page.newSales, page.masSales, page.collections, page.masCollections, page.myEntries, page.remittances, page.mam] },
     { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.payroll, page.fidelity] },
-    { title: "Reports", items: [page.reports, page.companyReports, page.soa, page.dailyAudit, page.userReports] },
+    { title: "Reports", items: [page.reports, page.companyReports, page.masReport, page.soa, page.dailyAudit, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
     { title: "Master Data", items: [page.members, page.searchRecords, page.dropouts, page.fullyPaid, page.programs, page.branches] },
     { title: "Administration", items: [page.userAccounts, page.roles, page.auditLog, page.entryCorrections, page.memberCorrections] },
@@ -143,6 +145,12 @@ const workspaces: Record<string, NavSection[]> = {
     masHr,
   ],
 };
+// MAS-Officer (owner, November 16, 2026): the MAS workspace, with the report of their branch's MAS.
+workspaces["mas officer"] = [
+  ...workspaces.mas.slice(0, 2),
+  { title: "Officer", items: [page.masReport] },
+  ...workspaces.mas.slice(2),
+];
 
 const roleAliases: Record<string, string> = {
   administrator: "administrator", admin: "administrator",
@@ -152,6 +160,7 @@ const roleAliases: Record<string, string> = {
   "hr officer": "hr", hr: "hr",
   "it clerk": "it", it: "it",
   mas: "mas",
+  "mas-officer": "mas officer", "mas officer": "mas officer",
 };
 
 export const normalizeRole = (role: string) => role.trim().toLowerCase();

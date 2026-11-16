@@ -372,6 +372,13 @@
       "when": 1794466756651,
       "tag": "0052_system_updates",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1794791338744,
+      "tag": "0053_mas_officer",
+      "breakpoints": true
     }
   ]
 }

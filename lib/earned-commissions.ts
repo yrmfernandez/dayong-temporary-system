@@ -1,9 +1,10 @@
+import { isMasFamilyRole } from "@/lib/access-control";
 import { getEmployees } from "@/lib/employees";
 import { getCommissions } from "@/lib/finance-operations";
 import { buildOperationalReport, type ReportLine } from "@/lib/reports";
 
 const round = (value: number) => Math.round(value * 100) / 100;
-const isMas = (roles: string) => roles.split(",").some((role) => role.trim().toLowerCase() === "mas");
+const isMas = (roles: string) => roles.split(",").some(isMasFamilyRole);
 
 /**
  * Commission each person actually earned in a period: the incentives they kept on New Sales and Collections. Fidelity is

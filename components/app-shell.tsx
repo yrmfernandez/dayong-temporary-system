@@ -11,7 +11,7 @@ import { SaveQueueNotice } from "@/components/save-queue-notice";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { UpdatePopup, type PopupUpdate } from "@/components/update-popup";
-import { executiveRoles, isAdministratorRole, type AccessContext } from "@/lib/access-control";
+import { executiveRoles, isAdministratorRole, isMasOfficerRole, type AccessContext } from "@/lib/access-control";
 import { sessionForWorkspace } from "@/lib/workspace-session";
 import { normalizeRole, visibleNavigation } from "@/lib/navigation";
 import { installFriendlyApiErrors } from "@/lib/friendly-api-errors";
@@ -169,5 +169,9 @@ const isLoginPath = () => typeof window !== "undefined" && window.location.pathn
 // except to executives whose only roles are CEO / President: their workspace is the dashboard and attendance.
 function roleOptions(roleNames: string[]) {
   const executiveOnly = roleNames.length > 0 && roleNames.every((role) => executiveRoles.includes(normalizeRole(role)));
-  return [...new Map([...roleNames, ...(executiveOnly ? [] : ["MAS"])].map((role) => [normalizeRole(role), role])).values()];
+  // A MAS-Officer's workspace is the MAS workspace plus MAS Report, so the plain MAS one is not offered beside it: a
+  // saved MAS choice would otherwise keep them out of MAS Report (owner, November 16, 2026).
+  const officer = roleNames.some(isMasOfficerRole);
+  const options = [...roleNames, ...(executiveOnly ? [] : ["MAS"])].filter((role) => !officer || normalizeRole(role) !== "mas");
+  return [...new Map(options.map((role) => [normalizeRole(role), role])).values()];
 }

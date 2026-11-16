@@ -1,6 +1,6 @@
 import type { SessionUser } from "@/lib/auth";
 import { todayInManila } from "@/lib/account-rules";
-import type { DashboardKind } from "@/lib/access-control";
+import { isMasFamilyRole, type DashboardKind } from "@/lib/access-control";
 import { getAttendanceRecordsForDate } from "@/lib/attendance-data";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { getAllLeaveRequests } from "@/lib/leave-data";
@@ -67,7 +67,8 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
   const employee = employees.slice(1).find((row) => text(row[0]) === user.employeeId);
   const employeeName = text(employee?.[1]) || user.name;
   const activeEmployees = employees.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() === "active");
-  const hasRole = (row: unknown[], role: string) => text(row[3]).toLowerCase().split(",").map((item) => item.trim()).includes(role);
+  // A MAS-Officer counts as MAS (owner, November 16, 2026).
+  const hasRole = (row: unknown[], role: string) => text(row[3]).toLowerCase().split(",").map((item) => item.trim()).some((item) => item === role || (role === "mas" && isMasFamilyRole(item)));
   const branchStats = [...new Set(activeEmployees.map((row) => text(row[2])).filter(Boolean))].sort().map((branch) => { const staff = activeEmployees.filter((row) => text(row[2]) === branch); return { branch, employees: staff.length, mas: staff.filter((row) => hasRole(row, "mas")).length, collectors: staff.filter((row) => hasRole(row, "collector")).length }; });
   const counts = { employees: employees.slice(1).filter((row) => text(row[0])).length, activeEmployees: activeEmployees.length, mas: activeEmployees.filter((row) => hasRole(row, "mas")).length, collectors: activeEmployees.filter((row) => hasRole(row, "collector")).length, users: kind === "admin" ? readUserRows(sheet(USERS_RANGE)).users.filter((row) => row.status === "active").length : 0, branches: sheet("'Branches'!A:Q").slice(1).filter((row) => text(row[0]) && text(row[12]).toLowerCase() === "active").length, members: memberCount, programs: programs.slice(1).filter((row) => text(row[0]) && text(row[4]).toLowerCase() === "active").length, portfolio: 0 };
 

@@ -22,6 +22,7 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
   { group: "Reports", pages: [
     { href: "/reports", label: "Reports (own encoding, daily to yearly)" },
     { href: "/company-reports", label: "Company Reports (every branch)" },
+    { href: "/mas-report", label: "MAS Report (each MAS's New Sales and Collections in a branch; a MAS-Officer sees the branches they are officer of)" },
     { href: "/soa", label: "Statement of Account" },
     { href: "/audit", label: "Audits" },
     { href: "/admin-reports", label: "Report Review" },

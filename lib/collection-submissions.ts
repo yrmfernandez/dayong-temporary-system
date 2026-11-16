@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
 
-import { normalizeRoleName } from "@/lib/access-control";
+import { isMasFamilyRole, normalizeRoleName } from "@/lib/access-control";
 import { accountState, forfeitedPaymentsAllowed, validatePayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
 import type { SessionUser } from "@/lib/auth";
@@ -173,7 +173,7 @@ async function collectorContext(user: Pick<SessionUser, "employeeId"> & Partial<
     .filter((item) => item.branchIds.length)
     .sort((a, b) => Number(b.own) - Number(a.own) || a.name.localeCompare(b.name));
   const workspace = user.roleNames ?? [];
-  const startsAsCollector = holdsRole(workspace, "collector") && !holdsRole(workspace, "mas");
+  const startsAsCollector = holdsRole(workspace, "collector") && !workspace.some(isMasFamilyRole);
   const as: CollectedBy = collectedBy === "Collector" || (collectedBy !== "MAS" && isCollector && startsAsCollector) ? "Collector" : "MAS";
   if (as === "Collector" && !isCollector) throw new Error("Only an employee with the Collector role can collect as Collector. Ask HR.");
   const memberMas = as === "Collector" ? masOptions.find((item) => item.employeeId === text(memberMasEmployeeId)) ?? null : null;
