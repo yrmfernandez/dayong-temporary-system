@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Attendance Tracking: By employee, with editing (2026-11-16)
+
+- **Asked (owner):** in attendance tracking, a section to select a member (employee) and see their attendance sheet / history, with editing allowed.
+- **Done:** new tab **By employee** (`app/attendance-tracking/page.tsx`; `AttendanceSheet mode="employee"` in `app/attendance-tracking/attendance-sheet.tsx`): pick an employee and their day-by-day sheet opens for the chosen range. The day-by-day sheet (also in the Attendance sheet tab) now has **Edit** per day for those who may correct attendance (`canAdjustLateness`): Adjust late, Set / Fix clock-out, Resume clock (today), Mark the day (Absent, AWOL, Day Off, No attendance needed) and Revert mark, through the daily board's existing actions (`/api/attendance-tracking/daily`), so the rules and notes are the same (`editActions`, `DayEditor`). `GET /api/attendance-sheet` returns `canEdit`; `?list=1` returns only the employee list. No migration.
+- **Not editable here:** leave (Leave Approvals), Sundays, closed days, days to come, Present days from the paper sheet with no time in, and the time in itself (no correction for it exists yet).
+- **Tested:** type check, lint and build pass; all 342 tests pass. Not tried in a browser.
+- **To do (owner):** try it in a browser (By employee → pick someone → Edit on a day), then push (no migration).
+
 ### Returned weekly: the clerk changes From and To (2026-11-12)
 
 - **Asked (owner):** for a returned weekly report, allow clerks to change the from and to date.

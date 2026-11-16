@@ -1,7 +1,7 @@
 import { canAccessPath } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { getPhilippineDate } from "@/lib/attendance";
-import { canViewAttendanceTracking } from "@/lib/attendance-board";
+import { canAdjustLateness, canViewAttendanceTracking } from "@/lib/attendance-board";
 import { getAttendanceRecordsForRange } from "@/lib/attendance-data";
 import { attendanceSheet, gridCell, sumSummaries } from "@/lib/attendance-sheet";
 import { closeFinishedAttendanceDaysQuietly } from "@/lib/auto-absence";
@@ -28,6 +28,14 @@ export async function GET(request: Request) {
     const to = params.get("to")?.trim() ?? "";
     const employeeId = params.get("employeeId")?.trim() ?? "";
     const includeInactive = params.get("inactive") === "1";
+    // Whether the signed-in user may correct a day (the daily board's rights: HR, admin, CEO, or Manage Attendance).
+    const canEdit = canAdjustLateness(user);
+    // The By employee tab (owner, November 16, 2026) first needs only the employee list, not every employee's sheet.
+    if (params.get("list") === "1") {
+      const people = (await getEmployees()).map((employee) => ({ id: employee.id, name: employee.name, branch: employee.branch, roles: employee.roles, status: employee.status, dateHired: employee.dateHired }))
+        .sort((first, second) => first.name.localeCompare(second.name));
+      return Response.json({ success: true, employees: people, canEdit }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (!validDate(from) || !validDate(to) || from > to) throw new Error("Choose a valid date range.");
     if ((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000 > 366) throw new Error("The attendance sheet is limited to 367 days.");
 
@@ -45,7 +53,7 @@ export async function GET(request: Request) {
       const employee = people.find((item) => item.id === employeeId);
       if (!employee) throw new Error("Select a registered employee.");
       const sheet = attendanceSheet({ employee, records: records.filter((record) => record.employeeId === employeeId), declaredDays, from, to, today, payLeave });
-      return Response.json({ success: true, from, to, today, employees: people, employee, ...sheet, leavePolicy, canOpenPayroll }, { headers: { "Cache-Control": "private, no-store" } });
+      return Response.json({ success: true, from, to, today, employees: people, employee, ...sheet, leavePolicy, canOpenPayroll, canEdit }, { headers: { "Cache-Control": "private, no-store" } });
     }
 
     const byEmployee = new Map<string, typeof records>();
@@ -64,7 +72,7 @@ export async function GET(request: Request) {
       const sheet = attendanceSheet({ employee, records: byEmployee.get(employee.id) ?? [], declaredDays, from, to, today, payLeave });
       return { employee, summary: sheet.summary, cells: sheet.days.map(gridCell), rate: rates.get(employee.id) ?? "" };
     });
-    return Response.json({ success: true, from, to, today, employees: people, rows, showRates: rates.size > 0, totals: sumSummaries(rows.map((row) => row.summary)), leavePolicy, canOpenPayroll }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ success: true, from, to, today, employees: people, rows, showRates: rates.size > 0, totals: sumSummaries(rows.map((row) => row.summary)), leavePolicy, canOpenPayroll, canEdit }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to load the attendance sheet." }, { status: 400 });
   }

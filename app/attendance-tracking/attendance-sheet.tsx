@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Download, Printer } from "lucide-react";
+import { ArrowLeft, Download, Pencil, Printer, Undo2 } from "lucide-react";
+
+import { promptDialog } from "@/components/app-dialog";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,8 +19,8 @@ import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type AllRow = { employee: SheetEmployee; summary: SheetSummary; cells: GridCell[]; rate: string };
 type LeavePolicy = { paid: boolean; source: "payroll" | "policy" | "none"; payrollId: string };
-type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: AllRow[]; showRates: boolean; totals: SheetSummary; leavePolicy: LeavePolicy; canOpenPayroll: boolean };
-type OneResult = { success: boolean; message?: string; employees: SheetEmployee[]; employee: SheetEmployee; days: SheetDay[]; summary: SheetSummary; leavePolicy: LeavePolicy; canOpenPayroll: boolean };
+type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: AllRow[]; showRates: boolean; totals: SheetSummary; leavePolicy: LeavePolicy; canOpenPayroll: boolean; canEdit: boolean };
+type OneResult = { success: boolean; message?: string; today: string; employees: SheetEmployee[]; employee: SheetEmployee; days: SheetDay[]; summary: SheetSummary; leavePolicy: LeavePolicy; canOpenPayroll: boolean; canEdit: boolean };
 
 const manilaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 const lastDayOf = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
@@ -71,8 +73,11 @@ const NO_ROWS: AllRow[] = [];
  * Attendance sheet (owner, October 14, 2026): for Finance to check attendance before paying salaries. All employees'
  * totals for a date range, and each employee's day-by-day sheet (every day, including days with no record), with
  * print and CSV. lib/attendance-sheet.ts, /api/attendance-sheet.
+ * `mode="employee"` is the By employee tab (owner, November 16, 2026): choose one employee and see their sheet straight
+ * away, with no all-employees view. In both modes the day-by-day sheet lets HR correct a day (EmployeeSheet).
  */
-export function AttendanceSheet() {
+export function AttendanceSheet({ mode = "all" }: { mode?: "all" | "employee" }) {
+  const employeeOnly = mode === "employee";
   const initial = presets()[0];
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
@@ -81,14 +86,24 @@ export function AttendanceSheet() {
   const [view, setView] = useState<"sheet" | "summary">("sheet");
   const [all, setAll] = useState<AllResult | null>(null);
   const [one, setOne] = useState<OneResult | null>(null);
+  // By employee tab: the employee list, before anyone is chosen.
+  const [people, setPeople] = useState<SheetEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   async function load(next: { from?: string; to?: string; employeeId?: string } = {}) {
     const range = { from: next.from ?? from, to: next.to ?? to, employeeId: next.employeeId ?? employeeId };
     if (!range.from || !range.to || range.from > range.to) { setError("Choose a valid date range."); return; }
     setLoading(true); setError("");
     try {
+      if (employeeOnly && !range.employeeId) {
+        const response = await fetch("/api/attendance-sheet?list=1", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to load the employees.");
+        setPeople(result.employees ?? []); setOne(null);
+        return;
+      }
       const query = new URLSearchParams({ from: range.from, to: range.to, ...(range.employeeId ? { employeeId: range.employeeId } : {}), ...(includeInactive ? { inactive: "1" } : {}) });
       const response = await fetch(`/api/attendance-sheet?${query}`, { cache: "no-store" });
       const result = await response.json();
@@ -103,8 +118,8 @@ export function AttendanceSheet() {
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
   useLiveRefresh(["attendance", "leave_requests", "holidays", "employees"], () => load());
 
-  const employees = one?.employees ?? all?.employees ?? [];
-  const openEmployee = (id: string) => { setEmployeeId(id); void load({ employeeId: id }); };
+  const employees = one?.employees ?? all?.employees ?? people;
+  const openEmployee = (id: string) => { setEmployeeId(id); setMessage(""); void load({ employeeId: id }); };
   const backToAll = () => { setEmployeeId(""); setOne(null); if (!all) void load({ employeeId: "" }); };
   const choosePreset = (preset: { from: string; to: string }) => { setFrom(preset.from); setTo(preset.to); void load(preset); };
 
@@ -120,18 +135,20 @@ export function AttendanceSheet() {
       <div className="grid gap-4 md:grid-cols-[1fr_1fr_2fr_auto] md:items-end">
         <div className="space-y-2"><Label htmlFor="sheet-from">From</Label><Input id="sheet-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></div>
         <div className="space-y-2"><Label htmlFor="sheet-to">To</Label><Input id="sheet-to" type="date" min={from} value={to} onChange={(event) => setTo(event.target.value)} /></div>
-        <div className="space-y-2"><Label>Employee</Label><SearchSelect aria-label="Employee" clearable value={employeeId} placeholder="All employees - search ID or name" options={employees.map((employee) => ({ value: employee.id, label: employee.name, description: `${employee.id}${employee.branch ? ` · ${employee.branch}` : ""}${employee.status !== "active" ? ` · ${employee.status}` : ""}` }))} onValueChange={(value) => { setEmployeeId(value); if (!value) setOne(null); }} /></div>
+        <div className="space-y-2"><Label>Employee</Label><SearchSelect aria-label="Employee" clearable value={employeeId} placeholder="All employees - search ID or name" options={employees.map((employee) => ({ value: employee.id, label: employee.name, description: `${employee.id}${employee.branch ? ` · ${employee.branch}` : ""}${employee.status !== "active" ? ` · ${employee.status}` : ""}` }))} onValueChange={(value) => { if (employeeOnly) { if (value) openEmployee(value); else { setEmployeeId(""); setOne(null); } return; } setEmployeeId(value); if (!value) setOne(null); }} /></div>
         <Button type="button" disabled={loading || !from || !to || from > to} onClick={() => void load()}>{loading ? "Loading..." : "Show sheet"}</Button>
       </div>
-      {!employeeId && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeInactive} onChange={(event) => setIncludeInactive(event.target.checked)} />Include inactive and resigned employees without attendance in the period</label>}
+      {!employeeId && !employeeOnly && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeInactive} onChange={(event) => setIncludeInactive(event.target.checked)} />Include inactive and resigned employees without attendance in the period</label>}
     </CardContent></Card>
 
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</p>}
+    {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 print:hidden dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">{message}</p>}
+    {employeeOnly && !showingOne && !loading && <p className="rounded-lg border p-8 text-center text-sm text-muted-foreground">Choose an employee above to see their attendance day by day.</p>}
 
-    {(showingOne ? one : all) && <LeaveNotice result={(showingOne ? one : all)!} />}
+    {(showingOne ? one : employeeOnly ? null : all) && <LeaveNotice result={(showingOne ? one : all)!} />}
 
-    {showingOne && one ? <EmployeeSheet result={one} period={period} from={from} to={to} onBack={backToAll} />
-      : all && <Card>
+    {showingOne && one ? <EmployeeSheet result={one} period={period} from={from} to={to} onBack={employeeOnly ? undefined : backToAll} onChanged={async (text) => { setMessage(text); await load(); }} />
+      : !employeeOnly && all && <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
           <div><CardTitle>{view === "sheet" ? "Attendance sheet" : "Attendance summary"} · {period}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{filtered ? `${shownRows.length} of ${all.rows.length}` : all.rows.length} employees{role ? ` · ${role}` : ""}{branch ? ` · ${branch}` : ""}. Click an employee for the day-by-day sheet. {view === "sheet" ? "Total days" : "Days payable"} = present, plus approved leave when Payroll pays it.</p></div>
           <div className="flex flex-wrap gap-2 print:hidden">
@@ -270,8 +287,9 @@ function SummaryRow({ summary }: { summary: SheetSummary }) {
   </>;
 }
 
-function EmployeeSheet({ result, period, from, to, onBack }: { result: OneResult; period: string; from: string; to: string; onBack: () => void }) {
-  const { employee, days, summary } = result;
+function EmployeeSheet({ result, period, from, to, onBack, onChanged }: { result: OneResult; period: string; from: string; to: string; onBack?: () => void; onChanged: (message: string) => Promise<void> }) {
+  const { employee, days, summary, canEdit, today } = result;
+  const [editing, setEditing] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(false);
   const isProblem = (day: SheetDay) => ["Late", "Absent", "Absent (system)", "AWOL", "No record"].includes(day.status) || day.missingTimeOut || day.undertimeMinutes > 0 || (day.status === "Leave" && !day.leave.toLowerCase().includes("approved"));
   const shown = problemsOnly ? days.filter(isProblem) : days;
@@ -292,7 +310,7 @@ function EmployeeSheet({ result, period, from, to, onBack }: { result: OneResult
   return <Card>
     <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
       <div>
-        <Button type="button" variant="ghost" size="sm" className="-ml-2 mb-1 print:hidden" onClick={onBack}><ArrowLeft className="size-4" />All employees</Button>
+        {onBack && <Button type="button" variant="ghost" size="sm" className="-ml-2 mb-1 print:hidden" onClick={onBack}><ArrowLeft className="size-4" />All employees</Button>}
         <CardTitle>Attendance sheet · {employee.name}</CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">{employee.id} · {employee.branch || "No primary branch"} · {employee.roles.join(", ") || "Employee"}{employee.status !== "active" ? ` · ${employee.status}` : ""}{employee.dateHired ? ` · hired ${longDate(employee.dateHired.slice(0, 10))}` : ""}</p>
         <p className="text-sm font-medium">{period}</p>
@@ -314,11 +332,12 @@ function EmployeeSheet({ result, period, from, to, onBack }: { result: OneResult
       <label className="flex items-center gap-2 text-sm print:hidden"><input type="checkbox" checked={problemsOnly} onChange={(event) => setProblemsOnly(event.target.checked)} />Only days to check (late, undertime, absent, AWOL, no record, no time-out, leave not approved)</label>
       <div className="overflow-x-auto rounded-lg border print:overflow-visible">
         <table className="w-full min-w-[980px] text-sm print:min-w-0 print:text-[10px]">
-          <thead className="bg-muted text-left"><tr>{["Date", "Status", "Time in", "Time out", "Regular", "Total", "OT", "Late", "Undertime", "Branch", "Leave / notes"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead>
+          <thead className="bg-muted text-left"><tr>{["Date", "Status", "Time in", "Time out", "Regular", "Total", "OT", "Late", "Undertime", "Branch", "Leave / notes"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}{canEdit && <th className="p-2 print:hidden" />}</tr></thead>
           <tbody>
             {shown.map((day) => {
               const muted = ["Sunday", "Non-working day", "Upcoming", "Before hire"].includes(day.status);
-              return <tr key={day.date} className={`border-t ${muted ? "bg-muted/30 text-muted-foreground" : ""}`}>
+              const actions = canEdit ? editActions(day, today) : [];
+              return [<tr key={day.date} className={`border-t ${muted ? "bg-muted/30 text-muted-foreground" : ""}`}>
                 <td className="whitespace-nowrap p-2"><span className="font-medium">{day.weekday}</span> {longDate(day.date)}</td>
                 <td className="p-2"><Badge variant="secondary" className={statusTone[day.status] ?? ""}>{day.status}</Badge>{day.missingTimeOut && <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">no time-out</span>}{day.restDayWork && <span className="ml-1 text-xs text-muted-foreground">rest day</span>}</td>
                 <td className="p-2 tabular-nums">{day.timeIn || "—"}</td>
@@ -330,15 +349,114 @@ function EmployeeSheet({ result, period, from, to, onBack }: { result: OneResult
                 <td className={`p-2 tabular-nums ${day.undertimeMinutes ? "font-medium text-amber-700 dark:text-amber-400" : ""}`}>{day.undertimeMinutes ? `${day.undertimeMinutes} min` : "—"}</td>
                 <td className="p-2">{day.branch || "—"}</td>
                 <td className="max-w-72 p-2 text-xs">{[day.leave, day.notes].filter(Boolean).join(" · ") || "—"}</td>
-              </tr>;
+                {canEdit && <td className="p-2 text-right print:hidden">{actions.length > 0 && <Button type="button" size="sm" variant={editing === day.date ? "default" : "outline"} onClick={() => setEditing(editing === day.date ? "" : day.date)}><Pencil className="size-3.5" />{editing === day.date ? "Close" : "Edit"}</Button>}</td>}
+              </tr>,
+              editing === day.date && actions.length > 0 && <tr key={`${day.date}-edit`} className="bg-muted/30 print:hidden"><td colSpan={12} className="p-3">
+                <DayEditor day={day} employee={employee} today={today} actions={actions} onDone={async (text) => { setEditing(""); await onChanged(text); }} />
+              </td></tr>];
             })}
-            {!shown.length && <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">{problemsOnly ? "Nothing to check in this period." : "No days in this period."}</td></tr>}
+            {!shown.length && <tr><td colSpan={canEdit ? 12 : 11} className="p-8 text-center text-muted-foreground">{problemsOnly ? "Nothing to check in this period." : "No days in this period."}</td></tr>}
           </tbody>
         </table>
       </div>
       <Legend />
     </CardContent>
   </Card>;
+}
+
+type EditAction = "late" | "clockOut" | "resume" | "mark" | "revert";
+const MANUAL_MARKS = ["Absent", "AWOL", "Day Off", "Not required"];
+const markChoices = [
+  { value: "Absent", label: "Absent", status: "Absent" }, { value: "AWOL", label: "AWOL", status: "AWOL" }, { value: "Day Off", label: "Day Off", status: "Day Off" },
+  { value: "Not Required", label: "No attendance needed (e.g. MAS)", status: "Not required" },
+] as const;
+
+/**
+ * What HR can change on a day (owner, November 16, 2026), with the daily board's corrections (/api/attendance-tracking/daily):
+ * a clocked-in day gets its late time and clock-out (and today's clock-out voided); a day with no clock-in, today or
+ * earlier, Monday to Saturday, gets Absent, AWOL, Day Off or No attendance needed, and a mark made by management can be
+ * reverted. Leave is changed in Leave Approvals; Sundays, closed days and days to come are not changed here.
+ */
+function editActions(day: SheetDay, today: string): EditAction[] {
+  if (day.date > today || day.weekday === "Sun") return [];
+  if ((day.status === "Present" || day.status === "Late") && day.timeIn) {
+    return ["late", "clockOut", ...(day.timeOut && day.date === today ? ["resume" as const] : [])];
+  }
+  if (day.timeIn || day.timeOut) return [];
+  if (MANUAL_MARKS.includes(day.status)) return ["mark", "revert"];
+  if (["Absent (system)", "No record", "Not clocked in"].includes(day.status)) return ["mark"];
+  return [];
+}
+
+const actionLabel: Record<EditAction, string> = { late: "Adjust late", clockOut: "Set clock-out", resume: "Resume clock", mark: "Mark the day", revert: "Revert mark" };
+
+function DayEditor({ day, employee, today, actions, onDone }: { day: SheetDay; employee: SheetEmployee; today: string; actions: EditAction[]; onDone: (message: string) => Promise<void> }) {
+  const [action, setAction] = useState<EditAction>(actions[0]);
+  const [hoursLate, setHoursLate] = useState(String(Math.floor(day.lateMinutes / 60)));
+  const [minutesLate, setMinutesLate] = useState(String(day.lateMinutes % 60));
+  const [timeOut, setTimeOut] = useState(day.timeOut || "17:00");
+  const [markStatus, setMarkStatus] = useState<string>(markChoices.find((choice) => choice.status !== day.status)?.value ?? "Absent");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const when = `${day.weekday} ${longDate(day.date)}`;
+
+  async function send(method: "PATCH" | "POST", body: object) {
+    setSaving(true); setError("");
+    try {
+      const response = await fetch("/api/attendance-tracking/daily", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the change.");
+      // A mark or revert that changed nothing says why (for example the branch was closed that day).
+      const skipped = (result.skipped ?? []) as Array<{ reason: string }>;
+      if ((result.marked === 0 || result.reverted === 0) && skipped.length) throw new Error(`Not changed: ${skipped[0].reason}.`);
+      await onDone(`${employee.name}, ${when}: ${result.message}`);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to save the change."); }
+    finally { setSaving(false); }
+  }
+
+  async function save() {
+    const base = { employeeId: employee.id, attendanceDate: day.date };
+    if (action === "late") return send("PATCH", { ...base, lateMinutes: (Number(hoursLate) || 0) * 60 + (Number(minutesLate) || 0), reason });
+    if (action === "clockOut") return send("PATCH", { ...base, action: "clockOut", timeOut, reason });
+    if (action === "resume") return send("PATCH", { ...base, action: "resume", reason });
+    if (action === "mark") return send("POST", { attendanceDate: day.date, employeeIds: [employee.id], status: markStatus, notes: reason });
+    const outcome = day.date === today ? "They go back to Not clocked in yet and can still clock in." : "The day becomes Absent by system, as for anyone with no record.";
+    const why = await promptDialog(`Revert the ${day.status} mark of ${employee.name} on ${when}? ${outcome}\n\nGive the reason:`, { required: true, confirmLabel: "Revert", danger: true, placeholder: "e.g. Marked by mistake", defaultValue: reason });
+    if (!why?.trim()) return;
+    return send("PATCH", { action: "revert", attendanceDate: day.date, employeeIds: [employee.id], reason: why });
+  }
+
+  const sameMark = action === "mark" && markChoices.find((choice) => choice.value === markStatus)?.status === day.status;
+  const needsReason = action === "late" || action === "clockOut" || action === "resume";
+  const ready = !saving && !sameMark && (!needsReason || reason.trim().length >= 3) && (action !== "clockOut" || Boolean(timeOut));
+  const buttonLabel = { late: "Save late time", clockOut: "Save clock-out", resume: "Void clock-out and resume", mark: "Save mark", revert: "Revert mark" }[action];
+  const help = {
+    late: `Currently ${day.lateMinutes} min late. Set 0 and 0 to clear it; payroll uses the new late time.`,
+    clockOut: `Time in ${day.timeIn}${day.timeOut ? `, out at ${day.timeOut}` : ", no clock-out"}. Worked hours, overtime and undertime are recalculated.`,
+    resume: `Clears today's clock-out at ${day.timeOut}, so the clock runs on from ${day.timeIn} until they clock out again.`,
+    mark: `Now ${day.status}. A clock-in, approved leave or a closed branch that day is not overwritten.`,
+    revert: day.date === today ? "Undoes the mark: they go back to Not clocked in yet and can still clock in." : "Undoes the mark: the day becomes Absent by system, as for anyone with no record.",
+  }[action];
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-sm font-medium">{when}</span>
+      <div className="flex flex-wrap rounded-md border p-0.5">{actions.map((option) => <Button key={option} type="button" size="sm" variant={action === option ? "default" : "ghost"} onClick={() => { setAction(option); setError(""); }}>{option === "clockOut" && day.timeOut ? "Fix clock-out" : actionLabel[option]}</Button>)}</div>
+    </div>
+    <div className="grid gap-3 sm:grid-cols-[auto_1fr_auto] sm:items-end">
+      {action === "late" ? <div className="flex gap-2">
+        <div className="w-20 space-y-1"><Label htmlFor={`late-h-${day.date}`}>Hours</Label><Input id={`late-h-${day.date}`} type="number" min={0} max={24} value={hoursLate} onChange={(event) => setHoursLate(event.target.value)} /></div>
+        <div className="w-20 space-y-1"><Label htmlFor={`late-m-${day.date}`}>Minutes</Label><Input id={`late-m-${day.date}`} type="number" min={0} max={59} value={minutesLate} onChange={(event) => setMinutesLate(event.target.value)} /></div>
+      </div>
+      : action === "clockOut" ? <div className="w-36 space-y-1"><Label htmlFor={`out-${day.date}`}>Time out</Label><Input id={`out-${day.date}`} type="time" value={timeOut} onChange={(event) => setTimeOut(event.target.value)} /></div>
+      : action === "mark" ? <div className="space-y-1 sm:w-64"><Label htmlFor={`mark-${day.date}`}>Mark as</Label><select id={`mark-${day.date}`} className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={markStatus} onChange={(event) => setMarkStatus(event.target.value)}>{markChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></div>
+      : <div />}
+      <div className="space-y-1"><Label htmlFor={`reason-${day.date}`}>{needsReason ? "Reason *" : action === "mark" ? "Note (optional)" : "Reason"}</Label><Input id={`reason-${day.date}`} maxLength={200} placeholder={action === "mark" ? "e.g. No call, no show" : action === "revert" ? "e.g. Marked by mistake" : "e.g. Forgot to clock out; left at 5:00 PM per supervisor"} value={reason} onChange={(event) => setReason(event.target.value)} /></div>
+      <Button type="button" variant={action === "revert" ? "outline" : "default"} disabled={!ready} onClick={() => void save()}>{action === "revert" && <Undo2 className="size-4" />}{saving ? "Saving..." : buttonLabel}</Button>
+    </div>
+    {error && <p role="alert" className="text-sm text-red-700 dark:text-red-400">{error}</p>}
+    <p className="text-xs text-muted-foreground">{help}{sameMark ? " Choose a different mark." : ""} Who changed it, when and why are kept in the day&apos;s notes.</p>
+  </div>;
 }
 
 /** Whether approved leave counts in Total Days, and from what; with no saved policy, to save one first (owner, November 5, 2026). */
