@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { carriedNotRequired, clockOutFigures, dayTotals, lateMinutesFor, withDayTotals, workingMinutesBetween } from "../lib/attendance.ts";
-import { checkClockIn, checkClockInAtBranches, clockInLabel, distanceMeters, needsReview, parseCoordinates, radiusOf } from "../lib/clock-in-location.ts";
+import { checkClockIn, checkClockInAtBranches, clockInLabel, distanceMeters, hasDevicePosition, needsReview, parseCoordinates, radiusOf } from "../lib/clock-in-location.ts";
+
+test("a clock-in needs a usable phone location where the branch location is saved (November 16, 2026)", () => {
+  assert.equal(hasDevicePosition({ latitude: 7.4476, longitude: 125.8079, accuracy: 15 }), true);
+  assert.equal(hasDevicePosition({ latitude: 7.4476, longitude: 125.8079, accuracy: null }), true);
+  // Location off, refused or slow: refused, so the page asks to turn location on.
+  assert.equal(hasDevicePosition({ error: "Location permission refused." }), false);
+  assert.equal(hasDevicePosition(null), false);
+  // A reading that is not a real place (0, 0 or out of range) is not a location either.
+  assert.equal(hasDevicePosition({ latitude: 0, longitude: 0, accuracy: 10 }), false);
+  assert.equal(hasDevicePosition({ latitude: 95, longitude: 125, accuracy: 10 }), false);
+});
 
 test("late starts after the 20-minute grace period and counts from 08:20", () => {
   assert.equal(lateMinutesFor("07:45"), 0);

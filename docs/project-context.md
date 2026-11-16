@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Clock-in needs location on (2026-11-16)
+
+- **Asked (owner):** when clocking in, if the system detects location is off, ask the user to turn it on before allowing the clock-in.
+- **Done:** where a branch location is saved (main or another assigned branch), `app/attendance/page.tsx` does not send the clock-in without a location: precise reading, then one coarse retry; on failure a red panel **Turn on your location to clock in** with steps by cause (blocked for the site, phone location off, too slow, no location in the browser) and **Try again**. `POST /api/attendance` refuses it too (`needsLocation: true`; `hasDevicePosition` in `lib/clock-in-location.ts`) before anything is saved. Outside / Other branch are still saved and flagged. New "No location" flags no longer happen; old ones stay for HR. No migration.
+- **Note:** an employee whose phone cannot give a location at all cannot clock in; HR records the day in Attendance Review.
+- **Tested:** new test for `hasDevicePosition`; type check, lint and build pass; all 343 tests pass. Not tried on a phone.
+- **To do (owner):** push (no migration); try on a phone with location off, then on.
+
 ### Attendance Tracking: By employee, with editing (2026-11-16)
 
 - **Asked (owner):** in attendance tracking, a section to select a member (employee) and see their attendance sheet / history, with editing allowed.

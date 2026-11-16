@@ -12,7 +12,7 @@ import { closureForBranch } from "@/lib/attendance-calendar";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { recordClockInCheck, readDevicePosition } from "@/lib/clock-in-checks";
-import { clockInLabel, hasLocation, needsReview } from "@/lib/clock-in-location";
+import { clockInLabel, hasDevicePosition, hasLocation, needsReview } from "@/lib/clock-in-location";
 
 // Attendance uses the branch on the employee's record (primary branch, else the first assignment); nobody picks one.
 // All assigned branches are returned too, primary first, so the page can show them.
@@ -169,6 +169,13 @@ export const POST = withEncoder(async function POST(request: Request) {
         );
       }
 
+      // Location off (owner, November 16, 2026): where a branch location is saved, no clock-in without the phone's
+      // location. The page asks the employee to turn it on and try again; nothing is saved.
+      const position = readDevicePosition(body.location);
+      if (assignment.locationSet && !hasDevicePosition(position)) {
+        return NextResponse.json({ success: false, needsLocation: true, message: "Turn on your location to clock in. Your branch checks where you clock in, so clocking in needs your phone's location." }, { status: 400 });
+      }
+
       // 20-minute grace period; the lunch break is not counted as late (lib/attendance.ts).
       const lateMinutes = lateMinutesFor(currentTime);
 
@@ -201,7 +208,7 @@ export const POST = withEncoder(async function POST(request: Request) {
 
       // Where the clock-in was made, against the main branch's saved location and the other assigned branches'. The
       // clock-in stands even if this fails.
-      const check = await recordClockInCheck({ attendanceId: newRecord.id, employeeId: user.employeeId, attendanceDate, branchName: branch, otherBranchNames: assignment.all.filter((name) => name !== branch), position: readDevicePosition(body.location) })
+      const check = await recordClockInCheck({ attendanceId: newRecord.id, employeeId: user.employeeId, attendanceDate, branchName: branch, otherBranchNames: assignment.all.filter((name) => name !== branch), position })
         .catch((error) => { console.error("Clock-in location check error:", error); return null; });
       const flagged = Boolean(check && needsReview(check.result));
 

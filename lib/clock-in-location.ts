@@ -68,6 +68,13 @@ export function checkClockInAtBranches(main: BranchLocation, others: Array<Branc
   return found ? { ...atMain, result: "Other branch" as ClockInResult, otherBranch: found.name } : atMain;
 }
 
+/**
+ * The phone gave a usable location. Since November 16, 2026 (owner) a clock-in at a branch with a saved location is
+ * refused without one: the employee is asked to turn location on and try again, instead of the clock-in being flagged.
+ */
+export const hasDevicePosition = (position: DevicePosition | null): position is { latitude: number; longitude: number; accuracy: number | null } =>
+  Boolean(position) && !("error" in (position as object)) && isValidCoordinate((position as { latitude: number }).latitude, (position as { longitude: number }).longitude);
+
 /** Outside, No location and Other branch wait for HR until accepted or marked Absent. */
 export const needsReview = (result: string) => result === "Outside" || result === "No location" || result === "Other branch";
 

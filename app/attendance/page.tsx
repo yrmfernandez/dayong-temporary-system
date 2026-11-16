@@ -72,18 +72,63 @@ function currentPhilippineSeconds(date: Date) {
   return value("hour") * 3600 + value("minute") * 60 + value("second");
 }
 
-/**
- * The phone's location for the clock-in location check (lib/clock-in-location.ts), or why there is none. Never throws:
- * a refused or slow location still lets the employee clock in; the clock-in is then flagged for HR.
- */
-function devicePosition(): Promise<{ latitude: number; longitude: number; accuracy: number } | { error: string }> {
-  if (typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve({ error: "This device or browser has no location." });
+/** Why the phone gave no location: permission refused, location (GPS) turned off, too slow, or no location at all. */
+type LocationProblem = "denied" | "off" | "slow" | "unsupported";
+type Position = { latitude: number; longitude: number; accuracy: number };
+
+function readPosition(options: PositionOptions): Promise<Position | { problem: LocationProblem }> {
   return new Promise((resolve) => navigator.geolocation.getCurrentPosition(
     (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy }),
-    (error) => resolve({ error: error.code === error.PERMISSION_DENIED ? "Location permission refused." : error.code === error.TIMEOUT ? "Location took too long." : "Location unavailable." }),
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    (error) => resolve({ problem: error.code === error.PERMISSION_DENIED ? "denied" : error.code === error.TIMEOUT ? "slow" : "off" }),
+    options,
   ));
 }
+
+/**
+ * The phone's location for the clock-in location check (lib/clock-in-location.ts), or why there is none. Never throws.
+ * A precise reading first; when that is slow or unavailable, one quicker try with a coarser (network) location. Since
+ * November 16, 2026 (owner) the page does not clock in without a location: it asks the employee to turn it on.
+ */
+async function devicePosition(): Promise<Position | { problem: LocationProblem }> {
+  if (typeof navigator === "undefined" || !navigator.geolocation || (typeof window !== "undefined" && !window.isSecureContext)) return { problem: "unsupported" };
+  const precise = await readPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  if (!("problem" in precise) || precise.problem === "denied") return precise;
+  return readPosition({ enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+}
+
+const locationHelp: Record<LocationProblem, { title: string; steps: string[] }> = {
+  denied: {
+    title: "Location is blocked for this site",
+    steps: [
+      "Tap the lock or settings icon beside the web address and set Location to Allow.",
+      "iPhone: Settings → Privacy & Security → Location Services → your browser (Safari or Chrome) → While Using the App.",
+      "Android: Settings → Apps → your browser → Permissions → Location → Allow.",
+      "Then come back here and press Try again.",
+    ],
+  },
+  off: {
+    title: "Your phone's location is turned off",
+    steps: [
+      "Swipe down from the top of the screen and turn on Location (GPS).",
+      "iPhone: Settings → Privacy & Security → Location Services → On.",
+      "Then press Try again.",
+    ],
+  },
+  slow: {
+    title: "Your location could not be found in time",
+    steps: [
+      "Make sure Location (GPS) is on, and Wi-Fi or mobile data is on.",
+      "Move near a window or outside for a moment, then press Try again.",
+    ],
+  },
+  unsupported: {
+    title: "This browser cannot give your location",
+    steps: [
+      "Open the system in Chrome or Safari on your phone, at the usual https:// address.",
+      "If it keeps failing, ask HR to record your attendance.",
+    ],
+  },
+};
 
 function formatDuration(totalSeconds: number) {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
@@ -105,6 +150,8 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  // Clocking in found no location: the page asks to turn it on, and clocks in only once the location comes through.
+  const [locationProblem, setLocationProblem] = useState<LocationProblem | null>(null);
   const [now, setNow] = useState(() => new Date());
   // Server time minus device time. Clock-in times come from the server, so the clock and progress run on its time:
   // a device clock a few minutes slow would otherwise keep the shift short of 100% at 5 PM.
@@ -186,6 +233,12 @@ export default function AttendancePage() {
     try {
       if (action === "time-in" && locationSet) setMessage("Getting your location...");
       const location = action === "time-in" && locationSet ? await devicePosition() : undefined;
+      if (location && "problem" in location) {
+        setLocationProblem(location.problem);
+        setMessage("");
+        return;
+      }
+      setLocationProblem(null);
       const response = await fetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -194,6 +247,8 @@ export default function AttendancePage() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
+        // The server also refuses a clock-in without location (an older page, or a reading it could not use).
+        if (result.needsLocation) { setLocationProblem("off"); setMessage(""); return; }
         throw new Error(result.message || "Unable to update attendance.");
       }
 
@@ -351,8 +406,19 @@ export default function AttendancePage() {
                 </div>
               )}
 
-              {!record?.timeIn && locationSet && (
-                <p className="text-xs text-violet-40">Your branch checks your location when you clock in. Allow location when your phone asks; a clock-in away from your main branch, at another of your branches, or without location is sent to HR for review.</p>
+              {!record?.timeIn && locationProblem && (
+                <div role="alert" className="space-y-2 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+                  <p className="flex items-center gap-2 font-bold"><MapPin className="size-4 shrink-0" />Turn on your location to clock in</p>
+                  <p className="font-semibold">{locationHelp[locationProblem].title}.</p>
+                  <ul className="list-disc space-y-1 pl-5">{locationHelp[locationProblem].steps.map((step) => <li key={step}>{step}</li>)}</ul>
+                  <Button type="button" variant="outline" className="w-full border-red-300 bg-white text-red-900 hover:bg-red-100" disabled={submitting} onClick={() => void submitAttendance("time-in")}>
+                    {submitting ? "Checking your location..." : "Try again"}
+                  </Button>
+                </div>
+              )}
+
+              {!record?.timeIn && locationSet && !locationProblem && (
+                <p className="text-xs text-violet-40">Your branch checks your location when you clock in, so your location must be on. Allow location when your phone asks; a clock-in away from your main branch or at another of your branches is sent to HR for review.</p>
               )}
 
               {message && (
