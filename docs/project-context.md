@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### MAS Report: Daily and Weekly (2026-11-16)
+
+- **Asked (owner):** add daily and weekly to the MAS Report.
+- **Done:** a Period choice on `app/mas-report/page.tsx`: Daily (a date), Weekly (month + Week N with its dates), Monthly, Chosen dates. Heading and CSV say Daily / Weekly / Monthly report, and a weekly shows WK NO. / MONTH as on the paper. No API change (it already takes from and to).
+- **Choice made (tell me to change):** weeks are Monday to Sunday inside the month, a lone first Sunday joins Week 1 (`masReportWeeks` in `lib/mas-report-rows.ts`), not the Entry Clerk's submitted weeklies (those differ per clerk).
+- **Tested:** new test for the weeks (November and October 2026, every day in one week for four Februaries and December). Lint, build, all 345 tests pass. Not tried in a browser.
+
 ### MAM filters checked; My submissions on Submit New Sales organised (2026-11-16)
 
 - **Asked (owner):** check that the MAS's MAM filters work, and organise My submissions on Submit New Sales.

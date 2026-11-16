@@ -274,3 +274,25 @@ test("MAS-Officer has the MAS pages plus MAS Report, for the branches where they
   assert.deepEqual(total.collections, { accounts: 3, gross: 5810, incentives: 1840, net: 3970 });
   assert.deepEqual(masReportRows([], []).rows, []);
 });
+
+test("MAS Report weeks: Monday to Sunday within the month, a lone first Sunday joins Week 1", async () => {
+  const { masReportWeeks } = await import("../lib/mas-report-rows.ts");
+  // November 2026 starts on a Sunday.
+  assert.deepEqual(masReportWeeks("2026-11"), [
+    { week: 1, from: "2026-11-01", to: "2026-11-08" },
+    { week: 2, from: "2026-11-09", to: "2026-11-15" },
+    { week: 3, from: "2026-11-16", to: "2026-11-22" },
+    { week: 4, from: "2026-11-23", to: "2026-11-29" },
+    { week: 5, from: "2026-11-30", to: "2026-11-30" },
+  ]);
+  // October 2026 starts on a Thursday: Week 1 is Thursday to Sunday.
+  const october = masReportWeeks("2026-10");
+  assert.deepEqual(october[0], { week: 1, from: "2026-10-01", to: "2026-10-04" });
+  assert.deepEqual(october.at(-1), { week: 5, from: "2026-10-26", to: "2026-10-31" });
+  // Every day of the month in exactly one week.
+  for (const month of ["2026-02", "2027-02", "2026-12", "2028-02"]) {
+    const weeks = masReportWeeks(month);
+    assert.equal(weeks[0].from.slice(8), "01");
+    for (let index = 1; index < weeks.length; index += 1) assert.equal(Date.parse(weeks[index].from) - Date.parse(weeks[index - 1].to), 86400000);
+  }
+});

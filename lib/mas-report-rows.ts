@@ -51,3 +51,24 @@ export function masReportRows(entries: MasEntry[], staff: Array<{ employeeId: st
   const list = [...rows.values()].sort((a, b) => Number(b.assigned) - Number(a.assigned) || a.name.localeCompare(b.name));
   return { rows: list, total: { sales: sum(list.map((row) => row.sales)), collections: sum(list.map((row) => row.collections)) } };
 }
+
+export type MasWeek = { week: number; from: string; to: string };
+
+/**
+ * The weeks of a month for the MAS Report's Weekly choice (owner, November 16, 2026): Monday to Sunday, cut at the
+ * month's first and last day. A first week that is only a Sunday (no working day) joins Week 1, so November 2026, which
+ * starts on a Sunday, has Week 1 = November 1-8. `month` is YYYY-MM.
+ */
+export function masReportWeeks(month: string): MasWeek[] {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const iso = (day: number) => `${month}-${String(day).padStart(2, "0")}`;
+  const weekday = (day: number) => new Date(Date.UTC(year, monthNumber - 1, day)).getUTCDay();
+  const weeks: Array<{ from: number; to: number }> = [];
+  let start = 1;
+  for (let day = 1; day <= days; day += 1) {
+    if (weekday(day) === 0 || day === days) { weeks.push({ from: start, to: day }); start = day + 1; }
+  }
+  if (weeks.length > 1 && weeks[0].from === weeks[0].to && weekday(weeks[0].from) === 0) weeks.splice(0, 2, { from: 1, to: weeks[1].to });
+  return weeks.map((item, index) => ({ week: index + 1, from: iso(item.from), to: iso(item.to) }));
+}
