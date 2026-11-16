@@ -37,9 +37,10 @@ The owner asked again what to improve; the first list is all built. These come f
 ### MAS Report: Daily and Weekly (2026-11-16)
 
 - **Asked (owner):** add daily and weekly to the MAS Report.
-- **Done:** a Period choice on `app/mas-report/page.tsx`: Daily (a date), Weekly (month + Week N with its dates), Monthly, Chosen dates. Heading and CSV say Daily / Weekly / Monthly report, and a weekly shows WK NO. / MONTH as on the paper. No API change (it already takes from and to).
-- **Choice made (tell me to change):** weeks are Monday to Sunday inside the month, a lone first Sunday joins Week 1 (`masReportWeeks` in `lib/mas-report-rows.ts`), not the Entry Clerk's submitted weeklies (those differ per clerk).
-- **Tested:** new test for the weeks (November and October 2026, every day in one week for four Februaries and December). Lint, build, all 345 tests pass. Not tried in a browser.
+- **Done:** a Period choice on `app/mas-report/page.tsx`: Daily (a date), Weekly, Monthly, Chosen dates.
+- **Changed (owner, same day):** Weekly lets the officer choose From and To like the Entry Clerk (at most 14 days, opens on this week so far, Show report), with **This is Week N of Month**: the month most of its days fall in, N the calendar week of that month holding its first day there (`masWeekPlace`). Heading and CSV say Daily / Weekly / Monthly report, and a weekly shows WK NO. / MONTH as on the paper. No API change (it already takes from and to).
+- **Choice made (tell me to change):** N counts weeks Monday to Sunday inside the month, a lone first Sunday joins Week 1 (`masReportWeeks`); the clerk numbers by submission order, which the officer does not have. Weekly limited to 14 days.
+- **Tested:** new tests for the weeks (November and October 2026, every day in one week for four Februaries and December) and for Week N of a chosen range (Sep 28 - Oct 4 is October Week 1, a tie goes to the later month). Lint, build, all 346 tests pass. Not tried in a browser.
 
 ### MAM filters checked; My submissions on Submit New Sales organised (2026-11-16)
 

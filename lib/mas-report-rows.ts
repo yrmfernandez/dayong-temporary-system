@@ -72,3 +72,20 @@ export function masReportWeeks(month: string): MasWeek[] {
   if (weeks.length > 1 && weeks[0].from === weeks[0].to && weekday(weeks[0].from) === 0) weeks.splice(0, 2, { from: 1, to: weeks[1].to });
   return weeks.map((item, index) => ({ week: index + 1, from: iso(item.from), to: iso(item.to) }));
 }
+
+/** The longest range the MAS Report's Weekly accepts; longer is Monthly or Chosen dates. */
+export const MAS_WEEK_MAX_DAYS = 14;
+
+/**
+ * Which week a chosen weekly range is (owner, November 16, 2026), as the Entry Clerk's weekly: the month most of its
+ * days fall in (a tie goes to the later month; Sep 28 - Oct 4 is October), and the week of that month (masReportWeeks)
+ * holding its first day in that month. Dates are YYYY-MM-DD, `from` <= `to`.
+ */
+export function masWeekPlace(from: string, to: string): { month: string; week: number } {
+  const days = new Map<string, number>();
+  const day = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`);
+  for (; day <= end; day.setUTCDate(day.getUTCDate() + 1)) { const month = day.toISOString().slice(0, 7); days.set(month, (days.get(month) ?? 0) + 1); }
+  const month = [...days.entries()].reduce((best, entry) => (entry[1] >= best[1] ? entry : best), [from.slice(0, 7), 0])[0];
+  const first = from.slice(0, 7) === month ? from : `${month}-01`;
+  return { month, week: masReportWeeks(month).find((item) => item.from <= first && first <= item.to)?.week ?? 1 };
+}

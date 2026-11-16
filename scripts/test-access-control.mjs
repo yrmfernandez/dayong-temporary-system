@@ -296,3 +296,13 @@ test("MAS Report weeks: Monday to Sunday within the month, a lone first Sunday j
     for (let index = 1; index < weeks.length; index += 1) assert.equal(Date.parse(weeks[index].from) - Date.parse(weeks[index - 1].to), 86400000);
   }
 });
+
+test("MAS Report weekly range: the month most of its days fall in and that month's week", async () => {
+  const { masWeekPlace } = await import("../lib/mas-report-rows.ts");
+  assert.deepEqual(masWeekPlace("2026-11-09", "2026-11-14"), { month: "2026-11", week: 2 });
+  assert.deepEqual(masWeekPlace("2026-09-28", "2026-10-04"), { month: "2026-10", week: 1 }, "most days in October");
+  assert.deepEqual(masWeekPlace("2026-10-26", "2026-11-01"), { month: "2026-10", week: 5 }, "most days in October");
+  assert.deepEqual(masWeekPlace("2026-11-01", "2026-11-07"), { month: "2026-11", week: 1 });
+  assert.deepEqual(masWeekPlace("2026-11-30", "2026-11-30"), { month: "2026-11", week: 5 });
+  assert.deepEqual(masWeekPlace("2026-12-30", "2027-01-02"), { month: "2027-01", week: 1 }, "a tie goes to the later month");
+});
