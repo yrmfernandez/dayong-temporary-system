@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### MAM filters checked; My submissions on Submit New Sales organised (2026-11-16)
+
+- **Asked (owner):** check that the MAS's MAM filters work, and organise My submissions on Submit New Sales.
+- **Found and fixed (MAM, `app/mam/page.tsx`):** the Status filter matched a status in any month of the range while the counters and Sort read the last month (60D listed accounts the 60D counter did not count); it now reads the last month. A MAS's To collect list ignored Status; it now follows Program, Status (today's) and Search. A Program left from an earlier load is cleared when the new months do not have it. Branch / MAS / Member are server filters (not shown to a MAS) and were fine.
+- **Done (My submissions, `MySubmissions` in `components/new-sales-form.tsx`):** total not yet handed over and next deadline on top; sections To fix, With the clerk, Rejected, Saved (latest 5, more on request); filter buttons with counts; search by member or APP#; See the sales per submission. Same rules and actions as before (Fix and resubmit, Submit again).
+- **Tested:** lint (only earlier warnings), build, all 344 tests pass. Not tried in a browser or on a phone.
+- **To do:** nothing; tell me if Submit Collections' My submissions should get the same sections and search.
+
 ### MAS-Officer role and MAS Report (2026-11-16)
 
 - **Asked (owner):** another role, MAS-Officer: the same interface as MAS with an extra section, MAS Report, where the officer sees the report of the MAS assigned to the branch where they are officer, laid out like the paper *Monthly report format for officers and team heads* (photo of the DIGOS October 2026 sheet).

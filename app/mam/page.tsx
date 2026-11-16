@@ -110,7 +110,7 @@ export default function MamPage() {
       const response = await fetch(`/api/mam?${query}`, { cache: "no-store", signal: controller.signal });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to load MAM.");
-      if (!controller.signal.aborted) { setReport(result); if (live) setSelected((current) => current && (result.rows.find((row: Row) => row.id === current.id) ?? current)); }
+      if (!controller.signal.aborted) { setReport(result); setProgram((current) => current && !result.rows.some((row: Row) => row.programId === current) ? "" : current); if (live) setSelected((current) => current && (result.rows.find((row: Row) => row.id === current.id) ?? current)); }
     } catch (failure) {
       if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Unable to load MAM.");
     } finally {
@@ -174,13 +174,11 @@ export default function MamPage() {
   const lowest = statusFrom ? statuses.indexOf(statusFrom) : 0;
   const highest = statusTo ? statuses.indexOf(statusTo) : statuses.length - 1;
   const inStatusRange = (value?: string) => { const index = statuses.indexOf(value ?? ""); return index >= Math.min(lowest, highest) && index <= Math.max(lowest, highest); };
-  const rows =
-    report?.rows.filter(
-      (r) =>
-        (!program || r.programId === program) &&
-        ((!statusFrom && !statusTo) || r.periods.some((p) => inStatusRange(p.state?.status))) &&
-        `${r.memberName} ${r.memberNumber} ${r.applicationNumber}`.toLowerCase().includes(search.toLowerCase())
-    ) ?? [];
+  // The status filter reads the range's last month, as the status counters and Sort do (owner, November 16, 2026): it
+  // used to match a status in any month, so 60D listed accounts the 60D counter did not count.
+  const statusOk = (status?: string) => (!statusFrom && !statusTo) || inStatusRange(status);
+  const searchOk = (r: Row) => `${r.memberName} ${r.memberNumber} ${r.applicationNumber}`.toLowerCase().includes(search.trim().toLowerCase());
+  const rows = report?.rows.filter((r) => (!program || r.programId === program) && statusOk(r.periods.at(-1)?.state?.status) && searchOk(r)) ?? [];
   if (sortBy) {
     const sorter = SORTS[sortBy].value;
     rows.sort((a, b) => {
@@ -191,7 +189,9 @@ export default function MamPage() {
   }
 
   // A dropped (deactivated) account is not collected any more: off the collection list, still in the months it counted.
-  const listRows = report?.rows.filter((r) => !r.deactivatedOn && (!program || r.programId === program) && `${r.memberName} ${r.memberNumber} ${r.applicationNumber}`.toLowerCase().includes(search.toLowerCase())) ?? [];
+  // A MAS's collection list follows the same Program, Status and Search filters (it ignored Status before); its
+  // status is the member's status today, as the list shows it.
+  const listRows = report?.rows.filter((r) => !r.deactivatedOn && (!program || r.programId === program) && statusOk(r.current?.status) && searchOk(r)) ?? [];
 
   const groups = new Map<string, Row[]>();
   for (const row of rows) {

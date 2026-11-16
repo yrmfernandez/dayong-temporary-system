@@ -3280,42 +3280,132 @@ function ReturnedSubmissions({ submissions, onOpen }: { submissions: SubmissionS
  * MAS: their submissions. Once sent only the clerk changes one (marks it remitted when the cash is handed over, corrects
  * and saves it, or rejects it with a reason); rejected sales can be submitted again, and one returned before November 3,
  * 2026 can still be fixed and sent again.
+ * Organised (owner, November 16, 2026): what is not yet handed over on top, then sections To fix, With the clerk,
+ * Rejected and Saved (the latest few, more on request), a filter by section and a search by member or APP#; each
+ * submission opens to its sales, as Submit Collections does.
  */
+type SubmissionGroup = "fix" | "clerk" | "rejected" | "saved";
+const SUBMISSION_GROUPS: Array<{ key: SubmissionGroup; title: string; note: string }> = [
+  { key: "fix", title: "To fix", note: "Sent back by the clerk: fix them and submit again." },
+  { key: "clerk", title: "With the clerk", note: "Waiting for the cash, or received and being encoded." },
+  { key: "rejected", title: "Rejected", note: "Not saved. These sales can be submitted again." },
+  { key: "saved", title: "Saved", note: "Checked and saved by the clerk." },
+];
+const groupOf = (status: SubmissionSummary["status"]): SubmissionGroup =>
+  status === "Returned" ? "fix" : status === "Submitted" || status === "Remitted" ? "clerk" : status === "Rejected" ? "rejected" : "saved";
+const saleName = (sale: NewSale) => [sale.member?.name?.firstName, sale.member?.name?.surname].filter(Boolean).join(" ") || "Unnamed member";
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+const SAVED_SHOWN = 5;
+
 function MySubmissions({ submissions, activeId, onOpen }: { submissions: SubmissionSummary[]; activeId: string; onOpen: (submission: SubmissionSummary, asNew: boolean) => void }) {
   const seenRef = useSeenRejections("/api/sale-submissions", submissions.filter((submission) => submission.status === "Rejected" && !submission.rejectionSeen).map((submission) => submission.id).join(","));
+  const [show, setShow] = useState<SubmissionGroup | "">("");
+  const [search, setSearch] = useState("");
+  const [allSaved, setAllSaved] = useState(false);
   if (!submissions.length) return <p className="p-4 text-center text-sm text-muted-foreground">No submissions yet.</p>;
-  const now = manilaNow();
+  const clock = manilaNow();
+  const now = `${clock.date} ${clock.time}`;
   const tone = { Submitted: "secondary", Remitted: "default", Rejected: "destructive", Returned: "destructive", Saved: "default" } as const;
   const label = { Submitted: "Not yet remitted", Remitted: "Remitted: being encoded", Rejected: "Rejected", Returned: "Returned", Saved: "Saved by the clerk" } as const;
+
+  // The cash still in hand: submitted, not yet received by the clerk.
+  const waiting = submissions.filter((submission) => submission.status === "Submitted");
+  const waitingTotal = Math.round(waiting.reduce((sum, submission) => sum + submission.totalAmount, 0) * 100) / 100;
+  const nextDeadline = waiting.map((submission) => submission.incentiveDeadline).filter((deadline) => deadline && deadline >= now).sort()[0] ?? "";
+  const anyLate = waiting.some((submission) => submission.incentiveDeadline && now > submission.incentiveDeadline);
+
+  const needle = search.trim().toLowerCase();
+  const matches = (submission: SubmissionSummary) => !needle || submission.sales.some((sale) => `${saleName(sale)} ${sale.applicationNumber ?? ""}`.toLowerCase().includes(needle));
+  const counts = Object.fromEntries(SUBMISSION_GROUPS.map(({ key }) => [key, submissions.filter((submission) => groupOf(submission.status) === key).length])) as Record<SubmissionGroup, number>;
+  const sections = SUBMISSION_GROUPS
+    .filter(({ key }) => !show || show === key)
+    .map((group) => ({ ...group, items: submissions.filter((submission) => groupOf(submission.status) === group.key && matches(submission)) }))
+    .filter((group) => group.items.length);
+
+  const card = (submission: SubmissionSummary) => {
+    const pastDeadline = submission.status === "Submitted" && Boolean(submission.incentiveDeadline) && now > submission.incentiveDeadline;
+    const late = Boolean(submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline);
+    return (
+      <li key={submission.id} className={`space-y-2 rounded-lg border p-3 text-sm ${submission.id === activeId ? "border-primary bg-primary/5" : submission.status === "Submitted" ? (pastDeadline ? "border-amber-400 dark:border-amber-700" : "border-primary/40") : ""}`}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{memberNames(submission)}</p>
+            <p className="text-xs text-muted-foreground">{plural(submission.saleCount, "sale")} · <span className="font-medium text-foreground tabular-nums">{peso(submission.totalAmount)}</span> · {submission.branch} · sent {submittedAt(submission.submittedAt)}</p>
+          </div>
+          <Badge variant={tone[submission.status]} className="shrink-0">{label[submission.status]}</Badge>
+        </div>
+        {submission.status === "Submitted" && <p className={pastDeadline ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>
+          {submission.incentiveDeadline ? (pastDeadline ? `The ${formatDeadline(submission.incentiveDeadline)} deadline has passed: if you have not handed over the cash yet, the whole amount is remitted.` : <>Hand the cash to the clerk by <strong className="text-foreground">{formatDeadline(submission.incentiveDeadline)}</strong> to keep the incentive.</>) : "Hand the cash to the clerk."} Only the clerk can change it now.
+        </p>}
+        {submission.status === "Remitted" && submission.remittedAt && <p className={`font-medium ${late ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>Received by {submission.remittedByName || "the clerk"} on {submittedAt(submission.remittedAt)}{submission.incentiveDeadline ? (late ? ": after the deadline, the incentive is forfeited." : ": in time, you keep your incentive.") : "."}</p>}
+        {submission.status === "Rejected" && <p className="font-medium text-destructive">Rejected{submission.reviewedByName ? ` by ${submission.reviewedByName}` : ""}: {submission.returnReason}</p>}
+        {submission.status === "Returned" && <p className="font-medium text-destructive">To fix: {submission.returnReason}{submission.reviewedByName ? ` (${submission.reviewedByName})` : ""}</p>}
+        {submission.status === "Saved" && submission.reviewedByName && <p className="text-xs text-muted-foreground">Checked and saved by {submission.reviewedByName}</p>}
+        {(submission.fidelity ?? 0) > 0 && <p className="font-medium text-emerald-700 dark:text-emerald-400">Fidelity {peso(submission.fidelity ?? 0)} added with this batch: your own savings.</p>}
+        {submission.sales.length > 0 && <details className="rounded-md border">
+          <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">See the {plural(submission.sales.length, "sale")}</summary>
+          <ul className="divide-y border-t">
+            {submission.sales.map((sale, index) => <li key={`${submission.id}-${index}`} className="flex items-baseline justify-between gap-2 px-3 py-2">
+              <span className="min-w-0"><span className="block truncate font-medium">{saleName(sale)}</span>{sale.applicationNumber && <span className="text-xs text-muted-foreground">APP {sale.applicationNumber}</span>}</span>
+              <span className="shrink-0 font-semibold tabular-nums">{peso(Number(sale.program?.amountPaid) || 0)}</span>
+            </li>)}
+          </ul>
+        </details>}
+        {submission.status === "Returned" && <Button type="button" className="h-11 w-full sm:w-auto" onClick={() => onOpen(submission, false)}>{submission.id === activeId ? "Editing" : "Fix and resubmit"}</Button>}
+        {submission.status === "Rejected" && <Button type="button" variant="outline" className="h-11 w-full sm:w-auto" onClick={() => onOpen(submission, true)}>Submit again</Button>}
+      </li>
+    );
+  };
+
   return (
-    <div ref={seenRef}><Card>
-      <CardHeader><CardTitle className="text-base">My submissions</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
-        {submissions.map((submission) => {
-          const pastDeadline = submission.status === "Submitted" && Boolean(submission.incentiveDeadline) && `${now.date} ${now.time}` > submission.incentiveDeadline;
-          const late = Boolean(submission.incentiveDeadline && submission.remittedAt > submission.incentiveDeadline);
-          return (
-            <div key={submission.id} className={`flex flex-col gap-2 rounded-lg border p-3 text-sm sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
-              <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 font-semibold">{submittedAt(submission.submittedAt)} <Badge variant={tone[submission.status]}>{label[submission.status]}</Badge></p>
-                <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {peso(submission.totalAmount)} · {submission.branch}</p>
-                <p className="truncate">{memberNames(submission)}</p>
-                {submission.status === "Submitted" && <p className={`mt-1 ${pastDeadline ? "font-medium text-amber-700" : "text-muted-foreground"}`}>
-                  {submission.incentiveDeadline ? (pastDeadline ? `The ${formatDeadline(submission.incentiveDeadline)} deadline has passed: if you have not handed over the cash yet, the whole amount is remitted.` : `Hand the cash to the clerk by ${formatDeadline(submission.incentiveDeadline)} to keep the incentive.`) : "Hand the cash to the clerk."} Only the clerk can change it now.
-                </p>}
-                {submission.status === "Remitted" && submission.remittedAt && <p className={`mt-1 font-medium ${late ? "text-amber-700" : "text-emerald-700"}`}>Received by {submission.remittedByName || "the clerk"} on {submittedAt(submission.remittedAt)}{submission.incentiveDeadline ? (late ? ": after the deadline, the incentive is forfeited." : ": in time, you keep your incentive.") : "."}</p>}
-                {submission.status === "Rejected" && <p className="mt-1 font-medium text-destructive">Rejected{submission.reviewedByName ? ` by ${submission.reviewedByName}` : ""}: {submission.returnReason}. These sales can be submitted again.</p>}
-                {submission.status === "Returned" && <p className="mt-1 font-medium text-destructive">To fix: {submission.returnReason}{submission.reviewedByName ? ` (${submission.reviewedByName})` : ""}</p>}
-                {submission.status === "Saved" && submission.reviewedByName && <p className="mt-1 text-muted-foreground">Checked and saved by {submission.reviewedByName}</p>}
-                {(submission.fidelity ?? 0) > 0 && <p className="mt-1 font-medium text-emerald-700">Fidelity {peso(submission.fidelity ?? 0)} added with this batch: your own savings.</p>}
-              </div>
-              {submission.status === "Returned" && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(submission, false)}>{submission.id === activeId ? "Editing" : "Fix"}</Button>}
-              {submission.status === "Rejected" && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(submission, true)}>Submit again</Button>}
-            </div>
-          );
-        })}
-      </CardContent>
-    </Card></div>
+    <div ref={seenRef} className="space-y-3">
+      {/* WHAT TO HAND OVER: every submission the clerk has not yet received. */}
+      {waiting.length > 0 ? <Card className={anyLate ? "border-amber-400 dark:border-amber-700" : "border-primary/40"}>
+        <CardContent className="space-y-1 p-4 text-center">
+          <p className="text-sm text-muted-foreground">Collected, not yet handed over to the clerk</p>
+          <p className="text-3xl font-bold tabular-nums">{peso(waitingTotal)}</p>
+          <p className="text-xs text-muted-foreground">{plural(waiting.length, "submission")} not yet remitted</p>
+          {nextDeadline && <p className="text-xs text-muted-foreground">Next deadline: <strong className="text-foreground">{formatDeadline(nextDeadline)}</strong></p>}
+          {anyLate && <p className="text-xs font-medium text-amber-700 dark:text-amber-400">A deadline has passed: for that submission the whole amount is remitted, with no incentive.</p>}
+        </CardContent>
+      </Card> : <p className="rounded-lg border bg-muted/40 p-3 text-center text-sm text-muted-foreground">Nothing to hand over: the clerk has received every submission.</p>}
+
+      <Card>
+        <CardHeader className="space-y-3 pb-3">
+          <CardTitle className="text-lg">My submissions</CardTitle>
+          <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
+            {([["", "All", submissions.length], ...SUBMISSION_GROUPS.map(({ key, title }) => [key, title, counts[key]] as const)] as const).filter(([key, , count]) => !key || count > 0).map(([key, title, count]) => (
+              <button key={key || "all"} type="button" aria-pressed={show === key} onClick={() => setShow(key as SubmissionGroup | "")}
+                className={`min-h-9 rounded-full border px-3 text-sm ${show === key ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}>
+                {title} <span className="tabular-nums">{count}</span>
+              </button>
+            ))}
+          </div>
+          <Input type="search" aria-label="Search submissions" placeholder="Search member or APP#" value={search} onChange={(event) => setSearch(event.target.value)} />
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {!sections.length && <p className="text-center text-sm text-muted-foreground">No submission matches.</p>}
+          {sections.map((section) => {
+            // Saved ones pile up: the latest few, the rest on request (a search shows every match).
+            const limited = section.key === "saved" && !allSaved && !needle && section.items.length > SAVED_SHOWN;
+            const items = limited ? section.items.slice(0, SAVED_SHOWN) : section.items;
+            return (
+              <section key={section.key} aria-label={section.title} className="space-y-2">
+                <div>
+                  <h3 className="text-sm font-semibold">{section.title} <span className="font-normal text-muted-foreground">({section.items.length})</span></h3>
+                  <p className="text-xs text-muted-foreground">{section.note}</p>
+                </div>
+                <ul className="space-y-2">{items.map(card)}</ul>
+                {section.key === "saved" && !needle && section.items.length > SAVED_SHOWN && (
+                  <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setAllSaved((value) => !value)}>{allSaved ? "Show fewer" : `Show ${plural(section.items.length - SAVED_SHOWN, "older saved submission")}`}</Button>
+                )}
+              </section>
+            );
+          })}
+          <p className="text-center text-xs text-muted-foreground">Your latest 50 submissions.</p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
