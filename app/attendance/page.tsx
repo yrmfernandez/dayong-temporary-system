@@ -11,7 +11,7 @@ import {
   MapPin,
   Timer,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AttendanceCalendar } from "@/components/attendance-calendar";
 import { MyAttendanceHistory } from "@/components/my-attendance-history";
@@ -96,11 +96,38 @@ async function devicePosition(): Promise<Position | { problem: LocationProblem }
   return readPosition({ enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
 }
 
+/** Whether this site may read the location: granted, prompt (the browser will ask), denied, or unknown (no Permissions API, e.g. older iPhones). */
+type LocationPermission = PermissionState | "unknown";
+
+async function queryLocationPermission(): Promise<PermissionStatus | null> {
+  try {
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return null;
+    return await navigator.permissions.query({ name: "geolocation" as PermissionName });
+  } catch {
+    return null;
+  }
+}
+
+/** The app inside Messenger, Facebook, Instagram and similar apps: their built-in browsers often never ask for location. */
+function inAppBrowserName(): string | null {
+  if (typeof navigator === "undefined") return null;
+  const ua = navigator.userAgent || "";
+  if (/Messenger|FB_IAB\/MESSENGER/i.test(ua)) return "Messenger";
+  if (/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)) return "Facebook";
+  if (/Instagram/i.test(ua)) return "Instagram";
+  if (/TikTok|musical_ly|BytedanceWebview/i.test(ua)) return "TikTok";
+  if (/\bLine\//i.test(ua)) return "LINE";
+  if (/MicroMessenger/i.test(ua)) return "WeChat";
+  if (/Viber/i.test(ua)) return "Viber";
+  return null;
+}
+
 const locationHelp: Record<LocationProblem, { title: string; steps: string[] }> = {
   denied: {
     title: "Location is blocked for this site",
     steps: [
-      "Tap the lock or settings icon beside the web address and set Location to Allow.",
+      "Once location is blocked, the site can no longer ask for it: you have to allow it yourself.",
+      "Tap the lock or settings icon beside the web address, open Permissions or Site settings, and set Location to Allow.",
       "iPhone: Settings → Privacy & Security → Location Services → your browser (Safari or Chrome) → While Using the App.",
       "Android: Settings → Apps → your browser → Permissions → Location → Allow.",
       "Then come back here and press Try again.",
@@ -124,6 +151,7 @@ const locationHelp: Record<LocationProblem, { title: string; steps: string[] }> 
   unsupported: {
     title: "This browser cannot give your location",
     steps: [
+      "If you opened the link from Messenger or Facebook, tap the ⋮ or ⋯ menu and choose Open in Chrome (or Open in Safari).",
       "Open the system in Chrome or Safari on your phone, at the usual https:// address.",
       "If it keeps failing, ask HR to record your attendance.",
     ],
@@ -152,6 +180,11 @@ export default function AttendancePage() {
   const [message, setMessage] = useState("");
   // Clocking in found no location: the page asks to turn it on, and clocks in only once the location comes through.
   const [locationProblem, setLocationProblem] = useState<LocationProblem | null>(null);
+  // Since November 18, 2026 the page asks for location as soon as it opens (not only on Clock In) and shows whether it is allowed.
+  const [locationPermission, setLocationPermission] = useState<LocationPermission>("unknown");
+  const [askingLocation, setAskingLocation] = useState(false);
+  const [inAppBrowser, setInAppBrowser] = useState<string | null>(null);
+  const askedOnOpen = useRef(false);
   const [now, setNow] = useState(() => new Date());
   // Server time minus device time. Clock-in times come from the server, so the clock and progress run on its time:
   // a device clock a few minutes slow would otherwise keep the shift short of 100% at 5 PM.
@@ -195,6 +228,52 @@ export default function AttendancePage() {
     void loadPage();
   }, []);
 
+  // Asks the phone for its location (the browser shows its Allow prompt when it has not been answered yet).
+  const askLocation = async () => {
+    setAskingLocation(true);
+    const result = await devicePosition();
+    setAskingLocation(false);
+    if ("problem" in result) {
+      setLocationProblem(result.problem);
+      if (result.problem === "denied") setLocationPermission("denied");
+    } else {
+      setLocationProblem(null);
+      setLocationPermission("granted");
+    }
+  };
+
+  // When the branch checks location and the employee has not clocked in, ask for location as soon as the page opens,
+  // and follow changes made in the browser's settings (allowing it there clears the warning without a reload).
+  const needsLocation = !loading && locationSet && !record?.timeIn && !closedReason;
+  useEffect(() => {
+    if (!needsLocation) return;
+    let status: PermissionStatus | null = null;
+    let cancelled = false;
+    const onChange = () => {
+      if (!status) return;
+      setLocationPermission(status.state);
+      if (status.state === "denied") setLocationProblem("denied");
+      else setLocationProblem((problem) => (problem === "denied" ? null : problem));
+    };
+    void (async () => {
+      status = await queryLocationPermission();
+      if (cancelled) return;
+      setInAppBrowser(inAppBrowserName());
+      const state: LocationPermission = status?.state ?? "unknown";
+      setLocationPermission(state);
+      status?.addEventListener("change", onChange);
+      if (state === "denied") setLocationProblem("denied");
+      else if (!askedOnOpen.current) {
+        askedOnOpen.current = true;
+        if (state !== "granted") void askLocation();
+      }
+    })();
+    return () => {
+      cancelled = true;
+      status?.removeEventListener("change", onChange);
+    };
+  }, [needsLocation]);
+
   // Live updates: an administrator's correction (e.g. a voided clock-out, so the clock resumes) shows without a reload.
   useLiveRefresh(["attendance"], loadAttendance);
 
@@ -235,9 +314,11 @@ export default function AttendancePage() {
       const location = action === "time-in" && locationSet ? await devicePosition() : undefined;
       if (location && "problem" in location) {
         setLocationProblem(location.problem);
+        if (location.problem === "denied") setLocationPermission("denied");
         setMessage("");
         return;
       }
+      if (location) setLocationPermission("granted");
       setLocationProblem(null);
       const response = await fetch("/api/attendance", {
         method: "POST",
@@ -382,7 +463,7 @@ export default function AttendancePage() {
                   type="button"
                   size="lg"
                   className="h-14 w-full rounded-2xl text-base font-extrabold shadow-[0_10px_25px_-5px_rgb(105_51_255_/_0.35)]"
-                  disabled={submitting || loading || !branch || Boolean(closedReason)}
+                  disabled={submitting || askingLocation || loading || !branch || Boolean(closedReason)}
                   onClick={() => void submitAttendance("time-in")}
                 >
                   <LogIn className="size-5" />
@@ -411,14 +492,36 @@ export default function AttendancePage() {
                   <p className="flex items-center gap-2 font-bold"><MapPin className="size-4 shrink-0" />Turn on your location to clock in</p>
                   <p className="font-semibold">{locationHelp[locationProblem].title}.</p>
                   <ul className="list-disc space-y-1 pl-5">{locationHelp[locationProblem].steps.map((step) => <li key={step}>{step}</li>)}</ul>
-                  <Button type="button" variant="outline" className="w-full border-red-300 bg-white text-red-900 hover:bg-red-100" disabled={submitting} onClick={() => void submitAttendance("time-in")}>
+                  <Button type="button" variant="outline" className="w-full border-red-300 bg-white text-red-900 hover:bg-red-100" disabled={submitting || askingLocation} onClick={() => void submitAttendance("time-in")}>
                     {submitting ? "Checking your location..." : "Try again"}
                   </Button>
                 </div>
               )}
 
-              {!record?.timeIn && locationSet && !locationProblem && (
-                <p className="text-xs text-violet-40">Your branch checks your location when you clock in, so your location must be on. Allow location when your phone asks; a clock-in away from your main branch or at another of your branches is sent to HR for review.</p>
+              {needsLocation && inAppBrowser && (
+                <div className="flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <span>You opened the system inside {inAppBrowser}. Its built-in browser often cannot give your location. Tap the ⋮ or ⋯ menu and choose <b>Open in Chrome</b> (or <b>Open in Safari</b>), then clock in there.</span>
+                </div>
+              )}
+
+              {needsLocation && !locationProblem && (
+                askingLocation ? (
+                  <div className="flex items-start gap-2 rounded-2xl border border-violet-90 bg-violet-95/60 p-4 text-sm text-violet-10">
+                    <MapPin className="mt-0.5 size-4 shrink-0 animate-pulse text-violet-60" />
+                    <span><b>Getting your location…</b> When your phone asks to use your location, tap <b>Allow</b> (or <b>Allow while visiting the site</b>).</span>
+                  </div>
+                ) : locationPermission === "granted" ? (
+                  <p className="flex items-start gap-2 text-xs text-violet-40"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-accent-moss" /><span>Location is allowed. Your branch checks your location when you clock in; a clock-in away from your main branch or at another of your branches is sent to HR for review.</span></p>
+                ) : (
+                  <div className="space-y-2 rounded-2xl border border-violet-90 bg-violet-95/60 p-4 text-sm text-violet-10">
+                    <p className="flex items-center gap-2 font-bold"><MapPin className="size-4 shrink-0 text-violet-60" />Allow location to clock in</p>
+                    <p className="text-violet-40">Your branch checks your location when you clock in. Press the button below and tap <b>Allow</b> when your phone asks.</p>
+                    <Button type="button" variant="outline" className="w-full" disabled={submitting} onClick={() => void askLocation()}>
+                      <MapPin className="size-4" />Allow location
+                    </Button>
+                  </div>
+                )
               )}
 
               {message && (

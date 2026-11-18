@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Attendance asks for location when it opens (2026-11-18)
+
+- **Asked (owner):** some users cannot clock in because of the location; the site should ask permission to use the location so it is on.
+- **Cause:** the page asked only when Clock In was pressed. A phone that had once tapped Block is never asked again by the browser, and Messenger / Facebook built-in browsers often never ask, so these users only saw the red panel.
+- **Done (`app/attendance/page.tsx`):** where location is checked and the employee has not clocked in, the page asks for location as soon as it opens (browser Allow prompt), and shows Location is allowed / Getting your location… tap Allow / Allow location button. Blocked earlier: the warning shows at once with the steps (first step says the site can no longer ask) and clears by itself when allowed in site settings. Opened inside Messenger, Facebook, Instagram, TikTok, LINE, WeChat or Viber: a notice to Open in Chrome / Safari. Clock In and Try again wait while the location is being read. Server rules unchanged.
+- **Tested:** lint, build. Not tried on a phone.
+- **To do (owner):** push (no migration); for a user still stuck, check they opened it in Chrome or Safari, not inside Messenger.
+
 ### MAS-Officer's MAM same as a MAS's (2026-11-18)
 
 - **Asked (owner):** the MAM of a MAS-Officer is different from a MAS's; it should not be.
