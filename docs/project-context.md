@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### MAS-Officer's MAM same as a MAS's (2026-11-18)
+
+- **Asked (owner):** the MAM of a MAS-Officer is different from a MAS's; it should not be.
+- **Cause:** `ownMembersScope` in `lib/member-scope.ts` only recognised the role `mas`, so a MAS-Officer was treated as staff who see every member: MAM asked for a branch and showed the branch / MAS pickers, Sync and every account; Members and Search Records (same scope) showed everyone too.
+- **Done:** it now uses `isMasFamilyRole`, so a MAS-Officer sees only their own members in MAM, a member's MAM, Members and Search Records, with the MAS layout (phone cards, no pickers, no Sync). Their branch-wide view stays MAS Report.
+- **Tested:** new test: a MAS-Officer's MAM options say own members only and Sync is refused; "MAS Officer" written with a space too.
+- **To do (owner):** push (no migration).
+
 ### MAS Report: Daily and Weekly (2026-11-16)
 
 - **Asked (owner):** add daily and weekly to the MAS Report.

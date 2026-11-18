@@ -1946,6 +1946,13 @@ test('a workspace narrows the session to its role; the MAS workspace is a MAS wi
   const options = await (await route.GET(new Request('http://localhost/api/mam?options=1'))).json();
   assert.equal(options.ownMembersOnly, true);
   assert.equal((await route.POST(new Request('http://localhost/api/mam', { method: 'POST' }))).status, 403);
+  // A MAS-Officer's MAM is a MAS's MAM (owner, November 18, 2026): own members, no branch / MAS pickers, no Sync.
+  const officer = harness({ ...admin, roles: ['ROL-O'], roleNames: ['MAS-Officer'], permissions: none, rolePermissions: { 'mas-officer': none } });
+  const officerRoute = officer.load('app/api/mam/route.ts');
+  assert.equal((await (await officerRoute.GET(new Request('http://localhost/api/mam?options=1'))).json()).ownMembersOnly, true, 'a MAS-Officer sees only their own members');
+  assert.equal((await officerRoute.POST(new Request('http://localhost/api/mam', { method: 'POST' }))).status, 403);
+  const { ownMembersScope } = harness().load('lib/member-scope.ts');
+  assert.notEqual(await ownMembersScope({ roleNames: ['MAS Officer'], employeeId: 'X', name: 'Officer' }), null, 'written MAS Officer too');
   const real = harness(admin);
   assert.equal((await (await real.load('app/api/mam/route.ts').GET(new Request('http://localhost/api/mam?options=1'))).json()).ownMembersOnly, false, 'the Administrator workspace still sees every member');
 });
