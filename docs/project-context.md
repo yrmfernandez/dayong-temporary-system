@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### APP# on Members / My Members (2026-11-18)
+
+- **Asked (owner):** show the application form number in My Members / Members too.
+- **Done:** each program's APP# (its New Sale's `application_no`, matched by member number and program as MAM and the SOA do) is read for the members on the page only (`readMembers` in `lib/member-directory-data.ts`, `applicationNumber` on `DirectoryEnrollment`). `app/members/page.tsx` shows APP# under each program in the Programs / Payment status column (still seven columns, phone cards too) and an APP# column after Program in the member's details.
+- **Not done (tell me):** searching Members by APP# (Search Records and My submissions already search by it).
+- **Tested:** new assertion in the member directory test; lint, build, full test suite.
+- **To do (owner):** push (no migration).
+
 ### Attendance asks for location when it opens (2026-11-18)
 
 - **Asked (owner):** some users cannot clock in because of the location; the site should ask permission to use the location so it is on.

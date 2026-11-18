@@ -9,7 +9,7 @@ import { getBranches } from "@/lib/google-sheets-data";
 import { scopedAccounts, type MemberScope } from "@/lib/member-scope";
 import { shortCached } from "@/lib/short-cache";
 
-const { member_programs: memberPrograms, members, programs } = schema;
+const { member_programs: memberPrograms, members, programs, sales } = schema;
 const text = (value: string | null | undefined) => (value ?? "").trim();
 
 /**
@@ -121,12 +121,20 @@ async function readMembers(ids: string[], own: MemberScope | null) {
   if (!ids.length) return [];
   const db = currentDb();
   const ownCondition = own === null ? undefined : scopedAccounts(own, memberPrograms.mas, memberPrograms.collector_employee_id);
-  const [enrollmentRows, memberRows, programRows, employees] = await Promise.all([
+  const [enrollmentRows, memberRows, programRows, employees, saleRows] = await Promise.all([
     db.select(enrollmentColumns).from(memberPrograms).where(and(oneOf(memberPrograms.member_id, ids), ownCondition)).orderBy(memberPrograms.row_seq),
     db.select(memberColumns).from(members).where(oneOf(members.member_id, ids)),
     db.select({ id: programs.program_id, name: programs.program_name, code: programs.program_code }).from(programs),
     getEmployees(),
+    // The APP# of each account's New Sale (same member number and program, as MAM and the SOA match it); only these members.
+    db.select({ memberNumber: sales.member_number, programId: sales.program_id, applicationNumber: sales.application_no }).from(sales)
+      .where(sql`${sales.member_number} in (select member_number from members where ${oneOf(members.member_id, ids)})`),
   ]);
+  const applicationOf = new Map<string, string>();
+  for (const row of saleRows) {
+    const number = text(row.applicationNumber), key = `${text(row.memberNumber)}|${row.programId}`;
+    if (number && !applicationOf.has(key)) applicationOf.set(key, number);
+  }
   const memberRecords: MemberRecord[] = memberRows.map((row) => ({
     id: row.member_id, number: row.member_number, surname: text(row.surname), firstName: text(row.first_name), middleName: text(row.middle_name), nameExtension: text(row.name_extension),
     birthdate: row.birthdate ?? "", birthplace: text(row.birthplace), gender: text(row.gender), civilStatus: text(row.civil_status), contact: text(row.member_contact),
@@ -138,6 +146,7 @@ async function readMembers(ids: string[], own: MemberScope | null) {
     id: row.enrollment_id, memberId: row.member_id, memberNumber: text(row.member_number), programId: row.program_id, doi: row.doi ?? "", doiTime: text(row.doi_time).slice(0, 5),
     branch: text(row.branch), mas: text(row.mas), collector: nameOf.get(text(row.collector_employee_id)) ?? "", paymentMethod: text(row.remittance_method), status: text(row.status),
     deactivatedOn: row.deactivated_on ?? "", fullyPaidOn: row.fully_paid_on ?? "", storedStatus: text(row.account_status),
+    applicationNumber: applicationOf.get(`${text(row.member_number)}|${row.program_id}`) ?? "",
   }));
   const programNames = Object.fromEntries(programRows.map((row) => [row.id, text(row.name) || text(row.code)]));
   return buildMemberDirectory(memberRecords, enrollmentRecords, programNames);

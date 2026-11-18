@@ -597,7 +597,9 @@ test('member directory filters, counts and pages in the database as the director
     { enrollment_id: 'E3', member_id: 'D3', member_number: 'PH-103', program_id: 'P1', doi: '2026-03-15', branch: 'South', mas: 'MAS2', status: 'Deactivated', deactivated_on: '2026-04-01' },
     { enrollment_id: 'E4', member_id: 'D4', member_number: 'PH-104', program_id: 'P1', doi: '2026-04-15', branch: 'South', mas: 'MAS2', fully_paid_on: '2026-05-01' },
   ]);
+  await seed('sales', [{ sale_id: 'S1', member_number: 'PH-101', program_id: 'P1', application_no: 'APP-5501' }]);
   const all = await directory();
+  assert.deepEqual(all.members.map((member) => member.enrollments.map((enrollment) => enrollment.applicationNumber)), [['APP-5501'], [''], [''], [''], []], 'each program shows its New Sale APP# (November 18, 2026)');
   assert.deepEqual([all.total, all.matched, all.counts.active, all.counts.inactive, all.counts.deactivated, all.counts.dead, all.counts.alive], [5, 5, 1, 3, 1, 1, 4]);
   assert.deepEqual(all.members.map((member) => member.status), ['Active', 'Deceased', 'Inactive', 'Inactive', 'Inactive'], 'no program, or every program ended, is Inactive');
   assert.deepEqual(all.options.branches, ['North', 'South']);

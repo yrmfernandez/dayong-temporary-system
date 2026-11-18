@@ -9,6 +9,8 @@ export type DirectoryEnrollment = {
   /** Deactivated (dropped) on, fully paid on, and the stored status (member_programs.account_status): the date filter and Inactive. */
   deactivatedOn?: string; fullyPaidOn?: string; storedStatus?: string;
   accountStatus?: string; temporarilySuspended?: boolean; accountError?: string;
+  /** The application form number (APP#) on this account's New Sale (sales.application_no); blank when none (November 18, 2026). */
+  applicationNumber?: string;
 };
 export type DirectoryMember = {
   id: string; number: string; name: string; birthdate: string; birthplace: string;
@@ -71,7 +73,7 @@ export type MemberRecord = {
 };
 export type EnrollmentRecord = {
   id: string; memberId: string; memberNumber: string; programId: string; doi: string; doiTime?: string; branch: string; mas: string; collector?: string; paymentMethod: string; status: string;
-  deactivatedOn?: string; fullyPaidOn?: string; storedStatus?: string;
+  deactivatedOn?: string; fullyPaidOn?: string; storedStatus?: string; applicationNumber?: string;
 };
 
 export function buildMemberDirectory(memberRecords: MemberRecord[], enrollmentRecords: EnrollmentRecord[], programNames: Record<string, string>): DirectoryMember[] {
@@ -82,7 +84,8 @@ export function buildMemberDirectory(memberRecords: MemberRecord[], enrollmentRe
     list.push({ id: record.id, programId: record.programId, programName: programNames[record.programId] || record.programId,
       collector: record.collector ?? "",
       doi: record.doi, doiTime: record.doiTime ?? "", branch: record.branch, mas: record.mas, paymentMethod: record.paymentMethod, status: record.status,
-      deactivatedOn: record.deactivatedOn ?? "", fullyPaidOn: record.fullyPaidOn ?? "", storedStatus: record.storedStatus ?? "" });
+      deactivatedOn: record.deactivatedOn ?? "", fullyPaidOn: record.fullyPaidOn ?? "", storedStatus: record.storedStatus ?? "",
+      applicationNumber: record.applicationNumber ?? "" });
     enrollments.set(record.memberId, list);
   }
   const members = new Map<string, DirectoryMember>();
