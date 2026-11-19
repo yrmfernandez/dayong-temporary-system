@@ -83,16 +83,22 @@ export default function DailyAuditPage() {
     setDraft({ findings: row.audit?.findings ?? "", result: row.audit?.result || "Balanced", reason: "", editReason: "", returnReason: "" });
   }
 
-  async function send(method: "POST" | "PATCH", body: Record<string, unknown>, done: string) {
+  async function send(method: "POST" | "PATCH", body: Record<string, unknown>, done: string | ((result: { audit?: { remittancesApproved?: string[]; remittancesLeft?: string[] } }) => string)) {
     setBusy(true); setMessage("");
     try {
       const response = await fetch("/api/audit", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, period, week, ...body }) });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to update the audit.");
-      setMessage(done); await load(date, period, week);
+      setMessage(typeof done === "string" ? done : done(result)); await load(date, period, week);
     } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Unable to update the audit."); setBusy(false); }
   }
 
+  // Approving the audit approves the report's remittance slips too (November 19, 2026).
+  const approvedMessage = (result: { audit?: { remittancesApproved?: string[]; remittancesLeft?: string[] } }) => {
+    const approved = result.audit?.remittancesApproved ?? [], left = result.audit?.remittancesLeft ?? [];
+    return ["Audit approved and locked.", approved.length ? `${approved.length === 1 ? "Its remittance" : `Its ${approved.length} remittances`} approved too: ${approved.join(", ")}.` : "No remittance was waiting for approval.",
+      left.length ? `Left for Remittances (some entries are outside this report): ${left.join(", ")}.` : ""].filter(Boolean).join(" ");
+  };
   const count = (status: Row["status"]) => rows.filter((row) => row.status === status).length;
   return <section className="mx-auto max-w-6xl space-y-6">
     <header className="page-hero">
@@ -224,7 +230,8 @@ export default function DailyAuditPage() {
                   <label className="block text-sm">Findings{draft.result === "With findings" ? " *" : ""}<textarea className="mt-1 block min-h-24 w-full rounded-md border bg-background p-2 text-sm" maxLength={2000} value={draft.findings} placeholder="What was checked (receipts, slips, cash) and anything that does not match." onChange={(event) => setDraft({ ...draft, findings: event.target.value })} /></label>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" disabled={busy} onClick={() => void send("POST", { employeeId: row.employeeId, findings: draft.findings, result: draft.result }, "Audit saved as draft.")}>Save draft</Button>
-                    {canApprove && row.status === "Draft" && <Button type="button" variant="outline" disabled={busy} onClick={() => void send("PATCH", { employeeId: row.employeeId, decision: "approve" }, "Audit approved and locked.")}>Approve</Button>}
+                    {canApprove && row.status === "Draft" && <Button type="button" variant="outline" disabled={busy} onClick={() => void send("PATCH", { employeeId: row.employeeId, decision: "approve" }, approvedMessage)}>Approve</Button>}
+                    {canApprove && row.status === "Draft" && <span className="text-xs text-muted-foreground">Approving also approves this report&apos;s remittances waiting for approval.</span>}
                     {!canApprove && <span className="text-xs text-muted-foreground">An Administrator approves saved audits.</span>}
                     {row.audit?.updatedAt && <span className="text-xs text-muted-foreground">Last saved {when(row.audit.updatedAt)}{row.audit.preparedBy ? ` · prepared by ${row.audit.preparedBy.replace(/^'/, "")}` : ""}</span>}
                   </div>

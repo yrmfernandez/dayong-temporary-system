@@ -3,6 +3,7 @@ import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { AUDIT_DECISIONS, AUDIT_RESULTS, asAuditPeriod, asWeek, auditedEmployees, type AuditDecision, decideDailyAudit, getDailyAudits, periodSpan, saveDailyAudit, submittedPeriodFor } from "@/lib/daily-audit";
 import { isPeriodKind, returnPeriod } from "@/lib/report-periods";
 import { withEncoder } from "@/lib/encoder-context";
+import { refuseOnDayOff } from "@/lib/day-off";
 
 // HR Officers, Finance, and Administrators prepare and edit audits (daily, weekly, monthly, yearly); only Administrators approve or
 // reopen them, and allow a clerk to edit an approved report again (or lock it again).
@@ -38,7 +39,7 @@ export const POST = withEncoder(async (request: Request) => {
 });
 
 export const PATCH = withEncoder(async (request: Request) => {
-  const { canView, canApprove } = await access();
+  const { user, canView, canApprove } = await access();
   // HR, Finance and Administrators return a submitted weekly or monthly to the clerk, with the reason (October 30, 2026).
   const peek = await request.clone().json().catch(() => ({})) as Record<string, unknown>;
   if (peek.decision === "return") {
@@ -56,6 +57,15 @@ export const PATCH = withEncoder(async (request: Request) => {
     const body = await request.json();
     const decision = (AUDIT_DECISIONS as readonly string[]).includes(String(body.decision)) ? body.decision as AuditDecision : null;
     if (!decision) throw new Error("Choose approve, reopen, allow editing or lock.");
-    return Response.json({ success: true, audit: await decideDailyAudit({ date: String(body.date ?? ""), employeeId: String(body.employeeId ?? ""), decision, reason: String(body.reason ?? ""), period: asAuditPeriod(body.period), week: asWeek(body.week) }) });
+    // Approving also approves the report's remittance slips (lib/remittance-workflow.ts reportSlips), so the Remittances
+    // rules apply: not on the approver's Day Off, and their own slips only for an Administrator who is also an Entry Clerk.
+    let allowOwnDecision = false;
+    if (decision === "approve") {
+      const dayOff = await refuseOnDayOff();
+      if (dayOff) return dayOff;
+      const roles = (user?.roleNames ?? []).map((role) => role.trim().toLowerCase());
+      allowOwnDecision = roles.some((role) => role === "administrator" || role === "admin") && roles.includes("entry clerk");
+    }
+    return Response.json({ success: true, audit: await decideDailyAudit({ date: String(body.date ?? ""), employeeId: String(body.employeeId ?? ""), decision, reason: String(body.reason ?? ""), period: asAuditPeriod(body.period), week: asWeek(body.week), allowOwnDecision }) });
   } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to update the audit." }, { status: 400 }); }
 });

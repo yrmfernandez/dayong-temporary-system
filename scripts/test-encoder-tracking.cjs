@@ -4410,6 +4410,47 @@ test('a turnover sheet short or over still saves, is recorded, sends the slip to
   } finally { globalThis.dayongClearingNotRequired = true; }
 });
 
+test('approving an audit approves the report\'s remittances waiting for approval, all or none (November 19, 2026)', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1);
+  h.rows.Employees = [[], ['DPE-0001', '=encoder', 'BR-1', 'Entry Clerk', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, false, 'active']];
+  await seedAccount({ doi: month + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0001', full_name: '=encoder' }]);
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '3101 C', orDate: today };
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    // A matching cash DTO batch goes straight to a slip waiting for approval.
+    const saved = await h.load('app/api/collections/route.ts').POST(request({ dto: true, branch: 'BR-1', mas: '', accountableEmployeeId: '', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'Cash', controlTotal: 350, collections: [entry] }));
+    assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
+    const slip = await lastSlip();
+    assert.equal(slip.status, 'Pending Approval');
+    await query("insert into daily_audits (audit_id, report_date, employee_id, employee_name, status) values ('AUD-R', $1, 'DPE-0001', '=encoder', 'Draft')", [today]);
+    const admin = harness({ userId: 'USR-9', employeeId: 'DPE-9', name: 'Admin', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+    const approveAudit = () => admin.load('app/api/audit/route.ts').PATCH(request({ date: today, employeeId: 'DPE-0001', decision: 'approve' }));
+    // A slip that cannot be approved (paid by GCash with no receipt photo) stops the audit too: nothing is approved by halves.
+    await query("update collections set remittance_method = 'GCash'");
+    const refused = await approveAudit();
+    assert.equal(refused.status, 400);
+    assert.match((await refused.json()).message, new RegExp(`also approves its remittances.*${slip.id}: Attach the receipt photo`));
+    assert.equal((await query("select status from daily_audits where audit_id = 'AUD-R'"))[0].status, 'Draft');
+    assert.equal((await lastSlip()).status, 'Pending Approval');
+    await query("update collections set remittance_method = 'Cash'");
+    const approved = await approveAudit();
+    const body = await approved.json();
+    assert.equal(approved.status, 200, JSON.stringify(body));
+    assert.deepEqual([body.audit.status, body.audit.remittancesApproved, body.audit.remittancesLeft], ['Approved', [slip.id], []]);
+    const decided = await lastSlip();
+    assert.equal(decided.status, 'Approved', 'the slip is approved with the audit');
+    const [row] = await query('select remittance_status, linked_remittance_id from collections');
+    assert.deepEqual(row, { remittance_status: 'Remitted', linked_remittance_id: slip.id }, 'its entries are Remitted');
+    assert.equal((await query("select decision_by_name from remittances where remittance_id = $1", [slip.id]))[0].decision_by_name, 'Admin');
+  } finally { globalThis.dayongClearingNotRequired = true; }
+});
+
 test('an Entry Clerk report is per branch for a clerk who encodes for several', async () => {
   const h = harness();
   const collection = (id, branch, amount, net) => { const row = Array(41).fill(''); Object.assign(row, { 0: id, 5: 'DP-1', 6: branch, 7: 'Maria', 9: '2026-09-03', 10: amount, 19: 'Posted', 20: '2026-09-03T02:00:00.000Z', 22: 'DPE-7', 24: '2026-09-03T02:00:00.000Z', 26: net, 28: 'Outstanding', 31: 'Maria' }); return row; };

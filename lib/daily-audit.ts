@@ -249,7 +249,11 @@ const noEditAllowed = { clerk_edit_allowed_by_name: null, clerk_edit_allowed_at:
  * Only an Administrator approves (locks the figures) or reopens (with a reason) an audit, and allows the clerk to edit
  * an approved report again (with a reason) or locks it again. Approving or reopening ends an allowance.
  */
-export async function decideDailyAudit(input: { date: string; employeeId: string; decision: AuditDecision; reason?: string; period?: AuditPeriod; week?: number }) {
+/**
+ * `allowOwnDecision`: the approver may approve slips they submitted themselves (an Administrator who is also an Entry
+ * Clerk, as in Remittances). Approving also approves the report's remittance slips waiting for approval (reportSlips).
+ */
+export async function decideDailyAudit(input: { date: string; employeeId: string; decision: AuditDecision; reason?: string; period?: AuditPeriod; week?: number; allowOwnDecision?: boolean }) {
   const actor = getEncoder();
   const period = input.period ?? "daily";
   const employeeId = text(input.employeeId);
@@ -260,10 +264,14 @@ export async function decideDailyAudit(input: { date: string; employeeId: string
   const before = await lockedAudit(currentDb(), period, date, employeeId);
   // A submitted weekly or monthly has a row before anyone audits it: it still needs a saved audit first.
   if (!before || (input.decision === "approve" && before.status === "Not started")) throw new Error("Save the audit before approving it.");
+  let slips: Awaited<ReturnType<typeof import("@/lib/remittance-workflow").reportSlips>> | null = null;
   if (input.decision === "approve") {
+    if (before.status === "Approved") throw new Error("This audit is already approved.");
     // Approved only when the report is balanced: every turnover short or over on its batches settled (owner, October 29, 2026).
     const { start, end } = span ?? periodSpan(period, before.date);
     const { open } = await clerkTurnover(before.employeeId, start, end);
+    // The report's slips waiting for approval are approved with it (November 19, 2026); checked here, written below.
+    if (!open.length) slips = await (await import("@/lib/remittance-workflow")).reportSlips(before.employeeId, start, end, Boolean(input.allowOwnDecision));
     if (open.length) throw new Error(`This report has ${open.length === 1 ? "a turnover sheet short or over" : `${open.length} turnover sheets short or over`} not settled yet: ${open.map((item) => `${item.id} (${item.mas}, ${varianceLabel(item.difference).toLowerCase()})`).join("; ")}. Settle ${open.length === 1 ? "it" : "them"} in Remittances (approve the Discrepancy slip with how it was settled) before approving.`);
   }
   const figures = input.decision === "approve" ? await figuresFor(period, before.date, { name: before.employeeName, employeeId: before.employeeId }, span) : null;
@@ -274,7 +282,8 @@ export async function decideDailyAudit(input: { date: string; employeeId: string
     if (input.decision === "approve") {
       if (audit.status === "Approved") throw new Error("This audit is already approved.");
       await tx.update(table).set({ status: "Approved", figures_json: figures, approved_by_user_id: actor.userId, approved_by_name: actor.name, approved_at: now, updated_at: now, ...noEditAllowed }).where(eq(table.audit_id, audit.id));
-      return { id: audit.id, status: "Approved" as const };
+      const remittancesApproved = slips ? await slips.apply(tx) : [];
+      return { id: audit.id, status: "Approved" as const, remittancesApproved, remittancesLeft: slips?.partial ?? [] };
     }
     if (input.decision === "allow-edit" || input.decision === "lock") {
       if (audit.status !== "Approved") throw new Error("Only an approved report is locked for the clerk.");

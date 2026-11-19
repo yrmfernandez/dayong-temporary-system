@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Approving an audit approves its remittances (2026-11-19)
+
+- **Asked (owner):** when the Administrator approves a report in Audits, its remittances should be accepted too; approving them again by hand in Remittances is redundant.
+- **Done:** `decideDailyAudit` (`lib/daily-audit.ts`) approves, in the same transaction as the audit, the report's slips still Pending Approval (`reportSlips` in `lib/remittance-workflow.ts`): every entry on the slip encoded by the clerk in the report's dates (Manila), or a Fidelity slip the clerk received in them. The slip decision is split into `checkDecision` / `applyDecision` so Remittances and Audits use the same rules (photos, entries unchanged, the lock), with the ledger read once for all the slips. Audits page: the message names the slips approved (and any left), and a note by Approve says it.
+- **Choices made (tell me to change):** all or none: a slip that cannot be approved (receipt photo missing, entry changed) stops the audit approval with the slip named; Discrepancy slips stay in Remittances (they need how it was settled, and the audit already waits for an open short or over); a slip with entries outside the report is left and named; Day Off and the own-slip rule as in Remittances; reopening the audit does not undo the slips (undo in Remittances).
+- **Tested:** new test (refused with the slip named and nothing changed when a GCash entry has no photo; then audit and slip approved together, entries Remitted, Admin as approver); all 347 tests pass; lint and build pass. Not tried in a browser.
+- **To do (owner):** push (no migration).
+
 ### Egress: remittance links and the reports read less (2026-11-19)
 
 - **Asked (owner):** System Health → Biggest readers shows remittance_collections (21%), collections (18.8%), receipt_photos, remittances and others at the top; fix the top.

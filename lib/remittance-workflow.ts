@@ -556,8 +556,16 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
 
 /** `settleCash`: a turnover short or over on the slip was settled in cash now (lib/turnover-variance.ts decideVariance). */
 export async function decideCashRemittance(remittanceId: string, decision: "approve" | "reject", reason = "", allowOwnDecision = false, settleCash = false) {
+  const { remittance, items } = checkDecision(await loadLedger(), remittanceId, decision, reason, allowOwnDecision);
+  // Entries marked No incentive at encoding keep it forfeited when their slip is rejected.
+  const noIncentive = decision === "reject" ? await noIncentiveReasons(remittance.collectionIds) : new Map<string, string>();
+  const status = await inTransaction((tx) => applyDecision(tx, remittance, items, decision, reason, settleCash, noIncentive));
+  return { id: remittance.id, status };
+}
+
+/** Whether this slip can be decided now (read from the ledger, before any write), and its entries; throws the reason when not. */
+function checkDecision(ledger: Awaited<ReturnType<typeof loadLedger>>, remittanceId: string, decision: "approve" | "reject", reason: string, allowOwnDecision: boolean) {
   const actor = getEncoder();
-  const ledger = await loadLedger();
   const remittance = ledger.remittances.find((item) => item.id === remittanceId);
   if (!remittance) throw new Error("Remittance not found.");
   if (!["Pending Approval", "Discrepancy"].includes(remittance.status)) throw new Error("Only pending or discrepancy Remittances can be decided.");
@@ -571,12 +579,15 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
     throw new Error(`A linked ${remittance.type === "New Sales" ? "New Sale" : "Collection"} changed before approval. Refresh and investigate it.`);
   }
   if (decision === "approve") requirePhotos(linked as CashCollection[]);
+  return { remittance, items: linked as CashCollection[] };
+}
+
+/** Writes the decision on a slip checked by checkDecision, in the caller's transaction. */
+async function applyDecision(tx: Queryable, remittance: CashRemittance, items: CashCollection[], decision: "approve" | "reject", reason: string, settleCash: boolean, noIncentive: Map<string, string>) {
+  const actor = getEncoder();
   const timestamp = actor.encodedAt;
-  const status = decision === "approve" ? "Approved" : "Rejected";
-  // Entries marked No incentive at encoding keep it forfeited when their slip is rejected.
-  const noIncentive = decision === "reject" ? await noIncentiveReasons(remittance.collectionIds) : new Map<string, string>();
-  const items = linked as CashCollection[];
-  await inTransaction(async (tx) => {
+  const status = decision === "approve" ? "Approved" as const : "Rejected" as const;
+  {
     // Locked and checked again: two approvers deciding the same slip at once cannot both go through.
     const current = await lockSlip(tx, remittance.id);
     if (!["Pending Approval", "Discrepancy"].includes(current.status)) throw new Error(`This Remittance was already ${current.status.toLowerCase()} by someone else. Refresh the page.`);
@@ -596,8 +607,50 @@ export async function decideCashRemittance(remittanceId: string, decision: "appr
     }
     // A turnover short or over is settled by the approval's explanation; a rejected slip leaves it open for the next one.
     await decideVariance(tx, remittance.id, decision, reason, settleCash);
-  });
-  return { id: remittance.id, status };
+  }
+  return status;
+}
+
+/**
+ * The remittance slips of an Entry Clerk's report that its audit approval accepts too (owner, November 19, 2026: the
+ * Administrator approving the audit should not have to approve the same remittances again in Remittances). A slip is
+ * the report's when every entry on it was encoded by the clerk in the report's dates (Manila), or, for a Fidelity slip,
+ * the clerk received it on a date in the report. Only slips waiting for approval with no short or over: a Discrepancy
+ * keeps its own approval in Remittances, with how it was settled.
+ *
+ * `prepare` reads and checks everything first (the ledger once) and throws, naming the slips, when any of them cannot be
+ * approved (a receipt photo missing, an entry changed), so nothing is approved by halves; `apply` writes the approvals
+ * inside the audit's own transaction. Slips with only some entries in the report are named in `partial`, left as they are.
+ */
+export async function reportSlips(employeeId: string, from: string, to: string, allowOwnDecision: boolean) {
+  const day = (alias: "c" | "s", created: string) => sql.raw(`(coalesce(${alias}.encoded_at, ${alias}.${created}) at time zone 'Asia/Manila')::date`);
+  const inReport = sql`((c.collection_id is not null and c.encoded_by_employee_id = ${employeeId} and ${day("c", "created_at")} between ${from}::date and ${to}::date)
+    or (s.sale_id is not null and s.encoded_by_employee_id = ${employeeId} and ${day("s", "date_created")} between ${from}::date and ${to}::date))`;
+  const result = await getDb().execute(sql`select r.remittance_id as id, bool_and(${inReport}) as whole
+    from remittances r join remittance_collections l on l.remittance_id = r.remittance_id
+    left join collections c on c.collection_id = l.collection_id left join sales s on s.sale_id = l.collection_id
+    where r.status = 'Pending Approval' and coalesce(r.remittance_type, '') <> 'Fidelity'
+    group by r.remittance_id having bool_or(${inReport})
+    union all select remittance_id, true from remittances where status = 'Pending Approval' and remittance_type = 'Fidelity'
+      and coalesce(received_by_employee_id, encoded_by_employee_id) = ${employeeId} and date_remitted between ${from}::date and ${to}::date
+    order by 1`);
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; whole: boolean }>;
+  const ids = rows.filter((row) => row.whole).map((row) => row.id), partial = rows.filter((row) => !row.whole).map((row) => row.id);
+  if (!ids.length) return { ids, partial, apply: async () => [] as string[] };
+  const ledger = await loadLedger(ids);
+  const checked: Array<ReturnType<typeof checkDecision>> = [], problems: string[] = [];
+  for (const id of ids) {
+    try { checked.push(checkDecision(ledger, id, "approve", "", allowOwnDecision)); }
+    catch (error) { problems.push(`${id}: ${error instanceof Error ? error.message : "cannot be approved"}`); }
+  }
+  if (problems.length) throw new Error(`Approving this audit also approves its remittances, and ${problems.length === 1 ? "one cannot be approved" : `${problems.length} cannot be approved`} yet. Fix ${problems.length === 1 ? "it" : "them"} in Remittances first. ${problems.join(" ")}`);
+  return {
+    ids, partial,
+    apply: async (tx: Queryable) => {
+      for (const { remittance, items } of checked) await applyDecision(tx, remittance, items, "approve", "", false, new Map());
+      return ids;
+    },
+  };
 }
 
 /**
