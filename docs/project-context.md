@@ -34,6 +34,15 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Egress: remittance links and the reports read less (2026-11-19)
+
+- **Asked (owner):** System Health → Biggest readers shows remittance_collections (21%), collections (18.8%), receipt_photos, remittances and others at the top; fix the top.
+- **Measured:** those totals run from Nov 5 and mix in code already fixed, so production was read twice 10 minutes apart (8:16 AM Thursday; new `scripts/egress-snapshot.mjs`, read-only, SQL text only): 672,000 rows in 10 minutes; 35% were two full reads of all 11,245 remittance links. One is the ledger (`readLedger`, Remittances and dashboards, 12 loads); the other is `buildOperationalReport` (`lib/reports.ts`: dashboards, Reports, Commissions, 9 loads), which also read every remittance and every column of the entries in range (member addresses included).
+- **Done:** the ledger gets each slip's entry IDs grouped by the database (`slipEntryIds`, one row per slip; the link ID, amount and time were never used), 1.25 → 0.34 MB a load. The report asks the database for the first entry of each Approved slip with a Fidelity (`readFidelityFirstEntries`, 572 rows) and the approved cash total in the range (`approvedRemittanceTotal`) instead of reading all links and slips (about 2.8 MB), and reads only the 10 Sales / 14 Collections columns it uses (November's collections 2.25 → 0.46 MB). About 300 MB less per busy hour.
+- **Tested:** old (HEAD) and new code run side by side on production, read-only: 10 report ranges (today, October, November, since May, encoded only, three branches, two people) and the full Remittances dashboard (2,400 slips) and a slip's entries, all identical. All 346 tests pass; build passes.
+- **Not done (next on the list):** the ledger still reads all 2,400 slips and about 7,150 entries not yet Remitted (12.8%; mostly Needs Historical Review old entries); trimming either changes what Remittances lists, an owner decision. receipt_photos (index of all photos, about 1,400 rows a load) and employee_branches (all 540 rows, 31 reads in 10 minutes) are smaller.
+- **To do (owner):** push (no migration); after a busy morning, run `npm run prod -- node scripts/egress-snapshot.mjs 600` again to see the new top.
+
 ### APP# on Members / My Members (2026-11-18)
 
 - **Asked (owner):** show the application form number in My Members / Members too.

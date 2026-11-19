@@ -188,7 +188,7 @@ async function readLedger(include: string[] = []) {
     // read in production's pg_stat_statements (November 3, 2026).
     readSheetRows("Collections", collectionRows.full, { positions: LEDGER_COLUMNS.Collections }).then((rows) => ({ rows, rowNumbers: [] as number[] })),
     readSheetRows("Sales", saleRows.full, { positions: LEDGER_COLUMNS.Sales }).then((rows) => ({ rows, rowNumbers: [] as number[] })),
-    readSheetRows("Remittance Collections", sql`true`, { positions: [0, 1, 2, 3, 4] }),
+    slipEntryIds(),
     readSheetRows("Collections", collectionRows.olderSlips, { positions: SLIP_DETAIL_COLUMNS.Collections }),
     readSheetRows("Sales", saleRows.olderSlips, { positions: SLIP_DETAIL_COLUMNS.Sales }),
     photosByEntry(),
@@ -198,10 +198,7 @@ async function readLedger(include: string[] = []) {
   ]);
   // The incentive deadline skips Sundays and the branch's declared non-working days (lib/working-days.ts).
   const deadline = (date: string, branch: string) => incentiveDeadline(date, { days: offDays, branch });
-  const rows: Record<string, unknown[][]> = { Remittances: remittanceRows, "Remittance Collections": linkRows, Collections: activeCollections.rows, Sales: activeSales.rows };
-  const mappings = rows["Remittance Collections"].slice(1).filter((row) => text(row[0])).map((row) => ({
-    id: text(row[0]), remittanceId: text(row[1]), collectionId: text(row[2]), amount: number(row[3]), linkedAt: text(row[4]),
-  }));
+  const rows: Record<string, unknown[][]> = { Remittances: remittanceRows, Collections: activeCollections.rows, Sales: activeSales.rows };
   const collections: CashCollection[] = rows.Collections.slice(1).map((row, index) => ({
     kind: "Collections" as const, photoId: "", cash: false, encodedByEmployeeId: text(row[22]), encodedByName: text(row[23]), encodedAt: manilaStamp(text(row[24])), dateRemitted: text(row[40]).slice(0, 10), id: text(row[0]), batchId: text(row[1]), rowNumber: activeCollections.rowNumbers[index] ?? 0, memberNumber: text(row[4]), programId: text(row[5]), branch: text(row[6]),
     accountableEmployeeId: text(row[30]), accountableName: text(row[32]) === "DTO" || text(row[25]) === "DTO" ? "DTO" : text(row[31]) || text(row[7]), accountableRole: text(row[32]) || text(row[25]) || "MAS", // DTO shows as DTO; the clerk stays accountable by ID
@@ -232,7 +229,7 @@ async function readLedger(include: string[] = []) {
     submittedAt: text(row[5]), submittedByUserId: text(row[6]), submittedByEmployeeId: text(row[7]), submittedByName: text(row[8]),
     expectedAmount: number(row[10]), actualAmount: number(row[11]), difference: number(row[12]), accountableEmployeeId: text(row[13]), accountableRole: text(row[14]),
     collectionCount: number(row[15]), receivedByEmployeeId: text(row[16]), receivedByName: text(row[17]), decisionByName: text(row[20]), decisionAt: text(row[21]),
-    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : text(row[25]) === "Fidelity" ? "Fidelity" : "Collections") as SlipType, collectionIds: mappings.filter((mapping) => mapping.remittanceId === text(row[0])).map((mapping) => mapping.collectionId), paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [], photoIds: [], missingPhotos: [], clerkIds: [], clerkNames: [],
+    remarks: text(row[22]), decisionReason: text(row[23]), fidelityAmount: number(row[24]), type: (text(row[25]) === "New Sales" ? "New Sales" : text(row[25]) === "Fidelity" ? "Fidelity" : "Collections") as SlipType, collectionIds: [...(linkRows.get(text(row[0])) ?? [])], paymentMethods: [], paymentReferences: [], penaltyAmount: 0, penaltyNotes: [], photoIds: [], missingPhotos: [], clerkIds: [], clerkNames: [],
   })).filter((remittance) => remittance.id);
   // The details older slips need from their entries (only these fields are read for them; see ledgerConditions).
   type SlipDetail = Pick<CashCollection, "id" | "paymentMethod" | "paymentReference" | "penalty" | "penaltyNote" | "encodedByEmployeeId" | "encodedByName" | "photoId" | "photoIds" | "cash">;
@@ -258,7 +255,19 @@ async function readLedger(include: string[] = []) {
   }
   // Encoders of older slips' entries too, for the approvers' clerk filter.
   const olderSlipClerks = olderSlipEntries.filter((item) => item.encodedByEmployeeId).map((item) => ({ employeeId: item.encodedByEmployeeId, name: item.encodedByName }));
-  return { collections, remittances, mappings, olderSlipClerks };
+  return { collections, remittances, olderSlipClerks };
+}
+
+/**
+ * Each slip's entry IDs in link order (November 19, 2026): the ledger read every remittance link, five columns, on
+ * every load, 35% of the rows production sent the app with the reports' read below. The database now groups them, one
+ * row per slip with only the entry IDs (the link's own ID, amount and time were never used here).
+ */
+async function slipEntryIds() {
+  const result = await getDb().execute(sql`select trim(remittance_id) as id, array_agg(coalesce(trim(collection_id), '') order by row_seq) as entries
+    from remittance_collections where coalesce(trim(remittance_collection_id), '') <> '' group by 1`);
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; entries: string[] }>;
+  return new Map(rows.map((row) => [row.id, row.entries]));
 }
 
 /** The incentive the accountable person keeps on an item (amount less the company remittance). */

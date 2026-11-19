@@ -3,7 +3,7 @@ import { and, between, sql } from "drizzle-orm";
 import { currentDb, schema } from "@/lib/db";
 import { readSheetRows } from "@/lib/sheets-on-db";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
-import { PROGRAMS_RANGE, REMITTANCE_LINKS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
+import { PROGRAMS_RANGE } from "@/lib/sheet-ranges";
 import { manilaDateOf } from "@/lib/manila-date";
 import { accountableScope, masScope, type Person } from "@/lib/person-scope";
 
@@ -33,18 +33,49 @@ function aggregate(lines: ReportLine[], key: (line: ReportLine) => string) {
   return [...groups.values()].map((line) => Object.fromEntries(Object.entries(line).map(([key, value]) => [key, typeof value === "number" ? round(value) : value])) as ReportLine);
 }
 
+/**
+ * Egress (November 19, 2026): the report read every remittance and every remittance link, all columns, on each load
+ * (each dashboard, Reports, Commissions), and every column of the entries in range, member addresses included. Now the
+ * database answers the two questions asked of the slips, and only the columns read below come for the entries.
+ */
+const REPORT_COLUMNS = { Sales: [0, 1, 2, 3, 21, 26, 32, 33, 38, 41], Collections: [0, 5, 6, 7, 9, 10, 19, 22, 23, 25, 26, 31, 32, 35] };
+
+/** The first linked entry (link order) of each Approved slip with a Fidelity, and that Fidelity; later slips win a shared entry. */
+async function readFidelityFirstEntries() {
+  const result = await currentDb().execute(sql`select id, fidelity from (
+      select distinct on (trim(l.remittance_id)) coalesce(trim(l.collection_id), '') as id, r.fidelity_amount::float8 as fidelity, l.row_seq
+      from remittance_collections l join remittances r on trim(r.remittance_id) = trim(l.remittance_id)
+      where trim(r.status) = 'Approved' and r.fidelity_amount > 0 and coalesce(trim(r.remittance_id), '') <> ''
+      order by trim(l.remittance_id), l.row_seq) firsts
+    order by row_seq`);
+  return (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ id: string; fidelity: number }>;
+}
+
+/**
+ * Cash received on Approved slips dated in the range (and branch). Fidelity recorded as the employee's own money is
+ * included in the cash received, so it is taken back out to compare like with like (older slips never included it).
+ */
+async function approvedRemittanceTotal(from: string, to: string, branch?: string) {
+  const result = await currentDb().execute(sql`select coalesce(sum(coalesce(total_remittance, 0) - case when position(${"(employee's own money)"} in coalesce(remarks, '')) > 0 then coalesce(fidelity_amount, 0) else 0 end), 0)::float8 as total
+    from remittances where coalesce(trim(remittance_id), '') <> '' and trim(status) = 'Approved' and date_remitted between ${from}::date and ${to}::date${branch ? sql` and trim(branch) = ${branch}` : sql``}`);
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as Array<{ total: number }>;
+  return Number(rows[0]?.total) || 0;
+}
+
 export async function buildOperationalReport(from: string, to: string, filters: { branch?: string; programId?: string; person?: string; personId?: string; encoder?: string; encoderIds?: string[]; encodedOnly?: boolean } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error("Choose a valid report date range.");
   const person: Person | null = filters.personId ? { employeeId: filters.personId, name: filters.person ?? "" } : null;
   // Sales lines are dated by date_created and collection lines by OR date, so the database returns only those in the
   // range (a day of margin for the Manila day on date_created); the exact range check below still decides.
-  const [sales, collections, response] = await Promise.all([
+  const [sales, collections, response, fidelityFirstEntries, approvedRemittances] = await Promise.all([
     // One person's report (MAS and Collector dashboards) is picked by Employee ID (upgrade #8; lib/person-scope.ts).
-    readSheetRows("Sales", sql`(date_created)::date between (${from}::date - 1) and (${to}::date + 1)${person ? sql` and ${masScope(person)}` : sql``}`),
-    readSheetRows("Collections", sql`or_date between ${from}::date and ${to}::date${person ? sql` and ${accountableScope(person)}` : sql``}`),
-    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [PROGRAMS_RANGE, REMITTANCES_RANGE, "'Expenses'!A:Q", "'Cash Transactions'!A:P", REMITTANCE_LINKS_RANGE], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+    readSheetRows("Sales", sql`(date_created)::date between (${from}::date - 1) and (${to}::date + 1)${person ? sql` and ${masScope(person)}` : sql``}`, { positions: REPORT_COLUMNS.Sales }),
+    readSheetRows("Collections", sql`or_date between ${from}::date and ${to}::date${person ? sql` and ${accountableScope(person)}` : sql``}`, { positions: REPORT_COLUMNS.Collections }),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: GOOGLE_SHEET_ID, ranges: [PROGRAMS_RANGE, "'Expenses'!A:Q", "'Cash Transactions'!A:P"], valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" }),
+    readFidelityFirstEntries(),
+    approvedRemittanceTotal(from, to, filters.branch),
   ]);
-  const [programs, remittances, expenses, cash, remittanceCollections] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+  const [programs, expenses, cash] = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
   const bank = schema.bank_deposits;
   const [{ total: clerkDepositTotal } = { total: 0 }] = await currentDb().select({ total: sql<number>`coalesce(sum(${bank.amount}), 0)::float8` }).from(bank)
     .where(and(sql`coalesce(${bank.status}, 'Posted') <> 'Voided'`, between(bank.deposit_date, from, to), filters.branch ? sql`trim(${bank.branch}) = ${filters.branch}` : undefined));
@@ -55,9 +86,8 @@ export async function buildOperationalReport(from: string, to: string, filters: 
   // encodedOnly (owner, October 27, 2026): only entries encoded in this system, leaving out the old-sheet imports (no
   // encoder), so each branch's collections match the Entry Clerks' reports.
   const matches = (branch: string, programId: string, name: string, encoder: string, encoderId: string) => (!filters.encodedOnly || Boolean(encoderId)) && (!filters.branch || branch === filters.branch) && (!filters.programId || programId === filters.programId) && (person || !filters.person || name === filters.person) && (!filters.encoder || encoder === filters.encoder) && (!filters.encoderIds || filters.encoderIds.includes(encoderId));
-  const approvedFidelity=new Map(remittances.slice(1).filter(row=>text(row[4])==="Approved"&&number(row[24])>0).map(row=>[text(row[0]),number(row[24])]));
-  const fidelityByCollection=new Map<string,number>(),assigned=new Set<string>();
-  for(const row of remittanceCollections.slice(1)){const remittanceId=text(row[1]);if(!assigned.has(remittanceId)&&approvedFidelity.has(remittanceId)){fidelityByCollection.set(text(row[2]),approvedFidelity.get(remittanceId)??0);assigned.add(remittanceId)}}
+  // An approved slip's Fidelity is shown on its first linked entry.
+  const fidelityByCollection = new Map(fidelityFirstEntries.map((row) => [row.id, Number(row.fidelity) || 0]));
   const salesRows = sales.slice(1).filter((row) => text(row[0])), salesEncoderIds = salesRows.map((row) => text(row[32]));
   const salesLines: ReportLine[] = salesRows.map((row) => {
     const date = manilaDateOf(text(row[1])), branch = text(row[2]), person = text(row[3]), programId = text(row[21]), gross = number(row[26]), penalty = number(row[38]);
@@ -75,7 +105,6 @@ export async function buildOperationalReport(from: string, to: string, filters: 
   const postedExpenses = expenses.slice(1).filter((row) => text(row[0]) && text(row[11]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[7]) === filters.branch)).reduce((sum, row) => sum + number(row[4]), 0);
   // Fidelity is the employee's own savings: remittances recorded under that rule include it in the cash received, so it is
   // taken back out here to compare like with like (older remittances never included it).
-  const approvedRemittances = remittances.slice(1).filter((row) => text(row[0]) && text(row[4]) === "Approved" && inRange(text(row[3]).slice(0, 10)) && (!filters.branch || text(row[1]) === filters.branch)).reduce((sum, row) => sum + number(row[11]) - (text(row[22]).includes("(employee's own money)") ? number(row[24]) : 0), 0);
   // Bank deposits: what the Entry Clerks deposit (Bank deposits on their reports; owner, October 27, 2026: the report
   // read only Cash Transactions, where clerk deposits never go, so it showed ₱0), plus any deposit recorded in Finance.
   const financeDeposits = cash.slice(1).filter((row) => text(row[0]) && text(row[2]) === "inflow" && text(row[3]).toLowerCase().includes("deposit") && text(row[10]).toLowerCase() === "posted" && inRange(text(row[1]).slice(0, 10)) && (!filters.branch || text(row[6]) === filters.branch)).reduce((sum, row) => sum + number(row[5]), 0);
