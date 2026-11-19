@@ -3,7 +3,6 @@ import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { AUDIT_DECISIONS, AUDIT_RESULTS, asAuditPeriod, asWeek, auditedEmployees, type AuditDecision, decideDailyAudit, getDailyAudits, periodSpan, saveDailyAudit, submittedPeriodFor } from "@/lib/daily-audit";
 import { isPeriodKind, returnPeriod } from "@/lib/report-periods";
 import { withEncoder } from "@/lib/encoder-context";
-import { refuseOnDayOff } from "@/lib/day-off";
 
 // HR Officers, Finance, and Administrators prepare and edit audits (daily, weekly, monthly, yearly); only Administrators approve or
 // reopen them, and allow a clerk to edit an approved report again (or lock it again).
@@ -58,11 +57,10 @@ export const PATCH = withEncoder(async (request: Request) => {
     const decision = (AUDIT_DECISIONS as readonly string[]).includes(String(body.decision)) ? body.decision as AuditDecision : null;
     if (!decision) throw new Error("Choose approve, reopen, allow editing or lock.");
     // Approving also approves the report's remittance slips (lib/remittance-workflow.ts reportSlips), so the Remittances
-    // rules apply: not on the approver's Day Off, and their own slips only for an Administrator who is also an Entry Clerk.
+    // own-slip rule applies: only an Administrator who is also an Entry Clerk approves slips they submitted. The Day Off
+    // lock is not applied here (owner, November 19, 2026).
     let allowOwnDecision = false;
     if (decision === "approve") {
-      const dayOff = await refuseOnDayOff();
-      if (dayOff) return dayOff;
       const roles = (user?.roleNames ?? []).map((role) => role.trim().toLowerCase());
       allowOwnDecision = roles.some((role) => role === "administrator" || role === "admin") && roles.includes("entry clerk");
     }
