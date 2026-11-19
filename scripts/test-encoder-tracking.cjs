@@ -2705,6 +2705,32 @@ test('New Sales refuses a member or claimant contact number that belongs to an e
   assert.equal(h.writes.length, 0, 'nothing is saved');
 });
 
+test('a New Sale on an existing member is refused when another person is typed over them (November 19, 2026)', async () => {
+  const h = harness({ userId: 'USR-M', employeeId: 'DPE-0002', name: 'different-mas', roleNames: ['MAS', 'Entry Clerk'], permissions: {} });
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'different-mas', 'BR-1', 'MAS, Entry Clerk', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+  await seed('members', [{ member_id: 'MEM-7', member_number: 'PH-7', surname: 'SANTOS', first_name: 'ALBERTO DUMAGAT', status: 'Active' }]);
+  // The clerk's save: the typed person is written onto the member, so another person is refused before anything is saved.
+  const sale = { existingMember: true, memberNumber: 'PH-7', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-7', addressHouse: 'Complete Address', contactNumber: '0918 000 0000', claimantContact: '0918 000 0001', beneficiaries: [] };
+  const post = async (overrides) => { const response = await h.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'different-mas', dateRemitted: '2026-09-25', sales: [{ ...sale, ...overrides }] })); return { status: response.status, body: await response.json() }; };
+  const other = await post({ surname: 'Santos', firstName: 'Jocelyn' });
+  assert.equal(other.status, 400);
+  assert.match(other.body.message, /^Sale #1: Santos, Jocelyn is not member PH-7 \(SANTOS, ALBERTO DUMAGAT\)\. If this is another person, press Not this member/);
+  assert.doesNotMatch((await post({ surname: 'SANTOS', firstName: 'ALIBERTO' })).body.message ?? '', /is not member/, 'a typo of the same person is not refused for this');
+  assert.equal((await query("select first_name from members where member_id = 'MEM-7'"))[0].first_name, 'ALBERTO DUMAGAT', 'the member is unchanged');
+  // The MAS submission: refused there, where the MAS can press Not this member.
+  const submit = async (firstName) => {
+    const response = await h.load('app/api/sale-submissions/route.ts').POST(request({ branchId: 'BR-1', sales: [{ id: 'S-1', member: { id: 'MEM-7', name: { surname: 'SANTOS', firstName } }, program: { programCode: 'CODE', amountPaid: '350' } }] }));
+    return { status: response.status, body: await response.json() };
+  };
+  const refused = await submit('JOCELYN');
+  assert.equal(refused.status, 400, JSON.stringify(refused.body));
+  assert.match(refused.body.message, /Sale #1: SANTOS, JOCELYN is not member PH-7/);
+  assert.equal((await submit('ALBERTO')).status, 201, 'the member, with the second word left out');
+});
+
 test('member directory: Collector per program, deceased members, and the standing filters', () => {
   const { buildMemberDirectory, filterMemberDirectory, emptyDirectoryFilters } = harness().load('lib/member-directory.ts');
   const member = (id, number, status) => ({ id, number, surname: id, firstName: '', middleName: '', nameExtension: '', birthdate: '', birthplace: '', gender: '', civilStatus: '', contact: '', address: 'Purok 1, Matina', status, claimant: '', claimantContact: '', claimantSameAddress: false, claimantAddress: '' });

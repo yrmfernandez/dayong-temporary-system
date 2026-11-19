@@ -11,6 +11,7 @@ import { getBranches } from "@/lib/google-sheets-data";
 import { createReadableId } from "@/lib/readable-id";
 import { incentiveDeadline, manilaNow } from "@/lib/remittance-deadline";
 import { loadWorkCalendar } from "@/lib/work-calendar";
+import { anotherPersonProblem } from "@/lib/member-identity";
 
 /**
  * New Sales submitted by a MAS (owner's decision 2026-10-06). The MAS fills only the sale cards on MAS New Sales; the
@@ -39,6 +40,23 @@ const OPEN = ["Submitted", "Remitted"];
 const stamp = (value: string | null | undefined) => { if (!value) return ""; const at = manilaNow(new Date(value)); return `${at.date} ${at.time}`; };
 
 /** One sale card as the New Sales form keeps it (lib/types.ts NewSale); only the parts read here are typed. */
+/**
+ * A card on an existing member must be that member (lib/member-identity.ts, November 19, 2026): the clerk's save writes
+ * the typed details onto the member, so another person typed over a picked member is refused here, where the MAS can fix it.
+ */
+async function refuseAnotherPerson(sales: SaleCard[]) {
+  const card = (sale: SaleCard) => (sale.member && typeof sale.member === "object" ? sale.member as { id?: unknown; name?: { surname?: unknown; firstName?: unknown } } : null);
+  const ids = [...new Set(sales.map((sale) => String(card(sale)?.id ?? "").trim()).filter(Boolean))];
+  if (!ids.length) return;
+  const found = new Map((await currentDb().select({ id: schema.members.member_id, number: schema.members.member_number, surname: schema.members.surname, firstName: schema.members.first_name }).from(schema.members).where(inArray(schema.members.member_id, ids))).map((row) => [row.id, row]));
+  sales.forEach((sale, index) => {
+    const member = card(sale), recorded = found.get(String(member?.id ?? "").trim());
+    if (!member || !recorded) return;
+    const problem = anotherPersonProblem(recorded.number ?? "", recorded, { surname: member.name?.surname, firstName: member.name?.firstName });
+    if (problem) throw new Error(`Sale #${index + 1}: ${problem}`);
+  });
+}
+
 type SaleCard = { id?: string; orDate?: string; program?: { dateEnrolled?: string; branch?: string; mas?: string; amountPaid?: number | string } & Record<string, unknown> } & Record<string, unknown>;
 export type SaleSubmission = {
   id: string; branchId: string; branch: string; masEmployeeId: string; mas: string; status: "Submitted" | "Remitted" | "Rejected" | "Returned" | "Saved";
@@ -122,6 +140,7 @@ export async function submitSales(user: SessionUser, input: { submissionId?: unk
     if (!sale || typeof sale !== "object" || !sale.program || typeof sale.program !== "object") throw new Error("A sale card is incomplete. Reload the page and try again.");
     return { ...sale, program: { ...sale.program, dateEnrolled: today, branch: branch.name, mas: profile.name } };
   });
+  await refuseAnotherPerson(sales);
   const totalAmount = Math.round(sales.reduce((sum, sale) => sum + (Number(sale.program.amountPaid) || 0), 0) * 100) / 100;
   const actor = getEncoder();
   const values = { branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted", sales, sale_count: sales.length, total_amount: totalAmount, submitted_at: actor.encodedAt, return_reason: null, reviewed_by_employee_id: null, reviewed_by_name: null, reviewed_at: null };

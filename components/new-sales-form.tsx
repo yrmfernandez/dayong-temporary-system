@@ -2,6 +2,7 @@
 
 import { alertDialog, confirmDialog, promptDialog } from "@/components/app-dialog";
 import { SALE_CHECK_REMINDER } from "@/lib/entry-check-reminder";
+import { isSamePerson } from "@/lib/member-identity";
 import {
   useCallback,
   useEffect,
@@ -749,6 +750,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
           id: member.id,
           phMemberNumber: member.phMemberNumber,
           age: calculateAge(filled.birthdate),
+          recordName: { surname: member.name.surname, firstName: member.name.firstName },
         },
         program: {
           ...current.program,
@@ -819,7 +821,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const unlinkExistingMember = (saleId: string) => {
     updateSale(saleId, (current) => ({
       ...current,
-      member: { ...current.member, id: "", phMemberNumber: "" },
+      member: { ...current.member, id: "", phMemberNumber: "", recordName: undefined },
       program: { ...current.program, memberId: "" },
     }));
   };
@@ -2111,6 +2113,14 @@ Is this cash part of that handover?`) ? "same"
                             Not this member
                           </Button>
                         </div>
+                      )}
+
+                      {/* Another person typed over the picked member (owner, November 19, 2026): the save refuses it too. */}
+                      {sale.member.id && sale.member.recordName && !isSamePerson(sale.member.recordName, sale.member.name) && (
+                        <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                          <span className="font-semibold">This is no longer member {sale.member.phMemberNumber} ({[sale.member.recordName.surname, sale.member.recordName.firstName].filter(Boolean).join(", ")}).</span>{" "}
+                          If this is another person, press <strong>Not this member</strong> so a new member is registered. If it is the same person and the name on record is wrong, it is corrected in Members first. It cannot be saved like this.
+                        </p>
                       )}
 
                       {sale.member.id && (

@@ -13,6 +13,7 @@ import { saleBatchKey } from "@/lib/entry-batches";
 import { checkBackdate, DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber } from "@/lib/entry-controls";
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import { addBeneficiaries, memberColumns, type MemberDetails } from "@/lib/member-records";
+import { anotherPersonProblem } from "@/lib/member-identity";
 import { ageOn, ageRestrictionError, isoDate } from "@/lib/program-age";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
@@ -567,6 +568,13 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
       .where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))));
     // The member's record follows the details the clerk changed on this sale; others on the record stay.
     const memberChanges = Object.fromEntries(Object.entries(memberAfter).filter(([column, value]) => value !== memberBefore[column as keyof typeof memberBefore]));
+    // Another person typed over a member with other accounts is refused (lib/member-identity.ts, November 19, 2026); a member
+    // this sale registered (no other account) is this sale's person, so their name can be corrected freely here.
+    if (memberId && ("surname" in memberChanges || "first_name" in memberChanges)) {
+      const [others] = await tx.select({ count: sql<number>`count(*)::int` }).from(memberPrograms).where(and(eq(memberPrograms.member_id, memberId), sql`${memberPrograms.program_id} <> ${row.program_id}`));
+      const anotherPerson = Number(others?.count ?? 0) > 0 ? anotherPersonProblem(text(row.member_number), { surname: memberBefore.surname, firstName: memberBefore.first_name }, { surname: memberAfter.surname, firstName: memberAfter.first_name }) : "";
+      if (anotherPerson) throw new Error(`${label}: ${anotherPerson.replace("press Not this member so a new member is registered", "remove this entry and encode the sale as a new member")}`);
+    }
     if (memberId && Object.keys(memberChanges).length) writes.push(() => tx.update(members).set(memberChanges).where(eq(members.member_id, memberId)));
     if (memberId && beneficiariesChanged) {
       writes.push(() => tx.delete(beneficiaries).where(eq(beneficiaries.sale_id, row.sale_id)));

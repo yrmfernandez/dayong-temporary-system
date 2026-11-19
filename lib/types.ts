@@ -40,6 +40,8 @@ export type Member = {
   contactNumber: string;
   address: Address;
   claimant: Claimant;
+  /** On a New Sale card: the picked member's name as on record, to warn when another person is typed over it (lib/member-identity.ts). */
+  recordName?: Pick<PersonName, "surname" | "firstName">;
 };
 
 /**

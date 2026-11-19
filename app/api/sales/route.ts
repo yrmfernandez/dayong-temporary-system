@@ -21,6 +21,7 @@ import { inTransaction, isUniqueViolation } from "@/lib/db";
 import { recordTurnoverVariance, TURNOVER_NOTE_MAX, varianceLabel } from "@/lib/turnover-variance";
 import { calculateSaleIncentive, noIncentiveReasonOf, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { newSalesDoubleEntry, personKey } from "@/lib/duplicate-entries";
+import { anotherPersonProblem } from "@/lib/member-identity";
 
 
 type SalePayload = {
@@ -409,6 +410,13 @@ async function saveSales(request: Request, user: SessionUser) {
             },
             { status: 409 },
           );
+        }
+
+        // The typed person must be this member: their details are written onto the record below (lib/member-identity.ts;
+        // November 19, 2026, another person typed over a picked member replaced him).
+        const anotherPerson = anotherPersonProblem(existingMember.memberNumber, existingMember, { surname: sale.surname, firstName: sale.firstName });
+        if (anotherPerson) {
+          return NextResponse.json({ success: false, message: `Sale #${saleNumber}: ${anotherPerson}` }, { status: 400 });
         }
 
         /*

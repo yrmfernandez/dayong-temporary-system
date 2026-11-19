@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
-import { formatDate as showDate } from "@/lib/date-format";
+import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 
 type LeaveRequest = {
   id: string;
@@ -33,6 +33,8 @@ type LeaveRequest = {
   reviewedBy: string;
   reviewedByName?: string;
   reviewedAt: string;
+  /** When the employee sent the request (owner, November 19, 2026: shown to the reviewer). */
+  createdAt: string;
 };
 
 // Tabs in review order (owner, October 13, 2026): what still needs a decision first, then the decided ones.
@@ -201,6 +203,12 @@ export default function LeaveApprovalsPage() {
                       <p className="text-sm text-muted-foreground">
                         {showDate(request.startDate)} to {showDate(request.endDate)}
                       </p>
+
+                      {request.createdAt && (
+                        <p className="text-xs text-muted-foreground">
+                          Sent {showDateTime(request.createdAt)}
+                        </p>
+                      )}
                     </div>
 
                     <Badge
@@ -260,7 +268,7 @@ export default function LeaveApprovalsPage() {
 
                   {request.reviewedBy && (
                     <p className="text-xs text-muted-foreground">
-                      Reviewed by {request.reviewedByName ? `${request.reviewedByName} (${request.reviewedBy})` : request.reviewedBy}
+                      Reviewed by {request.reviewedByName ? `${request.reviewedByName} (${request.reviewedBy})` : request.reviewedBy}{request.reviewedAt ? ` on ${showDateTime(request.reviewedAt)}` : ""}
                     </p>
                   )}
                 </div>

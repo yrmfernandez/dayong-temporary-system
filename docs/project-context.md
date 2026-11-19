@@ -34,6 +34,23 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Another person typed over an existing member: recovered and refused (2026-11-19)
+
+- **Asked (owner):** a MAS picked PADILLA, ALEJANDRO for a New Sale but it was another person (now PADILLA, JENELYN); his account cannot be recovered. Recover it, and detect or prevent this.
+- **Cause:** a New Sale for an existing member writes every detail typed on it onto the member (`updateMemberDetails`, `app/api/sales/route.ts`); the MAS (Alburo, Merafe) picked PH-19641808 and typed Jenelyn's details; the clerk (Garcia, Jasper) saved it on Nov 16 at 1:13 PM. His name, birthdate, address, contacts and claimant were replaced, and the database copied her name onto his old DP-0009 New Sale. The Audit Log kept every old value.
+- **Recovered (production, applied):** new `scripts/undo-member-overwrite.mjs` (dry run by default; `--apply`; backup in backups/): PH-19641808 is PADILLA, ALIJANDRO DUMASIG again (11 details back, DP-0009 with its 9 receipts); PADILLA, JENELYN MARQUEZ is new member **PH-57092661** with the DP-0004 account and its New Sale. Audit Log: Data fix (undo member overwrite).
+- **Found the same in the Audit Log, also undone (owner, same day; applied):** PH-23097440 back to ABELONG, RENATO DESFUEZ, ABELO, LEONARDA UYANNGORIN is new member **PH-58056016** (Nov 11 save by Garcia, Jasper); PH-07514719 back to PANTORILLA, VILMA, TORILLA, CRISTOPHER VILLACENSIO is new member **PH-58058543** (Nov 11, Barrientos, Rutchelyn); PH-57980759 back to REYES, MARYBEL, REYES, MARY JOY PEREZ is new member **PH-58060317** (Nov 10, Abesia, Daryl Jane). Each new member took the DP-0004 account and New Sale added in that save. Also doubtful but older and without a clean pattern: PH-16874170 (BERMUDEZ, HERMENIA → HERNANE, Oct 29) and PH-42959479 (LERIO, DEVILERES → DEVILERES, DIOSDADO, Nov 6).
+- **Prevented:** `lib/member-identity.ts` (isSamePerson / anotherPersonProblem): the typed surname and first name must be the member's, allowing a typo (about 1 letter in 3), words dropped or added in order, and the names swapped. Refused at the MAS submission (`submitSales`), the clerk's save (`app/api/sales/route.ts`) and a batch edit of a saved New Sale (`lib/batch-edit.ts`, only when the member has another account); a red notice on the card as soon as the name stops matching (`recordName` kept when a member is picked). Replayed on the 349 name changes in the production Audit Log: it refuses exactly the 6 doubtful New Sale saves above and none of the corrections.
+- **Tested:** new unit tests (`scripts/test-member-identity.mjs`, invented names) and a route test (clerk save and MAS submission refused, member unchanged, a typo and a dropped word pass); all 350 tests pass; build passes. Not tried in a browser.
+- **To do (owner):** push (no migration). The four new members have no beneficiaries recorded; add them in Members if their New Sales had any on paper.
+
+### Leave Approvals shows when each request was sent (2026-11-19)
+
+- **Asked (owner):** in leave requests, the admin can see when the request was sent.
+- **Done (`app/leave-approvals/page.tsx`):** under the leave dates, **Sent** with the date and time (Manila) from the request's `created_at`, already saved and sent by the API; Reviewed by … now also says **on** the review time. All 12 requests on production have a sent time (read-only count).
+- **Tested:** lint, build, all 347 tests pass. Not tried in a browser.
+- **To do (owner):** push (no migration).
+
 ### Approving an audit approves its remittances (2026-11-19)
 
 - **Asked (owner):** when the Administrator approves a report in Audits, its remittances should be accepted too; approving them again by hand in Remittances is redundant.
