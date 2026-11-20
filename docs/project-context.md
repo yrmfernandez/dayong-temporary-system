@@ -34,6 +34,16 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Entry Clerks request a reject from My Entries (2026-11-20)
+
+- **Asked (owner):** in My Entries an Entry Clerk can request a reject for their entries, giving the reason; the admin side gets a tab of reject requests to see them easily.
+- **Choice (owner):** accepting returns the batch (the entry's slip is rejected with the clerk's reason, as Reject in Remittances does), not deleting the entry.
+- **Done:** **Request reject** on each entry waiting for approval in My Entries, asking why (5–300 characters); the request shows under the entry (waiting, accepted, declined with the note). **Reject requests** tab in Remittances for approvers (manage users): Accept (return batch) or Decline (note required); decided ones of 30 days listed; the sidebar Remittances number counts waiting requests. `lib/entry-reject-requests.ts`, `app/api/entry-reject-requests/route.ts`, `components/reject-requests.tsx`; the rejection uses `decideCashRemittance` with the own-slip rule of Remittances.
+- **Rules:** only entries Pending Remittance Approval (not yet sent: no slip; Returned: already editable; approved: Edit / Corrections); only the clerk's own entries (an administrator: any); one waiting request per entry; accepting one closes the others waiting on the same slip; a slip already returned meanwhile just closes the request.
+- **Migration `0054_entry_reject_requests`:** table `entry_reject_requests` with Audit Log and live-update triggers. Applied on staging; `scripts/check-database.mjs` now expects 55 tables and checks it.
+- **Tested:** new route test (reason required, one waiting request per entry, another clerk refused, clerk cannot see the list, decline keeps the slip, accept rejects the slip with the reason and returns the entry). Build passes; 350 of 351 tests pass. The failing one, "weekly and monthly reports are submitted by the clerk…", fails the same way without this change (expects 2, gets 1), probably because of today's date; not touched. Not tried in a browser.
+- **To do (owner):** migrate production with `npm run prod -- npm run db:migrate` (it must print PRODUCTION (qnugejonwpfvsenxvhxz)), then `npm run prod -- node scripts/check-database.mjs` (reject requests (0054): present), then push. Pushing first would break My Entries, which reads the new table.
+
 ### Another person typed over an existing member: recovered and refused (2026-11-19)
 
 - **Asked (owner):** a MAS picked PADILLA, ALEJANDRO for a New Sale but it was another person (now PADILLA, JENELYN); his account cannot be recovered. Recover it, and detect or prevent this.

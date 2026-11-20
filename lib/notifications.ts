@@ -13,7 +13,7 @@ import { listCollectionsForReview } from "@/lib/collection-submissions";
  * Numbers shown beside sidebar pages (October 8, 2026): how many things wait for this user there. Only pages the user
  * may open are counted; a page with nothing waiting is left out.
  *   /leave-approvals    leave requests not yet approved, rejected or cancelled
- *   /remittances        approvers (manage users): remittances Pending Approval or with a Discrepancy;
+ *   /remittances        approvers (manage users): remittances Pending Approval or with a Discrepancy, plus reject requests waiting;
  *                       everyone else: their own New Sales and collections returned to them (slip rejected)
  *   /my-entries         their own entries still Outstanding without a receipt photo (a photo sends them for approval)
  *   /new-sales          New Sales submitted by MAS waiting to be saved (submitted or marked remitted), in the clerk's branches
@@ -42,7 +42,8 @@ export async function getNotificationCounts(user: SessionUser): Promise<Notifica
   if (can("/leave-approvals")) tasks.push(["/leave-approvals", countOf(sql`select count(*)::int as count from leave_requests
     where lower(trim(coalesce(approval_status, ''))) not in ('approved', 'rejected', 'cancelled')`)]);
   if (can("/remittances")) tasks.push(["/remittances", isApprover(user)
-    ? countOf(sql`select count(*)::int as count from remittances where status in ('Pending Approval', 'Discrepancy')`)
+    ? countOf(sql`select (select count(*) from remittances where status in ('Pending Approval', 'Discrepancy'))
+        + (select count(*) from entry_reject_requests where status = 'Pending') as count`)
     : countOf(sql`select (select count(*) from collections where encoded_by_employee_id = ${me} and remittance_status = 'Returned' and lower(coalesce(status, '')) = 'posted')
         + (select count(*) from sales where encoded_by_employee_id = ${me} and remittance_status = 'Returned') as count`)]);
   if (can("/my-entries") && me) tasks.push(["/my-entries", countOf(sql`select

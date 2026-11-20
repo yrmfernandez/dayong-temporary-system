@@ -588,6 +588,40 @@ export const dropout_requests = pgTable("dropout_requests", {
   index("dropout_requests_member_idx").on(t.member_id),
 ]).enableRLS();
 
+/**
+ * Reject requests (owner, November 20, 2026; lib/entry-reject-requests.ts): an Entry Clerk asks, with a reason, for one
+ * of their entries waiting for approval to be rejected; an approver accepts it (its remittance slip is rejected and the
+ * batch returned to the clerk with that reason, to fix or remove the entry) or declines it with a note.
+ */
+export const entry_reject_requests = pgTable("entry_reject_requests", {
+  ...rowSeq(),
+  request_id: text().primaryKey(),
+  /** New Sale or Collection */
+  entry_kind: text().notNull(),
+  /** No foreign key: an entry removed after the request must not be blocked by it. */
+  entry_id: text().notNull(),
+  remittance_id: text().notNull(),
+  branch: text(),
+  member_number: text(),
+  member_name: text(),
+  /** OR number (collection) or application number (New Sale). */
+  reference: text(),
+  amount: money("amount"),
+  reason: text().notNull(),
+  /** Pending, Accepted, Declined */
+  status: text().notNull().default("Pending"),
+  requested_at: moment("requested_at").notNull(),
+  requested_by_employee_id: text(),
+  requested_by_name: text(),
+  reviewed_by_name: text(),
+  reviewed_at: moment("reviewed_at"),
+  review_note: text(),
+  ...encoder(),
+}, (t) => [
+  index("entry_reject_requests_status_idx").on(t.status),
+  index("entry_reject_requests_entry_idx").on(t.entry_id),
+]).enableRLS();
+
 export const beneficiaries = pgTable("beneficiaries", {
   ...rowSeq(),
   beneficiary_id: text().primaryKey(),

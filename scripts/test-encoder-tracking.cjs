@@ -1425,6 +1425,57 @@ test('administrator who is also an Entry Clerk may approve own remittance', asyn
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
 });
 
+test('an Entry Clerk asks for an entry waiting for approval to be rejected; the approver accepts or declines (November 20, 2026)', async () => {
+  const clerk = { userId: 'USR-1', employeeId: 'DPE-1', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} };
+  const h = harness(clerk);
+  const pendingCollection = (id, remittanceId) => { const row = Array(34).fill(''); row[0] = id; row[10] = 350; row[19] = 'Posted'; row[28] = 'Pending Remittance Approval'; row[29] = remittanceId; row[33] = 'Cash'; return row; };
+  const slip = (id) => { const row = Array(24).fill(''); row[0] = id; row[4] = 'Pending Approval'; row[6] = 'USR-1'; row[10] = 350; row[11] = 350; return row; };
+  const collectionHeader = Array(33).fill(''); collectionHeader[28] = 'Remittance Status';
+  const remittanceHeader = Array(24).fill(''); remittanceHeader[12] = 'Difference';
+  h.rows.Collections = [collectionHeader, pendingCollection('COL-1', 'REM-1'), pendingCollection('COL-2', 'REM-2')];
+  h.rows.Remittances = [remittanceHeader, slip('REM-1'), slip('REM-2')];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID'], ['RCL-1', 'REM-1', 'COL-1', 350], ['RCL-2', 'REM-2', 'COL-2', 350]];
+  deadlineHeaders(h);
+  await h.sync();
+  await query("update collections set encoded_by_employee_id = 'DPE-1'");
+  const route = h.load('app/api/entry-reject-requests/route.ts');
+  const call = async (method, body) => { const response = await route[method](request(body)); return { status: response.status, body: await response.json() }; };
+
+  assert.match((await call('POST', { entryId: 'COL-1', reason: 'no' })).body.message, /Say why the entry should be rejected/, 'a reason is required');
+  const sent = await call('POST', { entryId: 'COL-1', reason: 'Wrong member, should be PH-2' });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  assert.match((await call('POST', { entryId: 'COL-1', reason: 'Wrong member again' })).body.message, /already has reject request/, 'one waiting request per entry');
+  assert.equal((await call('POST', { entryId: 'COL-2', reason: 'Encoded twice by mistake' })).status, 201);
+  assert.equal((await route.GET()).status, 403, 'a clerk does not see the review list');
+  h.setUser({ ...clerk, employeeId: 'DPE-3', userId: 'USR-3' });
+  assert.match((await call('POST', { entryId: 'COL-1', reason: 'Not my entry at all' })).body.message, /only for entries you encoded/);
+
+  h.setUser({ userId: 'USR-9', employeeId: 'DPE-9', name: 'approver', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const list = await (await route.GET()).json();
+  assert.equal(list.requests.length, 2);
+  assert.equal(list.requests.find((item) => item.entryId === 'COL-1').entryStatus, 'Pending Remittance Approval');
+  const first = list.requests.find((item) => item.entryId === 'COL-1').id, second = list.requests.find((item) => item.entryId === 'COL-2').id;
+
+  assert.equal((await call('PATCH', { id: second, action: 'decline' })).status, 400, 'declining needs a note');
+  const declined = await call('PATCH', { id: second, action: 'decline', note: 'The receipt shows it is right' });
+  assert.equal(declined.status, 200, JSON.stringify(declined.body));
+  assert.equal((await query("select status from remittances where remittance_id = 'REM-2'"))[0].status, 'Pending Approval', 'declined: the slip stays waiting');
+
+  const accepted = await call('PATCH', { id: first, action: 'accept' });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  const [rejected] = await query("select status, rejection_reason from remittances where remittance_id = 'REM-1'");
+  assert.equal(rejected.status, 'Rejected');
+  assert.match(rejected.rejection_reason, /Wrong member, should be PH-2/, 'the clerk sees their reason on the returned batch');
+  assert.equal((await query("select remittance_status from collections where collection_id = 'COL-1'"))[0].remittance_status, 'Returned');
+  assert.deepEqual((await query('select status from entry_reject_requests order by row_seq')).map((row) => row.status), ['Accepted', 'Declined']);
+  assert.match((await call('PATCH', { id: first, action: 'accept' })).body.message, /already accepted/);
+
+  h.setUser(clerk);
+  assert.match((await call('POST', { entryId: 'COL-1', reason: 'Wrong member, should be PH-2' })).body.message, /already returned to you/);
+  const mine = await h.load('lib/entry-reject-requests.ts').latestRequestsFor(['COL-1', 'COL-2']);
+  assert.equal(mine['COL-2'].reviewNote, 'The receipt shows it is right');
+});
+
 test('only an approver can approve cash received in full, and it does not wait for receipt photos', async () => {
   const h = harness({ userId: 'USR-7', employeeId: 'MD-2099-0102', name: 'Test Clerk', roleNames: ['Entry Clerk'], permissions: {} });
   const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[6] = 'MINTAL'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 300; collection[28] = 'Outstanding'; collection[30] = 'EMP-1'; collection[31] = 'Ana'; collection[32] = 'Collector';

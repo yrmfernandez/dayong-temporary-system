@@ -8,6 +8,7 @@ import { auditedEmployees } from "@/lib/daily-audit";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { getEntriesForRange } from "@/lib/todays-entries";
 import { withEncoder } from "@/lib/encoder-context";
+import { latestRequestsFor } from "@/lib/entry-reject-requests";
 import { resubmitReturned, submitReadyEntries } from "@/lib/remittance-workflow";
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
@@ -37,7 +38,9 @@ export async function GET(request: Request) {
     ]);
     const carried = earlier.entries.filter((entry) => entry.remittanceStatus === "Returned" || entry.remittanceStatus === "Outstanding");
     const entries = [...inPeriod, ...carried];
-    return Response.json({
+    // Each entry's latest reject request (lib/entry-reject-requests.ts), to show it waiting, accepted or declined.
+    const rejectRequests = await latestRequestsFor(entries.map((entry) => entry.id));
+    return Response.json({ rejectRequests,
       success: true, from, to, today, employeeId, isAdmin, clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name })),
       entries, sales, collections, withPhoto: entries.filter((entry) => entry.photoId).length, earlierUnfinished: carried.length,
     }, { headers: { "Cache-Control": "private, no-store" } });

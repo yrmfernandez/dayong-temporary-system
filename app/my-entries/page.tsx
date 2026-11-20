@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, Eye, Pencil, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, Ban, Eye, Pencil, RefreshCw, Send } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
+import { promptDialog } from "@/components/app-dialog";
 import { EntryDetails } from "@/components/entry-details";
 import { MetricTile } from "@/components/metric-tile";
 import { ReceiptPhotoUpload, ReceiptPhotoView } from "@/components/receipt-photo";
@@ -13,14 +14,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseJsonResponse } from "@/lib/api-response";
 import { reportWeek } from "@/lib/report-week";
+import type { RejectRequest } from "@/lib/entry-reject-requests";
 import type { DayEntry } from "@/lib/todays-entries";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
-import { formatDate as showDate } from "@/lib/date-format";
+import { formatDate as showDate, formatDateTime } from "@/lib/date-format";
 
 type Totals = { count: number; amount: number };
 type Result = { success: boolean; message?: string; from: string; to: string; today: string; employeeId: string; isAdmin: boolean; clerks: Array<{ employeeId: string; name: string }>; entries: DayEntry[]; sales: Totals; collections: Totals; withPhoto: number;
   /** Returned or not-yet-sent entries encoded before the period, listed too so they can be fixed and sent. */
-  earlierUnfinished?: number };
+  earlierUnfinished?: number;
+  /** Each entry's latest reject request, by entry ID (lib/entry-reject-requests.ts). */
+  rejectRequests?: Record<string, RejectRequest> };
 type Period = "today" | "week" | "month" | "custom";
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
@@ -62,7 +66,7 @@ export default function MyEntriesPage() {
     void load(from, to, employeeId);
   }, [load, from, to, employeeId]);
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
-  useLiveRefresh(["sales", "collections", "remittances"], () => load(from, to, employeeId));
+  useLiveRefresh(["sales", "collections", "remittances", "entry_reject_requests"], () => load(from, to, employeeId));
 
   const choose = (next: Period) => { setPeriod(next); if (next !== "custom") setRange(rangeFor(next, todayInManila())); };
   const saved = (text: string) => { setMessage(text); void load(from, to, employeeId); };
@@ -100,12 +104,23 @@ export default function MyEntriesPage() {
     setMessage(text);
   }, []);
   const send = (entryIds: string[]) => post({ entryIds, action: "submit" }, "Sent for approval.");
+  // A mistake seen after the batch went to approval: ask the approver to reject the entry, with the reason (owner,
+  // November 20, 2026). Accepted, the batch comes back Returned to fix or remove the entry.
+  const requestReject = async (entry: DayEntry) => {
+    const reason = await promptDialog(`Why should ${entry.id} (${entry.memberName || entry.memberNumber || "this entry"}, ${money(entry.amount)}) be rejected? The approver reads this reason. If they accept, the whole batch comes back to you as Returned, to fix or remove the entry and resubmit.`, { required: true, title: "Request reject", confirmLabel: "Send request" });
+    if (!reason?.trim()) return;
+    setMessage("");
+    const response = await fetch("/api/entry-reject-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryId: entry.id, reason }) });
+    const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
+    saved(result.message ?? (response.ok ? "Reject request sent." : "Unable to send the reject request."));
+  };
+  const requests = data?.rejectRequests ?? {};
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">My Entries</h1>
-        <p className="text-sm text-muted-foreground">The New Sales and Collections you encoded, by the date you encoded them, one card per saved batch. A batch paid in cash goes to Pending Approval as soon as it is saved (the cash was counted at Clearing). A batch paid by bank or e-wallet needs one receipt photo for the whole batch; it then goes to Pending Approval on its own. Batches the approver returns show the reason: press Edit batch to fix the batch and its entries (or remove an entry), then Resubmit batch.</p>
+        <p className="text-sm text-muted-foreground">The New Sales and Collections you encoded, by the date you encoded them, one card per saved batch. A batch paid in cash goes to Pending Approval as soon as it is saved (the cash was counted at Clearing). A batch paid by bank or e-wallet needs one receipt photo for the whole batch; it then goes to Pending Approval on its own. Batches the approver returns show the reason: press Edit batch to fix the batch and its entries (or remove an entry), then Resubmit batch. Found a mistake in an entry waiting for approval? Press Request reject on it and say why.</p>
       </div>
 
       <Card>
@@ -204,8 +219,12 @@ export default function MyEntriesPage() {
                             <td className="p-2"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{showDate(entry.orDate)}</span></td>
                             <td className="p-2 text-xs">{entry.paymentMethod}</td>
                             <td className="p-2 text-right font-medium">{money(entry.amount)}</td>
-                            <td className="p-2 text-right"><Button type="button" size="sm" variant="ghost" onClick={() => setOpen(open === entry.id ? "" : entry.id)}><Eye className="size-3.5" />View</Button></td>
+                            <td className="p-2 text-right"><div className="flex flex-wrap justify-end gap-1">
+                              <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(open === entry.id ? "" : entry.id)}><Eye className="size-3.5" />View</Button>
+                              {entry.remittanceStatus === "Pending Remittance Approval" && requests[entry.id]?.status !== "Pending" && <Button type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => void requestReject(entry)}><Ban className="size-3.5" />Request reject</Button>}
+                            </div></td>
                           </tr>
+                          {requests[entry.id] && <RejectRequestNote request={requests[entry.id]} />}
                           {open === entry.id && <tr className="border-t bg-muted/20"><td colSpan={6} className="p-3"><EntryDetails entry={entry} onClose={() => setOpen("")} /></td></tr>}
                         </Fragment>
                       ))}
@@ -254,4 +273,14 @@ function groupBatches(entries: DayEntry[]): Batch[] {
       canAttach: !allCash && list.some((entry) => entry.remittanceStatus !== "Remitted"),
     };
   });
+}
+
+/** The entry's latest reject request: waiting, accepted (the batch was returned) or declined with the approver's note. */
+function RejectRequestNote({ request }: { request: RejectRequest }) {
+  const tone = request.status === "Pending" ? "bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200" : request.status === "Declined" ? "bg-muted/40 text-muted-foreground" : "bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300";
+  return <tr className={tone}><td colSpan={6} className="px-3 py-1.5 text-xs">
+    <span className="font-semibold">{request.status === "Pending" ? "Reject requested, waiting for the approver" : request.status === "Accepted" ? `Reject accepted by ${request.reviewedBy || "the approver"}` : `Reject declined by ${request.reviewedBy || "the approver"}`}</span>
+    {" "}({request.id}{request.requestedAt ? `, sent ${formatDateTime(request.requestedAt)}` : ""}): {request.reason}
+    {request.status === "Declined" && request.reviewNote && <span className="block">Approver&apos;s note: {request.reviewNote}</span>}
+  </td></tr>;
 }
