@@ -8,6 +8,9 @@ import { cashMethodNames, isCashMethod } from "@/lib/entry-batches";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
 
+/** Rows of a raw query: postgres.js returns them as the result itself, PGlite (tests) under .rows. */
+const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
+
 /**
  * Clearing (owner's decision, October 8, 2026). The entry clerk checks a MAS's or employee's physical receipts and bank
  * slips, then lists them here. That moment is when the cash was received:
@@ -216,6 +219,24 @@ export async function settleDayEnd(input: { keep?: unknown; clear?: unknown }, b
     narrowed++;
   }
   return { kept: keep.length, removed, narrowed };
+}
+
+/**
+ * The clearing recorded by Mark remitted on a MAS batch that was closed because its entries were already saved another
+ * way (owner, November 20, 2026; lib/submission-already-saved.ts). Like the day-end Clear: nothing encoded under it →
+ * Removed, with the note; entries under it → left Open, to follow them as usual. Still the handover of another batch
+ * marked remitted → left. Returns "removed" or "".
+ */
+export async function releaseSubmissionClearing(id: string, note: string) {
+  const [row] = await currentDb().select().from(clearings).where(eq(clearings.clearing_id, text(id)));
+  if (!row || row.status !== "Open") return "";
+  const linked = rowsOf<{ id: string }>(await currentDb().execute(sql`select submission_id as id from collection_submissions where clearing_id = ${row.clearing_id} and status = 'Remitted'
+    union all select submission_id from sale_submissions where clearing_id = ${row.clearing_id} and status = 'Remitted' limit 1`));
+  if (linked.length) return "";
+  const [line] = await withProgress([toClearing(row)]);
+  if ((line?.kinds ?? []).some((part) => part.entries.total > 0)) return "";
+  await currentDb().update(clearings).set({ status: "Removed", closed_at: new Date().toISOString(), closed_reason: text(note).slice(0, 300) }).where(and(eq(clearings.clearing_id, row.clearing_id), eq(clearings.status, "Open")));
+  return "removed";
 }
 
 /**

@@ -1,5 +1,5 @@
 import { refuseOnDayOff } from "@/lib/day-off";
-import { clearingProblem, dateRemittedReasonProblem, pickedClearingProblem, waitingBatchProblem } from "@/lib/clearing";
+import { clearingProblem, dateRemittedReasonProblem, pickedClearingProblem, releaseSubmissionClearing, waitingBatchProblem } from "@/lib/clearing";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
@@ -18,7 +18,7 @@ import { calculateRemittance, differentRateOf, noIncentiveReasonOf, tiersForBran
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
-import { markCollectionSubmissionSaved, reviewableCollectionSubmission } from "@/lib/collection-submissions";
+import { markCollectionSubmissionSaved, reviewableCollectionSubmission, waitingSubmissionProblem } from "@/lib/collection-submissions";
 import type { SessionUser } from "@/lib/auth";
 
 /**
@@ -81,8 +81,9 @@ async function saveCollections(request: Request, user: SessionUser) {
     if (!accountable) throw new Error(dto ? "DTO needs your own active employee record: you are accountable for the cash you received." : "Select an active accountable employee assigned to the selected branch.");
     // A batch the MAS submitted from the field (lib/collection-submissions.ts): it must be this branch's and MAS's and
     // still waiting; it is marked Saved in the same transaction below.
-    const submissionId = dto ? "" : String(body.submissionId ?? "").trim();
-    const submission = submissionId ? await reviewableCollectionSubmission(user, submissionId, selectedBranch.id, accountable.id, String(body.clearingId ?? "")) : null;
+    // Kept on a DTO save too (November 20, 2026): dropping it left the batch waiting for good, as it could not be saved again.
+    const submissionId = String(body.submissionId ?? "").trim();
+    const submission = submissionId ? await reviewableCollectionSubmission(user, submissionId, selectedBranch.id, accountable.id, dto ? "" : String(body.clearingId ?? ""), { dto }) : null;
     let dateRemittedReason = "";
     // The clearing (handover) picked in From Clearing, kept on each row (two handovers a day, October 29, 2026).
     const clearingId = dto ? "" : String(body.clearingId ?? "").trim();
@@ -235,6 +236,9 @@ async function saveCollections(request: Request, user: SessionUser) {
       if (controlProblem) throw new Error(controlProblem);
       const controlNote = String(body.controlTotalNote ?? "").trim();
       if (controlNote.length > TURNOVER_NOTE_MAX) throw new Error(`The turnover note must be ${TURNOVER_NOTE_MAX} characters or fewer.`);
+      // An account in a MAS batch still waiting is saved through that batch, or the batch stays waiting for good.
+      const inWaitingBatch = await waitingSubmissionProblem([...touched.values()].map((account) => ({ enrollmentId: account.id, label: `Member ${account.memberNumber}` })), submissionId);
+      if (inWaitingBatch) throw new Error(inWaitingBatch);
       writing = true;
       await commitCollections(tx, rows, [...touched.values()], payments);
       const ids = rows.map((row) => row.collection_id);
@@ -242,6 +246,8 @@ async function saveCollections(request: Request, user: SessionUser) {
       const variance = await recordTurnoverVariance({ kind: "Collections", entryIds: ids, branch: selectedBranch.name, mas: accountable.name, accountableEmployeeId: accountable.id, dateRemitted, controlTotal: Math.round(Number(body.controlTotal) * 100) / 100, systemTotal: totalRemittance, note: controlNote });
       return { ids, grossCents, variance };
     });
+    // Saved as DTO, the batch's Mark remitted clearing (the MAS's handover) gets no entries: removed, as nothing is encoded under it.
+    if (submission && dto && submission.clearingId) await releaseSubmissionClearing(submission.clearingId, `MAS batch ${submission.id} was saved as DTO (${saved.ids.join(", ")}); nothing was encoded under this handover`);
     // Paid in cash: straight to Pending Approval (lib/entry-batches.ts); other methods wait for the receipt photo.
     const slips = await submitCashAfterSave(saved.ids);
     const varianceText = saved.variance ? ` Turnover sheet ${varianceLabel(saved.variance.difference).toLowerCase()} (${saved.variance.id}); the slip goes to Discrepancy.` : "";

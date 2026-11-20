@@ -2,7 +2,7 @@ import { and, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
 
 import { isAdministratorRole } from "@/lib/access-control";
 import type { SessionUser } from "@/lib/auth";
-import { addClearing } from "@/lib/clearing";
+import { addClearing, releaseSubmissionClearing } from "@/lib/clearing";
 import { coveredKinds, type ClearingCovers } from "@/lib/clearing-kinds";
 import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
 import { getEmployees } from "@/lib/employees";
@@ -12,6 +12,8 @@ import { createReadableId } from "@/lib/readable-id";
 import { incentiveDeadline, manilaNow } from "@/lib/remittance-deadline";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { anotherPersonProblem } from "@/lib/member-identity";
+import { recordCorrection } from "@/lib/record-corrections";
+import { savedSales, notAllSaved, type AlreadySaved } from "@/lib/submission-already-saved";
 
 /**
  * New Sales submitted by a MAS (owner's decision 2026-10-06). The MAS fills only the sale cards on MAS New Sales; the
@@ -69,6 +71,8 @@ export type SaleSubmission = {
   rejectionSeen: boolean;
   /** Saved (the MAS's own list only): the Fidelity the clerk recorded with this batch. */
   fidelity: number;
+  /** The clerk's list only: sales already saved another way (lib/submission-already-saved.ts). */
+  alreadySaved?: AlreadySaved;
 };
 
 const statusOf = (value: string): SaleSubmission["status"] =>
@@ -170,7 +174,55 @@ export async function listForReview(user: SessionUser) {
   if (scope && !scope.length) return [];
   const waiting = inArray(submissions.status, OPEN);
   const rows = await getDb().select().from(submissions).where(scope ? and(waiting, inArray(submissions.branch_id, scope)) : waiting).orderBy(submissions.row_seq);
-  return withDeadlines(rows);
+  if (!rows.length) return [];
+  // Sales already saved another way are named, so a batch that can no longer be saved is closed with Already saved.
+  const [list, saved] = await Promise.all([withDeadlines(rows), savedSales(rows.map((row) => ({ id: row.submission_id, sales: row.sales })))]);
+  return list.map((item) => ({ ...item, alreadySaved: saved.get(item.id) }));
+}
+
+/**
+ * Closes a waiting batch whose sales were all already saved another way (lib/submission-already-saved.ts): marked Saved
+ * with those sales, kept in Record Corrections, and its Mark remitted clearing removed when nothing is encoded under it.
+ * Works on a batch marked remitted too, which cannot be rejected.
+ */
+export async function closeSaleSubmissionAsSaved(user: SessionUser, id: string) {
+  const row = await clerkRow(user, id);
+  if (!OPEN.includes(row.status)) throw new Error(closedMessage(row.status));
+  const cards = Array.isArray(row.sales) ? row.sales : [];
+  const found = (await savedSales([{ id: row.submission_id, sales: cards }])).get(row.submission_id);
+  const problem = notAllSaved(found, cards.length, "New Sales");
+  if (problem) throw new Error(problem);
+  const ids = [...new Set(found!.saved.flatMap((item) => item.entryIds))];
+  await inTransaction(async () => {
+    await markSubmissionSaved(row.submission_id, ids);
+    await recordCorrection("MAS New Sales batch closed as already saved", row.submission_id, `Already saved: ${found!.saved.map((item) => item.label).join("; ")}`, { status: row.status, clearingId: row.clearing_id }, { status: "Saved", saleIds: ids });
+  });
+  // Once the batch no longer holds it: its clearing, removed when nothing is encoded under it.
+  const clearing = row.clearing_id ? await releaseSubmissionClearing(row.clearing_id, `MAS batch ${row.submission_id} was already saved (${ids.join(", ")}); nothing was encoded under this handover`) : "";
+  return { id: row.submission_id, mas: row.mas, saleIds: ids, clearingRemoved: clearing === "removed" };
+}
+
+/**
+ * A clerk's save of sales that are in a MAS batch still waiting (owner, November 20, 2026): saved outside it, the batch
+ * stayed in Submitted by MAS for good (its application numbers were taken). Matched by application number, or the same
+ * existing member and program. Refused, naming the batch, unless it is the batch being saved. "" when none is.
+ */
+export async function waitingSaleSubmissionProblem(items: Array<{ applicationNo: string; memberNumber: string; programId: string; label: string }>, submissionId = "") {
+  if (!items.length) return "";
+  const open = await currentDb().select({ id: submissions.submission_id, mas: submissions.mas, status: submissions.status, sales: submissions.sales }).from(submissions).where(inArray(submissions.status, OPEN));
+  const others = open.filter((row) => row.id !== text(submissionId));
+  if (!others.length) return "";
+  const key = (value: unknown) => text(value).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const numbers = [...new Set(items.map((item) => text(item.memberNumber)).filter(Boolean))];
+  const memberIds = new Map(numbers.length ? (await currentDb().select({ id: schema.members.member_id, number: schema.members.member_number }).from(schema.members).where(inArray(schema.members.member_number, numbers))).map((row) => [text(row.number), row.id]) : []);
+  type Card = { applicationNumber?: unknown; member?: { id?: unknown }; program?: { programId?: unknown } };
+  for (const row of others) {
+    const cards = (Array.isArray(row.sales) ? row.sales : []) as Card[];
+    const hit = items.find((item) => cards.some((card) => (key(item.applicationNo) && key(card.applicationNumber) === key(item.applicationNo))
+      || (memberIds.get(text(item.memberNumber)) && text(card.member?.id) === memberIds.get(text(item.memberNumber)) && text(card.program?.programId) === text(item.programId))));
+    if (hit) return `${hit.label} is in ${row.mas}'s batch ${row.id}, waiting in Submitted by MAS${row.status === "Remitted" ? " (marked remitted)" : ""}. Open that batch with Review and save it there, so it does not stay waiting; or reject it there first if it should not be saved.`;
+  }
+  return "";
 }
 
 /** One submission the clerk may act on: found and in one of their branches. */

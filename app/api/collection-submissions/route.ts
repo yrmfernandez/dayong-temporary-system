@@ -3,7 +3,7 @@ import { canAccessPath } from "@/lib/access-control";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { AlreadyClearedError } from "@/lib/clearing";
 import { withEncoder } from "@/lib/encoder-context";
-import { listCollectionsForReview, listMyCollectionSubmissions, markCollectionSubmissionRemitted, markRejectionsSeen, myCollectionAccounts, myCollectionDraft, rejectCollectionSubmission, saveCollectionDraft, submitCollections } from "@/lib/collection-submissions";
+import { closeCollectionSubmissionAsSaved, listCollectionsForReview, listMyCollectionSubmissions, markCollectionSubmissionRemitted, markRejectionsSeen, myCollectionAccounts, myCollectionDraft, rejectCollectionSubmission, saveCollectionDraft, submitCollections } from "@/lib/collection-submissions";
 
 const noStore = { "Cache-Control": "private, no-store" };
 const failure = (error: unknown, fallback: string, status = 400) => Response.json({ success: false, message: error instanceof Error ? error.message : fallback }, { status });
@@ -81,6 +81,11 @@ export const PATCH = withEncoder(async (request: Request) => {
   const user = await userWithPageAccess("/collections");
   if (!user) return noAccess("Collections");
   try {
+    // Every member already saved another way: the batch is closed as Saved and its Mark remitted clearing freed (November 20, 2026).
+    if (body.action === "already-saved") {
+      const done = await closeCollectionSubmissionAsSaved(user, String(body.id ?? ""));
+      return Response.json({ success: true, ...done, message: `${done.mas}'s batch ${done.id} closed: its members were already saved (${done.collectionIds.join(", ")}).${done.clearingRemoved ? " Its clearing line, with nothing encoded under it, was removed from Clearing." : ""}` });
+    }
     if (body.action === "remit") {
       if (!canAccessPath(user, "/clearing")) return noAccess("Clearing");
       const handover = body.handover === "same" || body.handover === "new" ? body.handover : "";

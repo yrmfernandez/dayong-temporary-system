@@ -4,7 +4,9 @@ import { isMasFamilyRole, normalizeRoleName } from "@/lib/access-control";
 import { accountState, forfeitedPaymentsAllowed, validatePayment } from "@/lib/account-rules";
 import { loadAccountData } from "@/lib/account-data";
 import type { SessionUser } from "@/lib/auth";
-import { addClearing } from "@/lib/clearing";
+import { recordCorrection } from "@/lib/record-corrections";
+import { notAllSaved, savedCollections, type AlreadySaved } from "@/lib/submission-already-saved";
+import { addClearing, releaseSubmissionClearing } from "@/lib/clearing";
 import { coveredKinds, type ClearingCovers } from "@/lib/clearing-kinds";
 import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
 import { getEmployees } from "@/lib/employees";
@@ -95,6 +97,8 @@ export type CollectionSubmission = {
   rejectionSeen: boolean;
   /** Saved (the MAS's own list only): the Fidelity the clerk recorded with this batch. */
   fidelity: number;
+  /** The clerk's list only: members already saved another way (lib/submission-already-saved.ts). */
+  alreadySaved?: AlreadySaved;
 };
 /** One member in the batch being filled. `amount`: typed on a flexible program; "" is its Base Pay, or the minimum if none. */
 export type DraftItem = { enrollmentId: string; months: number; amount: string; waiver: boolean; addedOn: string };
@@ -250,6 +254,23 @@ async function pendingAccounts() {
   const pending = new Map<string, string>();
   for (const row of open) for (const entry of Array.isArray(row.entries) ? row.entries as SubmittedCollection[] : []) pending.set(entry.enrollmentId, row.id);
   return pending;
+}
+
+/**
+ * A clerk's save of accounts that are in a MAS batch still waiting (owner, November 20, 2026): saved outside that batch,
+ * the batch stayed in Submitted by MAS for good, since it could no longer be saved. Refused, naming the batch, unless it
+ * is the batch being saved (`submissionId`). "" when none is.
+ */
+export async function waitingSubmissionProblem(entries: Array<{ enrollmentId: string; label: string }>, submissionId = "") {
+  if (!entries.length) return "";
+  const open = await currentDb().select({ id: submissions.submission_id, mas: submissions.mas, status: submissions.status, entries: submissions.entries }).from(submissions).where(inArray(submissions.status, OPEN));
+  for (const row of open) {
+    if (row.id === text(submissionId)) continue;
+    const ids = new Set((Array.isArray(row.entries) ? row.entries as SubmittedCollection[] : []).map((entry) => entry.enrollmentId));
+    const hit = entries.find((entry) => ids.has(entry.enrollmentId));
+    if (hit) return `${hit.label} is in ${row.mas}'s batch ${row.id}, waiting in Submitted by MAS${row.status === "Remitted" ? " (marked remitted)" : ""}. Open that batch with Review and save it there, so it does not stay waiting; or reject it there first if it should not be saved.`;
+  }
+  return "";
 }
 
 /**
@@ -433,18 +454,24 @@ export async function listCollectionsForReview(user: SessionUser) {
   const rows = await getDb().select().from(submissions).where(scope ? and(waiting, inArray(submissions.branch_id, scope)) : waiting).orderBy(submissions.row_seq);
   const list = await withDeadlines(rows);
   if (!list.length) return list;
-  // The clerk contacts whoever has not handed the cash over.
-  const employees = await getEmployees();
-  return list.map((item) => ({ ...item, masContact: text(employees.find((employee) => employee.id === item.masEmployeeId)?.contact) }));
+  // The clerk contacts whoever has not handed the cash over; members already saved another way are named.
+  const [employees, saved] = await Promise.all([getEmployees(), savedCollections(rows.map((row) => ({ id: row.submission_id, entries: row.entries })))]);
+  return list.map((item) => ({ ...item, masContact: text(employees.find((employee) => employee.id === item.masEmployeeId)?.contact), alreadySaved: saved.get(item.id) }));
 }
 
 /** A submission the clerk may save now, matching the batch's branch and accountable MAS (by ID); throws otherwise. */
-export async function reviewableCollectionSubmission(user: SessionUser, id: string, branchId: string, employeeId: string, clearingId = "") {
+export async function reviewableCollectionSubmission(user: SessionUser, id: string, branchId: string, employeeId: string, clearingId = "", { dto = false } = {}) {
   const [row] = await getDb().select().from(submissions).where(eq(submissions.submission_id, text(id)));
   if (!row) throw new Error("The MAS submission was not found.");
   const scope = await reviewBranches(user);
   if (scope && !scope.includes(row.branch_id)) throw new Error("This MAS submission belongs to a branch you are not assigned to.");
   if (!OPEN.includes(row.status)) throw new Error(row.status === "Saved" ? "This MAS submission was already saved." : "This MAS submission was rejected.");
+  // Saved as DTO (the clerk accountable, no clearing; November 20, 2026: the batch used to stay waiting after a DTO save):
+  // only the branch must match.
+  if (dto) {
+    if (row.branch_id !== text(branchId)) throw new Error(`This MAS submission is for ${row.branch}. Keep that branch.`);
+    return toSubmission(row);
+  }
   if (row.branch_id !== text(branchId) || row.mas_employee_id !== text(employeeId)) throw new Error(`This MAS submission is for ${row.branch}, ${row.mas}. Pick that MAS's handover in From Clearing.`);
   // Marked remitted: saved under the clearing recorded then, whose time decides the incentive.
   if (row.clearing_id && row.clearing_id !== text(clearingId)) throw new Error(`This batch was marked remitted at ${stamp(row.remitted_at).slice(11)}. Save it under that handover in From Clearing.`);
@@ -490,6 +517,31 @@ export async function markCollectionSubmissionSaved(id: string, collectionIds: s
   const updated = await currentDb().update(submissions).set({ status: "Saved", collection_ids: collectionIds.join(","), reviewed_by_employee_id: actor.employeeId, reviewed_by_name: actor.name, reviewed_at: actor.encodedAt })
     .where(and(eq(submissions.submission_id, text(id)), inArray(submissions.status, OPEN))).returning({ id: submissions.submission_id });
   if (!updated.length) throw new Error("This MAS submission was just saved or rejected by someone else. Nothing was saved.");
+}
+
+/**
+ * Closes a waiting batch whose members were all already saved another way (lib/submission-already-saved.ts): marked
+ * Saved with those collections, kept in Record Corrections, and its Mark remitted clearing removed when nothing is
+ * encoded under it. Works on a batch marked remitted too, which cannot be rejected.
+ */
+export async function closeCollectionSubmissionAsSaved(user: SessionUser, id: string) {
+  const [row] = await getDb().select().from(submissions).where(eq(submissions.submission_id, text(id)));
+  if (!row) throw new Error("The MAS submission was not found.");
+  const scope = await reviewBranches(user);
+  if (scope && !scope.includes(row.branch_id)) throw new Error("This MAS submission belongs to a branch you are not assigned to.");
+  if (!OPEN.includes(row.status)) throw new Error(row.status === "Saved" ? "This MAS submission was already saved." : "This MAS submission was rejected.");
+  const found = (await savedCollections([{ id: row.submission_id, entries: row.entries }])).get(row.submission_id);
+  const problem = notAllSaved(found, entriesOf(row).length, "Collections");
+  if (problem) throw new Error(problem);
+  const ids = [...new Set(found!.saved.flatMap((item) => item.entryIds))];
+  await inTransaction(async () => {
+    await markCollectionSubmissionSaved(row.submission_id, ids);
+    const reason = `Already saved: ${found!.saved.map((item) => item.label).join("; ")}`;
+    await recordCorrection("MAS collection batch closed as already saved", row.submission_id, reason, { status: row.status, clearingId: row.clearing_id }, { status: "Saved", collectionIds: ids });
+  });
+  // Once the batch no longer holds it: its clearing, removed when nothing is encoded under it.
+  const clearing = row.clearing_id ? await releaseSubmissionClearing(row.clearing_id, `MAS batch ${row.submission_id} was already saved (${ids.join(", ")}); nothing was encoded under this handover`) : "";
+  return { id: row.submission_id, mas: row.mas, collectionIds: ids, clearingRemoved: clearing === "removed" };
 }
 
 /**

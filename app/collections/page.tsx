@@ -22,6 +22,8 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { useSubmissionBranches } from "@/components/submission-branches";
+import { AlreadySavedNote } from "@/components/already-saved-note";
+import type { AlreadySaved } from "@/lib/submission-already-saved";
 import { Button } from "@/components/ui/button";
 import { isMasFamilyRole } from "@/lib/access-control";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,6 +95,8 @@ type CollectionSubmissionSummary = {
   /** Sent by the nightly job: the MAS never pressed Submit, so the clerk contacts them (masContact) to remit. */
   autoSubmitted: boolean; masContact: string;
   entries: Array<{ enrollmentId: string; memberId: string; memberNumber: string; memberName: string; programId: string; programName: string; months: number; amount: number; orDate: string; waiver: boolean }>;
+  /** Members already saved another way (lib/submission-already-saved.ts). */
+  alreadySaved?: AlreadySaved;
 };
 /** The MAS submission open on the form: saving it marks it Saved; its handover must be this MAS's. */
 type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string; collectedBy?: CollectionChannel; memberMas?: string; orc?: boolean };
@@ -1030,7 +1034,8 @@ export default function CollectionsPage() {
           // The handover picked in From Clearing: its time decides the incentive (lib/clearing.ts).
           clearingId: !dto && cleared?.employeeName === mas ? cleared.id : "",
           // A batch the MAS submitted (lib/collection-submissions.ts): marked Saved with these collections.
-          submissionId: !dto && reviewing ? reviewing.id : undefined,
+          // Kept on a DTO save too, so the batch is marked Saved (November 20, 2026).
+          submissionId: reviewing ? reviewing.id : undefined,
           dto,
           orc: orc && !dto && collectedBy === "Collector",
           collectedBy: dto ? "DTO" : collectedBy,
@@ -1323,7 +1328,7 @@ export default function CollectionsPage() {
       {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
       {!returnedEdit && <UnremittedCollectionsWarning submissions={submissionList} onShow={() => setTab("submitted")} />}
 
-      {tab === "submitted" ? <CollectionSubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} /> : <>
+      {tab === "submitted" ? <CollectionSubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} onClosed={(text) => { setSubmissionError(""); setSaveMessage(text); setSubmissionRevision((value) => value + 1); }} /> : <>
       {reviewing && (
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <p>Reviewing a submission from {reviewing.mas} ({reviewing.branch}). Pick their handover in From Clearing (save only once the cash is received), type each OR number, and correct anything wrong here: Collected by (MAS, Collector or DTO), whose members, ORC, months, amount, Waiver, or remove a member. Only the MAS stays. The MAS cannot change it.</p>
@@ -2409,7 +2414,7 @@ function UnremittedCollectionsWarning({ submissions, onShow }: { submissions: Co
 }
 
 /** Collections that MAS submitted in the clerk's branches, oldest first (lib/collection-submissions.ts). */
-function CollectionSubmissionList({ submissions, branchPicker, activeId, onOpen, onReject, onRemit, onRefresh }: { submissions: CollectionSubmissionSummary[]; branchPicker: ReactNode; activeId: string; onOpen: (submission: CollectionSubmissionSummary) => void; onReject: (submission: CollectionSubmissionSummary) => void; onRemit: (submission: CollectionSubmissionSummary) => void; onRefresh: () => void }) {
+function CollectionSubmissionList({ submissions, branchPicker, activeId, onOpen, onReject, onRemit, onRefresh, onClosed }: { submissions: CollectionSubmissionSummary[]; branchPicker: ReactNode; activeId: string; onOpen: (submission: CollectionSubmissionSummary) => void; onReject: (submission: CollectionSubmissionSummary) => void; onRemit: (submission: CollectionSubmissionSummary) => void; onRefresh: () => void; onClosed: (message: string) => void }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -2433,6 +2438,7 @@ function CollectionSubmissionList({ submissions, branchPicker, activeId, onOpen,
                   ? <p className="font-medium text-amber-700">Not yet remitted · the {formatDeadline(submission.incentiveDeadline)} deadline has passed: contact the MAS, the whole amount is due</p>
                   : <p className="text-muted-foreground">Not yet remitted · incentive kept if received by {formatDeadline(submission.incentiveDeadline)}</p>)}
               <p className="truncate">{submission.entries.map((entry) => `${entry.memberName} (${entry.months} mo${entry.waiver ? ", Waiver" : ""})`).join(", ")}</p>
+              <AlreadySavedNote id={submission.id} mas={submission.mas} found={submission.alreadySaved} endpoint="/api/collection-submissions" onDone={onClosed} />
             </div>
             <div className="flex shrink-0 gap-2">
               {submission.status === "Submitted" && <Button type="button" size="sm" onClick={() => onRemit(submission)}>Mark remitted</Button>}

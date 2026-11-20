@@ -35,6 +35,8 @@ import type { ProgramStanding } from "@/lib/account-data";
 import { defaultNewSaleAmount, fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
+import { AlreadySavedNote } from "@/components/already-saved-note";
+import type { AlreadySaved } from "@/lib/submission-already-saved";
 import { ControlTotalField } from "@/components/control-total-field";
 import { EntryFigures } from "@/components/entry-figures";
 import { BACKDATE_REASON_MIN, controlTotalDifference, controlTotalProblem, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
@@ -268,6 +270,8 @@ type SubmissionSummary = {
   rejectionSeen: boolean;
   /** Saved: the Fidelity the clerk recorded with this batch. */
   fidelity?: number;
+  /** The clerk's list: sales already saved another way (lib/submission-already-saved.ts). */
+  alreadySaved?: AlreadySaved;
 };
 type MasProfile = { employeeId: string; name: string; branches: Array<{ id: string; name: string }> };
 /** A Returned batch open on the form (owner, November 6, 2026): corrected in place, keeping IDs and receipt photos. */
@@ -1627,7 +1631,7 @@ Is this cash part of that handover?`) ? "same"
       {masMode && tab === "submitted" ? (
         <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={(submission, asNew) => void openSubmission(submission, asNew)} />
       ) : tab === "submitted" ? (
-        <SubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={submissionId} onOpen={(submission) => void openSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onReject={(submission) => void rejectSubmission(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} />
+        <SubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={submissionId} onOpen={(submission) => void openSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onReject={(submission) => void rejectSubmission(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} onClosed={(text) => { setSubmissionError(""); setSaveMessage(text); setSubmissionRevision((value) => value + 1); }} />
       ) : (<>
       {submissionId && (
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -3230,7 +3234,7 @@ const memberNames = (submission: SubmissionSummary) => submission.sales.map((sal
  * Clerk: New Sales the MAS submitted in their branches, oldest first. As on Collections (owner, November 3, 2026):
  * Mark remitted when the cash is handed over, Review to correct and save, Reject only a batch that should not be saved.
  */
-function SubmissionList({ submissions, branchPicker, activeId, onOpen, onRemit, onReject, onRefresh }: { submissions: SubmissionSummary[]; branchPicker: ReactNode; activeId: string; onOpen: (submission: SubmissionSummary) => void; onRemit: (submission: SubmissionSummary) => void; onReject: (submission: SubmissionSummary) => void; onRefresh: () => void }) {
+function SubmissionList({ submissions, branchPicker, activeId, onOpen, onRemit, onReject, onRefresh, onClosed }: { submissions: SubmissionSummary[]; branchPicker: ReactNode; activeId: string; onOpen: (submission: SubmissionSummary) => void; onRemit: (submission: SubmissionSummary) => void; onReject: (submission: SubmissionSummary) => void; onRefresh: () => void; onClosed: (message: string) => void }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -3252,6 +3256,7 @@ function SubmissionList({ submissions, branchPicker, activeId, onOpen, onRemit, 
                   ? <p className={`font-medium ${late ? "text-amber-700" : "text-emerald-700"}`}>Remitted {submittedAt(submission.remittedAt)}{submission.remittedByName ? ` (${submission.remittedByName})` : ""}{submission.incentiveDeadline ? (late ? " · after the deadline: incentive forfeited" : " · in time: incentive kept") : ""} · details still to save</p>
                   : submission.incentiveDeadline && <p className="text-muted-foreground">Not yet remitted · incentive kept if received by {formatDeadline(submission.incentiveDeadline)}</p>}
                 <p className="truncate">{memberNames(submission)}</p>
+                <AlreadySavedNote id={submission.id} mas={submission.mas} found={submission.alreadySaved} endpoint="/api/sale-submissions" onDone={onClosed} />
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
                 {submission.status === "Submitted" && <Button type="button" size="sm" onClick={() => onRemit(submission)}>Mark remitted</Button>}

@@ -6058,6 +6058,98 @@ test('a Collector marks a batch DTO (no incentive), and the clerk changes Collec
   assert.deepEqual((await query('select status from collection_submissions order by row_seq')).map((row) => row.status), ['Saved', 'Saved']);
 });
 
+test('a MAS batch whose members were saved another way is named and closed as Already saved; a direct save of a waiting batch is refused (November 20, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'Col One', 'BR-1', 'Collector', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Clerk Three', 'BR-1', 'Entry Clerk', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50], ['INC-2', 'DP-1', 'Collector', 1, 12, 'percentage', 0, 20]];
+    h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+    return h;
+  };
+  const collector = as({ userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', roleNames: ['Collector'], permissions: {} });
+  const clerk = as({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk Three', roleNames: ['Entry Clerk'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0001', 'Col One']);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Mas Two' }]);
+  const today = collector.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  for (const number of [1, 2]) {
+    await seed('members', [{ member_id: `MEM-${number}`, member_number: `PH-${number}`, surname: 'Santos', first_name: `Ana ${number}` }]);
+    await seed('member_programs', [{ enrollment_id: `ENR-${number}`, member_id: `MEM-${number}`, member_number: `PH-${number}`, program_id: 'DP-1', doi, branch: 'BR-1', mas: 'Mas Two', status: 'Active', collector_employee_id: 'DPE-0001' }]);
+  }
+  const call = async (h, file, method, url, body) => {
+    const route = h.load(file);
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const submissions = 'app/api/collection-submissions/route.ts';
+  assert.equal((await call(collector, submissions, 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-1', months: 1, amount: null, waiver: false }, { enrollmentId: 'ENR-2', months: 1, amount: null, waiver: false }], collectedBy: 'Collector' })).status, 201);
+  const review = async () => (await call(clerk, submissions, 'GET', '/api/collection-submissions?view=review')).body.submissions;
+  const [batch] = await review();
+  assert.equal((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'remit', id: batch.id })).status, 200);
+  const [clearing] = await query('select clearing_id from clearings');
+  const save = (submissionId, entries, orNumbers) => call(clerk, 'app/api/collections/route.ts', 'POST', '/api/collections', {
+    branch: 'BR-1', mas: 'Col One', accountableEmployeeId: 'DPE-0001', clearingId: clearing.clearing_id, submissionId, dateRemitted: today, collectedBy: 'Collector', memberMas: 'Mas Two', paymentMethod: 'Cash',
+    controlTotal: entries.reduce((sum, entry) => sum + entry.remittance, 0),
+    collections: entries.map((entry, index) => ({ memberNumber: entry.memberNumber, programId: 'DP-1', monthFrom: entry.monthFrom, monthTo: entry.monthTo, amountCollected: entry.amount, nopFrom: entry.nopFrom, nopTo: entry.nopTo, orNumber: orNumbers[index], orDate: entry.orDate })),
+  });
+
+  // Encoding the batch's members straight on the form (not through Review) is refused, naming the batch.
+  const direct = await save(undefined, [batch.entries[0]], ['12345 B']);
+  assert.equal(direct.status, 400, JSON.stringify(direct.body));
+  assert.match(direct.body.message, new RegExp(`Member PH-1 is in Col One's batch ${batch.id}, waiting in Submitted by MAS \\(marked remitted\\)\\. Open that batch with Review`));
+  assert.equal((await query('select count(*)::int as n from collections'))[0].n, 0);
+
+  // A batch stuck as before this fix: its members saved, the batch still waiting.
+  assert.equal((await save(batch.id, batch.entries, ['12345 B', '12346 B'])).status, 201);
+  await query(`update collection_submissions set status = 'Remitted', collection_ids = null`);
+  const [stuck] = await review();
+  assert.deepEqual([stuck.alreadySaved.saved.length, stuck.alreadySaved.total], [2, 2]);
+  assert.match(stuck.alreadySaved.saved[0].label, /Santos, Ana 1|PH-1/);
+  // Not closable while only some are saved.
+  await query(`delete from collections where member_number = 'PH-2'`);
+  assert.match((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'already-saved', id: batch.id })).body.message, /Only 1 of 2 members are already saved/);
+  assert.equal((await save(batch.id, [batch.entries[1]], ['12346 B'])).status, 201, 'the rest saved through Review');
+  await query(`update collection_submissions set status = 'Remitted', collection_ids = null`);
+  const closed = await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'already-saved', id: batch.id });
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+  const [row] = await query('select status, collection_ids from collection_submissions');
+  assert.equal(row.status, 'Saved');
+  assert.equal(row.collection_ids.split(',').length, 2);
+  assert.equal((await review()).length, 0, 'no longer waiting');
+  assert.equal((await query(`select status from clearings where clearing_id = '${clearing.clearing_id}'`))[0].status === 'Removed', false, 'its clearing has entries, so it stays to follow them');
+  assert.equal((await query(`select count(*)::int as n from record_corrections where module = 'MAS collection batch closed as already saved'`))[0].n, 1);
+  assert.match((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'already-saved', id: batch.id })).body.message, /already saved/);
+});
+
+test('New Sales: a MAS batch already saved is found by application number or member and program, and a direct save of its sales is refused (November 20, 2026)', async () => {
+  const h = harness({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk Three', roleNames: ['Administrator'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program'], ['DP-2', 'Other']]);
+  await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'Santos', first_name: 'Ana' }]);
+  await seed('sales', [{ sale_id: 'SAL-1', member_number: 'PH-1', program_id: 'DP-1', amount_paid: 350, application_no: '062026-01616' }]);
+  const card = (applicationNumber, programId, memberId = '') => ({ applicationNumber, member: { id: memberId, name: { surname: 'Santos', firstName: 'Ana' } }, program: { programId, amountPaid: 350 } });
+  await seed('sale_submissions', [{ submission_id: 'SUB-1', branch_id: 'BR-1', branch: 'BR-1', mas_employee_id: 'DPE-0002', mas: 'mas', status: 'Remitted', sales: [card('062026 01616', 'DP-1')], sale_count: 1, total_amount: 350, submitted_at: '2026-11-19T01:00:00Z' },
+    { submission_id: 'SUB-2', branch_id: 'BR-1', branch: 'BR-1', mas_employee_id: 'DPE-0002', mas: 'mas', status: 'Submitted', sales: [card('', 'DP-1', 'MEM-1'), card('APP-9', 'DP-2')], sale_count: 2, total_amount: 700, submitted_at: '2026-11-19T02:00:00Z' }]);
+  const { savedSales } = h.load('lib/submission-already-saved.ts');
+  const found = await savedSales((await query('select submission_id as id, sales from sale_submissions order by row_seq')));
+  assert.deepEqual(found.get('SUB-1'), { saved: [{ label: 'Santos, Ana (App 062026 01616)', entryIds: ['SAL-1'] }], total: 1 }, 'by application number, spaces and dashes ignored');
+  assert.deepEqual([found.get('SUB-2').saved.length, found.get('SUB-2').total], [1, 2], 'the existing member in the same program; APP-9 is not saved');
+  const lib = h.load('lib/sale-submissions.ts');
+  assert.match(await lib.waitingSaleSubmissionProblem([{ applicationNo: 'APP-9', memberNumber: '', programId: 'DP-2', label: 'Sale #1' }]), /^Sale #1 is in mas's batch SUB-2, waiting in Submitted by MAS\. Open that batch with Review/);
+  assert.equal(await lib.waitingSaleSubmissionProblem([{ applicationNo: 'APP-9', memberNumber: '', programId: 'DP-2', label: 'Sale #1' }], 'SUB-2'), '', 'saving that batch itself');
+  assert.match(await lib.waitingSaleSubmissionProblem([{ applicationNo: 'APP-NEW', memberNumber: 'PH-1', programId: 'DP-1', label: 'Sale #2' }]), /Sale #2 is in mas's batch SUB-2/, 'the same member and program');
+  assert.equal(await lib.waitingSaleSubmissionProblem([{ applicationNo: 'APP-NEW', memberNumber: 'PH-1', programId: 'DP-3', label: 'Sale #2' }]), '');
+  // Closing: all saved closes it; partly saved is refused.
+  const close = async (id) => { const response = await h.load('app/api/sale-submissions/route.ts').PATCH(request({ action: 'already-saved', id })); return { status: response.status, body: await response.json() }; };
+  assert.match((await close('SUB-2')).body.message, /Only 1 of 2 sales are already saved/);
+  const closed = await close('SUB-1');
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+  assert.deepEqual([closed.body.saleIds, closed.body.clearingRemoved], [['SAL-1'], false]);
+  assert.deepEqual((await query("select status, sale_ids from sale_submissions where submission_id = 'SUB-1'"))[0], { status: 'Saved', sale_ids: 'SAL-1' });
+});
+
 test('a Collector earns the MAS incentive only with No Collector on their own account, or when the clerk ticks MAS (November 6, 2026)', async () => {
   const as = (user) => {
     const h = harness(user);

@@ -9,7 +9,7 @@ import { loadWorkCalendar } from "@/lib/work-calendar";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { withEncoder } from "@/lib/encoder-context";
 import type { SessionUser } from "@/lib/auth";
-import { markSubmissionSaved, reviewableSubmission } from "@/lib/sale-submissions";
+import { markSubmissionSaved, reviewableSubmission, waitingSaleSubmissionProblem } from "@/lib/sale-submissions";
 import { NextResponse } from "next/server";
 
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
@@ -249,6 +249,11 @@ async function saveSales(request: Request, user: SessionUser) {
     // Double entries: an Application Number used before, or a person already on record registered again as new.
     const doubleEntry = await newSalesDoubleEntry(body.sales.filter(Boolean));
     if (doubleEntry) return NextResponse.json({ success: false, duplicate: true, message: doubleEntry }, { status: 409 });
+    // A sale in a MAS batch still waiting is saved through that batch, or the batch stays waiting for good (November 20, 2026).
+    const inWaitingBatch = await waitingSaleSubmissionProblem(body.sales.filter(Boolean).map((sale, index) => ({
+      applicationNo: String(sale.applicationNo ?? ""), memberNumber: sale.existingMember ? String(sale.memberNumber ?? "") : "", programId: String(sale.programId ?? ""), label: `Sale #${index + 1}`,
+    })), submissionId);
+    if (inWaitingBatch) return NextResponse.json({ success: false, message: inWaitingBatch }, { status: 400 });
 
     /*
      * =====================================================

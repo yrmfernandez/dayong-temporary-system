@@ -3,7 +3,7 @@ import { canAccessPath } from "@/lib/access-control";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { AlreadyClearedError } from "@/lib/clearing";
 import { withEncoder } from "@/lib/encoder-context";
-import { listForReview, listMySubmissions, markRejectionsSeen, markSaleSubmissionRemitted, masProfile, rejectSaleSubmission, submitSales } from "@/lib/sale-submissions";
+import { closeSaleSubmissionAsSaved, listForReview, listMySubmissions, markRejectionsSeen, markSaleSubmissionRemitted, masProfile, rejectSaleSubmission, submitSales } from "@/lib/sale-submissions";
 
 const noStore = { "Cache-Control": "private, no-store" };
 const failure = (error: unknown, fallback: string, status = 400) => Response.json({ success: false, message: error instanceof Error ? error.message : fallback }, { status });
@@ -60,6 +60,11 @@ export const PATCH = withEncoder(async (request: Request) => {
   const user = await userWithPageAccess("/new-sales");
   if (!user) return Response.json({ success: false, message: "You do not have access to New Sales." }, { status: 403 });
   try {
+    // Every sale already saved another way: the batch is closed as Saved and its Mark remitted clearing freed (November 20, 2026).
+    if (body.action === "already-saved") {
+      const done = await closeSaleSubmissionAsSaved(user, String(body.id ?? ""));
+      return Response.json({ success: true, ...done, message: `${done.mas}'s batch ${done.id} closed: its sales were already saved (${done.saleIds.join(", ")}).${done.clearingRemoved ? " Its clearing line, with nothing encoded under it, was removed from Clearing." : ""}` });
+    }
     if (body.action === "remit") {
       if (!canAccessPath(user, "/clearing")) return Response.json({ success: false, message: "You do not have access to Clearing." }, { status: 403 });
       const handover = body.handover === "same" || body.handover === "new" ? body.handover : "";
