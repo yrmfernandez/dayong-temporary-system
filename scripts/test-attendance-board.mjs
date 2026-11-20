@@ -28,3 +28,8 @@ test("08:00 or earlier is Early, up to 08:20 is On time, and late minutes make i
   assert.equal(boardCategory(day("08:20"), "2026-10-07", "2026-10-07"), "On time");
   assert.equal(boardCategory(day("08:25", 5), "2026-10-07", "2026-10-07"), "Late");
 });
+
+test("a day marked Present by management, with no clock-in, is Marked present, today and earlier", () => {
+  assert.equal(boardCategory({ status: "Present", timeIn: "" }, "2026-10-05", "2026-10-06"), "Marked present");
+  assert.equal(boardCategory({ status: "Present", timeIn: "" }, "2026-10-06", "2026-10-06"), "Marked present");
+});

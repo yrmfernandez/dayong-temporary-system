@@ -2,7 +2,7 @@ import type { SessionUser } from "@/lib/auth";
 import type { AttendanceRecord } from "@/lib/attendance-data";
 
 /** Where an employee stands on one day. Present covers On time, Late, and Early. */
-export type BoardCategory = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not required" | "Not clocked in" | "Non-working day";
+export type BoardCategory = "On time" | "Late" | "Early" | "Marked present" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not required" | "Not clocked in" | "Non-working day";
 
 const roleNames = (user: Pick<SessionUser, "roleNames">) => user.roleNames.map((role) => role.trim().toLowerCase());
 
@@ -24,8 +24,12 @@ export function canAdjustLateness(user: Pick<SessionUser, "roleNames" | "permiss
     || Boolean(user.permissions.manageAttendance);
 }
 
-/** Statuses management can set for a day with no clock-in (Attendance Review, and in bulk on the daily board). */
-export const MARK_STATUSES = ["Absent", "AWOL", "Day Off", "Not Required"] as const;
+/**
+ * Statuses management can set for a day with no clock-in (Attendance Review, and in bulk on the daily board). Present
+ * (owner, November 20, 2026): the employee worked but has no clock-in (forgot, or the phone gave no location); counted
+ * present with no hours, as payroll and the sheet already count a Present day without times (the paper sheet's "P").
+ */
+export const MARK_STATUSES = ["Present", "Absent", "AWOL", "Day Off", "Not Required"] as const;
 export type MarkStatus = typeof MARK_STATUSES[number];
 export const isMarkStatus = (value: unknown): value is MarkStatus => MARK_STATUSES.includes(value as MarkStatus);
 
@@ -40,6 +44,8 @@ export function boardCategory(record: AttendanceRecord | null, date: string, tod
   if (record?.status === "Leave") return "On leave";
   if (record?.status === "AWOL") return "AWOL";
   if (record?.status === "Absent") return "Absent";
+  // Marked Present by management, with no clock-in: present, with no time to call late or early.
+  if (record?.status === "Present" && !record.timeIn) return "Marked present";
   if (!record?.timeIn) return date < today ? "Absent" : "Not clocked in";
   if (record.lateMinutes > 0) return "Late";
   if (record.scheduledTimeIn && record.timeIn <= record.scheduledTimeIn) return "Early";
@@ -100,7 +106,7 @@ type HistoryRecord = AttendanceRecord & { regularHours?: number };
 
 function addTo(totals: HistoryTotals, record: HistoryRecord, category: BoardCategory) {
   if (category === "Early") totals.early++;
-  else if (category === "On time") totals.onTime++;
+  else if (category === "On time" || category === "Marked present") totals.onTime++;
   else if (category === "Late") totals.late++;
   else if (category === "Absent" || category === "AWOL") totals.absent++;
   else if (category === "On leave") totals.leave++;

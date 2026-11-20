@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Attendance: Mark as Present (2026-11-20)
+
+- **Asked (owner):** add Present to Mark as in attendance.
+- **Done:** **Present (worked, no clock-in)** in every Mark as menu: Attendance Review, the Daily board (bulk) and a day on the By employee sheet (`MARK_STATUSES` in `lib/attendance-board.ts`). Saved as Present with no times, with who marked it and the note; same rules as the other marks (clocked-in days, approved leave, closed branches, Sundays skipped). Payroll and the sheet already count a Present day without times as present with no hours (as the paper sheet's "P"), so it is paid as a worked day with no late or overtime. The Daily board shows it as **Present, marked (no clock-in)** (new "Marked present" category, counted with present; My Attendance counts it on time); the HR dashboard counts it present. Revertible like any mark.
+- **Tested:** the board test that refused Present now marks it (a clock-in skipped, notes kept, board shows Marked present, revert works and skips a real clock-in); a new board category test. Type check and build pass; 353 of 354 tests pass (the same weekly and monthly reports test fails without this change). Not tried in a browser.
+- **To do (owner):** push (no migration).
+
 ### MAS batches already saved another way: closed, and prevented (2026-11-20)
 
 - **Reported (owner):** entries already encoded but still in Clearing and in Submitted by MAS (Collections and New Sales); they cannot be saved twice and cannot be removed. Clear them and stop it happening again.

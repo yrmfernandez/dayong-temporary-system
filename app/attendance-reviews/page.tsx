@@ -42,6 +42,8 @@ type EmployeeAttendance = {
 };
 
 const MARKS = [
+  // Present (November 20, 2026): worked but did not clock in; counted present, with no hours.
+  { value: "Present", label: "Present (worked, no clock-in)" },
   { value: "Absent", label: "Absent" }, { value: "AWOL", label: "AWOL" }, { value: "Day Off", label: "Day Off" },
   { value: "Not Required", label: "No attendance needed" },
 ] as const;
@@ -125,7 +127,7 @@ export default function AttendanceReviewsPage() {
 
   const markAttendance = async (
     employeeId: string,
-    status: "Absent" | "AWOL" | "Day Off" | "Not Required",
+    status: MarkStatus,
   ) => {
     setUpdatingId(employeeId);
     setMessage("");
@@ -331,7 +333,7 @@ export default function AttendanceReviewsPage() {
                         {employee.closed ? "Branch closed" : employee.systemAbsent ? "Absent · by system" : employee.record?.status === "Not Required" ? "No attendance needed" : employee.record?.status || (employee.carriesNotRequired ? "No attendance needed · carried over" : "No record")}
                       </Badge>
                       {/* A mark management made (not the system's absence, a clock-in or leave) can be reverted. */}
-                      {!employee.systemAbsent && !employee.record?.timeIn && ["Absent", "AWOL", "Day Off", "Not Required"].includes(employee.record?.status ?? "") && (
+                      {!employee.systemAbsent && !employee.record?.timeIn && ["Present", "Absent", "AWOL", "Day Off", "Not Required"].includes(employee.record?.status ?? "") && (
                         <Button type="button" size="sm" variant="outline" disabled={updatingId === employee.employeeId} onClick={() => void revertMark(employee)}>Revert</Button>
                       )}
                       {!locked && (

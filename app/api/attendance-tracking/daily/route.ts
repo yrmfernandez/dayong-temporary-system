@@ -99,7 +99,7 @@ export const PATCH = withEncoder(async (request: Request) => {
 });
 
 /**
- * Marks the selected employees for one day at once: Absent, AWOL, Day Off, or Not Required (no attendance needed, e.g.
+ * Marks the selected employees for one day at once: Present (worked, no clock-in), Absent, AWOL, Day Off, or Not Required (no attendance needed, e.g.
  * MAS in the field). Same rules as Attendance Review: clocked-in days, approved leave and closed branches are skipped
  * (and reported), and a system absence is replaced. Who marked it and the note are kept in the record's notes.
  */
@@ -114,7 +114,7 @@ export const POST = withEncoder(async (request: Request) => {
     const ids: string[] = Array.isArray(body.employeeIds) ? [...new Set(body.employeeIds.filter((id: unknown): id is string => typeof id === "string").map((id: string) => id.trim()).filter(Boolean))] as string[] : [];
     const today = getPhilippineDate();
     if (!validDate(date) || date > today || new Date(`${date}T00:00:00Z`).getUTCDay() === 0) throw new Error("Choose a Monday to Saturday date, today or earlier.");
-    if (!status) throw new Error("Choose Absent, AWOL, Day Off or No attendance needed.");
+    if (!status) throw new Error("Choose Present, Absent, AWOL, Day Off or No attendance needed.");
     if (!ids.length) throw new Error("Select at least one employee.");
     if (ids.length > MAX_MARKS) throw new Error(`Mark at most ${MAX_MARKS} employees at a time.`);
 

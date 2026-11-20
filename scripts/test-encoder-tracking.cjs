@@ -3814,7 +3814,20 @@ test('the attendance board marks the selected employees together and skips anyon
   const saved = await query("select employee_id, attendance_status, notes from attendance where attendance_date = '2026-10-05' order by employee_id");
   assert.deepEqual(saved.map((row) => [row.employee_id, row.attendance_status]), [['MD-5', 'Not Required'], ['MD-6', 'Present'], ['MD-7', 'Not Required']], 'both are saved as Not Required; the clock-in stays');
   assert.ok(saved.filter((row) => row.attendance_status === 'Not Required').every((row) => row.notes.includes('No attendance needed marked by Admin') && row.notes.includes('Field work')), 'who marked it and the note are kept');
-  assert.equal((await route.POST(request({ attendanceDate: '2026-10-05', employeeIds: ['MD-5'], status: 'Present' }))).status, 400, 'only the review statuses');
+  assert.equal((await route.POST(request({ attendanceDate: '2026-10-05', employeeIds: ['MD-5'], status: 'Holiday' }))).status, 400, 'only the review statuses');
+  // Present (November 20, 2026): worked but did not clock in; a real clock-in is left as it is.
+  const present = await (await route.POST(request({ attendanceDate: '2026-10-05', employeeIds: ['MD-5', 'MD-6'], status: 'Present', notes: 'Phone gave no location' }))).json();
+  assert.equal(present.marked, 1, JSON.stringify(present));
+  assert.deepEqual(present.skipped, [{ employeeId: 'MD-6', reason: 'already clocked in' }]);
+  const [md5] = await query("select attendance_status as status, time_in, notes from attendance where employee_id = 'MD-5' and attendance_date = '2026-10-05'");
+  assert.deepEqual([md5.status, md5.time_in ?? ''], ['Present', ''], 'Present with no clock-in');
+  assert.ok(md5.notes.includes('Present marked by Admin') && md5.notes.includes('Phone gave no location'), md5.notes);
+  const { boardCategory } = h.load('lib/attendance-board.ts');
+  assert.equal(boardCategory({ status: 'Present', timeIn: '' }, '2026-10-05', '2026-10-06'), 'Marked present', 'shown as present on the board, not absent');
+  // Reverted like any mark: an earlier day becomes Absent by system.
+  const reverted = await (await route.PATCH(new Request('http://localhost/api/attendance-tracking/daily', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'revert', attendanceDate: '2026-10-05', employeeIds: ['MD-5', 'MD-6'], reason: 'Wrong day' }) }))).json();
+  assert.equal(reverted.reverted, 1, JSON.stringify(reverted));
+  assert.deepEqual(reverted.skipped, [{ employeeId: 'MD-6', reason: 'clocked in' }], 'a clocked-in Present is not a mark');
   assert.equal((await route.POST(request({ attendanceDate: '2026-10-04', employeeIds: ['MD-5'], status: 'Absent' }))).status, 400, 'not on a Sunday');
 });
 

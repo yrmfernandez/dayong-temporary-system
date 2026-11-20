@@ -101,7 +101,8 @@ export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
     const [records, leaves] = await Promise.all([getAttendanceRecordsForDate(today), getAllLeaveRequests()]);
     const byEmployee = new Map(records.map((record) => [record.employeeId, record]));
     const names = new Map(activeEmployees.map((row) => [text(row[0]), text(row[1])]));
-    const present = records.filter((record) => record.status === "Present" && record.timeIn);
+    // A day marked Present by HR (no clock-in, November 20, 2026) counts too; late needs a clock-in.
+    const present = records.filter((record) => record.status === "Present");
     const pendingLeaves = leaves.filter(({ request }) => request.approvalStatus === "Pending").map(({ request }) => ({ ...request, name: names.get(request.employeeId) || request.employeeId }));
     people = {
       present: present.length, late: present.filter((record) => record.lateMinutes > 0).length, onLeave: records.filter((record) => record.status === "Leave").length,

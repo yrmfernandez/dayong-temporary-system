@@ -365,8 +365,9 @@ function EmployeeSheet({ result, period, from, to, onBack, onChanged }: { result
 }
 
 type EditAction = "late" | "clockOut" | "resume" | "mark" | "revert";
-const MANUAL_MARKS = ["Absent", "AWOL", "Day Off", "Not required"];
+const MANUAL_MARKS = ["Present", "Absent", "AWOL", "Day Off", "Not required"];
 const markChoices = [
+  { value: "Present", label: "Present (worked, no clock-in)", status: "Present" },
   { value: "Absent", label: "Absent", status: "Absent" }, { value: "AWOL", label: "AWOL", status: "AWOL" }, { value: "Day Off", label: "Day Off", status: "Day Off" },
   { value: "Not Required", label: "No attendance needed (e.g. MAS)", status: "Not required" },
 ] as const;
@@ -374,7 +375,7 @@ const markChoices = [
 /**
  * What HR can change on a day (owner, November 16, 2026), with the daily board's corrections (/api/attendance-tracking/daily):
  * a clocked-in day gets its late time and clock-out (and today's clock-out voided); a day with no clock-in, today or
- * earlier, Monday to Saturday, gets Absent, AWOL, Day Off or No attendance needed, and a mark made by management can be
+ * earlier, Monday to Saturday, gets Present (no clock-in), Absent, AWOL, Day Off or No attendance needed, and a mark made by management can be
  * reverted. Leave is changed in Leave Approvals; Sundays, closed days and days to come are not changed here.
  */
 function editActions(day: SheetDay, today: string): EditAction[] {

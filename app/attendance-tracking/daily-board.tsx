@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
-type Category = "On time" | "Late" | "Early" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not required" | "Not clocked in" | "Non-working day";
+type Category = "On time" | "Late" | "Early" | "Marked present" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not required" | "Not clocked in" | "Non-working day";
 type BoardRecord = { timeIn: string; timeOut: string; scheduledTimeIn: string; lateMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string; branch: string };
 type Row = { employeeId: string; name: string; roles: string[]; branches: string[]; category: Category; earlyMinutes: number; systemAbsent: boolean; record: BoardRecord | null; locationCheck: LocationCheck | null };
 type Board = { date: string; today: string; canAdjustLate: boolean; canSetClockOut: boolean; canMark: boolean; closedDay: string; rows: Row[] };
@@ -21,6 +21,7 @@ const sections: Array<{ category: Category; title: string; tone: string }> = [
   { category: "Late", title: "Late", tone: "text-amber-700" },
   { category: "Early", title: "Early", tone: "text-emerald-700" },
   { category: "On time", title: "Present, on time", tone: "text-emerald-700" },
+  { category: "Marked present", title: "Present, marked (no clock-in)", tone: "text-emerald-700" },
   { category: "Absent", title: "Absent", tone: "text-red-700" },
   { category: "AWOL", title: "AWOL", tone: "text-red-800" },
   { category: "On leave", title: "On leave", tone: "text-sky-700" },
@@ -29,10 +30,11 @@ const sections: Array<{ category: Category; title: string; tone: string }> = [
   { category: "Not clocked in", title: "Not clocked in yet", tone: "text-muted-foreground" },
   { category: "Non-working day", title: "Branch closed (non-working day)", tone: "text-violet-700" },
 ];
-const presentCategories: Category[] = ["On time", "Late", "Early"];
+const presentCategories: Category[] = ["On time", "Late", "Early", "Marked present"];
 /** Rows with no clock-in and no leave can be ticked and marked together. */
-const markableCategories: Category[] = ["Absent", "AWOL", "Day Off", "Not required", "Not clocked in"];
+const markableCategories: Category[] = ["Marked present", "Absent", "AWOL", "Day Off", "Not required", "Not clocked in"];
 const markOptions = [
+  { value: "Present", label: "Present (worked, no clock-in)", short: "Present" },
   { value: "Absent", label: "Absent", short: "Absent" }, { value: "AWOL", label: "AWOL", short: "AWOL" }, { value: "Day Off", label: "Day Off", short: "Day Off" },
   { value: "Not Required", label: "No attendance needed (e.g. MAS)", short: "No attendance needed" },
 ] as const;
@@ -84,7 +86,7 @@ export function DailyBoard() {
   const isMarkable = (row: Row) => canMark && markableCategories.includes(row.category) && !row.record?.timeIn;
   const locationReviews = rows.filter((row) => row.locationCheck?.needsReview).length;
   // A mark management made (not the system's absence, a clock-in or leave) can be reverted.
-  const isRevertable = (row: Row) => canMark && Boolean(row.record) && !row.record?.timeIn && !row.systemAbsent && (["Absent", "AWOL", "Day Off", "Not required"] as Category[]).includes(row.category);
+  const isRevertable = (row: Row) => canMark && Boolean(row.record) && !row.record?.timeIn && !row.systemAbsent && (["Marked present", "Absent", "AWOL", "Day Off", "Not required"] as Category[]).includes(row.category);
   const shown = sections.filter((section) => (!focus || focus === section.category || (focus === "Present" && presentCategories.includes(section.category))) && count(section.category) > 0);
 
   async function saveCorrection() {
